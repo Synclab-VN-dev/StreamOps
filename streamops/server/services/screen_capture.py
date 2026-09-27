@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from PIL import Image
 
-from ..errors import CaptureStorageError, NoCaptureError, ScreenCaptureError
+from ..errors import CaptureStorageError, NoCaptureError, ScreenCaptureError, WrongDesktopSessionError
 
 
 class CaptureBackend(Protocol):
@@ -73,7 +73,7 @@ class ScreenCaptureService:
             raise CaptureStorageError(f"Data directory is not writable: {self.data_dir}") from exc
         try:
             self.backend.start()
-        except ScreenCaptureError:
+        except (ScreenCaptureError, WrongDesktopSessionError):
             self._ready = False
         else:
             # Initialization alone is insufficient: some desktop APIs create a
@@ -96,7 +96,7 @@ class ScreenCaptureService:
     def _capture_sync(self) -> CaptureMetadata:
         try:
             frame = self.backend.capture(self.timeout)
-        except ScreenCaptureError:
+        except (ScreenCaptureError, WrongDesktopSessionError):
             self._ready = False
             raise
         self._ready = True
