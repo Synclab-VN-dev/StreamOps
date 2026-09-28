@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .api.health import router as health_router
+from .api.obs import router as obs_router
 from .api.screen import router as screen_router
 from .api.steam import router as steam_router
 from .config import ServerConfig
@@ -26,9 +27,14 @@ from .errors import (
     SteamShutdownTimeoutError,
     SteamStatusError,
     WrongDesktopSessionError,
+    ObsConnectionError,
+    ObsRequestError,
+    SceneOperationError,
+    SceneReviewNotFoundError,
 )
+from .scene_config import SceneConfigError
 from .platform.windows import WindowsScreenCaptureBackend, WindowsSteamBackend
-from .services import ScreenCaptureService, SteamService
+from .services import ObsSceneService, ScreenCaptureService, SteamService
 from .services.runtime import RuntimeLease
 
 
@@ -40,6 +46,7 @@ def create_app(
     *,
     capture_service: ScreenCaptureService | None = None,
     steam_service: SteamService | None = None,
+    obs_scene_service: ObsSceneService | None = None,
     manage_runtime: bool = True,
 ) -> FastAPI:
     service = capture_service or ScreenCaptureService(
@@ -48,6 +55,7 @@ def create_app(
         config.capture_timeout,
     )
     steam = steam_service or SteamService(WindowsSteamBackend())
+    obs_scenes = obs_scene_service or ObsSceneService()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -57,6 +65,7 @@ def create_app(
             yield
         finally:
             service.close()
+            obs_scenes.close()
             if lease is not None:
                 lease.release()
 
@@ -64,9 +73,31 @@ def create_app(
     app.state.config = config
     app.state.capture_service = service
     app.state.steam_service = steam
+    app.state.obs_scene_service = obs_scenes
     app.include_router(health_router)
+    app.include_router(obs_router)
     app.include_router(screen_router)
     app.include_router(steam_router)
+
+    @app.exception_handler(SceneConfigError)
+    async def scene_config_handler(_request, exc: SceneConfigError) -> JSONResponse:
+        return _error_response(400, "scene_config_invalid", str(exc))
+
+    @app.exception_handler(SceneReviewNotFoundError)
+    async def scene_review_not_found_handler(_request, exc: SceneReviewNotFoundError) -> JSONResponse:
+        return _error_response(404, "scene_review_not_found", str(exc))
+
+    @app.exception_handler(ObsConnectionError)
+    async def obs_connection_handler(_request, exc: ObsConnectionError) -> JSONResponse:
+        return _error_response(503, "obs_unavailable", str(exc))
+
+    @app.exception_handler(ObsRequestError)
+    async def obs_request_handler(_request, exc: ObsRequestError) -> JSONResponse:
+        return _error_response(503, "obs_request_failed", str(exc))
+
+    @app.exception_handler(SceneOperationError)
+    async def scene_operation_handler(_request, exc: SceneOperationError) -> JSONResponse:
+        return _error_response(409, "scene_operation_failed", str(exc))
 
     @app.exception_handler(NoCaptureError)
     async def no_capture_handler(_request, exc: NoCaptureError) -> JSONResponse:
@@ -129,6 +160,10 @@ def create_app(
     @app.get("/steam", include_in_schema=False)
     async def steam_page() -> FileResponse:
         return FileResponse(WEB_ROOT / "steam.html", headers={"Cache-Control": "no-store"})
+
+    @app.get("/obs", include_in_schema=False)
+    async def obs_page() -> FileResponse:
+        return FileResponse(WEB_ROOT / "obs.html", headers={"Cache-Control": "no-store"})
 
     app.mount("/assets", StaticFiles(directory=WEB_ROOT), name="web-assets")
     return app
