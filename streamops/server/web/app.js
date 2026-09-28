@@ -3,12 +3,16 @@ const addActivity = ui.createActivityLog("#activity-log");
 const screenCardDot = document.querySelector("#screen-card-dot");
 const screenCardStatus = document.querySelector("#screen-card-status");
 const screenCardDetail = document.querySelector("#screen-card-detail");
+const obsCardDot = document.querySelector("#obs-card-dot");
+const obsCardStatus = document.querySelector("#obs-card-status");
+const obsCardDetail = document.querySelector("#obs-card-detail");
 const steamCardDot = document.querySelector("#steam-card-dot");
 const steamCardStatus = document.querySelector("#steam-card-status");
 const steamCardDetail = document.querySelector("#steam-card-detail");
 
 let lastHealthSignature = null;
 let lastSteamSignature = null;
+let lastObsSignature = null;
 
 async function updateHealth() {
   try {
@@ -34,6 +38,26 @@ async function updateHealth() {
     screenCardDetail.textContent = "The node health check failed.";
     if (lastHealthSignature !== "offline") addActivity("streamops-node: offline", "error");
     lastHealthSignature = "offline";
+  }
+}
+
+async function updateObs() {
+  try {
+    const status = await ui.fetchJson("/api/v1/obs/status");
+    obsCardDot.className = "status-dot online";
+    obsCardStatus.textContent = "Connected";
+    obsCardDetail.textContent = status.current_scene
+      ? `OBS ${status.obs_version || ""} · ${status.current_scene}`
+      : `OBS ${status.obs_version || "connected"}`;
+    const signature = `connected:${status.current_scene || "none"}:${status.streaming}:${status.recording}`;
+    if (signature !== lastObsSignature) addActivity(`OBS: connected · scene ${status.current_scene || "--"}`, "success");
+    lastObsSignature = signature;
+  } catch {
+    obsCardDot.className = "status-dot offline";
+    obsCardStatus.textContent = "Unavailable";
+    obsCardDetail.textContent = "OBS WebSocket could not be reached.";
+    if (lastObsSignature !== "error") addActivity("OBS: unavailable", "error");
+    lastObsSignature = "error";
   }
 }
 
@@ -63,7 +87,7 @@ async function updateSteam() {
 }
 
 async function poll() {
-  await Promise.all([updateHealth(), updateSteam()]);
+  await Promise.all([updateHealth(), updateObs(), updateSteam()]);
   window.setTimeout(poll, 15000);
 }
 
