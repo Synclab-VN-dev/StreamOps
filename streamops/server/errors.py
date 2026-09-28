@@ -73,3 +73,27 @@ class SteamRestartInProgressError(SteamError):
 
 class InvalidSteamRestartRequestError(SteamError):
     """Raised when a restart request attempts to provide input."""
+
+
+class ObsError(ServerError):
+    """Base class for OBS control-plane failures."""
+
+
+class ObsConnectionError(ObsError):
+    """Raised when OBS WebSocket cannot be reached or authenticated."""
+
+
+class ObsRequestError(ObsError):
+    """Raised when OBS rejects a WebSocket request."""
+
+
+class SceneOperationError(ObsError):
+    """Raised when a scene apply/verify/review operation cannot complete."""
+
+
+class SceneReviewNotFoundError(ObsError):
+    """Raised when a requested in-memory review job does not exist."""
+
+
+class SceneReviewInProgressError(ObsError):
+    """Raised when an incompatible review operation is already running."""
