@@ -64,9 +64,9 @@ async def scene_preview(scene_name: str, request: Request) -> Response:
 async def start_scene_review(
     scene_name: str,
     request: Request,
-    payload: ReviewRequest = ReviewRequest(),
+    payload: ReviewRequest | None = None,
 ) -> JSONResponse:
-    job = _service(request).start_review(scene_name, seconds=payload.seconds)
+    job = _service(request).start_review(scene_name, seconds=(payload.seconds if payload else 30))
     return JSONResponse(status_code=202, content=job.to_dict())
 
 
