@@ -1,177 +1,26 @@
-const ui = window.StreamOpsUI;
-const sceneName = "livestream-d4";
-const addActivity = ui.createActivityLog("#activity-log");
-const errorMessage = document.querySelector("#error-message");
-const sourceList = document.querySelector("#source-list");
-const preview = document.querySelector("#scene-preview");
-const previewEmpty = document.querySelector("#preview-empty");
-const previewStatus = document.querySelector("#preview-status");
-const buttons = [...document.querySelectorAll("button")];
-
-function setBusy(busy) {
-  buttons.forEach((button) => { button.disabled = busy; });
-}
-
-function setError(message) {
-  errorMessage.textContent = message;
-  errorMessage.hidden = !message;
-}
-
-function setText(selector, value) {
-  const node = document.querySelector(selector);
-  if (node) node.textContent = value ?? "--";
-}
-
-function statusClass(value) {
-  if (value === "PASS") return "check-status pass";
-  if (value === "WARN") return "check-status warn";
-  if (value === "FAIL") return "check-status fail";
-  return "check-status";
-}
-
-async function loadObsStatus() {
-  try {
-    const status = await ui.fetchJson("/api/v1/obs/status");
-    setText("#obs-state", status.connected ? "Connected" : "Disconnected");
-    setText("#obs-connected", status.connected ? "Yes" : "No");
-    setText("#obs-version", status.obs_version || "--");
-    setText("#obs-current-scene", status.current_scene || "--");
-    setText("#obs-streaming", status.streaming ? "Active" : "Stopped");
-    setText("#obs-recording", status.recording ? "Active" : "Stopped");
-    return status;
-  } catch (error) {
-    setText("#obs-state", "Unavailable");
-    setText("#obs-connected", "No");
-    throw error;
-  }
-}
-
-function renderScene(scene) {
-  const verify = scene.verify || {};
-  setText("#scene-name", scene.name);
-  setText("#scene-output", `${scene.video.output_width}×${scene.video.output_height} @ ${scene.video.fps} FPS`);
-  setText("#scene-result", verify.status || "Unknown");
-  setText("#scene-check-count", `${(verify.checks || []).length} checks`);
-
-  const checksByRole = new Map();
-  (verify.checks || []).forEach((check) => {
-    const match = check.id.match(/^(?:source|item|audio)\.([^.]+)\.(.+)$/);
-    if (!match) return;
-    const [, role] = match;
-    const current = checksByRole.get(role) || [];
-    current.push(check);
-    checksByRole.set(role, current);
-  });
-
-  sourceList.replaceChildren();
-  scene.sources.forEach((source) => {
-    const checks = checksByRole.get(source.role) || [];
-    const overall = checks.some((item) => item.status === "FAIL")
-      ? "FAIL"
-      : checks.some((item) => item.status === "WARN")
-        ? "WARN"
-        : checks.length ? "PASS" : "UNKNOWN";
-    const row = document.createElement("div");
-    row.className = "source-row";
-    const label = document.createElement("div");
-    const name = document.createElement("strong");
-    name.textContent = source.role;
-    const detail = document.createElement("span");
-    detail.textContent = source.source_name;
-    label.append(name, detail);
-    const meta = document.createElement("div");
-    meta.className = "source-meta";
-    meta.textContent = `${source.media}${source.signal_required ? " · signal required" : ""}`;
-    const status = document.createElement("span");
-    status.className = statusClass(overall);
-    status.textContent = overall;
-    row.append(label, meta, status);
-    sourceList.append(row);
+const ui=window.StreamOpsUI,activity=ui.createActivityLog("#activity-log"),$=(s)=>document.querySelector(s);let current=null,catalog=[],dirty=false;
+function showError(message=""){$("#error-message").textContent=message;$("#error-message").hidden=!message}function setState(value){$("#editor-state").textContent=value}function markDirty(){if(current){dirty=true;setState("Modified");renderCanvas()}}
+function readEditor(){current.name=$("#profile-name").value;current.canvas={width:Number($("#canvas-width").value),height:Number($("#canvas-height").value),fps:Number($("#canvas-fps").value)};return current}
+function loadEditor(profile){current=structuredClone(profile);dirty=false;setState("Saved");$("#profile-name").value=current.name;$("#canvas-width").value=current.canvas.width;$("#canvas-height").value=current.canvas.height;$("#canvas-fps").value=current.canvas.fps;renderSources();renderCanvas()}
+async function selectProfile(id){loadEditor(await ui.fetchJson(`/api/v1/scene-profiles/${id}`))}async function loadProfiles(selectId=null){const data=await ui.fetchJson("/api/v1/scene-profiles"),list=$("#profile-list");list.replaceChildren();data.profiles.forEach((p)=>list.add(new Option(p.name,p.id)));$("#profile-count").textContent=`${data.profiles.length} profiles${data.errors.length?` · ${data.errors.length} invalid`:""}`;const id=selectId||current?.id||data.profiles[0]?.id;if(id){list.value=id;await selectProfile(id)}}
+function renderSources(){
+  const root=$("#source-list");root.replaceChildren();
+  current.sources.forEach((source,index)=>{
+    const row=document.createElement("div");row.className="source-row";
+    const label=document.createElement("label"),enabled=document.createElement("input"),name=document.createElement("input"),layer=document.createElement("input");
+    enabled.type="checkbox";enabled.checked=source.enabled;enabled.title="Enabled";enabled.addEventListener("change",()=>{source.enabled=enabled.checked;markDirty()});
+    name.value=source.name;name.title="Display name";name.addEventListener("input",()=>{source.name=name.value;markDirty()});
+    layer.type="number";layer.min="0";layer.max="999";layer.value=source.layer;layer.title="Layer";layer.style.width="5rem";layer.addEventListener("input",()=>{source.layer=Number(layer.value);markDirty()});label.append(enabled,name,layer);
+    const meta=document.createElement("div");meta.className="source-meta";meta.append(document.createTextNode(`${source.type} `));
+    if(source.transform)["x","y","width","height"].forEach((key)=>{const input=document.createElement("input");input.type="number";input.title=key;input.value=source.transform[key];input.style.width="6rem";input.addEventListener("input",()=>{source.transform[key]=Number(input.value);markDirty()});meta.append(input)});
+    const settings=document.createElement("textarea");settings.value=JSON.stringify(source.settings);settings.title="OBS source settings JSON";settings.rows=2;settings.addEventListener("input",()=>{try{source.settings=JSON.parse(settings.value);settings.setCustomValidity("");markDirty()}catch(_){settings.setCustomValidity("Settings must be valid JSON.")}});meta.append(settings);
+    if(source.audio){const mute=document.createElement("input"),volume=document.createElement("input"),sync=document.createElement("input");mute.type="checkbox";mute.checked=source.audio.muted;mute.title="Muted";mute.addEventListener("change",()=>{source.audio.muted=mute.checked;markDirty()});volume.type="number";volume.value=source.audio.volume_db;volume.title="Volume dB";volume.addEventListener("input",()=>{source.audio.volume_db=Number(volume.value);markDirty()});sync.type="number";sync.value=source.audio.sync_offset_ms;sync.title="Sync offset ms";sync.addEventListener("input",()=>{source.audio.sync_offset_ms=Number(sync.value);markDirty()});meta.append(mute,volume,sync)}
+    const remove=document.createElement("button");remove.textContent="Remove";remove.addEventListener("click",()=>{current.sources.splice(index,1);current.sources.forEach((x,i)=>x.layer=i);markDirty();renderSources()});row.append(label,meta,remove);root.append(row);
   });
 }
-
-async function loadScene() {
-  const scene = await ui.fetchJson(`/api/v1/scenes/${sceneName}`);
-  renderScene(scene);
-  return scene;
-}
-
-async function loadPreview() {
-  const response = await fetch(`/api/v1/scenes/${sceneName}/preview?v=${Date.now()}`, { cache: "no-store" });
-  if (!response.ok) throw new Error(await ui.apiError(response));
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const previous = preview.dataset.objectUrl;
-  preview.dataset.objectUrl = url;
-  preview.src = url;
-  preview.hidden = false;
-  previewEmpty.hidden = true;
-  previewStatus.textContent = "Current OBS scene";
-  if (previous) URL.revokeObjectURL(previous);
-}
-
-async function runAction(label, action, { refreshPreview = true } = {}) {
-  setError("");
-  setBusy(true);
-  addActivity(`${label} requested`);
-  try {
-    const result = await action();
-    addActivity(`${label} completed${result.status ? `: ${result.status}` : ""}`, result.status === "FAIL" ? "error" : "success");
-    await Promise.allSettled([loadObsStatus(), loadScene()]);
-    if (refreshPreview) await loadPreview().catch(() => {});
-    return result;
-  } catch (error) {
-    setError(error.message || `${label} failed.`);
-    addActivity(`${label} failed: ${error.message}`, "error");
-    throw error;
-  } finally {
-    setBusy(false);
-  }
-}
-
-async function waitForReview(jobId) {
-  let lastState = null;
-  while (true) {
-    const job = await ui.fetchJson(`/api/v1/scene-reviews/${jobId}`);
-    if (job.state !== lastState) {
-      addActivity(`Review ${job.state}`);
-      lastState = job.state;
-    }
-    if (job.state === "completed") return job;
-    if (job.state === "failed") throw new Error(job.error || "Scene review failed.");
-    await new Promise((resolve) => window.setTimeout(resolve, 1000));
-  }
-}
-
-document.querySelector("#apply-button").addEventListener("click", () => {
-  runAction("Apply", () => ui.fetchJson(`/api/v1/scenes/${sceneName}/apply`, { method: "POST" })).catch(() => {});
-});
-
-document.querySelector("#verify-button").addEventListener("click", () => {
-  runAction("Verify", () => ui.fetchJson(`/api/v1/scenes/${sceneName}/verify`, { method: "POST" })).catch(() => {});
-});
-
-document.querySelector("#activate-button").addEventListener("click", () => {
-  runAction("Activate", () => ui.fetchJson(`/api/v1/scenes/${sceneName}/activate`, { method: "POST" })).catch(() => {});
-});
-
-document.querySelector("#review-button").addEventListener("click", () => {
-  runAction("Review", async () => {
-    const job = await ui.fetchJson(`/api/v1/scenes/${sceneName}/review`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ seconds: 30 }),
-    });
-    addActivity(`Review queued: ${job.job_id}`);
-    const completed = await waitForReview(job.job_id);
-    return completed.result || { status: "PASS" };
-  }).catch(() => {});
-});
-
-addActivity("Page loaded");
-Promise.all([loadObsStatus(), loadScene()])
-  .then(() => loadPreview().catch(() => {}))
-  .catch((error) => {
-    setError(error.message);
-    addActivity(`Initial load failed: ${error.message}`, "error");
-  });
+function renderCanvas(){if(!current)return;const canvas=$("#profile-canvas");canvas.replaceChildren();canvas.style.aspectRatio=`${current.canvas.width}/${current.canvas.height}`;$("#canvas-label").textContent=`${current.canvas.width}×${current.canvas.height} @ ${current.canvas.fps}`;current.sources.filter((s)=>s.transform&&s.enabled).sort((a,b)=>a.layer-b.layer).forEach((source)=>{const box=document.createElement("div"),t=source.transform;box.textContent=source.name;box.style.cssText=`position:absolute;box-sizing:border-box;border:2px solid #5dd6c0;background:#163a4866;color:white;padding:4px;left:${100*t.x/current.canvas.width}%;top:${100*t.y/current.canvas.height}%;width:${100*t.width/current.canvas.width}%;height:${100*t.height/current.canvas.height}%`;canvas.append(box)})}
+async function save(){readEditor();current=await ui.fetchJson(`/api/v1/scene-profiles/${current.id}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(current)});dirty=false;setState("Saved");activity("Profile saved","success");await loadProfiles(current.id)}async function preview(){const response=await fetch(`/api/v1/scene-profiles/${current.id}/preview?v=${Date.now()}`,{cache:"no-store"});if(!response.ok)throw new Error(await ui.apiError(response));const image=$("#scene-preview"),old=image.dataset.url,url=URL.createObjectURL(await response.blob());image.src=url;image.dataset.url=url;image.hidden=false;$("#preview-empty").hidden=true;$("#preview-status").textContent="Current OBS state";if(old)URL.revokeObjectURL(old)}async function action(label,path){showError();try{const result=await ui.fetchJson(path,{method:"POST"});setState(result.status==="FAIL"?"Drifted":dirty?"Modified":"Applied");activity(`${label}: ${result.status||result.state||"complete"}`,result.status==="FAIL"?"error":"success");await preview().catch(()=>{})}catch(e){setState("Failed");showError(e.message);activity(`${label} failed: ${e.message}`,"error")}}
+async function runReview(){showError();try{const queued=await ui.fetchJson(`/api/v1/scene-profiles/${current.id}/review`,{method:"POST"});activity(`Review queued: ${queued.job_id}`);for(;;){const job=await ui.fetchJson(`/api/v1/scene-reviews/${queued.job_id}`);if(job.state==="completed"){setState(job.result?.status==="FAIL"?"Failed":dirty?"Modified":"Applied");activity(`Review completed: ${job.result?.status||"complete"}`,job.result?.status==="FAIL"?"error":"success");return}if(job.state==="failed")throw new Error(job.error||"Review failed");await new Promise((resolve)=>setTimeout(resolve,500))}}catch(e){setState("Failed");showError(e.message);activity(`Review failed: ${e.message}`,"error")}}
+$("#profile-list").addEventListener("change",(e)=>selectProfile(e.target.value).catch((x)=>showError(x.message)));["#profile-name","#canvas-width","#canvas-height","#canvas-fps"].forEach((id)=>$(id).addEventListener("input",markDirty));$("#new-button").addEventListener("click",async()=>{const p=await ui.fetchJson("/api/v1/scene-profiles",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:"Untitled profile"})});await loadProfiles(p.id)});$("#save-button").addEventListener("click",()=>save().catch((e)=>showError(e.message)));$("#save-as-button").addEventListener("click",async()=>{try{readEditor();const p=await ui.fetchJson(`/api/v1/scene-profiles/${current.id}/duplicate`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:`${current.name} copy`})});current.id=p.id;current.obs_scene_name=p.obs_scene_name;current.sources=p.sources.map((s,i)=>({...current.sources[i],id:s.id,obs_name:s.obs_name}));await save()}catch(e){showError(e.message)}});$("#duplicate-button").addEventListener("click",async()=>{const p=await ui.fetchJson(`/api/v1/scene-profiles/${current.id}/duplicate`,{method:"POST"});await loadProfiles(p.id)});$("#delete-button").addEventListener("click",async()=>{if(!current||!confirm(`Delete local profile “${current.name}”? OBS resources are preserved.`))return;await fetch(`/api/v1/scene-profiles/${current.id}`,{method:"DELETE"});current=null;await loadProfiles()});
+$("#add-source-button").addEventListener("click",()=>{const type=$("#source-type").value,cap=catalog.find((x)=>x.type===type),source={name:cap.label,type,enabled:true,layer:current.sources.length,settings:{}};if(cap.existing)source.settings.source_name="";if(cap.video)source.transform={x:0,y:0,width:current.canvas.width,height:current.canvas.height,crop_left:0,crop_top:0,crop_right:0,crop_bottom:0};if(cap.audio)source.audio={muted:false,volume_db:0,sync_offset_ms:0,tracks:{"1":true,"2":false,"3":false,"4":false,"5":false,"6":false}};current.sources.push(source);markDirty();renderSources()});$("#apply-button").addEventListener("click",()=>action("Apply",`/api/v1/scene-profiles/${current.id}/apply`));$("#verify-button").addEventListener("click",()=>action("Verify",`/api/v1/scene-profiles/${current.id}/verify`));$("#activate-button").addEventListener("click",()=>action("Activate",`/api/v1/scene-profiles/${current.id}/activate`));$("#review-button").addEventListener("click",runReview);$("#template-button").addEventListener("click",async()=>{const p=await ui.fetchJson(`/api/v1/scene-profile-templates/${$("#template-list").value}/instantiate`,{method:"POST"});await loadProfiles(p.id)});
+Promise.all([ui.fetchJson("/api/v1/obs/source-catalog"),ui.fetchJson("/api/v1/scene-profile-templates")]).then(async([sources,templates])=>{catalog=sources.sources;catalog.forEach((x)=>$("#source-type").add(new Option(x.label,x.type)));templates.templates.forEach((x)=>$("#template-list").add(new Option(x.name,x.id)));await loadProfiles();activity("Profile manager loaded")}).catch((e)=>showError(e.message));

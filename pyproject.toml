@@ -38,6 +38,7 @@ include = ["streamops*"]
 streamops = [
   "assets/obs/*.html",
   "config/scenes/*.yaml",
+  "config/scene-templates/*.json",
   "docs/*.md",
   "server/web/*",
 ]

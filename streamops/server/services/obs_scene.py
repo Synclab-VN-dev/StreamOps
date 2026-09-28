@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
@@ -20,7 +21,10 @@ from ..errors import (
     SceneReviewNotFoundError,
 )
 from ..obs.client import ObsClient
+from ..obs.profile_scene import apply_profile, verify_profile
 from ..obs.scene import ApplyResult, VerifyResult, apply_scene, verify_scene
+from ..profile_store import SceneProfileStore
+from ..scene_profiles import source_catalog
 from ..scene_config import find_project_root, list_scene_names, load_scene_config
 
 
@@ -53,10 +57,14 @@ class ObsSceneService:
         self,
         *,
         root: Path | None = None,
+        data_dir: Path | None = None,
         artifact_root: Path | None = None,
         client_factory: type[ObsClient] | Any = ObsClient,
     ) -> None:
         self.root = root or find_project_root()
+        profile_root = data_dir or (self.root / ".streamops" / "node" / "scene-profiles")
+        template_root = self.root / "streamops" / "config" / "scene-templates"
+        self.profile_store = SceneProfileStore(profile_root, template_root=template_root)
         self.artifact_root = artifact_root or (self.root / "streamops" / "artifacts" / "scene-review")
         self.client_factory = client_factory
         self._mutation_lock = threading.Lock()
@@ -84,6 +92,164 @@ class ObsSceneService:
 
     def list_scenes(self) -> list[dict[str, Any]]:
         return [{"name": name} for name in list_scene_names(root=self.root)]
+
+    # Generic profile-manager API. Legacy named-scene methods remain available for
+    # the CLI and existing automation while consumers migrate to stable profile IDs.
+    def list_profiles(self) -> dict[str, Any]:
+        return self.profile_store.list()
+
+    def get_profile(self, profile_id: str) -> dict[str, Any]:
+        return self.profile_store.get(profile_id)
+
+    def create_profile(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        return self.profile_store.create(payload)
+
+    def update_profile(self, profile_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.profile_store.update(profile_id, payload)
+
+    def duplicate_profile(self, profile_id: str, *, name: str | None = None) -> dict[str, Any]:
+        return self.profile_store.duplicate(profile_id, name=name)
+
+    def delete_profile(self, profile_id: str) -> None:
+        self.profile_store.delete(profile_id)
+
+    def catalog(self) -> list[dict[str, Any]]:
+        return source_catalog()
+
+    def list_templates(self) -> list[dict[str, Any]]:
+        return self.profile_store.list_templates()
+
+    def instantiate_template(self, template_id: str, *, name: str | None = None) -> dict[str, Any]:
+        return self.profile_store.instantiate_template(template_id, name=name)
+
+    def inventory(self) -> dict[str, Any]:
+        client = self._client()
+        try:
+            return {
+                "inputs": [
+                    {
+                        "name": item.get("inputName"),
+                        "kind": item.get("unversionedInputKind") or item.get("inputKind"),
+                    }
+                    for item in client.get_input_list()
+                ],
+                "input_kinds": client.get_input_kind_list(),
+            }
+        finally:
+            client.close()
+
+    def apply_profile(self, profile_id: str) -> ApplyResult:
+        profile = self._runtime_profile(self.profile_store.get(profile_id))
+        with self._mutation_lock:
+            client = self._client()
+            try:
+                return apply_profile(profile, client)
+            finally:
+                client.close()
+
+    def verify_profile(self, profile_id: str, *, runtime: bool = True) -> VerifyResult:
+        profile = self._runtime_profile(self.profile_store.get(profile_id))
+        client = self._client()
+        try:
+            return verify_profile(profile, client, runtime=runtime)
+        finally:
+            client.close()
+
+    def activate_profile(self, profile_id: str) -> dict[str, Any]:
+        profile = self.profile_store.get(profile_id)
+        client = self._client()
+        try:
+            client.set_current_program_scene(profile["obs_scene_name"])
+            actual = client.get_current_program_scene()
+            if actual != profile["obs_scene_name"]:
+                raise SceneOperationError(
+                    f"OBS did not activate {profile['obs_scene_name']!r}; current scene is {actual!r}."
+                )
+            return {"profile_id": profile_id, "scene": actual, "active": True}
+        finally:
+            client.close()
+
+    def preview_profile(self, profile_id: str) -> bytes:
+        profile = self.profile_store.get(profile_id)
+        client = self._client()
+        try:
+            return client.get_source_screenshot(
+                profile["obs_scene_name"], width=profile["canvas"]["width"], height=profile["canvas"]["height"]
+            )
+        finally:
+            client.close()
+
+    def start_profile_review(self, profile_id: str, *, seconds: int = 30) -> ReviewJob:
+        self.profile_store.get(profile_id)
+        if not 1 <= seconds <= 300:
+            raise SceneOperationError("Review seconds must be between 1 and 300.")
+        now = _now()
+        job = ReviewJob(uuid4().hex, profile_id, "queued", now, now, seconds)
+        with self._jobs_lock:
+            self._jobs[job.job_id] = job
+        self._executor.submit(self._run_profile_review, job.job_id)
+        return job
+
+    def _run_profile_review(self, job_id: str) -> None:
+        self._update_job(job_id, state="running")
+        try:
+            job = self.review_job(job_id)
+            profile = self.profile_store.get(job.scene)
+            runtime_profile = self._runtime_profile(profile)
+            with self._mutation_lock:
+                client = self._client()
+                stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                artifact_dir = self.artifact_root / profile["id"] / f"{stamp}-{job.job_id[:8]}"
+                artifact_dir.mkdir(parents=True, exist_ok=False)
+                try:
+                    verify = verify_profile(runtime_profile, client, runtime=True)
+                    (artifact_dir / "profile.json").write_text(
+                        json.dumps(profile, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+                    )
+                    preview_path = artifact_dir / "preview.png"
+                    client.save_source_screenshot(
+                        profile["obs_scene_name"], preview_path,
+                        width=profile["canvas"]["width"], height=profile["canvas"]["height"],
+                    )
+                    verify.artifacts.update({"profile": str(artifact_dir / "profile.json"), "preview": str(preview_path)})
+                    if verify.status != "FAIL":
+                        if client.get_stream_status().get("outputActive"):
+                            raise SceneOperationError("Refusing scene review recording while streaming is active.")
+                        if client.get_record_status().get("outputActive"):
+                            raise SceneOperationError("Refusing scene review recording while recording is already active.")
+                        previous_scene = client.get_current_program_scene()
+                        started = False
+                        try:
+                            client.set_current_program_scene(profile["obs_scene_name"])
+                            client.start_record()
+                            started = True
+                            time.sleep(job.seconds)
+                            stopped = client.stop_record()
+                            started = False
+                            output_path = stopped.get("outputPath")
+                            if not output_path:
+                                raise SceneOperationError("OBS stopped recording without returning outputPath.")
+                            source_path = Path(str(output_path)).expanduser()
+                            _wait_for_stable_file(source_path)
+                            target_path = artifact_dir / f"sample-{job.seconds}s{source_path.suffix or '.mkv'}"
+                            shutil.copy2(source_path, target_path)
+                            probe = _probe_media(target_path)
+                            analysis_path = artifact_dir / "media-analysis.json"
+                            analysis_path.write_text(json.dumps(probe, indent=2, ensure_ascii=False), encoding="utf-8")
+                            verify.artifacts.update({"video": str(target_path), "media_analysis": str(analysis_path)})
+                            _append_media_checks(verify, probe, profile["canvas"]["width"], profile["canvas"]["height"])
+                        finally:
+                            if started:
+                                client.stop_record()
+                            if previous_scene and previous_scene != profile["obs_scene_name"]:
+                                client.set_current_program_scene(previous_scene)
+                    result = self._write_review_artifacts(artifact_dir, verify)
+                finally:
+                    client.close()
+        except Exception as exc:
+            self._update_job(job_id, state="failed", error=str(exc))
+        else:
+            self._update_job(job_id, state="completed", result=result)
 
     def scene(self, scene_name: str, *, runtime_audio: bool = False) -> dict[str, Any]:
         config = load_scene_config(scene_name, root=self.root)
@@ -292,6 +458,18 @@ class ObsSceneService:
             return factory.from_env()
         return factory()
 
+    def _runtime_profile(self, profile: dict[str, Any]) -> dict[str, Any]:
+        result = deepcopy(profile)
+        for source in result["sources"]:
+            for key in ("file", "local_file"):
+                value = source["settings"].get(key)
+                if not isinstance(value, str) or not value:
+                    continue
+                path = Path(value).expanduser()
+                if not path.is_absolute() and (self.root / path).is_file():
+                    source["settings"][key] = str((self.root / path).resolve())
+        return result
+
     def _update_job(
         self,
         job_id: str,
@@ -420,6 +598,14 @@ def _render_report(result: VerifyResult) -> str:
     lines.extend(["", "## Artifacts", ""])
     for name, path in sorted(result.artifacts.items()):
         lines.append(f"- `{name}`: `{path}`")
+    lines.extend([
+        "",
+        "## Manual acceptance checklist (G5)",
+        "",
+        "- [ ] Preview composition and crops are visually correct.",
+        "- [ ] Recorded sample has acceptable lip-sync and subjective audio quality.",
+        "- [ ] Operator confirms the final mix and any optional isolated tracks.",
+    ])
     return "\n".join(lines) + "\n"
 
 

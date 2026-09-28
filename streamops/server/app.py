@@ -31,6 +31,10 @@ from .errors import (
     ObsRequestError,
     SceneOperationError,
     SceneReviewNotFoundError,
+    SceneProfileConflictError,
+    SceneProfileNotFoundError,
+    SceneProfileStorageError,
+    SceneProfileValidationError,
 )
 from .scene_config import SceneConfigError
 from .platform.windows import WindowsScreenCaptureBackend, WindowsSteamBackend
@@ -55,7 +59,7 @@ def create_app(
         config.capture_timeout,
     )
     steam = steam_service or SteamService(WindowsSteamBackend())
-    obs_scenes = obs_scene_service or ObsSceneService()
+    obs_scenes = obs_scene_service or ObsSceneService(data_dir=config.data_dir / "scene-profiles")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -86,6 +90,22 @@ def create_app(
     @app.exception_handler(SceneReviewNotFoundError)
     async def scene_review_not_found_handler(_request, exc: SceneReviewNotFoundError) -> JSONResponse:
         return _error_response(404, "scene_review_not_found", str(exc))
+
+    @app.exception_handler(SceneProfileNotFoundError)
+    async def scene_profile_not_found_handler(_request, exc: SceneProfileNotFoundError) -> JSONResponse:
+        return _error_response(404, "scene_profile_not_found", str(exc))
+
+    @app.exception_handler(SceneProfileValidationError)
+    async def scene_profile_validation_handler(_request, exc: SceneProfileValidationError) -> JSONResponse:
+        return _error_response(422, "scene_profile_invalid", str(exc))
+
+    @app.exception_handler(SceneProfileConflictError)
+    async def scene_profile_conflict_handler(_request, exc: SceneProfileConflictError) -> JSONResponse:
+        return _error_response(409, "scene_profile_conflict", str(exc))
+
+    @app.exception_handler(SceneProfileStorageError)
+    async def scene_profile_storage_handler(_request, exc: SceneProfileStorageError) -> JSONResponse:
+        return _error_response(500, "scene_profile_storage_failed", str(exc))
 
     @app.exception_handler(ObsConnectionError)
     async def obs_connection_handler(_request, exc: ObsConnectionError) -> JSONResponse:

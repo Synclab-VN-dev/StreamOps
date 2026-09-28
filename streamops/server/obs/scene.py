@@ -105,6 +105,7 @@ class VerifyResult:
         return {
             "scene": self.scene,
             "status": self.status,
+            "ready_for_live": self.status != "FAIL",
             "generated_at": self.generated_at,
             "obs_version": self.obs_version,
             "checks": [
@@ -255,8 +256,8 @@ def _preflight_configured_sources(obs: SceneClient, config: SceneConfig, root: P
         }
         if actual_kinds and source.input_kind not in actual_kinds:
             raise SceneOperationError(
-                f"Managed source {source.source_name!r} exists with {sorted(actual_kinds)!r}; "
-                f"expected {source.input_kind!r}."
+                f"Managed source {source.source_name!r} already exists with input kind "
+                f"{sorted(actual_kinds)!r}; expected {source.input_kind!r}."
             )
 
 

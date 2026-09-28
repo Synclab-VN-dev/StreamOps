@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "livestream-d4",
+  "canvas": {"width": 1920, "height": 1080, "fps": 60},
+  "sources": [
+    {"name": "Game", "type": "existing_video", "enabled": true, "layer": 0, "settings": {"source_name": "StreamOps D4 Video"}, "transform": {"x": 0, "y": 0, "width": 1920, "height": 1080}},
+    {"name": "Camera", "type": "existing_video", "enabled": true, "layer": 1, "settings": {"source_name": "StreamOps Camera"}, "transform": {"x": 1458, "y": 802, "width": 422, "height": 238}},
+    {"name": "Game audio", "type": "existing_audio", "enabled": true, "layer": 2, "settings": {"source_name": "StreamOps D4 Audio"}, "audio": {"muted": false, "volume_db": 0, "sync_offset_ms": 0, "tracks": {"1": true, "2": true, "3": false, "4": false, "5": false, "6": false}}, "verification": {"audio_signal": true, "audio_threshold_db": -60, "sample_seconds": 1.5}},
+    {"name": "Voice", "type": "existing_audio", "enabled": true, "layer": 3, "settings": {"source_name": "StreamOps Voice"}, "audio": {"muted": false, "volume_db": 0, "sync_offset_ms": 0, "tracks": {"1": true, "2": false, "3": true, "4": false, "5": false, "6": false}}, "verification": {"audio_signal": true, "audio_threshold_db": -60, "sample_seconds": 1.5}}
+  ]
+}

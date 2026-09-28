@@ -20,29 +20,33 @@ def test_obs_management_page_apply_verify_activate_and_review(
     page.get_by_role("link", name="Manage OBS").click()
 
     expect(page).to_have_url(f"{live_server.base_url}/obs")
-    expect(page.get_by_role("heading", name="OBS Scene Management")).to_be_visible()
-    expect(page.locator("#obs-state")).to_have_text("Connected")
-    expect(page.locator("#obs-version")).to_have_text("32.0.2")
-    expect(page.locator("#scene-result")).to_have_text("PASS")
-    expect(page.locator("#source-list")).to_contain_text("StreamOps D4 Video")
-    expect(page.locator("#source-list")).to_contain_text("StreamOps Voice")
-    expect(page.locator("#source-list")).to_contain_text("signal required")
-    expect(page.locator("#scene-preview")).to_be_visible()
+    expect(page.get_by_role("heading", name="Scene Profile Manager")).to_be_visible()
+    expect(page.locator("#profile-list")).to_contain_text("Browser test profile")
+    expect(page.locator("#profile-name")).to_have_value("Browser test profile")
+    expect(page.locator("#editor-state")).to_have_text("Saved")
 
-    page.get_by_role("button", name="Apply", exact=True).click()
-    expect(page.locator("#activity-log")).to_contain_text("Apply completed")
+    page.locator("#profile-name").fill("Edited browser profile")
+    expect(page.locator("#editor-state")).to_have_text("Modified")
+    page.get_by_role("button", name="Add source").click()
+    expect(page.locator("#source-list")).to_contain_text("browser_source")
+    page.get_by_role("button", name="Save", exact=True).click()
+    expect(page.locator("#editor-state")).to_have_text("Saved")
+    assert live_server.obs.profile["name"] == "Edited browser profile"
+
+    page.get_by_role("button", name="Apply saved", exact=True).click()
+    expect(page.locator("#activity-log")).to_contain_text("Apply: complete")
     assert live_server.obs.apply_calls == 1
 
     page.get_by_role("button", name="Verify", exact=True).click()
-    expect(page.locator("#activity-log")).to_contain_text("Verify completed: PASS")
+    expect(page.locator("#activity-log")).to_contain_text("Verify: PASS")
     assert live_server.obs.verify_calls >= 1
 
     page.get_by_role("button", name="Activate", exact=True).click()
-    expect(page.locator("#activity-log")).to_contain_text("Activate completed")
+    expect(page.locator("#activity-log")).to_contain_text("Activate: complete")
     assert live_server.obs.activate_calls == 1
 
-    page.get_by_role("button", name="Run 30s Review").click()
+    page.get_by_role("button", name="Review").click()
     expect(page.locator("#activity-log")).to_contain_text("Review queued: browser-review-1")
-    expect(page.locator("#activity-log")).to_contain_text("Review completed")
+    expect(page.locator("#activity-log")).to_contain_text("Review completed: PASS")
     assert live_server.obs.review_calls == 1
     assert live_server.obs.review_status_calls >= 1

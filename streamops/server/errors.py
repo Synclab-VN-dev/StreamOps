@@ -97,3 +97,23 @@ class SceneReviewNotFoundError(ObsError):
 
 class SceneReviewInProgressError(ObsError):
     """Raised when an incompatible review operation is already running."""
+
+
+class SceneProfileError(ServerError):
+    """Base class for persisted scene-profile failures."""
+
+
+class SceneProfileValidationError(SceneProfileError):
+    """Raised when a scene profile does not conform to the supported schema."""
+
+
+class SceneProfileNotFoundError(SceneProfileError):
+    """Raised when a scene profile ID does not exist."""
+
+
+class SceneProfileConflictError(SceneProfileError):
+    """Raised when a profile write would overwrite a conflicting resource."""
+
+
+class SceneProfileStorageError(SceneProfileError):
+    """Raised when an atomic profile-store operation cannot complete."""

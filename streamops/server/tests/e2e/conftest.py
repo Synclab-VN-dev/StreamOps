@@ -146,6 +146,16 @@ class ControllableObsSceneService:
         self.activate_calls = 0
         self.review_calls = 0
         self.review_status_calls = 0
+        self.profile = {
+            "schema_version": 1,
+            "id": "5c868262-1527-48cb-b57d-ab8fdb31f325",
+            "name": "Browser test profile",
+            "obs_scene_name": "StreamOps Scene 5c868262-1527-48cb-b57d-ab8fdb31f325",
+            "created_at": "2026-09-28T12:00:00Z",
+            "updated_at": "2026-09-28T12:00:00Z",
+            "canvas": {"width": 1920, "height": 1080, "fps": 60},
+            "sources": [],
+        }
 
     def close(self) -> None:
         pass
@@ -159,6 +169,50 @@ class ControllableObsSceneService:
             "streaming": False,
             "recording": False,
         }
+
+    def catalog(self) -> list[dict[str, Any]]:
+        return [{"type": "browser_source", "label": "Browser", "obs_kind": "browser_source", "video": True, "audio": True}]
+
+    def list_templates(self) -> list[dict[str, Any]]:
+        return [{"id": "gaming-poc", "name": "gaming-poc"}]
+
+    def list_profiles(self) -> dict[str, Any]:
+        return {"profiles": [{key: self.profile[key] for key in ("id", "name", "obs_scene_name", "updated_at")}], "errors": []}
+
+    def get_profile(self, profile_id: str) -> dict[str, Any]:
+        assert profile_id == self.profile["id"]
+        return self.profile
+
+    def create_profile(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        return self.profile
+
+    def update_profile(self, profile_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        self.profile = payload
+        return self.profile
+
+    def duplicate_profile(self, profile_id: str, *, name: str | None = None) -> dict[str, Any]:
+        return self.profile
+
+    def delete_profile(self, profile_id: str) -> None:
+        return None
+
+    def instantiate_template(self, template_id: str, *, name: str | None = None) -> dict[str, Any]:
+        return self.profile
+
+    def apply_profile(self, profile_id: str) -> _Payload:
+        return self.apply("livestream-d4")
+
+    def verify_profile(self, profile_id: str, *, runtime: bool = True) -> _Payload:
+        return self.verify("livestream-d4", runtime_audio=runtime)
+
+    def activate_profile(self, profile_id: str) -> dict[str, Any]:
+        return self.activate("livestream-d4")
+
+    def preview_profile(self, profile_id: str) -> bytes:
+        return self.preview("livestream-d4")
+
+    def start_profile_review(self, profile_id: str, *, seconds: int = 30) -> _Payload:
+        return self.start_review("livestream-d4", seconds=seconds)
 
     def list_scenes(self) -> list[dict[str, Any]]:
         return [{"name": "livestream-d4"}]

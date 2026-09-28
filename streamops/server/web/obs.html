@@ -1,77 +1,10 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>OBS Scene Management · StreamOps</title>
-    <link rel="stylesheet" href="/assets/app.css">
-  </head>
-  <body>
-    <header class="topbar">
-      <a class="brand" href="/">StreamOps Node</a>
-      <nav><a href="/">Dashboard</a></nav>
-      <div class="node-status" aria-live="polite">
-        <span id="status-dot" class="status-dot"></span><span id="status-text">Connecting</span>
-      </div>
-    </header>
-    <main class="page-shell">
-      <div class="page-heading">
-        <div>
-          <p class="eyebrow">Livestream control plane</p>
-          <h1>OBS Scene Management</h1>
-          <p>Apply, verify and review the production livestream scene before going live.</p>
-        </div>
-      </div>
-
-      <section class="obs-grid">
-        <article class="panel obs-panel">
-          <div class="panel-heading"><h2>OBS Status</h2><span id="obs-state">Checking</span></div>
-          <dl class="status-list">
-            <div><dt>Connected</dt><dd id="obs-connected">--</dd></div>
-            <div><dt>OBS Version</dt><dd id="obs-version">--</dd></div>
-            <div><dt>Current Scene</dt><dd id="obs-current-scene">--</dd></div>
-            <div><dt>Streaming</dt><dd id="obs-streaming">--</dd></div>
-            <div><dt>Recording</dt><dd id="obs-recording">--</dd></div>
-          </dl>
-        </article>
-
-        <article class="panel obs-panel">
-          <div class="panel-heading"><h2>Production Scene</h2><span id="scene-result">Unknown</span></div>
-          <dl class="status-list">
-            <div><dt>Name</dt><dd id="scene-name">livestream-d4</dd></div>
-            <div><dt>Output</dt><dd id="scene-output">--</dd></div>
-            <div><dt>Checks</dt><dd id="scene-check-count">--</dd></div>
-          </dl>
-          <div class="action-row multi-action">
-            <button id="apply-button" type="button">Apply</button>
-            <button id="verify-button" type="button">Verify</button>
-            <button id="activate-button" type="button">Activate</button>
-            <button id="review-button" type="button">Run 30s Review</button>
-          </div>
-        </article>
-      </section>
-
-      <section class="panel">
-        <div class="panel-heading"><h2>Media Sources</h2><span>Desired vs actual</span></div>
-        <div id="source-list" class="source-list"></div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-heading"><h2>Scene Preview</h2><span id="preview-status">Not loaded</span></div>
-        <div class="capture-stage obs-preview">
-          <div id="preview-empty" class="empty-state">Apply/verify the scene to load preview</div>
-          <img id="scene-preview" alt="OBS production scene preview" hidden>
-        </div>
-      </section>
-
-      <p id="error-message" class="error-message" role="alert" hidden></p>
-
-      <section class="panel activity-panel" aria-labelledby="activity-title">
-        <div class="panel-heading"><h2 id="activity-title">Activity Log</h2><span>Browser session only</span></div>
-        <ol id="activity-log" class="activity-log" aria-live="polite"></ol>
-      </section>
-    </main>
-    <script src="/assets/common.js" defer></script>
-    <script src="/assets/obs.js" defer></script>
-  </body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OBS Scene Profiles · StreamOps</title><link rel="stylesheet" href="/assets/app.css"></head>
+<body><header class="topbar"><a class="brand" href="/">StreamOps Node</a><nav><a href="/">Dashboard</a></nav><div class="node-status"><span id="status-dot" class="status-dot"></span><span id="status-text">Connecting</span></div></header>
+<main class="page-shell"><div class="page-heading"><div><p class="eyebrow">Desired-state OBS control</p><h1>Scene Profile Manager</h1><p>Save edits locally; Apply reconciles only the last saved profile to OBS.</p></div></div><p id="error-message" class="error-message" role="alert" hidden></p>
+<section class="obs-grid"><article class="panel obs-panel"><div class="panel-heading"><h2>Profiles</h2><span id="profile-count">0</span></div><select id="profile-list" size="8" aria-label="Scene profiles"></select><div class="action-row multi-action"><button id="new-button">New</button><button id="duplicate-button">Duplicate</button><button id="delete-button">Delete</button></div><label>Template <select id="template-list"></select></label><button id="template-button">Create from template</button></article>
+<article class="panel obs-panel"><div class="panel-heading"><h2>Profile</h2><span id="editor-state">No profile</span></div><label>Name <input id="profile-name" maxlength="120"></label><div class="action-row"><label>Width <input id="canvas-width" type="number" min="16" max="16384"></label><label>Height <input id="canvas-height" type="number" min="16" max="16384"></label><label>FPS <input id="canvas-fps" type="number" min="1" max="240"></label></div><div class="action-row multi-action"><button id="save-button">Save</button><button id="save-as-button">Save As</button><button id="apply-button">Apply saved</button><button id="verify-button">Verify</button><button id="activate-button">Activate</button><button id="review-button">Review</button></div></article></section>
+<section class="panel"><div class="panel-heading"><h2>Sources</h2><span>Typed source catalog</span></div><div class="action-row"><select id="source-type"></select><button id="add-source-button">Add source</button></div><div id="source-list" class="source-list"></div></section>
+<section class="panel"><div class="panel-heading"><h2>Canvas</h2><span id="canvas-label">--</span></div><div id="profile-canvas" class="capture-stage obs-preview" style="position:relative;aspect-ratio:16/9;overflow:hidden"></div></section>
+<section class="panel"><div class="panel-heading"><h2>OBS Preview</h2><span id="preview-status">Not loaded</span></div><div class="capture-stage obs-preview"><div id="preview-empty" class="empty-state">Apply or verify to load preview</div><img id="scene-preview" alt="OBS scene preview" hidden></div></section>
+<section class="panel activity-panel"><div class="panel-heading"><h2>Activity Log</h2><span>Browser session only</span></div><ol id="activity-log" class="activity-log" aria-live="polite"></ol></section></main><script src="/assets/common.js" defer></script><script src="/assets/obs.js" defer></script></body></html>
