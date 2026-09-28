@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..auth import require_access
 from ..services.obs_scene import ObsSceneService
@@ -14,6 +14,8 @@ router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_access)])
 
 
 class ReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     seconds: int = Field(default=30, ge=1, le=300)
 
 
