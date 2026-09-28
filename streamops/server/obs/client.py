@@ -376,7 +376,7 @@ class ObsClient:
                     if peak_mul is not None:
                         samples[name].append(_mul_to_db(peak_mul))
         finally:
-            self._reidentify(0)
+            self._reidentify(self.event_subscriptions)
 
         return {
             name: {
