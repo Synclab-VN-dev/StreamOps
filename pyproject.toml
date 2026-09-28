@@ -22,7 +22,9 @@ server = [
 ]
 dev = [
   "httpx2>=2.13.1",
+  "playwright>=1.63.0",
   "pytest>=9.1.1",
+  "pytest-playwright>=0.9.0",
 ]
 
 [project.scripts]

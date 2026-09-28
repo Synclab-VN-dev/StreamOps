@@ -678,6 +678,16 @@ old process to exit, then launches the resolved `steam.exe` with `-bigpicture` a
 verifies a new process in the interactive desktop session. Concurrent restart requests
 return `409`; shutdown timeout never force-kills Steam.
 
+Browser E2E tests use Playwright with its bundled Chromium and isolated fake
+capture/Steam services; they never control the production Steam process. After
+installing development dependencies, install the browser and run the suites with:
+
+```powershell
+.\.venv\Scripts\python.exe -m playwright install chromium
+.\.venv\Scripts\python.exe -m pytest streamops/server/tests/e2e -q --browser chromium
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
 Existing commands in `C:\Scripts`, such as:
 
 ```text
