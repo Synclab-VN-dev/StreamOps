@@ -11,6 +11,13 @@ from streamops.server.config import ServerConfig
 from streamops.server.services import ScreenCaptureService
 
 
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Run sync Playwright last because its session fixture owns an asyncio loop."""
+    regular = [item for item in items if "e2e" not in item.path.parts]
+    browser = [item for item in items if "e2e" in item.path.parts]
+    items[:] = [*regular, *browser]
+
+
 class FakeCaptureBackend:
     def __init__(self, frames: list[Any] | None = None) -> None:
         self.frames = deque(frames or [Image.new("RGB", (8, 6), "#2da486")])

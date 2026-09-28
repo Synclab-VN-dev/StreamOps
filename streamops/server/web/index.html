@@ -3,34 +3,51 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>StreamOps Node</title>
+    <title>StreamOps Dashboard</title>
     <link rel="stylesheet" href="/assets/app.css">
   </head>
   <body>
     <header class="topbar">
-      <div class="brand">StreamOps Node</div>
+      <a class="brand" href="/">StreamOps Node</a>
       <div class="node-status" aria-live="polite">
         <span id="status-dot" class="status-dot"></span>
         <span id="status-text">Connecting</span>
       </div>
     </header>
-
-    <main>
-      <section class="capture-stage" aria-label="Latest screen capture">
-        <div id="empty-state" class="empty-state">No capture yet</div>
-        <img id="preview" alt="Latest screen capture" hidden>
-      </section>
-
-      <section class="capture-controls">
-        <div class="capture-details" aria-live="polite">
-          <strong id="capture-time">Waiting for first capture</strong>
-          <span id="capture-resolution">--</span>
+    <main class="page-shell">
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">Control plane</p>
+          <h1>Dashboard</h1>
+          <p>Manage services running on this Windows node.</p>
         </div>
-        <button id="capture-button" type="button">Capture Screen</button>
+      </div>
+      <section class="management-grid" aria-label="Management pages">
+        <article class="management-card">
+          <div><p class="eyebrow">Display</p><h2>Screen Capture</h2></div>
+          <div class="card-status" aria-live="polite">
+            <span id="screen-card-dot" class="status-dot"></span>
+            <span id="screen-card-status">Checking</span>
+          </div>
+          <p id="screen-card-detail" class="muted">Connecting to the node.</p>
+          <a class="button-link" href="/screen">Open</a>
+        </article>
+        <article class="management-card">
+          <div><p class="eyebrow">Application</p><h2>Steam</h2></div>
+          <div class="card-status" aria-live="polite">
+            <span id="steam-card-dot" class="status-dot"></span>
+            <span id="steam-card-status">Checking</span>
+          </div>
+          <p id="steam-card-detail" class="muted">Reading the current Steam process.</p>
+          <a class="button-link" href="/steam">Manage Steam</a>
+        </article>
       </section>
-
-      <p id="error-message" class="error-message" role="alert" hidden></p>
+      <section class="panel activity-panel" aria-labelledby="activity-title">
+        <div class="panel-heading"><h2 id="activity-title">Activity Log</h2><span>Browser session only</span></div>
+        <ol id="activity-log" class="activity-log" aria-live="polite"></ol>
+      </section>
     </main>
+    <script src="/assets/common.js" defer></script>
     <script src="/assets/app.js" defer></script>
   </body>
 </html>

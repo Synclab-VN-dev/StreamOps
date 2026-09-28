@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Screen Capture · StreamOps</title>
+    <link rel="stylesheet" href="/assets/app.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/">StreamOps Node</a>
+      <nav><a href="/">Dashboard</a></nav>
+      <div class="node-status" aria-live="polite">
+        <span id="status-dot" class="status-dot"></span><span id="status-text">Connecting</span>
+      </div>
+    </header>
+    <main class="page-shell">
+      <div class="page-heading"><div><p class="eyebrow">Management</p><h1>Screen Capture</h1><p>Capture the active Windows desktop for remote review.</p></div></div>
+      <section class="capture-stage" aria-label="Latest screen capture">
+        <div id="empty-state" class="empty-state">No capture yet</div>
+        <img id="preview" alt="Latest screen capture" hidden>
+      </section>
+      <section class="capture-controls">
+        <div class="capture-details" aria-live="polite">
+          <strong id="capture-time">Waiting for first capture</strong><span id="capture-resolution">--</span>
+        </div>
+        <button id="capture-button" type="button">Capture Screen</button>
+      </section>
+      <p id="error-message" class="error-message" role="alert" hidden></p>
+      <section class="panel activity-panel" aria-labelledby="activity-title">
+        <div class="panel-heading"><h2 id="activity-title">Activity Log</h2><span>Browser session only</span></div>
+        <ol id="activity-log" class="activity-log" aria-live="polite"></ol>
+      </section>
+    </main>
+    <script src="/assets/common.js" defer></script>
+    <script src="/assets/screen.js" defer></script>
+  </body>
+</html>

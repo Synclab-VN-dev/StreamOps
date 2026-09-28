@@ -659,15 +659,34 @@ Runtime state and `latest.png` are written only to `.streamops\node`. CLI flags 
 
 To allow device B through Windows Firewall, run the bootstrap once from an elevated shell with `-ConfigureFirewall`. The rule is limited to the Private profile and local subnet.
 
-The node serves the web UI at `/` and exposes:
+The node serves a management dashboard at `/`, with Screen Capture at `/screen`
+and Steam Management at `/steam`. It exposes:
 
 ```text
 GET  /api/v1/health
 POST /api/v1/screen/capture
 GET  /api/v1/screen/latest
+GET  /api/v1/steam/status
+POST /api/v1/steam/restart
 ```
 
 If the interactive Windows desktop is temporarily unavailable, health remains online with `capture_ready: false`; capture requests return `503` without replacing the previous successful image.
+
+Steam status is read from the real Windows process and installation metadata. The
+restart endpoint accepts no request body: it requests graceful shutdown, waits for the
+old process to exit, then launches the resolved `steam.exe` with `-bigpicture` and
+verifies a new process in the interactive desktop session. Concurrent restart requests
+return `409`; shutdown timeout never force-kills Steam.
+
+Browser E2E tests use Playwright with its bundled Chromium and isolated fake
+capture/Steam services; they never control the production Steam process. After
+installing development dependencies, install the browser and run the suites with:
+
+```powershell
+.\.venv\Scripts\python.exe -m playwright install chromium
+.\.venv\Scripts\python.exe -m pytest streamops/server/tests/e2e -q --browser chromium
+.\.venv\Scripts\python.exe -m pytest -q
+```
 
 Existing commands in `C:\Scripts`, such as:
 

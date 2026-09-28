@@ -17,14 +17,20 @@ class ScreenCaptureError(ServerError):
     """Raised when the Windows capture backend cannot produce an image."""
 
 
-class WrongDesktopSessionError(ScreenCaptureError):
-    """Raised when capture is attempted outside the active desktop session."""
+class WrongDesktopSessionError(ServerError):
+    """Raised when an operation requires the active Windows desktop session."""
 
-    def __init__(self, current_session_id: int, active_session_id: int) -> None:
+    def __init__(
+        self,
+        current_session_id: int,
+        active_session_id: int,
+        *,
+        operation: str = "Screen capture",
+    ) -> None:
         self.current_session_id = current_session_id
         self.active_session_id = active_session_id
         super().__init__(
-            "Screen capture requires the active Windows console session "
+            f"{operation} requires the active Windows console session "
             f"(current session {current_session_id}, active session {active_session_id})."
         )
 
@@ -35,3 +41,35 @@ class CaptureStorageError(ServerError):
 
 class NoCaptureError(ServerError):
     """Raised when no successful screen capture exists yet."""
+
+
+class SteamError(ServerError):
+    """Base class for user-facing Steam management failures."""
+
+
+class SteamNotFoundError(SteamError):
+    """Raised when a usable Steam installation cannot be resolved."""
+
+
+class SteamStatusError(SteamError):
+    """Raised when Windows process state cannot be inspected safely."""
+
+
+class SteamShutdownError(SteamError):
+    """Raised when graceful Steam shutdown cannot be requested."""
+
+
+class SteamShutdownTimeoutError(SteamError):
+    """Raised when Steam does not exit within the graceful timeout."""
+
+
+class SteamLaunchError(SteamError):
+    """Raised when Steam cannot be launched and verified."""
+
+
+class SteamRestartInProgressError(SteamError):
+    """Raised when another Steam restart is already in progress."""
+
+
+class InvalidSteamRestartRequestError(SteamError):
+    """Raised when a restart request attempts to provide input."""
