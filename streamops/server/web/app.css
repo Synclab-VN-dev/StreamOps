@@ -404,3 +404,82 @@ button:disabled {
     width: 100%;
   }
 }
+
+.obs-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.obs-panel {
+  margin-top: 0;
+}
+
+.multi-action {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.multi-action button {
+  min-width: 110px;
+  flex: 1 1 120px;
+}
+
+.source-list {
+  display: grid;
+}
+
+.source-row {
+  min-height: 62px;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(120px, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  border-bottom: 1px solid #292d2a;
+}
+
+.source-row > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.source-row strong {
+  font-size: 14px;
+}
+
+.source-row span,
+.source-meta {
+  color: #909991;
+  font-size: 13px;
+}
+
+.check-status {
+  min-width: 72px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.check-status.pass { color: #75dea5; }
+.check-status.warn { color: #e8bc58; }
+.check-status.fail { color: #ff9999; }
+
+.obs-preview {
+  margin-top: 18px;
+}
+
+@media (max-width: 760px) {
+  .obs-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .source-row {
+    grid-template-columns: 1fr auto;
+    padding: 10px 0;
+  }
+
+  .source-meta {
+    grid-column: 1 / -1;
+  }
+}
