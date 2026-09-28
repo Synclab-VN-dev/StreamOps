@@ -1,21 +1,26 @@
-"""Shared exception types for StreamOps."""
+"""Shared exception types for StreamOps.
+
+Legacy CLI modules reuse the standalone server's canonical exception hierarchy
+so server-owned OBS code can be called without translating every failure.
+"""
+
+from .server.errors import (
+    ObsConnectionError,
+    ObsRequestError,
+    SceneOperationError,
+    ServerError,
+)
+from .server.scene_config import SceneConfigError
 
 
-class StreamOpsError(Exception):
-    """Base class for user-facing StreamOps failures."""
+StreamOpsError = ServerError
+ConfigError = SceneConfigError
+VerificationError = SceneOperationError
 
-
-class ConfigError(StreamOpsError):
-    """Raised when scene configuration is missing or invalid."""
-
-
-class ObsConnectionError(StreamOpsError):
-    """Raised when StreamOps cannot connect or authenticate with OBS."""
-
-
-class ObsRequestError(StreamOpsError):
-    """Raised when OBS rejects a websocket request."""
-
-
-class VerificationError(StreamOpsError):
-    """Raised when a scene cannot be verified."""
+__all__ = [
+    "ConfigError",
+    "ObsConnectionError",
+    "ObsRequestError",
+    "StreamOpsError",
+    "VerificationError",
+]
