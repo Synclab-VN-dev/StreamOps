@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import os
+from io import BytesIO
 from pathlib import Path
 import re
 from typing import Any, Protocol
@@ -47,6 +48,7 @@ class SceneClient(Protocol):
     def get_input_audio_tracks(self, input_name: str) -> dict[str, bool]: ...
     def set_input_audio_tracks(self, input_name: str, tracks: dict[str, bool]) -> None: ...
     def sample_input_volume_meters(self, input_names: list[str], *, seconds: float) -> dict[str, dict[str, Any]]: ...
+    def get_source_screenshot(self, source_name: str, *, width: int, height: int) -> bytes: ...
 
 
 @dataclass(frozen=True)
@@ -157,6 +159,7 @@ def verify_scene(
     root: Path | None = None,
     config_path: Path | None = None,
     runtime_audio: bool = False,
+    runtime_video: bool = False,
 ) -> VerifyResult:
     project_root = root or find_project_root()
     config = load_scene_config(scene_name, root=project_root, config_path=config_path)
@@ -184,6 +187,8 @@ def verify_scene(
         if scene_exists:
             _verify_items(obs, config, result)
         _verify_audio(obs, config, result, runtime_audio=runtime_audio)
+        if runtime_video:
+            _verify_runtime_video(obs, config, result)
     finally:
         if owns_client:
             obs.close()
@@ -600,6 +605,61 @@ def _verify_audio(
             expected={"peak_db_at_least": desired.signal_threshold_db},
             actual=meter,
         ))
+
+
+
+def _verify_runtime_video(
+    obs: SceneClient,
+    config: SceneConfig,
+    result: VerifyResult,
+) -> None:
+    try:
+        from PIL import Image, ImageStat
+    except ImportError:
+        result.add(Check(
+            id="runtime.video.dependencies",
+            status="WARN",
+            message="Pillow is unavailable; black-frame runtime checks were skipped.",
+            expected="Pillow installed",
+            actual=False,
+        ))
+        return
+
+    width = min(config.video.output_width, 640)
+    height = max(1, round(width * config.video.output_height / config.video.output_width))
+    for source in config.visual_sources:
+        try:
+            content = obs.get_source_screenshot(
+                source.source_name,
+                width=width,
+                height=height,
+            )
+            with Image.open(BytesIO(content)) as image:
+                gray = image.convert("L")
+                gray.thumbnail((96, 54))
+                mean = float(ImageStat.Stat(gray).mean[0])
+                extrema = gray.getextrema()
+                maximum = float(extrema[1] if isinstance(extrema, tuple) else 0)
+            has_content = mean >= 2.0 or maximum >= 8.0
+            result.add(Check(
+                id=f"video.{source.role}.signal",
+                status="PASS" if has_content else "FAIL",
+                message=(
+                    f"{source.source_name!r} produced a non-black runtime frame."
+                    if has_content
+                    else f"{source.source_name!r} runtime frame is effectively black."
+                ),
+                expected={"non_black": True},
+                actual={"mean_luma": round(mean, 3), "max_luma": round(maximum, 3)},
+            ))
+        except Exception as exc:
+            result.add(Check(
+                id=f"video.{source.role}.signal",
+                status="FAIL",
+                message=f"Could not capture runtime frame for {source.source_name!r}: {exc}",
+                expected={"non_black": True},
+                actual=None,
+            ))
 
 
 def _scene_exists(obs: SceneClient, scene_name: str) -> bool:
