@@ -45,6 +45,7 @@ def verify_scene(
     root: Path | None = None,
     config_path: Path | None = None,
     runtime_audio: bool = False,
+    runtime_video: bool = False,
 ) -> VerifyResult:
     original = _impl._windows_monitor_ids
     _impl._windows_monitor_ids = _windows_monitor_ids
@@ -55,6 +56,7 @@ def verify_scene(
             root=root,
             config_path=config_path,
             runtime_audio=runtime_audio,
+            runtime_video=runtime_video,
         )
     finally:
         _impl._windows_monitor_ids = original
