@@ -94,6 +94,7 @@ class ObsSceneService:
                 root=self.root,
                 client=client,
                 runtime_audio=runtime_audio,
+                runtime_video=False,
             )
         finally:
             client.close()
@@ -135,6 +136,7 @@ class ObsSceneService:
                 root=self.root,
                 client=client,
                 runtime_audio=runtime_audio,
+                runtime_video=runtime_audio,
             )
         finally:
             client.close()
@@ -212,6 +214,7 @@ class ObsSceneService:
                     root=self.root,
                     client=client,
                     runtime_audio=True,
+                    runtime_video=True,
                 )
                 preview_path = artifact_dir / "preview.png"
                 client.save_source_screenshot(
