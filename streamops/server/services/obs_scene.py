@@ -87,12 +87,16 @@ class ObsSceneService:
 
     def scene(self, scene_name: str, *, runtime_audio: bool = False) -> dict[str, Any]:
         config = load_scene_config(scene_name, root=self.root)
-        result = verify_scene(
-            scene_name,
-            root=self.root,
-            client=self._client(),
-            runtime_audio=runtime_audio,
-        )
+        client = self._client()
+        try:
+            result = verify_scene(
+                scene_name,
+                root=self.root,
+                client=client,
+                runtime_audio=runtime_audio,
+            )
+        finally:
+            client.close()
         return {
             "name": config.name,
             "video": {
@@ -117,15 +121,23 @@ class ObsSceneService:
 
     def apply(self, scene_name: str) -> ApplyResult:
         with self._mutation_lock:
-            return apply_scene(scene_name, root=self.root, client=self._client())
+            client = self._client()
+            try:
+                return apply_scene(scene_name, root=self.root, client=client)
+            finally:
+                client.close()
 
     def verify(self, scene_name: str, *, runtime_audio: bool = True) -> VerifyResult:
-        return verify_scene(
-            scene_name,
-            root=self.root,
-            client=self._client(),
-            runtime_audio=runtime_audio,
-        )
+        client = self._client()
+        try:
+            return verify_scene(
+                scene_name,
+                root=self.root,
+                client=client,
+                runtime_audio=runtime_audio,
+            )
+        finally:
+            client.close()
 
     def activate(self, scene_name: str) -> dict[str, Any]:
         load_scene_config(scene_name, root=self.root)
