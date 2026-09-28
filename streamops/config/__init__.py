@@ -1,6 +1,7 @@
 """Configuration loading API for StreamOps."""
 
 from .loader import (
+    AudioConfig,
     DEFAULT_ARTIFACT_DIR,
     DEFAULT_CONFIG_DIR,
     SceneConfig,
@@ -12,6 +13,7 @@ from .loader import (
 )
 
 __all__ = [
+    "AudioConfig",
     "DEFAULT_ARTIFACT_DIR",
     "DEFAULT_CONFIG_DIR",
     "SceneConfig",
