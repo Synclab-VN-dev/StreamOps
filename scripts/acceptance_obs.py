@@ -2,6 +2,8 @@
 
 Run with repo venv: python -m scripts.acceptance_obs setup|run|restore.
 Requires operator approval, idle OBS, ffmpeg/ffprobe, and a separate node on 8785.
+Run that node with an isolated runtime directory, for example:
+STREAMOPS_NODE_DATA_DIR=.streamops/pr19-node
 Generated evidence stays under ignored .streamops/pr19-acceptance/.
 """
 from copy import deepcopy
@@ -19,6 +21,7 @@ from streamops.server.obs.client import ObsClient
 from streamops.server.errors import ObsRequestError
 
 ROOT = Path(__file__).resolve().parents[1] / '.streamops' / 'pr19-acceptance'
+BASELINE = ROOT / 'baseline.json'
 BASE = 'http://127.0.0.1:8785/api/v1/'
 
 
@@ -57,19 +60,64 @@ def select(client, state, test=True):
         client.set_current_program_scene(state['scene'])
 
 
+def _read_baseline():
+    if not BASELINE.is_file():
+        raise RuntimeError('No acceptance session exists. Run setup first.')
+    try:
+        state = json.loads(BASELINE.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError('Acceptance baseline is unreadable; do not mutate OBS until it is inspected.') from exc
+    required = {'session_id','active','collection','profile','scene','test_collection','test_profile'}
+    if not isinstance(state, dict) or not required.issubset(state):
+        raise RuntimeError('Acceptance baseline is incomplete; do not mutate OBS until it is inspected.')
+    return state
+
+
+def _restore(client, state):
+    select(client, state, test=False)
+    restored = {
+        'collection': client.get_scene_collection_list()['currentSceneCollectionName'],
+        'profile': client.request('GetProfileList')['currentProfileName'],
+        'scene': client.get_current_program_scene(),
+        'video': client.get_video_settings(),
+    }
+    expected = {key: state[key] for key in ('collection','profile','scene')}
+    actual = {key: restored[key] for key in expected}
+    if actual != expected:
+        raise RuntimeError(f'OBS restore did not converge: expected {expected}, got {actual}')
+    completed = deepcopy(state)
+    completed['active'] = False
+    completed['restored_at'] = datetime.now(UTC).isoformat().replace('+00:00','Z')
+    write('restored.json', restored)
+    write(f"baseline-{completed['session_id']}.json", completed)
+    write('baseline.json', completed)
+    print('Original OBS collection/profile/scene restored. Test resources retained.', flush=True)
+
+
 def setup(client):
     idle(client)
+    if BASELINE.exists():
+        previous = _read_baseline()
+        if previous['active']:
+            raise RuntimeError(
+                f"Acceptance session {previous['session_id']} is still active. "
+                "Run restore before starting a new session."
+            )
     stamp = datetime.now(UTC).strftime('%Y%m%d-%H%M%S')
     name = 'StreamOps PR19 Acceptance ' + stamp
-    state = {'collection':client.get_scene_collection_list()['currentSceneCollectionName'],
-             'profile':client.request('GetProfileList')['currentProfileName'],
-             'scene':client.get_current_program_scene(), 'video':client.get_video_settings(),
-             'test_collection':name, 'test_profile':name}
-    if (ROOT/'baseline.json').exists():
-        state = json.loads((ROOT/'baseline.json').read_text(encoding='utf-8'))
-        name = state['test_collection']
-    else:
-        write('baseline.json', state)
+    state = {
+        'session_id': stamp,
+        'active': True,
+        'started_at': datetime.now(UTC).isoformat().replace('+00:00','Z'),
+        'collection': client.get_scene_collection_list()['currentSceneCollectionName'],
+        'profile': client.request('GetProfileList')['currentProfileName'],
+        'scene': client.get_current_program_scene(),
+        'video': client.get_video_settings(),
+        'test_collection': name,
+        'test_profile': name,
+    }
+    # Capture the current operator context for every new session before switching OBS.
+    write('baseline.json', state)
     if name not in client.get_scene_collection_list()['sceneCollections']:
         client.request('CreateSceneCollection', {'sceneCollectionName':name})
         time.sleep(2)
@@ -84,8 +132,7 @@ def setup(client):
                                  ('black-silent','color=c=black:s=640x360:r=60','anullsrc=r=48000:cl=stereo')]:
         subprocess.run([shutil.which('ffmpeg'),'-y','-v','error','-f','lavfi','-i',visual,'-f','lavfi','-i',audio,
                         '-t','5','-c:v','libx264','-preset','ultrafast','-pix_fmt','yuv420p','-c:a','aac',str(fixtures/(name+'.mkv'))], check=True)
-    print('Created isolated OBS collection/profile and deterministic fixtures.', flush=True)
-
+    print(f"Created isolated OBS acceptance session {stamp}.", flush=True)
 
 def configure_recording(client, tracks):
     directory = ROOT/'recordings'
@@ -98,7 +145,9 @@ def configure_recording(client, tracks):
 
 
 def run(client):
-    state = json.loads((ROOT/'baseline.json').read_text(encoding='utf-8'))
+    state = _read_baseline()
+    if not state['active']:
+        raise RuntimeError('No active acceptance session. Run setup before run.')
     select(client, state)
     results = []
     def passed(name, detail=None):
@@ -205,11 +254,16 @@ def run(client):
         write('matrix.json',results)
         raise
     finally:
-        select(client,state,test=False)
-        write('restored.json',{'collection':client.get_scene_collection_list()['currentSceneCollectionName'],
-              'profile':client.request('GetProfileList')['currentProfileName'],'scene':client.get_current_program_scene(),
-              'video':client.get_video_settings()})
-        print('Original OBS collection/profile/scene restored. Test resources retained.',flush=True)
+        try:
+            _restore(client, state)
+        except Exception as restore_exc:
+            write('restore-failure.json', {
+                'session_id': state['session_id'],
+                'error': str(restore_exc),
+                'at': datetime.now(UTC).isoformat().replace('+00:00','Z'),
+            })
+            print(f'RESTORE FAILED: {restore_exc}. Session remains active; run restore after fixing OBS.', flush=True)
+            raise
 
 
 if __name__=='__main__':
@@ -217,8 +271,14 @@ if __name__=='__main__':
     action=parser.parse_args().action
     client=ObsClient.from_env()
     try:
-        if action=='setup': setup(client)
-        elif action=='run': run(client)
-        else: select(client,json.loads((ROOT/'baseline.json').read_text(encoding='utf-8')),test=False)
+        if action=='setup':
+            setup(client)
+        elif action=='run':
+            run(client)
+        else:
+            state = _read_baseline()
+            if not state['active']:
+                raise RuntimeError('No active acceptance session to restore.')
+            _restore(client, state)
     finally:
         client.close()
