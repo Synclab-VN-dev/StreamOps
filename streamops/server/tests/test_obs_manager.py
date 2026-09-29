@@ -9,8 +9,11 @@ import pytest
 
 from streamops.server.errors import (
     ObsOperationInProgressError,
+    ObsReadinessTimeoutError,
+    ObsShutdownTimeoutError,
     ObsUnsafeOperationError,
     ObsWebSocketConnectionError,
+    WrongDesktopSessionError,
 )
 from streamops.server.obs.manager import ObsManager, ObsProcess
 from streamops.server.platform.windows.session import DesktopSessionInfo
@@ -222,4 +225,82 @@ def test_status_reports_starting_while_start_waits_for_process(tmp_path: Path) -
     release.set()
     thread.join(timeout=2)
     assert not thread.is_alive()
+
+def test_start_ready_is_idempotent_and_does_not_launch(tmp_path: Path) -> None:
+    manager, executable = _manager(tmp_path)
+    manager._obs_processes = lambda: [_process(executable)]  # type: ignore[method-assign]
+    manager._launch = lambda _executable: pytest.fail("READY start must be a no-op")  # type: ignore[method-assign]
+
+    status = manager.start()
+
+    assert status.state == "READY"
+    assert status.process["pid"] == 100
+    assert status.last_operation["action"] == "start"
+    assert status.last_operation["result"] == "success"
+
+
+def test_stop_stopped_is_idempotent_and_does_not_close(tmp_path: Path) -> None:
+    manager, _ = _manager(tmp_path)
+    manager._obs_processes = lambda: []  # type: ignore[method-assign]
+    manager._request_graceful_close = lambda _pid: pytest.fail("STOPPED stop must be a no-op")  # type: ignore[method-assign]
+
+    status = manager.stop()
+
+    assert status.state == "STOPPED"
+    assert status.last_operation["action"] == "stop"
+    assert status.last_operation["result"] == "success"
+
+
+def test_start_wrong_interactive_session_fails_before_launch(tmp_path: Path) -> None:
+    manager, _ = _manager(tmp_path)
+    manager._obs_processes = lambda: []  # type: ignore[method-assign]
+    manager._session_info = lambda: DesktopSessionInfo(0, 7)  # type: ignore[method-assign]
+    manager._launch = lambda _executable: pytest.fail("wrong-session start must not launch")  # type: ignore[method-assign]
+
+    with pytest.raises(WrongDesktopSessionError, match="OBS start"):
+        manager.start()
+
+
+def test_running_without_websocket_times_out_without_duplicate_launch(tmp_path: Path) -> None:
+    manager, executable = _manager(tmp_path, lambda: FakeObsClient(connected=False))
+    manager._obs_processes = lambda: [_process(executable)]  # type: ignore[method-assign]
+    manager._launch = lambda _executable: pytest.fail("must not launch duplicate OBS")  # type: ignore[method-assign]
+
+    with pytest.raises(ObsReadinessTimeoutError, match="did not become ready"):
+        manager.start()
+
+
+def test_shutdown_timeout_never_force_kills(tmp_path: Path) -> None:
+    manager, executable = _manager(tmp_path)
+    manager._obs_processes = lambda: [_process(executable)]  # type: ignore[method-assign]
+    graceful: list[int] = []
+    manager._request_graceful_close = lambda pid: graceful.append(pid)  # type: ignore[method-assign]
+    manager._wait_until_stopped = lambda _pids: False  # type: ignore[method-assign]
+
+    with pytest.raises(ObsShutdownTimeoutError, match="not force-killed"):
+        manager.stop()
+
+    assert graceful == [100]
+
+
+def test_restart_is_blocked_when_recording_is_active(tmp_path: Path) -> None:
+    manager, executable = _manager(tmp_path, lambda: FakeObsClient(recording=True))
+    manager._obs_processes = lambda: [_process(executable)]  # type: ignore[method-assign]
+    manager._request_graceful_close = lambda _pid: pytest.fail("restart must not close while recording")  # type: ignore[method-assign]
+
+    with pytest.raises(ObsUnsafeOperationError, match="recording"):
+        manager.restart()
+
+
+def test_status_never_exposes_websocket_password(tmp_path: Path) -> None:
+    class ClientWithSecret(FakeObsClient):
+        password = "super-secret-password"
+
+    manager, executable = _manager(tmp_path, lambda: ClientWithSecret())
+    manager._obs_processes = lambda: [_process(executable)]  # type: ignore[method-assign]
+
+    payload = manager.status().api_payload()
+
+    assert "super-secret-password" not in repr(payload)
+    assert "password" not in payload["websocket"]
 
