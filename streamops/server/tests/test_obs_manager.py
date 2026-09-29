@@ -7,8 +7,11 @@ import time
 
 import pytest
 
-from streamops.errors import ObsConnectionError
-from streamops.server.errors import ObsOperationInProgressError, ObsUnsafeOperationError
+from streamops.server.errors import (
+    ObsOperationInProgressError,
+    ObsUnsafeOperationError,
+    ObsWebSocketConnectionError,
+)
 from streamops.server.obs.manager import ObsManager, ObsProcess
 from streamops.server.platform.windows.session import DesktopSessionInfo
 
@@ -24,7 +27,7 @@ class FakeObsClient:
 
     def connect(self) -> None:
         if not self.connected:
-            raise ObsConnectionError("test websocket unavailable")
+            raise ObsWebSocketConnectionError("test websocket unavailable")
 
     def close(self) -> None:
         pass
