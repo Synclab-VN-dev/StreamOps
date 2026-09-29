@@ -10,7 +10,7 @@ from pathlib import Path
 import uuid
 from typing import Any
 
-from ...errors import ObsConnectionError, ObsRequestError
+from ..errors import ObsWebSocketConnectionError as ObsConnectionError, ObsWebSocketRequestError as ObsRequestError
 
 
 class ObsClient:
