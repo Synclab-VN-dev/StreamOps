@@ -195,3 +195,28 @@ def test_concurrent_lifecycle_operations_are_serialized(tmp_path: Path) -> None:
     thread.join(timeout=2)
     assert not thread.is_alive()
     assert len(result) == 1
+
+def test_status_reports_starting_while_start_waits_for_process(tmp_path: Path) -> None:
+    manager, _ = _manager(tmp_path)
+    entered = threading.Event()
+    release = threading.Event()
+    manager._obs_processes = lambda: []  # type: ignore[method-assign]
+
+    def blocking_start():
+        entered.set()
+        assert release.wait(timeout=2)
+        return manager._status_impl(include_operation=False)
+
+    manager._start_locked = blocking_start  # type: ignore[method-assign]
+    result: list[object] = []
+    thread = threading.Thread(target=lambda: result.append(manager.start()))
+    thread.start()
+    assert entered.wait(timeout=1)
+
+    status = manager.status()
+    assert status.state == "STARTING"
+
+    release.set()
+    thread.join(timeout=2)
+    assert not thread.is_alive()
+
