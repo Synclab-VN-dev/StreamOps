@@ -40,6 +40,8 @@ PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 WINDOWS_TO_UNIX_EPOCH_100NS = 116_444_736_000_000_000
 WM_CLOSE = 0x0010
+GW_OWNER = 4
+SMTO_ABORTIFHUNG = 0x0002
 DEFAULT_OBS_EXECUTABLE = Path(r"C:\Program Files\obs-studio\bin\64bit\obs64.exe")
 
 
@@ -199,10 +201,12 @@ class ObsManager:
             raise ObsUnsafeOperationError("OBS stop is blocked while recording is active.")
 
         pid = int(status.process["pid"])
-        self._request_graceful_close(pid)
+        close_target = self._request_graceful_close(pid)
         if not self._wait_until_stopped({pid}):
+            detail = f" Targeted {close_target}." if close_target else ""
             raise ObsShutdownTimeoutError(
-                f"OBS did not exit within {self.shutdown_timeout:g} seconds; it was not force-killed."
+                f"OBS did not exit within {self.shutdown_timeout:g} seconds; "
+                f"it was not force-killed.{detail}"
             )
         return self._status_impl(include_operation=False)
 
@@ -505,19 +509,31 @@ class ObsManager:
                 return False
             time.sleep(self.poll_interval)
 
-    def _request_graceful_close(self, pid: int) -> None:
+    def _request_graceful_close(self, pid: int) -> str:
         if os.name != "nt":
             raise ObsShutdownError("OBS graceful shutdown is supported only on Windows.")
-        user32 = ctypes.windll.user32
-        windows: list[int] = []
+
+        user32 = self._user32()
+        windows: list[tuple[int, bool, bool, str, str]] = []
         callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
         @callback_type
         def callback(hwnd: int, _lparam: int) -> bool:
             process_id = wintypes.DWORD()
             user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
-            if int(process_id.value) == pid and user32.IsWindow(hwnd):
-                windows.append(int(hwnd))
+            if int(process_id.value) != pid or not user32.IsWindow(hwnd):
+                return True
+
+            title_length = max(0, int(user32.GetWindowTextLengthW(hwnd)))
+            title_buffer = ctypes.create_unicode_buffer(title_length + 1)
+            user32.GetWindowTextW(hwnd, title_buffer, len(title_buffer))
+            class_buffer = ctypes.create_unicode_buffer(256)
+            user32.GetClassNameW(hwnd, class_buffer, len(class_buffer))
+            visible = bool(user32.IsWindowVisible(hwnd))
+            unowned = not bool(user32.GetWindow(hwnd, GW_OWNER))
+            windows.append(
+                (int(hwnd), visible, unowned, title_buffer.value, class_buffer.value)
+            )
             return True
 
         if not user32.EnumWindows(callback, 0):
@@ -526,12 +542,42 @@ class ObsManager:
             raise ObsShutdownError(
                 f"OBS PID {pid} has no top-level window that can receive a graceful close request."
             )
-        posted = 0
-        for hwnd in windows:
-            if user32.PostMessageW(hwnd, WM_CLOSE, 0, 0):
-                posted += 1
-        if not posted:
-            raise ObsShutdownError(f"Windows rejected the graceful close request for OBS PID {pid}.")
+
+        def score(window: tuple[int, bool, bool, str, str]) -> tuple[int, int]:
+            hwnd, visible, unowned, title, class_name = window
+            priority = 0
+            if "obs" in title.casefold():
+                priority += 8
+            if visible:
+                priority += 4
+            if unowned:
+                priority += 2
+            if "qt" in class_name.casefold():
+                priority += 1
+            return priority, -hwnd
+
+        target = max(windows, key=score)
+        hwnd, visible, unowned, title, class_name = target
+        result = ctypes.c_size_t()
+        sent = user32.SendMessageTimeoutW(
+            hwnd,
+            WM_CLOSE,
+            0,
+            0,
+            SMTO_ABORTIFHUNG,
+            5000,
+            ctypes.byref(result),
+        )
+        if not sent:
+            raise ObsShutdownError(
+                "Windows could not deliver a graceful WM_CLOSE to the selected OBS window "
+                f"(PID {pid}, title={title!r}, class={class_name!r}, visible={visible}, "
+                f"unowned={unowned})."
+            )
+        return (
+            f"window title={title!r}, class={class_name!r}, "
+            f"visible={visible}, unowned={unowned}"
+        )
 
     def _obs_processes(self) -> list[ObsProcess]:
         if os.name != "nt":
@@ -597,6 +643,39 @@ class ObsManager:
         return os.path.normcase(str(first.resolve(strict=False))) == os.path.normcase(
             str(second.resolve(strict=False))
         )
+
+    @staticmethod
+    def _user32():
+        user32 = ctypes.windll.user32
+        user32.EnumWindows.restype = wintypes.BOOL
+        user32.GetWindowThreadProcessId.argtypes = [
+            wintypes.HWND,
+            ctypes.POINTER(wintypes.DWORD),
+        ]
+        user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+        user32.IsWindow.argtypes = [wintypes.HWND]
+        user32.IsWindow.restype = wintypes.BOOL
+        user32.IsWindowVisible.argtypes = [wintypes.HWND]
+        user32.IsWindowVisible.restype = wintypes.BOOL
+        user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+        user32.GetWindowTextLengthW.restype = ctypes.c_int
+        user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+        user32.GetWindowTextW.restype = ctypes.c_int
+        user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+        user32.GetClassNameW.restype = ctypes.c_int
+        user32.GetWindow.argtypes = [wintypes.HWND, wintypes.UINT]
+        user32.GetWindow.restype = wintypes.HWND
+        user32.SendMessageTimeoutW.argtypes = [
+            wintypes.HWND,
+            wintypes.UINT,
+            wintypes.WPARAM,
+            wintypes.LPARAM,
+            wintypes.UINT,
+            wintypes.UINT,
+            ctypes.POINTER(ctypes.c_size_t),
+        ]
+        user32.SendMessageTimeoutW.restype = wintypes.LPARAM
+        return user32
 
     @staticmethod
     def _kernel32():
