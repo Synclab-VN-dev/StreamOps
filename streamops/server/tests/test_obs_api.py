@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
+from types import SimpleNamespace
 
 from streamops.server.app import create_app
 from streamops.server.errors import SceneOperationError
@@ -90,11 +91,17 @@ class FakeObsSceneService:
         )
 
 
+class ReadyObsManager:
+    def status(self):
+        return SimpleNamespace(state="READY")
+
+
 def _client(server_config, capture_service, service: FakeObsSceneService) -> TestClient:
     return TestClient(
         create_app(
             server_config,
             capture_service=capture_service,
+            obs_manager=ReadyObsManager(),
             obs_scene_service=service,
             manage_runtime=False,
         )
