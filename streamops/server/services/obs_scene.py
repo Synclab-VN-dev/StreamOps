@@ -16,7 +16,6 @@ from typing import Any
 from uuid import uuid4
 
 from ..errors import (
-    ObsConnectionError,
     SceneOperationError,
     SceneReviewNotFoundError,
 )
