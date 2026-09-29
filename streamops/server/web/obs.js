@@ -1,3 +1,4 @@
+(() => {
 /* Profile editor: the draft is local until Save, and OBS actions use saved state. */
 const ui = window.StreamOpsUI;
 const $ = (selector) => document.querySelector(selector);
@@ -236,3 +237,4 @@ run('Load profiles', async () => {
   await refreshInventory().catch((e) => {$('#inventory-status').textContent = e.message;});
   activity('Profile manager loaded');
 });
+})();
