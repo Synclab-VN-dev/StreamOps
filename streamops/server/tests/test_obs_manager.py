@@ -16,7 +16,7 @@ from streamops.server.errors import (
     WrongDesktopSessionError,
 )
 from streamops.server.obs.manager import ObsManager, ObsProcess
-from streamops.server.platform.windows.session import DesktopSessionInfo
+from streamops.server.platform.windows.session import NO_ACTIVE_CONSOLE_SESSION, DesktopSessionInfo
 
 
 class FakeObsClient:
@@ -303,4 +303,26 @@ def test_status_never_exposes_websocket_password(tmp_path: Path) -> None:
 
     assert "super-secret-password" not in repr(payload)
     assert "password" not in payload["websocket"]
+
+def test_start_without_active_console_session_fails_safely(tmp_path: Path) -> None:
+    manager, _ = _manager(tmp_path)
+    manager._obs_processes = lambda: []  # type: ignore[method-assign]
+    manager._session_info = lambda: DesktopSessionInfo(0, NO_ACTIVE_CONSOLE_SESSION)  # type: ignore[method-assign]
+    manager._launch = lambda _executable: pytest.fail("start must not launch without an active desktop")  # type: ignore[method-assign]
+
+    with pytest.raises(WrongDesktopSessionError):
+        manager.start()
+
+
+@pytest.mark.parametrize(
+    "client",
+    [FakeObsClient(streaming=True), FakeObsClient(recording=True)],
+)
+def test_restart_is_blocked_for_any_active_output(tmp_path: Path, client: FakeObsClient) -> None:
+    manager, executable = _manager(tmp_path, lambda: client)
+    manager._obs_processes = lambda: [_process(executable)]  # type: ignore[method-assign]
+    manager._request_graceful_close = lambda _pid: pytest.fail("restart must not close with active output")  # type: ignore[method-assign]
+
+    with pytest.raises(ObsUnsafeOperationError):
+        manager.restart()
 
