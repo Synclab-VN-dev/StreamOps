@@ -13,8 +13,6 @@ import threading
 import time
 from typing import Any, Callable, Literal
 
-from streamops.errors import ObsConnectionError, ObsRequestError
-
 from ..errors import (
     ObsExecutableNotAllowedError,
     ObsOperationInProgressError,
@@ -25,6 +23,8 @@ from ..errors import (
     ObsStartTimeoutError,
     ObsStatusError,
     ObsUnsafeOperationError,
+    ObsWebSocketConnectionError,
+    ObsWebSocketRequestError,
     WrongDesktopSessionError,
 )
 from ..platform.windows.session import (
@@ -390,7 +390,7 @@ class ObsManager:
                 },
                 None,
             )
-        except (ObsConnectionError, ObsRequestError) as exc:
+        except (ObsWebSocketConnectionError, ObsWebSocketRequestError) as exc:
             return (
                 {
                     "connected": False,
