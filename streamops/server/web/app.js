@@ -66,7 +66,6 @@ async function updateSteam() {
   }
 }
 
-
 async function updateObs() {
   try {
     const status = await ui.fetchJson("/api/v1/obs/process/status");
