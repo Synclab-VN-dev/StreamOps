@@ -466,7 +466,7 @@ class ObsManager:
     def _launch(self, executable: Path) -> subprocess.Popen[bytes]:
         try:
             return subprocess.Popen(
-                [str(executable)],
+                [str(executable), "--disable-updater"],
                 cwd=str(executable.parent),
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
