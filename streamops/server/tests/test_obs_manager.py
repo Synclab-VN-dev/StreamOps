@@ -203,6 +203,7 @@ def test_concurrent_lifecycle_operations_are_serialized(tmp_path: Path) -> None:
     assert not thread.is_alive()
     assert len(result) == 1
 
+
 def test_status_reports_starting_while_start_waits_for_process(tmp_path: Path) -> None:
     manager, _ = _manager(tmp_path)
     entered = threading.Event()
@@ -226,6 +227,7 @@ def test_status_reports_starting_while_start_waits_for_process(tmp_path: Path) -
     release.set()
     thread.join(timeout=2)
     assert not thread.is_alive()
+
 
 def test_start_ready_is_idempotent_and_does_not_launch(tmp_path: Path) -> None:
     manager, executable = _manager(tmp_path)
@@ -305,6 +307,7 @@ def test_status_never_exposes_websocket_password(tmp_path: Path) -> None:
     assert "super-secret-password" not in repr(payload)
     assert "password" not in payload["websocket"]
 
+
 def test_start_without_active_console_session_fails_safely(tmp_path: Path) -> None:
     manager, _ = _manager(tmp_path)
     manager._obs_processes = lambda: []  # type: ignore[method-assign]
@@ -326,6 +329,7 @@ def test_restart_is_blocked_for_any_active_output(tmp_path: Path, client: FakeOb
 
     with pytest.raises(ObsUnsafeOperationError):
         manager.restart()
+
 
 def test_restart_fails_if_websocket_does_not_return_before_timeout(tmp_path: Path) -> None:
     processes: list[ObsProcess] = []
@@ -352,6 +356,7 @@ def test_restart_fails_if_websocket_does_not_return_before_timeout(tmp_path: Pat
         manager.restart()
 
     assert [process.pid for process in processes] == [200]
+
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows user32 behavior")
 def test_graceful_close_targets_visible_unowned_obs_window(tmp_path: Path) -> None:
@@ -429,6 +434,7 @@ def test_graceful_close_targets_visible_unowned_obs_window(tmp_path: Path) -> No
     assert "OBS 32.2.1" in target
     assert "visible=True" in target
     assert "unowned=True" in target
+
 
 def test_managed_launch_disables_obs_updater_popup(tmp_path: Path, monkeypatch) -> None:
     manager, executable = _manager(tmp_path)
