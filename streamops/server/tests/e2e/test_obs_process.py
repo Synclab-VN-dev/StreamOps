@@ -120,3 +120,16 @@ def test_obs_page_is_usable_on_mobile_viewport(page: Page, live_server: BrowserT
     expect(page.get_by_role("button", name="Restart OBS", exact=True)).to_be_visible()
     expect(page.get_by_role("heading", name="Activity Log")).to_be_visible()
 
+def test_stop_from_browser_reaches_stopped(page: Page, live_server: BrowserTestServer) -> None:
+    live_server.obs.set_ready(5500)
+    page.goto(f"{live_server.base_url}/obs")
+    expect(page.locator("#obs-state")).to_have_text("READY")
+
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.get_by_role("button", name="Stop OBS", exact=True).click()
+
+    expect(page.locator("#obs-state")).to_have_text("STOPPED")
+    expect(page.locator("#obs-pid")).to_have_text("--")
+    expect(page.locator("#obs-last-operation")).to_contain_text("stop · success")
+    expect(page.locator("#activity-log")).to_contain_text("Stop completed: STOPPED")
+
