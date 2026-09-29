@@ -453,3 +453,17 @@ def test_managed_launch_disables_obs_updater_popup(tmp_path: Path, monkeypatch) 
     assert captured["args"] == [str(executable), "--disable-updater"]
     assert "--disable-shutdown-check" not in captured["args"]
 
+def test_client_factory_failure_is_running_without_websocket(tmp_path: Path) -> None:
+    def failing_client_factory():
+        raise ObsWebSocketConnectionError("invalid websocket configuration")
+
+    manager, executable = _manager(tmp_path, failing_client_factory)
+    manager._obs_processes = lambda: [_process(executable)]  # type: ignore[method-assign]
+
+    status = manager.status()
+
+    assert status.state == "RUNNING_NO_WEBSOCKET"
+    assert status.websocket["connected"] is False
+    assert status.output == {"streaming": None, "recording": None}
+    assert status.error == "invalid websocket configuration"
+
