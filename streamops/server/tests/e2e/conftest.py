@@ -19,6 +19,8 @@ from streamops.server.config import ServerConfig
 from streamops.server.errors import ScreenCaptureError, SteamLaunchError
 from streamops.server.services import ScreenCaptureService, SteamService
 from streamops.server.services.steam import SteamStatus
+from streamops.server.services.obs_scene import ObsSceneService
+from streamops.server.tests.browser_obs import BrowserObs
 
 
 INTERNAL_LOG_SENTINEL = r"C:\internal\streamops\steam-test.log test-secret"
@@ -131,187 +133,21 @@ class ControllableCaptureBackend:
         self.closed = True
 
 
-class _Payload:
-    def __init__(self, payload: dict[str, Any]) -> None:
-        self.payload = payload
-
-    def to_dict(self) -> dict[str, Any]:
-        return self.payload
-
-
-class ControllableObsSceneService:
-    def __init__(self) -> None:
-        self.apply_calls = 0
-        self.verify_calls = 0
-        self.activate_calls = 0
-        self.review_calls = 0
-        self.review_status_calls = 0
-        self.profile = {
-            "schema_version": 1,
-            "id": "5c868262-1527-48cb-b57d-ab8fdb31f325",
-            "name": "Browser test profile",
-            "obs_scene_name": "StreamOps Scene 5c868262-1527-48cb-b57d-ab8fdb31f325",
-            "created_at": "2026-09-28T12:00:00Z",
-            "updated_at": "2026-09-28T12:00:00Z",
-            "canvas": {"width": 1920, "height": 1080, "fps": 60},
-            "sources": [],
-        }
-
-    def close(self) -> None:
-        pass
-
-    def status(self) -> dict[str, Any]:
-        return {
-            "connected": True,
-            "obs_version": "32.0.2",
-            "websocket_version": "5.7.0",
-            "current_scene": "livestream-d4",
-            "streaming": False,
-            "recording": False,
-        }
-
-    def catalog(self) -> list[dict[str, Any]]:
-        return [{"type": "browser_source", "label": "Browser", "obs_kind": "browser_source", "video": True, "audio": True}]
-
-    def list_templates(self) -> list[dict[str, Any]]:
-        return [{"id": "gaming-poc", "name": "gaming-poc"}]
-
-    def list_profiles(self) -> dict[str, Any]:
-        return {"profiles": [{key: self.profile[key] for key in ("id", "name", "obs_scene_name", "updated_at")}], "errors": []}
-
-    def get_profile(self, profile_id: str) -> dict[str, Any]:
-        assert profile_id == self.profile["id"]
-        return self.profile
-
-    def create_profile(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-        return self.profile
-
-    def update_profile(self, profile_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        self.profile = payload
-        return self.profile
-
-    def duplicate_profile(self, profile_id: str, *, name: str | None = None) -> dict[str, Any]:
-        return self.profile
-
-    def delete_profile(self, profile_id: str) -> None:
-        return None
-
-    def instantiate_template(self, template_id: str, *, name: str | None = None) -> dict[str, Any]:
-        return self.profile
-
-    def apply_profile(self, profile_id: str) -> _Payload:
-        return self.apply("livestream-d4")
-
-    def verify_profile(self, profile_id: str, *, runtime: bool = True) -> _Payload:
-        return self.verify("livestream-d4", runtime_audio=runtime)
-
-    def activate_profile(self, profile_id: str) -> dict[str, Any]:
-        return self.activate("livestream-d4")
-
-    def preview_profile(self, profile_id: str) -> bytes:
-        return self.preview("livestream-d4")
-
-    def start_profile_review(self, profile_id: str, *, seconds: int = 30) -> _Payload:
-        return self.start_review("livestream-d4", seconds=seconds)
-
-    def list_scenes(self) -> list[dict[str, Any]]:
-        return [{"name": "livestream-d4"}]
-
-    def scene(self, scene_name: str, *, runtime_audio: bool = False) -> dict[str, Any]:
-        assert scene_name == "livestream-d4"
-        return {
-            "name": scene_name,
-            "video": {
-                "base_width": 1920,
-                "base_height": 1080,
-                "output_width": 1920,
-                "output_height": 1080,
-                "fps": 60,
-            },
-            "sources": [
-                {"role": "main", "source_name": "StreamOps D4 Video", "media": "video", "managed": False, "signal_required": False},
-                {"role": "camera", "source_name": "StreamOps Camera", "media": "video", "managed": False, "signal_required": False},
-                {"role": "game_audio", "source_name": "StreamOps D4 Audio", "media": "audio", "managed": False, "signal_required": True},
-                {"role": "voice", "source_name": "StreamOps Voice", "media": "audio", "managed": False, "signal_required": True},
-            ],
-            "verify": self._verify_payload(),
-        }
-
-    def apply(self, scene_name: str) -> _Payload:
-        self.apply_calls += 1
-        return _Payload({"scene": scene_name, "changed": self.apply_calls == 1, "changes": []})
-
-    def verify(self, scene_name: str, *, runtime_audio: bool = True) -> _Payload:
-        self.verify_calls += 1
-        return _Payload(self._verify_payload())
-
-    def activate(self, scene_name: str) -> dict[str, Any]:
-        self.activate_calls += 1
-        return {"scene": scene_name, "active": True}
-
-    def preview(self, scene_name: str) -> bytes:
-        assert scene_name == "livestream-d4"
-        buffer = BytesIO()
-        Image.new("RGB", (16, 9), "#2da486").save(buffer, format="PNG")
-        return buffer.getvalue()
-
-    def start_review(self, scene_name: str, *, seconds: int = 30) -> _Payload:
-        self.review_calls += 1
-        return _Payload({
-            "job_id": "browser-review-1",
-            "scene": scene_name,
-            "state": "queued",
-            "created_at": "2026-09-28T12:00:00Z",
-            "updated_at": "2026-09-28T12:00:00Z",
-            "seconds": seconds,
-            "result": None,
-            "error": None,
-        })
-
-    def review_job(self, job_id: str) -> _Payload:
-        assert job_id == "browser-review-1"
-        self.review_status_calls += 1
-        return _Payload({
-            "job_id": job_id,
-            "scene": "livestream-d4",
-            "state": "completed",
-            "created_at": "2026-09-28T12:00:00Z",
-            "updated_at": "2026-09-28T12:00:01Z",
-            "seconds": 30,
-            "result": self._verify_payload(),
-            "error": None,
-        })
-
-    @staticmethod
-    def _verify_payload() -> dict[str, Any]:
-        return {
-            "scene": "livestream-d4",
-            "status": "PASS",
-            "generated_at": "2026-09-28T12:00:00Z",
-            "obs_version": "32.0.2",
-            "checks": [
-                {"id": "source.main.exists", "status": "PASS", "message": "D4 exists", "expected": True, "actual": True},
-                {"id": "source.camera.exists", "status": "PASS", "message": "Camera exists", "expected": True, "actual": True},
-                {"id": "audio.game_audio.signal", "status": "PASS", "message": "Game audio signal", "expected": {}, "actual": {"peak_db": -12}},
-                {"id": "audio.voice.signal", "status": "PASS", "message": "Voice signal", "expected": {}, "actual": {"peak_db": -18}},
-            ],
-            "artifacts": {},
-        }
-
-
 @dataclass(frozen=True)
 class BrowserTestServer:
     base_url: str
     steam: ControllableSteamBackend
     capture: ControllableCaptureBackend
-    obs: ControllableObsSceneService
+    obs: ObsSceneService
+    transport: BrowserObs
 
 
 @pytest.fixture
 def live_server(tmp_path: Path) -> BrowserTestServer:
     steam_backend = ControllableSteamBackend()
     capture_backend = ControllableCaptureBackend()
-    obs_service = ControllableObsSceneService()
+    transport = BrowserObs(tmp_path)
+    obs_service = ObsSceneService(data_dir=tmp_path / "profiles", artifact_root=tmp_path / "artifacts", client_factory=lambda: transport, inventory_provider=lambda: {"windows": [], "capture": [], "render": [], "cameras": [], "errors": []})
     config = ServerConfig(
         host="127.0.0.1",
         port=0,
@@ -344,8 +180,9 @@ def live_server(tmp_path: Path) -> BrowserTestServer:
     wait_until(lambda: server.started, message="The browser test server did not start.")
 
     try:
-        yield BrowserTestServer(f"http://127.0.0.1:{port}", steam_backend, capture_backend, obs_service)
+        yield BrowserTestServer(f"http://127.0.0.1:{port}", steam_backend, capture_backend, obs_service, transport)
     finally:
+        obs_service.close()
         steam_backend.release_restart()
         server.should_exit = True
         thread.join(timeout=10)

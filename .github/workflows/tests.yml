@@ -1,0 +1,21 @@
+name: Tests
+on:
+  pull_request:
+  push:
+    branches: [main, issue-18-obs-scene-management]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install '.[server,dev]'
+      - run: python -m playwright install chromium
+      - run: choco install ffmpeg --no-progress -y
+      - run: python -m pytest -q
+      - run: python -m pip wheel . --no-deps -w dist

@@ -37,10 +37,10 @@ def test_generic_apply_is_idempotent_and_preserves_unrelated_resources() -> None
 
     assert first.changed is True
     assert second.changed is False
-    assert verified.status == "PASS"
+    assert verified.status == "WARN"  # Unknown items must not silently count as clean.
     assert any(item["sceneItemId"] == unrelated_id for item in obs.get_scene_item_list(profile["obs_scene_name"]))
     assert any(item["inputName"] == f"{MANAGED_PREFIX}stale" for item in obs.get_input_list())
-    assert not any(item["sourceName"] == f"{MANAGED_PREFIX}stale" for item in obs.get_scene_item_list(profile["obs_scene_name"]))
+    assert any(item["sourceName"] == f"{MANAGED_PREFIX}stale" for item in obs.get_scene_item_list(profile["obs_scene_name"]))
 
 
 def test_live_apply_allows_noop_but_blocks_drift_before_mutation() -> None:

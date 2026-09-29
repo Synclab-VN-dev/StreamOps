@@ -7,11 +7,16 @@ import re
 from typing import Any
 
 from ..errors import SceneOperationError
-from ..scene_profiles import MANAGED_PREFIX, SOURCE_CATALOG
+from ..scene_profiles import SOURCE_CATALOG, normalize_profile
+from .mutation_plan import PlannedObs
+from .profile_ownership import memory_ownership
+from .signals import video_signal
 from .scene import ApplyResult, Change, Check, VerifyResult
 
 
-def verify_profile(profile: dict[str, Any], client: Any, *, runtime: bool = False) -> VerifyResult:
+def verify_profile(profile: dict[str, Any], client: Any, *, runtime: bool = False, ownership=None) -> VerifyResult:
+    profile = normalize_profile(profile, existing=profile, preserve_updated_at=True)
+    ownership = ownership or memory_ownership(client, profile)
     scene_name = profile["obs_scene_name"]
     version = client.get_version()
     result = VerifyResult(
@@ -59,10 +64,12 @@ def verify_profile(profile: dict[str, Any], client: Any, *, runtime: bool = Fals
                     result.add(_check(f"item.{source['id']}.transform.{key}", _number_equal(actual, value), value, actual))
 
         if capability.get("audio") and source.get("audio") and existing is not None:
-            audio_names.append(input_name)
+            if source['enabled'] and source['verification']['audio_signal']:
+                audio_names.append(input_name)
             audio = source["audio"]
+            expected_muted = audio['muted'] or not audio['enabled']
             actual_muted = client.get_input_mute(input_name)
-            result.add(_check(f"audio.{source['id']}.muted", actual_muted == audio["muted"], audio["muted"], actual_muted))
+            result.add(_check(f"audio.{source['id']}.muted", actual_muted == expected_muted, expected_muted, actual_muted))
             actual_volume = client.get_input_volume(input_name).get("inputVolumeDb")
             result.add(_check(f"audio.{source['id']}.volume", _number_equal(actual_volume, audio["volume_db"]), audio["volume_db"], actual_volume))
             actual_sync = client.get_input_audio_sync_offset(input_name)
@@ -73,7 +80,7 @@ def verify_profile(profile: dict[str, Any], client: Any, *, runtime: bool = Fals
     if scene_exists:
         stale = [
             item.get("sourceName") for item in items
-            if str(item.get("sourceName") or "").startswith(MANAGED_PREFIX)
+            if ownership.owns(item)
             and item.get("sourceName") not in desired_names
         ]
         result.add(_check("scene.stale_managed_items", not stale, [], stale))
@@ -86,36 +93,51 @@ def verify_profile(profile: dict[str, Any], client: Any, *, runtime: bool = Fals
             if item.get("sourceName") in desired_names
         ]
         result.add(_check("scene.configured_order", actual_order == expected_order, expected_order, actual_order))
+        unknown = [i['sourceName'] for i in items if i['sourceName'] not in desired_names and not ownership.owns(i)]
+        if unknown:
+            result.add(Check('scene.unowned_items', 'WARN', 'Unowned scene items preserved; review their contribution.', [], unknown))
 
     if runtime and audio_names:
         seconds = max(source["verification"]["sample_seconds"] for source in profile["sources"] if _input_name(source) in audio_names)
         meters = client.sample_input_volume_meters(audio_names, seconds=seconds)
         for source in profile["sources"]:
-            if not source["verification"]["audio_signal"]:
+            if not source['enabled'] or not source["verification"]["audio_signal"]:
                 continue
             name = _input_name(source)
             peak = (meters.get(name) or {}).get("peak_db")
             threshold = source["verification"]["audio_threshold_db"]
             result.add(_check(f"runtime.{source['id']}.audio_signal", peak is not None and peak >= threshold, f">= {threshold} dB", peak))
-    configured_audio = [source for source in profile["sources"] if source.get("audio")]
-    if configured_audio:
-        track_1 = all(source["audio"]["tracks"]["1"] for source in configured_audio)
-        result.add(Check("routing.final_mix", "PASS" if track_1 else "FAIL", "All configured audio sources must feed final mix track 1.", True, track_1))
-        for track in ("2", "3"):
-            present = any(source["audio"]["tracks"][track] for source in configured_audio)
-            result.add(Check(f"routing.track_{track}", "PASS" if present else "WARN", f"Optional isolated track {track} routing.", True, present))
+    if runtime:
+        for source in profile['sources']:
+            if source['enabled'] and source['verification']['video_signal']:
+                result.add(video_signal(client, _input_name(source), check_id=f"runtime.{source['id']}.video_signal", seconds=source['verification']['sample_seconds']))
     return result.finalize()
 
 
-def apply_profile(profile: dict[str, Any], client: Any) -> ApplyResult:
-    before = verify_profile(profile, client)
+def apply_profile(profile: dict[str, Any], client: Any, *, ownership=None) -> ApplyResult:
+    profile = normalize_profile(profile, existing=profile, preserve_updated_at=True)
+    ownership = ownership or memory_ownership(client, profile)
+    planned = PlannedObs(client, profile['obs_scene_name'])
+    result = _reconcile(profile, planned, ownership=ownership)
     active = bool(client.get_stream_status().get("outputActive"))
     recording = bool(client.get_record_status().get("outputActive"))
-    if active or recording:
-        if before.status == "FAIL":
-            modes = "streaming" if active else "recording"
-            raise SceneOperationError(f"Refusing OBS mutations while {modes} is active; stop output or resolve drift first.")
-        return ApplyResult(scene=profile["obs_scene_name"], changed=False, changes=())
+    if planned.commands and (active or recording):
+        modes = 'streaming' if active else 'recording'
+        raise SceneOperationError(f'Refusing OBS mutations while {modes} is active; stop output or resolve drift first.')
+    names = {_input_name(s) for s in profile['sources']}
+    if any(s['sceneName'] == profile['obs_scene_name'] for s in client.get_scene_list()):
+        for item in client.get_scene_item_list(profile['obs_scene_name']):
+            if item['sourceName'] in names:
+                ownership.remember(client, item['sceneItemId'])
+    planned.execute(client, ownership)
+    verified = verify_profile(profile, client, ownership=ownership)
+    if verified.status == 'FAIL':
+        failures = ', '.join(c.id for c in verified.checks if c.status == 'FAIL')
+        raise SceneOperationError(f'Apply did not converge: {failures}')
+    return result
+
+
+def _reconcile(profile, client, *, ownership):
 
     # Validate all create/update decisions before the first setter so a bad
     # profile or incompatible existing input cannot leave a half-applied scene.
@@ -200,7 +222,7 @@ def apply_profile(profile: dict[str, Any], client: Any) -> ApplyResult:
     # Remove stale items owned by StreamOps from this scene only; never delete global inputs.
     for item in client.get_scene_item_list(scene_name):
         source_name = str(item.get("sourceName") or "")
-        if source_name.startswith(MANAGED_PREFIX) and source_name not in desired_names:
+        if ownership.owns(item) and source_name not in desired_names:
             client.remove_scene_item(scene_name, int(item["sceneItemId"]))
             changes.append(Change("item.remove_stale", f"Removed stale managed item {source_name}."))
 
@@ -222,7 +244,9 @@ def apply_profile(profile: dict[str, Any], client: Any) -> ApplyResult:
             _apply_audio(client, name=_input_name(source), desired=source["audio"], changes=changes)
 
     # OBS index 0 is bottom; layers are ordered bottom to top.
-    for index, source in enumerate(sorted(profile["sources"], key=lambda item: item["layer"])):
+    ordered_sources = sorted(profile['sources'], key=lambda item: item['layer'])
+    current_order = [i['sourceName'] for i in sorted(client.get_scene_item_list(scene_name), key=lambda i: i['sceneItemIndex']) if i['sourceName'] in desired_names]
+    for index, source in enumerate(ordered_sources if current_order != [_input_name(s) for s in ordered_sources] else []):
         item_id = item_ids[source["id"]]
         current = next(item for item in client.get_scene_item_list(scene_name) if int(item["sceneItemId"]) == item_id)
         if int(current.get("sceneItemIndex", -1)) != index:
@@ -233,8 +257,9 @@ def apply_profile(profile: dict[str, Any], client: Any) -> ApplyResult:
 
 
 def _apply_audio(client: Any, *, name: str, desired: dict[str, Any], changes: list[Change]) -> None:
-    if client.get_input_mute(name) != desired["muted"]:
-        client.set_input_mute(name, desired["muted"]); changes.append(Change("audio.mute", f"Updated mute for {name}."))
+    muted = desired['muted'] or not desired.get('enabled', True)
+    if client.get_input_mute(name) != muted:
+        client.set_input_mute(name, muted); changes.append(Change("audio.mute", f"Updated mute for {name}."))
     actual_volume = client.get_input_volume(name).get("inputVolumeDb")
     if not _number_equal(actual_volume, desired["volume_db"]):
         client.set_input_volume_db(name, desired["volume_db"]); changes.append(Change("audio.volume", f"Updated volume for {name}."))
@@ -251,7 +276,16 @@ def _input_name(source: dict[str, Any]) -> str:
 
 
 def _effective_settings(client: Any, source: dict[str, Any]) -> dict[str, Any]:
-    settings = dict(source["settings"])
+    settings = {}
+    kind = SOURCE_CATALOG[source['type']]['obs_kind']
+    if kind and hasattr(client, 'get_input_default_settings'):
+        defaults = client.get_input_default_settings(kind)
+        settings.update({k:v for k,v in defaults.items() if k in SOURCE_CATALOG[source['type']]['setting_fields']})
+    settings.update(source['settings'])
+    if source['type'] in ('video_file', 'media_stream'):
+        settings['is_local_file'] = source['type'] == 'video_file'
+    if source['type'] == 'browser_source' and source.get('audio'):
+        settings['reroute_audio'] = True
     if source["type"] == "display_capture" and settings.get("monitor_id") == "auto":
         monitors = client.get_monitor_list()
         for monitor in monitors:

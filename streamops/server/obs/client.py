@@ -168,6 +168,13 @@ class ObsClient:
     def get_scene_list(self) -> list[dict[str, Any]]:
         return list(self.request("GetSceneList").get("scenes", []))
 
+    def get_scene_collection_list(self) -> dict[str, Any]:
+        return self.request('GetSceneCollectionList')
+
+    def get_profile_parameter(self, category: str, name: str) -> Any:
+        response = self.request('GetProfileParameter', {'parameterCategory': category, 'parameterName': name})
+        return response.get('parameterValue') if response.get('parameterValue') is not None else response.get('defaultParameterValue')
+
     def get_current_program_scene(self) -> str | None:
         return self.request("GetCurrentProgramScene").get("currentProgramSceneName")
 
@@ -206,6 +213,9 @@ class ObsClient:
 
     def get_input_settings(self, input_name: str) -> dict[str, Any]:
         return dict(self.request("GetInputSettings", {"inputName": input_name}).get("inputSettings", {}))
+
+    def get_input_default_settings(self, input_kind: str) -> dict[str, Any]:
+        return dict(self.request('GetInputDefaultSettings', {'inputKind': input_kind}).get('defaultInputSettings', {}))
 
     def set_input_settings(self, input_name: str, settings: dict[str, Any], *, overlay: bool = True) -> None:
         self.request(

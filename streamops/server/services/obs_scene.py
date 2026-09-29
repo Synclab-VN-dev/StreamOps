@@ -22,6 +22,7 @@ from ..errors import (
 )
 from ..obs.client import ObsClient
 from ..obs.profile_scene import apply_profile, verify_profile
+from ..obs.profile_ownership import ProfileOwnership
 from ..obs.scene import ApplyResult, VerifyResult, apply_scene, verify_scene
 from ..profile_store import SceneProfileStore
 from ..scene_profiles import source_catalog
@@ -60,16 +61,20 @@ class ObsSceneService:
         data_dir: Path | None = None,
         artifact_root: Path | None = None,
         client_factory: type[ObsClient] | Any = ObsClient,
+        inventory_provider: Any = None,
     ) -> None:
         self.root = root or find_project_root()
         profile_root = data_dir or (self.root / ".streamops" / "node" / "scene-profiles")
         template_root = self.root / "streamops" / "config" / "scene-templates"
         self.profile_store = SceneProfileStore(profile_root, template_root=template_root)
+        self.ownership = ProfileOwnership(profile_root.parent / 'scene-ownership')
         self.artifact_root = artifact_root or (self.root / "streamops" / "artifacts" / "scene-review")
         self.client_factory = client_factory
-        self._mutation_lock = threading.Lock()
+        self.inventory_provider = inventory_provider
+        self._mutation_lock = threading.RLock()
         self._jobs_lock = threading.Lock()
         self._jobs: dict[str, ReviewJob] = {}
+        self._profile_snapshots: dict[str, dict[str, Any]] = {}
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="streamops-scene-review")
 
     def close(self) -> None:
@@ -123,18 +128,10 @@ class ObsSceneService:
         return self.profile_store.instantiate_template(template_id, name=name)
 
     def inventory(self) -> dict[str, Any]:
+        from .source_inventory import discover
         client = self._client()
         try:
-            return {
-                "inputs": [
-                    {
-                        "name": item.get("inputName"),
-                        "kind": item.get("unversionedInputKind") or item.get("inputKind"),
-                    }
-                    for item in client.get_input_list()
-                ],
-                "input_kinds": client.get_input_kind_list(),
-            }
+            return discover(client, **({"native_provider": self.inventory_provider} if self.inventory_provider else {}))
         finally:
             client.close()
 
@@ -143,31 +140,33 @@ class ObsSceneService:
         with self._mutation_lock:
             client = self._client()
             try:
-                return apply_profile(profile, client)
+                return apply_profile(profile, client, ownership=self.ownership.session(client, profile))
             finally:
                 client.close()
 
     def verify_profile(self, profile_id: str, *, runtime: bool = True) -> VerifyResult:
         profile = self._runtime_profile(self.profile_store.get(profile_id))
-        client = self._client()
-        try:
-            return verify_profile(profile, client, runtime=runtime)
-        finally:
-            client.close()
+        with self._mutation_lock:
+            client = self._client()
+            try:
+                return verify_profile(profile, client, runtime=runtime, ownership=self.ownership.session(client, profile))
+            finally:
+                client.close()
 
     def activate_profile(self, profile_id: str) -> dict[str, Any]:
         profile = self.profile_store.get(profile_id)
-        client = self._client()
-        try:
-            client.set_current_program_scene(profile["obs_scene_name"])
-            actual = client.get_current_program_scene()
-            if actual != profile["obs_scene_name"]:
-                raise SceneOperationError(
-                    f"OBS did not activate {profile['obs_scene_name']!r}; current scene is {actual!r}."
-                )
-            return {"profile_id": profile_id, "scene": actual, "active": True}
-        finally:
-            client.close()
+        with self._mutation_lock:
+            client = self._client()
+            try:
+                client.set_current_program_scene(profile["obs_scene_name"])
+                actual = client.get_current_program_scene()
+                if actual != profile["obs_scene_name"]:
+                    raise SceneOperationError(
+                        f"OBS did not activate {profile['obs_scene_name']!r}; current scene is {actual!r}."
+                    )
+                return {"profile_id": profile_id, "scene": actual, "active": True}
+            finally:
+                client.close()
 
     def preview_profile(self, profile_id: str) -> bytes:
         profile = self.profile_store.get(profile_id)
@@ -180,76 +179,96 @@ class ObsSceneService:
             client.close()
 
     def start_profile_review(self, profile_id: str, *, seconds: int = 30) -> ReviewJob:
-        self.profile_store.get(profile_id)
+        profile = self.profile_store.get(profile_id)
         if not 1 <= seconds <= 300:
             raise SceneOperationError("Review seconds must be between 1 and 300.")
         now = _now()
         job = ReviewJob(uuid4().hex, profile_id, "queued", now, now, seconds)
         with self._jobs_lock:
+            if any(j.state in ("queued", "running") for j in self._jobs.values()):
+                raise SceneOperationError("A scene review is already queued or running.")
             self._jobs[job.job_id] = job
+            self._profile_snapshots[job.job_id] = deepcopy(profile)
         self._executor.submit(self._run_profile_review, job.job_id)
         return job
 
     def _run_profile_review(self, job_id: str) -> None:
+        from ..obs.scene import Check
+        from ..obs.media_review import analyze_recording, recording_tracks
         self._update_job(job_id, state="running")
+        job = self.review_job(job_id)
+        profile = self._profile_snapshots[job_id]
+        artifact_dir = self.artifact_root / profile["id"] / job.job_id
+        verify = VerifyResult(profile["obs_scene_name"], "FAIL", _now(), None)
+        failure = None
+        client = None
+        previous_scene = None
+        switched = started = False
         try:
-            job = self.review_job(job_id)
-            profile = self.profile_store.get(job.scene)
-            runtime_profile = self._runtime_profile(profile)
+            artifact_dir.mkdir(parents=True, exist_ok=False)
+            snapshot = artifact_dir / "profile.json"
+            snapshot.write_text(json.dumps(profile, indent=2, ensure_ascii=False, allow_nan=False), encoding="utf-8")
+            verify.artifacts["profile"] = str(snapshot)
             with self._mutation_lock:
                 client = self._client()
-                stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-                artifact_dir = self.artifact_root / profile["id"] / f"{stamp}-{job.job_id[:8]}"
-                artifact_dir.mkdir(parents=True, exist_ok=False)
                 try:
-                    verify = verify_profile(runtime_profile, client, runtime=True)
-                    (artifact_dir / "profile.json").write_text(
-                        json.dumps(profile, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-                    )
+                    if client.get_stream_status().get("outputActive") or client.get_record_status().get("outputActive"):
+                        raise SceneOperationError("Review refuses active streaming or recording.")
+                    runtime_profile = self._runtime_profile(profile)
+                    ownership = self.ownership.session(client, profile)
+                    verify = verify_profile(runtime_profile, client, ownership=ownership)
+                    verify.artifacts["profile"] = str(snapshot)
+                    if verify.status == "FAIL":
+                        raise SceneOperationError("Structural verification failed before recording.")
+                    tracks = recording_tracks(client)
+                    previous_scene = client.get_current_program_scene()
+                    client.set_current_program_scene(profile["obs_scene_name"])
+                    switched = True
+                    verify = verify_profile(runtime_profile, client, runtime=True, ownership=ownership)
+                    verify.artifacts["profile"] = str(snapshot)
                     preview_path = artifact_dir / "preview.png"
-                    client.save_source_screenshot(
-                        profile["obs_scene_name"], preview_path,
-                        width=profile["canvas"]["width"], height=profile["canvas"]["height"],
-                    )
-                    verify.artifacts.update({"profile": str(artifact_dir / "profile.json"), "preview": str(preview_path)})
-                    if verify.status != "FAIL":
-                        if client.get_stream_status().get("outputActive"):
-                            raise SceneOperationError("Refusing scene review recording while streaming is active.")
-                        if client.get_record_status().get("outputActive"):
-                            raise SceneOperationError("Refusing scene review recording while recording is already active.")
-                        previous_scene = client.get_current_program_scene()
-                        started = False
-                        try:
-                            client.set_current_program_scene(profile["obs_scene_name"])
-                            client.start_record()
-                            started = True
-                            time.sleep(job.seconds)
-                            stopped = client.stop_record()
-                            started = False
-                            output_path = stopped.get("outputPath")
-                            if not output_path:
-                                raise SceneOperationError("OBS stopped recording without returning outputPath.")
-                            source_path = Path(str(output_path)).expanduser()
-                            _wait_for_stable_file(source_path)
-                            target_path = artifact_dir / f"sample-{job.seconds}s{source_path.suffix or '.mkv'}"
-                            shutil.copy2(source_path, target_path)
-                            probe = _probe_media(target_path)
-                            analysis_path = artifact_dir / "media-analysis.json"
-                            analysis_path.write_text(json.dumps(probe, indent=2, ensure_ascii=False), encoding="utf-8")
-                            verify.artifacts.update({"video": str(target_path), "media_analysis": str(analysis_path)})
-                            _append_media_checks(verify, probe, profile["canvas"]["width"], profile["canvas"]["height"])
-                        finally:
-                            if started:
-                                client.stop_record()
-                            if previous_scene and previous_scene != profile["obs_scene_name"]:
-                                client.set_current_program_scene(previous_scene)
-                    result = self._write_review_artifacts(artifact_dir, verify)
+                    preview_path.write_bytes(client.get_source_screenshot(profile["obs_scene_name"], width=profile["canvas"]["width"], height=profile["canvas"]["height"]))
+                    verify.artifacts["preview"] = str(preview_path)
+                    if verify.status == "FAIL":
+                        raise SceneOperationError("Runtime signal verification failed before recording.")
+                    client.start_record()
+                    started = True
+                    time.sleep(job.seconds)
+                    stopped = client.stop_record()
+                    started = False
+                    if not stopped.get("outputPath"):
+                        raise SceneOperationError("OBS stopped recording without returning outputPath.")
+                    source_path = Path(stopped["outputPath"])
+                    _wait_for_stable_file(source_path)
+                    target_path = artifact_dir / f"sample-{job.seconds}s{source_path.suffix or '.mkv'}"
+                    shutil.copy2(source_path, target_path)
+                    _wait_for_stable_file(target_path)
+                    verify.artifacts["video"] = str(target_path)
+                    checks, analysis = analyze_recording(target_path, _probe_media(target_path), profile, tracks, job.seconds)
+                    verify.checks.extend(checks)
+                    analysis_path = artifact_dir / "media-analysis.json"
+                    analysis_path.write_text(json.dumps(analysis, indent=2, allow_nan=False), encoding="utf-8")
+                    verify.artifacts["media_analysis"] = str(analysis_path)
                 finally:
-                    client.close()
+                    try:
+                        if started:
+                            client.stop_record()
+                    finally:
+                        if switched and previous_scene:
+                            client.set_current_program_scene(previous_scene)
         except Exception as exc:
-            self._update_job(job_id, state="failed", error=str(exc))
-        else:
-            self._update_job(job_id, state="completed", result=result)
+            failure = str(exc)
+            verify.add(Check("review.error", "FAIL", failure))
+        finally:
+            if client:
+                client.close()
+            self._profile_snapshots.pop(job_id, None)
+        try:
+            result = self._write_review_artifacts(artifact_dir, verify)
+        except Exception as exc:
+            result = verify.finalize().to_dict()
+            failure = failure or f"Could not write review report: {exc}"
+        self._update_job(job_id, state="failed" if failure else "completed", result=result, error=failure)
 
     def scene(self, scene_name: str, *, runtime_audio: bool = False) -> dict[str, Any]:
         config = load_scene_config(scene_name, root=self.root)
@@ -309,17 +328,18 @@ class ObsSceneService:
 
     def activate(self, scene_name: str) -> dict[str, Any]:
         load_scene_config(scene_name, root=self.root)
-        client = self._client()
-        try:
-            client.set_current_program_scene(scene_name)
-            actual = client.get_current_program_scene()
-            if actual != scene_name:
-                raise SceneOperationError(
-                    f"OBS did not activate {scene_name!r}; current scene is {actual!r}."
-                )
-            return {"scene": scene_name, "active": True}
-        finally:
-            client.close()
+        with self._mutation_lock:
+            client = self._client()
+            try:
+                client.set_current_program_scene(scene_name)
+                actual = client.get_current_program_scene()
+                if actual != scene_name:
+                    raise SceneOperationError(
+                        f"OBS did not activate {scene_name!r}; current scene is {actual!r}."
+                    )
+                return {"scene": scene_name, "active": True}
+            finally:
+                client.close()
 
     def preview(self, scene_name: str) -> bytes:
         config = load_scene_config(scene_name, root=self.root)

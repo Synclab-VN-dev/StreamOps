@@ -1,0 +1,107 @@
+"""Regressions from PR19's generic profile review (real validation/adapter)."""
+from copy import deepcopy
+
+import pytest
+
+from streamops.server.errors import SceneProfileValidationError
+from streamops.server.scene_profiles import normalize_profile
+from streamops.server.obs.profile_scene import apply_profile, verify_profile
+from streamops.server.tests.test_obs_scene import AudioFakeObsClient
+from streamops.server.obs.profile_ownership import ProfileOwnership
+
+
+@pytest.mark.parametrize('change', [
+    {'settings': {'url': 'https://example.invalid', 'arbitrary': 1}},
+    {'audio': {'volume_db': float('nan')}},
+    {'audio': {'volume_db': 27}},
+    {'audio': {'muted': 'false'}},
+    {'verification': {'sample_seconds': -1}},
+    {'verification': {'audio_threshold_db': float('inf')}},
+])
+def test_invalid_typed_source_rejected(change):
+    source = {'type': 'browser_source', 'settings': {'url': 'https://example.invalid'}}
+    source.update(change)
+    with pytest.raises(SceneProfileValidationError):
+        normalize_profile({'name': 'Invalid', 'sources': [source]})
+
+
+def test_isolated_track_is_valid_desired_state():
+    profile = normalize_profile({'name': 'Isolated', 'sources': [{
+        'type': 'browser_source', 'settings': {'url': 'https://example.invalid'},
+        'audio': {'tracks': {'2': True}},
+    }]})
+    obs = AudioFakeObsClient()
+    apply_profile(profile, obs)
+    result = verify_profile(profile, obs)
+    assert result.status == 'PASS', [(c.id, c.status) for c in result.checks if c.status != 'PASS']
+
+
+def test_video_signal_cannot_pass_without_a_frame():
+    profile = normalize_profile({'name': 'Missing frame', 'sources': [{
+        'type': 'browser_source', 'settings': {'url': 'https://example.invalid'},
+        'verification': {'video_signal': True, 'sample_seconds': 0.5},
+    }]})
+    obs = AudioFakeObsClient()
+    apply_profile(profile, obs)
+    obs.get_source_screenshot = lambda *a, **k: b'invalid image'
+    assert verify_profile(profile, obs, runtime=True).status == 'FAIL'
+
+
+def test_existing_rebind_and_remove_survive_service_restart(tmp_path):
+    obs = AudioFakeObsClient()
+    obs.create_scene('Operator')
+    obs.create_input('Operator', 'A', 'monitor_capture', {})
+    obs.create_input('Operator', 'B', 'monitor_capture', {})
+    profile = normalize_profile({'name':'Existing', 'sources':[{'type':'existing_video','settings':{'source_name':'A'}}]})
+    def ownership():
+        return ProfileOwnership(tmp_path).session(obs, profile)
+    apply_profile(profile, obs, ownership=ownership())
+    profile['sources'][0]['settings']['source_name'] = 'B'
+    assert verify_profile(profile, obs, ownership=ownership()).status == 'FAIL'
+    apply_profile(profile, obs, ownership=ownership())
+    assert [i['sourceName'] for i in obs.get_scene_item_list(profile['obs_scene_name'])] == ['B']
+    profile['sources'] = []
+    apply_profile(profile, obs, ownership=ownership())
+    assert obs.get_scene_item_list(profile['obs_scene_name']) == []
+    assert {i['inputName'] for i in obs.inputs} == {'A','B'}
+
+
+def test_corrupt_shapes_isolated_and_atomic_failure_preserves_saved(tmp_path, monkeypatch):
+    import json
+    from streamops.server.profile_store import SceneProfileStore
+    from streamops.server.errors import SceneProfileStorageError
+    store = SceneProfileStore(tmp_path)
+    saved = store.create({'name':'Original'})
+    for index, malformed in enumerate([[], {}, {'id':None,'name':'bad','schema_version':1,'sources':[],'canvas':{}}, {'id':saved['id'],'name':'bad','schema_version':1,'sources':[{'id':[]}],'canvas':{}}]):
+        (tmp_path/f'bad-{index}.json').write_text(json.dumps(malformed),encoding='utf-8')
+    assert len(store.list()['errors']) == 4
+    def fail(*args): raise OSError('disk full')
+    monkeypatch.setattr('streamops.server.profile_store.os.replace', fail)
+    with pytest.raises(SceneProfileStorageError):
+        store.update(saved['id'],{**saved,'name':'Not committed'})
+    assert store.get(saved['id']) == saved
+
+
+def test_review_snapshot_is_captured_at_enqueue_and_failure_has_report(tmp_path):
+    from streamops.server.services.obs_scene import ObsSceneService
+    from streamops.server.errors import SceneOperationError
+    obs = AudioFakeObsClient()
+    service = ObsSceneService(data_dir=tmp_path/'profiles', artifact_root=tmp_path/'artifacts',client_factory=lambda:obs)
+    # Keep work queued to test edits that race with job execution.
+    service._executor.shutdown()
+    class Queue:
+        def submit(self,*args): pass
+        def shutdown(self,**kwargs): pass
+    service._executor=Queue()
+    saved=service.create_profile({'name':'Queued snapshot'})
+    job=service.start_profile_review(saved['id'],seconds=1)
+    service.update_profile(saved['id'],{**saved,'name':'Later edit'})
+    with pytest.raises(SceneOperationError,match='already queued'):
+        service.start_profile_review(saved['id'])
+    service._run_profile_review(job.job_id)
+    result=service.review_job(job.job_id)
+    assert result.state=='failed'  # scene was never applied
+    import json
+    from pathlib import Path
+    assert json.loads(Path(result.result['artifacts']['profile']).read_text(encoding='utf-8'))['name']=='Queued snapshot'
+    assert Path(result.result['artifacts']['report']).exists()

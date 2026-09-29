@@ -415,6 +415,20 @@ button:disabled {
   margin-top: 0;
 }
 
+.obs-panel input, .obs-panel select { max-width: 100%; min-width: 0; }
+.obs-panel .action-row { flex-wrap: wrap; }
+.obs-panel label { display: grid; gap: 6px; min-width: 0; flex: 1 1 100px; }
+.source-editor { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 14px; min-width: 0; margin-top: 18px; padding: 16px; border: 1px solid #454b47; border-radius: 8px; }
+.source-editor label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.source-editor input, .source-editor select { box-sizing: border-box; width: 100%; min-width: 0; padding: 8px; color: inherit; background: #171c19; border: 1px solid #58625c; border-radius: 4px; }
+.source-editor input[type=checkbox] { width: 22px; height: 22px; }
+.canvas-source { position: absolute; box-sizing: border-box; border: 2px solid #5dd6c0; background: #163a4866; color: white; padding: 4px; overflow: hidden; }
+#profile-list { width: 100%; }
+#store-errors, #inventory-status, #verify-checks { overflow-wrap: anywhere; white-space: pre-wrap; }
+#verify-checks [data-status=FAIL] { color: #ff9999; }
+#verify-checks [data-status=WARN] { color: #e8bc58; }
+#verify-checks [data-status=PASS] { color: #75dea5; }
+
 .multi-action {
   flex-wrap: wrap;
   gap: 10px;

@@ -1,26 +1,228 @@
-const ui=window.StreamOpsUI,activity=ui.createActivityLog("#activity-log"),$=(s)=>document.querySelector(s);let current=null,catalog=[],dirty=false;
-function showError(message=""){$("#error-message").textContent=message;$("#error-message").hidden=!message}function setState(value){$("#editor-state").textContent=value}function markDirty(){if(current){dirty=true;setState("Modified");renderCanvas()}}
-function readEditor(){current.name=$("#profile-name").value;current.canvas={width:Number($("#canvas-width").value),height:Number($("#canvas-height").value),fps:Number($("#canvas-fps").value)};return current}
-function loadEditor(profile){current=structuredClone(profile);dirty=false;setState("Saved");$("#profile-name").value=current.name;$("#canvas-width").value=current.canvas.width;$("#canvas-height").value=current.canvas.height;$("#canvas-fps").value=current.canvas.fps;renderSources();renderCanvas()}
-async function selectProfile(id){loadEditor(await ui.fetchJson(`/api/v1/scene-profiles/${id}`))}async function loadProfiles(selectId=null){const data=await ui.fetchJson("/api/v1/scene-profiles"),list=$("#profile-list");list.replaceChildren();data.profiles.forEach((p)=>list.add(new Option(p.name,p.id)));$("#profile-count").textContent=`${data.profiles.length} profiles${data.errors.length?` · ${data.errors.length} invalid`:""}`;const id=selectId||current?.id||data.profiles[0]?.id;if(id){list.value=id;await selectProfile(id)}}
-function renderSources(){
-  const root=$("#source-list");root.replaceChildren();
-  current.sources.forEach((source,index)=>{
-    const row=document.createElement("div");row.className="source-row";
-    const label=document.createElement("label"),enabled=document.createElement("input"),name=document.createElement("input"),layer=document.createElement("input");
-    enabled.type="checkbox";enabled.checked=source.enabled;enabled.title="Enabled";enabled.addEventListener("change",()=>{source.enabled=enabled.checked;markDirty()});
-    name.value=source.name;name.title="Display name";name.addEventListener("input",()=>{source.name=name.value;markDirty()});
-    layer.type="number";layer.min="0";layer.max="999";layer.value=source.layer;layer.title="Layer";layer.style.width="5rem";layer.addEventListener("input",()=>{source.layer=Number(layer.value);markDirty()});label.append(enabled,name,layer);
-    const meta=document.createElement("div");meta.className="source-meta";meta.append(document.createTextNode(`${source.type} `));
-    if(source.transform)["x","y","width","height"].forEach((key)=>{const input=document.createElement("input");input.type="number";input.title=key;input.value=source.transform[key];input.style.width="6rem";input.addEventListener("input",()=>{source.transform[key]=Number(input.value);markDirty()});meta.append(input)});
-    const settings=document.createElement("textarea");settings.value=JSON.stringify(source.settings);settings.title="OBS source settings JSON";settings.rows=2;settings.addEventListener("input",()=>{try{source.settings=JSON.parse(settings.value);settings.setCustomValidity("");markDirty()}catch(_){settings.setCustomValidity("Settings must be valid JSON.")}});meta.append(settings);
-    if(source.audio){const mute=document.createElement("input"),volume=document.createElement("input"),sync=document.createElement("input");mute.type="checkbox";mute.checked=source.audio.muted;mute.title="Muted";mute.addEventListener("change",()=>{source.audio.muted=mute.checked;markDirty()});volume.type="number";volume.value=source.audio.volume_db;volume.title="Volume dB";volume.addEventListener("input",()=>{source.audio.volume_db=Number(volume.value);markDirty()});sync.type="number";sync.value=source.audio.sync_offset_ms;sync.title="Sync offset ms";sync.addEventListener("input",()=>{source.audio.sync_offset_ms=Number(sync.value);markDirty()});meta.append(mute,volume,sync)}
-    const remove=document.createElement("button");remove.textContent="Remove";remove.addEventListener("click",()=>{current.sources.splice(index,1);current.sources.forEach((x,i)=>x.layer=i);markDirty();renderSources()});row.append(label,meta,remove);root.append(row);
+/* Profile editor: the draft is local until Save, and OBS actions use saved state. */
+const ui = window.StreamOpsUI;
+const $ = (selector) => document.querySelector(selector);
+const activity = ui.createActivityLog('#activity-log');
+let draft = null, saved = null, catalog = [], inventory = {options: {}}, busy = false;
+
+function dirty() { return draft && JSON.stringify(draft) !== JSON.stringify(saved); }
+function error(message = '') { $('#error-message').textContent = message; $('#error-message').hidden = !message; }
+function state(value) { $('#editor-state').textContent = value; }
+function changed() { state(dirty() ? 'Modified' : 'Saved'); renderCanvas(); }
+function buttons() {
+  document.querySelectorAll('button').forEach((button) => {
+    const independent = ['new-button', 'template-button', 'refresh-inventory'].includes(button.id);
+    button.disabled = busy || (!draft && !independent);
+  });
+  $('#profile-list').disabled = busy;
+  document.querySelectorAll('.source-editor input, .source-editor select, #profile-name, [id^="canvas-"] input').forEach((input) => {input.disabled = busy;});
+}
+async function run(label, fn) {
+  if (busy) return;
+  busy = true; buttons(); error();
+  try { await fn(); } catch (e) { state('Failed'); error(e.message); activity(`${label} failed: ${e.message}`, 'error'); }
+  finally { busy = false; buttons(); }
+}
+async function api(path, method = 'GET', payload) {
+  const response = await fetch(`/api/v1/${path}`, {method, cache: 'no-store', headers: payload === undefined ? {} : {'Content-Type': 'application/json'}, body: payload === undefined ? undefined : JSON.stringify(payload)});
+  if (!response.ok) throw new Error(await ui.apiError(response));
+  return response.status === 204 ? null : response.json();
+}
+function canDiscard() { return !dirty() || confirm('Discard unsaved changes?'); }
+function setProfile(profile) {
+  draft = profile ? structuredClone(profile) : null;
+  saved = profile ? structuredClone(profile) : null;
+  $('#profile-name').value = draft?.name || '';
+  for (const field of ['width', 'height', 'fps']) $('#canvas-' + field).value = draft?.canvas[field] ?? '';
+  $('#source-list').replaceChildren();
+  state(draft ? 'Saved' : 'No profile');
+  renderSources(); renderCanvas(); buttons();
+}
+async function listProfiles(selected = draft?.id) {
+  const result = await api('scene-profiles');
+  const select = $('#profile-list'); select.replaceChildren();
+  result.profiles.forEach((p) => select.add(new Option(p.name, p.id)));
+  select.value = selected || '';
+  $('#profile-count').textContent = `${result.profiles.length} profiles`;
+  $('#store-errors').textContent = result.errors.map((e) => `${e.file}: ${e.error}`).join('\n');
+  if (!draft && result.profiles.length) {
+    select.value = result.profiles[0].id;
+    setProfile(await api('scene-profiles/' + select.value));
+  }
+}
+function field(container, labelText, value, change, options = {}) {
+  const label = document.createElement('label'); label.textContent = labelText;
+  let input;
+  if (options.choices) {
+    input = document.createElement('select');
+    input.add(new Option('Select…', ''));
+    options.choices.forEach((c) => input.add(new Option(c.label ?? String(c), String(c.value ?? c))));
+    if (value !== undefined && value !== '' && ![...input.options].some((o) => o.value === String(value))) input.add(new Option(`${value} (saved / unavailable)`, String(value)));
+    input.value = value ?? '';
+  } else {
+    input = document.createElement('input'); input.type = options.type || 'text';
+    if (input.type === 'checkbox') input.checked = !!value;
+    else input.value = value ?? '';
+  }
+  input.setAttribute('aria-label', labelText);
+  if (options.min !== undefined) input.min = options.min;
+  if (options.max !== undefined) input.max = options.max;
+  if (options.type === 'number') input.step = options.integer ? '1' : 'any';
+  input.required = !!options.required;
+  input.addEventListener('input', () => {
+    const next = options.type === 'checkbox' ? input.checked : options.numeric ? (input.value === '' ? undefined : Number(input.value)) : input.value;
+    change(next); changed();
+  });
+  label.append(input); container.append(label); return input;
+}
+function renderSources() {
+  const root = $('#source-list'); root.replaceChildren();
+  if (!draft) return;
+  draft.sources.forEach((source, index) => {
+    const cap = catalog.find((c) => c.type === source.type);
+    const card = document.createElement('fieldset'); card.className = 'source-editor'; card.dataset.sourceIndex = index;
+    const legend = document.createElement('legend'); legend.textContent = `${index + 1}. ${cap.label}`; card.append(legend);
+    field(card, 'Source name', source.name, (v) => {source.name = v;}, {required: true});
+    field(card, 'Source enabled', source.enabled, (v) => {source.enabled = v;}, {type: 'checkbox'});
+    field(card, 'Layer', source.layer, (v) => {source.layer = v;}, {type: 'number', numeric: true, integer: true, min: 0, max: 999});
+    for (const spec of cap.fields) {
+      const choices = spec.enum || (spec.inventory ? inventory.options?.[source.type]?.[spec.key] || [] : null);
+      field(card, spec.label, source.settings[spec.key], (v) => {
+        if (v === undefined || v === '') delete source.settings[spec.key]; else source.settings[spec.key] = v;
+      }, {choices, type: spec.type === 'boolean' ? 'checkbox' : spec.type === 'integer' ? 'number' : 'text', numeric: spec.type === 'integer', integer: true, min: spec.min, max: spec.max});
+    }
+    if (source.transform) {
+      for (const key of ['x', 'y', 'width', 'height', 'crop_left', 'crop_top', 'crop_right', 'crop_bottom']) {
+        field(card, key.replaceAll('_', ' '), source.transform[key], (v) => {source.transform[key] = v;}, {type: 'number', numeric: true, integer: true, min: ['x','y'].includes(key) ? -16384 : ['width','height'].includes(key) ? 1 : 0, max: 16384});
+      }
+    }
+    if (cap.audio) {
+      if (cap.video) field(card, 'Configure audio', !!source.audio, (v) => {
+        source.audio = v ? {enabled: true, muted: false, volume_db: 0, sync_offset_ms: 0, tracks: {'1': true, '2': false, '3': false, '4': false, '5': false, '6': false}} : null;
+        if (!v) source.verification.audio_signal = false;
+        renderSources();
+      }, {type: 'checkbox'});
+      if (source.audio) {
+        field(card, 'Audio enabled', source.audio.enabled, (v) => {source.audio.enabled = v;}, {type: 'checkbox'});
+        field(card, 'Muted', source.audio.muted, (v) => {source.audio.muted = v;}, {type: 'checkbox'});
+        field(card, 'Volume dB', source.audio.volume_db, (v) => {source.audio.volume_db = v;}, {type: 'number', numeric: true, min: -100, max: 26});
+        field(card, 'Sync offset ms', source.audio.sync_offset_ms, (v) => {source.audio.sync_offset_ms = v;}, {type: 'number', numeric: true, integer: true, min: -950, max: 20000});
+        for (let track = 1; track <= 6; track++) field(card, `Track ${track}`, source.audio.tracks[track], (v) => {source.audio.tracks[track] = v;}, {type: 'checkbox'});
+        field(card, 'Require audio signal', source.verification.audio_signal, (v) => {source.verification.audio_signal = v;}, {type: 'checkbox'});
+        field(card, 'Audio threshold dB', source.verification.audio_threshold_db, (v) => {source.verification.audio_threshold_db = v;}, {type: 'number', numeric: true, min: -100, max: 0});
+      }
+    }
+    if (cap.video) field(card, 'Require video signal', source.verification.video_signal, (v) => {source.verification.video_signal = v;}, {type: 'checkbox'});
+    field(card, 'Sample seconds', source.verification.sample_seconds, (v) => {source.verification.sample_seconds = v;}, {type: 'number', numeric: true, min: 0.5, max: 10});
+    const remove = document.createElement('button'); remove.textContent = 'Remove source';
+    remove.addEventListener('click', () => {draft.sources.splice(index, 1); renderSources(); changed();}); card.append(remove); root.append(card);
   });
 }
-function renderCanvas(){if(!current)return;const canvas=$("#profile-canvas");canvas.replaceChildren();canvas.style.aspectRatio=`${current.canvas.width}/${current.canvas.height}`;$("#canvas-label").textContent=`${current.canvas.width}×${current.canvas.height} @ ${current.canvas.fps}`;current.sources.filter((s)=>s.transform&&s.enabled).sort((a,b)=>a.layer-b.layer).forEach((source)=>{const box=document.createElement("div"),t=source.transform;box.textContent=source.name;box.style.cssText=`position:absolute;box-sizing:border-box;border:2px solid #5dd6c0;background:#163a4866;color:white;padding:4px;left:${100*t.x/current.canvas.width}%;top:${100*t.y/current.canvas.height}%;width:${100*t.width/current.canvas.width}%;height:${100*t.height/current.canvas.height}%`;canvas.append(box)})}
-async function save(){readEditor();current=await ui.fetchJson(`/api/v1/scene-profiles/${current.id}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(current)});dirty=false;setState("Saved");activity("Profile saved","success");await loadProfiles(current.id)}async function preview(){const response=await fetch(`/api/v1/scene-profiles/${current.id}/preview?v=${Date.now()}`,{cache:"no-store"});if(!response.ok)throw new Error(await ui.apiError(response));const image=$("#scene-preview"),old=image.dataset.url,url=URL.createObjectURL(await response.blob());image.src=url;image.dataset.url=url;image.hidden=false;$("#preview-empty").hidden=true;$("#preview-status").textContent="Current OBS state";if(old)URL.revokeObjectURL(old)}async function action(label,path){showError();try{const result=await ui.fetchJson(path,{method:"POST"});setState(result.status==="FAIL"?"Drifted":dirty?"Modified":"Applied");activity(`${label}: ${result.status||result.state||"complete"}`,result.status==="FAIL"?"error":"success");await preview().catch(()=>{})}catch(e){setState("Failed");showError(e.message);activity(`${label} failed: ${e.message}`,"error")}}
-async function runReview(){showError();try{const queued=await ui.fetchJson(`/api/v1/scene-profiles/${current.id}/review`,{method:"POST"});activity(`Review queued: ${queued.job_id}`);for(;;){const job=await ui.fetchJson(`/api/v1/scene-reviews/${queued.job_id}`);if(job.state==="completed"){setState(job.result?.status==="FAIL"?"Failed":dirty?"Modified":"Applied");activity(`Review completed: ${job.result?.status||"complete"}`,job.result?.status==="FAIL"?"error":"success");return}if(job.state==="failed")throw new Error(job.error||"Review failed");await new Promise((resolve)=>setTimeout(resolve,500))}}catch(e){setState("Failed");showError(e.message);activity(`Review failed: ${e.message}`,"error")}}
-$("#profile-list").addEventListener("change",(e)=>selectProfile(e.target.value).catch((x)=>showError(x.message)));["#profile-name","#canvas-width","#canvas-height","#canvas-fps"].forEach((id)=>$(id).addEventListener("input",markDirty));$("#new-button").addEventListener("click",async()=>{const p=await ui.fetchJson("/api/v1/scene-profiles",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:"Untitled profile"})});await loadProfiles(p.id)});$("#save-button").addEventListener("click",()=>save().catch((e)=>showError(e.message)));$("#save-as-button").addEventListener("click",async()=>{try{readEditor();const p=await ui.fetchJson(`/api/v1/scene-profiles/${current.id}/duplicate`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:`${current.name} copy`})});current.id=p.id;current.obs_scene_name=p.obs_scene_name;current.sources=p.sources.map((s,i)=>({...current.sources[i],id:s.id,obs_name:s.obs_name}));await save()}catch(e){showError(e.message)}});$("#duplicate-button").addEventListener("click",async()=>{const p=await ui.fetchJson(`/api/v1/scene-profiles/${current.id}/duplicate`,{method:"POST"});await loadProfiles(p.id)});$("#delete-button").addEventListener("click",async()=>{if(!current||!confirm(`Delete local profile “${current.name}”? OBS resources are preserved.`))return;await fetch(`/api/v1/scene-profiles/${current.id}`,{method:"DELETE"});current=null;await loadProfiles()});
-$("#add-source-button").addEventListener("click",()=>{const type=$("#source-type").value,cap=catalog.find((x)=>x.type===type),source={name:cap.label,type,enabled:true,layer:current.sources.length,settings:{}};if(cap.existing)source.settings.source_name="";if(cap.video)source.transform={x:0,y:0,width:current.canvas.width,height:current.canvas.height,crop_left:0,crop_top:0,crop_right:0,crop_bottom:0};if(cap.audio)source.audio={muted:false,volume_db:0,sync_offset_ms:0,tracks:{"1":true,"2":false,"3":false,"4":false,"5":false,"6":false}};current.sources.push(source);markDirty();renderSources()});$("#apply-button").addEventListener("click",()=>action("Apply",`/api/v1/scene-profiles/${current.id}/apply`));$("#verify-button").addEventListener("click",()=>action("Verify",`/api/v1/scene-profiles/${current.id}/verify`));$("#activate-button").addEventListener("click",()=>action("Activate",`/api/v1/scene-profiles/${current.id}/activate`));$("#review-button").addEventListener("click",runReview);$("#template-button").addEventListener("click",async()=>{const p=await ui.fetchJson(`/api/v1/scene-profile-templates/${$("#template-list").value}/instantiate`,{method:"POST"});await loadProfiles(p.id)});
-Promise.all([ui.fetchJson("/api/v1/obs/source-catalog"),ui.fetchJson("/api/v1/scene-profile-templates")]).then(async([sources,templates])=>{catalog=sources.sources;catalog.forEach((x)=>$("#source-type").add(new Option(x.label,x.type)));templates.templates.forEach((x)=>$("#template-list").add(new Option(x.name,x.id)));await loadProfiles();activity("Profile manager loaded")}).catch((e)=>showError(e.message));
+function renderCanvas() {
+  const canvas = $('#profile-canvas'); canvas.replaceChildren();
+  if (!draft) { $('#canvas-label').textContent = '--'; return; }
+  const {width, height, fps} = draft.canvas;
+  canvas.style.aspectRatio = `${width}/${height}`; $('#canvas-label').textContent = `${width}×${height} @ ${fps}`;
+  draft.sources.filter((s) => s.enabled && s.transform).sort((a,b) => a.layer-b.layer).forEach((source) => {
+    const box = document.createElement('div'), t = source.transform;
+    box.className = 'canvas-source'; box.textContent = source.name;
+    Object.assign(box.style, {left: `${100*t.x/width}%`, top: `${100*t.y/height}%`, width: `${100*t.width/width}%`, height: `${100*t.height/height}%`});
+    canvas.append(box);
+  });
+}
+function validate() {
+  for (const input of document.querySelectorAll('.source-editor input, #profile-name, [id^="canvas-"]')) {
+    if (input.reportValidity && !input.reportValidity()) throw new Error('Please correct the highlighted field.');
+  }
+  for (const source of draft.sources) {
+    const cap = catalog.find((c) => c.type === source.type);
+    if (cap.required_any?.length && !cap.required_any.some((key) => source.settings[key])) throw new Error(`${source.name}: select or enter ${cap.required_any.join(' or ')}.`);
+  }
+}
+async function save(asNew = false) {
+  validate();
+  const payload = structuredClone(draft);
+  if (asNew) {
+    const name = prompt('Name for the new profile', `${draft.name} copy`);
+    if (name === null) return;
+    payload.name = name;
+  }
+  const result = await api(asNew ? 'scene-profiles' : `scene-profiles/${draft.id}`, asNew ? 'POST' : 'PUT', payload);
+  setProfile(result); await listProfiles(result.id); activity(asNew ? 'Save As completed' : 'Profile saved', 'success');
+}
+async function preview(id) {
+  const response = await fetch(`/api/v1/scene-profiles/${id}/preview`);
+  if (!response.ok) throw new Error(await ui.apiError(response));
+  const image = $('#scene-preview'), old = image.dataset.url;
+  image.src = image.dataset.url = URL.createObjectURL(await response.blob()); image.hidden = false; $('#preview-empty').hidden = true;
+  $('#preview-status').textContent = 'Current OBS state'; if (old) URL.revokeObjectURL(old);
+}
+function renderChecks(result) {
+  const root = $('#verify-checks'); root.replaceChildren();
+  for (const check of result.checks || []) {
+    const item = document.createElement('li'); item.textContent = `${check.status} · ${check.id}: ${check.message}`; item.dataset.status = check.status; root.append(item);
+  }
+  $('#obs-result').textContent = result.status || '--';
+}
+async function operation(name) {
+  const id = draft.id;
+  let result = await api(`scene-profiles/${id}/${name}`, 'POST', name === 'review' ? {seconds: Number($('#review-seconds').value)} : undefined);
+  if (name === 'review') {
+    activity(`Review queued: ${result.job_id}`);
+    const jobId = result.job_id;
+    do {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      result = await api(`scene-reviews/${jobId}`);
+      $('#review-state').textContent = result.state;
+    } while (['queued','running'].includes(result.state));
+    renderChecks(result.result || {});
+    if (result.state === 'failed') throw new Error(result.error || 'Review failed');
+    result = result.result;
+  } else if (name === 'apply' || name === 'activate') {
+    result = await api(`scene-profiles/${id}/verify`, 'POST');
+  }
+  renderChecks(result);
+  const structuralFail = (result.checks || []).some((c) => c.status === 'FAIL' && !c.id.startsWith('runtime.'));
+  state(result.status === 'FAIL' ? (structuralFail ? 'Drifted' : 'Failed') : dirty() ? 'Modified' : 'Applied');
+  activity(`${name}: ${result.status || 'complete'}`, result.status === 'FAIL' ? 'error' : 'success');
+  await preview(id).catch((e) => {$('#preview-status').textContent = e.message;});
+}
+async function refreshInventory() {
+  inventory = await api('obs/inventory');
+  $('#inventory-status').textContent = inventory.errors?.length ? inventory.errors.join(' · ') : 'Inventory loaded';
+  renderSources();
+}
+function bind(id, name, fn) { $(id).addEventListener('click', () => run(name, fn)); }
+bind('#new-button', 'New', async () => {if (!canDiscard()) return; setProfile(await api('scene-profiles', 'POST', {name: 'Untitled profile'})); await listProfiles();});
+bind('#save-button', 'Save', () => save());
+bind('#save-as-button', 'Save As', () => save(true));
+bind('#duplicate-button', 'Duplicate', async () => {if (!canDiscard()) return; setProfile(await api(`scene-profiles/${draft.id}/duplicate`, 'POST')); await listProfiles();});
+bind('#delete-button', 'Delete', async () => {if (!confirm(`Delete local profile “${draft.name}”? OBS resources are preserved.`)) return; await api(`scene-profiles/${draft.id}`, 'DELETE'); setProfile(null); await listProfiles();});
+bind('#template-button', 'Template', async () => {if (!canDiscard()) return; setProfile(await api(`scene-profile-templates/${$('#template-list').value}/instantiate`, 'POST')); await listProfiles();});
+bind('#refresh-inventory', 'Inventory', refreshInventory);
+bind('#add-source-button', 'Add source', async () => {
+  const cap = catalog.find((c) => c.type === $('#source-type').value);
+  const source = {name: cap.label, type: cap.type, enabled: true, layer: draft.sources.length, settings: {}, transform: null, audio: null, verification: {video_signal: false, audio_signal: false, audio_threshold_db: -50, sample_seconds: 2}};
+  for (const field of cap.fields) if (field.default !== undefined) source.settings[field.key] = field.default;
+  if (cap.video) source.transform = {x: 0, y: 0, width: draft.canvas.width, height: draft.canvas.height, crop_left: 0, crop_right: 0, crop_top: 0, crop_bottom: 0};
+  else if (cap.audio) source.audio = {enabled: true, muted: false, volume_db: 0, sync_offset_ms: 0, tracks: {'1': true, '2': false, '3': false, '4': false, '5': false, '6': false}};
+  draft.sources.push(source); renderSources(); changed();
+});
+for (const name of ['apply','verify','activate','review']) bind(`#${name}-button`, name, () => operation(name));
+$('#profile-list').addEventListener('change', () => run('Load', async () => {
+  const id = $('#profile-list').value;
+  if (!canDiscard()) {$('#profile-list').value = draft?.id || ''; return;}
+  setProfile(await api(`scene-profiles/${id}`));
+}));
+$('#profile-name').addEventListener('input', () => {if (draft) {draft.name = $('#profile-name').value; changed();}});
+for (const key of ['width','height','fps']) $('#canvas-'+key).addEventListener('input', () => {if (draft) {draft.canvas[key] = Number($('#canvas-'+key).value); changed();}});
+window.addEventListener('beforeunload', (event) => {if (dirty()) {event.preventDefault(); event.returnValue = '';}});
+buttons();
+run('Load profiles', async () => {
+  const [sources, templates] = await Promise.all([api('obs/source-catalog'), api('scene-profile-templates')]);
+  catalog = sources.sources;
+  catalog.forEach((c) => $('#source-type').add(new Option(c.label, c.type)));
+  templates.templates.forEach((t) => $('#template-list').add(new Option(t.name, t.id)));
+  await listProfiles();
+  await refreshInventory().catch((e) => {$('#inventory-status').textContent = e.message;});
+  activity('Profile manager loaded');
+});

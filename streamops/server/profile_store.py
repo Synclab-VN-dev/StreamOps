@@ -9,7 +9,7 @@ import threading
 from typing import Any
 
 from .errors import SceneProfileNotFoundError, SceneProfileStorageError, SceneProfileValidationError
-from .scene_profiles import duplicate_profile, new_profile, normalize_profile
+from .scene_profiles import duplicate_profile, new_profile, normalize_profile, _require_uuid
 
 
 class SceneProfileStore:
@@ -20,18 +20,24 @@ class SceneProfileStore:
 
     def list(self) -> dict[str, Any]:
         with self._lock:
-            self.root.mkdir(parents=True, exist_ok=True)
+            self._ensure_root()
             profiles, errors = [], []
             for path in sorted(self.root.glob("*.json")):
                 if path.name == "index.json" or ".tmp-" in path.name:
                     continue
                 try:
                     profile = self._read(path)
+                    if path.stem != profile['id']:
+                        raise SceneProfileValidationError('Profile filename does not match its ID.')
                     profiles.append(_summary(profile))
                 except (SceneProfileValidationError, SceneProfileStorageError) as exc:
                     errors.append({"file": path.name, "error": str(exc)})
             profiles.sort(key=lambda item: (item["name"].casefold(), item["id"]))
-            self._write_index(profiles)
+            # The index is a rebuildable cache, never the authoritative commit.
+            try:
+                self._write_index(profiles)
+            except SceneProfileStorageError as exc:
+                errors.append({'file': 'index.json', 'error': str(exc)})
             return {"profiles": profiles, "errors": errors}
 
     def get(self, profile_id: str) -> dict[str, Any]:
@@ -107,7 +113,9 @@ class SceneProfileStore:
         return profile
 
     def _path(self, profile_id: str) -> Path:
-        if Path(profile_id).name != profile_id or not profile_id:
+        try:
+            _require_uuid(profile_id, 'profile id')
+        except (SceneProfileValidationError, ValueError, TypeError, AttributeError):
             raise SceneProfileNotFoundError(f"Scene profile not found: {profile_id}")
         return self.root / f"{profile_id}.json"
 
@@ -116,11 +124,24 @@ class SceneProfileStore:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise SceneProfileStorageError(f"Could not read {path.name}: {exc}") from exc
+        if not isinstance(raw, dict) or any(key not in raw for key in ('id', 'name', 'schema_version', 'sources', 'canvas')):
+            raise SceneProfileValidationError(f'{path.name} is not a complete persisted profile.')
+        _require_uuid(raw['id'], 'profile id')
+        for source in raw['sources'] if isinstance(raw['sources'], list) else []:
+            if not isinstance(source, dict):
+                raise SceneProfileValidationError('Stored source must be an object.')
+            _require_uuid(source.get('id'), 'source id')
         return normalize_profile(raw, existing=raw, preserve_updated_at=True)
 
     def _write_profile(self, profile: dict[str, Any]) -> None:
-        self.root.mkdir(parents=True, exist_ok=True)
+        self._ensure_root()
         self._atomic_write(self._path(profile["id"]), profile)
+
+    def _ensure_root(self) -> None:
+        try:
+            self.root.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise SceneProfileStorageError(f'Could not create profile storage: {exc}') from exc
 
     def _write_index(self, summaries: list[dict[str, Any]]) -> None:
         self._atomic_write(self.root / "index.json", {"schema_version": 1, "profiles": summaries})
@@ -130,7 +151,7 @@ class SceneProfileStore:
         temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}-{threading.get_ident()}")
         try:
             with temporary.open("w", encoding="utf-8", newline="\n") as handle:
-                json.dump(payload, handle, indent=2, ensure_ascii=False)
+                json.dump(payload, handle, indent=2, ensure_ascii=False, allow_nan=False)
                 handle.write("\n")
                 handle.flush()
                 os.fsync(handle.fileno())
