@@ -46,6 +46,33 @@ def idle(client):
     assert not client.get_record_status()['outputActive'], 'Refusing active recording'
 
 
+def make_obs_ready():
+    status = api('obs/process/status')
+    if status['state'] == 'READY':
+        return status
+    if status['state'] in ('STOPPED', 'RUNNING_NO_WEBSOCKET'):
+        status = api('obs/process/start', 'POST')
+    if status['state'] != 'READY':
+        raise RuntimeError(f"OBS runtime must be READY for acceptance, got {status['state']}.")
+    return status
+
+
+def restore_obs_runtime(state):
+    initial = state['initial_obs_runtime_state']
+    current = api('obs/process/status')
+    if initial == 'STOPPED':
+        if current['state'] == 'READY':
+            current = api('obs/process/stop', 'POST')
+        if current['state'] != 'STOPPED':
+            raise RuntimeError(f"Could not restore OBS runtime to STOPPED; got {current['state']}.")
+    elif initial == 'READY':
+        if current['state'] != 'READY':
+            current = make_obs_ready()
+    else:
+        raise RuntimeError(f"Unsupported original OBS runtime state: {initial}.")
+    return current
+
+
 def select(client, state, test=True):
     idle(client)
     collection = state['test_collection'] if test else state['collection']
@@ -67,7 +94,7 @@ def _read_baseline():
         state = json.loads(BASELINE.read_text(encoding='utf-8'))
     except (OSError, json.JSONDecodeError) as exc:
         raise RuntimeError('Acceptance baseline is unreadable; do not mutate OBS until it is inspected.') from exc
-    required = {'session_id','active','collection','profile','scene','test_collection','test_profile'}
+    required = {'session_id','active','collection','profile','scene','test_collection','test_profile','initial_obs_runtime_state'}
     if not isinstance(state, dict) or not required.issubset(state):
         raise RuntimeError('Acceptance baseline is incomplete; do not mutate OBS until it is inspected.')
     return state
@@ -85,6 +112,8 @@ def _restore(client, state):
     actual = {key: restored[key] for key in expected}
     if actual != expected:
         raise RuntimeError(f'OBS restore did not converge: expected {expected}, got {actual}')
+    restored_runtime = restore_obs_runtime(state)
+    restored['obs_runtime'] = restored_runtime
     completed = deepcopy(state)
     completed['active'] = False
     completed['restored_at'] = datetime.now(UTC).isoformat().replace('+00:00','Z')
@@ -94,8 +123,12 @@ def _restore(client, state):
     print('Original OBS collection/profile/scene restored. Test resources retained.', flush=True)
 
 
-def setup(client):
+def setup(client, initial_obs_runtime_state):
     idle(client)
+    if initial_obs_runtime_state not in ('READY', 'STOPPED'):
+        raise RuntimeError(
+            f"Acceptance can only preserve an initial READY or STOPPED OBS runtime; got {initial_obs_runtime_state}."
+        )
     if BASELINE.exists():
         previous = _read_baseline()
         if previous['active']:
@@ -115,6 +148,7 @@ def setup(client):
         'video': client.get_video_settings(),
         'test_collection': name,
         'test_profile': name,
+        'initial_obs_runtime_state': initial_obs_runtime_state,
     }
     # Capture the current operator context for every new session before switching OBS.
     write('baseline.json', state)
@@ -269,16 +303,26 @@ def run(client):
 if __name__=='__main__':
     parser=argparse.ArgumentParser(); parser.add_argument('action',choices=['setup','run','restore'])
     action=parser.parse_args().action
+    if action == 'setup':
+        initial_runtime = api('obs/process/status')
+        if initial_runtime['state'] not in ('READY', 'STOPPED'):
+            raise RuntimeError(
+                f"Acceptance setup requires OBS READY or STOPPED, got {initial_runtime['state']}."
+            )
+        make_obs_ready()
+    else:
+        state = _read_baseline()
+        if not state['active']:
+            raise RuntimeError('No active acceptance session. Run setup first.')
+        make_obs_ready()
+
     client=ObsClient.from_env()
     try:
         if action=='setup':
-            setup(client)
+            setup(client, initial_runtime['state'])
         elif action=='run':
             run(client)
         else:
-            state = _read_baseline()
-            if not state['active']:
-                raise RuntimeError('No active acceptance session to restore.')
             _restore(client, state)
     finally:
         client.close()
