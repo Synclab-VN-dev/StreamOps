@@ -234,20 +234,21 @@ class ObsManager:
         ]
         disallowed = [process for process in processes if process not in allowed]
 
+        if disallowed:
+            return self._build_status(
+                state="ERROR",
+                process=disallowed[0],
+                session=session,
+                websocket=self._disconnected_websocket(),
+                output={"streaming": None, "recording": None},
+                error=(
+                    "OBS process was found outside the server-side allowed executable path "
+                    f"{self.expected_executable}."
+                ),
+                include_operation=include_operation,
+            )
+
         if not allowed:
-            if disallowed:
-                return self._build_status(
-                    state="ERROR",
-                    process=disallowed[0],
-                    session=session,
-                    websocket=self._disconnected_websocket(),
-                    output={"streaming": None, "recording": None},
-                    error=(
-                        "OBS process was found outside the server-side allowed executable path "
-                        f"{self.expected_executable}."
-                    ),
-                    include_operation=include_operation,
-                )
             return self._build_status(
                 state="STOPPED",
                 process=None,
@@ -331,7 +332,11 @@ class ObsManager:
             last = asdict(self._last_operation) if self._last_operation else None
             active = self._active_operation
 
-        if include_operation and active in {"start", "restart"} and state == "RUNNING_NO_WEBSOCKET":
+        if (
+            include_operation
+            and active in {"start", "restart"}
+            and state in {"STOPPED", "RUNNING_NO_WEBSOCKET"}
+        ):
             state = "STARTING"
 
         return ObsRuntimeStatus(
