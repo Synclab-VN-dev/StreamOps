@@ -5,8 +5,8 @@ so server-owned OBS code can be called without translating every failure.
 """
 
 from .server.errors import (
-    ObsConnectionError,
-    ObsRequestError,
+    ObsWebSocketConnectionError,
+    ObsWebSocketRequestError,
     SceneOperationError,
     ServerError,
 )
@@ -15,6 +15,8 @@ from .server.scene_config import SceneConfigError
 
 StreamOpsError = ServerError
 ConfigError = SceneConfigError
+ObsConnectionError = ObsWebSocketConnectionError
+ObsRequestError = ObsWebSocketRequestError
 VerificationError = SceneOperationError
 
 __all__ = [
