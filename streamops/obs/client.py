@@ -8,6 +8,13 @@ from streamops.server.obs.client import ObsClient as _ServerObsClient
 class ObsClient(_ServerObsClient):
     """Legacy facade preserving the historical StreamOps exception contract."""
 
+    @classmethod
+    def from_env(cls) -> "ObsClient":
+        try:
+            return super().from_env()
+        except ObsWebSocketConnectionError as exc:
+            raise ObsConnectionError(str(exc)) from exc
+
     def connect(self) -> None:
         try:
             super().connect()
