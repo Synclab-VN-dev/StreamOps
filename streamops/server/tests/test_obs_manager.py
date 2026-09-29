@@ -326,3 +326,23 @@ def test_restart_is_blocked_for_any_active_output(tmp_path: Path, client: FakeOb
     with pytest.raises(ObsUnsafeOperationError):
         manager.restart()
 
+def test_restart_fails_if_websocket_does_not_return_before_timeout(tmp_path: Path) -> None:
+    manager, executable = _manager(tmp_path, lambda: FakeObsClient(connected=False))
+    processes = [_process(executable, pid=100)]
+    manager._obs_processes = lambda: list(processes)  # type: ignore[method-assign]
+
+    def close(_pid: int) -> None:
+        processes.clear()
+
+    def launch(_executable: Path):
+        processes.append(_process(executable, pid=200))
+        return SimpleNamespace(pid=200)
+
+    manager._request_graceful_close = close  # type: ignore[method-assign]
+    manager._launch = launch  # type: ignore[method-assign]
+
+    with pytest.raises(ObsReadinessTimeoutError, match="did not become ready"):
+        manager.restart()
+
+    assert [process.pid for process in processes] == [200]
+
