@@ -327,8 +327,14 @@ def test_restart_is_blocked_for_any_active_output(tmp_path: Path, client: FakeOb
         manager.restart()
 
 def test_restart_fails_if_websocket_does_not_return_before_timeout(tmp_path: Path) -> None:
-    manager, executable = _manager(tmp_path, lambda: FakeObsClient(connected=False))
-    processes = [_process(executable, pid=100)]
+    processes: list[ObsProcess] = []
+    manager, executable = _manager(
+        tmp_path,
+        lambda: FakeObsClient(
+            connected=not processes or processes[0].pid == 100,
+        ),
+    )
+    processes.append(_process(executable, pid=100))
     manager._obs_processes = lambda: list(processes)  # type: ignore[method-assign]
 
     def close(_pid: int) -> None:
