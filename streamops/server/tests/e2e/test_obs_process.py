@@ -23,7 +23,7 @@ def test_obs_runtime_status_and_output_guards(page: Page, live_server: BrowserTe
     expect(page.locator("#obs-websocket-version")).to_have_text("5.6.0-test")
     expect(page.locator("#obs-streaming")).to_have_text("No")
     expect(page.locator("#obs-recording")).to_have_text("No")
-    expect(page.get_by_role("button", name="Start OBS")).to_be_disabled()
+    expect(page.get_by_role("button", name="Start OBS", exact=True)).to_be_disabled()
     expect(page.get_by_role("button", name="Stop OBS")).to_be_enabled()
     expect(page.get_by_role("button", name="Restart OBS")).to_be_enabled()
 
@@ -41,13 +41,13 @@ def test_start_pending_success_and_no_double_trigger(page: Page, live_server: Br
     page.goto(f"{live_server.base_url}/obs")
 
     expect(page.locator("#obs-state")).to_have_text("STOPPED")
-    button = page.get_by_role("button", name="Start OBS")
+    button = page.get_by_role("button", name="Start OBS", exact=True)
     expect(button).to_be_enabled()
 
     button.click()
     wait_until(live_server.obs.launch_started.is_set)
     expect(page.locator("#obs-state")).to_have_text("STARTING")
-    expect(page.get_by_role("button", name="Start OBS")).to_be_disabled()
+    expect(page.get_by_role("button", name="Start OBS", exact=True)).to_be_disabled()
     expect(page.get_by_role("button", name="Stop OBS")).to_be_disabled()
     expect(page.get_by_role("button", name="Restart OBS")).to_be_disabled()
 
@@ -72,7 +72,7 @@ def test_running_without_websocket_is_not_presented_as_ready(
     expect(page.locator("#obs-state")).to_have_text("RUNNING_NO_WEBSOCKET")
     expect(page.locator("#obs-websocket")).to_have_text("Unavailable")
     expect(page.locator("#obs-streaming")).to_have_text("Unknown")
-    expect(page.get_by_role("button", name="Start OBS")).to_be_enabled()
+    expect(page.get_by_role("button", name="Start OBS", exact=True)).to_be_enabled()
     expect(page.get_by_role("button", name="Stop OBS")).to_be_disabled()
     expect(page.get_by_role("button", name="Restart OBS")).to_be_disabled()
 
