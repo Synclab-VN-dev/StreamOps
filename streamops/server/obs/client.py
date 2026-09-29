@@ -12,7 +12,10 @@ import time
 import uuid
 from typing import Any, Iterable
 
-from ..errors import ObsConnectionError, ObsRequestError
+from ..errors import (
+    ObsWebSocketConnectionError as ObsConnectionError,
+    ObsWebSocketRequestError as ObsRequestError,
+)
 
 
 INPUT_VOLUME_METERS_SUBSCRIPTION = 1 << 16

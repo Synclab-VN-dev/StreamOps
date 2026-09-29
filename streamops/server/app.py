@@ -12,13 +12,32 @@ from fastapi.staticfiles import StaticFiles
 
 from .api.health import router as health_router
 from .api.obs import router as obs_router
+from .api.obs_process import router as obs_process_router
 from .api.screen import router as screen_router
 from .api.steam import router as steam_router
 from .config import ServerConfig
 from .errors import (
     CaptureStorageError,
+    InvalidObsProcessRequestError,
     InvalidSteamRestartRequestError,
     NoCaptureError,
+    ObsExecutableNotAllowedError,
+    ObsOperationInProgressError,
+    ObsReadinessTimeoutError,
+    ObsShutdownError,
+    ObsShutdownTimeoutError,
+    ObsStartError,
+    ObsStartTimeoutError,
+    ObsStatusError,
+    ObsUnsafeOperationError,
+    ObsWebSocketConnectionError,
+    ObsWebSocketRequestError,
+    SceneOperationError,
+    SceneProfileConflictError,
+    SceneProfileNotFoundError,
+    SceneProfileStorageError,
+    SceneProfileValidationError,
+    SceneReviewNotFoundError,
     ScreenCaptureError,
     SteamLaunchError,
     SteamNotFoundError,
@@ -27,16 +46,9 @@ from .errors import (
     SteamShutdownTimeoutError,
     SteamStatusError,
     WrongDesktopSessionError,
-    ObsConnectionError,
-    ObsRequestError,
-    SceneOperationError,
-    SceneReviewNotFoundError,
-    SceneProfileConflictError,
-    SceneProfileNotFoundError,
-    SceneProfileStorageError,
-    SceneProfileValidationError,
 )
 from .scene_config import SceneConfigError
+from .obs import ObsManager
 from .platform.windows import WindowsScreenCaptureBackend, WindowsSteamBackend
 from .services import ObsSceneService, ScreenCaptureService, SteamService
 from .services.runtime import RuntimeLease
@@ -50,6 +62,7 @@ def create_app(
     *,
     capture_service: ScreenCaptureService | None = None,
     steam_service: SteamService | None = None,
+    obs_manager: ObsManager | None = None,
     obs_scene_service: ObsSceneService | None = None,
     manage_runtime: bool = True,
 ) -> FastAPI:
@@ -59,6 +72,7 @@ def create_app(
         config.capture_timeout,
     )
     steam = steam_service or SteamService(WindowsSteamBackend())
+    obs = obs_manager or ObsManager()
     obs_scenes = obs_scene_service or ObsSceneService(data_dir=config.data_dir / "scene-profiles")
 
     @asynccontextmanager
@@ -77,11 +91,53 @@ def create_app(
     app.state.config = config
     app.state.capture_service = service
     app.state.steam_service = steam
+    app.state.obs_manager = obs
     app.state.obs_scene_service = obs_scenes
     app.include_router(health_router)
     app.include_router(obs_router)
+    app.include_router(obs_process_router)
     app.include_router(screen_router)
     app.include_router(steam_router)
+
+    @app.exception_handler(InvalidObsProcessRequestError)
+    async def invalid_obs_request_handler(_request, exc: InvalidObsProcessRequestError) -> JSONResponse:
+        return _error_response(400, "invalid_obs_process_request", str(exc))
+
+    @app.exception_handler(ObsOperationInProgressError)
+    async def obs_operation_in_progress_handler(_request, exc: ObsOperationInProgressError) -> JSONResponse:
+        return _error_response(409, "obs_operation_in_progress", str(exc))
+
+    @app.exception_handler(ObsUnsafeOperationError)
+    async def obs_unsafe_operation_handler(_request, exc: ObsUnsafeOperationError) -> JSONResponse:
+        return _error_response(409, "obs_unsafe_operation", str(exc))
+
+    @app.exception_handler(ObsExecutableNotAllowedError)
+    async def obs_executable_handler(_request, exc: ObsExecutableNotAllowedError) -> JSONResponse:
+        return _error_response(503, "obs_executable_unavailable", str(exc))
+
+    @app.exception_handler(ObsStartTimeoutError)
+    async def obs_start_timeout_handler(_request, exc: ObsStartTimeoutError) -> JSONResponse:
+        return _error_response(504, "obs_start_timeout", str(exc))
+
+    @app.exception_handler(ObsReadinessTimeoutError)
+    async def obs_readiness_timeout_handler(_request, exc: ObsReadinessTimeoutError) -> JSONResponse:
+        return _error_response(504, "obs_readiness_timeout", str(exc))
+
+    @app.exception_handler(ObsShutdownTimeoutError)
+    async def obs_shutdown_timeout_handler(_request, exc: ObsShutdownTimeoutError) -> JSONResponse:
+        return _error_response(504, "obs_shutdown_timeout", str(exc))
+
+    @app.exception_handler(ObsShutdownError)
+    async def obs_shutdown_handler(_request, exc: ObsShutdownError) -> JSONResponse:
+        return _error_response(503, "obs_shutdown_failed", str(exc))
+
+    @app.exception_handler(ObsStartError)
+    async def obs_start_handler(_request, exc: ObsStartError) -> JSONResponse:
+        return _error_response(503, "obs_start_failed", str(exc))
+
+    @app.exception_handler(ObsStatusError)
+    async def obs_status_handler(_request, exc: ObsStatusError) -> JSONResponse:
+        return _error_response(503, "obs_status_failed", str(exc))
 
     @app.exception_handler(SceneConfigError)
     async def scene_config_handler(_request, exc: SceneConfigError) -> JSONResponse:
@@ -107,12 +163,12 @@ def create_app(
     async def scene_profile_storage_handler(_request, exc: SceneProfileStorageError) -> JSONResponse:
         return _error_response(500, "scene_profile_storage_failed", str(exc))
 
-    @app.exception_handler(ObsConnectionError)
-    async def obs_connection_handler(_request, exc: ObsConnectionError) -> JSONResponse:
+    @app.exception_handler(ObsWebSocketConnectionError)
+    async def obs_connection_handler(_request, exc: ObsWebSocketConnectionError) -> JSONResponse:
         return _error_response(503, "obs_unavailable", str(exc))
 
-    @app.exception_handler(ObsRequestError)
-    async def obs_request_handler(_request, exc: ObsRequestError) -> JSONResponse:
+    @app.exception_handler(ObsWebSocketRequestError)
+    async def obs_request_handler(_request, exc: ObsWebSocketRequestError) -> JSONResponse:
         return _error_response(503, "obs_request_failed", str(exc))
 
     @app.exception_handler(SceneOperationError)

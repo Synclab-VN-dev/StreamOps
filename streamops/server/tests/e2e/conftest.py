@@ -21,6 +21,7 @@ from streamops.server.services import ScreenCaptureService, SteamService
 from streamops.server.services.steam import SteamStatus
 from streamops.server.services.obs_scene import ObsSceneService
 from streamops.server.tests.browser_obs import BrowserObs
+from streamops.server.tests.browser_obs_process import ControllableObsManager
 
 
 INTERNAL_LOG_SENTINEL = r"C:\internal\streamops\steam-test.log test-secret"
@@ -140,11 +141,16 @@ class BrowserTestServer:
     capture: ControllableCaptureBackend
     obs: ObsSceneService
     transport: BrowserObs
+    obs_process: ControllableObsManager
 
 
 @pytest.fixture
 def live_server(tmp_path: Path) -> BrowserTestServer:
     steam_backend = ControllableSteamBackend()
+    obs_executable = tmp_path / "obs-studio" / "bin" / "64bit" / "obs64.exe"
+    obs_executable.parent.mkdir(parents=True)
+    obs_executable.write_bytes(b"test")
+    obs_manager = ControllableObsManager(obs_executable)
     capture_backend = ControllableCaptureBackend()
     transport = BrowserObs(tmp_path)
     obs_service = ObsSceneService(data_dir=tmp_path / "profiles", artifact_root=tmp_path / "artifacts", client_factory=lambda: transport, inventory_provider=lambda: {"windows": [], "capture": [], "render": [], "cameras": [], "errors": []})
@@ -160,6 +166,7 @@ def live_server(tmp_path: Path) -> BrowserTestServer:
         config,
         capture_service=ScreenCaptureService(capture_backend, tmp_path, config.capture_timeout),
         steam_service=SteamService(steam_backend),
+        obs_manager=obs_manager,
         obs_scene_service=obs_service,
         manage_runtime=False,
     )
@@ -180,7 +187,14 @@ def live_server(tmp_path: Path) -> BrowserTestServer:
     wait_until(lambda: server.started, message="The browser test server did not start.")
 
     try:
-        yield BrowserTestServer(f"http://127.0.0.1:{port}", steam_backend, capture_backend, obs_service, transport)
+        yield BrowserTestServer(
+            base_url=f"http://127.0.0.1:{port}",
+            steam=steam_backend,
+            capture=capture_backend,
+            obs=obs_service,
+            transport=transport,
+            obs_process=obs_manager,
+        )
     finally:
         obs_service.close()
         steam_backend.release_restart()
