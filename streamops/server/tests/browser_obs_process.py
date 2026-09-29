@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import threading
 import time
 
-from streamops.errors import ObsConnectionError
+from streamops.server.errors import ObsWebSocketConnectionError
 from streamops.server.obs import ObsManager, ObsProcess
 from streamops.server.platform.windows.session import DesktopSessionInfo
 
@@ -21,7 +21,7 @@ class FakeObsClient:
 
     def connect(self) -> None:
         if not self.manager.ws_ready:
-            raise ObsConnectionError("Test OBS WebSocket unavailable.")
+            raise ObsWebSocketConnectionError("Test OBS WebSocket unavailable.")
 
     def close(self) -> None:
         pass
