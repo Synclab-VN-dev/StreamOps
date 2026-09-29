@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing import Any
 
 from ..auth import require_access
+from ..errors import SceneOperationError
 from ..services.obs_scene import ObsSceneService
 
 
@@ -34,8 +35,17 @@ def _service(request: Request) -> ObsSceneService:
     return request.app.state.obs_scene_service
 
 
+def _require_obs_ready(request: Request) -> None:
+    status = request.app.state.obs_manager.status()
+    if status.state != "READY":
+        raise SceneOperationError(
+            f"OBS runtime is {status.state}; Start OBS and wait for READY before using runtime scene operations."
+        )
+
+
 @router.get("/obs/status")
 def obs_status(request: Request) -> dict[str, object]:
+    _require_obs_ready(request)
     return _service(request).status()
 
 
@@ -82,26 +92,31 @@ def duplicate_scene_profile(profile_id: str, request: Request, payload: Duplicat
 
 @router.post("/scene-profiles/{profile_id}/apply")
 def apply_scene_profile(profile_id: str, request: Request) -> dict[str, object]:
+    _require_obs_ready(request)
     return _service(request).apply_profile(profile_id).to_dict()
 
 
 @router.post("/scene-profiles/{profile_id}/verify")
 def verify_scene_profile(profile_id: str, request: Request) -> dict[str, object]:
+    _require_obs_ready(request)
     return _service(request).verify_profile(profile_id, runtime=True).to_dict()
 
 
 @router.post("/scene-profiles/{profile_id}/activate")
 def activate_scene_profile(profile_id: str, request: Request) -> dict[str, object]:
+    _require_obs_ready(request)
     return _service(request).activate_profile(profile_id)
 
 
 @router.get("/scene-profiles/{profile_id}/preview")
 def scene_profile_preview(profile_id: str, request: Request) -> Response:
+    _require_obs_ready(request)
     return Response(content=_service(request).preview_profile(profile_id), media_type="image/png", headers={"Cache-Control": "no-store"})
 
 
 @router.post("/scene-profiles/{profile_id}/review")
 def review_scene_profile(profile_id: str, request: Request, payload: ReviewRequest | None = None) -> JSONResponse:
+    _require_obs_ready(request)
     job = _service(request).start_profile_review(profile_id, seconds=payload.seconds if payload else 30)
     return JSONResponse(status_code=202, content=job.to_dict())
 
@@ -123,26 +138,31 @@ def list_scenes(request: Request) -> dict[str, object]:
 
 @router.get("/scenes/{scene_name}")
 def scene_status(scene_name: str, request: Request) -> dict[str, object]:
+    _require_obs_ready(request)
     return _service(request).scene(scene_name)
 
 
 @router.post("/scenes/{scene_name}/apply")
 def apply_scene(scene_name: str, request: Request) -> dict[str, object]:
+    _require_obs_ready(request)
     return _service(request).apply(scene_name).to_dict()
 
 
 @router.post("/scenes/{scene_name}/verify")
 def verify_scene(scene_name: str, request: Request) -> dict[str, object]:
+    _require_obs_ready(request)
     return _service(request).verify(scene_name, runtime_audio=True).to_dict()
 
 
 @router.post("/scenes/{scene_name}/activate")
 def activate_scene(scene_name: str, request: Request) -> dict[str, object]:
+    _require_obs_ready(request)
     return _service(request).activate(scene_name)
 
 
 @router.get("/scenes/{scene_name}/preview")
 def scene_preview(scene_name: str, request: Request) -> Response:
+    _require_obs_ready(request)
     return Response(
         content=_service(request).preview(scene_name),
         media_type="image/png",
@@ -156,6 +176,7 @@ def start_scene_review(
     request: Request,
     payload: ReviewRequest | None = None,
 ) -> JSONResponse:
+    _require_obs_ready(request)
     job = _service(request).start_review(scene_name, seconds=(payload.seconds if payload else 30))
     return JSONResponse(status_code=202, content=job.to_dict())
 
