@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from streamops.errors import ObsConnectionError
 from streamops.obs.client import ObsClient
 
 
@@ -71,3 +72,14 @@ def test_from_env_ignores_local_password_when_auth_is_disabled(monkeypatch, tmp_
     client = ObsClient.from_env()
 
     assert client.password is None
+
+def test_legacy_from_env_preserves_obs_connection_error(monkeypatch) -> None:
+    monkeypatch.setenv("OBS_WEBSOCKET_PORT", "not-a-port")
+
+    try:
+        ObsClient.from_env()
+    except Exception as exc:
+        assert isinstance(exc, ObsConnectionError)
+    else:
+        raise AssertionError("Expected invalid OBS_WEBSOCKET_PORT to fail.")
+
