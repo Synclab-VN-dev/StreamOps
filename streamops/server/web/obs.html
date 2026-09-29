@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OBS Management · StreamOps</title>
+    <link rel="stylesheet" href="/assets/app.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/">StreamOps Node</a>
+      <nav><a href="/">Dashboard</a></nav>
+      <div class="node-status" aria-live="polite">
+        <span id="status-dot" class="status-dot"></span>
+        <span id="status-text">Connecting</span>
+      </div>
+    </header>
+    <main class="page-shell narrow-shell">
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">Application</p>
+          <h1>OBS</h1>
+          <p>Manage the OBS process and local WebSocket readiness on this node.</p>
+        </div>
+      </div>
+      <section id="obs-status-panel" class="panel" aria-labelledby="obs-runtime-title">
+        <div class="panel-heading">
+          <h2 id="obs-runtime-title">OBS Runtime</h2>
+          <div class="card-status" aria-live="polite">
+            <span id="obs-status-dot" class="status-dot"></span>
+            <span id="obs-state">Checking</span>
+          </div>
+        </div>
+        <dl class="status-list">
+          <div><dt>PID</dt><dd id="obs-pid">--</dd></div>
+          <div><dt>Started</dt><dd id="obs-started">--</dd></div>
+          <div><dt>Uptime</dt><dd id="obs-uptime">--</dd></div>
+          <div><dt>Windows Session</dt><dd id="obs-session">--</dd></div>
+          <div><dt>Active Console Session</dt><dd id="obs-active-session">--</dd></div>
+          <div><dt>Interactive</dt><dd id="obs-interactive">--</dd></div>
+          <div><dt>Executable</dt><dd id="obs-executable">--</dd></div>
+          <div><dt>WebSocket</dt><dd id="obs-websocket">--</dd></div>
+          <div><dt>WebSocket Endpoint</dt><dd id="obs-websocket-endpoint">--</dd></div>
+          <div><dt>OBS Version</dt><dd id="obs-version">--</dd></div>
+          <div><dt>obs-websocket Version</dt><dd id="obs-websocket-version">--</dd></div>
+          <div><dt>Streaming</dt><dd id="obs-streaming">--</dd></div>
+          <div><dt>Recording</dt><dd id="obs-recording">--</dd></div>
+          <div><dt>Last Operation</dt><dd id="obs-last-operation">--</dd></div>
+        </dl>
+        <div class="action-row multi-action">
+          <button id="start-button" type="button" disabled>Start OBS</button>
+          <button id="stop-button" type="button" disabled>Stop OBS</button>
+          <button id="restart-button" type="button" disabled>Restart OBS</button>
+        </div>
+        <p id="error-message" class="error-message" role="alert" hidden></p>
+      </section>
+      <section class="panel activity-panel" aria-labelledby="activity-title">
+        <div class="panel-heading"><h2 id="activity-title">Activity Log</h2><span>Browser session only</span></div>
+        <ol id="activity-log" class="activity-log" aria-live="polite"></ol>
+      </section>
+    </main>
+    <script src="/assets/common.js" defer></script>
+    <script src="/assets/obs-process.js" defer></script>
+  </body>
+</html>

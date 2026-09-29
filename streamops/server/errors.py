@@ -73,3 +73,56 @@ class SteamRestartInProgressError(SteamError):
 
 class InvalidSteamRestartRequestError(SteamError):
     """Raised when a restart request attempts to provide input."""
+
+
+class ObsWebSocketConnectionError(ServerError):
+    """Raised when streamops-node cannot connect or authenticate with OBS WebSocket."""
+
+
+class ObsWebSocketRequestError(ServerError):
+    """Raised when OBS rejects a WebSocket request from streamops-node."""
+
+
+class ObsProcessError(ServerError):
+    """Base class for user-facing OBS lifecycle failures."""
+
+
+class ObsStatusError(ObsProcessError):
+    """Raised when OBS process/session state cannot be inspected safely."""
+
+
+class ObsExecutableNotAllowedError(ObsProcessError):
+    """Raised when the configured OBS executable is unavailable or not allowed."""
+
+
+class ObsStartError(ObsProcessError):
+    """Raised when OBS cannot be launched or verified."""
+
+
+class ObsStartTimeoutError(ObsStartError):
+    """Raised when OBS process launch does not complete before timeout."""
+
+
+class ObsReadinessTimeoutError(ObsStartError):
+    """Raised when OBS WebSocket readiness does not complete before timeout."""
+
+
+class ObsShutdownError(ObsProcessError):
+    """Raised when graceful OBS shutdown cannot be requested."""
+
+
+class ObsShutdownTimeoutError(ObsShutdownError):
+    """Raised when OBS does not exit before the graceful timeout."""
+
+
+class ObsOperationInProgressError(ObsProcessError):
+    """Raised when another OBS lifecycle operation is already running."""
+
+
+class ObsUnsafeOperationError(ObsProcessError):
+    """Raised when an OBS lifecycle action is unsafe in the current output state."""
+
+
+class InvalidObsProcessRequestError(ObsProcessError):
+    """Raised when OBS lifecycle API receives client-controlled execution input."""
+

@@ -18,6 +18,7 @@ from streamops.server.config import ServerConfig
 from streamops.server.errors import ScreenCaptureError, SteamLaunchError
 from streamops.server.services import ScreenCaptureService, SteamService
 from streamops.server.services.steam import SteamStatus
+from streamops.server.tests.browser_obs_process import ControllableObsManager
 
 
 INTERNAL_LOG_SENTINEL = r"C:\internal\streamops\steam-test.log test-secret"
@@ -134,12 +135,17 @@ class ControllableCaptureBackend:
 class BrowserTestServer:
     base_url: str
     steam: ControllableSteamBackend
+    obs: ControllableObsManager
     capture: ControllableCaptureBackend
 
 
 @pytest.fixture
 def live_server(tmp_path: Path) -> BrowserTestServer:
     steam_backend = ControllableSteamBackend()
+    obs_executable = tmp_path / "obs-studio" / "bin" / "64bit" / "obs64.exe"
+    obs_executable.parent.mkdir(parents=True)
+    obs_executable.write_bytes(b"test")
+    obs_manager = ControllableObsManager(obs_executable)
     capture_backend = ControllableCaptureBackend()
     config = ServerConfig(
         host="127.0.0.1",
@@ -153,6 +159,7 @@ def live_server(tmp_path: Path) -> BrowserTestServer:
         config,
         capture_service=ScreenCaptureService(capture_backend, tmp_path, config.capture_timeout),
         steam_service=SteamService(steam_backend),
+        obs_manager=obs_manager,
         manage_runtime=False,
     )
 
@@ -172,9 +179,10 @@ def live_server(tmp_path: Path) -> BrowserTestServer:
     wait_until(lambda: server.started, message="The browser test server did not start.")
 
     try:
-        yield BrowserTestServer(f"http://127.0.0.1:{port}", steam_backend, capture_backend)
+        yield BrowserTestServer(f"http://127.0.0.1:{port}", steam_backend, obs_manager, capture_backend)
     finally:
         steam_backend.release_restart()
+        obs_manager.release_launch()
         server.should_exit = True
         thread.join(timeout=10)
         if thread.is_alive():
