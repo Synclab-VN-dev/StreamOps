@@ -45,7 +45,7 @@ class ControllableObsManager(ObsManager):
             client_factory=lambda: FakeObsClient(self),
             start_timeout=2,
             shutdown_timeout=2,
-            readiness_timeout=2,
+            readiness_timeout=0.25,
             poll_interval=0.01,
         )
         self._process: ObsProcess | None = ObsProcess(5100, executable, time.time() - 120, 7)
