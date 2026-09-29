@@ -235,6 +235,11 @@ main {
   justify-content: flex-end;
 }
 
+.multi-action {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .activity-panel {
   min-height: 210px;
 }
@@ -398,6 +403,10 @@ button:disabled {
 
   .action-row button {
     width: 100%;
+  }
+
+  .multi-action {
+    flex-direction: column;
   }
 
   button {
