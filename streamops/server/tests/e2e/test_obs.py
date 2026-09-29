@@ -102,10 +102,34 @@ def test_apply_drift_warn_fail_offline_and_review(page, live_server):
     assert transport.current_scene == 'Scene'
     transport.offline = True
     page.locator('#verify-button').click()
-    expect(page.locator('#error-message')).to_contain_text('unavailable')
+    expect(page.locator('#scene-error-message')).to_contain_text('unavailable')
     expect(page.locator('#editor-state')).to_have_text('Failed')
     page.locator('#profile-name').fill('Saved offline')
     save(page)
+
+
+
+def test_scene_runtime_actions_follow_obs_readiness(page, live_server):
+    live_server.obs_process.set_stopped()
+    open_new(page, live_server)
+    add_browser(page)
+    save(page)
+    profile_id = page.locator('#profile-list').input_value()
+
+    expect(page.locator('#apply-button')).to_be_disabled(timeout=7000)
+    expect(page.locator('#verify-button')).to_be_disabled()
+    page.locator('#profile-name').fill('Saved while OBS stopped')
+    save(page)
+
+    blocked = page.request.post(live_server.base_url + f'/api/v1/scene-profiles/{profile_id}/apply')
+    assert blocked.status == 409
+    assert blocked.json()['error']['code'] == 'scene_operation_failed'
+    assert 'STOPPED' in blocked.json()['error']['message']
+
+    live_server.obs_process.set_ready(5300)
+    expect(page.locator('#apply-button')).to_be_enabled(timeout=7000)
+    page.locator('#apply-button').click()
+    expect(page.locator('#obs-result')).to_have_text('PASS')
 
 
 def test_invalid_required_settings_and_corrupt_file(page, live_server):
@@ -117,7 +141,7 @@ def test_invalid_required_settings_and_corrupt_file(page, live_server):
     page.locator('#source-type').select_option('display_capture')
     page.locator('#add-source-button').click()
     page.locator('#save-button').click()
-    expect(page.locator('#error-message')).to_contain_text('monitor_id')
+    expect(page.locator('#scene-error-message')).to_contain_text('monitor_id')
     page.get_by_label('Monitor id', exact=True).select_option(r'\\.\DISPLAY1')
     save(page)
     profile_id = page.locator('#profile-list').input_value()
