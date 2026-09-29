@@ -96,3 +96,27 @@ def test_restart_pending_returns_to_ready_with_new_pid(
     expect(page.locator("#obs-pid")).to_have_text("6400")
     expect(page.locator("#obs-last-operation")).to_contain_text("restart · success")
     expect(page.locator("#activity-log")).to_contain_text("Restart completed: READY")
+
+def test_readiness_timeout_is_visible_to_operator(page: Page, live_server: BrowserTestServer) -> None:
+    live_server.obs.set_stopped()
+    live_server.obs.set_websocket_unavailable()
+    page.goto(f"{live_server.base_url}/obs")
+
+    page.get_by_role("button", name="Start OBS", exact=True).click()
+
+    expect(page.locator("#error-message")).to_contain_text("did not become ready")
+    expect(page.locator("#activity-log")).to_contain_text("Start failed:")
+    expect(page.locator("#obs-state")).to_have_text("RUNNING_NO_WEBSOCKET")
+    expect(page.get_by_role("button", name="Start OBS", exact=True)).to_be_enabled()
+
+
+def test_obs_page_is_usable_on_mobile_viewport(page: Page, live_server: BrowserTestServer) -> None:
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(f"{live_server.base_url}/obs")
+
+    expect(page.get_by_role("heading", name="OBS", exact=True)).to_be_visible()
+    expect(page.get_by_role("heading", name="OBS Runtime")).to_be_visible()
+    expect(page.get_by_role("button", name="Stop OBS", exact=True)).to_be_visible()
+    expect(page.get_by_role("button", name="Restart OBS", exact=True)).to_be_visible()
+    expect(page.get_by_role("heading", name="Activity Log")).to_be_visible()
+
