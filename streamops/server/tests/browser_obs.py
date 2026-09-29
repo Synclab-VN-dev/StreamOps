@@ -3,7 +3,7 @@ from io import BytesIO
 import shutil
 import subprocess
 from PIL import Image
-from streamops.server.errors import ObsConnectionError
+from streamops.server.errors import ObsWebSocketConnectionError
 from streamops.server.tests.test_obs_scene import AudioFakeObsClient
 
 
@@ -16,7 +16,7 @@ class BrowserObs(AudioFakeObsClient):
 
     def get_version(self):
         if self.offline:
-            raise ObsConnectionError('Test OBS unavailable')
+            raise ObsWebSocketConnectionError('Test OBS unavailable')
         return super().get_version()
 
     def get_source_screenshot(self, *args, **kwargs):
