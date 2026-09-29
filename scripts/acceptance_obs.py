@@ -18,7 +18,6 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
 from streamops.server.obs.client import ObsClient
-from streamops.server.errors import ObsRequestError
 
 ROOT = Path(__file__).resolve().parents[1] / '.streamops' / 'pr19-acceptance'
 BASELINE = ROOT / 'baseline.json'
