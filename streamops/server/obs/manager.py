@@ -372,7 +372,21 @@ class ObsManager:
         )
 
     def _websocket_status(self) -> tuple[dict[str, Any], dict[str, Any], str | None]:
-        client = self.client_factory()
+        try:
+            client = self.client_factory()
+        except (ObsWebSocketConnectionError, ObsWebSocketRequestError) as exc:
+            return (
+                {
+                    "connected": False,
+                    "host": "127.0.0.1",
+                    "port": 4455,
+                    "obs_version": None,
+                    "obs_websocket_version": None,
+                },
+                {"streaming": None, "recording": None},
+                str(exc),
+            )
+
         host = getattr(client, "host", "127.0.0.1")
         port = getattr(client, "port", 4455)
         try:
