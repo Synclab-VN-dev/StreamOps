@@ -74,6 +74,14 @@ class SteamRestartInProgressError(SteamError):
 class InvalidSteamRestartRequestError(SteamError):
     """Raised when a restart request attempts to provide input."""
 
+class ObsWebSocketConnectionError(ServerError):
+    """Raised when streamops-node cannot connect or authenticate with OBS WebSocket."""
+
+
+class ObsWebSocketRequestError(ServerError):
+    """Raised when OBS rejects a WebSocket request from streamops-node."""
+
+
 class ObsProcessError(ServerError):
     """Base class for user-facing OBS lifecycle failures."""
 
