@@ -430,3 +430,20 @@ def test_graceful_close_targets_visible_unowned_obs_window(tmp_path: Path) -> No
     assert "visible=True" in target
     assert "unowned=True" in target
 
+def test_managed_launch_disables_obs_updater_popup(tmp_path: Path, monkeypatch) -> None:
+    manager, executable = _manager(tmp_path)
+    captured: dict[str, object] = {}
+
+    def fake_popen(args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(pid=321)
+
+    monkeypatch.setattr("streamops.server.obs.manager.subprocess.Popen", fake_popen)
+
+    process = manager._launch(executable)
+
+    assert process.pid == 321
+    assert captured["args"] == [str(executable), "--disable-updater"]
+    assert "--disable-shutdown-check" not in captured["args"]
+
