@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 from types import SimpleNamespace
 import threading
 import time
@@ -351,4 +352,81 @@ def test_restart_fails_if_websocket_does_not_return_before_timeout(tmp_path: Pat
         manager.restart()
 
     assert [process.pid for process in processes] == [200]
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows user32 behavior")
+def test_graceful_close_targets_visible_unowned_obs_window(tmp_path: Path) -> None:
+    manager, _ = _manager(tmp_path)
+
+    class FakeUser32:
+        def __init__(self) -> None:
+            self.sent_to: int | None = None
+            self.windows = {
+                101: {
+                    "pid": 100,
+                    "visible": False,
+                    "owner": 1,
+                    "title": "",
+                    "class_name": "Qt6QWindowIcon",
+                },
+                202: {
+                    "pid": 100,
+                    "visible": True,
+                    "owner": 0,
+                    "title": "OBS 32.2.1 - Profile: Test",
+                    "class_name": "Qt6QWindowIcon",
+                },
+            }
+
+        def EnumWindows(self, callback, _lparam):
+            for hwnd in self.windows:
+                callback(hwnd, 0)
+            return 1
+
+        def GetWindowThreadProcessId(self, hwnd, process_id):
+            process_id._obj.value = self.windows[int(hwnd)]["pid"]
+            return 1
+
+        def IsWindow(self, hwnd):
+            return int(hwnd) in self.windows
+
+        def IsWindowVisible(self, hwnd):
+            return self.windows[int(hwnd)]["visible"]
+
+        def GetWindowTextLengthW(self, hwnd):
+            return len(self.windows[int(hwnd)]["title"])
+
+        def GetWindowTextW(self, hwnd, buffer, _length):
+            buffer.value = self.windows[int(hwnd)]["title"]
+            return len(buffer.value)
+
+        def GetClassNameW(self, hwnd, buffer, _length):
+            buffer.value = self.windows[int(hwnd)]["class_name"]
+            return len(buffer.value)
+
+        def GetWindow(self, hwnd, _command):
+            return self.windows[int(hwnd)]["owner"]
+
+        def SendMessageTimeoutW(
+            self,
+            hwnd,
+            _message,
+            _wparam,
+            _lparam,
+            _flags,
+            _timeout,
+            result,
+        ):
+            self.sent_to = int(hwnd)
+            result._obj.value = 1
+            return 1
+
+    fake = FakeUser32()
+    manager._user32 = lambda: fake  # type: ignore[method-assign]
+
+    target = manager._request_graceful_close(100)
+
+    assert fake.sent_to == 202
+    assert "OBS 32.2.1" in target
+    assert "visible=True" in target
+    assert "unowned=True" in target
 
