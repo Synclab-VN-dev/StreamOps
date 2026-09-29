@@ -2,19 +2,20 @@
 const ui = window.StreamOpsUI;
 const $ = (selector) => document.querySelector(selector);
 const activity = ui.createActivityLog('#activity-log');
-let draft = null, saved = null, catalog = [], inventory = {options: {}}, busy = false;
+let draft = null, saved = null, catalog = [], inventory = {options: {}}, busy = false, obsReady = false;
 
 function dirty() { return draft && JSON.stringify(draft) !== JSON.stringify(saved); }
-function error(message = '') { $('#error-message').textContent = message; $('#error-message').hidden = !message; }
+function error(message = '') { $('#scene-error-message').textContent = message; $('#scene-error-message').hidden = !message; }
 function state(value) { $('#editor-state').textContent = value; }
 function changed() { state(dirty() ? 'Modified' : 'Saved'); renderCanvas(); }
 function buttons() {
-  document.querySelectorAll('button').forEach((button) => {
+  document.querySelectorAll('#scene-profile-manager button').forEach((button) => {
     const independent = ['new-button', 'template-button', 'refresh-inventory'].includes(button.id);
-    button.disabled = busy || (!draft && !independent);
+    const runtimeAction = ['apply-button', 'verify-button', 'activate-button', 'review-button'].includes(button.id);
+    button.disabled = busy || (!draft && !independent) || (runtimeAction && !obsReady);
   });
   $('#profile-list').disabled = busy;
-  document.querySelectorAll('.source-editor input, .source-editor select, #profile-name, [id^="canvas-"] input').forEach((input) => {input.disabled = busy;});
+  document.querySelectorAll('#scene-profile-manager .source-editor input, #scene-profile-manager .source-editor select, #profile-name, [id^="canvas-"] input').forEach((input) => {input.disabled = busy;});
 }
 async function run(label, fn) {
   if (busy) return;
@@ -216,6 +217,15 @@ $('#profile-list').addEventListener('change', () => run('Load', async () => {
 $('#profile-name').addEventListener('input', () => {if (draft) {draft.name = $('#profile-name').value; changed();}});
 for (const key of ['width','height','fps']) $('#canvas-'+key).addEventListener('input', () => {if (draft) {draft.canvas[key] = Number($('#canvas-'+key).value); changed();}});
 window.addEventListener('beforeunload', (event) => {if (dirty()) {event.preventDefault(); event.returnValue = '';}});
+window.addEventListener('streamops:obs-runtime-status', (event) => {
+  const previous = obsReady;
+  obsReady = event.detail?.state === 'READY';
+  if (previous !== obsReady) {
+    activity(obsReady ? 'OBS runtime READY · scene actions enabled' : 'OBS runtime not READY · scene actions disabled', obsReady ? 'success' : 'info');
+  }
+  buttons();
+});
+
 buttons();
 run('Load profiles', async () => {
   const [sources, templates] = await Promise.all([api('obs/source-catalog'), api('scene-profile-templates')]);
