@@ -2,7 +2,7 @@ name: Tests
 on:
   pull_request:
   push:
-    branches: [main, issue-18-obs-scene-management]
+    branches: [master]
 permissions:
   contents: read
 jobs:
