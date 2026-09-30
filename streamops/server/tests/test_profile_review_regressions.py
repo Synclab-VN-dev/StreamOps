@@ -2,6 +2,7 @@
 from copy import deepcopy
 
 import pytest
+from types import SimpleNamespace
 
 from streamops.server.errors import SceneProfileValidationError
 from streamops.server.scene_profiles import normalize_profile
@@ -105,3 +106,60 @@ def test_review_snapshot_is_captured_at_enqueue_and_failure_has_report(tmp_path)
     from pathlib import Path
     assert json.loads(Path(result.result['artifacts']['profile']).read_text(encoding='utf-8'))['name']=='Queued snapshot'
     assert Path(result.result['artifacts']['report']).exists()
+
+
+def test_probe_media_derives_missing_mkv_duration_from_video_packets(monkeypatch, tmp_path):
+    from streamops.server.services import obs_scene
+
+    media_path = tmp_path / 'sample.mkv'
+    media_path.write_bytes(b'not-empty')
+    monkeypatch.setattr(obs_scene.shutil, 'which', lambda name: 'ffprobe' if name == 'ffprobe' else None)
+
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        if '-show_packets' in args:
+            return SimpleNamespace(
+                returncode=0,
+                stdout='{"packets":[{"pts_time":"0.000000","duration_time":"0.016667"},'
+                       '{"pts_time":"29.983333","duration_time":"0.016667"}]}',
+                stderr='',
+            )
+        return SimpleNamespace(
+            returncode=0,
+            stdout='{"streams":[{"codec_type":"video","avg_frame_rate":"60/1"},'
+                   '{"codec_type":"audio"},{"codec_type":"audio"}],"format":{}}',
+            stderr='',
+        )
+
+    monkeypatch.setattr(obs_scene.subprocess, 'run', fake_run)
+
+    probe = obs_scene._probe_media(media_path)
+
+    assert float(probe['format']['duration']) == pytest.approx(30.0, abs=0.001)
+    assert len([stream for stream in probe['streams'] if stream['codec_type'] == 'audio']) == 2
+    assert len(calls) == 2
+    assert '-show_packets' in calls[1]
+
+
+def test_probe_media_keeps_container_duration_without_packet_fallback(monkeypatch, tmp_path):
+    from streamops.server.services import obs_scene
+
+    media_path = tmp_path / 'sample.mkv'
+    media_path.write_bytes(b'not-empty')
+    monkeypatch.setattr(obs_scene.shutil, 'which', lambda name: 'ffprobe' if name == 'ffprobe' else None)
+
+    def fake_run(args, **kwargs):
+        assert '-show_packets' not in args
+        return SimpleNamespace(
+            returncode=0,
+            stdout='{"streams":[{"codec_type":"video"}],"format":{"duration":"29.916667"}}',
+            stderr='',
+        )
+
+    monkeypatch.setattr(obs_scene.subprocess, 'run', fake_run)
+
+    probe = obs_scene._probe_media(media_path)
+
+    assert probe['format']['duration'] == '29.916667'
