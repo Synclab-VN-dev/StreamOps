@@ -6,8 +6,13 @@ from playwright.sync_api import expect
 pytestmark = pytest.mark.only_browser('chromium')
 
 
+def open_card(page, selector):
+    page.locator(selector).evaluate('el => el.open = true')
+
+
 def open_new(page, server):
     page.goto(server.base_url + '/obs')
+    open_card(page, '#scene-profile-card')
     expect(page.locator('#new-button')).to_be_enabled()
     expect(page.locator('#profile-count')).to_have_text('0 profiles')
     page.locator('#new-button').click()
@@ -15,6 +20,7 @@ def open_new(page, server):
 
 
 def add_browser(page, name='Overlay'):
+    open_card(page, '#sources-card')
     page.locator('#source-type').select_option('browser_source')
     page.locator('#add-source-button').click()
     card = page.locator('.source-editor').last
@@ -37,6 +43,7 @@ def save(page):
 def test_source_actions_stay_inside_panel(page, live_server, viewport):
     page.set_viewport_size(viewport)
     page.goto(live_server.base_url + '/obs')
+    open_card(page, '#sources-card')
     expect(page.locator('#source-type option')).not_to_have_count(0)
 
     panel_box = page.locator('#sources-panel').bounding_box()
@@ -70,6 +77,9 @@ def test_real_store_crud_save_as_and_typed_editor(page, live_server, viewport):
     assert original['sources'][0]['audio']['tracks']['2'] is True
     assert live_server.transport.inputs == []
     page.reload()
+    open_card(page, '#scene-profile-card')
+    open_card(page, '#sources-card')
+    page.locator('.source-editor').first.evaluate('el => el.open = true')
     expect(page.get_by_label('crop left', exact=True)).to_have_value('17')
     page.locator('#duplicate-button').click()
     expect(page.locator('#profile-count')).to_have_text('2 profiles')
@@ -120,10 +130,11 @@ def test_apply_drift_warn_fail_offline_and_review(page, live_server):
     transport.create_input(profile['obs_scene_name'], 'Operator', 'browser_source', {})
     page.locator('#verify-button').click()
     expect(page.locator('#obs-result')).to_have_text('WARN')
+    open_card(page, '#review-card')
     page.locator('#review-seconds').fill('1')
     page.locator('#review-button').click()
     expect(page.locator('#review-state')).to_have_text('completed', timeout=20000)
-    expect(page.locator('#verify-checks')).to_contain_text('review.fps')
+    expect(page.locator('#review-checks')).to_contain_text('review.fps')
     expect(page.locator('#activity-log')).to_contain_text('Review queued')
     assert transport.recording is False
     assert transport.current_scene == 'Scene'
@@ -206,3 +217,49 @@ def test_invalid_required_settings_and_corrupt_file(page, live_server):
     response = page.request.put(live_server.base_url+'/api/v1/scene-profiles/'+profile_id, data=payload)
     assert response.status == 422
     assert live_server.obs.get_profile(profile_id) == profile
+
+
+def test_obs_cards_default_collapsed_with_domain_summaries(page, live_server):
+    page.set_viewport_size({'width': 390, 'height': 844})
+    page.goto(live_server.base_url + '/obs')
+
+    for selector in (
+        '#obs-status-panel',
+        '#scene-profile-card',
+        '#sources-card',
+        '#canvas-preview-card',
+        '#verification-card',
+        '#review-card',
+        '#activity-card',
+    ):
+        expect(page.locator(selector)).not_to_have_attribute('open', '')
+
+    expect(page.locator('#runtime-summary-uptime')).not_to_have_text('')
+    expect(page.locator('#profile-summary-canvas')).not_to_have_text('')
+    expect(page.locator('#source-summary-catalog')).to_contain_text('types')
+    expect(page.locator('#canvas-summary-fps')).not_to_have_text('')
+    assert page.evaluate('document.documentElement.scrollWidth <= document.documentElement.clientWidth')
+
+
+def test_verification_keeps_expected_actual_and_review_is_separate(page, live_server):
+    if not shutil.which('ffmpeg'):
+        pytest.skip('ffmpeg required for real media gates')
+    open_new(page, live_server)
+    add_browser(page)
+    save(page)
+
+    page.locator('#verify-button').click()
+    open_card(page, '#verification-card')
+    expect(page.locator('#verify-checks')).not_to_have_count(0)
+    first_check = page.locator('#verify-checks .verification-check').first
+    first_check.evaluate('el => el.open = true')
+    expect(first_check).to_contain_text('Expected')
+    expect(first_check).to_contain_text('Actual')
+
+    verification_text = page.locator('#verify-checks').inner_text()
+    open_card(page, '#review-card')
+    page.locator('#review-seconds').fill('1')
+    page.locator('#review-run-button').click()
+    expect(page.locator('#review-state')).to_have_text('completed', timeout=20000)
+    expect(page.locator('#review-checks')).to_contain_text('review.fps')
+    assert page.locator('#verify-checks').inner_text() == verification_text
