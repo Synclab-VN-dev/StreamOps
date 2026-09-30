@@ -256,6 +256,7 @@ def test_verification_keeps_expected_actual_and_review_is_separate(page, live_se
     add_browser(page)
     save(page)
 
+    page.locator('#apply-button').click()
     page.locator('#verify-button').click()
     open_card(page, '#verification-card')
     expect(page.locator('#verify-checks')).not_to_have_count(0)
