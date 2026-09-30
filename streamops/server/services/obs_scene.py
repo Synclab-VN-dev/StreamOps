@@ -234,7 +234,7 @@ class ObsSceneService:
                     client.start_record()
                     started = True
                     time.sleep(job.seconds)
-                    stopped = client.stop_record()
+                    stopped = _stop_recording_and_wait(client)
                     started = False
                     if not stopped.get("outputPath"):
                         raise SceneOperationError("OBS stopped recording without returning outputPath.")
@@ -252,7 +252,7 @@ class ObsSceneService:
                 finally:
                     try:
                         if started:
-                            client.stop_record()
+                            _stop_recording_and_wait(client)
                     finally:
                         if switched and previous_scene:
                             client.set_current_program_scene(previous_scene)
@@ -426,7 +426,7 @@ class ObsSceneService:
                     client.start_record()
                     started = True
                     time.sleep(job.seconds)
-                    stop = client.stop_record()
+                    stop = _stop_recording_and_wait(client)
                     started = False
                     output_path = stop.get("outputPath")
                     if not output_path:
@@ -447,7 +447,7 @@ class ObsSceneService:
                     _append_media_checks(verify, probe, config.video.output_width, config.video.output_height)
                 finally:
                     if started:
-                        client.stop_record()
+                        _stop_recording_and_wait(client)
                     if previous_scene and previous_scene != job.scene:
                         client.set_current_program_scene(previous_scene)
 
@@ -692,6 +692,26 @@ def _wait_for_stable_file(
         last_size = size
         time.sleep(poll_seconds)
     raise SceneOperationError(f"Review sample was not finalized: {path}")
+
+
+def _stop_recording_and_wait(
+    client: Any,
+    *,
+    timeout_seconds: float = 30,
+    poll_seconds: float = 0.1,
+) -> dict[str, Any]:
+    if not client.get_record_status().get("outputActive"):
+        return {}
+
+    result = client.stop_record()
+    deadline = time.monotonic() + timeout_seconds
+    while client.get_record_status().get("outputActive"):
+        if time.monotonic() >= deadline:
+            raise SceneOperationError(
+                f"OBS recording did not become inactive within {timeout_seconds:g} seconds."
+            )
+        time.sleep(poll_seconds)
+    return result
 
 
 def _render_report(result: VerifyResult) -> str:

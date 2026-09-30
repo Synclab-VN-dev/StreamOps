@@ -220,3 +220,75 @@ def test_acceptance_waits_until_owned_recording_is_inactive(monkeypatch):
     assert result == {'outputPath': 'sample.mkv'}
     assert client.stop_calls == 1
     assert clock['now'] == pytest.approx(0.2)
+
+
+def test_production_review_waits_for_delayed_recording_shutdown(monkeypatch):
+    from streamops.server.services import obs_scene
+
+    clock = {'now': 0.0}
+
+    class DelayedStopClient:
+        def __init__(self):
+            self.states = iter((True, True, True, False))
+            self.stop_calls = 0
+
+        def stop_record(self):
+            self.stop_calls += 1
+            return {'outputPath': 'sample.mkv'}
+
+        def get_record_status(self):
+            return {'outputActive': next(self.states)}
+
+    client = DelayedStopClient()
+    monkeypatch.setattr(obs_scene.time, 'monotonic', lambda: clock['now'])
+    monkeypatch.setattr(obs_scene.time, 'sleep', lambda seconds: clock.__setitem__('now', clock['now'] + seconds))
+
+    result = obs_scene._stop_recording_and_wait(client, timeout_seconds=1, poll_seconds=0.1)
+
+    assert result == {'outputPath': 'sample.mkv'}
+    assert client.stop_calls == 1
+    assert clock['now'] == pytest.approx(0.2)
+
+
+def test_production_review_recording_shutdown_timeout(monkeypatch):
+    from streamops.server.services import obs_scene
+
+    clock = {'now': 0.0}
+
+    class StuckRecordingClient:
+        stop_calls = 0
+
+        def stop_record(self):
+            self.stop_calls += 1
+            return {'outputPath': 'sample.mkv'}
+
+        def get_record_status(self):
+            return {'outputActive': True}
+
+    client = StuckRecordingClient()
+    monkeypatch.setattr(obs_scene.time, 'monotonic', lambda: clock['now'])
+    monkeypatch.setattr(obs_scene.time, 'sleep', lambda seconds: clock.__setitem__('now', clock['now'] + seconds))
+
+    with pytest.raises(obs_scene.SceneOperationError, match='did not become inactive within 0.25 seconds'):
+        obs_scene._stop_recording_and_wait(client, timeout_seconds=0.25, poll_seconds=0.1)
+
+    assert client.stop_calls == 1
+
+
+def test_production_review_cleanup_skips_stop_when_already_inactive():
+    from streamops.server.services import obs_scene
+
+    class InactiveClient:
+        stop_calls = 0
+
+        def stop_record(self):
+            self.stop_calls += 1
+            return {'outputPath': 'unexpected.mkv'}
+
+        def get_record_status(self):
+            return {'outputActive': False}
+
+    client = InactiveClient()
+
+    assert obs_scene._stop_recording_and_wait(client) == {}
+    assert client.stop_calls == 0
