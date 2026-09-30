@@ -274,6 +274,68 @@ def test_wait_for_convergence_recovers_prolonged_not_ready(monkeypatch):
     assert clock['recovered'] is True
 
 
+def test_recover_not_ready_refuses_legacy_baseline_without_recovery_side_effects(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(acceptance_obs, 'ROOT', tmp_path)
+    monkeypatch.setattr(acceptance_obs, 'BASELINE', tmp_path / 'baseline.json')
+    state = {
+        'session_id': 'legacy-session',
+        'setup_state': 'preparing',
+        'setup_step': 'create_scene_collection_requested',
+        'test_collection': 'StreamOps PR19 Acceptance legacy-session',
+        'last_safe_runtime': {
+            'mutation': 'create_scene_collection',
+            'streaming': False,
+            'recording': False,
+            'observed_at': '2026-09-29T00:00:00Z',
+        },
+        'recovery_attempts': [],
+    }
+    (tmp_path / 'setup-restore-failure.json').write_text(json.dumps({
+        'session_id': 'legacy-session',
+        'setup_error': 'GetProfileList failed (207): OBS is not ready.',
+    }), encoding='utf-8')
+    monkeypatch.setattr(acceptance_obs, 'api', lambda *args, **kwargs: {
+        'state': 'RUNNING_NO_WEBSOCKET',
+        'process': {
+            'pid': 99,
+            'interactive': True,
+            'started_at': '2026-09-30T00:00:00+07:00',
+            'session_id': 1,
+            'active_console_session_id': 1,
+            'executable_path': r'C:\Program Files\obs-studio\bin\64bit\obs64.exe',
+        },
+    })
+    monkeypatch.setattr(
+        acceptance_obs,
+        'validate_recovery_task',
+        lambda: pytest.fail('legacy recovery must not validate the recovery task'),
+    )
+    monkeypatch.setattr(
+        acceptance_obs,
+        '_write_recovery_request',
+        lambda *args, **kwargs: pytest.fail('legacy recovery must not write a request'),
+    )
+    monkeypatch.setattr(
+        acceptance_obs.subprocess,
+        'run',
+        lambda *args, **kwargs: pytest.fail('legacy recovery must not run schtasks'),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match='Legacy acceptance session cannot be recovered automatically',
+    ):
+        acceptance_obs.recover_not_ready(
+            object(), state, mutation='create_scene_collection'
+        )
+
+    assert state['recovery_attempts'] == []
+    assert not (tmp_path / 'recovery-request.json').exists()
+    assert not (tmp_path / 'setup-recovery.json').exists()
+
+
 def test_recover_not_ready_uses_graceful_task_before_lifecycle_start(tmp_path, monkeypatch):
     monkeypatch.setattr(acceptance_obs, 'ROOT', tmp_path)
     monkeypatch.setattr(acceptance_obs, 'BASELINE', tmp_path / 'baseline.json')
@@ -346,8 +408,13 @@ def test_recover_not_ready_uses_graceful_task_before_lifecycle_start(tmp_path, m
     assert request['expected_process']['pid'] == 50
     assert request['expected_process']['started_at'] == '2026-09-30T00:00:00+07:00'
     assert request['expected_process']['session_id'] == 1
+    assert request['expected_process']['active_console_session_id'] == 1
+    assert request['expected_process']['executable_path'] == (
+        r'C:\Program Files\obs-studio\bin\64bit\obs64.exe'
+    )
     assert request['idle_snapshot']['streaming'] is False
     assert request['idle_snapshot']['recording'] is False
+    assert request['idle_snapshot']['observed_at'] == '2026-09-30T00:00:00Z'
 
 
 def test_recover_not_ready_refuses_pid_change_without_closing(monkeypatch):
@@ -494,7 +561,7 @@ def test_validate_recovery_task_requires_checked_in_pid_bound_action(monkeypatch
         'TriggerCount': 0,
         'UserId': 'huy',
         'InteractiveUser': r'DESKTOP\huy',
-        'Execute': r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe',
+        'Execute': 'powershell.exe',
         'Arguments': acceptance_obs._recovery_task_arguments(),
         'WorkingDirectory': str(acceptance_obs.ROOT.parents[1]),
     }

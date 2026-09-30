@@ -40,6 +40,11 @@ RECOVERY_REQUEST_TTL_SECONDS = 60
 CONVERGENCE_TIMEOUT_SECONDS = 30
 SHUTDOWN_TIMEOUT_SECONDS = 20
 POLL_SECONDS = 0.5
+LEGACY_RECOVERY_ERROR = (
+    'Legacy acceptance session cannot be recovered automatically because '
+    'no complete pre-mutation process identity is available. '
+    'Operator cleanup is required.'
+)
 
 
 def write(name, data):
@@ -166,11 +171,6 @@ def _read_matching_recovery_result(request_id):
 def _durable_recovery_mutation(state):
     safe = state.get('last_safe_runtime')
     if not isinstance(safe, dict):
-        if _legacy_recovery_allowed(state):
-            step = str(state.get('setup_step') or '')
-            if step.endswith('_requested'):
-                return step[:-len('_requested')]
-            return 'legacy_setup_transition'
         raise RuntimeError('OBS recovery has no pre-mutation idle snapshot.')
     mutation = safe.get('mutation')
     if not isinstance(mutation, str) or not mutation:
@@ -208,29 +208,13 @@ def _write_recovery_request(state, safe, process, *, mutation, recovery_key):
         .replace('+00:00', 'Z'),
         'expected_process': identity,
         'idle_snapshot': {
-            'streaming': False if safe is None else safe.get('streaming'),
-            'recording': False if safe is None else safe.get('recording'),
-            'observed_at': None if safe is None else safe.get('observed_at'),
+            'streaming': safe.get('streaming'),
+            'recording': safe.get('recording'),
+            'observed_at': safe.get('observed_at'),
         },
     }
     write('recovery-request.json', request)
     return request
-
-
-def _legacy_recovery_allowed(state):
-    failure_path = ROOT / 'setup-restore-failure.json'
-    if not failure_path.is_file():
-        return False
-    try:
-        failure = json.loads(failure_path.read_text(encoding='utf-8'))
-    except (OSError, json.JSONDecodeError):
-        return False
-    return (
-        state.get('setup_state') == 'preparing'
-        and failure.get('session_id') == state.get('session_id')
-        and str(state.get('test_collection', '')).endswith(state.get('session_id', ' '))
-        and '207' in str(failure.get('setup_error', ''))
-    )
 
 
 def recover_not_ready(client, state, *, mutation=None):
@@ -242,9 +226,22 @@ def recover_not_ready(client, state, *, mutation=None):
         raise RuntimeError(
             f"OBS recovery requires RUNNING_NO_WEBSOCKET, got {status['state']}."
         )
-    process = status.get('process') or {}
-    if not process.get('interactive') or process.get('session_id') != process.get('active_console_session_id'):
-        raise RuntimeError('OBS recovery requires the active interactive Windows session.')
+
+    safe = state.get('last_safe_runtime')
+    required_snapshot_fields = (
+        'mutation',
+        'pid',
+        'started_at',
+        'session_id',
+        'active_console_session_id',
+        'executable_path',
+        'observed_at',
+    )
+    if (
+        not isinstance(safe, dict)
+        or any(safe.get(field) is None for field in required_snapshot_fields)
+    ):
+        raise RuntimeError(LEGACY_RECOVERY_ERROR)
 
     durable_mutation = _durable_recovery_mutation(state)
     if mutation is not None and mutation != durable_mutation:
@@ -253,39 +250,36 @@ def recover_not_ready(client, state, *, mutation=None):
             f'provenance {durable_mutation!r}.'
         )
     mutation = durable_mutation
-    safe = state.get('last_safe_runtime')
-    identity_fields = ('pid', 'started_at', 'session_id', 'executable_path')
-    legacy = _legacy_recovery_allowed(state) and (
-        not isinstance(safe, dict)
-        or any(safe.get(field) is None for field in identity_fields)
-    )
-    if not legacy:
-        if safe.get('pid') != process.get('pid'):
-            raise RuntimeError('OBS PID changed after the acceptance mutation; recovery refused.')
-        if safe.get('started_at') != process.get('started_at'):
-            raise RuntimeError(
-                'OBS process start time changed after the acceptance mutation; recovery refused.'
-            )
-        if safe.get('session_id') != process.get('session_id'):
-            raise RuntimeError(
-                'OBS Windows session changed after the acceptance mutation; recovery refused.'
-            )
-        if safe.get('executable_path') != process.get('executable_path'):
-            raise RuntimeError(
-                'OBS executable changed after the acceptance mutation; recovery refused.'
-            )
-        if safe.get('streaming') is not False or safe.get('recording') is not False:
-            raise RuntimeError('OBS was not proven idle immediately before the mutation.')
-    elif isinstance(safe, dict) and (
-        safe.get('streaming') is not False or safe.get('recording') is not False
+    if safe.get('streaming') is not False or safe.get('recording') is not False:
+        raise RuntimeError('OBS was not proven idle immediately before the mutation.')
+
+    process = status.get('process') or {}
+    if (
+        not process.get('interactive')
+        or process.get('session_id') != process.get('active_console_session_id')
     ):
-        raise RuntimeError('Legacy OBS recovery snapshot does not prove an idle runtime.')
+        raise RuntimeError('OBS recovery requires the active interactive Windows session.')
+    if safe.get('pid') != process.get('pid'):
+        raise RuntimeError('OBS PID changed after the acceptance mutation; recovery refused.')
+    if safe.get('started_at') != process.get('started_at'):
+        raise RuntimeError(
+            'OBS process start time changed after the acceptance mutation; recovery refused.'
+        )
+    if safe.get('session_id') != process.get('session_id'):
+        raise RuntimeError(
+            'OBS Windows session changed after the acceptance mutation; recovery refused.'
+        )
+    if safe.get('active_console_session_id') != process.get('active_console_session_id'):
+        raise RuntimeError(
+            'OBS active console session changed after the acceptance mutation; recovery refused.'
+        )
+    if safe.get('executable_path') != process.get('executable_path'):
+        raise RuntimeError(
+            'OBS executable changed after the acceptance mutation; recovery refused.'
+        )
 
     recovery_key = (
-        f"legacy:{state['session_id']}:{mutation}"
-        if legacy else (
-            f"{mutation}:{safe['observed_at']}:{safe['pid']}:{safe['started_at']}"
-        )
+        f"{mutation}:{safe['observed_at']}:{safe['pid']}:{safe['started_at']}"
     )
     attempts = state.setdefault('recovery_attempts', [])
     if any(item.get('recovery_key') == recovery_key for item in attempts):
@@ -299,7 +293,6 @@ def recover_not_ready(client, state, *, mutation=None):
         'recovery_key': recovery_key,
         'request_id': request['request_id'],
         'task_name': task_name,
-        'legacy_baseline': legacy,
         'pid': process.get('pid'),
         'process_started_at': process.get('started_at'),
         'process_session_id': process.get('session_id'),
@@ -651,7 +644,7 @@ def setup(client, initial_obs_runtime_state):
                 )
     current_runtime = api('obs/process/status')
     if state is not None and current_runtime['state'] == 'RUNNING_NO_WEBSOCKET':
-        recover_not_ready(client, state, mutation=_durable_recovery_mutation(state))
+        recover_not_ready(client, state)
         current_runtime = api('obs/process/status')
     if current_runtime['state'] != 'READY':
         raise RuntimeError(
