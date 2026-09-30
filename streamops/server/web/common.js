@@ -55,7 +55,7 @@
       text.textContent = message;
       item.append(time, text);
       list.append(item);
-      item.scrollIntoView({ block: "nearest" });
+      if (item.offsetParent !== null) item.scrollIntoView({ block: "nearest" });
     };
   }
 
