@@ -34,6 +34,7 @@ def test_obs_runtime_status_and_output_guards(page: Page, live_server: BrowserTe
 
     live_server.obs_process.set_ready(5200, recording=True)
     page.reload()
+    open_card(page, "#obs-status-panel")
     expect(page.locator("#obs-pid")).to_have_text("5200")
     expect(page.locator("#obs-recording")).to_have_text("Yes")
     expect(page.get_by_role("button", name="Stop OBS")).to_be_disabled()
