@@ -4,19 +4,42 @@ const ui = window.StreamOpsUI;
 const $ = (selector) => document.querySelector(selector);
 const activity = ui.createActivityLog('#activity-log');
 let draft = null, saved = null, catalog = [], inventory = {options: {}}, busy = false, obsReady = false;
+let lastVerificationResult = null, lastReviewJob = null;
+const expandedSourceIds = new Set();
+const sourceUiKeys = new WeakMap();
+let sourceUiCounter = 0;
 
 function dirty() { return draft && JSON.stringify(draft) !== JSON.stringify(saved); }
 function error(message = '') { $('#scene-error-message').textContent = message; $('#scene-error-message').hidden = !message; }
-function state(value) { $('#editor-state').textContent = value; }
-function changed() { state(dirty() ? 'Modified' : 'Saved'); renderCanvas(); }
+function state(value) { $('#editor-state').textContent = value; $('#profile-summary-state').textContent = value; }
+function sourceKey(source) {
+  if (source.id) return source.id;
+  if (!sourceUiKeys.has(source)) sourceUiKeys.set(source, 'draft-' + (++sourceUiCounter));
+  return sourceUiKeys.get(source);
+}
+function updateProfileSummary() {
+  $('#profile-summary-name').textContent = draft?.name || '--';
+  $('#profile-summary-canvas').textContent = draft ? draft.canvas.width + '×' + draft.canvas.height + ' @ ' + draft.canvas.fps : '--';
+  $('#profile-summary-sources').textContent = (draft?.sources?.length || 0) + ' configured';
+  $('#canvas-summary-resolution').textContent = draft ? draft.canvas.width + '×' + draft.canvas.height : '--';
+  $('#canvas-summary-fps').textContent = draft?.canvas?.fps ?? '--';
+  $('#canvas-summary-context').textContent = draft?.name || '--';
+}
+function updateSourceSummary() {
+  const sources = draft?.sources || [];
+  $('#source-summary-configured').textContent = String(sources.length);
+  $('#source-summary-enabled').textContent = String(sources.filter((source) => source.enabled).length);
+  $('#source-summary-catalog').textContent = catalog.length + ' types';
+}
+function changed() { state(dirty() ? 'Modified' : 'Saved'); updateProfileSummary(); updateSourceSummary(); renderCanvas(); }
 function buttons() {
-  document.querySelectorAll('#scene-profile-manager button').forEach((button) => {
+  document.querySelectorAll('#scene-profile-manager [data-scene-action]').forEach((button) => {
     const independent = ['new-button', 'template-button', 'refresh-inventory'].includes(button.id);
-    const runtimeAction = ['apply-button', 'verify-button', 'activate-button', 'review-button'].includes(button.id);
+    const runtimeAction = ['apply-button', 'verify-button', 'activate-button', 'review-button', 'review-run-button'].includes(button.id);
     button.disabled = busy || (!draft && !independent) || (runtimeAction && !obsReady);
   });
   $('#profile-list').disabled = busy;
-  document.querySelectorAll('#scene-profile-manager .source-editor input, #scene-profile-manager .source-editor select, #profile-name, [id^="canvas-"] input').forEach((input) => {input.disabled = busy;});
+  document.querySelectorAll('#scene-profile-manager .source-editor input, #scene-profile-manager .source-editor select, #profile-name, #canvas-width, #canvas-height, #canvas-fps').forEach((input) => {input.disabled = busy;});
 }
 async function run(label, fn) {
   if (busy) return;
@@ -33,10 +56,12 @@ function canDiscard() { return !dirty() || confirm('Discard unsaved changes?'); 
 function setProfile(profile) {
   draft = profile ? structuredClone(profile) : null;
   saved = profile ? structuredClone(profile) : null;
+  expandedSourceIds.clear();
   $('#profile-name').value = draft?.name || '';
   for (const field of ['width', 'height', 'fps']) $('#canvas-' + field).value = draft?.canvas[field] ?? '';
   $('#source-list').replaceChildren();
   state(draft ? 'Saved' : 'No profile');
+  updateProfileSummary(); updateSourceSummary();
   renderSources(); renderCanvas(); buttons();
 }
 async function listProfiles(selected = draft?.id) {
