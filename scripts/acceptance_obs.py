@@ -11,6 +11,7 @@ from copy import deepcopy
 from datetime import datetime, UTC
 import argparse
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -24,11 +25,22 @@ from streamops.server.obs.client import ObsClient
 ROOT = Path(__file__).resolve().parents[1] / '.streamops' / 'pr19-acceptance'
 BASELINE = ROOT / 'baseline.json'
 BASE = 'http://127.0.0.1:8785/api/v1/'
+ACCEPTANCE_SCHEMA_VERSION = 2
+DEFAULT_RECOVERY_TASK = 'StreamOps PR19 Close Idle OBS'
+CONVERGENCE_TIMEOUT_SECONDS = 30
+SHUTDOWN_TIMEOUT_SECONDS = 20
+POLL_SECONDS = 0.5
 
 
 def write(name, data):
     ROOT.mkdir(parents=True, exist_ok=True)
-    (ROOT/name).write_text(json.dumps(data, indent=2, ensure_ascii=False, allow_nan=False), encoding='utf-8')
+    target = ROOT / name
+    temporary = target.with_name(target.name + '.tmp')
+    temporary.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False, allow_nan=False),
+        encoding='utf-8',
+    )
+    os.replace(temporary, target)
 
 
 def api(path, method='GET', payload=None, expected=200):
@@ -40,6 +52,262 @@ def api(path, method='GET', payload=None, expected=200):
         code, data = exc.code, exc.read()
     assert code == expected, (path, code, data.decode()[:3000])
     return json.loads(data) if data else None
+
+
+def _timestamp():
+    return datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+
+
+def _reconnect(client):
+    client.close()
+    client.connect()
+
+
+def validate_recovery_task():
+    task_name = os.environ.get(
+        'STREAMOPS_ACCEPTANCE_OBS_RECOVERY_TASK', DEFAULT_RECOVERY_TASK
+    )
+    pwsh = shutil.which('pwsh')
+    if not pwsh:
+        raise RuntimeError('PowerShell 7 is required to validate OBS recovery.')
+    script = (
+        "$task=Get-ScheduledTask -TaskName $env:STREAMOPS_RECOVERY_TASK -ErrorAction Stop;"
+        "$action=@($task.Actions);"
+        "if($action.Count -ne 1){throw 'Recovery task must have exactly one action'};"
+        "[pscustomobject]@{Name=$task.TaskName;State=[string]$task.State;"
+        "LogonType=[string]$task.Principal.LogonType;Execute=$action[0].Execute;"
+        "Arguments=$action[0].Arguments}|ConvertTo-Json -Compress"
+    )
+    env = os.environ.copy()
+    env['STREAMOPS_RECOVERY_TASK'] = task_name
+    result = subprocess.run(
+        [pwsh, '-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=15,
+    )
+    if result.returncode:
+        raise RuntimeError(
+            f"Acceptance OBS recovery task {task_name!r} is unavailable: "
+            f"{result.stderr.strip() or result.stdout.strip()}"
+        )
+    try:
+        task = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError('Acceptance OBS recovery task inspection was unreadable.') from exc
+    arguments = str(task.get('Arguments') or '')
+    expected_arguments = (
+        '-NoProfile -NonInteractive -WindowStyle Hidden -Command '
+        '"(Get-Process obs64).CloseMainWindow()"'
+    )
+    if (
+        task.get('Name') != task_name
+        or task.get('LogonType') != 'Interactive'
+        or Path(str(task.get('Execute') or '')).name.lower() != 'pwsh.exe'
+        or ' '.join(arguments.split()) != expected_arguments
+    ):
+        raise RuntimeError(
+            'Acceptance OBS recovery task must be an interactive, graceful '
+            'CloseMainWindow action for obs64.'
+        )
+    return task_name
+
+
+def _legacy_recovery_allowed(state):
+    failure_path = ROOT / 'setup-restore-failure.json'
+    if not failure_path.is_file():
+        return False
+    try:
+        failure = json.loads(failure_path.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return (
+        state.get('setup_state') == 'preparing'
+        and failure.get('session_id') == state.get('session_id')
+        and str(state.get('test_collection', '')).endswith(state.get('session_id', ' '))
+        and '207' in str(failure.get('setup_error', ''))
+    )
+
+
+def recover_not_ready(client, state, *, mutation):
+    status = api('obs/process/status')
+    if status['state'] == 'READY':
+        _reconnect(client)
+        return status
+    if status['state'] != 'RUNNING_NO_WEBSOCKET':
+        raise RuntimeError(
+            f"OBS recovery requires RUNNING_NO_WEBSOCKET, got {status['state']}."
+        )
+    process = status.get('process') or {}
+    if not process.get('interactive') or process.get('session_id') != process.get('active_console_session_id'):
+        raise RuntimeError('OBS recovery requires the active interactive Windows session.')
+
+    safe = state.get('last_safe_runtime')
+    legacy = safe is None and _legacy_recovery_allowed(state)
+    if not legacy:
+        if not safe:
+            raise RuntimeError('OBS recovery has no pre-mutation idle snapshot.')
+        if safe.get('pid') != process.get('pid'):
+            raise RuntimeError('OBS PID changed after the acceptance mutation; recovery refused.')
+        if safe.get('streaming') is not False or safe.get('recording') is not False:
+            raise RuntimeError('OBS was not proven idle immediately before the mutation.')
+
+    recovery_key = (
+        f"legacy:{state['session_id']}:{mutation}"
+        if legacy else f"{mutation}:{safe['observed_at']}"
+    )
+    attempts = state.setdefault('recovery_attempts', [])
+    if any(item.get('recovery_key') == recovery_key for item in attempts):
+        raise RuntimeError(f'OBS recovery was already attempted for {mutation}.')
+    task_name = validate_recovery_task()
+    attempt = {
+        'mutation': mutation,
+        'recovery_key': recovery_key,
+        'task_name': task_name,
+        'legacy_baseline': legacy,
+        'pid': process.get('pid'),
+        'started_at': _timestamp(),
+        'status': 'closing',
+    }
+    attempts.append(attempt)
+    state['setup_state'] = 'recovering'
+    write('baseline.json', state)
+    write('setup-recovery.json', attempt)
+
+    run = subprocess.run(
+        ['schtasks.exe', '/Run', '/TN', task_name],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    if run.returncode:
+        attempt['status'] = 'task_failed'
+        attempt['error'] = run.stderr.strip() or run.stdout.strip()
+        write('setup-recovery.json', attempt)
+        write('baseline.json', state)
+        raise RuntimeError(f"Could not start graceful OBS recovery task: {attempt['error']}")
+
+    deadline = time.monotonic() + SHUTDOWN_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        current = api('obs/process/status')
+        if current['state'] == 'STOPPED':
+            break
+        time.sleep(POLL_SECONDS)
+    else:
+        attempt['status'] = 'graceful_close_timeout'
+        attempt['error'] = 'OBS did not exit after CloseMainWindow; no force-kill was used.'
+        write('setup-recovery.json', attempt)
+        write('baseline.json', state)
+        raise RuntimeError(attempt['error'])
+
+    try:
+        started = api('obs/process/start', 'POST')
+        if started['state'] != 'READY':
+            raise RuntimeError(
+                f"OBS recovery start did not reach READY: {started['state']}."
+            )
+    except Exception as exc:
+        attempt['status'] = 'start_failed'
+        attempt['error'] = str(exc)
+        write('setup-recovery.json', attempt)
+        write('baseline.json', state)
+        raise
+    _reconnect(client)
+    attempt['status'] = 'recovered'
+    attempt['completed_at'] = _timestamp()
+    attempt['new_pid'] = started.get('process', {}).get('pid')
+    state['setup_state'] = 'preparing'
+    write('setup-recovery.json', attempt)
+    write('baseline.json', state)
+    return started
+
+
+def wait_for_convergence(
+    client,
+    state,
+    *,
+    mutation,
+    expected_collection=None,
+    expected_profile=None,
+    allow_recovery=True,
+):
+    deadline = time.monotonic() + CONVERGENCE_TIMEOUT_SECONDS
+    last_status = None
+    last_error = None
+    while time.monotonic() < deadline:
+        last_status = api('obs/process/status')
+        if last_status['state'] == 'READY':
+            try:
+                _reconnect(client)
+                collection = client.get_scene_collection_list()['currentSceneCollectionName']
+                profile = client.request('GetProfileList')['currentProfileName']
+                if (
+                    (expected_collection is None or collection == expected_collection)
+                    and (expected_profile is None or profile == expected_profile)
+                ):
+                    return last_status
+            except Exception as exc:
+                last_error = exc
+        time.sleep(POLL_SECONDS)
+    if allow_recovery and last_status and last_status['state'] == 'RUNNING_NO_WEBSOCKET':
+        recover_not_ready(client, state, mutation=mutation)
+        return wait_for_convergence(
+            client,
+            state,
+            mutation=mutation,
+            expected_collection=expected_collection,
+            expected_profile=expected_profile,
+            allow_recovery=False,
+        )
+    detail = f': {last_error}' if last_error else ''
+    raise RuntimeError(f'OBS did not converge after {mutation}{detail}')
+
+
+def transition(
+    client,
+    state,
+    *,
+    mutation,
+    action,
+    expected_collection=None,
+    expected_profile=None,
+):
+    status = api('obs/process/status')
+    if (
+        status['state'] != 'READY'
+        or status['output']['streaming']
+        or status['output']['recording']
+    ):
+        raise RuntimeError(f'OBS is not safely idle before {mutation}: {status}')
+    process = status['process']
+    state['last_safe_runtime'] = {
+        'mutation': mutation,
+        'pid': process['pid'],
+        'session_id': process['session_id'],
+        'active_console_session_id': process['active_console_session_id'],
+        'streaming': status['output']['streaming'],
+        'recording': status['output']['recording'],
+        'observed_at': _timestamp(),
+    }
+    state['setup_step'] = mutation + '_requested'
+    write('baseline.json', state)
+    try:
+        action()
+    except Exception:
+        after_action = api('obs/process/status')
+        if after_action['state'] != 'RUNNING_NO_WEBSOCKET':
+            raise
+    result = wait_for_convergence(
+        client,
+        state,
+        mutation=mutation,
+        expected_collection=expected_collection,
+        expected_profile=expected_profile,
+    )
+    state['setup_step'] = mutation + '_ready'
+    write('baseline.json', state)
+    return result
 
 
 def idle(client):
@@ -120,8 +388,12 @@ def make_obs_ready():
     status = api('obs/process/status')
     if status['state'] == 'READY':
         return status
-    if status['state'] in ('STOPPED', 'RUNNING_NO_WEBSOCKET'):
+    if status['state'] == 'STOPPED':
         status = api('obs/process/start', 'POST')
+    elif status['state'] == 'RUNNING_NO_WEBSOCKET':
+        raise RuntimeError(
+            'OBS is RUNNING_NO_WEBSOCKET; use the acceptance transaction recovery path.'
+        )
     if status['state'] != 'READY':
         raise RuntimeError(f"OBS runtime must be READY for acceptance, got {status['state']}.")
     return status
@@ -148,11 +420,24 @@ def select(client, state, test=True):
     collection = state['test_collection'] if test else state['collection']
     profile = state['test_profile'] if test else state['profile']
     if client.get_scene_collection_list()['currentSceneCollectionName'] != collection:
-        client.request('SetCurrentSceneCollection', {'sceneCollectionName':collection})
-        time.sleep(2)
+        transition(
+            client,
+            state,
+            mutation='select_test_collection' if test else 'restore_collection',
+            action=lambda: client.request(
+                'SetCurrentSceneCollection', {'sceneCollectionName': collection}
+            ),
+            expected_collection=collection,
+        )
     if client.request('GetProfileList')['currentProfileName'] != profile:
-        client.request('SetCurrentProfile', {'profileName':profile})
-        time.sleep(2)
+        transition(
+            client,
+            state,
+            mutation='select_test_profile' if test else 'restore_profile',
+            action=lambda: client.request('SetCurrentProfile', {'profileName': profile}),
+            expected_collection=collection,
+            expected_profile=profile,
+        )
     if not test and state['scene']:
         client.set_current_program_scene(state['scene'])
 
@@ -204,16 +489,11 @@ def _restore(client, state):
 
 
 def setup(client, initial_obs_runtime_state):
-    idle(client)
-    if initial_obs_runtime_state not in ('READY', 'STOPPED'):
-        raise RuntimeError(
-            f"Acceptance can only preserve an initial READY or STOPPED OBS runtime; got {initial_obs_runtime_state}."
-        )
     state = None
     if BASELINE.exists():
         previous = _read_baseline()
         if previous['active']:
-            if previous.get('setup_state') == 'preparing':
+            if previous.get('setup_state') in ('preparing', 'recovering'):
                 state = previous
                 print(
                     f"Resuming incomplete acceptance setup {state['session_id']}.",
@@ -224,6 +504,20 @@ def setup(client, initial_obs_runtime_state):
                     f"Acceptance session {previous['session_id']} is already active or "
                     "was created by an older harness. Run it or restore it before setup."
                 )
+    current_runtime = api('obs/process/status')
+    if state is not None and current_runtime['state'] == 'RUNNING_NO_WEBSOCKET':
+        recover_not_ready(client, state, mutation='create_scene_collection')
+        current_runtime = api('obs/process/status')
+    if current_runtime['state'] != 'READY':
+        raise RuntimeError(
+            f"Acceptance setup requires OBS READY after preflight, got {current_runtime['state']}."
+        )
+    idle(client)
+    validate_recovery_task()
+    if state is None and initial_obs_runtime_state not in ('READY', 'STOPPED'):
+        raise RuntimeError(
+            f"Acceptance can only preserve an initial READY or STOPPED OBS runtime; got {initial_obs_runtime_state}."
+        )
     if state is None:
         stamp = datetime.now(UTC).strftime('%Y%m%d-%H%M%S')
         name = 'StreamOps PR19 Acceptance ' + stamp
@@ -239,6 +533,9 @@ def setup(client, initial_obs_runtime_state):
             'test_profile': name,
             'initial_obs_runtime_state': initial_obs_runtime_state,
             'setup_state': 'preparing',
+            'setup_step': 'baseline_captured',
+            'acceptance_schema_version': ACCEPTANCE_SCHEMA_VERSION,
+            'recovery_attempts': [],
         }
         # Capture the current operator context for every new session before switching OBS.
         # Every mutation after this point is transactional: if setup fails, restore the
@@ -247,19 +544,60 @@ def setup(client, initial_obs_runtime_state):
     stamp = state['session_id']
     name = state['test_collection']
     try:
-        if name not in client.get_scene_collection_list()['sceneCollections']:
-            client.request('CreateSceneCollection', {'sceneCollectionName':name})
-            time.sleep(2)
+        collections = client.get_scene_collection_list()
+        if name not in collections['sceneCollections']:
+            transition(
+                client,
+                state,
+                mutation='create_scene_collection',
+                action=lambda: client.request(
+                    'CreateSceneCollection', {'sceneCollectionName': name}
+                ),
+                expected_collection=name,
+            )
+        elif collections['currentSceneCollectionName'] != name:
+            transition(
+                client,
+                state,
+                mutation='select_test_collection',
+                action=lambda: client.request(
+                    'SetCurrentSceneCollection', {'sceneCollectionName': name}
+                ),
+                expected_collection=name,
+            )
+        state['setup_step'] = 'collection_ready'
+        write('baseline.json', state)
 
         profiles = client.request('GetProfileList').get('profiles', [])
         if not isinstance(profiles, list) or not all(isinstance(profile, str) for profile in profiles):
             raise RuntimeError(f'Unexpected GetProfileList profiles payload: {profiles!r}')
         if name not in profiles:
-            client.request('CreateProfile', {'profileName':name})
-            time.sleep(2)
+            transition(
+                client,
+                state,
+                mutation='create_obs_profile',
+                action=lambda: client.request('CreateProfile', {'profileName': name}),
+                expected_collection=name,
+                expected_profile=name,
+            )
+        elif client.request('GetProfileList')['currentProfileName'] != name:
+            transition(
+                client,
+                state,
+                mutation='select_test_profile',
+                action=lambda: client.request('SetCurrentProfile', {'profileName': name}),
+                expected_collection=name,
+                expected_profile=name,
+            )
+        state['setup_step'] = 'profile_ready'
+        write('baseline.json', state)
 
         select(client, state)
-        configure_recording(client, tracks=3, reload_via_profile=state['profile'])
+        configure_recording(
+            client, tracks=3, reload_via_profile=state['profile'], state=state
+        )
+        state['setup_step'] = 'recording_configured'
+        write('baseline.json', state)
         fixtures = ROOT/'fixtures'
         fixtures.mkdir(exist_ok=True)
         for fixture_name, visual, audio in [
@@ -271,9 +609,20 @@ def setup(client, initial_obs_runtime_state):
                 '-f','lavfi','-i',audio,'-t','5','-c:v','libx264','-preset','ultrafast',
                 '-pix_fmt','yuv420p','-c:a','aac',str(fixtures/(fixture_name+'.mkv'))
             ], check=True)
+        state['setup_step'] = 'fixtures_created'
+        write('baseline.json', state)
 
         before = client.get_input_list()
-        acceptance_profile = api(
+        stored = api('scene-profiles')
+        matches = [
+            candidate for candidate in stored['profiles']
+            if candidate['name'] == positive_profile_payload(state)['name']
+        ]
+        if len(matches) > 1:
+            raise RuntimeError(
+                'Multiple acceptance profiles match this session; refusing an ambiguous resume.'
+            )
+        acceptance_profile = matches[0] if matches else api(
             'scene-profiles', 'POST', positive_profile_payload(state), 201
         )
         save_left_obs_untouched = client.get_input_list() == before
@@ -284,6 +633,8 @@ def setup(client, initial_obs_runtime_state):
             'acceptance_profile_name': acceptance_profile['name'],
             'save_left_obs_untouched': True,
             'setup_state': 'prepared',
+            'setup_step': 'prepared',
+            'acceptance_schema_version': ACCEPTANCE_SCHEMA_VERSION,
         })
         write('tested-profile.json', acceptance_profile)
         write_manual_positive(state, acceptance_profile, status='READY_FOR_APPLY')
@@ -310,7 +661,7 @@ def setup(client, initial_obs_runtime_state):
         flush=True,
     )
 
-def configure_recording(client, tracks, *, reload_via_profile):
+def configure_recording(client, tracks, *, reload_via_profile, state):
     idle(client)
     current_profile = client.request('GetProfileList')['currentProfileName']
     if not reload_via_profile or reload_via_profile == current_profile:
@@ -333,10 +684,26 @@ def configure_recording(client, tracks, *, reload_via_profile):
     # SetProfileParameter persists config but OBS may keep the active output object
     # built from the previous settings. Bounce through the original profile so OBS
     # rebuilds outputs before G4 records media, then verify the reloaded config.
-    client.request('SetCurrentProfile', {'profileName':reload_via_profile})
-    time.sleep(2)
-    client.request('SetCurrentProfile', {'profileName':current_profile})
-    time.sleep(2)
+    transition(
+        client,
+        state,
+        mutation='reload_recording_fallback_profile',
+        action=lambda: client.request(
+            'SetCurrentProfile', {'profileName': reload_via_profile}
+        ),
+        expected_collection=state['test_collection'],
+        expected_profile=reload_via_profile,
+    )
+    transition(
+        client,
+        state,
+        mutation='reload_recording_test_profile',
+        action=lambda: client.request(
+            'SetCurrentProfile', {'profileName': current_profile}
+        ),
+        expected_collection=state['test_collection'],
+        expected_profile=current_profile,
+    )
 
     mismatches = {}
     for category, name, expected in params:
@@ -349,7 +716,9 @@ def configure_recording(client, tracks, *, reload_via_profile):
 
 def restore_positive_fixture(client, state, profile):
     path = 'scene-profiles/'+profile['id']
-    configure_recording(client, 3, reload_via_profile=state['profile'])
+    configure_recording(
+        client, 3, reload_via_profile=state['profile'], state=state
+    )
     restored = api(path, 'PUT', profile)
     api(path+'/apply', 'POST')
     api(path+'/activate', 'POST')
@@ -378,7 +747,9 @@ def run(client):
         write('matrix.json', results)
         print('PASS:', name, flush=True)
     try:
-        configure_recording(client, 3, reload_via_profile=state['profile'])
+        configure_recording(
+            client, 3, reload_via_profile=state['profile'], state=state
+        )
         catalog = api('obs/source-catalog')
         inventory = api('obs/inventory')
         write('inventory.json', inventory)
@@ -432,7 +803,9 @@ def run(client):
         review('G4 30s AV tracks 1+2')
         profile['sources'][0]['audio']['tracks']['1']=False
         api(path,'PUT',profile); api(path+'/apply','POST')
-        configure_recording(client,2, reload_via_profile=state['profile'])
+        configure_recording(
+            client, 2, reload_via_profile=state['profile'], state=state
+        )
         review('G4 30s isolated track 2')
         profile['sources'][0]['audio']['muted']=True
         profile['sources'][0]['verification']['audio_signal']=False
@@ -533,21 +906,29 @@ if __name__=='__main__':
     action=parser.parse_args().action
     if action == 'setup':
         initial_runtime = api('obs/process/status')
-        if initial_runtime['state'] not in ('READY', 'STOPPED'):
-            raise RuntimeError(
-                f"Acceptance setup requires OBS READY or STOPPED, got {initial_runtime['state']}."
-            )
+        resumable = False
         # Preflight any existing session before changing OBS runtime state. This keeps
         # stale/legacy baseline artifacts from causing a STOPPED -> READY mutation
         # before setup aborts.
         if BASELINE.exists():
             previous = _read_baseline()
-            if previous['active'] and previous.get('setup_state') != 'preparing':
-                raise RuntimeError(
-                    f"Acceptance session {previous['session_id']} is already active or "
-                    "was created by an older harness. Run it or restore it before setup."
-                )
-        make_obs_ready()
+            if previous['active']:
+                resumable = previous.get('setup_state') in ('preparing', 'recovering')
+                if not resumable:
+                    raise RuntimeError(
+                        f"Acceptance session {previous['session_id']} is already active or "
+                        "was created by an older harness. Run it or restore it before setup."
+                    )
+        validate_recovery_task()
+        if initial_runtime['state'] == 'STOPPED':
+            make_obs_ready()
+        elif initial_runtime['state'] == 'RUNNING_NO_WEBSOCKET' and resumable:
+            pass
+        elif initial_runtime['state'] != 'READY':
+            raise RuntimeError(
+                f"Acceptance setup requires OBS READY, STOPPED, or a resumable "
+                f"RUNNING_NO_WEBSOCKET session; got {initial_runtime['state']}."
+            )
     else:
         state = _read_baseline()
         if not state['active']:
