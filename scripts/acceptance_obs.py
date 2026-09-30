@@ -94,8 +94,18 @@ def _read_baseline():
     except (OSError, json.JSONDecodeError) as exc:
         raise RuntimeError('Acceptance baseline is unreadable; do not mutate OBS until it is inspected.') from exc
     required = {'session_id','active','collection','profile','scene','test_collection','test_profile','initial_obs_runtime_state'}
-    if not isinstance(state, dict) or not required.issubset(state):
-        raise RuntimeError('Acceptance baseline is incomplete; do not mutate OBS until it is inspected.')
+    if not isinstance(state, dict):
+        raise RuntimeError(
+            'Acceptance baseline is incompatible: expected a JSON object. '
+            'Do not mutate OBS until it is inspected.'
+        )
+    missing = sorted(required.difference(state))
+    if missing:
+        raise RuntimeError(
+            'Acceptance baseline is incompatible; missing fields: '
+            + ', '.join(missing)
+            + '. Do not mutate OBS until it is inspected.'
+        )
     return state
 
 
@@ -308,6 +318,16 @@ if __name__=='__main__':
             raise RuntimeError(
                 f"Acceptance setup requires OBS READY or STOPPED, got {initial_runtime['state']}."
             )
+        # Preflight any existing session before changing OBS runtime state. This keeps
+        # stale/legacy baseline artifacts from causing a STOPPED -> READY mutation
+        # before setup aborts.
+        if BASELINE.exists():
+            previous = _read_baseline()
+            if previous['active']:
+                raise RuntimeError(
+                    f"Acceptance session {previous['session_id']} is still active. "
+                    "Run restore before starting a new session."
+                )
         make_obs_ready()
     else:
         state = _read_baseline()
