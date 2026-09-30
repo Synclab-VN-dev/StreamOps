@@ -299,6 +299,20 @@ async function refreshInventory() {
   renderSources();
 }
 function bind(id, name, fn) { $(id).addEventListener('click', () => run(name, fn)); }
+function setCanvasTab(tab) {
+  const layout = tab === 'layout';
+  $('#layout-view').hidden = !layout; $('#preview-view').hidden = layout;
+  $('#layout-tab').classList.toggle('active', layout); $('#preview-tab').classList.toggle('active', !layout);
+  $('#layout-tab').setAttribute('aria-selected', String(layout)); $('#preview-tab').setAttribute('aria-selected', String(!layout));
+}
+function updateActivitySummary() {
+  const entries = [...document.querySelectorAll('#activity-log .activity-entry')];
+  const last = entries.length ? entries[entries.length - 1] : null;
+  $('#activity-last-event').textContent = last?.querySelector('span')?.textContent || 'No events';
+  $('#activity-warning-count').textContent = String(entries.filter((item) => item.classList.contains('warning')).length);
+  const errors = entries.filter((item) => item.classList.contains('error')).length;
+  $('#activity-error-count').textContent = errors + ' error' + (errors === 1 ? '' : 's');
+}
 bind('#new-button', 'New', async () => {if (!canDiscard()) return; setProfile(await api('scene-profiles', 'POST', {name: 'Untitled profile'})); await listProfiles();});
 bind('#save-button', 'Save', () => save());
 bind('#save-as-button', 'Save As', () => save(true));
@@ -316,6 +330,8 @@ bind('#add-source-button', 'Add source', async () => {
 });
 for (const name of ['apply','verify','activate','review']) bind(`#${name}-button`, name, () => operation(name));
 bind('#review-run-button', 'review', () => operation('review'));
+$('#layout-tab').addEventListener('click', () => setCanvasTab('layout'));
+$('#preview-tab').addEventListener('click', () => setCanvasTab('preview'));
 $('#profile-list').addEventListener('change', () => run('Load', async () => {
   const id = $('#profile-list').value;
   if (!canDiscard()) {$('#profile-list').value = draft?.id || ''; return;}
@@ -333,14 +349,21 @@ window.addEventListener('streamops:obs-runtime-status', (event) => {
   buttons();
 });
 
+new MutationObserver(updateActivitySummary).observe($('#activity-log'), {childList: true});
+setCanvasTab('layout');
+renderVerification({});
+renderReview(null);
+updateProfileSummary();
+updateSourceSummary();
 buttons();
 run('Load profiles', async () => {
   const [sources, templates] = await Promise.all([api('obs/source-catalog'), api('scene-profile-templates')]);
   catalog = sources.sources;
+  updateSourceSummary();
   catalog.forEach((c) => $('#source-type').add(new Option(c.label, c.type)));
   templates.templates.forEach((t) => $('#template-list').add(new Option(t.name, t.id)));
   await listProfiles();
-  await refreshInventory().catch((e) => {$('#inventory-status').textContent = e.message;});
+  await refreshInventory().catch((e) => {$('#inventory-status').textContent = 'Inventory error · ' + e.message;});
   activity('Profile manager loaded');
 });
 })();
