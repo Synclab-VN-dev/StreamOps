@@ -29,6 +29,29 @@ def save(page):
     expect(page.locator('#save-button')).to_be_enabled()
 
 
+@pytest.mark.parametrize('viewport', [
+    {'width': 390, 'height': 844},
+    {'width': 768, 'height': 900},
+    {'width': 1440, 'height': 900},
+])
+def test_source_actions_stay_inside_panel(page, live_server, viewport):
+    page.set_viewport_size(viewport)
+    page.goto(live_server.base_url + '/obs')
+    expect(page.locator('#source-type option')).not_to_have_count(0)
+
+    panel_box = page.locator('#sources-panel').bounding_box()
+    assert panel_box is not None
+    for selector in ('#source-type', '#add-source-button', '#refresh-inventory'):
+        control_box = page.locator(selector).bounding_box()
+        assert control_box is not None
+        assert control_box['x'] >= panel_box['x'] - 1
+        assert control_box['x'] + control_box['width'] <= panel_box['x'] + panel_box['width'] + 1
+
+    assert page.evaluate(
+        'document.documentElement.scrollWidth <= document.documentElement.clientWidth'
+    )
+
+
 @pytest.mark.parametrize('viewport', [{'width':1440,'height':900}, {'width':390,'height':844}])
 def test_real_store_crud_save_as_and_typed_editor(page, live_server, viewport):
     page.set_viewport_size(viewport)

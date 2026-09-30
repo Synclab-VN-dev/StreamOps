@@ -439,6 +439,18 @@ button:disabled {
   flex: 1 1 120px;
 }
 
+.source-actions {
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+#source-type {
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 260px;
+}
+
 .source-list {
   display: grid;
 }
@@ -495,5 +507,17 @@ button:disabled {
 
   .source-meta {
     grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .source-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .source-actions #source-type,
+  .source-actions button {
+    width: 100%;
   }
 }
