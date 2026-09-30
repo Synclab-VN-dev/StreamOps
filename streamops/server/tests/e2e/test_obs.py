@@ -263,6 +263,9 @@ def test_verification_keeps_expected_actual_and_review_is_separate(page, live_se
     first_check.evaluate('el => el.open = true')
     expect(first_check).to_contain_text('Expected')
     expect(first_check).to_contain_text('Actual')
+    expect(page.locator('#verification-ready')).to_have_text('Yes')
+    expect(page.locator('#verification-generated')).not_to_have_text('--')
+    expect(page.locator('#verification-obs-version')).not_to_have_text('--')
 
     verification_text = page.locator('#verify-checks').inner_text()
     open_card(page, '#review-card')
@@ -270,4 +273,21 @@ def test_verification_keeps_expected_actual_and_review_is_separate(page, live_se
     page.locator('#review-run-button').click()
     expect(page.locator('#review-state')).to_have_text('completed', timeout=20000)
     expect(page.locator('#review-checks')).to_contain_text('review.fps')
+    expect(page.locator('#review-artifacts .artifact-row')).not_to_have_count(0)
     assert page.locator('#verify-checks').inner_text() == verification_text
+
+
+def test_new_source_subcard_is_collapsed_and_updates_summary(page, live_server):
+    open_new(page, live_server)
+    open_card(page, '#sources-card')
+    page.locator('#source-type').select_option('browser_source')
+    page.locator('#add-source-button').click()
+
+    source = page.locator('.source-editor').last
+    expect(source).not_to_have_attribute('open', '')
+    expect(page.locator('#source-summary-configured')).to_have_text('1')
+    expect(page.locator('#source-summary-enabled')).to_have_text('1')
+
+    source.evaluate('el => el.open = true')
+    source.get_by_label('Source enabled', exact=True).uncheck()
+    expect(page.locator('#source-summary-enabled')).to_have_text('0')
