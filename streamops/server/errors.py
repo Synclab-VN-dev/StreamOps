@@ -126,3 +126,35 @@ class ObsUnsafeOperationError(ObsProcessError):
 class InvalidObsProcessRequestError(ObsProcessError):
     """Raised when OBS lifecycle API receives client-controlled execution input."""
 
+
+
+class SceneOperationError(ServerError):
+    """Raised when a scene apply/verify/review operation cannot complete."""
+
+
+class SceneReviewNotFoundError(ServerError):
+    """Raised when a requested in-memory review job does not exist."""
+
+
+class SceneReviewInProgressError(ServerError):
+    """Raised when an incompatible review operation is already running."""
+
+
+class SceneProfileError(ServerError):
+    """Base class for persisted scene-profile failures."""
+
+
+class SceneProfileValidationError(SceneProfileError):
+    """Raised when a scene profile does not conform to the supported schema."""
+
+
+class SceneProfileNotFoundError(SceneProfileError):
+    """Raised when a scene profile ID does not exist."""
+
+
+class SceneProfileConflictError(SceneProfileError):
+    """Raised when a profile write would overwrite a conflicting resource."""
+
+
+class SceneProfileStorageError(SceneProfileError):
+    """Raised when an atomic profile-store operation cannot complete."""

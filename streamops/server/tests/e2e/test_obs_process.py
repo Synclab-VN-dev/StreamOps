@@ -27,7 +27,7 @@ def test_obs_runtime_status_and_output_guards(page: Page, live_server: BrowserTe
     expect(page.get_by_role("button", name="Stop OBS")).to_be_enabled()
     expect(page.get_by_role("button", name="Restart OBS")).to_be_enabled()
 
-    live_server.obs.set_ready(5200, recording=True)
+    live_server.obs_process.set_ready(5200, recording=True)
     page.reload()
     expect(page.locator("#obs-pid")).to_have_text("5200")
     expect(page.locator("#obs-recording")).to_have_text("Yes")
@@ -36,8 +36,8 @@ def test_obs_runtime_status_and_output_guards(page: Page, live_server: BrowserTe
 
 
 def test_start_pending_success_and_no_double_trigger(page: Page, live_server: BrowserTestServer) -> None:
-    live_server.obs.set_stopped()
-    live_server.obs.prepare_launch(6200)
+    live_server.obs_process.set_stopped()
+    live_server.obs_process.prepare_launch(6200)
     page.goto(f"{live_server.base_url}/obs")
 
     expect(page.locator("#obs-state")).to_have_text("STOPPED")
@@ -45,16 +45,16 @@ def test_start_pending_success_and_no_double_trigger(page: Page, live_server: Br
     expect(button).to_be_enabled()
 
     button.click()
-    wait_until(live_server.obs.launch_started.is_set)
+    wait_until(live_server.obs_process.launch_started.is_set)
     expect(page.locator("#obs-state")).to_have_text("STARTING")
     expect(page.get_by_role("button", name="Start OBS", exact=True)).to_be_disabled()
     expect(page.get_by_role("button", name="Stop OBS")).to_be_disabled()
     expect(page.get_by_role("button", name="Restart OBS")).to_be_disabled()
 
     page.locator("#start-button").evaluate("button => button.click()")
-    assert live_server.obs.launch_calls == 1
+    assert live_server.obs_process.launch_calls == 1
 
-    live_server.obs.release_launch()
+    live_server.obs_process.release_launch()
     expect(page.locator("#obs-state")).to_have_text("READY")
     expect(page.locator("#obs-pid")).to_have_text("6200")
     expect(page.locator("#obs-last-operation")).to_contain_text("start · success")
@@ -64,8 +64,8 @@ def test_start_pending_success_and_no_double_trigger(page: Page, live_server: Br
 def test_running_without_websocket_is_not_presented_as_ready(
     page: Page, live_server: BrowserTestServer
 ) -> None:
-    live_server.obs.set_ready(5300)
-    live_server.obs.set_websocket_unavailable()
+    live_server.obs_process.set_ready(5300)
+    live_server.obs_process.set_websocket_unavailable()
 
     page.goto(f"{live_server.base_url}/obs")
 
@@ -80,26 +80,26 @@ def test_running_without_websocket_is_not_presented_as_ready(
 def test_restart_pending_returns_to_ready_with_new_pid(
     page: Page, live_server: BrowserTestServer
 ) -> None:
-    live_server.obs.set_ready(5400)
-    live_server.obs.prepare_launch(6400)
+    live_server.obs_process.set_ready(5400)
+    live_server.obs_process.prepare_launch(6400)
     page.goto(f"{live_server.base_url}/obs")
     expect(page.locator("#obs-pid")).to_have_text("5400")
 
     page.once("dialog", lambda dialog: dialog.accept())
     page.get_by_role("button", name="Restart OBS").click()
-    wait_until(live_server.obs.launch_started.is_set)
+    wait_until(live_server.obs_process.launch_started.is_set)
     expect(page.locator("#obs-state")).to_have_text("STARTING")
     expect(page.get_by_role("button", name="Restart OBS")).to_be_disabled()
 
-    live_server.obs.release_launch()
+    live_server.obs_process.release_launch()
     expect(page.locator("#obs-state")).to_have_text("READY")
     expect(page.locator("#obs-pid")).to_have_text("6400")
     expect(page.locator("#obs-last-operation")).to_contain_text("restart · success")
     expect(page.locator("#activity-log")).to_contain_text("Restart completed: READY")
 
 def test_readiness_timeout_is_visible_to_operator(page: Page, live_server: BrowserTestServer) -> None:
-    live_server.obs.set_stopped()
-    live_server.obs.set_websocket_unavailable()
+    live_server.obs_process.set_stopped()
+    live_server.obs_process.set_websocket_unavailable()
     page.goto(f"{live_server.base_url}/obs")
 
     page.get_by_role("button", name="Start OBS", exact=True).click()
@@ -121,7 +121,7 @@ def test_obs_page_is_usable_on_mobile_viewport(page: Page, live_server: BrowserT
     expect(page.get_by_role("heading", name="Activity Log")).to_be_visible()
 
 def test_stop_from_browser_reaches_stopped(page: Page, live_server: BrowserTestServer) -> None:
-    live_server.obs.set_ready(5500)
+    live_server.obs_process.set_ready(5500)
     page.goto(f"{live_server.base_url}/obs")
     expect(page.locator("#obs-state")).to_have_text("READY")
 

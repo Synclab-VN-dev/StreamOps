@@ -11,15 +11,16 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .api.health import router as health_router
+from .api.obs import router as obs_router
 from .api.obs_process import router as obs_process_router
 from .api.screen import router as screen_router
 from .api.steam import router as steam_router
 from .config import ServerConfig
 from .errors import (
     CaptureStorageError,
+    InvalidObsProcessRequestError,
     InvalidSteamRestartRequestError,
     NoCaptureError,
-    InvalidObsProcessRequestError,
     ObsExecutableNotAllowedError,
     ObsOperationInProgressError,
     ObsReadinessTimeoutError,
@@ -29,6 +30,14 @@ from .errors import (
     ObsStartTimeoutError,
     ObsStatusError,
     ObsUnsafeOperationError,
+    ObsWebSocketConnectionError,
+    ObsWebSocketRequestError,
+    SceneOperationError,
+    SceneProfileConflictError,
+    SceneProfileNotFoundError,
+    SceneProfileStorageError,
+    SceneProfileValidationError,
+    SceneReviewNotFoundError,
     ScreenCaptureError,
     SteamLaunchError,
     SteamNotFoundError,
@@ -38,9 +47,10 @@ from .errors import (
     SteamStatusError,
     WrongDesktopSessionError,
 )
+from .scene_config import SceneConfigError
 from .obs import ObsManager
 from .platform.windows import WindowsScreenCaptureBackend, WindowsSteamBackend
-from .services import ScreenCaptureService, SteamService
+from .services import ObsSceneService, ScreenCaptureService, SteamService
 from .services.runtime import RuntimeLease
 
 
@@ -53,6 +63,7 @@ def create_app(
     capture_service: ScreenCaptureService | None = None,
     steam_service: SteamService | None = None,
     obs_manager: ObsManager | None = None,
+    obs_scene_service: ObsSceneService | None = None,
     manage_runtime: bool = True,
 ) -> FastAPI:
     service = capture_service or ScreenCaptureService(
@@ -62,6 +73,7 @@ def create_app(
     )
     steam = steam_service or SteamService(WindowsSteamBackend())
     obs = obs_manager or ObsManager()
+    obs_scenes = obs_scene_service or ObsSceneService(data_dir=config.data_dir / "scene-profiles")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -71,6 +83,7 @@ def create_app(
             yield
         finally:
             service.close()
+            obs_scenes.close()
             if lease is not None:
                 lease.release()
 
@@ -79,7 +92,9 @@ def create_app(
     app.state.capture_service = service
     app.state.steam_service = steam
     app.state.obs_manager = obs
+    app.state.obs_scene_service = obs_scenes
     app.include_router(health_router)
+    app.include_router(obs_router)
     app.include_router(obs_process_router)
     app.include_router(screen_router)
     app.include_router(steam_router)
@@ -123,6 +138,42 @@ def create_app(
     @app.exception_handler(ObsStatusError)
     async def obs_status_handler(_request, exc: ObsStatusError) -> JSONResponse:
         return _error_response(503, "obs_status_failed", str(exc))
+
+    @app.exception_handler(SceneConfigError)
+    async def scene_config_handler(_request, exc: SceneConfigError) -> JSONResponse:
+        return _error_response(400, "scene_config_invalid", str(exc))
+
+    @app.exception_handler(SceneReviewNotFoundError)
+    async def scene_review_not_found_handler(_request, exc: SceneReviewNotFoundError) -> JSONResponse:
+        return _error_response(404, "scene_review_not_found", str(exc))
+
+    @app.exception_handler(SceneProfileNotFoundError)
+    async def scene_profile_not_found_handler(_request, exc: SceneProfileNotFoundError) -> JSONResponse:
+        return _error_response(404, "scene_profile_not_found", str(exc))
+
+    @app.exception_handler(SceneProfileValidationError)
+    async def scene_profile_validation_handler(_request, exc: SceneProfileValidationError) -> JSONResponse:
+        return _error_response(422, "scene_profile_invalid", str(exc))
+
+    @app.exception_handler(SceneProfileConflictError)
+    async def scene_profile_conflict_handler(_request, exc: SceneProfileConflictError) -> JSONResponse:
+        return _error_response(409, "scene_profile_conflict", str(exc))
+
+    @app.exception_handler(SceneProfileStorageError)
+    async def scene_profile_storage_handler(_request, exc: SceneProfileStorageError) -> JSONResponse:
+        return _error_response(500, "scene_profile_storage_failed", str(exc))
+
+    @app.exception_handler(ObsWebSocketConnectionError)
+    async def obs_connection_handler(_request, exc: ObsWebSocketConnectionError) -> JSONResponse:
+        return _error_response(503, "obs_unavailable", str(exc))
+
+    @app.exception_handler(ObsWebSocketRequestError)
+    async def obs_request_handler(_request, exc: ObsWebSocketRequestError) -> JSONResponse:
+        return _error_response(503, "obs_request_failed", str(exc))
+
+    @app.exception_handler(SceneOperationError)
+    async def scene_operation_handler(_request, exc: SceneOperationError) -> JSONResponse:
+        return _error_response(409, "scene_operation_failed", str(exc))
 
     @app.exception_handler(NoCaptureError)
     async def no_capture_handler(_request, exc: NoCaptureError) -> JSONResponse:

@@ -56,6 +56,7 @@ async function fetchAndRenderStatus({ log, clearError, force }) {
     if (operationInFlight && !force) return;
     latestStatus = status;
     renderStatus(status);
+    window.dispatchEvent(new CustomEvent("streamops:obs-runtime-status", { detail: status }));
     if (clearError) setError(status.error || "");
     const signature = [
       status.state,
@@ -73,6 +74,7 @@ async function fetchAndRenderStatus({ log, clearError, force }) {
     if (operationInFlight && !force) return;
     latestStatus = null;
     renderErrorState();
+    window.dispatchEvent(new CustomEvent("streamops:obs-runtime-status", { detail: null }));
     const message = error.message || "OBS status failed.";
     if (clearError) setError(message);
     if (log && lastStatusSignature !== "error") addActivity(`OBS status failed: ${message}`, "error");

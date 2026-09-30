@@ -1,11 +1,13 @@
 # StreamOps-managed repo-local status script.
 [CmdletBinding()]
-param([string]$DataDir)
+param(
+    [string]$DataDir,
+    [string]$TaskName = "StreamOps Node (repo-local)"
+)
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$taskName = "StreamOps Node (repo-local)"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 
 function Test-RepoOwnedProcess([int]$ProcessId) {
@@ -65,7 +67,7 @@ if (-not $DataDir.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)
 }
 
 $runtimePath = Join-Path $DataDir "runtime.json"
-$task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+$task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 $taskState = if ($null -eq $task) { "NotRegistered" } else { [string]$task.State }
 if (-not (Test-Path -LiteralPath $runtimePath)) {
     Write-Host "streamops-node is not running (task $taskState, no runtime state)."
@@ -99,6 +101,6 @@ if (-not $health.capture_ready) {
 }
 
 Write-Host "streamops-node is running (PID $($runtime.pid), session $($health.session_id), port $($runtime.port), output $($runtime.output_index), capture $($health.capture_backend))."
-Write-Host "Task: $taskName ($taskState)"
+Write-Host "Task: $TaskName ($taskState)"
 Write-Host "Health: $healthUrl"
 exit 0

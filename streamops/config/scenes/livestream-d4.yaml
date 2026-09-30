@@ -1,0 +1,73 @@
+name: livestream-d4
+video:
+  base_width: 1920
+  base_height: 1080
+  output_width: 1920
+  output_height: 1080
+  fps: 60
+
+# Source creation/binding remains explicit for production hardware/app inputs.
+# StreamOps owns scene membership, layout and audio routing once these stable
+# OBS source names exist. This avoids silently guessing D4 window selectors,
+# AirLens/SRT URLs or microphone devices.
+sources:
+  game:
+    source_name: StreamOps D4 Video
+    role: main
+    media: video
+    layer: 0
+    fit: stretch
+    managed: false
+
+  camera:
+    source_name: StreamOps Camera
+    role: camera
+    media: video
+    layer: 1
+    anchor: bottom_right
+    width_percent: 22
+    margin_right: 40
+    margin_bottom: 40
+    managed: false
+
+  game_audio:
+    source_name: StreamOps D4 Audio
+    role: game_audio
+    media: audio
+    layer: 2
+    managed: false
+    audio:
+      muted: false
+      volume_db: 0
+      sync_offset_ms: 0
+      tracks:
+        "1": true
+        "2": true
+        "3": false
+        "4": false
+        "5": false
+        "6": false
+      signal_required: true
+      signal_threshold_db: -60
+      signal_window_seconds: 1.5
+
+  voice:
+    source_name: StreamOps Voice
+    role: voice
+    media: audio
+    layer: 3
+    managed: false
+    audio:
+      muted: false
+      volume_db: 0
+      sync_offset_ms: 0
+      tracks:
+        "1": true
+        "2": false
+        "3": true
+        "4": false
+        "5": false
+        "6": false
+      signal_required: true
+      signal_threshold_db: -60
+      signal_window_seconds: 1.5

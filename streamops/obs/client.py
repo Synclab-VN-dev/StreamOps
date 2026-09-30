@@ -2,16 +2,16 @@
 
 from streamops.errors import ObsConnectionError, ObsRequestError
 from streamops.server.errors import ObsWebSocketConnectionError, ObsWebSocketRequestError
-from streamops.server.obs.client import ObsClient as _ServerObsClient
+from streamops.server.obs.client import INPUT_VOLUME_METERS_SUBSCRIPTION, ObsClient as _ServerObsClient
 
 
 class ObsClient(_ServerObsClient):
     """Legacy facade preserving the historical StreamOps exception contract."""
 
     @classmethod
-    def from_env(cls) -> "ObsClient":
+    def from_env(cls, *, event_subscriptions: int = 0) -> "ObsClient":
         try:
-            return super().from_env()
+            return super().from_env(event_subscriptions=event_subscriptions)
         except ObsWebSocketConnectionError as exc:
             raise ObsConnectionError(str(exc)) from exc
 
@@ -30,4 +30,4 @@ class ObsClient(_ServerObsClient):
             raise ObsRequestError(str(exc)) from exc
 
 
-__all__ = ["ObsClient"]
+__all__ = ["INPUT_VOLUME_METERS_SUBSCRIPTION", "ObsClient"]

@@ -1,11 +1,13 @@
 # StreamOps-managed repo-local stop script.
 [CmdletBinding()]
-param([string]$DataDir)
+param(
+    [string]$DataDir,
+    [string]$TaskName = "StreamOps Node (repo-local)"
+)
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$taskName = "StreamOps Node (repo-local)"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 
 function Get-RepoOwnedProcess([int]$ProcessId) {
@@ -41,12 +43,12 @@ if (-not $DataDir.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)
 }
 
 $runtimePath = Join-Path $DataDir "runtime.json"
-$task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+$task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($null -ne $task -and $task.State -eq "Running") {
-    Stop-ScheduledTask -TaskName $taskName
+    Stop-ScheduledTask -TaskName $TaskName
     for ($attempt = 0; $attempt -lt 20; $attempt++) {
         Start-Sleep -Milliseconds 250
-        $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+        $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
         if ($null -eq $task -or $task.State -ne "Running") {
             break
         }

@@ -648,7 +648,38 @@ Or manage it from the repository through an on-demand Scheduled Task:
 .\scripts\devices\a-windows\stop-streamops-node.ps1
 ```
 
-The task has no automatic trigger and uses the logged-on user's interactive token so
+Real-OBS acceptance uses a separate node on port `8785` with the isolated data
+directory `.streamops\pr19-node`. The acceptance harness can recover an OBS process
+that becomes unresponsive to WebSocket requests immediately after a proven-idle
+collection or profile transition. Install its no-trigger, interactive recovery task:
+
+```powershell
+.\scripts\devices\a-windows\start-streamops-node.ps1 `
+    -TaskName "StreamOps PR19 Acceptance" `
+    -Port 8785 `
+    -DataDir .streamops\pr19-node
+.\scripts\devices\a-windows\install-obs-acceptance-recovery-task.ps1
+```
+
+The task uses built-in Windows PowerShell and the checked-in recovery worker. A fresh,
+expiring request must match the OBS PID, process start time, executable and active
+Windows session before the worker sends a graceful window close. It never force-kills
+OBS. Normal acceptance setup while OBS is READY does not require or invoke this task.
+
+Remove the task when the acceptance environment is no longer needed:
+
+```powershell
+.\scripts\devices\a-windows\install-obs-acceptance-recovery-task.ps1 -Remove
+```
+
+Run acceptance from the repository virtual environment:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.acceptance_obs setup
+.\.venv\Scripts\python.exe -m scripts.acceptance_obs run
+```
+
+The StreamOps node task has no automatic trigger and uses the logged-on user's interactive token so
 Windows screen capture runs on the active desktop. The start command verifies a real
 captured frame before it reports success. DXGI is preferred; WinRT is used automatically
 when the display driver initializes Desktop Duplication but does not deliver frames.
