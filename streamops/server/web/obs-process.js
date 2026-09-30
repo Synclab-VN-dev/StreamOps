@@ -21,6 +21,9 @@ const startButton = document.querySelector("#start-button");
 const stopButton = document.querySelector("#stop-button");
 const restartButton = document.querySelector("#restart-button");
 const errorMessage = document.querySelector("#error-message");
+const runtimeSummaryUptime = document.querySelector("#runtime-summary-uptime");
+const runtimeSummaryStreaming = document.querySelector("#runtime-summary-streaming");
+const runtimeSummaryRecording = document.querySelector("#runtime-summary-recording");
 
 let operationInFlight = false;
 let statusRequestInFlight = null;
@@ -94,7 +97,9 @@ function renderStatus(status) {
       : "status-dot warning";
   pidElement.textContent = process.pid ?? "--";
   startedElement.textContent = ui.formatDateTime(process.started_at);
-  uptimeElement.textContent = ui.formatDuration(process.uptime_seconds);
+  const formattedUptime = ui.formatDuration(process.uptime_seconds);
+  uptimeElement.textContent = formattedUptime;
+  runtimeSummaryUptime.textContent = formattedUptime;
   sessionElement.textContent = process.session_id ?? "--";
   activeSessionElement.textContent = process.active_console_session_id ?? "--";
   interactiveElement.textContent = process.running ? (process.interactive ? "Yes" : "No") : "--";
@@ -103,8 +108,12 @@ function renderStatus(status) {
   websocketEndpointElement.textContent = `${websocket.host || "127.0.0.1"}:${websocket.port || 4455}`;
   obsVersionElement.textContent = websocket.obs_version || "--";
   websocketVersionElement.textContent = websocket.obs_websocket_version || "--";
-  streamingElement.textContent = formatOutput(output.streaming);
-  recordingElement.textContent = formatOutput(output.recording);
+  const streamingText = formatOutput(output.streaming);
+  const recordingText = formatOutput(output.recording);
+  streamingElement.textContent = streamingText;
+  recordingElement.textContent = recordingText;
+  runtimeSummaryStreaming.textContent = streamingText;
+  runtimeSummaryRecording.textContent = recordingText;
   lastOperationElement.textContent = formatLastOperation(status.last_operation);
   updateButtons(status);
 }
@@ -129,6 +138,9 @@ function renderErrorState() {
   ]) {
     element.textContent = "--";
   }
+  runtimeSummaryUptime.textContent = "--";
+  runtimeSummaryStreaming.textContent = "--";
+  runtimeSummaryRecording.textContent = "--";
   startButton.disabled = true;
   stopButton.disabled = true;
   restartButton.disabled = true;
