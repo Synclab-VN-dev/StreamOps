@@ -179,13 +179,19 @@ async function operation(name) {
     renderChecks(result.result || {});
     if (result.state === 'failed') throw new Error(result.error || 'Review failed');
     result = result.result;
-  } else if (name === 'apply' || name === 'activate') {
+  } else if (name === 'activate') {
     result = await api(`scene-profiles/${id}/verify`, 'POST');
   }
-  renderChecks(result);
-  const structuralFail = (result.checks || []).some((c) => c.status === 'FAIL' && !c.id.startsWith('runtime.'));
-  state(result.status === 'FAIL' ? (structuralFail ? 'Drifted' : 'Failed') : dirty() ? 'Modified' : 'Applied');
-  activity(`${name}: ${result.status || 'complete'}`, result.status === 'FAIL' ? 'error' : 'success');
+  if (name === 'apply') {
+    renderChecks({});
+    state(dirty() ? 'Modified' : 'Applied');
+    activity(`apply: ${result.changed ? 'changed' : 'no changes'}`, 'success');
+  } else {
+    renderChecks(result);
+    const structuralFail = (result.checks || []).some((c) => c.status === 'FAIL' && !c.id.startsWith('runtime.'));
+    state(result.status === 'FAIL' ? (structuralFail ? 'Drifted' : 'Failed') : dirty() ? 'Modified' : 'Applied');
+    activity(`${name}: ${result.status || 'complete'}`, result.status === 'FAIL' ? 'error' : 'success');
+  }
   await preview(id).catch((e) => {$('#preview-status').textContent = e.message;});
 }
 async function refreshInventory() {

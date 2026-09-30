@@ -103,15 +103,19 @@ def test_apply_drift_warn_fail_offline_and_review(page, live_server):
     save(page)
     profile = live_server.obs.get_profile(page.locator('#profile-list').input_value())
     page.locator('#apply-button').click()
-    expect(page.locator('#obs-result')).to_have_text('PASS')
+    expect(page.locator('#obs-result')).to_have_text('--')
     expect(page.locator('#editor-state')).to_have_text('Applied')
     expect(page.locator('#scene-preview')).to_be_visible()
+    page.locator('#verify-button').click()
+    expect(page.locator('#obs-result')).to_have_text('PASS')
     transport = live_server.transport
     transport.input_settings[profile['sources'][0]['obs_name']]['url'] = 'drift'
     page.locator('#verify-button').click()
     expect(page.locator('#obs-result')).to_have_text('FAIL')
     expect(page.locator('#editor-state')).to_have_text('Drifted')
     page.locator('#apply-button').click()
+    expect(page.locator('#obs-result')).to_have_text('--')
+    page.locator('#verify-button').click()
     expect(page.locator('#obs-result')).to_have_text('PASS')
     transport.create_input(profile['obs_scene_name'], 'Operator', 'browser_source', {})
     page.locator('#verify-button').click()
@@ -129,6 +133,33 @@ def test_apply_drift_warn_fail_offline_and_review(page, live_server):
     expect(page.locator('#editor-state')).to_have_text('Failed')
     page.locator('#profile-name').fill('Saved offline')
     save(page)
+
+
+def test_apply_does_not_run_runtime_verify_before_activate(page, live_server):
+    open_new(page, live_server)
+    add_browser(page)
+    save(page)
+    profile_id = page.locator('#profile-list').input_value()
+    requests = []
+    page.on('request', lambda request: requests.append(request.url))
+
+    page.locator('#apply-button').click()
+
+    expect(page.locator('#editor-state')).to_have_text('Applied')
+    expect(page.locator('#obs-result')).to_have_text('--')
+    expect(page.locator('#activity-log')).to_contain_text('apply: changed')
+    expect(page.locator('#apply-button')).to_be_enabled()
+    verify_path = f'/api/v1/scene-profiles/{profile_id}/verify'
+    assert not any(url.endswith(verify_path) for url in requests)
+    assert 'apply: FAIL' not in page.locator('#activity-log').inner_text()
+
+    requests.clear()
+    page.locator('#activate-button').click()
+
+    expect(page.locator('#obs-result')).to_have_text('PASS')
+    expect(page.locator('#activate-button')).to_be_enabled()
+    assert any(url.endswith(f'/api/v1/scene-profiles/{profile_id}/activate') for url in requests)
+    assert any(url.endswith(verify_path) for url in requests)
 
 
 
@@ -152,7 +183,8 @@ def test_scene_runtime_actions_follow_obs_readiness(page, live_server):
     live_server.obs_process.set_ready(5300)
     expect(page.locator('#apply-button')).to_be_enabled(timeout=7000)
     page.locator('#apply-button').click()
-    expect(page.locator('#obs-result')).to_have_text('PASS')
+    expect(page.locator('#editor-state')).to_have_text('Applied')
+    expect(page.locator('#obs-result')).to_have_text('--')
 
 
 def test_invalid_required_settings_and_corrupt_file(page, live_server):
