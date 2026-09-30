@@ -176,7 +176,7 @@ def setup(client, initial_obs_runtime_state):
             time.sleep(2)
 
         select(client, state)
-        configure_recording(client, tracks=3)
+        configure_recording(client, tracks=3, reload_via_profile=state['profile'])
         fixtures = ROOT/'fixtures'
         fixtures.mkdir(exist_ok=True)
         for fixture_name, visual, audio in [
@@ -205,14 +205,41 @@ def setup(client, initial_obs_runtime_state):
         raise
     print(f"Created isolated OBS acceptance session {stamp}.", flush=True)
 
-def configure_recording(client, tracks):
+def configure_recording(client, tracks, *, reload_via_profile):
+    idle(client)
+    current_profile = client.request('GetProfileList')['currentProfileName']
+    if not reload_via_profile or reload_via_profile == current_profile:
+        raise RuntimeError(
+            'Recording configuration reload requires a distinct fallback OBS profile.'
+        )
+
     directory = ROOT/'recordings'
     directory.mkdir(parents=True, exist_ok=True)
     params = [('Output','Mode','Advanced'),('AdvOut','RecType','Standard'),('AdvOut','RecFormat2','mkv'),
               ('AdvOut','RecEncoder','obs_x264'),('AdvOut','RecTracks',str(tracks)),('AdvOut','RecFilePath',str(directory)),
               ('AdvOut','RecRescale','false')]
     for category, name, value in params:
-        client.request('SetProfileParameter', {'parameterCategory':category,'parameterName':name,'parameterValue':value})
+        client.request('SetProfileParameter', {
+            'parameterCategory':category,
+            'parameterName':name,
+            'parameterValue':value,
+        })
+
+    # SetProfileParameter persists config but OBS may keep the active output object
+    # built from the previous settings. Bounce through the original profile so OBS
+    # rebuilds outputs before G4 records media, then verify the reloaded config.
+    client.request('SetCurrentProfile', {'profileName':reload_via_profile})
+    time.sleep(2)
+    client.request('SetCurrentProfile', {'profileName':current_profile})
+    time.sleep(2)
+
+    mismatches = {}
+    for category, name, expected in params:
+        actual = client.get_profile_parameter(category, name)
+        if str(actual) != expected:
+            mismatches[f'{category}.{name}'] = {'expected': expected, 'actual': actual}
+    if mismatches:
+        raise RuntimeError(f'Reloaded OBS recording profile did not preserve expected settings: {mismatches}')
 
 
 def run(client):
@@ -226,7 +253,7 @@ def run(client):
         write('matrix.json', results)
         print('PASS:', name, flush=True)
     try:
-        configure_recording(client, 3)
+        configure_recording(client, 3, reload_via_profile=state['profile'])
         catalog = api('obs/source-catalog')
         inventory = api('obs/inventory')
         write('inventory.json', inventory)
@@ -274,7 +301,7 @@ def run(client):
         review('G4 30s AV tracks 1+2')
         profile['sources'][0]['audio']['tracks']['1']=False
         api(path,'PUT',profile); api(path+'/apply','POST')
-        configure_recording(client,2)
+        configure_recording(client,2, reload_via_profile=state['profile'])
         review('G4 30s isolated track 2')
         profile['sources'][0]['audio']['muted']=True
         profile['sources'][0]['verification']['audio_signal']=False
