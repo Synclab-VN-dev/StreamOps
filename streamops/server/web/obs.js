@@ -103,49 +103,61 @@ function field(container, labelText, value, change, options = {}) {
 }
 function renderSources() {
   const root = $('#source-list'); root.replaceChildren();
-  if (!draft) return;
+  if (!draft) { updateSourceSummary(); return; }
   draft.sources.forEach((source, index) => {
     const cap = catalog.find((c) => c.type === source.type);
-    const card = document.createElement('fieldset'); card.className = 'source-editor'; card.dataset.sourceIndex = index;
-    const legend = document.createElement('legend'); legend.textContent = `${index + 1}. ${cap.label}`; card.append(legend);
-    field(card, 'Source name', source.name, (v) => {source.name = v;}, {required: true});
-    field(card, 'Source enabled', source.enabled, (v) => {source.enabled = v;}, {type: 'checkbox'});
-    field(card, 'Layer', source.layer, (v) => {source.layer = v;}, {type: 'number', numeric: true, integer: true, min: 0, max: 999});
+    if (!cap) return;
+    const key = sourceKey(source);
+    const card = document.createElement('details'); card.className = 'source-editor'; card.dataset.sourceIndex = index; card.dataset.sourceKey = key;
+    card.open = expandedSourceIds.has(key);
+    card.addEventListener('toggle', () => card.open ? expandedSourceIds.add(key) : expandedSourceIds.delete(key));
+    const summary = document.createElement('summary'); summary.className = 'source-editor-summary';
+    const title = document.createElement('div');
+    const name = document.createElement('strong'); name.textContent = (index + 1) + '. ' + (source.name || cap.label);
+    const meta = document.createElement('span'); meta.textContent = cap.label + ' · Layer ' + source.layer;
+    title.append(name, meta);
+    const enabled = document.createElement('span'); enabled.className = 'source-state ' + (source.enabled ? 'enabled' : 'disabled'); enabled.textContent = source.enabled ? 'Enabled' : 'Disabled';
+    summary.append(title, enabled); card.append(summary);
+    const body = document.createElement('div'); body.className = 'source-editor-body';
+    field(body, 'Source name', source.name, (v) => {source.name = v;}, {required: true});
+    field(body, 'Source enabled', source.enabled, (v) => {source.enabled = v;}, {type: 'checkbox'});
+    field(body, 'Layer', source.layer, (v) => {source.layer = v;}, {type: 'number', numeric: true, integer: true, min: 0, max: 999});
     for (const spec of cap.fields) {
       const choices = spec.enum || (spec.inventory ? inventory.options?.[source.type]?.[spec.key] || [] : null);
-      field(card, spec.label, source.settings[spec.key], (v) => {
-        if (v === undefined || v === '') delete source.settings[spec.key]; else source.settings[spec.key] = v;
-      }, {choices, type: spec.type === 'boolean' ? 'checkbox' : spec.type === 'integer' ? 'number' : 'text', numeric: spec.type === 'integer', integer: true, min: spec.min, max: spec.max});
+      field(body, spec.label, source.settings[spec.key], (v) => { if (v === undefined || v === '') delete source.settings[spec.key]; else source.settings[spec.key] = v; }, {choices, type: spec.type === 'boolean' ? 'checkbox' : spec.type === 'integer' ? 'number' : 'text', numeric: spec.type === 'integer', integer: true, min: spec.min, max: spec.max});
     }
     if (source.transform) {
-      for (const key of ['x', 'y', 'width', 'height', 'crop_left', 'crop_top', 'crop_right', 'crop_bottom']) {
-        field(card, key.replaceAll('_', ' '), source.transform[key], (v) => {source.transform[key] = v;}, {type: 'number', numeric: true, integer: true, min: ['x','y'].includes(key) ? -16384 : ['width','height'].includes(key) ? 1 : 0, max: 16384});
+      for (const transformKey of ['x', 'y', 'width', 'height', 'crop_left', 'crop_top', 'crop_right', 'crop_bottom']) {
+        field(body, transformKey.replaceAll('_', ' '), source.transform[transformKey], (v) => {source.transform[transformKey] = v;}, {type: 'number', numeric: true, integer: true, min: ['x','y'].includes(transformKey) ? -16384 : ['width','height'].includes(transformKey) ? 1 : 0, max: 16384});
       }
     }
     if (cap.audio) {
-      if (cap.video) field(card, 'Configure audio', !!source.audio, (v) => {
+      if (cap.video) field(body, 'Configure audio', !!source.audio, (v) => {
         source.audio = v ? {enabled: true, muted: false, volume_db: 0, sync_offset_ms: 0, tracks: {'1': true, '2': false, '3': false, '4': false, '5': false, '6': false}} : null;
         if (!v) source.verification.audio_signal = false;
         renderSources();
       }, {type: 'checkbox'});
       if (source.audio) {
-        field(card, 'Audio enabled', source.audio.enabled, (v) => {source.audio.enabled = v;}, {type: 'checkbox'});
-        field(card, 'Muted', source.audio.muted, (v) => {source.audio.muted = v;}, {type: 'checkbox'});
-        field(card, 'Volume dB', source.audio.volume_db, (v) => {source.audio.volume_db = v;}, {type: 'number', numeric: true, min: -100, max: 26});
-        field(card, 'Sync offset ms', source.audio.sync_offset_ms, (v) => {source.audio.sync_offset_ms = v;}, {type: 'number', numeric: true, integer: true, min: -950, max: 20000});
-        for (let track = 1; track <= 6; track++) field(card, `Track ${track}`, source.audio.tracks[track], (v) => {source.audio.tracks[track] = v;}, {type: 'checkbox'});
-        field(card, 'Require audio signal', source.verification.audio_signal, (v) => {source.verification.audio_signal = v;}, {type: 'checkbox'});
-        field(card, 'Audio threshold dB', source.verification.audio_threshold_db, (v) => {source.verification.audio_threshold_db = v;}, {type: 'number', numeric: true, min: -100, max: 0});
+        field(body, 'Audio enabled', source.audio.enabled, (v) => {source.audio.enabled = v;}, {type: 'checkbox'});
+        field(body, 'Muted', source.audio.muted, (v) => {source.audio.muted = v;}, {type: 'checkbox'});
+        field(body, 'Volume dB', source.audio.volume_db, (v) => {source.audio.volume_db = v;}, {type: 'number', numeric: true, min: -100, max: 26});
+        field(body, 'Sync offset ms', source.audio.sync_offset_ms, (v) => {source.audio.sync_offset_ms = v;}, {type: 'number', numeric: true, integer: true, min: -950, max: 20000});
+        for (let track = 1; track <= 6; track++) field(body, 'Track ' + track, source.audio.tracks[track], (v) => {source.audio.tracks[track] = v;}, {type: 'checkbox'});
+        field(body, 'Require audio signal', source.verification.audio_signal, (v) => {source.verification.audio_signal = v;}, {type: 'checkbox'});
+        field(body, 'Audio threshold dB', source.verification.audio_threshold_db, (v) => {source.verification.audio_threshold_db = v;}, {type: 'number', numeric: true, min: -100, max: 0});
       }
     }
-    if (cap.video) field(card, 'Require video signal', source.verification.video_signal, (v) => {source.verification.video_signal = v;}, {type: 'checkbox'});
-    field(card, 'Sample seconds', source.verification.sample_seconds, (v) => {source.verification.sample_seconds = v;}, {type: 'number', numeric: true, min: 0.5, max: 10});
-    const remove = document.createElement('button'); remove.textContent = 'Remove source';
-    remove.addEventListener('click', () => {draft.sources.splice(index, 1); renderSources(); changed();}); card.append(remove); root.append(card);
+    if (cap.video) field(body, 'Require video signal', source.verification.video_signal, (v) => {source.verification.video_signal = v;}, {type: 'checkbox'});
+    field(body, 'Sample seconds', source.verification.sample_seconds, (v) => {source.verification.sample_seconds = v;}, {type: 'number', numeric: true, min: 0.5, max: 10});
+    const remove = document.createElement('button'); remove.textContent = 'Remove source'; remove.type = 'button'; remove.className = 'danger-button';
+    remove.addEventListener('click', () => { expandedSourceIds.delete(key); draft.sources.splice(index, 1); renderSources(); changed(); });
+    body.append(remove); card.append(body); root.append(card);
   });
+  updateSourceSummary();
 }
 function renderCanvas() {
   const canvas = $('#profile-canvas'); canvas.replaceChildren();
+  updateProfileSummary();
   if (!draft) { $('#canvas-label').textContent = '--'; return; }
   const {width, height, fps} = draft.canvas;
   canvas.style.aspectRatio = `${width}/${height}`; $('#canvas-label').textContent = `${width}×${height} @ ${fps}`;
@@ -157,7 +169,7 @@ function renderCanvas() {
   });
 }
 function validate() {
-  for (const input of document.querySelectorAll('.source-editor input, #profile-name, [id^="canvas-"]')) {
+  for (const input of document.querySelectorAll('.source-editor input, #profile-name, #canvas-width, #canvas-height, #canvas-fps')) {
     if (input.reportValidity && !input.reportValidity()) throw new Error('Please correct the highlighted field.');
   }
   for (const source of draft.sources) {
