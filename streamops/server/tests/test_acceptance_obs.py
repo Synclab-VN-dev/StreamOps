@@ -11,7 +11,11 @@ def test_setup_creates_session_specific_positive_profile_without_obs_mutation(tm
     monkeypatch.setattr(acceptance_obs, 'ROOT', tmp_path)
     monkeypatch.setattr(acceptance_obs, 'BASELINE', tmp_path / 'baseline.json')
     monkeypatch.setattr(acceptance_obs, 'configure_recording', lambda *args, **kwargs: None)
-    monkeypatch.setattr(acceptance_obs, 'validate_recovery_task', lambda: 'Recovery task')
+    monkeypatch.setattr(
+        acceptance_obs,
+        'validate_recovery_task',
+        lambda: pytest.fail('READY setup must not require a recovery task'),
+    )
     monkeypatch.setattr(acceptance_obs.subprocess, 'run', lambda *args, **kwargs: None)
     monkeypatch.setattr(acceptance_obs.time, 'sleep', lambda seconds: None)
 
@@ -41,9 +45,11 @@ def test_setup_creates_session_specific_positive_profile_without_obs_mutation(tm
                 'state': 'READY',
                 'process': {
                     'pid': 10,
+                    'started_at': '2026-09-30T00:00:00+07:00',
                     'session_id': 1,
                     'active_console_session_id': 1,
                     'interactive': True,
+                    'executable_path': r'C:\Program Files\obs-studio\bin\64bit\obs64.exe',
                 },
                 'output': {'streaming': False, 'recording': False},
             }
@@ -161,6 +167,28 @@ def test_setup_does_not_resume_unknown_active_baseline(tmp_path, monkeypatch):
         acceptance_obs.setup(IdleClient(), 'READY')
 
 
+def test_recovery_mutation_comes_from_consistent_durable_state():
+    state = {
+        'setup_step': 'reload_recording_test_profile_requested',
+        'last_safe_runtime': {'mutation': 'reload_recording_test_profile'},
+    }
+
+    assert (
+        acceptance_obs._durable_recovery_mutation(state)
+        == 'reload_recording_test_profile'
+    )
+
+
+def test_recovery_mutation_refuses_inconsistent_durable_state():
+    state = {
+        'setup_step': 'create_scene_collection_requested',
+        'last_safe_runtime': {'mutation': 'restore_profile'},
+    }
+
+    with pytest.raises(RuntimeError, match='provenance is inconsistent'):
+        acceptance_obs._durable_recovery_mutation(state)
+
+
 def test_wait_for_convergence_polls_transient_not_ready_without_recovery(monkeypatch):
     statuses = iter([
         {'state': 'RUNNING_NO_WEBSOCKET'},
@@ -252,8 +280,14 @@ def test_recover_not_ready_uses_graceful_task_before_lifecycle_start(tmp_path, m
     state = {
         'session_id': 'session',
         'setup_state': 'preparing',
+        'setup_step': 'create_scene_collection_requested',
         'last_safe_runtime': {
+            'mutation': 'create_scene_collection',
             'pid': 50,
+            'started_at': '2026-09-30T00:00:00+07:00',
+            'session_id': 1,
+            'active_console_session_id': 1,
+            'executable_path': r'C:\Program Files\obs-studio\bin\64bit\obs64.exe',
             'streaming': False,
             'recording': False,
             'observed_at': '2026-09-30T00:00:00Z',
@@ -271,7 +305,9 @@ def test_recover_not_ready_uses_graceful_task_before_lifecycle_start(tmp_path, m
                 'state': 'RUNNING_NO_WEBSOCKET',
                 'process': {
                     'pid': 50, 'interactive': True,
+                    'started_at': '2026-09-30T00:00:00+07:00',
                     'session_id': 1, 'active_console_session_id': 1,
+                    'executable_path': r'C:\Program Files\obs-studio\bin\64bit\obs64.exe',
                 },
             }
         return {'state': 'STOPPED', 'process': {'running': False}}
@@ -305,14 +341,27 @@ def test_recover_not_ready_uses_graceful_task_before_lifecycle_start(tmp_path, m
     assert calls[-1] == ('obs/process/start', 'POST')
     assert state['recovery_attempts'][0]['status'] == 'recovered'
     assert client.closes == client.connects == 1
+    request = json.loads((tmp_path / 'recovery-request.json').read_text(encoding='utf-8'))
+    assert request['mutation'] == 'create_scene_collection'
+    assert request['expected_process']['pid'] == 50
+    assert request['expected_process']['started_at'] == '2026-09-30T00:00:00+07:00'
+    assert request['expected_process']['session_id'] == 1
+    assert request['idle_snapshot']['streaming'] is False
+    assert request['idle_snapshot']['recording'] is False
 
 
 def test_recover_not_ready_refuses_pid_change_without_closing(monkeypatch):
     state = {
         'session_id': 'session',
         'setup_state': 'preparing',
+        'setup_step': 'create_scene_collection_requested',
         'last_safe_runtime': {
+            'mutation': 'create_scene_collection',
             'pid': 50,
+            'started_at': '2026-09-30T00:00:00+07:00',
+            'session_id': 1,
+            'active_console_session_id': 1,
+            'executable_path': r'C:\Program Files\obs-studio\bin\64bit\obs64.exe',
             'streaming': False,
             'recording': False,
             'observed_at': '2026-09-30T00:00:00Z',
@@ -322,7 +371,9 @@ def test_recover_not_ready_refuses_pid_change_without_closing(monkeypatch):
         'state': 'RUNNING_NO_WEBSOCKET',
         'process': {
             'pid': 99, 'interactive': True,
+            'started_at': '2026-09-30T00:00:00+07:00',
             'session_id': 1, 'active_console_session_id': 1,
+            'executable_path': r'C:\Program Files\obs-studio\bin\64bit\obs64.exe',
         },
     })
     monkeypatch.setattr(
@@ -337,14 +388,58 @@ def test_recover_not_ready_refuses_pid_change_without_closing(monkeypatch):
         )
 
 
+def test_recover_not_ready_refuses_process_start_time_change_without_closing(monkeypatch):
+    state = {
+        'session_id': 'session',
+        'setup_state': 'preparing',
+        'setup_step': 'restore_profile_requested',
+        'last_safe_runtime': {
+            'mutation': 'restore_profile',
+            'pid': 50,
+            'started_at': '2026-09-30T00:00:00+07:00',
+            'session_id': 1,
+            'active_console_session_id': 1,
+            'executable_path': r'C:\Program Files\obs-studio\bin\64bit\obs64.exe',
+            'streaming': False,
+            'recording': False,
+            'observed_at': '2026-09-30T00:00:00Z',
+        },
+    }
+    monkeypatch.setattr(acceptance_obs, 'api', lambda *args, **kwargs: {
+        'state': 'RUNNING_NO_WEBSOCKET',
+        'process': {
+            'pid': 50,
+            'started_at': '2026-09-30T00:00:01+07:00',
+            'interactive': True,
+            'session_id': 1,
+            'active_console_session_id': 1,
+            'executable_path': r'C:\Program Files\obs-studio\bin\64bit\obs64.exe',
+        },
+    })
+    monkeypatch.setattr(
+        acceptance_obs.subprocess,
+        'run',
+        lambda *args, **kwargs: pytest.fail('recovery task must not run'),
+    )
+
+    with pytest.raises(RuntimeError, match='start time changed'):
+        acceptance_obs.recover_not_ready(object(), state, mutation='restore_profile')
+
+
 def test_recover_not_ready_never_starts_after_graceful_close_timeout(tmp_path, monkeypatch):
     monkeypatch.setattr(acceptance_obs, 'ROOT', tmp_path)
     monkeypatch.setattr(acceptance_obs, 'BASELINE', tmp_path / 'baseline.json')
     state = {
         'session_id': 'session',
         'setup_state': 'preparing',
+        'setup_step': 'create_scene_collection_requested',
         'last_safe_runtime': {
+            'mutation': 'create_scene_collection',
             'pid': 50,
+            'started_at': '2026-09-30T00:00:00+07:00',
+            'session_id': 1,
+            'active_console_session_id': 1,
+            'executable_path': r'C:\Program Files\obs-studio\bin\64bit\obs64.exe',
             'streaming': False,
             'recording': False,
             'observed_at': '2026-09-30T00:00:00Z',
@@ -360,7 +455,9 @@ def test_recover_not_ready_never_starts_after_graceful_close_timeout(tmp_path, m
             'state': 'RUNNING_NO_WEBSOCKET',
             'process': {
                 'pid': 50, 'interactive': True,
+                'started_at': '2026-09-30T00:00:00+07:00',
                 'session_id': 1, 'active_console_session_id': 1,
+                'executable_path': r'C:\Program Files\obs-studio\bin\64bit\obs64.exe',
             },
         }
 
@@ -386,6 +483,75 @@ def test_recover_not_ready_never_starts_after_graceful_close_timeout(tmp_path, m
 
     assert ('obs/process/start', 'POST') not in api_calls
     assert state['recovery_attempts'][0]['status'] == 'graceful_close_timeout'
+
+
+def test_validate_recovery_task_requires_checked_in_pid_bound_action(monkeypatch):
+    task = {
+        'Name': acceptance_obs.DEFAULT_RECOVERY_TASK,
+        'State': 'Ready',
+        'LogonType': 'Interactive',
+        'RunLevel': 'Limited',
+        'TriggerCount': 0,
+        'UserId': 'huy',
+        'InteractiveUser': r'DESKTOP\huy',
+        'Execute': r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe',
+        'Arguments': acceptance_obs._recovery_task_arguments(),
+        'WorkingDirectory': str(acceptance_obs.ROOT.parents[1]),
+    }
+    monkeypatch.setattr(acceptance_obs.shutil, 'which', lambda name: 'powershell.exe')
+    monkeypatch.setattr(
+        acceptance_obs.subprocess,
+        'run',
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0, stdout=json.dumps(task), stderr=''
+        ),
+    )
+
+    assert acceptance_obs.validate_recovery_task() == acceptance_obs.DEFAULT_RECOVERY_TASK
+
+    task['Arguments'] = '-Command "(Get-Process obs64).CloseMainWindow()"'
+    with pytest.raises(RuntimeError, match='PID-bound definition'):
+        acceptance_obs.validate_recovery_task()
+
+
+@pytest.mark.skipif(acceptance_obs.sys.platform != 'win32', reason='Windows task worker')
+def test_recovery_worker_refuses_expired_request_without_process_mutation(tmp_path):
+    request_path = tmp_path / 'request.json'
+    result_path = tmp_path / 'result.json'
+    request_path.write_text(
+        json.dumps({
+            'schema_version': 1,
+            'request_id': 'expired-request',
+            'expires_at': '2000-01-01T00:00:00Z',
+        }),
+        encoding='utf-8',
+    )
+    powershell = acceptance_obs.shutil.which('powershell.exe')
+    assert powershell is not None
+
+    result = acceptance_obs.subprocess.run(
+        [
+            powershell,
+            '-NoLogo',
+            '-NoProfile',
+            '-NonInteractive',
+            '-File',
+            str(acceptance_obs.RECOVERY_WORKER),
+            '-RequestPath',
+            str(request_path),
+            '-ResultPath',
+            str(result_path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+
+    assert result.returncode == 1
+    evidence = json.loads(result_path.read_text(encoding='utf-8-sig'))
+    assert evidence['request_id'] == 'expired-request'
+    assert evidence['status'] == 'refused'
+    assert 'expired' in evidence['error'].lower()
 
 
 def test_review_restores_saved_profile_when_result_fails(monkeypatch):

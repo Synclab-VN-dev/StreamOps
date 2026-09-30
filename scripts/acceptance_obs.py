@@ -1,14 +1,16 @@
-"""Opt-in local OBS acceptance. Never streams, deletes inputs, or touches C:\\Scripts.
+r"""Opt-in local OBS acceptance. Never streams, deletes inputs, or touches C:\\Scripts.
 
 Run with repo venv: python -m scripts.acceptance_obs setup|run|restore.
 Re-running setup resumes an active session that failed before fixture preparation.
 Requires operator approval, idle OBS, ffmpeg/ffprobe, and a separate node on 8785.
 Run that node with an isolated runtime directory, for example:
 STREAMOPS_NODE_DATA_DIR=.streamops/pr19-node
+Install the optional graceful recovery task with:
+.\scripts\devices\a-windows\install-obs-acceptance-recovery-task.ps1
 Generated evidence stays under ignored .streamops/pr19-acceptance/.
 """
 from copy import deepcopy
-from datetime import datetime, UTC
+from datetime import datetime, timedelta, UTC
 import argparse
 import json
 import os
@@ -17,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
@@ -27,6 +30,13 @@ BASELINE = ROOT / 'baseline.json'
 BASE = 'http://127.0.0.1:8785/api/v1/'
 ACCEPTANCE_SCHEMA_VERSION = 2
 DEFAULT_RECOVERY_TASK = 'StreamOps PR19 Close Idle OBS'
+RECOVERY_WORKER = (
+    Path(__file__).resolve().parent
+    / 'devices'
+    / 'a-windows'
+    / 'invoke-obs-acceptance-recovery.ps1'
+)
+RECOVERY_REQUEST_TTL_SECONDS = 60
 CONVERGENCE_TIMEOUT_SECONDS = 30
 SHUTDOWN_TIMEOUT_SECONDS = 20
 POLL_SECONDS = 0.5
@@ -63,25 +73,48 @@ def _reconnect(client):
     client.connect()
 
 
+def _recovery_task_arguments():
+    request_path = ROOT / 'recovery-request.json'
+    result_path = ROOT / 'recovery-result.json'
+    return (
+        '-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden '
+        '-ExecutionPolicy Bypass '
+        f'-File "{RECOVERY_WORKER}" '
+        f'-RequestPath "{request_path}" '
+        f'-ResultPath "{result_path}"'
+    )
+
+
+def _same_windows_user(first, second):
+    def account_name(value):
+        return str(value or '').replace('/', '\\').rsplit('\\', 1)[-1].casefold()
+
+    return bool(account_name(first)) and account_name(first) == account_name(second)
+
+
 def validate_recovery_task():
     task_name = os.environ.get(
         'STREAMOPS_ACCEPTANCE_OBS_RECOVERY_TASK', DEFAULT_RECOVERY_TASK
     )
-    pwsh = shutil.which('pwsh')
-    if not pwsh:
-        raise RuntimeError('PowerShell 7 is required to validate OBS recovery.')
+    powershell = shutil.which('powershell.exe') or shutil.which('powershell')
+    if not powershell:
+        raise RuntimeError('Windows PowerShell is required to validate OBS recovery.')
     script = (
         "$task=Get-ScheduledTask -TaskName $env:STREAMOPS_RECOVERY_TASK -ErrorAction Stop;"
         "$action=@($task.Actions);"
         "if($action.Count -ne 1){throw 'Recovery task must have exactly one action'};"
         "[pscustomobject]@{Name=$task.TaskName;State=[string]$task.State;"
-        "LogonType=[string]$task.Principal.LogonType;Execute=$action[0].Execute;"
-        "Arguments=$action[0].Arguments}|ConvertTo-Json -Compress"
+        "LogonType=[string]$task.Principal.LogonType;"
+        "RunLevel=[string]$task.Principal.RunLevel;UserId=$task.Principal.UserId;"
+        "InteractiveUser=(Get-CimInstance Win32_ComputerSystem).UserName;"
+        "TriggerCount=@($task.Triggers|Where-Object{$_ -ne $null}).Count;"
+        "Execute=$action[0].Execute;Arguments=$action[0].Arguments;"
+        "WorkingDirectory=$action[0].WorkingDirectory}|ConvertTo-Json -Compress"
     )
     env = os.environ.copy()
     env['STREAMOPS_RECOVERY_TASK'] = task_name
     result = subprocess.run(
-        [pwsh, '-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script],
+        [powershell, '-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script],
         capture_output=True,
         text=True,
         env=env,
@@ -90,28 +123,98 @@ def validate_recovery_task():
     if result.returncode:
         raise RuntimeError(
             f"Acceptance OBS recovery task {task_name!r} is unavailable: "
-            f"{result.stderr.strip() or result.stdout.strip()}"
+            f"{result.stderr.strip() or result.stdout.strip()}. Run "
+            '.\\scripts\\devices\\a-windows\\install-obs-acceptance-recovery-task.ps1.'
         )
     try:
         task = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
         raise RuntimeError('Acceptance OBS recovery task inspection was unreadable.') from exc
     arguments = str(task.get('Arguments') or '')
-    expected_arguments = (
-        '-NoProfile -NonInteractive -WindowStyle Hidden -Command '
-        '"(Get-Process obs64).CloseMainWindow()"'
-    )
+    expected_arguments = _recovery_task_arguments()
+    expected_working_directory = str(Path(__file__).resolve().parents[1])
     if (
         task.get('Name') != task_name
         or task.get('LogonType') != 'Interactive'
-        or Path(str(task.get('Execute') or '')).name.lower() != 'pwsh.exe'
-        or ' '.join(arguments.split()) != expected_arguments
+        or task.get('RunLevel') != 'Limited'
+        or task.get('TriggerCount') != 0
+        or not _same_windows_user(task.get('UserId'), task.get('InteractiveUser'))
+        or Path(str(task.get('Execute') or '')).name.lower() != 'powershell.exe'
+        or ' '.join(arguments.split()) != ' '.join(expected_arguments.split())
+        or str(task.get('WorkingDirectory') or '').casefold()
+        != expected_working_directory.casefold()
     ):
         raise RuntimeError(
-            'Acceptance OBS recovery task must be an interactive, graceful '
-            'CloseMainWindow action for obs64.'
+            'Acceptance OBS recovery task does not match the checked-in, '
+            'interactive PID-bound definition. Run '
+            '.\\scripts\\devices\\a-windows\\install-obs-acceptance-recovery-task.ps1.'
         )
     return task_name
+
+
+def _read_matching_recovery_result(request_id):
+    result_path = ROOT / 'recovery-result.json'
+    if not result_path.is_file():
+        return None
+    try:
+        result = json.loads(result_path.read_text(encoding='utf-8-sig'))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return result if result.get('request_id') == request_id else None
+
+
+def _durable_recovery_mutation(state):
+    safe = state.get('last_safe_runtime')
+    if not isinstance(safe, dict):
+        if _legacy_recovery_allowed(state):
+            step = str(state.get('setup_step') or '')
+            if step.endswith('_requested'):
+                return step[:-len('_requested')]
+            return 'legacy_setup_transition'
+        raise RuntimeError('OBS recovery has no pre-mutation idle snapshot.')
+    mutation = safe.get('mutation')
+    if not isinstance(mutation, str) or not mutation:
+        raise RuntimeError('OBS recovery snapshot has no mutation provenance.')
+    expected_step = mutation + '_requested'
+    if state.get('setup_step') != expected_step:
+        raise RuntimeError(
+            'OBS recovery provenance is inconsistent: '
+            f"setup_step={state.get('setup_step')!r}, mutation={mutation!r}."
+        )
+    return mutation
+
+
+def _write_recovery_request(state, safe, process, *, mutation, recovery_key):
+    request_id = uuid.uuid4().hex
+    created = datetime.now(UTC)
+    identity = {
+        'pid': process.get('pid'),
+        'started_at': process.get('started_at'),
+        'session_id': process.get('session_id'),
+        'active_console_session_id': process.get('active_console_session_id'),
+        'executable_path': process.get('executable_path'),
+    }
+    if not all(identity.get(key) is not None for key in identity):
+        raise RuntimeError('OBS recovery requires a complete process identity.')
+    request = {
+        'schema_version': 1,
+        'request_id': request_id,
+        'session_id': state.get('session_id'),
+        'mutation': mutation,
+        'recovery_key': recovery_key,
+        'created_at': created.isoformat().replace('+00:00', 'Z'),
+        'expires_at': (created + timedelta(seconds=RECOVERY_REQUEST_TTL_SECONDS))
+        .isoformat()
+        .replace('+00:00', 'Z'),
+        'expected_process': identity,
+        'idle_snapshot': {
+            'streaming': False if safe is None else safe.get('streaming'),
+            'recording': False if safe is None else safe.get('recording'),
+            'observed_at': None if safe is None else safe.get('observed_at'),
+        },
+    }
+    write('recovery-request.json', request)
+    return request
 
 
 def _legacy_recovery_allowed(state):
@@ -130,7 +233,7 @@ def _legacy_recovery_allowed(state):
     )
 
 
-def recover_not_ready(client, state, *, mutation):
+def recover_not_ready(client, state, *, mutation=None):
     status = api('obs/process/status')
     if status['state'] == 'READY':
         _reconnect(client)
@@ -143,30 +246,63 @@ def recover_not_ready(client, state, *, mutation):
     if not process.get('interactive') or process.get('session_id') != process.get('active_console_session_id'):
         raise RuntimeError('OBS recovery requires the active interactive Windows session.')
 
+    durable_mutation = _durable_recovery_mutation(state)
+    if mutation is not None and mutation != durable_mutation:
+        raise RuntimeError(
+            f'OBS recovery mutation {mutation!r} does not match durable '
+            f'provenance {durable_mutation!r}.'
+        )
+    mutation = durable_mutation
     safe = state.get('last_safe_runtime')
-    legacy = safe is None and _legacy_recovery_allowed(state)
+    identity_fields = ('pid', 'started_at', 'session_id', 'executable_path')
+    legacy = _legacy_recovery_allowed(state) and (
+        not isinstance(safe, dict)
+        or any(safe.get(field) is None for field in identity_fields)
+    )
     if not legacy:
-        if not safe:
-            raise RuntimeError('OBS recovery has no pre-mutation idle snapshot.')
         if safe.get('pid') != process.get('pid'):
             raise RuntimeError('OBS PID changed after the acceptance mutation; recovery refused.')
+        if safe.get('started_at') != process.get('started_at'):
+            raise RuntimeError(
+                'OBS process start time changed after the acceptance mutation; recovery refused.'
+            )
+        if safe.get('session_id') != process.get('session_id'):
+            raise RuntimeError(
+                'OBS Windows session changed after the acceptance mutation; recovery refused.'
+            )
+        if safe.get('executable_path') != process.get('executable_path'):
+            raise RuntimeError(
+                'OBS executable changed after the acceptance mutation; recovery refused.'
+            )
         if safe.get('streaming') is not False or safe.get('recording') is not False:
             raise RuntimeError('OBS was not proven idle immediately before the mutation.')
+    elif isinstance(safe, dict) and (
+        safe.get('streaming') is not False or safe.get('recording') is not False
+    ):
+        raise RuntimeError('Legacy OBS recovery snapshot does not prove an idle runtime.')
 
     recovery_key = (
         f"legacy:{state['session_id']}:{mutation}"
-        if legacy else f"{mutation}:{safe['observed_at']}"
+        if legacy else (
+            f"{mutation}:{safe['observed_at']}:{safe['pid']}:{safe['started_at']}"
+        )
     )
     attempts = state.setdefault('recovery_attempts', [])
     if any(item.get('recovery_key') == recovery_key for item in attempts):
         raise RuntimeError(f'OBS recovery was already attempted for {mutation}.')
     task_name = validate_recovery_task()
+    request = _write_recovery_request(
+        state, safe, process, mutation=mutation, recovery_key=recovery_key
+    )
     attempt = {
         'mutation': mutation,
         'recovery_key': recovery_key,
+        'request_id': request['request_id'],
         'task_name': task_name,
         'legacy_baseline': legacy,
         'pid': process.get('pid'),
+        'process_started_at': process.get('started_at'),
+        'process_session_id': process.get('session_id'),
         'started_at': _timestamp(),
         'status': 'closing',
     }
@@ -190,6 +326,13 @@ def recover_not_ready(client, state, *, mutation):
 
     deadline = time.monotonic() + SHUTDOWN_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
+        task_result = _read_matching_recovery_result(request['request_id'])
+        if task_result and task_result.get('status') == 'refused':
+            attempt['status'] = 'task_refused'
+            attempt['error'] = task_result.get('error') or 'Recovery task refused the request.'
+            write('setup-recovery.json', attempt)
+            write('baseline.json', state)
+            raise RuntimeError(f"Graceful OBS recovery was refused: {attempt['error']}")
         current = api('obs/process/status')
         if current['state'] == 'STOPPED':
             break
@@ -284,8 +427,10 @@ def transition(
     state['last_safe_runtime'] = {
         'mutation': mutation,
         'pid': process['pid'],
+        'started_at': process['started_at'],
         'session_id': process['session_id'],
         'active_console_session_id': process['active_console_session_id'],
+        'executable_path': process['executable_path'],
         'streaming': status['output']['streaming'],
         'recording': status['output']['recording'],
         'observed_at': _timestamp(),
@@ -506,14 +651,13 @@ def setup(client, initial_obs_runtime_state):
                 )
     current_runtime = api('obs/process/status')
     if state is not None and current_runtime['state'] == 'RUNNING_NO_WEBSOCKET':
-        recover_not_ready(client, state, mutation='create_scene_collection')
+        recover_not_ready(client, state, mutation=_durable_recovery_mutation(state))
         current_runtime = api('obs/process/status')
     if current_runtime['state'] != 'READY':
         raise RuntimeError(
             f"Acceptance setup requires OBS READY after preflight, got {current_runtime['state']}."
         )
     idle(client)
-    validate_recovery_task()
     if state is None and initial_obs_runtime_state not in ('READY', 'STOPPED'):
         raise RuntimeError(
             f"Acceptance can only preserve an initial READY or STOPPED OBS runtime; got {initial_obs_runtime_state}."
@@ -919,7 +1063,6 @@ if __name__=='__main__':
                         f"Acceptance session {previous['session_id']} is already active or "
                         "was created by an older harness. Run it or restore it before setup."
                     )
-        validate_recovery_task()
         if initial_runtime['state'] == 'STOPPED':
             make_obs_ready()
         elif initial_runtime['state'] == 'RUNNING_NO_WEBSOCKET' and resumable:
