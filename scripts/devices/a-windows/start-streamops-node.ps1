@@ -1,6 +1,7 @@
 # StreamOps-managed interactive-session start script.
 [CmdletBinding()]
 param(
+    [string]$TaskName = "StreamOps Node (repo-local)",
     [string]$BindHost = "0.0.0.0",
     [ValidateRange(1, 65535)]
     [int]$Port = 8765,
@@ -16,7 +17,6 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$taskName = "StreamOps Node (repo-local)"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 $launcher = Join-Path $PSScriptRoot "run-streamops-node.ps1"
 $pwsh = (Get-Command pwsh.exe -ErrorAction Stop).Source
@@ -90,12 +90,12 @@ if (Test-Path -LiteralPath $runtimePath) {
     catch {
         # The stale or unhealthy process is reconciled below.
     }
-    & (Join-Path $PSScriptRoot "stop-streamops-node.ps1") -DataDir $DataDir
+    & (Join-Path $PSScriptRoot "stop-streamops-node.ps1") -DataDir $DataDir -TaskName $TaskName
 }
 
-$existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+$existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($null -ne $existingTask -and $existingTask.State -eq "Running") {
-    Stop-ScheduledTask -TaskName $taskName
+    Stop-ScheduledTask -TaskName $TaskName
 }
 
 $actionArguments = @(
@@ -122,8 +122,8 @@ $definition = New-ScheduledTask `
     -Principal $principal `
     -Settings $settings `
     -Description "Repo-local StreamOps node; started on demand in the interactive desktop session."
-Register-ScheduledTask -TaskName $taskName -InputObject $definition -Force | Out-Null
-Start-ScheduledTask -TaskName $taskName
+Register-ScheduledTask -TaskName $TaskName -InputObject $definition -Force | Out-Null
+Start-ScheduledTask -TaskName $TaskName
 
 $probeHost = Get-ProbeHost $BindHost
 $healthUrl = "http://${probeHost}:$Port/api/v1/health"
@@ -135,7 +135,7 @@ for ($attempt = 0; $attempt -lt 60; $attempt++) {
             $health.session_id -eq $health.active_console_session_id) {
             $runtime = Get-Content -LiteralPath $runtimePath -Raw | ConvertFrom-Json
             Write-Host "streamops-node is running (PID $($runtime.pid), session $($health.session_id), capture $($health.capture_backend)): $healthUrl"
-            Write-Host "Task: $taskName"
+            Write-Host "Task: $TaskName"
             Write-Host "Logs: $(Join-Path $DataDir 'logs')"
             exit 0
         }
@@ -154,7 +154,7 @@ for ($attempt = 0; $attempt -lt 60; $attempt++) {
     }
 }
 
-$taskInfo = Get-ScheduledTaskInfo -TaskName $taskName -ErrorAction SilentlyContinue
-& (Join-Path $PSScriptRoot "stop-streamops-node.ps1") -DataDir $DataDir
+$taskInfo = Get-ScheduledTaskInfo -TaskName $TaskName -ErrorAction SilentlyContinue
+& (Join-Path $PSScriptRoot "stop-streamops-node.ps1") -DataDir $DataDir -TaskName $TaskName
 $result = if ($null -eq $taskInfo) { "unknown" } else { $taskInfo.LastTaskResult }
 throw "streamops-node did not become capture-ready in the interactive session. Task result: $result"
