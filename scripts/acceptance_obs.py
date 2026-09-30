@@ -1,6 +1,7 @@
 """Opt-in local OBS acceptance. Never streams, deletes inputs, or touches C:\\Scripts.
 
 Run with repo venv: python -m scripts.acceptance_obs setup|run|restore.
+Re-running setup resumes an active session that failed before fixture preparation.
 Requires operator approval, idle OBS, ffmpeg/ffprobe, and a separate node on 8785.
 Run that node with an isolated runtime directory, for example:
 STREAMOPS_NODE_DATA_DIR=.streamops/pr19-node
@@ -13,6 +14,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import time
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
@@ -53,6 +55,65 @@ def stop_owned_recording(client, *, timeout_seconds=15, poll_seconds=0.1):
             raise RuntimeError('OBS did not finish stopping the acceptance recording.')
         time.sleep(poll_seconds)
     return result
+
+
+def positive_profile_payload(state):
+    return {
+        'name': f"PR19 Motion + tone {state['session_id']}",
+        'sources': [{
+            'type': 'video_file',
+            'name': 'Motion + tone',
+            'settings': {
+                'local_file': str(ROOT/'fixtures'/'motion-tone.mkv'),
+                'looping': True,
+                'restart_on_activate': True,
+            },
+            'audio': {'tracks': {'1': True, '2': True}},
+            'verification': {
+                'video_signal': True,
+                'audio_signal': True,
+                'sample_seconds': 1,
+            },
+        }],
+    }
+
+
+def write_manual_positive(state, profile, *, status, verification=None):
+    evidence = {
+        'session_id': state['session_id'],
+        'profile_id': profile['id'],
+        'profile_name': profile['name'],
+        'test_collection': state['test_collection'],
+        'test_profile': state['test_profile'],
+        'fixture': profile['sources'][0]['settings']['local_file'],
+        'status': status,
+    }
+    if verification is not None:
+        evidence['verification'] = verification
+    write('manual-positive.json', evidence)
+    return evidence
+
+
+def review_profile(path, profile, label):
+    job = api(path+'/review', 'POST', {'seconds': 30}, 202)
+    original = deepcopy(profile)
+    changed = deepcopy(profile)
+    changed['name'] = original['name'] + ' edited during review'
+    api(path, 'PUT', changed)
+    try:
+        deadline = time.monotonic()+150
+        while job['state'] in ('queued', 'running') and time.monotonic() < deadline:
+            time.sleep(1)
+            job = api('scene-reviews/'+job['job_id'])
+        write(label+'.json', job)
+        assert job['state'] == 'completed' and job['result']['status'] == 'PASS', job
+        snapshot = json.loads(Path(job['result']['artifacts']['profile']).read_text(encoding='utf-8'))
+        assert snapshot['name'] == original['name']
+        return job['result']['artifacts']
+    finally:
+        # Review deliberately edits the persisted record after enqueueing. Always
+        # put the exact pre-review payload back, including on timeout or failure.
+        api(path, 'PUT', original)
 
 
 def make_obs_ready():
@@ -148,31 +209,43 @@ def setup(client, initial_obs_runtime_state):
         raise RuntimeError(
             f"Acceptance can only preserve an initial READY or STOPPED OBS runtime; got {initial_obs_runtime_state}."
         )
+    state = None
     if BASELINE.exists():
         previous = _read_baseline()
         if previous['active']:
-            raise RuntimeError(
-                f"Acceptance session {previous['session_id']} is still active. "
-                "Run restore before starting a new session."
-            )
-    stamp = datetime.now(UTC).strftime('%Y%m%d-%H%M%S')
-    name = 'StreamOps PR19 Acceptance ' + stamp
-    state = {
-        'session_id': stamp,
-        'active': True,
-        'started_at': datetime.now(UTC).isoformat().replace('+00:00','Z'),
-        'collection': client.get_scene_collection_list()['currentSceneCollectionName'],
-        'profile': client.request('GetProfileList')['currentProfileName'],
-        'scene': client.get_current_program_scene(),
-        'video': client.get_video_settings(),
-        'test_collection': name,
-        'test_profile': name,
-        'initial_obs_runtime_state': initial_obs_runtime_state,
-    }
-    # Capture the current operator context for every new session before switching OBS.
-    # Every mutation after this point is transactional: if setup fails, restore the
-    # original collection/profile/scene/runtime before surfacing the failure.
-    write('baseline.json', state)
+            if previous.get('setup_state') == 'preparing':
+                state = previous
+                print(
+                    f"Resuming incomplete acceptance setup {state['session_id']}.",
+                    flush=True,
+                )
+            else:
+                raise RuntimeError(
+                    f"Acceptance session {previous['session_id']} is already active or "
+                    "was created by an older harness. Run it or restore it before setup."
+                )
+    if state is None:
+        stamp = datetime.now(UTC).strftime('%Y%m%d-%H%M%S')
+        name = 'StreamOps PR19 Acceptance ' + stamp
+        state = {
+            'session_id': stamp,
+            'active': True,
+            'started_at': datetime.now(UTC).isoformat().replace('+00:00','Z'),
+            'collection': client.get_scene_collection_list()['currentSceneCollectionName'],
+            'profile': client.request('GetProfileList')['currentProfileName'],
+            'scene': client.get_current_program_scene(),
+            'video': client.get_video_settings(),
+            'test_collection': name,
+            'test_profile': name,
+            'initial_obs_runtime_state': initial_obs_runtime_state,
+            'setup_state': 'preparing',
+        }
+        # Capture the current operator context for every new session before switching OBS.
+        # Every mutation after this point is transactional: if setup fails, restore the
+        # original collection/profile/scene/runtime before surfacing the failure.
+        write('baseline.json', state)
+    stamp = state['session_id']
+    name = state['test_collection']
     try:
         if name not in client.get_scene_collection_list()['sceneCollections']:
             client.request('CreateSceneCollection', {'sceneCollectionName':name})
@@ -198,6 +271,23 @@ def setup(client, initial_obs_runtime_state):
                 '-f','lavfi','-i',audio,'-t','5','-c:v','libx264','-preset','ultrafast',
                 '-pix_fmt','yuv420p','-c:a','aac',str(fixtures/(fixture_name+'.mkv'))
             ], check=True)
+
+        before = client.get_input_list()
+        acceptance_profile = api(
+            'scene-profiles', 'POST', positive_profile_payload(state), 201
+        )
+        save_left_obs_untouched = client.get_input_list() == before
+        if not save_left_obs_untouched:
+            raise RuntimeError('Saving the acceptance profile unexpectedly mutated OBS inputs.')
+        state.update({
+            'acceptance_profile_id': acceptance_profile['id'],
+            'acceptance_profile_name': acceptance_profile['name'],
+            'save_left_obs_untouched': True,
+            'setup_state': 'prepared',
+        })
+        write('tested-profile.json', acceptance_profile)
+        write_manual_positive(state, acceptance_profile, status='READY_FOR_APPLY')
+        write('baseline.json', state)
     except Exception as setup_exc:
         try:
             _restore(client, state)
@@ -213,7 +303,12 @@ def setup(client, initial_obs_runtime_state):
                 f'({restore_exc}). Session remains active; inspect OBS before retrying.'
             ) from restore_exc
         raise
-    print(f"Created isolated OBS acceptance session {stamp}.", flush=True)
+    print(
+        f"Created isolated OBS acceptance session {stamp}; "
+        f"positive profile: {state['acceptance_profile_name']} "
+        f"({state['acceptance_profile_id']}).",
+        flush=True,
+    )
 
 def configure_recording(client, tracks, *, reload_via_profile):
     idle(client)
@@ -252,12 +347,32 @@ def configure_recording(client, tracks, *, reload_via_profile):
         raise RuntimeError(f'Reloaded OBS recording profile did not preserve expected settings: {mismatches}')
 
 
+def restore_positive_fixture(client, state, profile):
+    path = 'scene-profiles/'+profile['id']
+    configure_recording(client, 3, reload_via_profile=state['profile'])
+    restored = api(path, 'PUT', profile)
+    api(path+'/apply', 'POST')
+    api(path+'/activate', 'POST')
+    time.sleep(2)
+    verification = api(path+'/verify', 'POST')
+    write('positive-restored-g3.json', verification)
+    if verification['status'] != 'PASS':
+        raise RuntimeError(
+            f"Restored positive acceptance profile did not pass G3: {verification}"
+        )
+    write('tested-profile.json', restored)
+    return write_manual_positive(
+        state, restored, status='PASS', verification=verification
+    )
+
+
 def run(client):
     state = _read_baseline()
     if not state['active']:
         raise RuntimeError('No active acceptance session. Run setup before run.')
     select(client, state)
     results = []
+    positive_profile = None
     def passed(name, detail=None):
         results.append({'case':name,'status':'PASS','detail':detail})
         write('matrix.json', results)
@@ -268,14 +383,33 @@ def run(client):
         inventory = api('obs/inventory')
         write('inventory.json', inventory)
         passed('Typed catalog / read-only native inventory', {'types':len(catalog['sources']), 'errors':inventory['errors']})
-        before = client.get_input_list()
-        profile = api('scene-profiles','POST',{'name':'PR19 Motion + tone','sources':[{
-            'type':'video_file','name':'Motion + tone','settings':{'local_file':str(ROOT/'fixtures'/'motion-tone.mkv'),'looping':True,'restart_on_activate':True},
-            'audio':{'tracks':{'1':True,'2':True}},'verification':{'video_signal':True,'audio_signal':True,'sample_seconds':1},
-        }]},201)
-        pid = profile['id']; path = 'scene-profiles/'+pid
-        write('tested-profile.json', profile)
-        assert client.get_input_list() == before
+        required = {
+            'acceptance_profile_id',
+            'acceptance_profile_name',
+            'save_left_obs_untouched',
+            'setup_state',
+        }
+        missing = sorted(required.difference(state))
+        if missing:
+            raise RuntimeError(
+                'Acceptance session was created by an older harness; missing fields: '
+                + ', '.join(missing)
+                + '. Restore it, then run setup again.'
+            )
+        if state['setup_state'] != 'prepared':
+            raise RuntimeError(
+                f"Acceptance setup is not prepared: {state['setup_state']!r}."
+            )
+        pid = state['acceptance_profile_id']
+        path = 'scene-profiles/'+pid
+        profile = api(path)
+        if profile['name'] != state['acceptance_profile_name']:
+            raise RuntimeError(
+                'Acceptance profile no longer matches its baseline: '
+                f"expected {state['acceptance_profile_name']!r}, got {profile['name']!r}."
+            )
+        positive_profile = deepcopy(profile)
+        assert state['save_left_obs_untouched'] is True
         passed('Save leaves OBS untouched')
         assert api(path+'/apply','POST')['changed']
         assert not api(path+'/apply','POST')['changed']
@@ -293,20 +427,7 @@ def run(client):
         passed('Manual OBS transform drift detected and repaired')
 
         def review(label):
-            job = api(path+'/review','POST',{'seconds':30},202)
-            # Mutate saved metadata while review runs; snapshot must stay frozen.
-            original_name = profile['name']
-            changed = deepcopy(profile); changed['name'] = original_name + ' edited during review'
-            api(path,'PUT',changed)
-            deadline = time.monotonic()+150
-            while job['state'] in ('queued','running') and time.monotonic()<deadline:
-                time.sleep(1); job = api('scene-reviews/'+job['job_id'])
-            write(label+'.json',job)
-            assert job['state']=='completed' and job['result']['status']=='PASS', job
-            snapshot = json.loads(Path(job['result']['artifacts']['profile']).read_text(encoding='utf-8'))
-            assert snapshot['name']==original_name
-            api(path,'PUT',profile)
-            passed(label, job['result']['artifacts'])
+            passed(label, review_profile(path, profile, label))
 
         review('G4 30s AV tracks 1+2')
         profile['sources'][0]['audio']['tracks']['1']=False
@@ -340,11 +461,25 @@ def run(client):
         passed('Real effectively black and silent fixtures rejected')
 
         # Both inputs belong to the test collection. Never remove global inputs.
-        a,b='PR19 Existing A','PR19 Existing B'
+        a = f"PR19 Existing A {state['session_id']}"
+        b = f"PR19 Existing B {state['session_id']}"
+        fixture_scene = f"PR19 Existing fixtures {state['session_id']}"
+        if fixture_scene not in {
+            candidate['sceneName'] for candidate in client.get_scene_list()
+        }:
+            client.create_scene(fixture_scene)
         for target in (a,b):
             if not any(i['inputName']==target for i in client.get_input_list()):
-                client.create_input(scene,target,'color_source_v3',{'color':4281554286,'width':640,'height':360})
-        existing=api('scene-profiles','POST',{'name':'PR19 Existing binding','sources':[{'type':'existing_video','settings':{'source_name':a}}]},201)
+                client.create_input(
+                    fixture_scene,
+                    target,
+                    'color_source_v3',
+                    {'color':4281554286,'width':640,'height':360},
+                )
+        existing=api('scene-profiles','POST',{
+            'name': f"PR19 Existing binding {state['session_id']}",
+            'sources':[{'type':'existing_video','settings':{'source_name':a}}],
+        },201)
         epath='scene-profiles/'+existing['id']; escene=existing['obs_scene_name']
         api(epath+'/apply','POST')
         unrelated=client.create_scene_item(escene,name)
@@ -362,16 +497,35 @@ def run(client):
         write('matrix.json',results)
         raise
     finally:
+        active_error = sys.exception()
+        cleanup_errors = []
+        if positive_profile is not None:
+            try:
+                restore_positive_fixture(client, state, positive_profile)
+            except Exception as profile_restore_exc:
+                cleanup_errors.append(profile_restore_exc)
+                write('positive-profile-restore-failure.json', {
+                    'session_id': state['session_id'],
+                    'error': str(profile_restore_exc),
+                    'at': datetime.now(UTC).isoformat().replace('+00:00','Z'),
+                })
         try:
             _restore(client, state)
         except Exception as restore_exc:
+            cleanup_errors.append(restore_exc)
             write('restore-failure.json', {
                 'session_id': state['session_id'],
                 'error': str(restore_exc),
                 'at': datetime.now(UTC).isoformat().replace('+00:00','Z'),
             })
             print(f'RESTORE FAILED: {restore_exc}. Session remains active; run restore after fixing OBS.', flush=True)
-            raise
+        if cleanup_errors:
+            if active_error is not None:
+                raise ExceptionGroup(
+                    'Acceptance run and cleanup failed.',
+                    [active_error, *cleanup_errors],
+                ) from active_error
+            raise ExceptionGroup('Acceptance cleanup failed.', cleanup_errors)
 
 
 if __name__=='__main__':
@@ -388,10 +542,10 @@ if __name__=='__main__':
         # before setup aborts.
         if BASELINE.exists():
             previous = _read_baseline()
-            if previous['active']:
+            if previous['active'] and previous.get('setup_state') != 'preparing':
                 raise RuntimeError(
-                    f"Acceptance session {previous['session_id']} is still active. "
-                    "Run restore before starting a new session."
+                    f"Acceptance session {previous['session_id']} is already active or "
+                    "was created by an older harness. Run it or restore it before setup."
                 )
         make_obs_ready()
     else:
