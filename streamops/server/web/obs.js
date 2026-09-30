@@ -193,39 +193,101 @@ async function preview(id) {
   if (!response.ok) throw new Error(await ui.apiError(response));
   const image = $('#scene-preview'), old = image.dataset.url;
   image.src = image.dataset.url = URL.createObjectURL(await response.blob()); image.hidden = false; $('#preview-empty').hidden = true;
-  $('#preview-status').textContent = 'Current OBS state'; if (old) URL.revokeObjectURL(old);
+  $('#preview-status').textContent = 'Preview available'; if (old) URL.revokeObjectURL(old);
 }
-function renderChecks(result) {
-  const root = $('#verify-checks'); root.replaceChildren();
-  for (const check of result.checks || []) {
-    const item = document.createElement('li'); item.textContent = `${check.status} · ${check.id}: ${check.message}`; item.dataset.status = check.status; root.append(item);
+function displayValue(value) {
+  if (value === null || value === undefined || value === '') return '--';
+  if (typeof value === 'string') return value;
+  try { return JSON.stringify(value); } catch { return String(value); }
+}
+function renderCheckList(rootSelector, checks) {
+  const root = $(rootSelector); root.replaceChildren();
+  for (const check of checks || []) {
+    const item = document.createElement('details'); item.className = 'verification-check'; item.dataset.status = check.status;
+    const summary = document.createElement('summary');
+    const badge = document.createElement('span'); badge.className = 'check-badge ' + String(check.status || '').toLowerCase(); badge.textContent = check.status || '--';
+    const title = document.createElement('div');
+    const id = document.createElement('strong'); id.textContent = check.id || '--';
+    const message = document.createElement('span'); message.textContent = check.message || '';
+    title.append(id, message); summary.append(badge, title); item.append(summary);
+    const diagnostics = document.createElement('div'); diagnostics.className = 'check-diagnostics';
+    for (const pair of [['Expected', check.expected], ['Actual', check.actual]]) {
+      const cell = document.createElement('div');
+      const label = document.createElement('span'); label.textContent = pair[0];
+      const value = document.createElement('code'); value.textContent = displayValue(pair[1]);
+      cell.append(label, value); diagnostics.append(cell);
+    }
+    item.append(diagnostics); root.append(item);
   }
-  $('#obs-result').textContent = result.status || '--';
+}
+function statusCounts(checks) {
+  const counts = {PASS: 0, WARN: 0, FAIL: 0};
+  for (const check of checks || []) if (counts[check.status] !== undefined) counts[check.status]++;
+  return counts;
+}
+function renderVerification(result) {
+  lastVerificationResult = result && Object.keys(result).length ? result : null;
+  const checks = result?.checks || [];
+  const counts = statusCounts(checks);
+  $('#obs-result').textContent = result?.status || '--';
+  $('#verification-ready').textContent = result?.ready_for_live === true ? 'Yes' : result?.ready_for_live === false ? 'No' : '--';
+  $('#verification-generated').textContent = ui.formatDateTime(result?.generated_at);
+  $('#verification-obs-version').textContent = result?.obs_version || '--';
+  $('#verification-summary-ready').textContent = result?.ready_for_live === true ? 'For live' : result?.ready_for_live === false ? 'Not ready' : '--';
+  $('#verification-summary-counts').textContent = checks.length ? counts.PASS + 'P · ' + counts.WARN + 'W · ' + counts.FAIL + 'F' : '0 checks';
+  $('#verification-summary-time').textContent = result?.generated_at ? ui.formatDateTime(result.generated_at) : '--';
+  renderCheckList('#verify-checks', checks);
+}
+function renderArtifacts(artifacts) {
+  const root = $('#review-artifacts'); root.replaceChildren();
+  const entries = Object.entries(artifacts || {});
+  $('#review-artifact-count').textContent = String(entries.length);
+  $('#review-summary-artifacts').textContent = String(entries.length);
+  for (const entry of entries) {
+    const row = document.createElement('div'); row.className = 'artifact-row';
+    const name = document.createElement('strong'); name.textContent = entry[0];
+    const value = document.createElement('code'); value.textContent = displayValue(entry[1]);
+    row.append(name, value); root.append(row);
+  }
+}
+function renderReview(job) {
+  lastReviewJob = job || null;
+  const result = job?.result || {};
+  $('#review-state').textContent = job?.state || 'Not run';
+  $('#review-summary-duration').textContent = job?.seconds ? job.seconds + 's' : '--';
+  $('#review-summary-media').textContent = result.status || '--';
+  const reviewError = $('#review-error'); reviewError.textContent = job?.state === 'failed' ? (job.error || 'Review failed') : ''; reviewError.hidden = !reviewError.textContent;
+  renderCheckList('#review-checks', result.checks || []);
+  renderArtifacts(result.artifacts || {});
 }
 async function operation(name) {
   const id = draft.id;
-  let result = await api(`scene-profiles/${id}/${name}`, 'POST', name === 'review' ? {seconds: Number($('#review-seconds').value)} : undefined);
   if (name === 'review') {
-    activity(`Review queued: ${result.job_id}`);
-    const jobId = result.job_id;
+    const seconds = Number($('#review-seconds').value);
+    let job = await api(`scene-profiles/${id}/review`, 'POST', {seconds});
+    renderReview(job); activity(`Review queued: ${job.job_id}`);
+    const jobId = job.job_id;
     do {
       await new Promise((resolve) => setTimeout(resolve, 500));
-      result = await api(`scene-reviews/${jobId}`);
-      $('#review-state').textContent = result.state;
-    } while (['queued','running'].includes(result.state));
-    renderChecks(result.result || {});
-    if (result.state === 'failed') throw new Error(result.error || 'Review failed');
-    result = result.result;
-  } else if (name === 'activate') {
-    result = await api(`scene-profiles/${id}/verify`, 'POST');
+      job = await api(`scene-reviews/${jobId}`); renderReview(job);
+    } while (['queued','running'].includes(job.state));
+    if (job.state === 'failed') throw new Error(job.error || 'Review failed');
+    const reviewResult = job.result || {};
+    const structuralFail = (reviewResult.checks || []).some((check) => check.status === 'FAIL' && !check.id.startsWith('runtime.'));
+    state(reviewResult.status === 'FAIL' ? (structuralFail ? 'Drifted' : 'Failed') : dirty() ? 'Modified' : 'Applied');
+    activity('review: ' + (reviewResult.status || 'complete'), reviewResult.status === 'FAIL' ? 'error' : 'success');
+    await preview(id).catch((e) => {$('#preview-status').textContent = e.message;});
+    return;
   }
+  let result = await api(`scene-profiles/${id}/${name}`, 'POST');
+  if (name === 'activate') result = await api(`scene-profiles/${id}/verify`, 'POST');
   if (name === 'apply') {
-    renderChecks({});
+    renderVerification({});
     state(dirty() ? 'Modified' : 'Applied');
     activity(`apply: ${result.changed ? 'changed' : 'no changes'}`, 'success');
   } else {
-    renderChecks(result);
-    const structuralFail = (result.checks || []).some((c) => c.status === 'FAIL' && !c.id.startsWith('runtime.'));
+    renderVerification(result);
+    const structuralFail = (result.checks || []).some((check) => check.status === 'FAIL' && !check.id.startsWith('runtime.'));
     state(result.status === 'FAIL' ? (structuralFail ? 'Drifted' : 'Failed') : dirty() ? 'Modified' : 'Applied');
     activity(`${name}: ${result.status || 'complete'}`, result.status === 'FAIL' ? 'error' : 'success');
   }
@@ -233,7 +295,7 @@ async function operation(name) {
 }
 async function refreshInventory() {
   inventory = await api('obs/inventory');
-  $('#inventory-status').textContent = inventory.errors?.length ? inventory.errors.join(' · ') : 'Inventory loaded';
+  $('#inventory-status').textContent = inventory.errors?.length ? 'Inventory warning · ' + inventory.errors.length : 'Inventory ready';
   renderSources();
 }
 function bind(id, name, fn) { $(id).addEventListener('click', () => run(name, fn)); }
@@ -250,9 +312,10 @@ bind('#add-source-button', 'Add source', async () => {
   for (const field of cap.fields) if (field.default !== undefined) source.settings[field.key] = field.default;
   if (cap.video) source.transform = {x: 0, y: 0, width: draft.canvas.width, height: draft.canvas.height, crop_left: 0, crop_right: 0, crop_top: 0, crop_bottom: 0};
   else if (cap.audio) source.audio = {enabled: true, muted: false, volume_db: 0, sync_offset_ms: 0, tracks: {'1': true, '2': false, '3': false, '4': false, '5': false, '6': false}};
-  draft.sources.push(source); renderSources(); changed();
+  draft.sources.push(source); expandedSourceIds.add(sourceKey(source)); renderSources(); changed();
 });
 for (const name of ['apply','verify','activate','review']) bind(`#${name}-button`, name, () => operation(name));
+bind('#review-run-button', 'review', () => operation('review'));
 $('#profile-list').addEventListener('change', () => run('Load', async () => {
   const id = $('#profile-list').value;
   if (!canDiscard()) {$('#profile-list').value = draft?.id || ''; return;}
