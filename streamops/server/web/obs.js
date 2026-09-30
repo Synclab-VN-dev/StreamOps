@@ -269,7 +269,13 @@ async function operation(name) {
   const id = draft.id;
   if (name === 'review') {
     const seconds = Number($('#review-seconds').value);
-    let job = await api(`scene-profiles/${id}/review`, 'POST', {seconds});
+    let job;
+    try {
+      job = await api(`scene-profiles/${id}/review`, 'POST', {seconds});
+    } catch (reviewRequestError) {
+      renderReview({state: 'failed', seconds, error: reviewRequestError.message});
+      throw reviewRequestError;
+    }
     renderReview(job); activity(`Review queued: ${job.job_id}`);
     const jobId = job.job_id;
     do {
