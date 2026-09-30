@@ -170,7 +170,12 @@ function renderCanvas() {
 }
 function validate() {
   for (const input of document.querySelectorAll('.source-editor input, #profile-name, #canvas-width, #canvas-height, #canvas-fps')) {
-    if (input.reportValidity && !input.reportValidity()) throw new Error('Please correct the highlighted field.');
+    if (input.checkValidity && !input.checkValidity()) {
+      const sourceCard = input.closest('.source-editor');
+      if (sourceCard) sourceCard.open = true;
+      if (input.reportValidity) input.reportValidity();
+      throw new Error('Please correct the highlighted field.');
+    }
   }
   for (const source of draft.sources) {
     const cap = catalog.find((c) => c.type === source.type);
@@ -326,7 +331,7 @@ bind('#add-source-button', 'Add source', async () => {
   for (const field of cap.fields) if (field.default !== undefined) source.settings[field.key] = field.default;
   if (cap.video) source.transform = {x: 0, y: 0, width: draft.canvas.width, height: draft.canvas.height, crop_left: 0, crop_right: 0, crop_top: 0, crop_bottom: 0};
   else if (cap.audio) source.audio = {enabled: true, muted: false, volume_db: 0, sync_offset_ms: 0, tracks: {'1': true, '2': false, '3': false, '4': false, '5': false, '6': false}};
-  draft.sources.push(source); expandedSourceIds.add(sourceKey(source)); renderSources(); changed();
+  draft.sources.push(source); renderSources(); changed();
 });
 for (const name of ['apply','verify','activate','review']) bind(`#${name}-button`, name, () => operation(name));
 bind('#review-run-button', 'review', () => operation('review'));
