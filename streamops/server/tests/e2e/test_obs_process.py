@@ -9,8 +9,13 @@ from .conftest import BrowserTestServer, wait_until
 pytestmark = pytest.mark.only_browser("chromium")
 
 
+def open_card(page: Page, selector: str) -> None:
+    page.locator(selector).evaluate("el => el.open = true")
+
+
 def test_obs_runtime_status_and_output_guards(page: Page, live_server: BrowserTestServer) -> None:
     page.goto(f"{live_server.base_url}/obs")
+    open_card(page, "#obs-status-panel")
 
     expect(page.get_by_role("heading", name="OBS Runtime")).to_be_visible()
     expect(page.locator("#obs-state")).to_have_text("READY")
@@ -39,6 +44,7 @@ def test_start_pending_success_and_no_double_trigger(page: Page, live_server: Br
     live_server.obs_process.set_stopped()
     live_server.obs_process.prepare_launch(6200)
     page.goto(f"{live_server.base_url}/obs")
+    open_card(page, "#obs-status-panel")
 
     expect(page.locator("#obs-state")).to_have_text("STOPPED")
     button = page.get_by_role("button", name="Start OBS", exact=True)
@@ -68,6 +74,7 @@ def test_running_without_websocket_is_not_presented_as_ready(
     live_server.obs_process.set_websocket_unavailable()
 
     page.goto(f"{live_server.base_url}/obs")
+    open_card(page, "#obs-status-panel")
 
     expect(page.locator("#obs-state")).to_have_text("RUNNING_NO_WEBSOCKET")
     expect(page.locator("#obs-websocket")).to_have_text("Unavailable")
@@ -83,6 +90,7 @@ def test_restart_pending_returns_to_ready_with_new_pid(
     live_server.obs_process.set_ready(5400)
     live_server.obs_process.prepare_launch(6400)
     page.goto(f"{live_server.base_url}/obs")
+    open_card(page, "#obs-status-panel")
     expect(page.locator("#obs-pid")).to_have_text("5400")
 
     page.once("dialog", lambda dialog: dialog.accept())
@@ -101,6 +109,7 @@ def test_readiness_timeout_is_visible_to_operator(page: Page, live_server: Brows
     live_server.obs_process.set_stopped()
     live_server.obs_process.set_websocket_unavailable()
     page.goto(f"{live_server.base_url}/obs")
+    open_card(page, "#obs-status-panel")
 
     page.get_by_role("button", name="Start OBS", exact=True).click()
 
@@ -113,6 +122,7 @@ def test_readiness_timeout_is_visible_to_operator(page: Page, live_server: Brows
 def test_obs_page_is_usable_on_mobile_viewport(page: Page, live_server: BrowserTestServer) -> None:
     page.set_viewport_size({"width": 390, "height": 844})
     page.goto(f"{live_server.base_url}/obs")
+    open_card(page, "#obs-status-panel")
 
     expect(page.get_by_role("heading", name="OBS", exact=True)).to_be_visible()
     expect(page.get_by_role("heading", name="OBS Runtime")).to_be_visible()
@@ -123,6 +133,7 @@ def test_obs_page_is_usable_on_mobile_viewport(page: Page, live_server: BrowserT
 def test_stop_from_browser_reaches_stopped(page: Page, live_server: BrowserTestServer) -> None:
     live_server.obs_process.set_ready(5500)
     page.goto(f"{live_server.base_url}/obs")
+    open_card(page, "#obs-status-panel")
     expect(page.locator("#obs-state")).to_have_text("READY")
 
     page.once("dialog", lambda dialog: dialog.accept())
