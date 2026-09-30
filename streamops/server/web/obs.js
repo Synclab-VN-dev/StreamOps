@@ -119,9 +119,9 @@ function renderSources() {
     const enabled = document.createElement('span'); enabled.className = 'source-state ' + (source.enabled ? 'enabled' : 'disabled'); enabled.textContent = source.enabled ? 'Enabled' : 'Disabled';
     summary.append(title, enabled); card.append(summary);
     const body = document.createElement('div'); body.className = 'source-editor-body';
-    field(body, 'Source name', source.name, (v) => {source.name = v;}, {required: true});
-    field(body, 'Source enabled', source.enabled, (v) => {source.enabled = v;}, {type: 'checkbox'});
-    field(body, 'Layer', source.layer, (v) => {source.layer = v;}, {type: 'number', numeric: true, integer: true, min: 0, max: 999});
+    field(body, 'Source name', source.name, (v) => { source.name = v; name.textContent = (index + 1) + '. ' + (v || cap.label); }, {required: true});
+    field(body, 'Source enabled', source.enabled, (v) => { source.enabled = v; enabled.className = 'source-state ' + (v ? 'enabled' : 'disabled'); enabled.textContent = v ? 'Enabled' : 'Disabled'; }, {type: 'checkbox'});
+    field(body, 'Layer', source.layer, (v) => { source.layer = v; meta.textContent = cap.label + ' · Layer ' + v; }, {type: 'number', numeric: true, integer: true, min: 0, max: 999});
     for (const spec of cap.fields) {
       const choices = spec.enum || (spec.inventory ? inventory.options?.[source.type]?.[spec.key] || [] : null);
       field(body, spec.label, source.settings[spec.key], (v) => { if (v === undefined || v === '') delete source.settings[spec.key]; else source.settings[spec.key] = v; }, {choices, type: spec.type === 'boolean' ? 'checkbox' : spec.type === 'integer' ? 'number' : 'text', numeric: spec.type === 'integer', integer: true, min: spec.min, max: spec.max});
