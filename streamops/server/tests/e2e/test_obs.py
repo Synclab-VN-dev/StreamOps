@@ -24,6 +24,7 @@ def add_browser(page, name='Overlay'):
     page.locator('#source-type').select_option('browser_source')
     page.locator('#add-source-button').click()
     card = page.locator('.source-editor').last
+    card.evaluate('el => el.open = true')
     card.get_by_label('Source name', exact=True).fill(name)
     card.get_by_label('Url', exact=True).fill('https://example.invalid/' + name)
     return card
