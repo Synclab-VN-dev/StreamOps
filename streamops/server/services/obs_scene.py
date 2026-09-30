@@ -7,6 +7,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
+import math
 from pathlib import Path
 import shutil
 import subprocess
@@ -569,10 +570,97 @@ def _probe_media(path: Path) -> dict[str, Any]:
         data = json.loads(completed.stdout)
     except json.JSONDecodeError as exc:
         raise SceneOperationError("ffprobe returned invalid JSON.") from exc
-    duration = float((data.get("format") or {}).get("duration") or 0)
-    if duration <= 0:
-        raise SceneOperationError("Recorded review sample has non-positive duration.")
+
+    duration = _positive_duration((data.get("format") or {}).get("duration"))
+    if duration is None:
+        stream_durations = [
+            value
+            for value in (
+                _positive_duration(stream.get("duration"))
+                for stream in data.get("streams", [])
+                if isinstance(stream, dict)
+            )
+            if value is not None
+        ]
+        duration = max(stream_durations, default=None)
+
+    if duration is None:
+        duration = _probe_packet_duration(executable, path)
+
+    if duration is None:
+        raise SceneOperationError(
+            "Recorded review sample duration is unavailable from container, stream, and packet timestamps."
+        )
+
+    media_format = data.setdefault("format", {})
+    if not isinstance(media_format, dict):
+        media_format = {}
+        data["format"] = media_format
+    media_format["duration"] = f"{duration:.6f}"
     return data
+
+
+def _positive_duration(value: Any) -> float | None:
+    try:
+        duration = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(duration) or duration <= 0:
+        return None
+    return duration
+
+
+def _probe_packet_duration(executable: str, path: Path) -> float | None:
+    completed = subprocess.run(
+        [
+            executable,
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_packets",
+            "-show_entries", "packet=pts_time,dts_time,duration_time",
+            "-of", "json",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return None
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return None
+
+    starts: list[float] = []
+    ends: list[float] = []
+    for packet in payload.get("packets", []):
+        if not isinstance(packet, dict):
+            continue
+        start = _packet_timestamp(packet)
+        if start is None:
+            continue
+        starts.append(start)
+        packet_duration = _positive_duration(packet.get("duration_time")) or 0.0
+        ends.append(start + packet_duration)
+
+    if not starts or not ends:
+        return None
+    duration = max(ends) - min(starts)
+    return duration if math.isfinite(duration) and duration > 0 else None
+
+
+def _packet_timestamp(packet: dict[str, Any]) -> float | None:
+    for key in ("pts_time", "dts_time"):
+        value = packet.get(key)
+        try:
+            timestamp = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(timestamp):
+            return timestamp
+    return None
 
 
 def _wait_for_stable_file(
