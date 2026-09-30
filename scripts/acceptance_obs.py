@@ -160,21 +160,49 @@ def setup(client, initial_obs_runtime_state):
         'initial_obs_runtime_state': initial_obs_runtime_state,
     }
     # Capture the current operator context for every new session before switching OBS.
+    # Every mutation after this point is transactional: if setup fails, restore the
+    # original collection/profile/scene/runtime before surfacing the failure.
     write('baseline.json', state)
-    if name not in client.get_scene_collection_list()['sceneCollections']:
-        client.request('CreateSceneCollection', {'sceneCollectionName':name})
-        time.sleep(2)
-    if name not in [p['profileName'] for p in client.request('GetProfileList')['profiles']]:
-        client.request('CreateProfile', {'profileName':name})
-        time.sleep(2)
-    select(client, state)
-    configure_recording(client, tracks=3)
-    fixtures = ROOT/'fixtures'
-    fixtures.mkdir(exist_ok=True)
-    for name, visual, audio in [('motion-tone','testsrc2=size=640x360:rate=60','sine=frequency=440:sample_rate=48000'),
-                                 ('black-silent','color=c=black:s=640x360:r=60','anullsrc=r=48000:cl=stereo')]:
-        subprocess.run([shutil.which('ffmpeg'),'-y','-v','error','-f','lavfi','-i',visual,'-f','lavfi','-i',audio,
-                        '-t','5','-c:v','libx264','-preset','ultrafast','-pix_fmt','yuv420p','-c:a','aac',str(fixtures/(name+'.mkv'))], check=True)
+    try:
+        if name not in client.get_scene_collection_list()['sceneCollections']:
+            client.request('CreateSceneCollection', {'sceneCollectionName':name})
+            time.sleep(2)
+
+        profiles = client.request('GetProfileList').get('profiles', [])
+        if not isinstance(profiles, list) or not all(isinstance(profile, str) for profile in profiles):
+            raise RuntimeError(f'Unexpected GetProfileList profiles payload: {profiles!r}')
+        if name not in profiles:
+            client.request('CreateProfile', {'profileName':name})
+            time.sleep(2)
+
+        select(client, state)
+        configure_recording(client, tracks=3)
+        fixtures = ROOT/'fixtures'
+        fixtures.mkdir(exist_ok=True)
+        for fixture_name, visual, audio in [
+            ('motion-tone','testsrc2=size=640x360:rate=60','sine=frequency=440:sample_rate=48000'),
+            ('black-silent','color=c=black:s=640x360:r=60','anullsrc=r=48000:cl=stereo'),
+        ]:
+            subprocess.run([
+                shutil.which('ffmpeg'),'-y','-v','error','-f','lavfi','-i',visual,
+                '-f','lavfi','-i',audio,'-t','5','-c:v','libx264','-preset','ultrafast',
+                '-pix_fmt','yuv420p','-c:a','aac',str(fixtures/(fixture_name+'.mkv'))
+            ], check=True)
+    except Exception as setup_exc:
+        try:
+            _restore(client, state)
+        except Exception as restore_exc:
+            write('setup-restore-failure.json', {
+                'session_id': state['session_id'],
+                'setup_error': str(setup_exc),
+                'restore_error': str(restore_exc),
+                'at': datetime.now(UTC).isoformat().replace('+00:00','Z'),
+            })
+            raise RuntimeError(
+                f'Acceptance setup failed ({setup_exc}) and automatic restore also failed '
+                f'({restore_exc}). Session remains active; inspect OBS before retrying.'
+            ) from restore_exc
+        raise
     print(f"Created isolated OBS acceptance session {stamp}.", flush=True)
 
 def configure_recording(client, tracks):
