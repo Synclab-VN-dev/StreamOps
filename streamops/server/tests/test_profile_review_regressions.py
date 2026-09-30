@@ -163,3 +163,60 @@ def test_probe_media_keeps_container_duration_without_packet_fallback(monkeypatc
     probe = obs_scene._probe_media(media_path)
 
     assert probe['format']['duration'] == '29.916667'
+
+
+def test_wait_for_stable_file_ignores_brief_muxer_idle_gap(monkeypatch, tmp_path):
+    from streamops.server.services import obs_scene
+
+    media_path = tmp_path / 'sample.mkv'
+    media_path.write_bytes(b'partial')
+    clock = {'now': 0.0, 'grew': False}
+
+    monkeypatch.setattr(obs_scene.time, 'monotonic', lambda: clock['now'])
+
+    def advance(seconds):
+        clock['now'] += seconds
+        if clock['now'] >= 0.5 and not clock['grew']:
+            media_path.write_bytes(b'finalized recording')
+            clock['grew'] = True
+
+    monkeypatch.setattr(obs_scene.time, 'sleep', advance)
+
+    obs_scene._wait_for_stable_file(
+        media_path,
+        timeout_seconds=3,
+        poll_seconds=0.25,
+        quiet_seconds=1,
+    )
+
+    assert clock['grew']
+    assert clock['now'] >= 1.5
+    assert media_path.read_bytes() == b'finalized recording'
+
+
+def test_acceptance_waits_until_owned_recording_is_inactive(monkeypatch):
+    from scripts import acceptance_obs
+
+    clock = {'now': 0.0}
+
+    class DelayedStopClient:
+        def __init__(self):
+            self.states = iter((True, True, False))
+            self.stop_calls = 0
+
+        def stop_record(self):
+            self.stop_calls += 1
+            return {'outputPath': 'sample.mkv'}
+
+        def get_record_status(self):
+            return {'outputActive': next(self.states)}
+
+    client = DelayedStopClient()
+    monkeypatch.setattr(acceptance_obs.time, 'monotonic', lambda: clock['now'])
+    monkeypatch.setattr(acceptance_obs.time, 'sleep', lambda seconds: clock.__setitem__('now', clock['now'] + seconds))
+
+    result = acceptance_obs.stop_owned_recording(client, timeout_seconds=1, poll_seconds=0.1)
+
+    assert result == {'outputPath': 'sample.mkv'}
+    assert client.stop_calls == 1
+    assert clock['now'] == pytest.approx(0.2)

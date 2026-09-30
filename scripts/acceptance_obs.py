@@ -45,6 +45,16 @@ def idle(client):
     assert not client.get_record_status()['outputActive'], 'Refusing active recording'
 
 
+def stop_owned_recording(client, *, timeout_seconds=15, poll_seconds=0.1):
+    result = client.stop_record()
+    deadline = time.monotonic() + timeout_seconds
+    while client.get_record_status().get('outputActive'):
+        if time.monotonic() >= deadline:
+            raise RuntimeError('OBS did not finish stopping the acceptance recording.')
+        time.sleep(poll_seconds)
+    return result
+
+
 def make_obs_ready():
     status = api('obs/process/status')
     if status['state'] == 'READY':
@@ -316,7 +326,7 @@ def run(client):
             api(path+'/apply','POST',expected=409)
             assert client.get_scene_item_transform(scene,item)['positionX']==44
         finally:
-            client.stop_record()
+            stop_owned_recording(client)
         api(path+'/apply','POST')
         passed('Real recording guard: no-op allowed, mutation blocked')
 

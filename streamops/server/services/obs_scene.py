@@ -668,22 +668,26 @@ def _wait_for_stable_file(
     *,
     timeout_seconds: float = 30,
     poll_seconds: float = 0.5,
+    quiet_seconds: float = 2.0,
 ) -> None:
     deadline = time.monotonic() + timeout_seconds
     last_size: int | None = None
-    stable = 0
-    while time.monotonic() < deadline:
+    stable_since: float | None = None
+    while True:
+        observed_at = time.monotonic()
+        if observed_at >= deadline:
+            break
         try:
             size = path.stat().st_size
         except OSError:
             size = 0
-        if size > 0 and size == last_size:
-            stable += 1
-        elif size > 0:
-            stable = 1
-        else:
-            stable = 0
-        if stable >= 2:
+        if size > 0 and size != last_size:
+            stable_since = observed_at
+        elif size <= 0:
+            stable_since = None
+        elif stable_since is None:
+            stable_since = observed_at
+        if stable_since is not None and observed_at - stable_since >= quiet_seconds:
             return
         last_size = size
         time.sleep(poll_seconds)
