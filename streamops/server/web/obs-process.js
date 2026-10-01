@@ -30,6 +30,17 @@ let operationInFlight = false;
 let statusRequestInFlight = null;
 let lastStatusSignature = null;
 let latestStatus = null;
+let latestSnapshot = null;
+let operationErrorLocked = false;
+let socket = null;
+let socketHealthy = false;
+let socketGeneration = 0;
+let reconnectAttempt = 0;
+let reconnectTimer = null;
+let fallbackTimer = null;
+let initialTimer = null;
+let watchdogTimer = null;
+let lastSocketMessageAt = 0;
 
 async function updateHealth() {
   try {
@@ -56,25 +67,20 @@ async function updateObsStatus({ log = true, force = false, clearError = true } 
 
 async function fetchAndRenderStatus({ log, clearError, force }) {
   try {
-    const status = await ui.fetchJson("/api/v1/obs/process/status");
-    if (operationInFlight && !force) return;
-    latestStatus = status;
-    renderStatus(status);
-    window.dispatchEvent(new CustomEvent("streamops:obs-runtime-status", { detail: status }));
-    if (clearError) setError(status.error || "");
-    const signature = [
-      status.state,
-      status.process?.pid,
-      status.process?.session_id,
-      status.websocket?.connected,
-      status.output?.streaming,
-      status.output?.recording,
-    ].join(":");
-    if (log && signature !== lastStatusSignature) {
-      addActivity(statusSummary(status), status.state === "READY" ? "success" : status.state === "ERROR" ? "error" : "info");
+    const generation = socketGeneration;
+    const [health, status] = await Promise.all([
+      ui.fetchJson("/api/v1/health"),
+      ui.fetchJson("/api/v1/obs/process/status"),
+    ]);
+    let obs = { current_scene: null };
+    if (status.state === "READY") {
+      try { obs = await ui.fetchJson("/api/v1/obs/status"); } catch { /* Runtime status remains usable. */ }
     }
-    lastStatusSignature = signature;
+    if (socketHealthy || generation !== socketGeneration) return;
+    if (operationInFlight && !force) return;
+    renderSnapshot({ type: "obs.snapshot", node: health, runtime: status, obs }, { log, clearError });
   } catch (error) {
+    if (socketHealthy) return;
     if (operationInFlight && !force) return;
     latestStatus = null;
     renderErrorState();
@@ -84,6 +90,30 @@ async function fetchAndRenderStatus({ log, clearError, force }) {
     if (log && lastStatusSignature !== "error") addActivity(`OBS status failed: ${message}`, "error");
     lastStatusSignature = "error";
   }
+}
+
+function renderSnapshot(snapshot, { log = true, clearError = true } = {}) {
+  const status = snapshot.runtime;
+  latestSnapshot = snapshot;
+  latestStatus = status;
+  ui.updateNodeStatus(snapshot.node || null);
+  renderStatus(status);
+  window.dispatchEvent(new CustomEvent("streamops:obs-runtime-status", { detail: status }));
+  window.dispatchEvent(new CustomEvent("streamops:obs-snapshot", { detail: snapshot }));
+  if (clearError && !operationErrorLocked) setError(status.error || "");
+  const signature = [
+    status.state,
+    status.process?.pid,
+    status.process?.session_id,
+    status.websocket?.connected,
+    status.output?.streaming,
+    status.output?.recording,
+    snapshot.obs?.current_scene,
+  ].join(":");
+  if (log && signature !== lastStatusSignature) {
+    addActivity(statusSummary(status), status.state === "READY" ? "success" : status.state === "ERROR" ? "error" : "info");
+  }
+  lastStatusSignature = signature;
 }
 
 function renderStatus(status) {
@@ -180,6 +210,7 @@ async function runOperation(action) {
     addActivity(`Operator confirmed ${action}`);
   }
   renderOperationState(action);
+  operationErrorLocked = false;
   setError("");
   let failed = false;
   try {
@@ -187,11 +218,12 @@ async function runOperation(action) {
     addActivity(`${capitalize(action)} completed: ${result.state}`, "success");
   } catch (error) {
     failed = true;
+    operationErrorLocked = true;
     const message = error.message || `OBS ${action} failed.`;
     setError(message);
     addActivity(`${capitalize(action)} failed: ${message}`, "error");
   } finally {
-    await updateObsStatus({ force: true, clearError: !failed });
+    if (!socketHealthy) await updateObsStatus({ force: true, clearError: !failed });
     finishOperationState();
   }
 }
@@ -225,13 +257,84 @@ function setError(message) {
   errorMessage.hidden = !message;
 }
 
-async function poll() {
-  await Promise.all([updateHealth(), updateObsStatus()]);
-  window.setTimeout(poll, 5000);
+function websocketUrl() {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}/api/v1/obs/ws`;
+}
+
+function connectSocket() {
+  clearTimeout(reconnectTimer);
+  const generation = ++socketGeneration;
+  try { socket = new WebSocket(websocketUrl()); } catch { startFallback(); scheduleReconnect(); return; }
+  initialTimer = window.setTimeout(() => {
+    if (generation === socketGeneration && !socketHealthy) {
+      startFallback();
+      socket?.close();
+    }
+  }, 3000);
+  socket.addEventListener("message", (event) => {
+    if (generation !== socketGeneration) return;
+    let message;
+    try { message = JSON.parse(event.data); } catch { return; }
+    lastSocketMessageAt = Date.now();
+    if (message.type === "obs.heartbeat") return;
+    if (message.type !== "obs.snapshot") return;
+    const wasHealthy = socketHealthy;
+    socketHealthy = true;
+    reconnectAttempt = 0;
+    clearTimeout(initialTimer);
+    stopFallback();
+    renderSnapshot(message);
+    if (!wasHealthy) addActivity("Realtime OBS status connected", "success");
+  });
+  socket.addEventListener("close", () => {
+    if (generation !== socketGeneration) return;
+    const wasHealthy = socketHealthy;
+    socketHealthy = false;
+    clearTimeout(initialTimer);
+    startFallback();
+    scheduleReconnect();
+    if (wasHealthy) addActivity("Realtime OBS status disconnected; HTTP fallback active", "info");
+  });
+  socket.addEventListener("error", () => socket?.close());
+}
+
+function scheduleReconnect() {
+  clearTimeout(reconnectTimer);
+  const delay = Math.min(1000 * (2 ** reconnectAttempt++), 15000);
+  reconnectTimer = window.setTimeout(connectSocket, delay);
+}
+
+function startFallback() {
+  if (fallbackTimer !== null) return;
+  const run = async () => {
+    await updateObsStatus();
+    if (!socketHealthy) fallbackTimer = window.setTimeout(run, 5000);
+    else fallbackTimer = null;
+  };
+  fallbackTimer = window.setTimeout(run, 0);
+}
+
+function stopFallback() {
+  clearTimeout(fallbackTimer);
+  fallbackTimer = null;
+}
+
+function updateLocalUptime() {
+  const started = latestStatus?.process?.started_at;
+  if (!started || !latestStatus?.process?.running) return;
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(started).getTime()) / 1000));
+  const formatted = ui.formatDuration(seconds);
+  uptimeElement.textContent = formatted;
+  runtimeSummaryUptime.textContent = formatted;
 }
 
 startButton.addEventListener("click", () => runOperation("start"));
 stopButton.addEventListener("click", () => runOperation("stop"));
 restartButton.addEventListener("click", () => runOperation("restart"));
 addActivity("Page loaded");
-poll();
+connectSocket();
+window.setInterval(updateLocalUptime, 1000);
+watchdogTimer = window.setInterval(() => {
+  if (socketHealthy && Date.now() - lastSocketMessageAt > 30000) socket?.close();
+}, 5000);

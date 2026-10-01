@@ -3,7 +3,7 @@
 const ui = window.StreamOpsUI;
 const $ = (selector) => document.querySelector(selector);
 const activity = ui.createActivityLog('#activity-log');
-let draft = null, saved = null, catalog = [], inventory = {options: {}}, busy = false, obsReady = false;
+let draft = null, saved = null, catalog = [], inventory = {options: {}}, busy = false, obsReady = false, currentObsScene = null;
 let lastVerificationResult = null, lastReviewJob = null;
 let selectedSourceType = null;
 const expandedSourceIds = new Set();
@@ -14,9 +14,18 @@ function dirty() { return draft && JSON.stringify(draft) !== JSON.stringify(save
 function error(message = '') { $('#scene-error-message').textContent = message; $('#scene-error-message').hidden = !message; }
 function tone(element, value) { element.dataset.tone = value; }
 function state(value) {
-  $('#editor-state').textContent = value;
   $('#profile-summary-state').textContent = value;
-  tone($('#editor-state'), value === 'Failed' ? 'bad' : ['Modified', 'Drifted'].includes(value) ? 'warn' : ['Saved', 'Applied'].includes(value) ? 'blue' : 'neutral');
+  tone($('#profile-summary-state'), value === 'Failed' ? 'bad' : ['Modified', 'Drifted'].includes(value) ? 'warn' : ['Saved', 'Applied'].includes(value) ? 'blue' : 'neutral');
+}
+function updateRuntimeState() {
+  const element = $('#profile-runtime-state');
+  let value = 'UNKNOWN', stateTone = 'neutral';
+  if (draft && obsReady && currentObsScene) {
+    value = draft.obs_scene_name === currentObsScene ? 'ACTIVE' : 'INACTIVE';
+    stateTone = value === 'ACTIVE' ? 'ok' : 'warn';
+  }
+  element.textContent = value;
+  tone(element, stateTone);
 }
 function sourceKey(source) {
   if (source.id) return source.id;
@@ -70,6 +79,7 @@ function setProfile(profile) {
   $('#source-list').replaceChildren();
   setPickerOpen(false);
   state(draft ? 'Saved' : 'No profile');
+  updateRuntimeState();
   updateProfileSummary(); updateSourceSummary();
   renderSources(); renderCanvas(); buttons();
 }
@@ -447,6 +457,11 @@ window.addEventListener('streamops:obs-runtime-status', (event) => {
     activity(obsReady ? 'OBS runtime READY · scene actions enabled' : 'OBS runtime not READY · scene actions disabled', obsReady ? 'success' : 'info');
   }
   buttons();
+  updateRuntimeState();
+});
+window.addEventListener('streamops:obs-snapshot', (event) => {
+  currentObsScene = event.detail?.obs?.current_scene || null;
+  updateRuntimeState();
 });
 
 new MutationObserver(updateActivitySummary).observe($('#activity-log'), {childList: true});
