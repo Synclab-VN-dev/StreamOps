@@ -176,7 +176,12 @@ def live_server(tmp_path: Path) -> BrowserTestServer:
     listener.bind(("127.0.0.1", 0))
     listener.listen(128)
     port = listener.getsockname()[1]
-    server = uvicorn.Server(uvicorn.Config(app, log_level="warning", lifespan="on"))
+    server = uvicorn.Server(uvicorn.Config(
+        app,
+        log_level="warning",
+        lifespan="on",
+        timeout_graceful_shutdown=5,
+    ))
     thread = threading.Thread(
         target=server.run,
         kwargs={"sockets": [listener]},
