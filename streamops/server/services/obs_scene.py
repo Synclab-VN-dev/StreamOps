@@ -63,6 +63,7 @@ class ObsSceneService:
         artifact_root: Path | None = None,
         client_factory: type[ObsClient] | Any = ObsClient,
         inventory_provider: Any = None,
+        catalog_provider: Any = None,
     ) -> None:
         self.root = root or find_project_root()
         profile_root = data_dir or (self.root / ".streamops" / "node" / "scene-profiles")
@@ -72,6 +73,7 @@ class ObsSceneService:
         self.artifact_root = artifact_root or (self.root / "streamops" / "artifacts" / "scene-review")
         self.client_factory = client_factory
         self.inventory_provider = inventory_provider
+        self.catalog_provider = catalog_provider
         self._mutation_lock = threading.RLock()
         self._jobs_lock = threading.Lock()
         self._jobs: dict[str, ReviewJob] = {}
@@ -129,7 +131,7 @@ class ObsSceneService:
         self.profile_store.delete(profile_id)
 
     def catalog(self) -> list[dict[str, Any]]:
-        return source_catalog()
+        return (self.catalog_provider or source_catalog)()
 
     def list_templates(self) -> list[dict[str, Any]]:
         return self.profile_store.list_templates()

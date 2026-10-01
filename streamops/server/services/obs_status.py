@@ -60,14 +60,14 @@ class ObsStatusHub:
         if self._loop is not None:
             self._loop.call_soon_threadsafe(self._refresh.set)
 
-    async def subscribe(self) -> asyncio.Queue[dict[str, Any]]:
+    async def subscribe(self, *, fresh: bool = False) -> asyncio.Queue[dict[str, Any]]:
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=1)
-        if self._latest is None:
+        if fresh or self._latest is None:
             await self.refresh()
         async with self._refresh_lock:
             self._subscribers.add(queue)
             if self._latest is not None:
-                self._put_latest(queue, self._latest)
+                self._put_latest(queue, _event("obs.snapshot", self._latest))
         return queue
 
     def unsubscribe(self, queue: asyncio.Queue[dict[str, Any]]) -> None:
@@ -84,7 +84,6 @@ class ObsStatusHub:
                 except Exception:
                     current_scene = None
             snapshot = {
-                "type": "obs.snapshot",
                 "generated_at": _now(),
                 "node": {
                     "status": "ok",
@@ -98,7 +97,7 @@ class ObsStatusHub:
             self._latest = snapshot
             if signature != self._signature:
                 self._signature = signature
-                self._broadcast(snapshot)
+                self._broadcast(_event("obs.snapshot", snapshot))
             return snapshot
 
     async def _monitor(self) -> None:
@@ -119,7 +118,7 @@ class ObsStatusHub:
     async def _heartbeat(self) -> None:
         while True:
             await asyncio.sleep(self.heartbeat_interval)
-            self._broadcast({"type": "obs.heartbeat", "generated_at": _now()})
+            self._broadcast(_event("obs.heartbeat", {"generated_at": _now()}))
 
     def _broadcast(self, message: dict[str, Any]) -> None:
         for queue in tuple(self._subscribers):
@@ -144,3 +143,7 @@ def _snapshot_signature(snapshot: dict[str, Any]) -> str:
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _event(name: str, data: dict[str, Any]) -> dict[str, Any]:
+    return {"type": "event", "event": name, "data": deepcopy(data)}
