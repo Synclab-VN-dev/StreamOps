@@ -2,6 +2,7 @@ const ui = window.StreamOpsUI;
 const addActivity = ui.createActivityLog("#activity-log");
 const panel = document.querySelector("#obs-status-panel");
 const stateElement = document.querySelector("#obs-state");
+const statePill = document.querySelector("#obs-state-pill");
 const stateDot = document.querySelector("#obs-status-dot");
 const pidElement = document.querySelector("#obs-pid");
 const startedElement = document.querySelector("#obs-started");
@@ -90,6 +91,7 @@ function renderStatus(status) {
   const websocket = status.websocket || {};
   const output = status.output || {};
   stateElement.textContent = status.state;
+  statePill.dataset.tone = status.state === "READY" ? "ok" : status.state === "ERROR" ? "bad" : "warn";
   stateDot.className = status.state === "READY"
     ? "status-dot online"
     : status.state === "ERROR"
@@ -129,6 +131,7 @@ function updateButtons(status) {
 
 function renderErrorState() {
   stateElement.textContent = "ERROR";
+  statePill.dataset.tone = "bad";
   stateDot.className = "status-dot offline";
   for (const element of [
     pidElement, startedElement, uptimeElement, sessionElement, activeSessionElement,
@@ -150,6 +153,7 @@ function renderOperationState(action) {
   operationInFlight = true;
   panel.setAttribute("aria-busy", "true");
   stateElement.textContent = action === "stop" ? "Stopping" : "STARTING";
+  statePill.dataset.tone = "warn";
   stateDot.className = "status-dot warning";
   startButton.disabled = true;
   stopButton.disabled = true;
