@@ -1,4 +1,5 @@
 from copy import deepcopy
+import json
 import re
 import shutil
 import pytest
@@ -75,14 +76,12 @@ def test_source_picker_stays_inside_panel_without_giant_controls(page, live_serv
 
 
 def test_source_picker_renders_backend_catalog_groups(page, live_server):
-    page.route('**/api/v1/obs/source-catalog', lambda route: route.fulfill(json={
-        'sources': [
-            {'type': 'custom_video', 'label': 'Custom backend video', 'video': True, 'fields': []},
-            {'type': 'custom_audio', 'label': 'Custom backend audio', 'audio': True, 'fields': [
-                {'key': 'device_id', 'label': 'Backend device', 'type': 'string', 'inventory': True},
-            ]},
-        ],
-    }))
+    live_server.source_catalog[:] = [
+        {'type': 'custom_video', 'label': 'Custom backend video', 'video': True, 'audio': False, 'fields': []},
+        {'type': 'custom_audio', 'label': 'Custom backend audio', 'video': False, 'audio': True, 'fields': [
+            {'key': 'device_id', 'label': 'Backend device', 'type': 'string', 'inventory': True},
+        ]},
+    ]
     open_new(page, live_server)
     open_card(page, '#sources-card')
     page.locator('#add-source-button').click()
@@ -186,12 +185,12 @@ def test_apply_drift_warn_fail_offline_and_review(page, live_server):
 
 
 def test_apply_does_not_run_runtime_verify_before_activate(page, live_server):
+    operations = []
+    page.on('websocket', lambda websocket: websocket.on('framesent', lambda payload: operations.append(json.loads(payload).get('operation'))))
     open_new(page, live_server)
     add_browser(page)
     save(page)
-    profile_id = page.locator('#profile-list').input_value()
-    requests = []
-    page.on('request', lambda request: requests.append(request.url))
+    operations.clear()
 
     page.locator('#apply-button').click()
 
@@ -199,17 +198,16 @@ def test_apply_does_not_run_runtime_verify_before_activate(page, live_server):
     expect(page.locator('#obs-result')).to_have_text('--')
     expect(page.locator('#activity-log')).to_contain_text('apply: changed')
     expect(page.locator('#apply-button')).to_be_enabled()
-    verify_path = f'/api/v1/scene-profiles/{profile_id}/verify'
-    assert not any(url.endswith(verify_path) for url in requests)
+    assert 'scene_profiles.apply' in operations
+    assert 'scene_profiles.verify' not in operations
     assert 'apply: FAIL' not in page.locator('#activity-log').inner_text()
 
-    requests.clear()
+    operations.clear()
     page.locator('#activate-button').click()
 
     expect(page.locator('#obs-result')).to_have_text('PASS')
     expect(page.locator('#activate-button')).to_be_enabled()
-    assert any(url.endswith(f'/api/v1/scene-profiles/{profile_id}/activate') for url in requests)
-    assert any(url.endswith(verify_path) for url in requests)
+    assert operations == ['scene_profiles.activate', 'scene_profiles.verify']
 
 
 
@@ -292,7 +290,64 @@ def test_healthy_websocket_stops_status_polling(page, live_server):
     assert not any(url.endswith('/api/v1/obs/process/status') for url in requests)
 
 
-def test_websocket_fallback_reconnects_and_stops_polling(page, live_server):
+def test_dashboard_uses_one_socket_and_no_business_rest(page, live_server):
+    sockets = []
+    requests = []
+    page.on('websocket', lambda websocket: sockets.append(websocket))
+    page.on('request', lambda request: requests.append(request.url))
+    open_new(page, live_server)
+    add_browser(page)
+    save(page)
+    page.locator('#verify-button').click()
+    expect(page.locator('#obs-result')).not_to_have_text('--')
+
+    assert len(sockets) == 1
+    business_http = [
+        url for url in requests
+        if '/api/v1/' in url
+        and '/preview' not in url
+        and '/artifacts/' not in url
+    ]
+    assert business_http == []
+
+
+def test_initial_profile_selection_matches_current_obs_scene(page, live_server):
+    first = live_server.obs.create_profile({'name': 'Alpha profile', 'obs_scene_name': 'Alpha Scene'})
+    second = live_server.obs.create_profile({'name': 'Live profile', 'obs_scene_name': 'Live Scene'})
+    live_server.transport.current_scene = second['obs_scene_name']
+
+    page.goto(live_server.base_url + '/obs')
+    open_card(page, '#scene-profile-card')
+
+    expect(page.locator('#profile-list')).to_have_value(second['id'])
+    expect(page.locator('#profile-name')).to_have_value('Live profile')
+    expect(page.locator('#profile-runtime-state')).to_have_text('ACTIVE')
+    assert page.locator('#profile-list').input_value() != first['id']
+
+
+def test_reconnect_preserves_dirty_draft_and_page_lifecycle(page, live_server):
+    sockets = []
+    requests = []
+    page.on('websocket', lambda websocket: sockets.append(websocket))
+    page.on('request', lambda request: requests.append(request.url))
+    open_new(page, live_server)
+    page.locator('#profile-name').fill('Unsaved operator draft')
+    expect(page.locator('#profile-summary-state')).to_have_text('Modified')
+    assert len(sockets) == 1
+
+    page.evaluate("window.dispatchEvent(new PageTransitionEvent('pagehide'))")
+    page.wait_for_timeout(1500)
+    assert len(sockets) == 1
+    page.evaluate("window.dispatchEvent(new PageTransitionEvent('pageshow'))")
+    expect(page.locator('#activity-log')).to_contain_text('Profile manager synchronized', timeout=7000)
+    expect(page.locator('#profile-name')).to_have_value('Unsaved operator draft')
+    expect(page.locator('#profile-summary-state')).to_have_text('Modified')
+    assert len(sockets) == 2
+
+    assert not any('/api/v1/' in url and '/preview' not in url and '/artifacts/' not in url for url in requests)
+
+
+def test_websocket_reconnects_without_http_fallback(page, live_server):
     page.add_init_script("""
       (() => {
         const NativeWebSocket = window.WebSocket;
@@ -318,12 +373,11 @@ def test_websocket_fallback_reconnects_and_stops_polling(page, live_server):
     page.on('request', lambda request: requests.append(request.url))
     page.goto(live_server.base_url + '/obs')
 
-    expect(page.locator('#activity-log')).to_contain_text('Realtime OBS status connected', timeout=10000)
-    fallback_requests = [url for url in requests if url.endswith('/api/v1/obs/process/status')]
-    assert fallback_requests
-    count = len(fallback_requests)
+    expect(page.locator('#activity-log')).to_contain_text('OBS dashboard connection established', timeout=10000)
+    assert not any(url.endswith('/api/v1/obs/process/status') for url in requests)
+    assert not any(url.endswith('/api/v1/health') for url in requests)
     page.wait_for_timeout(5500)
-    assert len([url for url in requests if url.endswith('/api/v1/obs/process/status')]) == count
+    assert not any(url.endswith('/api/v1/obs/process/status') for url in requests)
 
 
 def test_profile_runtime_state_tracks_external_scene_without_reload(page, live_server):

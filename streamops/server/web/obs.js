@@ -1,6 +1,7 @@
 (() => {
 /* Profile editor: the draft is local until Save, and OBS actions use saved state. */
 const ui = window.StreamOpsUI;
+const obsSocket = window.StreamOpsObs;
 const $ = (selector) => document.querySelector(selector);
 const activity = ui.createActivityLog('#activity-log');
 let draft = null, saved = null, catalog = [], inventory = {options: {}}, busy = false, obsReady = false, currentObsScene = null;
@@ -9,6 +10,9 @@ let selectedSourceType = null;
 const expandedSourceIds = new Set();
 const sourceUiKeys = new WeakMap();
 let sourceUiCounter = 0;
+let transportConnected = obsSocket.connected;
+let managerLoaded = false;
+let syncInFlight = null;
 
 function dirty() { return draft && JSON.stringify(draft) !== JSON.stringify(saved); }
 function error(message = '') { $('#scene-error-message').textContent = message; $('#scene-error-message').hidden = !message; }
@@ -50,10 +54,11 @@ function changed() { state(dirty() ? 'Modified' : 'Saved'); updateProfileSummary
 function buttons() {
   document.querySelectorAll('#scene-profile-manager [data-scene-action]').forEach((button) => {
     const independent = ['new-button', 'template-button', 'refresh-inventory'].includes(button.id);
+    const localOnly = ['add-source-button', 'confirm-source-button'].includes(button.id);
     const runtimeAction = ['apply-button', 'verify-button', 'activate-button', 'review-button', 'review-run-button'].includes(button.id);
-    button.disabled = busy || (!draft && !independent) || (runtimeAction && !obsReady);
+    button.disabled = busy || (!localOnly && !transportConnected) || (!draft && !independent) || (runtimeAction && !obsReady);
   });
-  $('#profile-list').disabled = busy;
+  $('#profile-list').disabled = busy || !transportConnected;
   $('#confirm-source-button').disabled = busy || !draft || !selectedSourceType;
   document.querySelectorAll('#source-picker input').forEach((input) => {input.disabled = busy || !draft;});
   document.querySelectorAll('#scene-profile-manager .source-editor input, #scene-profile-manager .source-editor select, #profile-name, #canvas-width, #canvas-height, #canvas-fps').forEach((input) => {input.disabled = busy;});
@@ -65,9 +70,33 @@ async function run(label, fn) {
   finally { busy = false; buttons(); }
 }
 async function api(path, method = 'GET', payload) {
-  const response = await fetch(`/api/v1/${path}`, {method, cache: 'no-store', headers: payload === undefined ? {} : {'Content-Type': 'application/json'}, body: payload === undefined ? undefined : JSON.stringify(payload)});
-  if (!response.ok) throw new Error(await ui.apiError(response));
-  return response.status === 204 ? null : response.json();
+  let match;
+  if (path === 'scene-profiles' && method === 'GET') return obsSocket.request('scene_profiles.list');
+  if (path === 'scene-profiles' && method === 'POST') return obsSocket.request('scene_profiles.create', {profile: payload});
+  if ((match = path.match(/^scene-profiles\/([^/]+)$/))) {
+    const profile_id = decodeURIComponent(match[1]);
+    if (method === 'GET') return obsSocket.request('scene_profiles.get', {profile_id});
+    if (method === 'PUT') return obsSocket.request('scene_profiles.update', {profile_id, profile: payload});
+    if (method === 'DELETE') return obsSocket.request('scene_profiles.delete', {profile_id});
+  }
+  if ((match = path.match(/^scene-profiles\/([^/]+)\/(duplicate|apply|verify|activate|review)$/))) {
+    const profile_id = decodeURIComponent(match[1]);
+    const operation = match[2];
+    const body = {profile_id};
+    if (operation === 'duplicate' && payload?.name !== undefined) body.name = payload.name;
+    if (operation === 'review') body.seconds = payload?.seconds ?? 30;
+    return obsSocket.request(`scene_profiles.${operation}`, body);
+  }
+  if ((match = path.match(/^scene-reviews\/([^/]+)$/))) return obsSocket.request('scene_reviews.get', {job_id: decodeURIComponent(match[1])});
+  if (path === 'obs/source-catalog') return obsSocket.request('source_catalog.list');
+  if (path === 'obs/inventory') return obsSocket.request('inventory.get');
+  if (path === 'scene-profile-templates') return obsSocket.request('scene_profile_templates.list');
+  if ((match = path.match(/^scene-profile-templates\/([^/]+)\/instantiate$/))) {
+    const body = {template_id: decodeURIComponent(match[1])};
+    if (payload?.name !== undefined) body.name = payload.name;
+    return obsSocket.request('scene_profile_templates.instantiate', body);
+  }
+  throw new Error(`Unsupported dashboard operation: ${method} ${path}`);
 }
 function canDiscard() { return !dirty() || confirm('Discard unsaved changes?'); }
 function setProfile(profile) {
@@ -83,7 +112,7 @@ function setProfile(profile) {
   updateProfileSummary(); updateSourceSummary();
   renderSources(); renderCanvas(); buttons();
 }
-async function listProfiles(selected = draft?.id) {
+async function listProfiles(selected = draft?.id, {preferActive = false} = {}) {
   const result = await api('scene-profiles');
   const select = $('#profile-list'); select.replaceChildren();
   if (result.profiles.length) {
@@ -97,8 +126,11 @@ async function listProfiles(selected = draft?.id) {
   $('#profile-count').textContent = `${result.profiles.length} profiles`;
   $('#store-errors').textContent = result.errors.map((e) => `${e.file}: ${e.error}`).join('\n');
   if (!draft && result.profiles.length) {
-    select.value = result.profiles[0].id;
+    const active = preferActive ? result.profiles.find((profile) => profile.obs_scene_name === currentObsScene) : null;
+    select.value = selected || active?.id || result.profiles[0].id;
     setProfile(await api('scene-profiles/' + select.value));
+  } else if (draft) {
+    select.value = result.profiles.some((profile) => profile.id === draft.id) ? draft.id : '';
   }
 }
 function sourceDescription(capability) {
@@ -464,6 +496,49 @@ window.addEventListener('streamops:obs-snapshot', (event) => {
   updateRuntimeState();
 });
 
+async function syncManager() {
+  if (syncInFlight) return syncInFlight;
+  syncInFlight = (async () => {
+    const snapshot = await obsSocket.waitFor('obs.snapshot');
+    currentObsScene = snapshot?.obs?.current_scene || null;
+    obsReady = snapshot?.runtime?.state === 'READY';
+    const keepDirtyDraft = managerLoaded && dirty();
+    const selectedId = draft?.id;
+    const [sources, templates] = await Promise.all([api('obs/source-catalog'), api('scene-profile-templates')]);
+    catalog = sources.sources;
+    updateSourceSummary();
+    renderSourcePicker();
+    const templateSelect = $('#template-list');
+    templateSelect.replaceChildren();
+    templates.templates.forEach((template) => templateSelect.add(new Option(template.name, template.id)));
+    if (!managerLoaded) {
+      await listProfiles(undefined, {preferActive: true});
+    } else {
+      await listProfiles(selectedId);
+      if (!keepDirtyDraft && selectedId && $('#profile-list').value === selectedId) {
+        setProfile(await api(`scene-profiles/${selectedId}`));
+      } else if (!keepDirtyDraft && !$('#profile-list').value) {
+        setProfile(null);
+        await listProfiles(undefined, {preferActive: true});
+      }
+    }
+    await refreshInventory().catch((e) => {
+      $('#inventory-status').textContent = 'Inventory error · ' + e.message;
+      tone($('#inventory-status'), 'bad');
+    });
+    managerLoaded = true;
+    activity('Profile manager synchronized', 'success');
+    buttons();
+  })().finally(() => { syncInFlight = null; });
+  return syncInFlight;
+}
+
+obsSocket.onState(({state: connectionState}) => {
+  transportConnected = connectionState === 'connected';
+  buttons();
+  if (transportConnected) run(managerLoaded ? 'Reconnect' : 'Load profiles', syncManager);
+}, {replay: true});
+
 new MutationObserver(updateActivitySummary).observe($('#activity-log'), {childList: true});
 setCanvasTab('layout');
 renderVerification({});
@@ -471,14 +546,4 @@ renderReview(null);
 updateProfileSummary();
 updateSourceSummary();
 buttons();
-run('Load profiles', async () => {
-  const [sources, templates] = await Promise.all([api('obs/source-catalog'), api('scene-profile-templates')]);
-  catalog = sources.sources;
-  updateSourceSummary();
-  renderSourcePicker();
-  templates.templates.forEach((t) => $('#template-list').add(new Option(t.name, t.id)));
-  await listProfiles();
-  await refreshInventory().catch((e) => {$('#inventory-status').textContent = 'Inventory error · ' + e.message; tone($('#inventory-status'), 'bad');});
-  activity('Profile manager loaded');
-});
 })();
