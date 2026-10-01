@@ -35,19 +35,28 @@ async def _reject_body(request: Request) -> None:
 @router.post("/start")
 async def start_obs(request: Request) -> dict[str, object]:
     await _reject_body(request)
-    status = await asyncio.to_thread(_manager(request).start)
-    return status.api_payload()
+    try:
+        status = await asyncio.to_thread(_manager(request).start)
+        return status.api_payload()
+    finally:
+        request.app.state.obs_status_hub.trigger_refresh()
 
 
 @router.post("/stop")
 async def stop_obs(request: Request) -> dict[str, object]:
     await _reject_body(request)
-    status = await asyncio.to_thread(_manager(request).stop)
-    return status.api_payload()
+    try:
+        status = await asyncio.to_thread(_manager(request).stop)
+        return status.api_payload()
+    finally:
+        request.app.state.obs_status_hub.trigger_refresh()
 
 
 @router.post("/restart")
 async def restart_obs(request: Request) -> dict[str, object]:
     await _reject_body(request)
-    status = await asyncio.to_thread(_manager(request).restart)
-    return status.api_payload()
+    try:
+        status = await asyncio.to_thread(_manager(request).restart)
+        return status.api_payload()
+    finally:
+        request.app.state.obs_status_hub.trigger_refresh()

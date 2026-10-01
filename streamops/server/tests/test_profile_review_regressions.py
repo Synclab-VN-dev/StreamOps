@@ -108,6 +108,32 @@ def test_review_snapshot_is_captured_at_enqueue_and_failure_has_report(tmp_path)
     assert Path(result.result['artifacts']['report']).exists()
 
 
+def test_review_artifact_is_confined_to_its_job_directory(tmp_path):
+    from streamops.server.errors import SceneReviewArtifactNotFoundError
+    from streamops.server.services.obs_scene import ObsSceneService, ReviewJob
+
+    service = ObsSceneService(data_dir=tmp_path/'profiles', artifact_root=tmp_path/'artifacts')
+    job_dir = tmp_path/'artifacts'/'profile-id'/'job-id'
+    job_dir.mkdir(parents=True)
+    owned = job_dir/'preview.png'
+    owned.write_bytes(b'preview')
+    outside = tmp_path/'outside.json'
+    outside.write_text('{}', encoding='utf-8')
+    job = ReviewJob(
+        job_id='job-id', scene='profile-id', state='completed',
+        created_at='2026-10-01T00:00:00Z', updated_at='2026-10-01T00:00:01Z', seconds=1,
+        result={'artifacts': {'preview': str(owned), 'outside': str(outside)}},
+    )
+    service._jobs[job.job_id] = job
+    service._set_review_artifact_dir(job.job_id, job_dir)
+
+    assert service.review_artifact('job-id', 'preview') == owned.resolve()
+    for key in ('missing', '../preview', 'outside'):
+        with pytest.raises(SceneReviewArtifactNotFoundError):
+            service.review_artifact('job-id', key)
+    service.close()
+
+
 def test_probe_media_derives_missing_mkv_duration_from_video_packets(monkeypatch, tmp_path):
     from streamops.server.services import obs_scene
 

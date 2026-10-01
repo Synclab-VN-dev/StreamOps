@@ -61,3 +61,16 @@ def test_sparse_obs_recording_track_mapping():
         def get_profile_parameter(self,c,n):
             return {'Mode':'Advanced','RecType':'Standard','RecTracks':'34'}[n]
     assert recording_tracks(Client())==[2,6]
+
+
+def test_missing_required_recording_track_explains_global_obs_mismatch(media):
+    checks,_ = analyze_recording(Path('sample'), probe(), profile(), [1], 30)
+    track = next(check for check in checks if check.id == 'review.audio_track_2')
+
+    assert track.status == 'FAIL'
+    assert track.message == (
+        'Recording audio track 2 is required by the profile, '
+        'but OBS recording output does not include track 2.'
+    )
+    assert track.expected == 'Track 2 enabled'
+    assert track.actual == [1]

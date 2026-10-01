@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
+from pathlib import Path
 from types import SimpleNamespace
 
 from streamops.server.app import create_app
-from streamops.server.errors import SceneOperationError
+from streamops.server.errors import SceneOperationError, SceneReviewArtifactNotFoundError
 from streamops.server.obs.scene import ApplyResult, Change, Check, VerifyResult
 from streamops.server.services.obs_scene import ReviewJob
 
@@ -12,6 +13,7 @@ from streamops.server.services.obs_scene import ReviewJob
 class FakeObsSceneService:
     def __init__(self) -> None:
         self.apply_error: Exception | None = None
+        self.artifact_path: Path | None = None
         self.closed = False
 
     def close(self) -> None:
@@ -90,6 +92,11 @@ class FakeObsSceneService:
             result=self.verify("livestream-d4").to_dict(),
         )
 
+    def review_artifact(self, job_id: str, artifact_key: str) -> Path:
+        if job_id != "job-1" or artifact_key != "preview" or self.artifact_path is None:
+            raise SceneReviewArtifactNotFoundError(f"Scene review artifact not found: {artifact_key}")
+        return self.artifact_path
+
 
 class ReadyObsManager:
     def status(self):
@@ -157,6 +164,29 @@ def test_review_is_job_based_and_rejects_unknown_input(server_config, capture_se
     assert status.status_code == 200
     assert status.json()["state"] == "completed"
     assert rejected.status_code == 422
+
+
+def test_review_artifact_supports_inline_and_download(
+    server_config, capture_service, tmp_path: Path
+) -> None:
+    service = FakeObsSceneService()
+    service.artifact_path = tmp_path / "preview.png"
+    service.artifact_path.write_bytes(b"\x89PNG\r\n\x1a\npreview")
+    with _client(server_config, capture_service, service) as client:
+        inline = client.get("/api/v1/scene-reviews/job-1/artifacts/preview")
+        download = client.get("/api/v1/scene-reviews/job-1/artifacts/preview?download=true")
+        missing = client.get("/api/v1/scene-reviews/job-1/artifacts/missing")
+        traversal = client.get("/api/v1/scene-reviews/job-1/artifacts/../preview")
+
+    assert inline.status_code == 200
+    assert inline.content == service.artifact_path.read_bytes()
+    assert inline.headers["content-type"] == "image/png"
+    assert inline.headers["content-disposition"].startswith('inline; filename="preview.png"')
+    assert inline.headers["cache-control"] == "no-store"
+    assert download.headers["content-disposition"].startswith('attachment; filename="preview.png"')
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "scene_review_artifact_not_found"
+    assert traversal.status_code == 404
 
 
 def test_scene_operation_error_has_stable_contract(server_config, capture_service) -> None:

@@ -61,7 +61,25 @@ def analyze_recording(path: Path, probe, profile, selected_tracks, seconds):
     check('audio_mapping', not expected or mapping_valid, selected_tracks if expected else 'Audio optional', len(audios))
     for track in sorted(expected):
         present = track in selected_tracks and mapping_valid
-        check(f'audio_track_{track}', present, True, present)
+        if track not in selected_tracks:
+            message = (
+                f'Recording audio track {track} is required by the profile, '
+                f'but OBS recording output does not include track {track}.'
+            )
+        elif not mapping_valid:
+            message = (
+                f'Recording audio track {track} is enabled in OBS, but the recording produced '
+                f'{len(audios)} audio streams for {len(selected_tracks)} selected tracks.'
+            )
+        else:
+            message = f'Recording audio track {track} is required and included in OBS recording output.'
+        checks.append(Check(
+            f'review.audio_track_{track}',
+            'PASS' if present else 'FAIL',
+            message,
+            f'Track {track} enabled',
+            list(selected_tracks),
+        ))
     peaks = {}
     ffmpeg = shutil.which('ffmpeg')
     if not ffmpeg:

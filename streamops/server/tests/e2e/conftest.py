@@ -20,6 +20,7 @@ from streamops.server.errors import ScreenCaptureError, SteamLaunchError
 from streamops.server.services import ScreenCaptureService, SteamService
 from streamops.server.services.steam import SteamStatus
 from streamops.server.services.obs_scene import ObsSceneService
+from streamops.server.scene_profiles import source_catalog
 from streamops.server.tests.browser_obs import BrowserObs
 from streamops.server.tests.browser_obs_process import ControllableObsManager
 
@@ -142,6 +143,7 @@ class BrowserTestServer:
     obs: ObsSceneService
     transport: BrowserObs
     obs_process: ControllableObsManager
+    source_catalog: list[dict[str, Any]]
 
 
 @pytest.fixture
@@ -153,7 +155,8 @@ def live_server(tmp_path: Path) -> BrowserTestServer:
     obs_manager = ControllableObsManager(obs_executable)
     capture_backend = ControllableCaptureBackend()
     transport = BrowserObs(tmp_path)
-    obs_service = ObsSceneService(data_dir=tmp_path / "profiles", artifact_root=tmp_path / "artifacts", client_factory=lambda: transport, inventory_provider=lambda: {"windows": [], "capture": [], "render": [], "cameras": [], "errors": []})
+    catalog = source_catalog()
+    obs_service = ObsSceneService(data_dir=tmp_path / "profiles", artifact_root=tmp_path / "artifacts", client_factory=lambda: transport, inventory_provider=lambda: {"windows": [], "capture": [], "render": [], "cameras": [], "errors": []}, catalog_provider=lambda: catalog)
     config = ServerConfig(
         host="127.0.0.1",
         port=0,
@@ -176,7 +179,12 @@ def live_server(tmp_path: Path) -> BrowserTestServer:
     listener.bind(("127.0.0.1", 0))
     listener.listen(128)
     port = listener.getsockname()[1]
-    server = uvicorn.Server(uvicorn.Config(app, log_level="warning", lifespan="on"))
+    server = uvicorn.Server(uvicorn.Config(
+        app,
+        log_level="warning",
+        lifespan="on",
+        timeout_graceful_shutdown=5,
+    ))
     thread = threading.Thread(
         target=server.run,
         kwargs={"sockets": [listener]},
@@ -194,6 +202,7 @@ def live_server(tmp_path: Path) -> BrowserTestServer:
             obs=obs_service,
             transport=transport,
             obs_process=obs_manager,
+            source_catalog=catalog,
         )
     finally:
         obs_service.close()
