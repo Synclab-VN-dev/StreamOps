@@ -37,6 +37,7 @@ from .errors import (
     SceneProfileNotFoundError,
     SceneProfileStorageError,
     SceneProfileValidationError,
+    SceneReviewArtifactNotFoundError,
     SceneReviewNotFoundError,
     ScreenCaptureError,
     SteamLaunchError,
@@ -146,6 +147,12 @@ def create_app(
     @app.exception_handler(SceneReviewNotFoundError)
     async def scene_review_not_found_handler(_request, exc: SceneReviewNotFoundError) -> JSONResponse:
         return _error_response(404, "scene_review_not_found", str(exc))
+
+    @app.exception_handler(SceneReviewArtifactNotFoundError)
+    async def scene_review_artifact_not_found_handler(
+        _request, exc: SceneReviewArtifactNotFoundError
+    ) -> JSONResponse:
+        return _error_response(404, "scene_review_artifact_not_found", str(exc))
 
     @app.exception_handler(SceneProfileNotFoundError)
     async def scene_profile_not_found_handler(_request, exc: SceneProfileNotFoundError) -> JSONResponse:

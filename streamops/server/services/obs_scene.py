@@ -18,6 +18,7 @@ from uuid import uuid4
 
 from ..errors import (
     SceneOperationError,
+    SceneReviewArtifactNotFoundError,
     SceneReviewNotFoundError,
 )
 from ..obs.client import ObsClient
@@ -74,6 +75,7 @@ class ObsSceneService:
         self._mutation_lock = threading.RLock()
         self._jobs_lock = threading.Lock()
         self._jobs: dict[str, ReviewJob] = {}
+        self._review_artifact_dirs: dict[str, Path] = {}
         self._profile_snapshots: dict[str, dict[str, Any]] = {}
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="streamops-scene-review")
 
@@ -199,6 +201,7 @@ class ObsSceneService:
         job = self.review_job(job_id)
         profile = self._profile_snapshots[job_id]
         artifact_dir = self.artifact_root / profile["id"] / job.job_id
+        self._set_review_artifact_dir(job_id, artifact_dir)
         verify = VerifyResult(profile["obs_scene_name"], "FAIL", _now(), None)
         failure = None
         client = None
@@ -378,6 +381,34 @@ class ObsSceneService:
                 raise SceneReviewNotFoundError(f"Scene review job not found: {job_id}")
             return ReviewJob(**job.__dict__)
 
+    def review_artifact(self, job_id: str, artifact_key: str) -> Path:
+        """Resolve one artifact owned by a completed in-memory review job."""
+        job = self.review_job(job_id)
+        with self._jobs_lock:
+            artifact_dir = self._review_artifact_dirs.get(job_id)
+        artifacts = job.result.get("artifacts") if isinstance(job.result, dict) else None
+        artifact_value = artifacts.get(artifact_key) if isinstance(artifacts, dict) else None
+        if artifact_dir is None or not isinstance(artifact_value, str) or not artifact_value:
+            raise SceneReviewArtifactNotFoundError(f"Scene review artifact not found: {artifact_key}")
+
+        try:
+            root = self.artifact_root.resolve(strict=True)
+            owned_root = artifact_dir.resolve(strict=True)
+            owned_root.relative_to(root)
+            candidate = Path(artifact_value).expanduser().resolve(strict=True)
+            candidate.relative_to(owned_root)
+        except (OSError, RuntimeError, ValueError):
+            raise SceneReviewArtifactNotFoundError(
+                f"Scene review artifact not found: {artifact_key}"
+            ) from None
+        if not candidate.is_file():
+            raise SceneReviewArtifactNotFoundError(f"Scene review artifact not found: {artifact_key}")
+        return candidate
+
+    def _set_review_artifact_dir(self, job_id: str, artifact_dir: Path) -> None:
+        with self._jobs_lock:
+            self._review_artifact_dirs[job_id] = artifact_dir
+
     def _run_review(self, job_id: str) -> None:
         self._update_job(job_id, state="running")
         try:
@@ -393,6 +424,7 @@ class ObsSceneService:
             client = self._client()
             stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
             artifact_dir = self.artifact_root / job.scene / f"{stamp}-{job.job_id[:8]}"
+            self._set_review_artifact_dir(job.job_id, artifact_dir)
             artifact_dir.mkdir(parents=True, exist_ok=False)
             try:
                 verify = verify_scene(
@@ -437,7 +469,6 @@ class ObsSceneService:
                     shutil.copy2(source_path, target_path)
                     _wait_for_stable_file(target_path, timeout_seconds=5)
                     verify.artifacts["video"] = str(target_path)
-                    verify.artifacts["video_source"] = str(source_path)
                     probe = _probe_media(target_path)
                     (artifact_dir / "media-analysis.json").write_text(
                         json.dumps(probe, indent=2, ensure_ascii=False),

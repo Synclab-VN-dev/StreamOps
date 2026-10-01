@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import mimetypes
+
 from fastapi import APIRouter, Depends, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Any
 
@@ -184,3 +186,22 @@ def start_scene_review(
 @router.get("/scene-reviews/{job_id}")
 def scene_review_status(job_id: str, request: Request) -> dict[str, object]:
     return _service(request).review_job(job_id).to_dict()
+
+
+@router.get("/scene-reviews/{job_id}/artifacts/{artifact_key}")
+def scene_review_artifact(
+    job_id: str,
+    artifact_key: str,
+    request: Request,
+    download: bool = False,
+) -> FileResponse:
+    path = _service(request).review_artifact(job_id, artifact_key)
+    media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    previewable = media_type.startswith(("image/", "video/"))
+    return FileResponse(
+        path,
+        media_type=media_type,
+        filename=path.name,
+        content_disposition_type="attachment" if download or not previewable else "inline",
+        headers={"Cache-Control": "no-store"},
+    )

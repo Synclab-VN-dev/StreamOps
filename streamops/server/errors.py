@@ -136,6 +136,10 @@ class SceneReviewNotFoundError(ServerError):
     """Raised when a requested in-memory review job does not exist."""
 
 
+class SceneReviewArtifactNotFoundError(ServerError):
+    """Raised when a review artifact is missing or is not safe to serve."""
+
+
 class SceneReviewInProgressError(ServerError):
     """Raised when an incompatible review operation is already running."""
 
