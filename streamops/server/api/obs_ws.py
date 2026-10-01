@@ -18,19 +18,20 @@ async def obs_status_websocket(websocket: WebSocket, _access: None = Depends(req
     receive_task: asyncio.Task[dict] | None = None
     message_task: asyncio.Task[dict] | None = None
     try:
+        receive_task = asyncio.create_task(websocket.receive())
         while True:
-            receive_task = asyncio.create_task(websocket.receive())
             message_task = asyncio.create_task(queue.get())
-            done, pending = await asyncio.wait(
+            done, _pending = await asyncio.wait(
                 (receive_task, message_task), return_when=asyncio.FIRST_COMPLETED
             )
-            for task in pending:
-                task.cancel()
-            await asyncio.gather(*pending, return_exceptions=True)
             if receive_task in done:
+                if not message_task.done():
+                    message_task.cancel()
+                    await asyncio.gather(message_task, return_exceptions=True)
                 event = receive_task.result()
                 if event["type"] == "websocket.disconnect":
                     break
+                receive_task = asyncio.create_task(websocket.receive())
                 continue
             await websocket.send_json(message_task.result())
     except WebSocketDisconnect:
@@ -39,4 +40,8 @@ async def obs_status_websocket(websocket: WebSocket, _access: None = Depends(req
         for task in (receive_task, message_task):
             if task is not None and not task.done():
                 task.cancel()
+        await asyncio.gather(
+            *(task for task in (receive_task, message_task) if task is not None),
+            return_exceptions=True,
+        )
         hub.unsubscribe(queue)
