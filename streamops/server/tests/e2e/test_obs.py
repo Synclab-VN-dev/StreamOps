@@ -17,7 +17,8 @@ def open_new(page, server):
     expect(page.locator('#new-button')).to_be_enabled()
     expect(page.locator('#profile-count')).to_have_text('0 profiles')
     page.locator('#new-button').click()
-    expect(page.locator('#editor-state')).to_have_text('Saved')
+    expect(page.locator('#profile-summary-state')).to_have_text('Saved')
+    expect(page.locator('#new-button')).to_be_enabled()
 
 
 def add_browser(page, name='Overlay'):
@@ -34,7 +35,7 @@ def add_browser(page, name='Overlay'):
 
 def save(page):
     page.locator('#save-button').click()
-    expect(page.locator('#editor-state')).to_have_text('Saved')
+    expect(page.locator('#profile-summary-state')).to_have_text('Saved')
     expect(page.locator('#save-button')).to_be_enabled()
 
 
@@ -150,7 +151,7 @@ def test_apply_drift_warn_fail_offline_and_review(page, live_server):
     profile = live_server.obs.get_profile(page.locator('#profile-list').input_value())
     page.locator('#apply-button').click()
     expect(page.locator('#obs-result')).to_have_text('--')
-    expect(page.locator('#editor-state')).to_have_text('Applied')
+    expect(page.locator('#profile-summary-state')).to_have_text('Applied')
     open_card(page, '#canvas-preview-card')
     page.locator('#preview-tab').click()
     expect(page.locator('#scene-preview')).to_be_visible()
@@ -160,7 +161,7 @@ def test_apply_drift_warn_fail_offline_and_review(page, live_server):
     transport.input_settings[profile['sources'][0]['obs_name']]['url'] = 'drift'
     page.locator('#verify-button').click()
     expect(page.locator('#obs-result')).to_have_text('FAIL')
-    expect(page.locator('#editor-state')).to_have_text('Drifted')
+    expect(page.locator('#profile-summary-state')).to_have_text('Drifted')
     page.locator('#apply-button').click()
     expect(page.locator('#obs-result')).to_have_text('--')
     page.locator('#verify-button').click()
@@ -179,7 +180,7 @@ def test_apply_drift_warn_fail_offline_and_review(page, live_server):
     transport.offline = True
     page.locator('#verify-button').click()
     expect(page.locator('#scene-error-message')).to_contain_text('unavailable')
-    expect(page.locator('#editor-state')).to_have_text('Failed')
+    expect(page.locator('#profile-summary-state')).to_have_text('Failed')
     page.locator('#profile-name').fill('Saved offline')
     save(page)
 
@@ -194,7 +195,7 @@ def test_apply_does_not_run_runtime_verify_before_activate(page, live_server):
 
     page.locator('#apply-button').click()
 
-    expect(page.locator('#editor-state')).to_have_text('Applied')
+    expect(page.locator('#profile-summary-state')).to_have_text('Applied')
     expect(page.locator('#obs-result')).to_have_text('--')
     expect(page.locator('#activity-log')).to_contain_text('apply: changed')
     expect(page.locator('#apply-button')).to_be_enabled()
@@ -232,7 +233,7 @@ def test_scene_runtime_actions_follow_obs_readiness(page, live_server):
     live_server.obs_process.set_ready(5300)
     expect(page.locator('#apply-button')).to_be_enabled(timeout=7000)
     page.locator('#apply-button').click()
-    expect(page.locator('#editor-state')).to_have_text('Applied')
+    expect(page.locator('#profile-summary-state')).to_have_text('Applied')
     expect(page.locator('#obs-result')).to_have_text('--')
 
 
@@ -278,6 +279,65 @@ def test_obs_cards_default_collapsed_with_domain_summaries(page, live_server):
     expect(page.locator('#runtime-summary-uptime')).not_to_have_text('')
     expect(page.locator('#profile-summary-canvas')).not_to_have_text('')
     expect(page.locator('#source-summary-catalog')).to_contain_text('types')
+
+
+def test_healthy_websocket_stops_status_polling(page, live_server):
+    requests = []
+    page.on('request', lambda request: requests.append(request.url))
+    page.goto(live_server.base_url + '/obs')
+    expect(page.locator('#obs-state')).to_have_text('READY')
+    page.wait_for_timeout(5500)
+
+    assert not any(url.endswith('/api/v1/health') for url in requests)
+    assert not any(url.endswith('/api/v1/obs/process/status') for url in requests)
+
+
+def test_websocket_fallback_reconnects_and_stops_polling(page, live_server):
+    page.add_init_script("""
+      (() => {
+        const NativeWebSocket = window.WebSocket;
+        let attempts = 0;
+        window.WebSocket = function(url, protocols) {
+          attempts += 1;
+          if (attempts <= 2) {
+            const failed = new EventTarget();
+            failed.readyState = 3;
+            failed.close = () => {};
+            setTimeout(() => {
+              failed.dispatchEvent(new Event('error'));
+              failed.dispatchEvent(new CloseEvent('close'));
+            }, 0);
+            return failed;
+          }
+          return protocols === undefined ? new NativeWebSocket(url) : new NativeWebSocket(url, protocols);
+        };
+        for (const key of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']) window.WebSocket[key] = NativeWebSocket[key];
+      })();
+    """)
+    requests = []
+    page.on('request', lambda request: requests.append(request.url))
+    page.goto(live_server.base_url + '/obs')
+
+    expect(page.locator('#activity-log')).to_contain_text('Realtime OBS status connected', timeout=10000)
+    fallback_requests = [url for url in requests if url.endswith('/api/v1/obs/process/status')]
+    assert fallback_requests
+    count = len(fallback_requests)
+    page.wait_for_timeout(5500)
+    assert len([url for url in requests if url.endswith('/api/v1/obs/process/status')]) == count
+
+
+def test_profile_runtime_state_tracks_external_scene_without_reload(page, live_server):
+    open_new(page, live_server)
+    profile = live_server.obs.get_profile(page.locator('#profile-list').input_value())
+    expect(page.locator('#profile-runtime-state')).to_have_text('INACTIVE')
+
+    live_server.transport.current_scene = profile['obs_scene_name']
+    expect(page.locator('#profile-runtime-state')).to_have_text('ACTIVE', timeout=3000)
+    expect(page.locator('#profile-summary-state')).to_have_text('Saved')
+
+    live_server.transport.current_scene = 'Operator external scene'
+    expect(page.locator('#profile-runtime-state')).to_have_text('INACTIVE', timeout=3000)
+    expect(page.locator('#profile-summary-state')).to_have_text('Saved')
     expect(page.locator('#canvas-summary-fps')).not_to_have_text('')
     assert page.evaluate('document.documentElement.scrollWidth <= document.documentElement.clientWidth')
 

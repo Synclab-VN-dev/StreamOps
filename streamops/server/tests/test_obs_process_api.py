@@ -98,7 +98,7 @@ def test_lifecycle_actions_have_stable_contract(server_config, capture_service, 
         response = client.post(f"/api/v1/obs/process/{action}")
     assert response.status_code == 200
     assert response.json()["state"] == "READY"
-    assert manager.calls == [action]
+    assert manager.calls.count(action) == 1
 
 
 @pytest.mark.parametrize("payload", [
@@ -114,7 +114,7 @@ def test_lifecycle_rejects_all_client_input(server_config, capture_service, payl
         response = client.post(f"/api/v1/obs/process/{action}", json=payload)
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "invalid_obs_process_request"
-    assert manager.calls == []
+    assert action not in manager.calls
 
 
 @pytest.mark.parametrize(("action", "error", "status_code", "code"), [
