@@ -5,13 +5,19 @@ const $ = (selector) => document.querySelector(selector);
 const activity = ui.createActivityLog('#activity-log');
 let draft = null, saved = null, catalog = [], inventory = {options: {}}, busy = false, obsReady = false;
 let lastVerificationResult = null, lastReviewJob = null;
+let selectedSourceType = null;
 const expandedSourceIds = new Set();
 const sourceUiKeys = new WeakMap();
 let sourceUiCounter = 0;
 
 function dirty() { return draft && JSON.stringify(draft) !== JSON.stringify(saved); }
 function error(message = '') { $('#scene-error-message').textContent = message; $('#scene-error-message').hidden = !message; }
-function state(value) { $('#editor-state').textContent = value; $('#profile-summary-state').textContent = value; }
+function tone(element, value) { element.dataset.tone = value; }
+function state(value) {
+  $('#editor-state').textContent = value;
+  $('#profile-summary-state').textContent = value;
+  tone($('#editor-state'), value === 'Failed' ? 'bad' : ['Modified', 'Drifted'].includes(value) ? 'warn' : ['Saved', 'Applied'].includes(value) ? 'blue' : 'neutral');
+}
 function sourceKey(source) {
   if (source.id) return source.id;
   if (!sourceUiKeys.has(source)) sourceUiKeys.set(source, 'draft-' + (++sourceUiCounter));
@@ -39,6 +45,8 @@ function buttons() {
     button.disabled = busy || (!draft && !independent) || (runtimeAction && !obsReady);
   });
   $('#profile-list').disabled = busy;
+  $('#confirm-source-button').disabled = busy || !draft || !selectedSourceType;
+  document.querySelectorAll('#source-picker input').forEach((input) => {input.disabled = busy || !draft;});
   document.querySelectorAll('#scene-profile-manager .source-editor input, #scene-profile-manager .source-editor select, #profile-name, #canvas-width, #canvas-height, #canvas-fps').forEach((input) => {input.disabled = busy;});
 }
 async function run(label, fn) {
@@ -60,6 +68,7 @@ function setProfile(profile) {
   $('#profile-name').value = draft?.name || '';
   for (const field of ['width', 'height', 'fps']) $('#canvas-' + field).value = draft?.canvas[field] ?? '';
   $('#source-list').replaceChildren();
+  setPickerOpen(false);
   state(draft ? 'Saved' : 'No profile');
   updateProfileSummary(); updateSourceSummary();
   renderSources(); renderCanvas(); buttons();
@@ -67,14 +76,71 @@ function setProfile(profile) {
 async function listProfiles(selected = draft?.id) {
   const result = await api('scene-profiles');
   const select = $('#profile-list'); select.replaceChildren();
-  result.profiles.forEach((p) => select.add(new Option(p.name, p.id)));
-  select.value = selected || '';
+  if (result.profiles.length) {
+    result.profiles.forEach((p) => select.add(new Option(p.name, p.id)));
+    select.value = selected || '';
+  } else {
+    const empty = new Option('No saved profiles', '', true, true);
+    empty.disabled = true;
+    select.add(empty);
+  }
   $('#profile-count').textContent = `${result.profiles.length} profiles`;
   $('#store-errors').textContent = result.errors.map((e) => `${e.file}: ${e.error}`).join('\n');
   if (!draft && result.profiles.length) {
     select.value = result.profiles[0].id;
     setProfile(await api('scene-profiles/' + select.value));
   }
+}
+function sourceDescription(capability) {
+  if (capability.video && capability.audio) return 'Video source · audio available';
+  return capability.video ? 'Video source' : 'Audio source';
+}
+function renderSourcePicker() {
+  const root = $('#source-picker-options'); root.replaceChildren();
+  $('#source-picker-count').textContent = catalog.length + ' types';
+  if (!catalog.some((item) => item.type === selectedSourceType)) selectedSourceType = catalog[0]?.type || null;
+  for (const group of ['Video', 'Audio']) {
+    const items = catalog.filter((item) => (item.video ? 'Video' : 'Audio') === group);
+    if (!items.length) continue;
+    const section = document.createElement('fieldset'); section.className = 'source-picker-group';
+    const legend = document.createElement('legend'); legend.textContent = group; section.append(legend);
+    for (const capability of items) {
+      const option = document.createElement('label'); option.className = 'source-picker-option'; option.dataset.sourceType = capability.type;
+      const input = document.createElement('input'); input.type = 'radio'; input.name = 'source-picker-type'; input.value = capability.type;
+      input.checked = capability.type === selectedSourceType;
+      const copy = document.createElement('span'); copy.className = 'source-picker-copy';
+      const label = document.createElement('strong'); label.textContent = capability.label;
+      const detail = document.createElement('span'); detail.textContent = sourceDescription(capability);
+      copy.append(label, detail);
+      const inventoryFields = (capability.fields || []).filter((field) => field.inventory).map((field) => field.label);
+      if (inventoryFields.length) {
+        const inventoryHint = document.createElement('small'); inventoryHint.textContent = 'Inventory: ' + inventoryFields.join(', '); copy.append(inventoryHint);
+      }
+      input.addEventListener('change', () => {
+        selectedSourceType = input.value;
+        document.querySelectorAll('.source-picker-option').forEach((item) => item.classList.toggle('selected', item.dataset.sourceType === selectedSourceType));
+        buttons();
+      });
+      option.classList.toggle('selected', input.checked);
+      option.append(input, copy); section.append(option);
+    }
+    root.append(section);
+  }
+  buttons();
+}
+function setPickerOpen(open) {
+  $('#source-picker').hidden = !open;
+  $('#add-source-button').setAttribute('aria-expanded', String(open));
+  $('#add-source-button').textContent = open ? 'Close source picker' : 'Add source';
+}
+function addSelectedSource() {
+  const cap = catalog.find((item) => item.type === selectedSourceType);
+  if (!draft || !cap) throw new Error('Select a source type first.');
+  const source = {name: cap.label, type: cap.type, enabled: true, layer: draft.sources.length, settings: {}, transform: null, audio: null, verification: {video_signal: false, audio_signal: false, audio_threshold_db: -50, sample_seconds: 2}};
+  for (const item of cap.fields || []) if (item.default !== undefined) source.settings[item.key] = item.default;
+  if (cap.video) source.transform = {x: 0, y: 0, width: draft.canvas.width, height: draft.canvas.height, crop_left: 0, crop_right: 0, crop_top: 0, crop_bottom: 0};
+  else if (cap.audio) source.audio = {enabled: true, muted: false, volume_db: 0, sync_offset_ms: 0, tracks: {'1': true, '2': false, '3': false, '4': false, '5': false, '6': false}};
+  draft.sources.push(source); renderSources(); changed(); setPickerOpen(false);
 }
 function field(container, labelText, value, change, options = {}) {
   const label = document.createElement('label'); label.textContent = labelText;
@@ -198,7 +264,7 @@ async function preview(id) {
   if (!response.ok) throw new Error(await ui.apiError(response));
   const image = $('#scene-preview'), old = image.dataset.url;
   image.src = image.dataset.url = URL.createObjectURL(await response.blob()); image.hidden = false; $('#preview-empty').hidden = true;
-  $('#preview-status').textContent = 'Preview available'; if (old) URL.revokeObjectURL(old);
+  $('#preview-status').textContent = 'Preview available'; tone($('#preview-status'), 'ok'); if (old) URL.revokeObjectURL(old);
 }
 function displayValue(value) {
   if (value === null || value === undefined || value === '') return '--';
@@ -235,6 +301,7 @@ function renderVerification(result) {
   const checks = result?.checks || [];
   const counts = statusCounts(checks);
   $('#obs-result').textContent = result?.status || '--';
+  tone($('#obs-result'), result?.status === 'PASS' ? 'ok' : result?.status === 'WARN' ? 'warn' : result?.status === 'FAIL' ? 'bad' : 'neutral');
   $('#verification-ready').textContent = result?.ready_for_live === true ? 'Yes' : result?.ready_for_live === false ? 'No' : '--';
   $('#verification-generated').textContent = ui.formatDateTime(result?.generated_at);
   $('#verification-obs-version').textContent = result?.obs_version || '--';
@@ -259,6 +326,7 @@ function renderReview(job) {
   lastReviewJob = job || null;
   const result = job?.result || {};
   $('#review-state').textContent = job?.state || 'Not run';
+  tone($('#review-state'), job?.state === 'completed' ? 'ok' : job?.state === 'failed' ? 'bad' : ['queued', 'running'].includes(job?.state) ? 'blue' : 'neutral');
   $('#review-summary-duration').textContent = job?.seconds ? job.seconds + 's' : '--';
   $('#review-summary-media').textContent = result.status || '--';
   const reviewError = $('#review-error'); reviewError.textContent = job?.state === 'failed' ? (job.error || 'Review failed') : ''; reviewError.hidden = !reviewError.textContent;
@@ -307,6 +375,7 @@ async function operation(name) {
 async function refreshInventory() {
   inventory = await api('obs/inventory');
   $('#inventory-status').textContent = inventory.errors?.length ? 'Inventory warning · ' + inventory.errors.length : 'Inventory ready';
+  tone($('#inventory-status'), inventory.errors?.length ? 'warn' : 'ok');
   renderSources();
 }
 function bind(id, name, fn) { $(id).addEventListener('click', () => run(name, fn)); }
@@ -323,6 +392,7 @@ function updateActivitySummary() {
   $('#activity-warning-count').textContent = String(entries.filter((item) => item.classList.contains('warning')).length);
   const errors = entries.filter((item) => item.classList.contains('error')).length;
   $('#activity-error-count').textContent = errors + ' error' + (errors === 1 ? '' : 's');
+  tone($('#activity-error-count'), errors ? 'bad' : 'neutral');
 }
 bind('#new-button', 'New', async () => {if (!canDiscard()) return; setProfile(await api('scene-profiles', 'POST', {name: 'Untitled profile'})); await listProfiles();});
 bind('#save-button', 'Save', () => save());
@@ -331,14 +401,8 @@ bind('#duplicate-button', 'Duplicate', async () => {if (!canDiscard()) return; s
 bind('#delete-button', 'Delete', async () => {if (!confirm(`Delete local profile “${draft.name}”? OBS resources are preserved.`)) return; await api(`scene-profiles/${draft.id}`, 'DELETE'); setProfile(null); await listProfiles();});
 bind('#template-button', 'Template', async () => {if (!canDiscard()) return; setProfile(await api(`scene-profile-templates/${$('#template-list').value}/instantiate`, 'POST')); await listProfiles();});
 bind('#refresh-inventory', 'Inventory', refreshInventory);
-bind('#add-source-button', 'Add source', async () => {
-  const cap = catalog.find((c) => c.type === $('#source-type').value);
-  const source = {name: cap.label, type: cap.type, enabled: true, layer: draft.sources.length, settings: {}, transform: null, audio: null, verification: {video_signal: false, audio_signal: false, audio_threshold_db: -50, sample_seconds: 2}};
-  for (const field of cap.fields) if (field.default !== undefined) source.settings[field.key] = field.default;
-  if (cap.video) source.transform = {x: 0, y: 0, width: draft.canvas.width, height: draft.canvas.height, crop_left: 0, crop_right: 0, crop_top: 0, crop_bottom: 0};
-  else if (cap.audio) source.audio = {enabled: true, muted: false, volume_db: 0, sync_offset_ms: 0, tracks: {'1': true, '2': false, '3': false, '4': false, '5': false, '6': false}};
-  draft.sources.push(source); renderSources(); changed();
-});
+$('#add-source-button').addEventListener('click', () => setPickerOpen($('#source-picker').hidden));
+bind('#confirm-source-button', 'Add source', async () => addSelectedSource());
 for (const name of ['apply','verify','activate','review']) bind(`#${name}-button`, name, () => operation(name));
 bind('#review-run-button', 'review', () => operation('review'));
 $('#layout-tab').addEventListener('click', () => setCanvasTab('layout'));
@@ -371,10 +435,10 @@ run('Load profiles', async () => {
   const [sources, templates] = await Promise.all([api('obs/source-catalog'), api('scene-profile-templates')]);
   catalog = sources.sources;
   updateSourceSummary();
-  catalog.forEach((c) => $('#source-type').add(new Option(c.label, c.type)));
+  renderSourcePicker();
   templates.templates.forEach((t) => $('#template-list').add(new Option(t.name, t.id)));
   await listProfiles();
-  await refreshInventory().catch((e) => {$('#inventory-status').textContent = 'Inventory error · ' + e.message;});
+  await refreshInventory().catch((e) => {$('#inventory-status').textContent = 'Inventory error · ' + e.message; tone($('#inventory-status'), 'bad');});
   activity('Profile manager loaded');
 });
 })();

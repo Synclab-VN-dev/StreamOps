@@ -21,8 +21,9 @@ def open_new(page, server):
 
 def add_browser(page, name='Overlay'):
     open_card(page, '#sources-card')
-    page.locator('#source-type').select_option('browser_source')
     page.locator('#add-source-button').click()
+    page.locator('.source-picker-option[data-source-type="browser_source"] input').check()
+    page.locator('#confirm-source-button').click()
     card = page.locator('.source-editor').last
     card.evaluate('el => el.open = true')
     card.get_by_label('Source name', exact=True).fill(name)
@@ -43,23 +44,53 @@ def save(page):
     {'width': 768, 'height': 900},
     {'width': 1440, 'height': 900},
 ])
-def test_source_actions_stay_inside_panel(page, live_server, viewport):
+def test_source_picker_stays_inside_panel_without_giant_controls(page, live_server, viewport):
     page.set_viewport_size(viewport)
-    page.goto(live_server.base_url + '/obs')
+    open_new(page, live_server)
     open_card(page, '#sources-card')
-    expect(page.locator('#source-type option')).not_to_have_count(0)
+    page.locator('#add-source-button').click()
+    expect(page.locator('.source-picker-option')).not_to_have_count(0)
+    expect(page.locator('#source-picker')).to_be_visible()
+    expect(page.locator('#source-type')).to_have_count(0)
 
     panel_box = page.locator('#sources-panel').bounding_box()
     assert panel_box is not None
-    for selector in ('#source-type', '#add-source-button', '#refresh-inventory'):
+    for selector in ('#add-source-button', '#refresh-inventory', '#confirm-source-button'):
         control_box = page.locator(selector).bounding_box()
         assert control_box is not None
         assert control_box['x'] >= panel_box['x'] - 1
         assert control_box['x'] + control_box['width'] <= panel_box['x'] + panel_box['width'] + 1
+        assert control_box['height'] <= 48
+
+    for option in page.locator('.source-picker-option').all():
+        option_box = option.bounding_box()
+        assert option_box is not None
+        assert option_box['height'] <= 88
 
     assert page.evaluate(
         'document.documentElement.scrollWidth <= document.documentElement.clientWidth'
     )
+
+
+def test_source_picker_renders_backend_catalog_groups(page, live_server):
+    page.route('**/api/v1/obs/source-catalog', lambda route: route.fulfill(json={
+        'sources': [
+            {'type': 'custom_video', 'label': 'Custom backend video', 'video': True, 'fields': []},
+            {'type': 'custom_audio', 'label': 'Custom backend audio', 'audio': True, 'fields': [
+                {'key': 'device_id', 'label': 'Backend device', 'type': 'string', 'inventory': True},
+            ]},
+        ],
+    }))
+    open_new(page, live_server)
+    open_card(page, '#sources-card')
+    page.locator('#add-source-button').click()
+
+    expect(page.locator('.source-picker-option')).to_have_count(2)
+    expect(page.locator('#source-picker-count')).to_have_text('2 types')
+    expect(page.locator('.source-picker-group legend')).to_have_text(['Video', 'Audio'])
+    expect(page.locator('#source-picker-options')).to_contain_text('Custom backend video')
+    expect(page.locator('#source-picker-options')).to_contain_text('Custom backend audio')
+    expect(page.locator('#source-picker-options')).to_contain_text('Inventory: Backend device')
 
 
 @pytest.mark.parametrize('viewport', [{'width':1440,'height':900}, {'width':390,'height':844}])
@@ -211,8 +242,9 @@ def test_invalid_required_settings_and_corrupt_file(page, live_server):
     open_new(page, live_server)
     expect(page.locator('#store-errors')).to_contain_text('corrupt.json')
     open_card(page, '#sources-card')
-    page.locator('#source-type').select_option('display_capture')
     page.locator('#add-source-button').click()
+    page.locator('.source-picker-option[data-source-type="display_capture"] input').check()
+    page.locator('#confirm-source-button').click()
     page.locator('#save-button').click()
     expect(page.locator('#scene-error-message')).to_contain_text('monitor_id')
     page.locator('.source-editor').last.evaluate('el => el.open = true')
@@ -249,6 +281,22 @@ def test_obs_cards_default_collapsed_with_domain_summaries(page, live_server):
     assert page.evaluate('document.documentElement.scrollWidth <= document.documentElement.clientWidth')
 
 
+def test_profile_selector_is_compact_and_obs_theme_matches_reference(page, live_server):
+    page.set_viewport_size({'width': 390, 'height': 844})
+    page.goto(live_server.base_url + '/obs')
+    open_card(page, '#scene-profile-card')
+
+    profile_list = page.locator('#profile-list')
+    expect(profile_list).not_to_have_attribute('size', '6')
+    profile_box = profile_list.bounding_box()
+    assert profile_box is not None
+    assert profile_box['height'] <= 48
+    assert page.evaluate("getComputedStyle(document.body).backgroundColor") == 'rgb(245, 246, 248)'
+    assert page.locator('#scene-profile-card').evaluate("el => getComputedStyle(el).backgroundColor") == 'rgb(255, 255, 255)'
+    assert float(page.locator('#scene-profile-card').evaluate("el => getComputedStyle(el).borderRadius.replace('px', '')")) >= 20
+    assert page.evaluate('document.documentElement.scrollWidth <= document.documentElement.clientWidth')
+
+
 def test_verification_keeps_expected_actual_and_review_is_separate(page, live_server):
     if not shutil.which('ffmpeg'):
         pytest.skip('ffmpeg required for real media gates')
@@ -281,8 +329,9 @@ def test_verification_keeps_expected_actual_and_review_is_separate(page, live_se
 def test_new_source_subcard_is_collapsed_and_updates_summary(page, live_server):
     open_new(page, live_server)
     open_card(page, '#sources-card')
-    page.locator('#source-type').select_option('browser_source')
     page.locator('#add-source-button').click()
+    page.locator('.source-picker-option[data-source-type="browser_source"] input').check()
+    page.locator('#confirm-source-button').click()
 
     source = page.locator('.source-editor').last
     expect(source).not_to_have_attribute('open', '')

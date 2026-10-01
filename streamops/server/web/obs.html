@@ -6,7 +6,7 @@
     <title>OBS Management · StreamOps</title>
     <link rel="stylesheet" href="/assets/app.css">
   </head>
-  <body>
+  <body class="obs-dashboard-page">
     <header class="topbar">
       <a class="brand" href="/">StreamOps Node</a>
       <nav><a href="/">Dashboard</a></nav>
@@ -33,7 +33,7 @@
                 <h2 id="obs-runtime-title">OBS Runtime</h2>
                 <p>Lifecycle, WebSocket and output state</p>
               </div>
-              <div class="card-status" aria-live="polite">
+              <div id="obs-state-pill" class="state-pill" data-tone="neutral" aria-live="polite">
                 <span id="obs-status-dot" class="status-dot"></span>
                 <span id="obs-state">Checking</span>
               </div>
@@ -91,32 +91,34 @@
             </summary>
             <div class="operational-card-body">
               <div class="profile-control-grid">
-                <div class="profile-list-column">
-                  <div class="section-heading"><strong>Profiles</strong><span id="profile-count">0 profiles</span></div>
-                  <select id="profile-list" size="6" aria-label="Scene profiles"></select>
-                  <div class="action-row multi-action compact-actions">
-                    <button id="new-button" data-scene-action>New</button>
-                    <button id="duplicate-button" data-scene-action>Duplicate</button>
-                    <button id="delete-button" data-scene-action>Delete</button>
-                  </div>
-                  <label>Template <select id="template-list"></select></label>
-                  <button id="template-button" data-scene-action>Create from template</button>
+                <div class="profile-selector-row">
+                  <label>Profile <select id="profile-list" aria-label="Scene profiles"></select></label>
+                  <span id="profile-count" class="control-meta">0 profiles</span>
                 </div>
-                <div class="profile-editor-column">
-                  <label>Name <input id="profile-name" maxlength="120"></label>
-                  <div class="action-row canvas-inputs">
-                    <label>Width <input id="canvas-width" type="number" min="16" max="16384"></label>
-                    <label>Height <input id="canvas-height" type="number" min="16" max="16384"></label>
-                    <label>FPS <input id="canvas-fps" type="number" min="1" max="240"></label>
-                  </div>
-                  <div class="action-row multi-action">
-                    <button id="save-button" data-scene-action>Save</button>
-                    <button id="save-as-button" data-scene-action>Save As</button>
-                    <button id="apply-button" data-scene-action>Apply saved</button>
-                    <button id="verify-button" data-scene-action>Verify</button>
-                    <button id="activate-button" data-scene-action>Activate</button>
-                    <button id="review-button" data-scene-action>Review</button>
-                  </div>
+                <div class="compact-button-grid profile-crud-actions">
+                  <button id="new-button" class="secondary-button" data-scene-action>New</button>
+                  <button id="duplicate-button" class="secondary-button" data-scene-action>Duplicate</button>
+                  <button id="delete-button" class="danger-button" data-scene-action>Delete</button>
+                </div>
+                <div class="profile-template-row">
+                  <label>Template <select id="template-list"></select></label>
+                  <button id="template-button" class="secondary-button" data-scene-action>Create from template</button>
+                </div>
+                <label>Name <input id="profile-name" maxlength="120"></label>
+                <div class="canvas-inputs">
+                  <label>Width <input id="canvas-width" type="number" min="16" max="16384"></label>
+                  <label>Height <input id="canvas-height" type="number" min="16" max="16384"></label>
+                  <label>FPS <input id="canvas-fps" type="number" min="1" max="240"></label>
+                </div>
+                <div class="compact-button-grid profile-save-actions">
+                  <button id="save-button" class="secondary-button" data-scene-action>Save</button>
+                  <button id="save-as-button" class="secondary-button" data-scene-action>Save As</button>
+                </div>
+                <div class="compact-button-grid profile-runtime-actions">
+                  <button id="apply-button" class="primary-button" data-scene-action>Apply saved</button>
+                  <button id="verify-button" class="primary-button" data-scene-action>Verify</button>
+                  <button id="activate-button" class="primary-button" data-scene-action>Activate</button>
+                  <button id="review-button" class="primary-button" data-scene-action>Review</button>
                 </div>
               </div>
               <p id="store-errors" class="inline-diagnostic" role="status"></p>
@@ -139,11 +141,22 @@
               </div>
             </summary>
             <div id="sources-panel" class="operational-card-body">
-              <div class="action-row source-actions">
-                <select id="source-type" aria-label="Source type"></select>
-                <button id="add-source-button" data-scene-action>Add source</button>
-                <button id="refresh-inventory" data-scene-action>Refresh inventory</button>
+              <div class="source-actions">
+                <button id="add-source-button" class="primary-button" type="button" aria-expanded="false" aria-controls="source-picker" data-scene-action>Add source</button>
+                <button id="refresh-inventory" class="secondary-button" type="button" data-scene-action>Refresh inventory</button>
               </div>
+              <section id="source-picker" class="source-picker" aria-labelledby="source-picker-title" hidden>
+                <div class="source-picker-heading">
+                  <div>
+                    <h3 id="source-picker-title">Add source</h3>
+                    <p>Choose from the OBS source catalog</p>
+                  </div>
+                  <span id="source-picker-count" class="state-pill" data-tone="neutral">0 types</span>
+                </div>
+                <div id="source-picker-options" class="source-picker-options"></div>
+                <button id="confirm-source-button" class="primary-button" type="button" data-scene-action disabled>Add selected source</button>
+                <p class="source-picker-note">Device, window, monitor and existing OBS choices are populated from live inventory when available.</p>
+              </section>
               <div id="source-list" class="source-list"></div>
             </div>
           </details>
