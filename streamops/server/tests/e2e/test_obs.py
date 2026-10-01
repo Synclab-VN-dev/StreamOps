@@ -1,4 +1,5 @@
 from copy import deepcopy
+import re
 import shutil
 import pytest
 from playwright.sync_api import expect
@@ -300,6 +301,7 @@ def test_profile_selector_is_compact_and_obs_theme_matches_reference(page, live_
 def test_verification_keeps_expected_actual_and_review_is_separate(page, live_server):
     if not shutil.which('ffmpeg'):
         pytest.skip('ffmpeg required for real media gates')
+    page.set_viewport_size({'width': 390, 'height': 844})
     open_new(page, live_server)
     add_browser(page)
     save(page)
@@ -321,8 +323,36 @@ def test_verification_keeps_expected_actual_and_review_is_separate(page, live_se
     page.locator('#review-seconds').fill('1')
     page.locator('#review-run-button').click()
     expect(page.locator('#review-state')).to_have_text('completed', timeout=20000)
+    review_details = page.locator('#review-result-checks')
+    expect(review_details).not_to_have_attribute('open', '')
+    expect(page.locator('#review-check-summary')).to_have_text(re.compile(r'\d+P · \d+W · \d+F'))
+    review_details.evaluate('el => el.open = true')
     expect(page.locator('#review-checks')).to_contain_text('review.fps')
-    expect(page.locator('#review-artifacts .artifact-row')).not_to_have_count(0)
+    first_review_check = page.locator('#review-checks .verification-check').first
+    first_review_check.evaluate('el => el.open = true')
+    expect(first_review_check).to_contain_text('Expected')
+    expect(first_review_check).to_contain_text('Actual')
+
+    artifact_rows = page.locator('#review-artifacts .artifact-row')
+    expect(artifact_rows).not_to_have_count(0)
+    assert int(page.locator('#review-artifact-count').inner_text()) == artifact_rows.count()
+    artifact_text = page.locator('#review-artifacts').inner_text()
+    assert '\\' not in artifact_text
+    assert '/tmp/' not in artifact_text
+    assert all('/api/v1/scene-reviews/' in href for href in page.locator('#review-artifacts a').evaluate_all('links => links.map(link => link.href)'))
+
+    preview_open = page.locator('.artifact-row', has_text='preview.png').get_by_role('link', name='Open')
+    with page.expect_popup() as popup_info:
+        preview_open.click()
+    popup = popup_info.value
+    popup.wait_for_load_state()
+    assert '/artifacts/preview' in popup.url
+    popup.close()
+
+    with page.expect_download() as download_info:
+        page.locator('.artifact-row', has_text='verify.json').get_by_role('link', name='Download').click()
+    assert download_info.value.suggested_filename == 'verify.json'
+    assert page.evaluate('document.documentElement.scrollWidth <= document.documentElement.clientWidth')
     assert page.locator('#verify-checks').inner_text() == verification_text
 
 

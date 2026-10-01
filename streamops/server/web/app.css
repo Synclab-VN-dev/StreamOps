@@ -405,6 +405,121 @@ button:disabled {
   }
 }
 
+/* Review detail hierarchy and job-owned artifact actions. */
+.obs-dashboard-page .review-result-checks {
+  margin-top: 14px;
+  overflow: hidden;
+  border: 1px solid #e4e4e7;
+  border-radius: 14px;
+  background: #fafafa;
+}
+
+.obs-dashboard-page .review-result-checks > summary {
+  min-height: 42px;
+  padding: 10px 36px 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  position: relative;
+  cursor: pointer;
+  list-style: none;
+  color: #27272a;
+  font-size: 12px;
+}
+
+.obs-dashboard-page .review-result-checks > summary::-webkit-details-marker {
+  display: none;
+}
+
+.obs-dashboard-page .review-result-checks > summary::after {
+  content: "⌄";
+  position: absolute;
+  top: 9px;
+  right: 12px;
+  color: #a1a1aa;
+}
+
+.obs-dashboard-page .review-result-checks[open] > summary::after {
+  content: "⌃";
+}
+
+.obs-dashboard-page .review-result-checks > summary strong {
+  color: #71717a;
+  font-size: 11px;
+}
+
+.obs-dashboard-page #review-checks {
+  padding: 0 8px 8px;
+  border-top: 1px solid #e4e4e7;
+}
+
+.obs-dashboard-page #review-checks .verification-check {
+  margin-top: 7px;
+  border-color: #e4e4e7;
+  background: #fff;
+}
+
+.obs-dashboard-page #review-checks .verification-check > summary {
+  min-height: 46px;
+  padding: 8px 34px 8px 8px;
+  gap: 8px;
+}
+
+.obs-dashboard-page #review-checks .verification-check > summary strong,
+.obs-dashboard-page #review-checks .verification-check > summary span,
+.obs-dashboard-page #review-checks .check-diagnostics code {
+  font-size: 11px;
+}
+
+.obs-dashboard-page .artifact-row {
+  min-height: 44px;
+  padding: 9px 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  background: #fafafa;
+}
+
+.obs-dashboard-page .artifact-row > strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #27272a;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.obs-dashboard-page .artifact-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.obs-dashboard-page .artifact-actions a {
+  padding: 6px 8px;
+  border: 1px solid #e4e4e7;
+  border-radius: 9px;
+  background: #fff;
+  color: #27272a;
+  font-size: 11px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.obs-dashboard-page .artifact-actions a:hover {
+  border-color: #a1a1aa;
+}
+
+@media (max-width: 640px) {
+  .obs-dashboard-page .artifact-row {
+    padding: 9px 10px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+}
+
 .obs-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

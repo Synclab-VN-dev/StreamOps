@@ -310,28 +310,53 @@ function renderVerification(result) {
   $('#verification-summary-time').textContent = result?.generated_at ? ui.formatDateTime(result.generated_at) : '--';
   renderCheckList('#verify-checks', checks);
 }
-function renderArtifacts(artifacts) {
+function artifactFileName(value) {
+  const parts = String(value || '').split(/[\\/]/);
+  return parts[parts.length - 1] || 'artifact';
+}
+function artifactCanOpen(filename) {
+  return /\.(?:avif|gif|jpe?g|mkv|mov|mp4|png|svg|webm|webp)$/i.test(filename);
+}
+function artifactUrl(jobId, key, download = false) {
+  const base = `/api/v1/scene-reviews/${encodeURIComponent(jobId)}/artifacts/${encodeURIComponent(key)}`;
+  return download ? base + '?download=true' : base;
+}
+function renderArtifacts(artifacts, jobId) {
   const root = $('#review-artifacts'); root.replaceChildren();
   const entries = Object.entries(artifacts || {});
   $('#review-artifact-count').textContent = String(entries.length);
   $('#review-summary-artifacts').textContent = String(entries.length);
-  for (const entry of entries) {
+  for (const [key, value] of entries) {
     const row = document.createElement('div'); row.className = 'artifact-row';
-    const name = document.createElement('strong'); name.textContent = entry[0];
-    const value = document.createElement('code'); value.textContent = displayValue(entry[1]);
-    row.append(name, value); root.append(row);
+    const filename = artifactFileName(value);
+    const name = document.createElement('strong'); name.textContent = filename;
+    const actions = document.createElement('div'); actions.className = 'artifact-actions';
+    if (jobId && artifactCanOpen(filename)) {
+      const open = document.createElement('a'); open.textContent = 'Open'; open.href = artifactUrl(jobId, key);
+      open.target = '_blank'; open.rel = 'noopener'; actions.append(open);
+    }
+    if (jobId) {
+      const download = document.createElement('a'); download.textContent = 'Download'; download.href = artifactUrl(jobId, key, true);
+      actions.append(download);
+    }
+    row.append(name, actions); root.append(row);
   }
 }
 function renderReview(job) {
+  const previousJobId = lastReviewJob?.job_id;
   lastReviewJob = job || null;
   const result = job?.result || {};
+  const checks = result.checks || [];
+  const counts = statusCounts(checks);
+  if (job?.job_id !== previousJobId) $('#review-result-checks').open = false;
   $('#review-state').textContent = job?.state || 'Not run';
   tone($('#review-state'), job?.state === 'completed' ? 'ok' : job?.state === 'failed' ? 'bad' : ['queued', 'running'].includes(job?.state) ? 'blue' : 'neutral');
   $('#review-summary-duration').textContent = job?.seconds ? job.seconds + 's' : '--';
   $('#review-summary-media').textContent = result.status || '--';
   const reviewError = $('#review-error'); reviewError.textContent = job?.state === 'failed' ? (job.error || 'Review failed') : ''; reviewError.hidden = !reviewError.textContent;
-  renderCheckList('#review-checks', result.checks || []);
-  renderArtifacts(result.artifacts || {});
+  $('#review-check-summary').textContent = checks.length ? counts.PASS + 'P · ' + counts.WARN + 'W · ' + counts.FAIL + 'F' : '0 checks';
+  renderCheckList('#review-checks', checks);
+  renderArtifacts(result.artifacts || {}, job?.job_id);
 }
 async function operation(name) {
   const id = draft.id;

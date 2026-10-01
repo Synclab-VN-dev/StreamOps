@@ -240,7 +240,13 @@
                 <button id="review-run-button" data-scene-action>Run Review</button>
               </div>
               <p id="review-error" class="error-message" role="alert" hidden></p>
-              <div id="review-checks" class="check-list" aria-live="polite"></div>
+              <details id="review-result-checks" class="review-result-checks">
+                <summary>
+                  <span>Result checks</span>
+                  <strong id="review-check-summary">0 checks</strong>
+                </summary>
+                <div id="review-checks" class="check-list" aria-live="polite"></div>
+              </details>
               <div class="section-heading artifacts-heading"><strong>Artifacts</strong><span id="review-artifact-count">0</span></div>
               <div id="review-artifacts" class="artifact-list"></div>
             </div>
