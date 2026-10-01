@@ -7,6 +7,12 @@ from playwright.sync_api import expect
 
 pytestmark = pytest.mark.only_browser('chromium')
 
+MOBILE_VIEWPORTS = [
+    {'width': 360, 'height': 800},
+    {'width': 390, 'height': 844},
+    {'width': 430, 'height': 932},
+]
+
 
 def open_card(page, selector):
     page.locator(selector).evaluate('el => el.open = true')
@@ -41,9 +47,7 @@ def save(page):
 
 
 @pytest.mark.parametrize('viewport', [
-    {'width': 360, 'height': 800},
-    {'width': 390, 'height': 844},
-    {'width': 430, 'height': 932},
+    *MOBILE_VIEWPORTS,
     {'width': 768, 'height': 900},
     {'width': 1440, 'height': 900},
 ])
@@ -290,7 +294,9 @@ def test_healthy_websocket_stops_status_polling(page, live_server):
     assert not any(url.endswith('/api/v1/obs/process/status') for url in requests)
 
 
-def test_dashboard_uses_one_socket_and_no_business_rest(page, live_server):
+@pytest.mark.parametrize('viewport', MOBILE_VIEWPORTS)
+def test_dashboard_uses_one_socket_and_no_business_rest(page, live_server, viewport):
+    page.set_viewport_size(viewport)
     sockets = []
     requests = []
     page.on('websocket', lambda websocket: sockets.append(websocket))
@@ -311,7 +317,9 @@ def test_dashboard_uses_one_socket_and_no_business_rest(page, live_server):
     assert business_http == []
 
 
-def test_initial_profile_selection_matches_current_obs_scene(page, live_server):
+@pytest.mark.parametrize('viewport', MOBILE_VIEWPORTS)
+def test_initial_profile_selection_matches_current_obs_scene(page, live_server, viewport):
+    page.set_viewport_size(viewport)
     first = live_server.obs.create_profile({'name': 'Alpha profile', 'obs_scene_name': 'Alpha Scene'})
     second = live_server.obs.create_profile({'name': 'Live profile', 'obs_scene_name': 'Live Scene'})
     live_server.transport.current_scene = second['obs_scene_name']
@@ -325,7 +333,9 @@ def test_initial_profile_selection_matches_current_obs_scene(page, live_server):
     assert page.locator('#profile-list').input_value() != first['id']
 
 
-def test_reconnect_preserves_dirty_draft_and_page_lifecycle(page, live_server):
+@pytest.mark.parametrize('viewport', MOBILE_VIEWPORTS)
+def test_reconnect_preserves_dirty_draft_and_page_lifecycle(page, live_server, viewport):
+    page.set_viewport_size(viewport)
     sockets = []
     requests = []
     page.on('websocket', lambda websocket: sockets.append(websocket))
@@ -334,6 +344,12 @@ def test_reconnect_preserves_dirty_draft_and_page_lifecycle(page, live_server):
     page.locator('#profile-name').fill('Unsaved operator draft')
     expect(page.locator('#profile-summary-state')).to_have_text('Modified')
     assert len(sockets) == 1
+
+    page.evaluate("Object.defineProperty(document, 'visibilityState', {configurable: true, value: 'hidden'}); document.dispatchEvent(new Event('visibilitychange'))")
+    page.wait_for_timeout(500)
+    assert len(sockets) == 1
+    assert page.evaluate('window.StreamOpsObs.connected') is True
+    page.evaluate("Object.defineProperty(document, 'visibilityState', {configurable: true, value: 'visible'}); document.dispatchEvent(new Event('visibilitychange'))")
 
     page.evaluate("window.dispatchEvent(new PageTransitionEvent('pagehide'))")
     page.wait_for_timeout(1500)
@@ -380,7 +396,9 @@ def test_websocket_reconnects_without_http_fallback(page, live_server):
     assert not any(url.endswith('/api/v1/obs/process/status') for url in requests)
 
 
-def test_profile_runtime_state_tracks_external_scene_without_reload(page, live_server):
+@pytest.mark.parametrize('viewport', MOBILE_VIEWPORTS)
+def test_profile_runtime_state_tracks_external_scene_without_reload(page, live_server, viewport):
+    page.set_viewport_size(viewport)
     open_new(page, live_server)
     profile = live_server.obs.get_profile(page.locator('#profile-list').input_value())
     expect(page.locator('#profile-runtime-state')).to_have_text('INACTIVE')
