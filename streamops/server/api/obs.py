@@ -107,7 +107,10 @@ def verify_scene_profile(profile_id: str, request: Request) -> dict[str, object]
 @router.post("/scene-profiles/{profile_id}/activate")
 def activate_scene_profile(profile_id: str, request: Request) -> dict[str, object]:
     _require_obs_ready(request)
-    return _service(request).activate_profile(profile_id)
+    try:
+        return _service(request).activate_profile(profile_id)
+    finally:
+        request.app.state.obs_status_hub.trigger_refresh()
 
 
 @router.get("/scene-profiles/{profile_id}/preview")
@@ -159,7 +162,10 @@ def verify_scene(scene_name: str, request: Request) -> dict[str, object]:
 @router.post("/scenes/{scene_name}/activate")
 def activate_scene(scene_name: str, request: Request) -> dict[str, object]:
     _require_obs_ready(request)
-    return _service(request).activate(scene_name)
+    try:
+        return _service(request).activate(scene_name)
+    finally:
+        request.app.state.obs_status_hub.trigger_refresh()
 
 
 @router.get("/scenes/{scene_name}/preview")

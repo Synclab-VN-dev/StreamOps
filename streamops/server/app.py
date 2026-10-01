@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from .api.health import router as health_router
 from .api.obs import router as obs_router
 from .api.obs_process import router as obs_process_router
+from .api.obs_ws import router as obs_ws_router
 from .api.screen import router as screen_router
 from .api.steam import router as steam_router
 from .config import ServerConfig
@@ -52,6 +53,7 @@ from .scene_config import SceneConfigError
 from .obs import ObsManager
 from .platform.windows import WindowsScreenCaptureBackend, WindowsSteamBackend
 from .services import ObsSceneService, ScreenCaptureService, SteamService
+from .services.obs_status import ObsStatusHub
 from .services.runtime import RuntimeLease
 
 
@@ -65,6 +67,7 @@ def create_app(
     steam_service: SteamService | None = None,
     obs_manager: ObsManager | None = None,
     obs_scene_service: ObsSceneService | None = None,
+    obs_status_hub: ObsStatusHub | None = None,
     manage_runtime: bool = True,
 ) -> FastAPI:
     service = capture_service or ScreenCaptureService(
@@ -75,14 +78,17 @@ def create_app(
     steam = steam_service or SteamService(WindowsSteamBackend())
     obs = obs_manager or ObsManager()
     obs_scenes = obs_scene_service or ObsSceneService(data_dir=config.data_dir / "scene-profiles")
+    status_hub = obs_status_hub or ObsStatusHub(obs, obs_scenes, service)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         lease = RuntimeLease.acquire(config) if manage_runtime else None
         try:
             service.start()
+            await status_hub.start()
             yield
         finally:
+            await status_hub.close()
             service.close()
             obs_scenes.close()
             if lease is not None:
@@ -94,9 +100,11 @@ def create_app(
     app.state.steam_service = steam
     app.state.obs_manager = obs
     app.state.obs_scene_service = obs_scenes
+    app.state.obs_status_hub = status_hub
     app.include_router(health_router)
     app.include_router(obs_router)
     app.include_router(obs_process_router)
+    app.include_router(obs_ws_router)
     app.include_router(screen_router)
     app.include_router(steam_router)
 

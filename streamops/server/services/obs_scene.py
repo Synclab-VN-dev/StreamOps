@@ -97,6 +97,14 @@ class ObsSceneService:
         finally:
             client.close()
 
+    def current_scene(self) -> str:
+        """Read only the live program scene for the shared status monitor."""
+        client = self._client()
+        try:
+            return client.get_current_program_scene()
+        finally:
+            client.close()
+
     def list_scenes(self) -> list[dict[str, Any]]:
         return [{"name": name} for name in list_scene_names(root=self.root)]
 
