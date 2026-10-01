@@ -83,6 +83,9 @@ class ObsClient:
                 subprotocols=["obswebsocket.json"],
                 open_timeout=self.timeout,
                 close_timeout=self.timeout,
+                # Full-resolution OBS screenshots are returned inline as
+                # base64 JSON and can exceed websockets' 1 MiB default.
+                max_size=16 * 1024 * 1024,
             )
             hello = self._recv()
             if hello.get("op") != 0:
