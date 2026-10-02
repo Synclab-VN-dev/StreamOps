@@ -37,7 +37,7 @@ def test_secret_is_separate_and_public_destination_only_exposes_configured_flag(
     created = service.create_destination(DESTINATION)
 
     assert created["credential_configured"] is False
-    assert "credential" not in str(created).lower()
+    assert "credential" not in created
 
     result = service.set_credential(created["id"], "super-secret-stream-key")
     public = service.get_destination(created["id"])
