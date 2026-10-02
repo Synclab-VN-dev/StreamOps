@@ -367,10 +367,10 @@ def test_websocket_reconnects_without_http_fallback(page, live_server):
     page.add_init_script("""
       (() => {
         const NativeWebSocket = window.WebSocket;
-        let attempts = 0;
+        window.__streamOpsWebSocketAttempts = 0;
         window.WebSocket = function(url, protocols) {
-          attempts += 1;
-          if (attempts <= 2) {
+          window.__streamOpsWebSocketAttempts += 1;
+          if (window.__streamOpsWebSocketAttempts <= 2) {
             const failed = new EventTarget();
             failed.readyState = 3;
             failed.close = () => {};
@@ -389,7 +389,12 @@ def test_websocket_reconnects_without_http_fallback(page, live_server):
     page.on('request', lambda request: requests.append(request.url))
     page.goto(live_server.base_url + '/obs')
 
-    expect(page.locator('#activity-log')).to_contain_text('OBS dashboard connection established', timeout=10000)
+    page.wait_for_function(
+        "() => window.StreamOpsObs?.connected === true",
+        timeout=20000,
+    )
+    assert page.evaluate('window.__streamOpsWebSocketAttempts') >= 3
+    expect(page.locator('#activity-log')).to_contain_text('OBS dashboard connection established')
     assert not any(url.endswith('/api/v1/obs/process/status') for url in requests)
     assert not any(url.endswith('/api/v1/health') for url in requests)
     page.wait_for_timeout(5500)
