@@ -269,3 +269,77 @@ def test_obs_not_ready_and_disabled_destination_block_start(tmp_path: Path) -> N
         service.start(profile_id, destination_id)
     assert error.value.code == "destination_disabled"
     assert client.start_calls == 0
+
+
+def test_custom_rtmp_adapter_rejects_non_rtmp_url() -> None:
+    adapter = CustomRtmpAdapter()
+    destination = {
+        "id": str(uuid4()),
+        "name": "Bad",
+        "type": "custom_rtmp",
+        "enabled": True,
+        "settings": {"server_url": "https://example.com/live"},
+    }
+
+    with pytest.raises(StreamingError) as error:
+        adapter.validate(destination)
+
+    assert error.value.code == "destination_invalid"
+
+
+def test_start_failure_restores_previous_service(tmp_path: Path) -> None:
+    client = FakeObsClient()
+    client.start_mode = "raise"
+    service, _, _, _, session, profile_id, destination_id = make_service(tmp_path, client)
+
+    with pytest.raises(StreamingError) as error:
+        service.start(profile_id, destination_id)
+
+    assert error.value.code == "stream_start_failed"
+    assert client.active is False
+    assert client.service["streamServiceType"] == "rtmp_common"
+    assert session.load_session() is None
+    assert session.load_restore() is None
+
+
+def test_stop_failure_preserves_recovery_snapshot(tmp_path: Path) -> None:
+    client = FakeObsClient()
+    service, _, _, _, session, profile_id, destination_id = make_service(tmp_path, client)
+    service.start(profile_id, destination_id)
+    client.stop_mode = "raise"
+
+    with pytest.raises(StreamingError) as error:
+        service.stop()
+
+    assert error.value.code == "stream_stop_failed"
+    assert client.active is True
+    assert session.load_session()["state"] == "RECOVERY_REQUIRED"
+    assert session.has_restore() is True
+
+
+def test_output_active_delayed_convergence(tmp_path: Path) -> None:
+    class DelayedStartClient(FakeObsClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.pending_start = False
+            self.polls_after_start = 0
+
+        def start_stream(self):
+            self.start_calls += 1
+            self.pending_start = True
+
+        def get_stream_status(self):
+            if self.pending_start and not self.active:
+                self.polls_after_start += 1
+                if self.polls_after_start >= 3:
+                    self.active = True
+            return super().get_stream_status()
+
+    client = DelayedStartClient()
+    service, _, _, _, _, profile_id, destination_id = make_service(tmp_path, client)
+
+    started = service.start(profile_id, destination_id)
+
+    assert started["state"] == "LIVE"
+    assert started["output"]["active"] is True
+    assert client.polls_after_start >= 3
