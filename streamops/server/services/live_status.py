@@ -71,12 +71,16 @@ class LiveStatusHub:
 
     async def _monitor(self) -> None:
         while True:
-            try:
-                await self.refresh()
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                pass
+            # Stream status is only needed by the dedicated Stream Manage page.
+            # Do not create background OBS websocket traffic while nobody is
+            # subscribed; REST status remains available on demand.
+            if self._subscribers:
+                try:
+                    await self.refresh()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    pass
             try:
                 await asyncio.wait_for(self._refresh.wait(), timeout=self.reconcile_interval)
                 self._refresh.clear()
