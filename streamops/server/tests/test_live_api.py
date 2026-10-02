@@ -144,11 +144,14 @@ def test_http_streaming_contract(server_config, capture_service, tmp_path: Path)
         assert client.post("/api/v1/live/stop").json()["state"] == "IDLE"
 
 
-def _response(websocket, request_id: str) -> dict:
+def _response(websocket, request_id: str, *, collect_events: bool = False):
+    events = []
     while True:
         message = websocket.receive_json()
         if message.get("type") == "response" and message.get("request_id") == request_id:
-            return message
+            return (message, events) if collect_events else message
+        if collect_events and message.get("type") == "event":
+            events.append(message)
 
 
 def _event(websocket, event: str, *, state: str | None = None) -> dict:
@@ -193,10 +196,18 @@ def test_live_websocket_initial_snapshot_and_commands(server_config, capture_ser
                 "operation": "live.start",
                 "payload": {"profile_id": profile_id, "destination_id": destination_id},
             })
-            started = _response(websocket, "start-1")
+            started, events = _response(websocket, "start-1", collect_events=True)
             assert started["ok"] is True
             assert started["data"]["state"] == "LIVE"
-            live_event = _event(websocket, "stream.snapshot", state="LIVE")
+            live_event = next(
+                (
+                    item for item in events
+                    if item.get("event") == "stream.snapshot" and item.get("data", {}).get("state") == "LIVE"
+                ),
+                None,
+            )
+            if live_event is None:
+                live_event = _event(websocket, "stream.snapshot", state="LIVE")
             assert live_event["data"]["destination"]["id"] == destination_id
             assert "private-key" not in repr(live_event)
 
