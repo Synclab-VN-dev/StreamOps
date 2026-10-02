@@ -76,7 +76,7 @@ if (-not (Test-Path $ExePath)) {
 }
 
 $config = @"
-logLevel: info
+logLevel: warn
 logDestinations: [stdout]
 
 api: false
