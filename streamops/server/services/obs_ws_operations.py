@@ -26,6 +26,7 @@ from ..errors import (
     SceneProfileValidationError,
     SceneReviewArtifactNotFoundError,
     SceneReviewNotFoundError,
+    StreamingError,
 )
 from ..scene_config import SceneConfigError
 
@@ -199,6 +200,8 @@ def public_ws_error(exc: Exception) -> tuple[str, str]:
     """Return the stable public code/message used by the REST exception handlers."""
     if isinstance(exc, WsOperationError):
         return exc.code, exc.message
+    if isinstance(exc, StreamingError):
+        return exc.code, str(exc)
     mappings: tuple[tuple[type[Exception], str], ...] = (
         (InvalidObsProcessRequestError, "invalid_obs_process_request"),
         (ObsOperationInProgressError, "obs_operation_in_progress"),
