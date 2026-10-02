@@ -125,10 +125,35 @@ def _app(server_config, capture_service, tmp_path: Path):
 def test_http_streaming_contract(server_config, capture_service, tmp_path: Path) -> None:
     app, profile_id = _app(server_config, capture_service, tmp_path)
     with TestClient(app) as client:
+        catalog = client.get("/api/v1/stream-destination-types")
+        assert catalog.status_code == 200
+        assert catalog.json()["types"][0]["type"] == "custom_rtmp"
+        assert catalog.json()["types"][0]["settings"][0]["key"] == "server_url"
+
         created = client.post("/api/v1/stream-destinations", json=DESTINATION)
         assert created.status_code == 201
         destination_id = created.json()["id"]
         assert created.json()["credential_configured"] is False
+        assert client.get(f"/api/v1/stream-destinations/{destination_id}").status_code == 200
+
+        updated_payload = {
+            **DESTINATION,
+            "name": "LAN Test Renamed",
+            "enabled": False,
+        }
+        updated = client.put(
+            f"/api/v1/stream-destinations/{destination_id}",
+            json=updated_payload,
+        )
+        assert updated.status_code == 200
+        assert updated.json()["name"] == "LAN Test Renamed"
+        assert updated.json()["enabled"] is False
+
+        updated_payload["enabled"] = True
+        assert client.put(
+            f"/api/v1/stream-destinations/{destination_id}",
+            json=updated_payload,
+        ).json()["enabled"] is True
 
         credential = client.put(
             f"/api/v1/stream-destinations/{destination_id}/credential",
@@ -142,6 +167,11 @@ def test_http_streaming_contract(server_config, capture_service, tmp_path: Path)
         assert client.post("/api/v1/live/start", json=args).json()["state"] == "LIVE"
         assert client.get("/api/v1/live/status").json()["state"] == "LIVE"
         assert client.post("/api/v1/live/stop").json()["state"] == "IDLE"
+
+        removed = client.delete(f"/api/v1/stream-destinations/{destination_id}")
+        assert removed.status_code == 200
+        assert removed.json() == {"deleted": True}
+        assert client.get(f"/api/v1/stream-destinations/{destination_id}").status_code == 404
 
 
 def _response(websocket, request_id: str, *, collect_events: bool = False):
