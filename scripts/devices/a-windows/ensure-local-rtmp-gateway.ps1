@@ -107,7 +107,7 @@ paths:
   all_others:
 "@
 
-Set-Content -Path $ConfigPath -Value $config -Encoding UTF8
+[IO.File]::WriteAllText($ConfigPath, $config, [Text.UTF8Encoding]::new($false))
 
 Ensure-FirewallRule -Name "StreamOps MediaMTX RTMP" -Protocol TCP -Port 1935
 Ensure-FirewallRule -Name "StreamOps MediaMTX HLS" -Protocol TCP -Port 8888
