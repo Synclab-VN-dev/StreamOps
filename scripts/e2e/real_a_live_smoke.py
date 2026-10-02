@@ -411,7 +411,9 @@ class SmokeRun:
                 self._skip("VIDEO_RESOLUTION", "profile or ffprobe resolution metadata unavailable")
 
             expected_fps = expected_canvas.get("fps")
-            actual_fps = _parse_rate(video.get("avg_frame_rate") or video.get("r_frame_rate"))
+            # For a short live probe, avg_frame_rate can be skewed by startup
+            # timing; r_frame_rate is the stream's nominal cadence.
+            actual_fps = _parse_rate(video.get("r_frame_rate") or video.get("avg_frame_rate"))
             if expected_fps and actual_fps is not None:
                 ok = abs(actual_fps - float(expected_fps)) <= 0.5
                 self._record("VIDEO_FPS", "PASS" if ok else "FAIL", f"actual={actual_fps:g}, expected={expected_fps}")
