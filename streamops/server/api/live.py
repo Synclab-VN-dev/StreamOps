@@ -34,6 +34,11 @@ def _live_args(payload: dict[str, Any]) -> tuple[str, str]:
     return profile_id, destination_id
 
 
+@router.get("/stream-destination-types")
+def list_destination_types(request: Request) -> dict[str, Any]:
+    return _service(request).destination_types()
+
+
 @router.get("/stream-destinations")
 def list_destinations(request: Request) -> dict[str, Any]:
     return _service(request).list_destinations()
