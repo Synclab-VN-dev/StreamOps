@@ -368,19 +368,32 @@ def test_websocket_reconnects_without_http_fallback(page, live_server):
       (() => {
         const NativeWebSocket = window.WebSocket;
         window.__streamOpsWebSocketAttempts = 0;
-        window.WebSocket = function(url, protocols) {
+
+        function fakeSocket({open}) {
+          const socket = new EventTarget();
+          socket.readyState = NativeWebSocket.CONNECTING;
+          socket.send = () => {};
+          socket.close = () => {
+            if (socket.readyState === NativeWebSocket.CLOSED) return;
+            socket.readyState = NativeWebSocket.CLOSED;
+            socket.dispatchEvent(new CloseEvent('close'));
+          };
+          setTimeout(() => {
+            if (socket.readyState !== NativeWebSocket.CONNECTING) return;
+            if (open) {
+              socket.readyState = NativeWebSocket.OPEN;
+              socket.dispatchEvent(new Event('open'));
+            } else {
+              socket.dispatchEvent(new Event('error'));
+              if (socket.readyState !== NativeWebSocket.CLOSED) socket.close();
+            }
+          }, 0);
+          return socket;
+        }
+
+        window.WebSocket = function() {
           window.__streamOpsWebSocketAttempts += 1;
-          if (window.__streamOpsWebSocketAttempts <= 2) {
-            const failed = new EventTarget();
-            failed.readyState = 3;
-            failed.close = () => {};
-            setTimeout(() => {
-              failed.dispatchEvent(new Event('error'));
-              failed.dispatchEvent(new CloseEvent('close'));
-            }, 0);
-            return failed;
-          }
-          return protocols === undefined ? new NativeWebSocket(url) : new NativeWebSocket(url, protocols);
+          return fakeSocket({open: window.__streamOpsWebSocketAttempts >= 3});
         };
         for (const key of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']) window.WebSocket[key] = NativeWebSocket[key];
       })();
@@ -390,10 +403,10 @@ def test_websocket_reconnects_without_http_fallback(page, live_server):
     page.goto(live_server.base_url + '/obs')
 
     page.wait_for_function(
-        "() => window.StreamOpsObs?.connected === true",
-        timeout=20000,
+        "() => window.StreamOpsObs?.connected === true && window.__streamOpsWebSocketAttempts === 3",
+        timeout=10000,
     )
-    assert page.evaluate('window.__streamOpsWebSocketAttempts') >= 3
+    assert page.evaluate('window.__streamOpsWebSocketAttempts') == 3
     expect(page.locator('#activity-log')).to_contain_text('OBS dashboard connection established')
     assert not any(url.endswith('/api/v1/obs/process/status') for url in requests)
     assert not any(url.endswith('/api/v1/health') for url in requests)
