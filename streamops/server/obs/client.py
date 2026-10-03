@@ -320,6 +320,24 @@ class ObsClient:
     def get_stream_status(self) -> dict[str, Any]:
         return self.request("GetStreamStatus")
 
+    def get_stream_service_settings(self) -> dict[str, Any]:
+        return self.request("GetStreamServiceSettings")
+
+    def set_stream_service_settings(self, service_type: str, settings: dict[str, Any]) -> None:
+        self.request(
+            "SetStreamServiceSettings",
+            {"streamServiceType": service_type, "streamServiceSettings": settings},
+        )
+
+    def start_stream(self) -> None:
+        self.request("StartStream")
+
+    def stop_stream(self) -> None:
+        self.request("StopStream")
+
+    def get_stats(self) -> dict[str, Any]:
+        return self.request("GetStats")
+
     def start_record(self) -> None:
         self.request("StartRecord")
 
