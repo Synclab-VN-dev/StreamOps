@@ -384,18 +384,13 @@ class LiveService:
     def _require_destination_mutable(self, destination_id: str) -> None:
         if not self._session or self._session_destination_id() != destination_id:
             return
-        session_state = self._session.get("state")
-        if (
-            self._transition is not None
-            or self.session_store.has_restore()
-            or session_state
-            in {"STARTING", "LIVE", "STOPPING", "RECOVERY_REQUIRED", "RESTORE_FAILED"}
-        ):
-            raise StreamingError(
-                "destination_in_use",
-                "Streaming destination is locked by the active or recovering managed session.",
-                409,
-            )
+        # A managed session owns its destination until session/restore metadata is
+        # fully cleaned up. Do not infer mutability from a transient state label.
+        raise StreamingError(
+            "destination_in_use",
+            "Streaming destination is locked by the active or recovering managed session.",
+            409,
+        )
 
     def _mark_session(self, state: str) -> None:
         if not self._session:
