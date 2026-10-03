@@ -1,5 +1,5 @@
 import { useState } from "react";
-type CardKey = "runtime" | "profile" | "sources" | "canvas" | "verification" | "review" | "activity";
+type CardKey = "runtime" | "profile" | "sources" | "canvas" | "verification" | "review" | "stream" | "activity";
 type Source = {
   name: string;
   type: string;
@@ -204,6 +204,7 @@ export const StreamOpsMobileDashboard = () => {
     canvas: false,
     verification: false,
     review: false,
+    stream: false,
     activity: false
   });
   const [selectedProfile, setSelectedProfile] = useState("livestream-d4");
@@ -427,6 +428,22 @@ export const StreamOpsMobileDashboard = () => {
           <div className="space-y-2">
             {["profile.json", "preview.png", "sample-30s.mkv", "media-analysis.json"].map(x => <div key={x} className="flex items-center justify-between rounded-xl bg-zinc-50 px-3 py-2.5 text-xs"><span className="font-medium">{x}</span><span className="text-zinc-400">artifact</span></div>)}
           </div>
+        </Card>
+
+        <Card title="Streaming" subtitle="Destinations, preflight and live output" status={<Pill tone="ok">READY</Pill>} open={open.stream} onToggle={() => toggle("stream")} summary={<div className="grid grid-cols-3 gap-2">
+            <div><p className="text-[11px] text-zinc-500">Destination</p><p className="truncate text-sm font-semibold">LAN Test</p></div>
+            <div><p className="text-[11px] text-zinc-500">Profile</p><p className="truncate text-sm font-semibold">{selectedProfile}</p></div>
+            <div><p className="text-[11px] text-zinc-500">Status</p><p className="text-sm font-semibold">Ready</p></div>
+          </div>}>
+          <div className="rounded-2xl bg-zinc-50 px-3">
+            <StatRow label="Destination" value="LAN Test · Custom RTMP" />
+            <StatRow label="Scene Profile" value={selectedProfile} />
+            <StatRow label="Preflight" value="PASS · ready to stream" />
+            <StatRow label="Live state" value="IDLE" />
+          </div>
+          <a href="/obs/stream" className="mt-3 flex w-full items-center justify-between rounded-2xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white">
+            <span>Open Streaming</span><span aria-hidden="true">→</span>
+          </a>
         </Card>
 
         <Card title="Activity Log" subtitle="Browser session events" status={<Pill tone="neutral">0 errors</Pill>} open={open.activity} onToggle={() => toggle("activity")} summary={<div className="grid grid-cols-2 gap-4">
