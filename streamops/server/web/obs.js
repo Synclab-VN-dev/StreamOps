@@ -127,6 +127,14 @@ function setProfile(profile, {restorePersisted = false} = {}) {
   updateRuntimeState();
   updateProfileSummary(); updateSourceSummary();
   renderSources(); renderCanvas(); buttons();
+  if (saved?.id) {
+    streamingState?.updateSelection?.({
+      profile_id: saved.id,
+      profile_name: saved.name,
+    });
+  } else {
+    streamingState?.updateSelection?.({profile_id: null, profile_name: null});
+  }
   persistSceneDraft();
 }
 async function listProfiles(selected = draft?.id, {preferActive = false, restorePersisted = false} = {}) {
