@@ -57,6 +57,7 @@ def test_stream_page_uses_only_live_socket_and_no_live_status_polling(page, live
 
 
 def test_dirty_scene_profile_survives_stream_navigation_and_blocks_start(page, live_server):
+    live_server.obs.create_profile({'name': 'AAA Other Profile'})
     profile = applied_profile(live_server)
     page.set_viewport_size({'width': 390, 'height': 844})
     page.goto(live_server.base_url + '/obs')
@@ -68,6 +69,7 @@ def test_dirty_scene_profile_survives_stream_navigation_and_blocks_start(page, l
 
     page.locator('#open-streaming').click()
     expect(page).to_have_url(live_server.base_url + '/obs/stream')
+    expect(page.locator('#stream-profile-list')).to_have_value(profile['id'])
     expect(page.locator('#dirty-profile-warning')).to_be_visible()
     expect(page.locator('#setup-draft-state')).to_have_text('Unsaved changes')
 
