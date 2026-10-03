@@ -56,6 +56,53 @@ def test_stream_page_uses_only_live_socket_and_no_live_status_polling(page, live
     assert page.evaluate('document.documentElement.scrollWidth <= document.documentElement.clientWidth')
 
 
+def test_obs_streaming_card_matches_mobile_design_contract(page, live_server):
+    page.set_viewport_size({'width': 390, 'height': 844})
+    page.goto(live_server.base_url + '/obs')
+    expect(page.locator('#streaming-state-pill')).to_have_text('IDLE', timeout=7000)
+
+    card = page.locator('#streaming-card')
+    assert card.evaluate('el => el.open') is False
+    expect(card.locator('.card-title-row p')).to_have_text(
+        'Destinations, preflight and live output'
+    )
+
+    open_card(page, '#streaming-card')
+    panel = card.locator('.streaming-overview-panel')
+    expect(panel).to_be_visible()
+    assert panel.locator(':scope > div').count() == 4
+
+    panel_style = panel.evaluate(
+        "el => ({ backgroundColor: getComputedStyle(el).backgroundColor, "
+        "borderRadius: getComputedStyle(el).borderRadius })"
+    )
+    assert panel_style['backgroundColor'] == 'rgb(250, 250, 250)'
+    assert float(panel_style['borderRadius'].removesuffix('px')) >= 16
+
+    first_row_columns = panel.locator(':scope > div').first.evaluate(
+        "el => getComputedStyle(el).gridTemplateColumns"
+    )
+    assert len(first_row_columns.split()) >= 2
+
+    cta = page.locator('#open-streaming')
+    expect(cta).to_be_visible()
+    cta_style = cta.evaluate(
+        "el => ({ display: getComputedStyle(el).display, "
+        "backgroundColor: getComputedStyle(el).backgroundColor, "
+        "color: getComputedStyle(el).color, "
+        "textDecorationLine: getComputedStyle(el).textDecorationLine, "
+        "width: el.getBoundingClientRect().width })"
+    )
+    assert cta_style['display'] == 'flex'
+    assert cta_style['backgroundColor'] == 'rgb(9, 9, 11)'
+    assert cta_style['color'] == 'rgb(255, 255, 255)'
+    assert cta_style['textDecorationLine'] == 'none'
+    assert cta_style['width'] > 300
+    assert page.evaluate(
+        'document.documentElement.scrollWidth <= document.documentElement.clientWidth'
+    )
+
+
 def test_dirty_scene_profile_survives_stream_navigation_and_blocks_start(page, live_server):
     live_server.obs.create_profile({'name': 'AAA Other Profile'})
     profile = applied_profile(live_server)
