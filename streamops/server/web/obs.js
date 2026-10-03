@@ -2,6 +2,7 @@
 /* Profile editor: the draft is local until Save, and OBS actions use saved state. */
 const ui = window.StreamOpsUI;
 const obsSocket = window.StreamOpsObs;
+const streamingState = window.StreamOpsStreamingState;
 const $ = (selector) => document.querySelector(selector);
 const activity = ui.createActivityLog('#activity-log');
 let draft = null, saved = null, catalog = [], inventory = {options: {}}, busy = false, obsReady = false, currentObsScene = null;
@@ -13,8 +14,12 @@ let sourceUiCounter = 0;
 let transportConnected = obsSocket.connected;
 let managerLoaded = false;
 let syncInFlight = null;
+let internalStreamNavigation = false;
 
 function dirty() { return draft && JSON.stringify(draft) !== JSON.stringify(saved); }
+function persistSceneDraft() {
+  streamingState?.captureSceneDraft(draft, saved);
+}
 function error(message = '') { $('#scene-error-message').textContent = message; $('#scene-error-message').hidden = !message; }
 function tone(element, value) { element.dataset.tone = value; }
 function state(value) {
@@ -50,7 +55,13 @@ function updateSourceSummary() {
   $('#source-summary-enabled').textContent = String(sources.filter((source) => source.enabled).length);
   $('#source-summary-catalog').textContent = catalog.length + ' types';
 }
-function changed() { state(dirty() ? 'Modified' : 'Saved'); updateProfileSummary(); updateSourceSummary(); renderCanvas(); }
+function changed() {
+  state(dirty() ? 'Modified' : 'Saved');
+  updateProfileSummary();
+  updateSourceSummary();
+  renderCanvas();
+  persistSceneDraft();
+}
 function buttons() {
   document.querySelectorAll('#scene-profile-manager [data-scene-action]').forEach((button) => {
     const independent = ['new-button', 'template-button', 'refresh-inventory'].includes(button.id);
@@ -99,20 +110,26 @@ async function api(path, method = 'GET', payload) {
   throw new Error(`Unsupported dashboard operation: ${method} ${path}`);
 }
 function canDiscard() { return !dirty() || confirm('Discard unsaved changes?'); }
-function setProfile(profile) {
-  draft = profile ? structuredClone(profile) : null;
+function setProfile(profile, {restorePersisted = false} = {}) {
   saved = profile ? structuredClone(profile) : null;
+  draft = profile ? structuredClone(profile) : null;
+  if (profile && restorePersisted) {
+    const restored = streamingState?.restoreSceneDraft(profile);
+    if (restored?.draft) draft = restored.draft;
+    else if (restored?.stale) activity('Unsaved Scene Profile draft was not restored because the saved profile changed.', 'warning');
+  }
   expandedSourceIds.clear();
   $('#profile-name').value = draft?.name || '';
   for (const field of ['width', 'height', 'fps']) $('#canvas-' + field).value = draft?.canvas[field] ?? '';
   $('#source-list').replaceChildren();
   setPickerOpen(false);
-  state(draft ? 'Saved' : 'No profile');
+  state(draft ? (dirty() ? 'Modified' : 'Saved') : 'No profile');
   updateRuntimeState();
   updateProfileSummary(); updateSourceSummary();
   renderSources(); renderCanvas(); buttons();
+  persistSceneDraft();
 }
-async function listProfiles(selected = draft?.id, {preferActive = false} = {}) {
+async function listProfiles(selected = draft?.id, {preferActive = false, restorePersisted = false} = {}) {
   const result = await api('scene-profiles');
   const select = $('#profile-list'); select.replaceChildren();
   if (result.profiles.length) {
@@ -127,8 +144,11 @@ async function listProfiles(selected = draft?.id, {preferActive = false} = {}) {
   $('#store-errors').textContent = result.errors.map((e) => `${e.file}: ${e.error}`).join('\n');
   if (!draft && result.profiles.length) {
     const active = preferActive ? result.profiles.find((profile) => profile.obs_scene_name === currentObsScene) : null;
-    select.value = selected || active?.id || result.profiles[0].id;
-    setProfile(await api('scene-profiles/' + select.value));
+    const selectedExists = selected && result.profiles.some((profile) => profile.id === selected);
+    select.value = (selectedExists ? selected : null) || active?.id || result.profiles[0].id;
+    setProfile(await api('scene-profiles/' + select.value), {
+      restorePersisted: restorePersisted && select.value === selected,
+    });
   } else if (draft) {
     select.value = result.profiles.some((profile) => profile.id === draft.id) ? draft.id : '';
   }
@@ -481,7 +501,17 @@ $('#profile-list').addEventListener('change', () => run('Load', async () => {
 }));
 $('#profile-name').addEventListener('input', () => {if (draft) {draft.name = $('#profile-name').value; changed();}});
 for (const key of ['width','height','fps']) $('#canvas-'+key).addEventListener('input', () => {if (draft) {draft.canvas[key] = Number($('#canvas-'+key).value); changed();}});
-window.addEventListener('beforeunload', (event) => {if (dirty()) {event.preventDefault(); event.returnValue = '';}});
+$('#open-streaming')?.addEventListener('click', () => {
+  internalStreamNavigation = true;
+  persistSceneDraft();
+});
+window.addEventListener('pagehide', persistSceneDraft);
+window.addEventListener('beforeunload', (event) => {
+  if (dirty() && !internalStreamNavigation) {
+    event.preventDefault();
+    event.returnValue = '';
+  }
+});
 window.addEventListener('streamops:obs-runtime-status', (event) => {
   const previous = obsReady;
   obsReady = event.detail?.state === 'READY';
@@ -512,7 +542,11 @@ async function syncManager() {
     templateSelect.replaceChildren();
     templates.templates.forEach((template) => templateSelect.add(new Option(template.name, template.id)));
     if (!managerLoaded) {
-      await listProfiles(undefined, {preferActive: true});
+      const persistedDraft = streamingState?.sceneDraftMeta();
+      await listProfiles(persistedDraft?.dirty ? persistedDraft.profile_id : undefined, {
+        preferActive: true,
+        restorePersisted: persistedDraft?.dirty === true,
+      });
     } else {
       await listProfiles(selectedId);
       if (!keepDirtyDraft && selectedId && $('#profile-list').value === selectedId) {
