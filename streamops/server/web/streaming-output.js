@@ -66,7 +66,8 @@
 
   function selectedProfileSummary() {
     const id = selectedProfileId();
-    return profiles.find((item) => item.id === id) || null;
+    return profiles.find((item) => item.id === id)
+      || (snapshot?.profile?.id === id ? snapshot.profile : null);
   }
 
   function destinationDescriptor(type = $('#destination-type').value) {
@@ -552,17 +553,18 @@
     const locked = destinationLocked(destination);
     const transition = snapshot?.state;
     const mutationsDisabled = busy || !transportConnected || locked;
+    const hasEditableDestination = editingNewDestination || !!destination;
 
     $('#destination-list').disabled = busy || !transportConnected || !!snapshot?.managed;
     $('#new-destination-button').disabled = busy || !transportConnected || !!snapshot?.managed;
     $('#delete-destination-button').disabled = mutationsDisabled || !destination || editingNewDestination;
-    $('#destination-name').disabled = mutationsDisabled;
-    $('#destination-type').disabled = mutationsDisabled;
-    $('#destination-enabled').disabled = mutationsDisabled;
+    $('#destination-name').disabled = mutationsDisabled || !hasEditableDestination;
+    $('#destination-type').disabled = mutationsDisabled || !hasEditableDestination;
+    $('#destination-enabled').disabled = mutationsDisabled || !hasEditableDestination;
     for (const input of document.querySelectorAll('#destination-settings-fields input, #destination-settings-fields select')) {
-      input.disabled = mutationsDisabled;
+      input.disabled = mutationsDisabled || !hasEditableDestination;
     }
-    $('#save-destination-button').disabled = mutationsDisabled || !catalog.length;
+    $('#save-destination-button').disabled = mutationsDisabled || !catalog.length || !hasEditableDestination;
     $('#credential-input').disabled = mutationsDisabled || !destination || editingNewDestination;
     $('#save-credential-button').disabled = mutationsDisabled || !destination || editingNewDestination || !$('#credential-input').value;
     $('#delete-credential-button').disabled = mutationsDisabled || !destination?.credential_configured || editingNewDestination;
@@ -781,6 +783,7 @@
     catalog = typesResult.types || [];
     profiles = profileResult.profiles || [];
     renderDestinationTypeOptions();
+    lastDestinationSignature = null;
     reconcileDestinationSelection();
 
     const select = $('#stream-profile-list');
