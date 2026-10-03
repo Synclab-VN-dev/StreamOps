@@ -207,13 +207,42 @@ def test_streaming_full_custom_rtmp_lifecycle_and_secret_redaction(page, live_se
     expect(page).to_have_url(live_server.base_url + '/obs/stream')
     expect(page.locator('#live-state-pill')).to_have_text('LIVE', timeout=7000)
 
-    # Force transport reconnect; fresh server snapshot must recover LIVE without a second Start.
+    # Force transport reconnect. Capture the synchronous connection event instead of
+    # polling for the transient RECONNECTING DOM state: on fast CI runners the new
+    # socket can reconnect before Playwright gets another scheduling turn.
     live_socket_count = sum('/api/v1/live/ws' in socket.url for socket in sockets)
+    page.evaluate(
+        """() => {
+            window.__liveConnectionTransitions = [];
+            window.addEventListener('streamops:live-connection', (event) => {
+                window.__liveConnectionTransitions.push({
+                    state: event.detail?.state,
+                    pill: document.querySelector('#live-state-pill')?.textContent,
+                    stopDisabled: document.querySelector('#stop-stream-button')?.disabled,
+                });
+            });
+        }"""
+    )
     page.evaluate('window.StreamOpsLive.socket.close()')
-    page.wait_for_function('() => window.StreamOpsLive.connected === false', timeout=5000)
-    expect(page.locator('#live-state-pill')).to_have_text('RECONNECTING')
-    expect(page.locator('#stop-stream-button')).to_be_disabled()
-    page.wait_for_function('() => window.StreamOpsLive.connected === true', timeout=10000)
+    page.wait_for_function(
+        "() => window.__liveConnectionTransitions.some(item => item.state === 'disconnected')",
+        timeout=5000,
+    )
+    page.wait_for_function(
+        "() => window.__liveConnectionTransitions.some(item => item.state === 'connected')",
+        timeout=10000,
+    )
+    transitions = page.evaluate('window.__liveConnectionTransitions')
+    disconnected = next(item for item in transitions if item['state'] == 'disconnected')
+    reconnected = next(
+        item for item in transitions[
+            transitions.index(disconnected) + 1:
+        ]
+        if item['state'] == 'connected'
+    )
+    assert disconnected['pill'] == 'RECONNECTING'
+    assert disconnected['stopDisabled'] is True
+    assert reconnected['state'] == 'connected'
     expect(page.locator('#live-state-pill')).to_have_text('LIVE', timeout=7000)
     assert sum('/api/v1/live/ws' in socket.url for socket in sockets) == live_socket_count + 1
 
