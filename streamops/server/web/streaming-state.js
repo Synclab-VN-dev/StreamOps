@@ -26,10 +26,12 @@
   }
 
   function updateSelection(patch) {
-    const next = {...selection(), ...patch};
+    const current = selection();
+    const next = {...current, ...patch};
     for (const key of Object.keys(next)) {
       if (next[key] === undefined || next[key] === null || next[key] === '') delete next[key];
     }
+    if (JSON.stringify(current) === JSON.stringify(next)) return current;
     write(SELECTION_KEY, next);
     window.dispatchEvent(new CustomEvent('streamops:streaming-selection', {detail: next}));
     return next;
