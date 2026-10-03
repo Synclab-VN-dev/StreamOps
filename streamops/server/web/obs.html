@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>OBS Management · StreamOps</title>
-    <link rel="stylesheet" href="/assets/app.css">
+    <link rel="stylesheet" href="/assets/app.css?v=issue-25-streaming-card-v2">
   </head>
   <body class="obs-dashboard-page">
     <header class="topbar">
@@ -258,7 +258,7 @@
             <div class="card-title-row">
               <div>
                 <h2 id="streaming-title">Streaming</h2>
-                <p>Destination and live output</p>
+                <p>Destinations, preflight and live output</p>
               </div>
               <span id="streaming-state-pill" class="state-pill" data-tone="neutral">CONNECTING</span>
             </div>
@@ -269,13 +269,15 @@
             </div>
           </summary>
           <div class="operational-card-body">
-            <dl class="compact-status-list">
+            <dl class="compact-status-list streaming-overview-panel">
               <div><dt>Destination</dt><dd id="streaming-overview-destination">--</dd></div>
               <div><dt>Scene Profile</dt><dd id="streaming-overview-profile">--</dd></div>
               <div><dt>Preflight</dt><dd id="streaming-overview-preflight">Not run</dd></div>
               <div><dt>Live state</dt><dd id="streaming-overview-state">--</dd></div>
             </dl>
-            <a id="open-streaming" class="stream-open-link" href="/obs/stream">Open Streaming →</a>
+            <a id="open-streaming" class="stream-open-link" href="/obs/stream">
+              <span>Open Streaming</span><span aria-hidden="true">→</span>
+            </a>
           </div>
         </details>
 
