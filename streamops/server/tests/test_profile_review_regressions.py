@@ -37,6 +37,34 @@ def test_isolated_track_is_valid_desired_state():
     assert result.status == 'PASS', [(c.id, c.status) for c in result.checks if c.status != 'PASS']
 
 
+def test_existing_video_can_manage_audio_without_changing_its_input_kind():
+    obs = AudioFakeObsClient()
+    obs.create_scene('Operator')
+    obs.create_input('Operator', 'OpenStream V8', 'openstream_phone_v7_source', {})
+    profile = normalize_profile({'name': 'Camera audio isolation', 'sources': [{
+        'type': 'existing_video',
+        'settings': {'source_name': 'OpenStream V8'},
+        'audio': {
+            'enabled': False,
+            'muted': True,
+            'volume_db': 0,
+            'sync_offset_ms': 0,
+            'tracks': {str(index): False for index in range(1, 7)},
+        },
+    }]})
+
+    apply_profile(profile, obs)
+
+    assert obs.get_input_mute('OpenStream V8') is True
+    assert obs.get_input_audio_tracks('OpenStream V8') == {
+        str(index): False for index in range(1, 7)
+    }
+    result = verify_profile(profile, obs)
+    assert result.status == 'PASS', [
+        (check.id, check.status) for check in result.checks if check.status != 'PASS'
+    ]
+
+
 def test_video_signal_cannot_pass_without_a_frame():
     profile = normalize_profile({'name': 'Missing frame', 'sources': [{
         'type': 'browser_source', 'settings': {'url': 'https://example.invalid'},
