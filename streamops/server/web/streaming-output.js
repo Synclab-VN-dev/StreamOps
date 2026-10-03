@@ -703,10 +703,11 @@
       activity('live socket: disconnected', 'warning');
     }
     renderButtons();
-    if (!transportConnected && !snapshot) {
-      $('#stream-page-state').textContent = state === 'connecting' ? 'CONNECTING' : 'RECONNECTING';
+    if (!transportConnected) {
+      const transportLabel = state === 'connecting' && !everConnected ? 'CONNECTING' : 'RECONNECTING';
+      $('#stream-page-state').textContent = transportLabel;
       tone($('#stream-page-state'), 'warn');
-      $('#live-state-pill').textContent = $('#stream-page-state').textContent;
+      $('#live-state-pill').textContent = transportLabel;
       tone($('#live-state-pill'), 'warn');
     }
   }, {replay: true});
