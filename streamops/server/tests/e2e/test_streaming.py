@@ -71,6 +71,7 @@ def test_dirty_scene_profile_survives_stream_navigation_and_blocks_start(page, l
     page.locator('#open-streaming').click()
     expect(page).to_have_url(live_server.base_url + '/obs/stream')
     expect(page.locator('#stream-profile-list')).to_have_value(profile['id'])
+    open_card(page, '#stream-setup-card')
     expect(page.locator('#dirty-profile-warning')).to_be_visible()
     expect(page.locator('#setup-draft-state')).to_have_text('Unsaved changes')
 
