@@ -361,66 +361,39 @@ def test_reconnect_preserves_dirty_draft_and_page_lifecycle(page, live_server, v
     assert len(sockets) == 2
     page.evaluate("window.dispatchEvent(new PageTransitionEvent('pageshow'))")
     expect(page.locator('#activity-log')).to_contain_text('Profile manager synchronized', timeout=7000)
+    page.wait_for_function(
+        "() => window.StreamOpsObs?.connected === true && window.StreamOpsLive?.connected === true",
+        timeout=10000,
+    )
     expect(page.locator('#profile-name')).to_have_value('Unsaved operator draft')
     expect(page.locator('#profile-summary-state')).to_have_text('Modified')
-    assert len(sockets) == 4
+    assert sum('/api/v1/obs/ws' in socket.url for socket in sockets) == 2
+    assert sum('/api/v1/live/ws' in socket.url for socket in sockets) == 2
 
     assert not any('/api/v1/' in url and '/preview' not in url and '/artifacts/' not in url for url in requests)
 
 
 def test_websocket_reconnects_without_http_fallback(page, live_server):
-    page.add_init_script("""
-      (() => {
-        const NativeWebSocket = window.WebSocket;
-        window.__streamOpsWebSocketAttempts = 0;
-
-        function fakeSocket({open}) {
-          const socket = new EventTarget();
-          socket.readyState = NativeWebSocket.CONNECTING;
-          socket.send = () => {};
-          socket.close = () => {
-            if (socket.readyState === NativeWebSocket.CLOSED) return;
-            socket.readyState = NativeWebSocket.CLOSED;
-            socket.dispatchEvent(new CloseEvent('close'));
-          };
-          setTimeout(() => {
-            if (socket.readyState !== NativeWebSocket.CONNECTING) return;
-            if (open) {
-              socket.readyState = NativeWebSocket.OPEN;
-              socket.dispatchEvent(new Event('open'));
-            } else {
-              socket.dispatchEvent(new Event('error'));
-              if (socket.readyState !== NativeWebSocket.CLOSED) socket.close();
-            }
-          }, 0);
-          return socket;
-        }
-
-        window.WebSocket = function(url, protocols) {
-          if (!String(url).endsWith('/api/v1/obs/ws')) {
-            return protocols === undefined ? new NativeWebSocket(url) : new NativeWebSocket(url, protocols);
-          }
-          window.__streamOpsWebSocketAttempts += 1;
-          return fakeSocket({open: window.__streamOpsWebSocketAttempts >= 3});
-        };
-        window.WebSocket.prototype = NativeWebSocket.prototype;
-        for (const key of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']) window.WebSocket[key] = NativeWebSocket[key];
-      })();
-    """)
+    sockets = []
     requests = []
+    page.on('websocket', lambda websocket: sockets.append(websocket))
     page.on('request', lambda request: requests.append(request.url))
     page.goto(live_server.base_url + '/obs')
 
-    page.wait_for_function(
-        "() => window.StreamOpsObs?.connected === true && window.__streamOpsWebSocketAttempts === 3",
-        timeout=10000,
-    )
-    assert page.evaluate('window.__streamOpsWebSocketAttempts') == 3
+    expect(page.locator('#obs-state')).to_have_text('READY', timeout=7000)
+    expect(page.locator('#streaming-state-pill')).to_have_text('IDLE', timeout=7000)
+    assert sum('/api/v1/obs/ws' in socket.url for socket in sockets) == 1
+
+    page.evaluate('window.StreamOpsObs.socket.close()')
+    page.wait_for_function('() => window.StreamOpsObs.connected === false', timeout=5000)
+    page.wait_for_function('() => window.StreamOpsObs.connected === true', timeout=10000)
     expect(page.locator('#activity-log')).to_contain_text('OBS dashboard connection established')
+    assert sum('/api/v1/obs/ws' in socket.url for socket in sockets) == 2
+    assert sum('/api/v1/live/ws' in socket.url for socket in sockets) == 1
+
+    page.wait_for_timeout(1200)
     assert not any(url.endswith('/api/v1/obs/process/status') for url in requests)
     assert not any(url.endswith('/api/v1/health') for url in requests)
-    page.wait_for_timeout(5500)
-    assert not any(url.endswith('/api/v1/obs/process/status') for url in requests)
 
 
 @pytest.mark.parametrize('viewport', MOBILE_VIEWPORTS)
