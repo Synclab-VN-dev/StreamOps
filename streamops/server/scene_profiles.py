@@ -24,7 +24,7 @@ SOURCE_CATALOG: dict[str, dict[str, Any]] = {
     "browser_source": {"label": "Browser", "obs_kind": "browser_source", "video": True, "audio": True, "setting_fields": ["url", "is_local_file", "local_file", "width", "height", "fps", "reroute_audio"], "required_any": ["url", "local_file"]},
     "image": {"label": "Image", "obs_kind": "image_source", "video": True, "setting_fields": ["file", "unload"], "required_any": ["file"]},
     "video_file": {"label": "Video file", "obs_kind": "ffmpeg_source", "video": True, "audio": True, "setting_fields": ["local_file", "looping", "restart_on_activate"], "required_any": ["local_file"]},
-    "existing_video": {"label": "Existing OBS video input", "obs_kind": None, "video": True, "existing": True, "setting_fields": ["source_name"], "required_any": ["source_name"]},
+    "existing_video": {"label": "Existing OBS video input", "obs_kind": None, "video": True, "audio": True, "existing": True, "setting_fields": ["source_name"], "required_any": ["source_name"]},
     "audio_input": {"label": "Audio input", "obs_kind": "wasapi_input_capture", "audio": True, "setting_fields": ["device_id"], "required_any": ["device_id"]},
     "application_audio": {"label": "Application audio", "obs_kind": "wasapi_process_output_capture", "audio": True, "setting_fields": ["window", "priority"], "required_any": ["window"]},
     "audio_output": {"label": "Audio output", "obs_kind": "wasapi_output_capture", "audio": True, "setting_fields": ["device_id"], "required_any": ["device_id"]},

@@ -166,6 +166,19 @@ def test_http_streaming_contract(server_config, capture_service, tmp_path: Path)
         assert client.post("/api/v1/live/preflight", json=args).json()["status"] == "PASS"
         assert client.post("/api/v1/live/start", json=args).json()["state"] == "LIVE"
         assert client.get("/api/v1/live/status").json()["state"] == "LIVE"
+
+        blocked_update = client.put(
+            f"/api/v1/stream-destinations/{destination_id}",
+            json={**updated_payload, "name": "Blocked While Live"},
+        )
+        assert blocked_update.status_code == 409
+        assert blocked_update.json()["error"]["code"] == "destination_in_use"
+        blocked_credential = client.delete(
+            f"/api/v1/stream-destinations/{destination_id}/credential"
+        )
+        assert blocked_credential.status_code == 409
+        assert blocked_credential.json()["error"]["code"] == "destination_in_use"
+
         assert client.post("/api/v1/live/stop").json()["state"] == "IDLE"
 
         removed = client.delete(f"/api/v1/stream-destinations/{destination_id}")
@@ -240,6 +253,19 @@ def test_live_websocket_initial_snapshot_and_commands(server_config, capture_ser
                 live_event = _event(websocket, "stream.snapshot", state="LIVE")
             assert live_event["data"]["destination"]["id"] == destination_id
             assert "private-key" not in repr(live_event)
+
+            websocket.send_json({
+                "type": "request",
+                "request_id": "blocked-update-1",
+                "operation": "destinations.update",
+                "payload": {
+                    "destination_id": destination_id,
+                    "destination": {**DESTINATION, "name": "Blocked While Live"},
+                },
+            })
+            blocked = _response(websocket, "blocked-update-1")
+            assert blocked["ok"] is False
+            assert blocked["error"]["code"] == "destination_in_use"
 
             websocket.send_json({
                 "type": "request",

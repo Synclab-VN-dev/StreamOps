@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>OBS Management · StreamOps</title>
-    <link rel="stylesheet" href="/assets/app.css">
+    <link rel="stylesheet" href="/assets/app.css?v=issue-25-streaming-card-v2">
   </head>
   <body class="obs-dashboard-page">
     <header class="topbar">
@@ -253,6 +253,34 @@
           </details>
         </div>
 
+        <details id="streaming-card" class="operational-card" aria-labelledby="streaming-title">
+          <summary class="operational-card-summary">
+            <div class="card-title-row">
+              <div>
+                <h2 id="streaming-title">Streaming</h2>
+                <p>Destinations, preflight and live output</p>
+              </div>
+              <span id="streaming-state-pill" class="state-pill" data-tone="neutral">CONNECTING</span>
+            </div>
+            <div class="summary-grid summary-grid-3">
+              <div><span>Destination</span><strong id="streaming-summary-destination">--</strong></div>
+              <div><span>Profile</span><strong id="streaming-summary-profile">--</strong></div>
+              <div><span id="streaming-summary-state-label">Status</span><strong id="streaming-summary-state">Connecting</strong></div>
+            </div>
+          </summary>
+          <div class="operational-card-body">
+            <dl class="compact-status-list streaming-overview-panel">
+              <div><dt>Destination</dt><dd id="streaming-overview-destination">--</dd></div>
+              <div><dt>Scene Profile</dt><dd id="streaming-overview-profile">--</dd></div>
+              <div><dt>Preflight</dt><dd id="streaming-overview-preflight">Not run</dd></div>
+              <div><dt>Live state</dt><dd id="streaming-overview-state">--</dd></div>
+            </dl>
+            <a id="open-streaming" class="stream-open-link" href="/obs/stream">
+              <span>Open Streaming</span><span aria-hidden="true">→</span>
+            </a>
+          </div>
+        </details>
+
         <details id="activity-card" class="operational-card activity-panel">
           <summary class="operational-card-summary">
             <div class="card-title-row">
@@ -275,8 +303,12 @@
     </main>
 
     <script src="/assets/common.js" defer></script>
+    <script src="/assets/ws-client.js" defer></script>
+    <script src="/assets/streaming-state.js" defer></script>
     <script src="/assets/obs-ws.js" defer></script>
+    <script src="/assets/live-ws.js" defer></script>
     <script src="/assets/obs-process.js" defer></script>
+    <script src="/assets/streaming-summary.js" defer></script>
     <script src="/assets/obs.js" defer></script>
   </body>
 </html>

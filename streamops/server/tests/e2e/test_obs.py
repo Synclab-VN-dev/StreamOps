@@ -274,6 +274,7 @@ def test_obs_cards_default_collapsed_with_domain_summaries(page, live_server):
         '#canvas-preview-card',
         '#verification-card',
         '#review-card',
+        '#streaming-card',
         '#activity-card',
     ):
         expect(page.locator(selector)).not_to_have_attribute('open', '')
@@ -281,6 +282,7 @@ def test_obs_cards_default_collapsed_with_domain_summaries(page, live_server):
     expect(page.locator('#runtime-summary-uptime')).not_to_have_text('')
     expect(page.locator('#profile-summary-canvas')).not_to_have_text('')
     expect(page.locator('#source-summary-catalog')).to_contain_text('types')
+    expect(page.locator('#streaming-state-pill')).to_have_text('IDLE', timeout=7000)
 
 
 def test_healthy_websocket_stops_status_polling(page, live_server):
@@ -295,7 +297,7 @@ def test_healthy_websocket_stops_status_polling(page, live_server):
 
 
 @pytest.mark.parametrize('viewport', MOBILE_VIEWPORTS)
-def test_dashboard_uses_one_socket_and_no_business_rest(page, live_server, viewport):
+def test_dashboard_uses_one_socket_per_domain_and_no_business_rest(page, live_server, viewport):
     page.set_viewport_size(viewport)
     sockets = []
     requests = []
@@ -307,7 +309,9 @@ def test_dashboard_uses_one_socket_and_no_business_rest(page, live_server, viewp
     page.locator('#verify-button').click()
     expect(page.locator('#obs-result')).not_to_have_text('--')
 
-    assert len(sockets) == 1
+    assert len(sockets) == 2
+    assert sum('/api/v1/obs/ws' in socket.url for socket in sockets) == 1
+    assert sum('/api/v1/live/ws' in socket.url for socket in sockets) == 1
     business_http = [
         url for url in requests
         if '/api/v1/' in url
@@ -343,75 +347,53 @@ def test_reconnect_preserves_dirty_draft_and_page_lifecycle(page, live_server, v
     open_new(page, live_server)
     page.locator('#profile-name').fill('Unsaved operator draft')
     expect(page.locator('#profile-summary-state')).to_have_text('Modified')
-    assert len(sockets) == 1
+    expect(page.locator('#streaming-state-pill')).to_have_text('IDLE', timeout=7000)
+    assert len(sockets) == 2
 
     page.evaluate("Object.defineProperty(document, 'visibilityState', {configurable: true, value: 'hidden'}); document.dispatchEvent(new Event('visibilitychange'))")
     page.wait_for_timeout(500)
-    assert len(sockets) == 1
+    assert len(sockets) == 2
     assert page.evaluate('window.StreamOpsObs.connected') is True
     page.evaluate("Object.defineProperty(document, 'visibilityState', {configurable: true, value: 'visible'}); document.dispatchEvent(new Event('visibilitychange'))")
 
     page.evaluate("window.dispatchEvent(new PageTransitionEvent('pagehide'))")
     page.wait_for_timeout(1500)
-    assert len(sockets) == 1
+    assert len(sockets) == 2
     page.evaluate("window.dispatchEvent(new PageTransitionEvent('pageshow'))")
     expect(page.locator('#activity-log')).to_contain_text('Profile manager synchronized', timeout=7000)
+    page.wait_for_function(
+        "() => window.StreamOpsObs?.connected === true && window.StreamOpsLive?.connected === true",
+        timeout=10000,
+    )
     expect(page.locator('#profile-name')).to_have_value('Unsaved operator draft')
     expect(page.locator('#profile-summary-state')).to_have_text('Modified')
-    assert len(sockets) == 2
+    assert sum('/api/v1/obs/ws' in socket.url for socket in sockets) == 2
+    assert sum('/api/v1/live/ws' in socket.url for socket in sockets) == 2
 
     assert not any('/api/v1/' in url and '/preview' not in url and '/artifacts/' not in url for url in requests)
 
 
 def test_websocket_reconnects_without_http_fallback(page, live_server):
-    page.add_init_script("""
-      (() => {
-        const NativeWebSocket = window.WebSocket;
-        window.__streamOpsWebSocketAttempts = 0;
-
-        function fakeSocket({open}) {
-          const socket = new EventTarget();
-          socket.readyState = NativeWebSocket.CONNECTING;
-          socket.send = () => {};
-          socket.close = () => {
-            if (socket.readyState === NativeWebSocket.CLOSED) return;
-            socket.readyState = NativeWebSocket.CLOSED;
-            socket.dispatchEvent(new CloseEvent('close'));
-          };
-          setTimeout(() => {
-            if (socket.readyState !== NativeWebSocket.CONNECTING) return;
-            if (open) {
-              socket.readyState = NativeWebSocket.OPEN;
-              socket.dispatchEvent(new Event('open'));
-            } else {
-              socket.dispatchEvent(new Event('error'));
-              if (socket.readyState !== NativeWebSocket.CLOSED) socket.close();
-            }
-          }, 0);
-          return socket;
-        }
-
-        window.WebSocket = function() {
-          window.__streamOpsWebSocketAttempts += 1;
-          return fakeSocket({open: window.__streamOpsWebSocketAttempts >= 3});
-        };
-        for (const key of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']) window.WebSocket[key] = NativeWebSocket[key];
-      })();
-    """)
+    sockets = []
     requests = []
+    page.on('websocket', lambda websocket: sockets.append(websocket))
     page.on('request', lambda request: requests.append(request.url))
     page.goto(live_server.base_url + '/obs')
 
-    page.wait_for_function(
-        "() => window.StreamOpsObs?.connected === true && window.__streamOpsWebSocketAttempts === 3",
-        timeout=10000,
-    )
-    assert page.evaluate('window.__streamOpsWebSocketAttempts') == 3
+    expect(page.locator('#obs-state')).to_have_text('READY', timeout=7000)
+    expect(page.locator('#streaming-state-pill')).to_have_text('IDLE', timeout=7000)
+    assert sum('/api/v1/obs/ws' in socket.url for socket in sockets) == 1
+
+    page.evaluate('window.StreamOpsObs.socket.close()')
+    page.wait_for_function('() => window.StreamOpsObs.connected === false', timeout=5000)
+    page.wait_for_function('() => window.StreamOpsObs.connected === true', timeout=10000)
     expect(page.locator('#activity-log')).to_contain_text('OBS dashboard connection established')
+    assert sum('/api/v1/obs/ws' in socket.url for socket in sockets) == 2
+    assert sum('/api/v1/live/ws' in socket.url for socket in sockets) == 1
+
+    page.wait_for_timeout(1200)
     assert not any(url.endswith('/api/v1/obs/process/status') for url in requests)
     assert not any(url.endswith('/api/v1/health') for url in requests)
-    page.wait_for_timeout(5500)
-    assert not any(url.endswith('/api/v1/obs/process/status') for url in requests)
 
 
 @pytest.mark.parametrize('viewport', MOBILE_VIEWPORTS)

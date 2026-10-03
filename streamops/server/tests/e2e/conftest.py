@@ -18,11 +18,14 @@ from streamops.server.app import create_app
 from streamops.server.config import ServerConfig
 from streamops.server.errors import ScreenCaptureError, SteamLaunchError
 from streamops.server.services import ScreenCaptureService, SteamService
+from streamops.server.services.live import LiveService
+from streamops.server.services.live_status import LiveStatusHub
 from streamops.server.services.steam import SteamStatus
 from streamops.server.services.obs_scene import ObsSceneService
 from streamops.server.scene_profiles import source_catalog
 from streamops.server.tests.browser_obs import BrowserObs
 from streamops.server.tests.browser_obs_process import ControllableObsManager
+from streamops.server.streaming import DestinationStore, SecretStore
 
 
 INTERNAL_LOG_SENTINEL = r"C:\internal\streamops\steam-test.log test-secret"
@@ -143,6 +146,7 @@ class BrowserTestServer:
     obs: ObsSceneService
     transport: BrowserObs
     obs_process: ControllableObsManager
+    live: LiveService
     source_catalog: list[dict[str, Any]]
 
 
@@ -165,12 +169,23 @@ def live_server(tmp_path: Path) -> BrowserTestServer:
         capture_timeout=0.5,
         log_level="warning",
     )
+    live_service = LiveService(
+        obs_manager,
+        obs_service,
+        DestinationStore(tmp_path / "stream-destinations"),
+        SecretStore(tmp_path / "stream-secrets"),
+        client_factory=lambda: transport,
+        poll_interval=0.001,
+    )
+    live_hub = LiveStatusHub(live_service, reconcile_interval=0.05, heartbeat_interval=1.0)
     app = create_app(
         config,
         capture_service=ScreenCaptureService(capture_backend, tmp_path, config.capture_timeout),
         steam_service=SteamService(steam_backend),
         obs_manager=obs_manager,
         obs_scene_service=obs_service,
+        live_service=live_service,
+        live_status_hub=live_hub,
         manage_runtime=False,
     )
 
@@ -202,6 +217,7 @@ def live_server(tmp_path: Path) -> BrowserTestServer:
             obs=obs_service,
             transport=transport,
             obs_process=obs_manager,
+            live=live_service,
             source_catalog=catalog,
         )
     finally:

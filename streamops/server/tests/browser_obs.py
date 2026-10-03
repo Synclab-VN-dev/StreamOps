@@ -1,7 +1,9 @@
 """Only the OBS transport is fake; tests use real service/store/media gates."""
+from copy import deepcopy
 from io import BytesIO
 import shutil
 import subprocess
+import time
 from PIL import Image
 from streamops.server.errors import ObsWebSocketConnectionError
 from streamops.server.tests.test_obs_scene import AudioFakeObsClient
@@ -13,6 +15,11 @@ class BrowserObs(AudioFakeObsClient):
         self.root = root
         self.offline = False
         self.recording_output_path = root / 'recording.mkv'
+        self.stream_service = {
+            'streamServiceType': 'rtmp_common',
+            'streamServiceSettings': {'service': 'Existing', 'key': 'browser-private-restore-key'},
+        }
+        self.stream_started_at = None
 
     def get_version(self):
         if self.offline:
@@ -26,6 +33,40 @@ class BrowserObs(AudioFakeObsClient):
 
     def get_profile_parameter(self, category, name):
         return {('Output', 'Mode'): 'Advanced', ('AdvOut', 'RecType'): 'Standard', ('AdvOut', 'RecTracks'): '2'}[(category, name)]
+
+    def get_stream_service_settings(self):
+        return deepcopy(self.stream_service)
+
+    def set_stream_service_settings(self, service_type, settings):
+        self.stream_service = {
+            'streamServiceType': service_type,
+            'streamServiceSettings': deepcopy(settings),
+        }
+
+    def start_stream(self):
+        self.streaming = True
+        self.stream_started_at = time.monotonic()
+
+    def stop_stream(self):
+        self.streaming = False
+        self.stream_started_at = None
+
+    def get_stream_status(self):
+        duration_ms = 0
+        if self.streaming and self.stream_started_at is not None:
+            duration_ms = max(1000, int((time.monotonic() - self.stream_started_at) * 1000))
+        return {
+            'outputActive': self.streaming,
+            'outputReconnecting': False,
+            'outputDuration': duration_ms,
+            'outputBytes': int(duration_ms * 25) if self.streaming else 0,
+            'outputCongestion': 0.01 if self.streaming else 0.0,
+            'outputSkippedFrames': 0,
+            'outputTotalFrames': int(duration_ms * 0.06) if self.streaming else 0,
+        }
+
+    def get_stats(self):
+        return {'activeFps': 60.0 if self.streaming else 0.0, 'cpuUsage': 5.0}
 
     def stop_record(self):
         self.recording = False

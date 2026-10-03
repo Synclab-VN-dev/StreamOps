@@ -154,3 +154,35 @@ def test_profile_verify_failure_blocks_start_before_obs_mutation(tmp_path: Path)
     assert error.value.code == "profile_verify_failed"
     assert client.start_calls == 0
     assert not client.service_history
+
+
+def test_active_destination_mutations_are_locked_until_stop_cleanup(tmp_path: Path) -> None:
+    service, _, _, profile_id, destination_id = _service(tmp_path)
+    service.set_credential(destination_id, "new-private-key")
+    assert service.start(profile_id, destination_id)["state"] == "LIVE"
+
+    mutations = (
+        lambda: service.update_destination(destination_id, {
+            "name": "Blocked Rename",
+            "type": "custom_rtmp",
+            "enabled": True,
+            "settings": {"server_url": "rtmp://192.168.1.20:1935/live"},
+        }),
+        lambda: service.delete_destination(destination_id),
+        lambda: service.set_credential(destination_id, "replacement-private-key"),
+        lambda: service.delete_credential(destination_id),
+    )
+    for mutate in mutations:
+        with pytest.raises(StreamingError) as error:
+            mutate()
+        assert error.value.code == "destination_in_use"
+        assert error.value.status_code == 409
+
+    assert service.stop()["state"] == "IDLE"
+    renamed = service.update_destination(destination_id, {
+        "name": "Allowed Rename",
+        "type": "custom_rtmp",
+        "enabled": True,
+        "settings": {"server_url": "rtmp://192.168.1.20:1935/live"},
+    })
+    assert renamed["name"] == "Allowed Rename"

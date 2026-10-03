@@ -2,9 +2,9 @@
   const Client = window.StreamOpsWebSocketClient;
   if (!Client) throw new Error('StreamOpsWebSocketClient is not loaded.');
 
-  window.StreamOpsObs = new Client({
-    path: '/api/v1/obs/ws',
-    label: 'OBS dashboard',
-    connectionEvent: 'streamops:obs-connection',
+  window.StreamOpsLive = new Client({
+    path: '/api/v1/live/ws',
+    label: 'Streaming',
+    connectionEvent: 'streamops:live-connection',
   }).start();
 })();
