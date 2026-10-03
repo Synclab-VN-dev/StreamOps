@@ -182,7 +182,25 @@ Expanded:
   - media analysis
 - lỗi review nếu có
 
-### 2.8 Activity Log
+### 2.8 Streaming
+
+Card này thuộc page `/obs`, chỉ là **summary + navigation** sang page streaming riêng.
+
+Collapsed summary:
+- Destination hiện tại
+- Scene Profile hiện tại
+- live/preflight state: IDLE / READY / STARTING / LIVE / STOPPING / RECOVERY / ERROR
+
+Expanded:
+- Destination name + type
+- Scene Profile
+- Preflight summary
+- Live state
+- action `Open Streaming` điều hướng sang `/obs/stream`
+
+Không được đưa full Destination editor, credential editor, Start/Stop Streaming hay live metrics vào card này. Các control đầy đủ thuộc `/obs/stream`.
+
+### 2.9 Activity Log
 
 Collapsed summary:
 - last event
@@ -203,6 +221,8 @@ Expanded:
 - Save chỉ persist profile; không tự mutate OBS.
 - Apply, Activate, Verify, Review giữ nguyên semantic hiện tại.
 - Source picker và editor phải usable trên mobile viewport.
+- Card `Streaming` trên `/obs` chỉ làm summary/navigation; mọi streaming control đầy đủ nằm ở `/obs/stream`.
+- Navigation `/obs` → `/obs/stream` không được làm mất unsaved Scene Profile draft trên `/obs`.
 
 ## 4. Responsive requirements
 
@@ -226,6 +246,6 @@ Desktop vẫn phải usable:
 ## 6. Non-goals
 
 - Không redesign backend model.
-- Không thêm Start/Stop Streaming nếu API hiện tại chưa có.
+- Không nhét Start/Stop Streaming trực tiếp vào dashboard `/obs`; control này thuộc `/obs/stream`.
 - Không hard-code Gaming/Camera/BRB thành scene cố định.
 - Không đưa React/Tailwind vào production chỉ vì reference component dùng React/Tailwind.
