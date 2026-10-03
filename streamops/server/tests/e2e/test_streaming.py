@@ -67,6 +67,7 @@ def test_dirty_scene_profile_survives_stream_navigation_and_blocks_start(page, l
     expect(page.locator('#profile-summary-state')).to_have_text('Modified')
     expect(page.locator('#streaming-state-pill')).to_have_text('IDLE', timeout=7000)
 
+    open_card(page, '#streaming-card')
     page.locator('#open-streaming').click()
     expect(page).to_have_url(live_server.base_url + '/obs/stream')
     expect(page.locator('#stream-profile-list')).to_have_value(profile['id'])
