@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from playwright.sync_api import expect
+
+from streamops.server.errors import StreamingError
 
 pytestmark = pytest.mark.only_browser('chromium')
 
@@ -86,7 +90,14 @@ def test_streaming_full_custom_rtmp_lifecycle_and_secret_redaction(page, live_se
     profile = applied_profile(live_server)
     sockets = []
     requests = []
-    page.on('websocket', lambda websocket: sockets.append(websocket))
+    operations = []
+    def on_socket(websocket):
+        sockets.append(websocket)
+        websocket.on(
+            'framesent',
+            lambda payload: operations.append(json.loads(payload).get('operation')),
+        )
+    page.on('websocket', on_socket)
     page.on('request', lambda request: requests.append(request.url))
 
     page.goto(live_server.base_url + '/obs/stream')
@@ -124,8 +135,10 @@ def test_streaming_full_custom_rtmp_lifecycle_and_secret_redaction(page, live_se
 
     open_card(page, '#stream-live-card')
     expect(page.locator('#start-stream-button')).to_be_enabled()
-    page.locator('#start-stream-button').click()
+    operations.clear()
+    page.evaluate("() => { const button = document.querySelector('#start-stream-button'); button.click(); button.click(); }")
     expect(page.locator('#live-state-pill')).to_have_text('LIVE', timeout=7000)
+    assert operations.count('live.start') == 1
     expect(page.locator('#live-output-active')).to_have_text('Yes')
     expect(page.locator('#destination-name')).to_be_disabled()
     assert live_server.transport.streaming is True
@@ -145,8 +158,10 @@ def test_streaming_full_custom_rtmp_lifecycle_and_secret_redaction(page, live_se
     assert 'final-browser-secret' not in page.locator('body').inner_text()
     open_card(page, '#stream-live-card')
     expect(page.locator('#stop-stream-button')).to_be_visible()
-    page.locator('#stop-stream-button').click()
+    operations.clear()
+    page.evaluate("() => { const button = document.querySelector('#stop-stream-button'); button.click(); button.click(); }")
     expect(page.locator('#live-state-pill')).to_have_text('IDLE', timeout=7000)
+    assert operations.count('live.stop') == 1
     assert live_server.transport.streaming is False
     assert live_server.transport.stream_service['streamServiceType'] == 'rtmp_common'
     assert live_server.live.session_store.load_session() is None
@@ -211,3 +226,51 @@ def test_stream_page_renders_obs_not_ready(page, live_server):
     expect(page.locator('#start-stream-button')).to_be_visible()
     expect(page.locator('#start-stream-button')).to_be_disabled()
     expect(page.locator('#stop-stream-button')).to_be_hidden()
+
+
+
+def test_preflight_fail_blocks_start_and_typed_start_error_is_rendered(page, live_server):
+    profile = applied_profile(live_server, 'Typed Error Profile')
+    page.goto(live_server.base_url + '/obs/stream')
+    expect(page.locator('#stream-page-state')).to_have_text('IDLE', timeout=7000)
+    expect(page.locator('#stream-profile-list')).to_have_value(profile['id'])
+
+    # Missing credential is a server-owned preflight failure and must keep Start blocked.
+    open_card(page, '#stream-destination-card')
+    page.locator('#new-destination-button').click()
+    page.locator('#destination-name').fill('Typed Error Destination')
+    page.get_by_label('Server URL', exact=True).fill('rtmp://127.0.0.1:1935/live')
+    page.locator('#save-destination-button').click()
+    open_card(page, '#stream-preflight-card')
+    page.locator('#run-preflight-button').click()
+    expect(page.locator('#preflight-state')).to_have_text('FAIL')
+    expect(page.locator('#preflight-checks')).to_contain_text('credential')
+    open_card(page, '#stream-live-card')
+    expect(page.locator('#start-stream-button')).to_be_disabled()
+
+    # Once preflight passes, a typed backend Start failure is surfaced without
+    # inventing a local IDLE transition or leaking the credential.
+    open_card(page, '#stream-destination-card')
+    page.locator('#credential-input').fill('typed-error-secret')
+    page.locator('#save-credential-button').click()
+    open_card(page, '#stream-preflight-card')
+    page.locator('#run-preflight-button').click()
+    expect(page.locator('#preflight-state')).to_have_text('PASS')
+
+    original_start = live_server.live.start
+
+    def fail_start(_profile_id: str, _destination_id: str):
+        raise StreamingError('stream_start_failed', 'Synthetic typed start failure.', 409)
+
+    live_server.live.start = fail_start
+    try:
+        open_card(page, '#stream-live-card')
+        expect(page.locator('#start-stream-button')).to_be_enabled()
+        page.locator('#start-stream-button').click()
+        expect(page.locator('#live-error')).to_contain_text(
+            'stream_start_failed: Synthetic typed start failure.'
+        )
+        expect(page.locator('#live-state-pill')).to_have_text('IDLE')
+        assert 'typed-error-secret' not in page.locator('body').inner_text()
+    finally:
+        live_server.live.start = original_start
