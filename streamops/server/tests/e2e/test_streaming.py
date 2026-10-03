@@ -149,6 +149,7 @@ def test_streaming_full_custom_rtmp_lifecycle_and_secret_redaction(page, live_se
     # Force transport reconnect; fresh server snapshot must recover LIVE without a second Start.
     live_socket_count = sum('/api/v1/live/ws' in socket.url for socket in sockets)
     page.evaluate('window.StreamOpsLive.socket.close()')
+    page.wait_for_function('() => window.StreamOpsLive.connected === false', timeout=5000)
     page.wait_for_function('() => window.StreamOpsLive.connected === true', timeout=10000)
     expect(page.locator('#live-state-pill')).to_have_text('LIVE', timeout=7000)
     assert sum('/api/v1/live/ws' in socket.url for socket in sockets) == live_socket_count + 1
