@@ -146,6 +146,18 @@ def test_streaming_full_custom_rtmp_lifecycle_and_secret_redaction(page, live_se
     assert live_server.transport.streaming is True
     assert 'final-browser-secret' not in page.locator('body').inner_text()
 
+    # The /obs overview is a separate page but must reconcile the same managed
+    # server session, then navigate back without inventing a second Start.
+    page.locator('.stream-back-link').click()
+    expect(page).to_have_url(live_server.base_url + '/obs')
+    expect(page.locator('#streaming-state-pill')).to_have_text('LIVE', timeout=7000)
+    expect(page.locator('#streaming-summary-destination')).to_have_text('LAN Test Renamed')
+    open_card(page, '#streaming-card')
+    expect(page.locator('#streaming-overview-preflight')).to_have_text('PASS')
+    page.locator('#open-streaming').click()
+    expect(page).to_have_url(live_server.base_url + '/obs/stream')
+    expect(page.locator('#live-state-pill')).to_have_text('LIVE', timeout=7000)
+
     # Force transport reconnect; fresh server snapshot must recover LIVE without a second Start.
     live_socket_count = sum('/api/v1/live/ws' in socket.url for socket in sockets)
     page.evaluate('window.StreamOpsLive.socket.close()')
