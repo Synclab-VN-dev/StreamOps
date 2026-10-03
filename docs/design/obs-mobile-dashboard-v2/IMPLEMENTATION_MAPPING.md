@@ -206,3 +206,87 @@ Production hiện tại là vanilla HTML/CSS/JS. Agent không được tự đ�
 - tạo parallel OBS management page.
 
 Chỉ refactor framework khi có ticket riêng và operator phê duyệt.
+
+
+## 10. Streaming UI split
+
+Production UI phải tách hai route:
+
+- `/obs`: OBS Management Dashboard.
+- `/obs/stream`: Streaming Management.
+
+### 10.1 /obs
+
+`/obs` giữ nguyên các domain OBS hiện tại và thêm card `Streaming` để hiển thị summary.
+
+Card này không sở hữu full streaming form. Nó chỉ cần:
+- destination hiện tại;
+- selected/saved Scene Profile;
+- preflight/live state;
+- navigation `Open Streaming` → `/obs/stream`.
+
+### 10.2 /obs/stream
+
+Page này chỉ render domain streaming:
+- Destination;
+- Stream Setup;
+- Preflight;
+- Live Control / Live Status;
+- Stream Activity.
+
+Không duplicate các card OBS Runtime, Sources, Canvas, Verification hay Review.
+
+### 10.3 Live transport
+
+Streaming business flow dùng domain WebSocket riêng:
+
+- OBS domain: `/api/v1/obs/ws`
+- Live domain: `/api/v1/live/ws`
+
+Khi Live WebSocket healthy:
+- không polling `GET /api/v1/live/status` cho business state;
+- fresh `stream.snapshot` là source of truth;
+- reconnect/reload phải reconcile lại destination/profile/live state từ server.
+
+Expected browser invariant sau ticket #25:
+
+```text
+1 x /api/v1/obs/ws
+1 x /api/v1/live/ws
+0 x business REST polling while sockets are healthy
+```
+
+### 10.4 Streaming operations
+
+Live WebSocket operations:
+- `destinations.list`
+- `destinations.get`
+- `destinations.create`
+- `destinations.update`
+- `destinations.delete`
+- `destinations.set_credential`
+- `destinations.delete_credential`
+- `live.preflight`
+- `live.start`
+- `live.status`
+- `live.stop`
+
+Destination type catalog hiện có qua `GET /api/v1/stream-destination-types`. Nếu backend bổ sung catalog operation qua Live WebSocket thì FE nên ưu tiên cùng transport realtime để giữ invariant không business REST polling.
+
+### 10.5 Credential rule
+
+Public destination settings và credential phải tách riêng:
+- UI không render plaintext credential sau khi save;
+- chỉ hiển thị `credential_configured`;
+- không ghi secret vào Activity Log, DOM diagnostic, error message hoặc restore metadata công khai.
+
+### 10.6 Active session mutation guard
+
+FE phải disable update/delete/credential mutation của destination đang được managed live session sử dụng.
+
+Backend vẫn là final authority và phải reject unsafe mutation bằng typed conflict (HTTP 409 hoặc equivalent WS error) trong ít nhất:
+- STARTING
+- LIVE
+- STOPPING
+
+Nên giữ guard cho tới khi managed session/recovery metadata được cleanup hoàn toàn.
