@@ -1,6 +1,11 @@
 # OBS Mobile Dashboard v2 — Design Handoff
 
-Tài liệu trong thư mục này là **nguồn tham chiếu thiết kế** cho việc redesign trang `/obs` của StreamOps theo hướng mobile-first.
+Tài liệu trong thư mục này là **nguồn tham chiếu thiết kế** cho OBS Management và Streaming Management của StreamOps theo hướng mobile-first.
+
+Kiến trúc UI được chốt thành hai page riêng:
+
+- `/obs` — OBS Management Dashboard, chứa các card vận hành OBS và một card `Streaming` dạng summary/navigation.
+- `/obs/stream` — Streaming Management, chỉ chứa các card thuộc domain streaming.
 
 ## Mục tiêu
 
@@ -17,15 +22,24 @@ Giữ nguyên đầy đủ capability hiện tại của OBS Management nhưng t
 
 - [DESIGN_SPEC.md](./DESIGN_SPEC.md): cấu trúc UX/UI, card, summary, expand behavior.
 - [IMPLEMENTATION_MAPPING.md](./IMPLEMENTATION_MAPPING.md): mapping UI → API/source code hiện tại.
+- [STREAMING_UI_SPEC.md](./STREAMING_UI_SPEC.md): spec riêng cho `/obs/stream` và card `Streaming` trên `/obs`.
 - [LEGACY_UI_INVENTORY.md](./LEGACY_UI_INVENTORY.md): inventory capability và dữ liệu của UI hiện tại cần preserve.
-- [reference/StreamOpsMobileDashboard.tsx](./reference/StreamOpsMobileDashboard.tsx): source component export từ MagicPath, chỉ dùng làm visual/interaction reference.
+- [reference/StreamOpsMobileDashboard.tsx](./reference/StreamOpsMobileDashboard.tsx): reference cho `/obs`, gồm card `Streaming` mới.
+- [reference/StreamOpsStreamingOutput.tsx](./reference/StreamOpsStreamingOutput.tsx): reference cho `/obs/stream`.
 
 ## MagicPath reference
 
 - Share URL: https://designs.magicpath.ai/v1/smart-cliff-3265
 - MagicPath component: `StreamOps Mobile Dashboard`
 - Component ID: `456064390102405120`
-- Reference revision: `456087657274028032`
+- Reference revision: `456972475197177856`
+
+Streaming page:
+
+- Share URL: https://designs.magicpath.ai/v1/clear-tower-8758
+- MagicPath component: `StreamOps Streaming Output`
+- Component ID: `456934973027528704`
+- Reference revision: `456972485301243904`
 
 ## Nguyên tắc handoff
 
