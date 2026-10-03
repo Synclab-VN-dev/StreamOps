@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Streaming · StreamOps</title>
+    <link rel="stylesheet" href="/assets/app.css">
+  </head>
+  <body class="obs-dashboard-page streaming-page">
+    <header class="topbar">
+      <a class="brand" href="/">StreamOps Node</a>
+      <nav><a href="/obs">OBS Management</a></nav>
+    </header>
+
+    <main class="page-shell obs-dashboard-shell stream-dashboard-shell">
+      <div class="stream-page-nav">
+        <a class="stream-back-link" href="/obs">← OBS Management</a>
+      </div>
+
+      <div class="page-heading obs-page-heading stream-page-heading">
+        <div>
+          <p class="eyebrow">Livestream</p>
+          <h1>Streaming</h1>
+          <p>Destination, preflight and live output control.</p>
+        </div>
+        <span id="stream-page-state" class="state-pill" data-tone="neutral">CONNECTING</span>
+      </div>
+
+      <p id="stream-page-error" class="error-message dashboard-error" role="alert" hidden></p>
+
+      <div class="operational-card-stack">
+        <details id="stream-destination-card" class="operational-card">
+          <summary class="operational-card-summary">
+            <div class="card-title-row">
+              <div>
+                <h2>Destination</h2>
+                <p>Where OBS sends the stream</p>
+              </div>
+              <span id="destination-state-pill" class="state-pill" data-tone="neutral">--</span>
+            </div>
+            <div class="summary-grid summary-grid-3">
+              <div><span>Name</span><strong id="destination-summary-name">--</strong></div>
+              <div><span>Type</span><strong id="destination-summary-type">--</strong></div>
+              <div><span>Credential</span><strong id="destination-summary-credential">--</strong></div>
+            </div>
+          </summary>
+          <div class="operational-card-body">
+            <div class="stream-form-grid">
+              <label>Destination
+                <select id="destination-list" aria-label="Streaming destination"></select>
+              </label>
+
+              <div class="compact-button-grid stream-two-actions">
+                <button id="new-destination-button" class="secondary-button" type="button">New Destination</button>
+                <button id="delete-destination-button" class="danger-button" type="button">Delete</button>
+              </div>
+
+              <label>Name
+                <input id="destination-name" maxlength="120" autocomplete="off">
+              </label>
+
+              <label>Type
+                <select id="destination-type"></select>
+              </label>
+
+              <label class="stream-checkbox-row">
+                <input id="destination-enabled" type="checkbox">
+                <span>Destination enabled</span>
+              </label>
+
+              <div id="destination-settings-fields" class="stream-form-grid"></div>
+
+              <button id="save-destination-button" class="primary-button" type="button">Save Destination</button>
+
+              <section class="credential-section" aria-labelledby="credential-title">
+                <div class="section-heading">
+                  <strong id="credential-title">Credential</strong>
+                  <span id="credential-status">Not configured</span>
+                </div>
+                <label id="credential-input-label">Stream Key
+                  <input id="credential-input" type="password" autocomplete="new-password">
+                </label>
+                <div class="compact-button-grid stream-two-actions">
+                  <button id="save-credential-button" class="secondary-button" type="button">Save Credential</button>
+                  <button id="delete-credential-button" class="danger-button" type="button">Remove Credential</button>
+                </div>
+              </section>
+            </div>
+            <p id="destination-error" class="error-message" role="alert" hidden></p>
+          </div>
+        </details>
+
+        <details id="stream-setup-card" class="operational-card">
+          <summary class="operational-card-summary">
+            <div class="card-title-row">
+              <div>
+                <h2>Stream Setup</h2>
+                <p>Saved Scene Profile used for live</p>
+              </div>
+              <span id="setup-profile-state" class="state-pill" data-tone="neutral">--</span>
+            </div>
+            <div class="summary-grid summary-grid-3">
+              <div><span>Profile</span><strong id="setup-summary-profile">--</strong></div>
+              <div><span>Canvas</span><strong id="setup-summary-canvas">--</strong></div>
+              <div><span>FPS</span><strong id="setup-summary-fps">--</strong></div>
+            </div>
+          </summary>
+          <div class="operational-card-body">
+            <div class="stream-form-grid">
+              <label>Saved Scene Profile
+                <select id="stream-profile-list"></select>
+              </label>
+              <dl class="compact-status-list">
+                <div><dt>Profile</dt><dd id="setup-profile-name">--</dd></div>
+                <div><dt>Canvas</dt><dd id="setup-profile-canvas">--</dd></div>
+                <div><dt>Draft state</dt><dd id="setup-draft-state">Saved</dd></div>
+              </dl>
+              <div id="dirty-profile-warning" class="inline-warning" hidden>
+                Unsaved changes exist for this Scene Profile. Save or discard them in OBS Management before starting.
+                <a href="/obs">Open OBS Management</a>
+              </div>
+            </div>
+            <p id="profile-error" class="error-message" role="alert" hidden></p>
+          </div>
+        </details>
+
+        <details id="stream-preflight-card" class="operational-card">
+          <summary class="operational-card-summary">
+            <div class="card-title-row">
+              <div>
+                <h2>Preflight</h2>
+                <p>Server-owned readiness checks</p>
+              </div>
+              <span id="preflight-state" class="state-pill" data-tone="neutral">NOT RUN</span>
+            </div>
+            <div class="summary-grid summary-grid-3">
+              <div><span>OBS</span><strong id="preflight-summary-obs">--</strong></div>
+              <div><span>Profile</span><strong id="preflight-summary-profile">--</strong></div>
+              <div><span>Output</span><strong id="preflight-summary-output">--</strong></div>
+            </div>
+          </summary>
+          <div class="operational-card-body">
+            <button id="run-preflight-button" class="primary-button" type="button">Run Preflight</button>
+            <div id="preflight-checks" class="check-list stream-check-list" aria-live="polite"></div>
+            <p id="preflight-error" class="error-message" role="alert" hidden></p>
+          </div>
+        </details>
+
+        <details id="stream-live-card" class="operational-card">
+          <summary class="operational-card-summary">
+            <div class="card-title-row">
+              <div>
+                <h2>Live Control</h2>
+                <p>Start, status and stop</p>
+              </div>
+              <span id="live-state-pill" class="state-pill" data-tone="neutral">CONNECTING</span>
+            </div>
+            <div class="summary-grid summary-grid-3">
+              <div><span>Destination</span><strong id="live-summary-destination">--</strong></div>
+              <div><span>Uptime</span><strong id="live-summary-uptime">00:00:00</strong></div>
+              <div><span>Output</span><strong id="live-summary-output">Inactive</strong></div>
+            </div>
+          </summary>
+          <div class="operational-card-body">
+            <dl class="compact-status-list">
+              <div><dt>Destination</dt><dd id="live-destination">--</dd></div>
+              <div><dt>Scene Profile</dt><dd id="live-profile">--</dd></div>
+              <div><dt>Output active</dt><dd id="live-output-active">No</dd></div>
+              <div><dt>Reconnecting</dt><dd id="live-reconnecting">No</dd></div>
+              <div><dt>Uptime</dt><dd id="live-uptime">00:00:00</dd></div>
+              <div><dt>Bytes sent</dt><dd id="live-bytes">0 B</dd></div>
+              <div><dt>Avg bitrate</dt><dd id="live-avg-bitrate">--</dd></div>
+              <div><dt>Congestion</dt><dd id="live-congestion">0</dd></div>
+              <div><dt>Skipped frames</dt><dd id="live-skipped-frames">0</dd></div>
+              <div><dt>Total frames</dt><dd id="live-total-frames">0</dd></div>
+              <div><dt>Active FPS</dt><dd id="live-active-fps">0</dd></div>
+              <div><dt>CPU usage</dt><dd id="live-cpu-usage">0%</dd></div>
+            </dl>
+            <div class="action-row">
+              <button id="start-stream-button" class="primary-button" type="button">Start Streaming</button>
+              <button id="stop-stream-button" class="danger-button" type="button" hidden>Stop Streaming</button>
+            </div>
+            <p id="live-error" class="error-message" role="alert" hidden></p>
+          </div>
+        </details>
+
+        <details id="stream-activity-card" class="operational-card activity-panel">
+          <summary class="operational-card-summary">
+            <div class="card-title-row">
+              <div>
+                <h2>Stream Activity</h2>
+                <p>Browser session only</p>
+              </div>
+              <span id="stream-activity-error-count" class="state-pill" data-tone="neutral">0 errors</span>
+            </div>
+            <div class="summary-grid summary-grid-2">
+              <div><span>Last event</span><strong id="stream-activity-last-event">No events</strong></div>
+              <div><span>Warnings</span><strong id="stream-activity-warning-count">0</strong></div>
+            </div>
+          </summary>
+          <div class="operational-card-body">
+            <ol id="stream-activity-log" class="activity-log" aria-live="polite"></ol>
+          </div>
+        </details>
+      </div>
+    </main>
+
+    <script src="/assets/common.js" defer></script>
+    <script src="/assets/ws-client.js" defer></script>
+    <script src="/assets/streaming-state.js" defer></script>
+    <script src="/assets/live-ws.js" defer></script>
+    <script src="/assets/streaming-output.js" defer></script>
+  </body>
+</html>
