@@ -504,7 +504,8 @@ function Invoke-Rollback {
         Remove-Item -LiteralPath $path -Force
     }
     $transaction.state = "rolled_back"
-    $transaction.rolled_back_at = [DateTimeOffset]::Now.ToString("o")
+    $transaction | Add-Member -NotePropertyName "rolled_back_at" `
+        -NotePropertyValue ([DateTimeOffset]::Now.ToString("o")) -Force
     Write-JsonFile (Join-Path ([string]$transaction.transaction_root) "transaction.json") $transaction
     [ordered]@{
         action = "Rollback"
