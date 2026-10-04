@@ -98,6 +98,9 @@ class ApiClient:
     def put(self, path: str, payload: dict[str, Any]) -> Any:
         return self.request("PUT", path, payload)
 
+    def patch(self, path: str, payload: dict[str, Any]) -> Any:
+        return self.request("PATCH", path, payload)
+
     def delete(self, path: str) -> Any:
         return self.request("DELETE", path)
 
@@ -198,6 +201,9 @@ class SmokeRun:
         self.credential_configured = False
         self.ws: WsMonitor | None = None
         self.secret_leak = False
+        self.profile_before_runtime: dict[str, Any] | None = None
+        self.runtime_source_id: str | None = None
+        self.runtime_session_id: str | None = None
 
     def run(self) -> int:
         try:
@@ -267,6 +273,11 @@ class SmokeRun:
         bytes_sent = [self._number(sample, "output", "bytes_sent") for sample in samples]
         self._record_increasing("DURATION_INCREASING", durations)
         self._record_increasing("BYTES_INCREASING", bytes_sent)
+
+        self._step("AC32", self._verify_runtime_scene_control)
+        if self._failed("AC32") and not any(result.name == "AC24" for result in self.results):
+            self._record("AC24", "FAIL", "runtime continuity could not be proven because AC32 failed")
+
         if self.ws is None:
             self._record("WS_LIVE_SNAPSHOT", "FAIL", "WebSocket monitor was not started")
         else:
@@ -279,6 +290,10 @@ class SmokeRun:
                 self._skip(name, "FFPROBE_INPUT_URL is not configured")
 
         self._step("STOP_IDLE", self._stop_and_verify_idle)
+        if self.runtime_source_id is not None:
+            self._step("AC21", self._verify_runtime_restore)
+        else:
+            self._skip("AC21", "runtime source control did not run")
         self._step("OUTPUT_QUIESCENT", self._verify_quiescent)
 
     def _verify_health(self) -> None:
@@ -353,6 +368,110 @@ class SmokeRun:
         if len(samples) < POLL_SAMPLES:
             raise SmokeError(f"only {len(samples)} active live status samples received")
         return samples
+
+
+    def _verify_runtime_scene_control(self) -> None:
+        profile = self.api.get(f"/api/v1/scene-profiles/{self.config.profile_id}")
+        if not isinstance(profile, dict):
+            raise SmokeError("Scene Profile response was not an object")
+        self.profile_before_runtime = profile
+
+        before = self.api.get("/api/v1/live/status")
+        if not isinstance(before, dict):
+            raise SmokeError("live status was not an object before runtime control")
+        session_id = before.get("session_id")
+        if not isinstance(session_id, str) or not session_id:
+            raise SmokeError("managed LIVE status did not expose session_id")
+        if before.get("state") != "LIVE" or before.get("output", {}).get("active") is not True:
+            raise SmokeError("stream was not active before runtime control")
+
+        runtime_scene = before.get("runtime_scene")
+        sources = runtime_scene.get("sources", []) if isinstance(runtime_scene, dict) else []
+        source = next(
+            (
+                item for item in sources
+                if isinstance(item, dict)
+                and isinstance(item.get("id"), str)
+                and isinstance(item.get("actual"), dict)
+                and isinstance(item["actual"].get("position"), dict)
+            ),
+            None,
+        )
+        if source is None:
+            raise SmokeError("active profile has no visual source with managed X/Y position")
+
+        source_id = source["id"]
+        actual = source["actual"]
+        position = actual["position"]
+        visible = bool(actual.get("visible"))
+        try:
+            x = float(position["x"])
+            y = float(position["y"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise SmokeError("runtime source did not expose numeric X/Y position") from error
+
+        self.runtime_source_id = source_id
+        self.runtime_session_id = session_id
+
+        visibility = self.api.patch(
+            f"/api/v1/live/sources/{source_id}/visibility",
+            {"visible": not visible},
+        )
+        if visibility.get("actual", {}).get("visible") is not (not visible):
+            raise SmokeError("runtime visibility mutation did not converge")
+
+        positioned = self.api.patch(
+            f"/api/v1/live/sources/{source_id}/position",
+            {"x": x + 20.0, "y": y + 20.0},
+        )
+        positioned_actual = positioned.get("actual", {}).get("position", {})
+        if abs(float(positioned_actual.get("x")) - (x + 20.0)) > 0.01:
+            raise SmokeError("absolute runtime X position did not converge")
+        if abs(float(positioned_actual.get("y")) - (y + 20.0)) > 0.01:
+            raise SmokeError("absolute runtime Y position did not converge")
+
+        moved = self.api.post(
+            f"/api/v1/live/sources/{source_id}/move",
+            {"dx": 10.0, "dy": 0.0},
+        )
+        moved_actual = moved.get("actual", {}).get("position", {})
+        if abs(float(moved_actual.get("x")) - (x + 30.0)) > 0.01:
+            raise SmokeError("relative runtime X movement did not converge")
+        if abs(float(moved_actual.get("y")) - (y + 20.0)) > 0.01:
+            raise SmokeError("relative runtime Y movement did not converge")
+
+        after = self.api.get("/api/v1/live/status")
+        if after.get("state") != "LIVE" or after.get("output", {}).get("active") is not True:
+            raise SmokeError("stream output stopped during runtime source mutations")
+        if after.get("session_id") != session_id:
+            raise SmokeError("managed stream session changed during runtime source mutations")
+        runtime_after = after.get("runtime_scene")
+        if not isinstance(runtime_after, dict) or runtime_after.get("status") != "PASS":
+            raise SmokeError("known runtime overrides were reported as unexpected drift")
+
+        persisted = self.api.get(f"/api/v1/scene-profiles/{self.config.profile_id}")
+        if persisted != self.profile_before_runtime:
+            raise SmokeError("runtime source mutation changed the persisted Scene Profile")
+
+        self._record(
+            "AC24",
+            "PASS",
+            f"outputActive=true and session_id={session_id} stayed unchanged across Show/Hide + Move",
+        )
+
+    def _verify_runtime_restore(self) -> None:
+        if self.profile_before_runtime is None or self.runtime_source_id is None:
+            raise SmokeError("runtime baseline evidence is unavailable")
+        persisted = self.api.get(f"/api/v1/scene-profiles/{self.config.profile_id}")
+        if persisted != self.profile_before_runtime:
+            raise SmokeError("persisted Scene Profile changed after Stop")
+        verify = self.api.post(
+            f"/api/v1/scene-profiles/{self.config.profile_id}/verify"
+        )
+        if not isinstance(verify, dict) or verify.get("status") != "PASS":
+            raise SmokeError(
+                f"post-Stop baseline verification was {self._safe(str(verify.get('status', 'unknown')))}"
+            )
 
     def _verify_ffprobe(self) -> None:
         profile = None
