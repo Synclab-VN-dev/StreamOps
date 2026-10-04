@@ -144,6 +144,15 @@ def test_rollback_refuses_modified_or_unmanaged_files(tmp_path):
     assert failure.value.code == "rollback_conflict"
 
 
+def test_rollback_accepts_new_empty_obs_config_with_utf8_bom(tmp_path):
+    installer, _, _ = make_installer(tmp_path)
+    installer.install()
+    config = installer.appdata / "obs-studio" / "basic" / "profiles" / "Default" / "obs-multi-rtmp.json"
+    config.parent.mkdir(parents=True)
+    config.write_text('{"audio_configs":[],"targets":[],"video_configs":[]}', encoding="utf-8-sig")
+    assert installer.rollback().result == "rolled_back"
+
+
 @pytest.mark.parametrize(
     ("installer_error", "api_code", "http_status"),
     [

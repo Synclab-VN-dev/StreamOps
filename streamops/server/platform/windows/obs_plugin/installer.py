@@ -355,7 +355,8 @@ class WindowsObsMultiRtmpInstaller:
     @staticmethod
     def _is_empty_plugin_config(path: Path) -> bool:
         try:
-            value = json.loads(path.read_text(encoding="utf-8"))
+            # OBS writes this file with a UTF-8 BOM on Windows.
+            value = json.loads(path.read_text(encoding="utf-8-sig"))
             return isinstance(value, dict) and set(value) <= {"audio_configs", "targets", "video_configs"} and all(
                 isinstance(value.get(name), list) and not value[name]
                 for name in ("audio_configs", "targets", "video_configs")
