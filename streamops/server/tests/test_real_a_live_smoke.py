@@ -178,3 +178,18 @@ def test_real_a_runner_requires_stop_cleanup_and_profile_checks() -> None:
 
     assert "profile_verify=PASS" in evidence
     assert "overrides_cleaned=true" in evidence
+
+
+
+def test_real_a_runner_default_transport_timeout_covers_stream_convergence(monkeypatch) -> None:
+    monkeypatch.setenv("STREAMOPS_BASE_URL", "http://127.0.0.1:8765")
+    monkeypatch.setenv("PROFILE_ID", "profile")
+    monkeypatch.setenv("RTMP_SERVER_URL", "rtmp://127.0.0.1:1935/live")
+    monkeypatch.setenv("RTMP_STREAM_KEY", "not-a-real-secret")
+    monkeypatch.delenv("FFPROBE_INPUT_URL", raising=False)
+
+    parsed = smoke.parse_config([])
+
+    assert smoke.DEFAULT_TIMEOUT == 20.0
+    assert parsed.timeout == 20.0
+    assert parsed.timeout > 12.0
