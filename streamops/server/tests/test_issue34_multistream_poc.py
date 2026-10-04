@@ -123,7 +123,13 @@ def test_strip_managed_preserves_foreign():
     assert len(original["targets"]) == 2
 
 
-def test_publisher_snapshot_detects_duplicate_and_ignores_other_paths():
+def test_publisher_snapshot_detects_zero_one_duplicate_and_ignores_other_paths():
+    assert m.publisher_snapshot({"items": []}, "live/a") == {"count": 0, "bytes": 0}
+    assert m.publisher_snapshot(
+        {"items": [{"state": "publish", "path": "live/a", "bytesReceived": 100}]},
+        "live/a",
+    ) == {"count": 1, "bytes": 100}
+
     payload = {
         "items": [
             {"state": "publish", "path": "live/a", "bytesReceived": 100},
@@ -132,8 +138,7 @@ def test_publisher_snapshot_detects_duplicate_and_ignores_other_paths():
             {"state": "read", "path": "live/a", "bytesReceived": 999},
         ]
     }
-    result = m.publisher_snapshot(payload, "live/a")
-    assert result == {"count": 2, "bytes": 300}
+    assert m.publisher_snapshot(payload, "live/a") == {"count": 2, "bytes": 300}
 
 
 def test_fault_isolation_requires_a_to_continue_and_media_to_stay_valid():
