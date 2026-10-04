@@ -8,6 +8,7 @@ param(
     [ValidateRange(0, 2147483647)]
     [int]$OutputIndex = 0,
     [string]$DataDir,
+    [string]$PythonPath,
     [ValidateRange(0.01, 30)]
     [double]$CaptureTimeout = 3,
     [ValidateSet("critical", "error", "warning", "info", "debug", "trace")]
@@ -20,6 +21,16 @@ Set-StrictMode -Version Latest
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 $launcher = Join-Path $PSScriptRoot "run-streamops-node.ps1"
 $pwsh = (Get-Command pwsh.exe -ErrorAction Stop).Source
+if ([string]::IsNullOrWhiteSpace($PythonPath)) {
+    $PythonPath = Join-Path $repoRoot ".venv\Scripts\python.exe"
+}
+elseif (-not [IO.Path]::IsPathRooted($PythonPath)) {
+    $PythonPath = [IO.Path]::GetFullPath((Join-Path $repoRoot $PythonPath))
+}
+$PythonPath = [IO.Path]::GetFullPath($PythonPath)
+if (-not (Test-Path -LiteralPath $PythonPath -PathType Leaf)) {
+    throw "Configured Python interpreter is missing: $PythonPath"
+}
 
 function ConvertTo-TaskArgument([string]$Value) {
     return '"' + $Value.Replace('"', '\"') + '"'
@@ -70,12 +81,22 @@ if ([string]::IsNullOrWhiteSpace($interactiveUser)) {
 }
 
 $runtimePath = Join-Path $DataDir "runtime.json"
+$existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+$taskUsesPythonPath = $false
+if ($null -ne $existingTask) {
+    $taskAction = $existingTask.Actions | Select-Object -First 1
+    if ($null -ne $taskAction) {
+        $taskArgumentsText = [string]$taskAction.Arguments
+        $taskUsesPythonPath = $taskArgumentsText.Contains("-PythonPath") -and
+            $taskArgumentsText.IndexOf($PythonPath, [StringComparison]::OrdinalIgnoreCase) -ge 0
+    }
+}
 if (Test-Path -LiteralPath $runtimePath) {
     try {
         $runtime = Get-Content -LiteralPath $runtimePath -Raw | ConvertFrom-Json
         $probeHost = Get-ProbeHost $runtime.host
         $health = Invoke-RestMethod -Uri "http://${probeHost}:$($runtime.port)/api/v1/health" -TimeoutSec 2
-        $matchesDesiredConfig =
+        $matchesDesiredConfig = $taskUsesPythonPath -and
             $runtime.host -eq $BindHost -and
             [int]$runtime.port -eq $Port -and
             [int]$runtime.output_index -eq $OutputIndex -and
@@ -106,6 +127,7 @@ $actionArguments = @(
     "-Port", $Port,
     "-OutputIndex", $OutputIndex,
     "-DataDir", (ConvertTo-TaskArgument $DataDir),
+    "-PythonPath", (ConvertTo-TaskArgument $PythonPath),
     "-CaptureTimeout", $CaptureTimeout.ToString([Globalization.CultureInfo]::InvariantCulture),
     "-LogLevel", $LogLevel
 ) -join " "

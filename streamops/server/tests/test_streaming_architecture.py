@@ -317,7 +317,18 @@ def test_stop_failure_preserves_recovery_snapshot(tmp_path: Path) -> None:
     assert session.has_restore() is True
 
 
-def test_output_active_delayed_convergence(tmp_path: Path) -> None:
+def test_output_active_delayed_convergence(tmp_path: Path, monkeypatch) -> None:
+    clock = {"now": 0.0}
+
+    monkeypatch.setattr(
+        "streamops.server.streaming.outputs.obs_native.time.monotonic",
+        lambda: clock["now"],
+    )
+    monkeypatch.setattr(
+        "streamops.server.streaming.outputs.obs_native.time.sleep",
+        lambda seconds: clock.__setitem__("now", clock["now"] + seconds),
+    )
+
     class DelayedStartClient(FakeObsClient):
         def __init__(self) -> None:
             super().__init__()
@@ -347,4 +358,5 @@ def test_output_active_delayed_convergence(tmp_path: Path) -> None:
 
     assert started["state"] == "LIVE"
     assert started["output"]["active"] is True
-    assert client.polls_after_start >= 3
+    assert client.polls_after_start == 3
+    assert clock["now"] == pytest.approx(0.002)

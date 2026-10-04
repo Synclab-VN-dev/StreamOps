@@ -366,6 +366,13 @@ def test_graceful_close_targets_visible_unowned_obs_window(tmp_path: Path) -> No
         def __init__(self) -> None:
             self.sent_to: int | None = None
             self.windows = {
+                50: {
+                    "pid": 100,
+                    "visible": True,
+                    "owner": 0,
+                    "title": "obs64",
+                    "class_name": "Qt6111QWindowPopupDropShadowSaveBits",
+                },
                 101: {
                     "pid": 100,
                     "visible": False,
@@ -466,4 +473,3 @@ def test_client_factory_failure_is_running_without_websocket(tmp_path: Path) -> 
     assert status.websocket["connected"] is False
     assert status.output == {"streaming": None, "recording": None}
     assert status.error == "invalid websocket configuration"
-

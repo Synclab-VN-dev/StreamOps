@@ -557,6 +557,16 @@ class ObsManager:
                 f"OBS PID {pid} has no top-level window that can receive a graceful close request."
             )
 
+        candidates = [
+            window
+            for window in windows
+            if not any(marker in window[4].casefold() for marker in ("popup", "tooltip", "dropshadow"))
+        ]
+        if not candidates:
+            raise ObsShutdownError(
+                f"OBS PID {pid} has no non-transient top-level window for a graceful close request."
+            )
+
         def score(window: tuple[int, bool, bool, str, str]) -> tuple[int, int]:
             hwnd, visible, unowned, title, class_name = window
             priority = 0
@@ -570,7 +580,7 @@ class ObsManager:
                 priority += 1
             return priority, -hwnd
 
-        target = max(windows, key=score)
+        target = max(candidates, key=score)
         hwnd, visible, unowned, title, class_name = target
         result = ctypes.c_size_t()
         sent = user32.SendMessageTimeoutW(
