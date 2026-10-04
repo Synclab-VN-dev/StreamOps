@@ -98,6 +98,69 @@ def live_status(request: Request) -> dict[str, Any]:
     return _service(request).status()
 
 
+@router.patch("/live/sources/{source_id}/visibility")
+def set_live_source_visibility(
+    source_id: str,
+    request: Request,
+    payload: dict[str, Any] = Body(...),
+) -> dict[str, Any]:
+    if set(payload) != {"visible"} or not isinstance(payload.get("visible"), bool):
+        from ..errors import StreamingError
+        raise StreamingError("invalid_request", "Body must contain only boolean field visible.", 422)
+    return _refresh(
+        request,
+        _service(request).set_source_visibility(source_id, payload["visible"]),
+    )
+
+
+@router.patch("/live/sources/{source_id}/position")
+def set_live_source_position(
+    source_id: str,
+    request: Request,
+    payload: dict[str, Any] = Body(...),
+) -> dict[str, Any]:
+    if not payload or set(payload) - {"x", "y"}:
+        from ..errors import StreamingError
+        raise StreamingError("invalid_request", "Body accepts only x and/or y.", 422)
+    return _refresh(
+        request,
+        _service(request).set_source_position(
+            source_id,
+            x=payload.get("x"),
+            y=payload.get("y"),
+        ),
+    )
+
+
+@router.post("/live/sources/{source_id}/move")
+def move_live_source(
+    source_id: str,
+    request: Request,
+    payload: dict[str, Any] = Body(...),
+) -> dict[str, Any]:
+    if set(payload) != {"dx", "dy"}:
+        from ..errors import StreamingError
+        raise StreamingError("invalid_request", "Body must contain only dx and dy.", 422)
+    return _refresh(
+        request,
+        _service(request).move_source(
+            source_id,
+            dx=payload.get("dx"),
+            dy=payload.get("dy"),
+        ),
+    )
+
+
+@router.delete("/live/sources/{source_id}/overrides")
+def reset_live_source_overrides(source_id: str, request: Request) -> dict[str, Any]:
+    return _refresh(request, _service(request).reset_source_overrides(source_id))
+
+
+@router.delete("/live/scene/overrides")
+def reset_live_scene_overrides(request: Request) -> dict[str, Any]:
+    return _refresh(request, _service(request).reset_runtime_overrides())
+
+
 @router.post("/live/stop")
 def stop_live(request: Request) -> dict[str, Any]:
     try:
