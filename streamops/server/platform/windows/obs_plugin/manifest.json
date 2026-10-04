@@ -7,7 +7,7 @@
   "artifact_url": "https://github.com/sorayuki/obs-multi-rtmp/releases/download/0.7.4.3/obs-multi-rtmp-0.7.4.0-windows-x64.zip",
   "artifact_sha256": "5fc2a14a4222cef914d4703325853b1f97247abe76bbd1fccd0dbd40831affe5",
   "file_count": 73,
-  "tree_sha256": "167788530d78d0fbf53fb6b86f6fd64de9b85118422edfcd3a12b51e87010042",
+  "tree_sha256": "d7e5df7f8656a314d1e8ce58f6688d8d3d757b630431b7a45b942e68f3ff6024",
   "relative_paths": [
     "bin/64bit/obs-multi-rtmp.dll",
     "bin/64bit/obs-multi-rtmp.pdb",

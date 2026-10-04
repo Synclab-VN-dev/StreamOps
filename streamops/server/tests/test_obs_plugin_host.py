@@ -80,6 +80,7 @@ def test_manifest_is_loaded_from_package_resource():
     assert manifest["release_tag"] == "0.7.4.3"
     assert manifest["package_version"] == "0.7.4.0"
     assert manifest["file_count"] == 73
+    assert manifest["tree_sha256"] == "d7e5df7f8656a314d1e8ce58f6688d8d3d757b630431b7a45b942e68f3ff6024"
 
 
 def test_obs_file_version_falls_back_when_product_version_is_unset():
