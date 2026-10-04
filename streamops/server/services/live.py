@@ -489,6 +489,7 @@ class LiveService:
         return {
             "state": state,
             "managed": bool(self._session),
+            "session_id": self._session.get("session_id") if self._session else None,
             "profile": self._session_profile(),
             "destination": self._session_destination(),
             "output": {
