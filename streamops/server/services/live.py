@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import UTC, datetime
+import math
 import threading
 from typing import Any
 from uuid import uuid4
 
 from ..errors import StreamingError
 from ..obs.client import ObsClient
+from ..scene_profiles import SOURCE_CATALOG
 from ..streaming import DestinationStore, LiveSessionStore, SecretStore
 from ..streaming.adapters import destination_type_catalog, get_destination_adapter
 from ..streaming.outputs import ObsNativeOutputEngine
@@ -210,6 +212,7 @@ class LiveService:
                 # but whose OBS output is already inactive.
                 if self._session or self.session_store.has_restore():
                     try:
+                        self._restore_runtime_overrides(client)
                         engine.restore_previous()
                     except StreamingError:
                         self._mark_session("RESTORE_FAILED")
@@ -231,6 +234,7 @@ class LiveService:
                     raise StreamingError(
                         "profile_verify_failed", "Runtime profile verification failed.", 409
                     )
+                verified_profile = deepcopy(self.scene_service.get_profile(profile_id))
                 self.scene_service.activate_profile(profile_id)
                 verify = self.scene_service.verify_profile(profile_id, runtime=True)
                 if getattr(verify, "status", None) != "PASS":
@@ -239,14 +243,29 @@ class LiveService:
                         "Runtime profile verification failed after activation.",
                         409,
                     )
+                try:
+                    current_profile = self.scene_service.get_profile(profile_id)
+                except Exception as exc:
+                    raise StreamingError(
+                        "profile_changed_during_start",
+                        "Scene Profile changed while the verified baseline was being established.",
+                        409,
+                    ) from exc
+                if current_profile != verified_profile:
+                    raise StreamingError(
+                        "profile_changed_during_start",
+                        "Scene Profile changed while the verified baseline was being established.",
+                        409,
+                    )
 
                 self._session = {
-                    "schema_version": 1,
+                    "schema_version": 2,
                     "session_id": str(uuid4()),
                     "state": "STARTING",
                     "profile_id": profile_id,
                     "destination_ids": [destination_id],
                     "started_at": _now(),
+                    "verified_baseline": self._freeze_verified_baseline(verified_profile),
                 }
                 self.session_store.save_session(self._session)
                 self._transition = "STARTING"
@@ -269,6 +288,135 @@ class LiveService:
             finally:
                 client.close()
 
+
+    def set_source_visibility(self, source_id: str, visible: bool) -> dict[str, Any]:
+        if not isinstance(visible, bool):
+            raise StreamingError("invalid_request", "visible must be a boolean.", 422)
+        with self._lock:
+            self._require_obs_ready()
+            client = self._client()
+            try:
+                self._require_runtime_mutable(client)
+                source, scene_name, item_id = self._runtime_source(client, source_id)
+                before = self._runtime_source_snapshot(client, source, scene_name, item_id)
+                client.set_scene_item_enabled(scene_name, item_id, visible)
+                override = self._runtime_override(source_id)
+                if visible == self._baseline_for_source(source)["visible"]:
+                    override.pop("visibility", None)
+                else:
+                    override["visibility"] = visible
+                self._prune_runtime_override(source_id)
+                self._record_runtime_activity(
+                    "visibility",
+                    source,
+                    {"visible": before["actual"]["visible"]},
+                    {"visible": visible},
+                )
+                self._persist_session()
+                return self._runtime_source_snapshot(client, source, scene_name, item_id)
+            finally:
+                client.close()
+
+    def set_source_position(
+        self,
+        source_id: str,
+        *,
+        x: float | int | None = None,
+        y: float | int | None = None,
+    ) -> dict[str, Any]:
+        if x is None and y is None:
+            raise StreamingError("invalid_request", "At least one of x or y is required.", 422)
+        if x is not None:
+            x = _coordinate(x, "x")
+        if y is not None:
+            y = _coordinate(y, "y")
+        with self._lock:
+            self._require_obs_ready()
+            client = self._client()
+            try:
+                self._require_runtime_mutable(client)
+                source, scene_name, item_id = self._runtime_source(
+                    client, source_id, require_position=True
+                )
+                before = self._runtime_source_snapshot(client, source, scene_name, item_id)
+                current = client.get_scene_item_transform(scene_name, item_id)
+                target_x = float(current.get("positionX") or 0.0) if x is None else float(x)
+                target_y = float(current.get("positionY") or 0.0) if y is None else float(y)
+                client.set_scene_item_transform(
+                    scene_name,
+                    item_id,
+                    {"positionX": target_x, "positionY": target_y},
+                )
+                self._set_position_override(source_id, source, target_x, target_y)
+                self._record_runtime_activity(
+                    "position",
+                    source,
+                    before["actual"].get("position"),
+                    {"x": target_x, "y": target_y},
+                )
+                self._persist_session()
+                return self._runtime_source_snapshot(client, source, scene_name, item_id)
+            finally:
+                client.close()
+
+    def move_source(self, source_id: str, *, dx: float | int, dy: float | int) -> dict[str, Any]:
+        dx = _coordinate(dx, "dx")
+        dy = _coordinate(dy, "dy")
+        with self._lock:
+            self._require_obs_ready()
+            client = self._client()
+            try:
+                self._require_runtime_mutable(client)
+                source, scene_name, item_id = self._runtime_source(
+                    client, source_id, require_position=True
+                )
+                before = self._runtime_source_snapshot(client, source, scene_name, item_id)
+                current = client.get_scene_item_transform(scene_name, item_id)
+                target_x = float(current.get("positionX") or 0.0) + float(dx)
+                target_y = float(current.get("positionY") or 0.0) + float(dy)
+                client.set_scene_item_transform(
+                    scene_name,
+                    item_id,
+                    {"positionX": target_x, "positionY": target_y},
+                )
+                self._set_position_override(source_id, source, target_x, target_y)
+                self._record_runtime_activity(
+                    "move",
+                    source,
+                    before["actual"].get("position"),
+                    {"x": target_x, "y": target_y, "dx": float(dx), "dy": float(dy)},
+                )
+                self._persist_session()
+                return self._runtime_source_snapshot(client, source, scene_name, item_id)
+            finally:
+                client.close()
+
+    def reset_source_overrides(self, source_id: str) -> dict[str, Any]:
+        with self._lock:
+            self._require_obs_ready()
+            client = self._client()
+            try:
+                self._require_runtime_mutable(client)
+                source, scene_name, item_id = self._runtime_source(client, source_id)
+                self._restore_source_override(client, source, scene_name, item_id)
+                self._record_runtime_activity("reset", source, None, self._baseline_for_source(source))
+                self._persist_session()
+                return self._runtime_source_snapshot(client, source, scene_name, item_id)
+            finally:
+                client.close()
+
+    def reset_runtime_overrides(self) -> dict[str, Any]:
+        with self._lock:
+            self._require_obs_ready()
+            client = self._client()
+            try:
+                self._require_runtime_mutable(client)
+                self._restore_runtime_overrides(client)
+                self._persist_session()
+                return self._runtime_scene_status(client)
+            finally:
+                client.close()
+
     def stop(self) -> dict[str, Any]:
         with self._lock:
             self._require_obs_ready()
@@ -287,6 +435,7 @@ class LiveService:
                         raise
 
                 try:
+                    self._restore_runtime_overrides(client)
                     engine.restore_previous()
                 except StreamingError:
                     self._transition = None
@@ -306,10 +455,18 @@ class LiveService:
             return {
                 "state": "OBS_NOT_READY",
                 "managed": bool(self._session),
+                "session_id": self._session.get("session_id") if self._session else None,
                 "profile": self._session_profile(),
                 "destination": self._session_destination(),
                 "output": {"active": False},
                 "started_at": self._session.get("started_at") if self._session else None,
+                "runtime_scene": {
+                    "status": "UNAVAILABLE",
+                    "sources": [],
+                    "overrides": deepcopy(self._runtime_overrides()),
+                } if self._session else None,
+                "runtime_activity": deepcopy(self._session.get("runtime_activity", []))
+                if self._session else [],
             }
         client = self._client()
         try:
@@ -356,6 +513,7 @@ class LiveService:
         return {
             "state": state,
             "managed": bool(self._session),
+            "session_id": self._session.get("session_id") if self._session else None,
             "profile": self._session_profile(),
             "destination": self._session_destination(),
             "output": {
@@ -370,7 +528,414 @@ class LiveService:
                 "cpu_usage": float(stats.get("cpuUsage") or 0.0),
             },
             "started_at": self._session.get("started_at") if self._session else None,
+            "runtime_scene": self._runtime_scene_status(client),
+            "runtime_activity": deepcopy(self._session.get("runtime_activity", [])) if self._session else [],
         }
+
+
+    def _require_runtime_mutable(self, client: Any) -> None:
+        if not self._session:
+            raise StreamingError(
+                "live_runtime_unavailable",
+                "Runtime scene control requires a managed live session.",
+                409,
+            )
+        if self._transition is not None or self._session.get("state") != "LIVE":
+            raise StreamingError(
+                "live_runtime_unavailable",
+                "Runtime scene control is available only while the managed session is LIVE.",
+                409,
+            )
+        stream = client.get_stream_status()
+        if not bool(stream.get("outputActive")):
+            raise StreamingError(
+                "live_runtime_unavailable",
+                "OBS streaming output is not active.",
+                409,
+            )
+
+    def _runtime_source(
+        self,
+        client: Any,
+        source_id: str,
+        *,
+        require_position: bool = False,
+    ) -> tuple[dict[str, Any], str, int]:
+        if not isinstance(source_id, str) or not source_id.strip():
+            raise StreamingError("invalid_request", "source_id must be a non-empty string.", 422)
+        if not self._session:
+            raise StreamingError("live_runtime_unavailable", "No managed live session.", 409)
+        verified_baseline = self._verified_baseline()
+        source = verified_baseline["sources"].get(source_id)
+        if source is None:
+            raise StreamingError(
+                "runtime_source_not_owned",
+                "Source does not belong to the active managed Scene Profile.",
+                404,
+            )
+        capability = SOURCE_CATALOG.get(source.get("type"), {})
+        if not capability.get("video"):
+            raise StreamingError(
+                "runtime_source_unsupported",
+                "Runtime scene control is limited to visual sources in this phase.",
+                409,
+            )
+        if require_position and "position" not in self._baseline_for_source(source):
+            raise StreamingError(
+                "runtime_position_unsupported",
+                "Source has no managed position baseline.",
+                409,
+            )
+        scene_name = verified_baseline["scene_name"]
+        source_name = source["obs_source_name"]
+        matches = [
+            item
+            for item in client.get_scene_item_list(scene_name)
+            if item.get("sourceName") == source_name
+        ]
+        if len(matches) != 1:
+            raise StreamingError(
+                "runtime_scene_item_unavailable",
+                "Expected exactly one matching OBS scene item for the managed source.",
+                409,
+            )
+        return source, scene_name, int(matches[0]["sceneItemId"])
+
+    @staticmethod
+    def _source_input_name(source: dict[str, Any]) -> str:
+        capability = SOURCE_CATALOG.get(source.get("type"), {})
+        if capability.get("existing"):
+            return str(source.get("settings", {}).get("source_name") or "")
+        return str(source.get("obs_name") or "")
+
+    def _freeze_verified_baseline(self, profile: dict[str, Any]) -> dict[str, Any]:
+        sources: dict[str, dict[str, Any]] = {}
+        for source in profile.get("sources", []):
+            source_id = str(source.get("id") or "")
+            if not source_id:
+                continue
+            baseline: dict[str, Any] = {"visible": bool(source.get("enabled", True))}
+            transform = source.get("transform")
+            if isinstance(transform, dict):
+                baseline["position"] = {
+                    "x": float(transform.get("x") or 0.0),
+                    "y": float(transform.get("y") or 0.0),
+                }
+            sources[source_id] = {
+                "id": source_id,
+                "name": source.get("name"),
+                "type": source.get("type"),
+                "obs_source_name": self._source_input_name(source),
+                "baseline": baseline,
+            }
+        return {
+            "profile_id": str(profile["id"]),
+            "profile_name": profile.get("name"),
+            "scene_name": str(profile["obs_scene_name"]),
+            "sources": sources,
+        }
+
+    def _verified_baseline(
+        self,
+        *,
+        error_code: str = "live_runtime_unavailable",
+    ) -> dict[str, Any]:
+        value = self._session.get("verified_baseline") if self._session else None
+        if (
+            not isinstance(value, dict)
+            or not isinstance(value.get("scene_name"), str)
+            or not value["scene_name"]
+            or not isinstance(value.get("sources"), dict)
+        ):
+            raise StreamingError(
+                error_code,
+                "The managed live session has no valid frozen verified baseline.",
+                409,
+            )
+        for source_id, source in value["sources"].items():
+            baseline = source.get("baseline") if isinstance(source, dict) else None
+            position = baseline.get("position") if isinstance(baseline, dict) else None
+            if (
+                not isinstance(source_id, str)
+                or not source_id
+                or not isinstance(source, dict)
+                or source.get("id") != source_id
+                or not isinstance(source.get("type"), str)
+                or not isinstance(source.get("obs_source_name"), str)
+                or not source["obs_source_name"]
+                or not isinstance(baseline, dict)
+                or not isinstance(baseline.get("visible"), bool)
+                or (
+                    position is not None
+                    and (
+                        not isinstance(position, dict)
+                        or not _finite_number(position.get("x"))
+                        or not _finite_number(position.get("y"))
+                    )
+                )
+            ):
+                raise StreamingError(
+                    error_code,
+                    "The managed live session has no valid frozen verified baseline.",
+                    409,
+                )
+        return value
+
+    def _runtime_overrides(self) -> dict[str, dict[str, Any]]:
+        if not self._session:
+            return {}
+        overrides = self._session.setdefault("runtime_overrides", {})
+        if not isinstance(overrides, dict):
+            overrides = {}
+            self._session["runtime_overrides"] = overrides
+        return overrides
+
+    def _runtime_override(self, source_id: str) -> dict[str, Any]:
+        overrides = self._runtime_overrides()
+        current = overrides.setdefault(source_id, {})
+        if not isinstance(current, dict):
+            current = {}
+            overrides[source_id] = current
+        return current
+
+    def _prune_runtime_override(self, source_id: str) -> None:
+        overrides = self._runtime_overrides()
+        current = overrides.get(source_id)
+        if isinstance(current, dict) and not current:
+            overrides.pop(source_id, None)
+
+    def _set_position_override(
+        self,
+        source_id: str,
+        source: dict[str, Any],
+        x: float,
+        y: float,
+    ) -> None:
+        baseline = self._baseline_for_source(source).get("position")
+        override = self._runtime_override(source_id)
+        if (
+            baseline
+            and _same_number(x, baseline["x"])
+            and _same_number(y, baseline["y"])
+        ):
+            override.pop("position", None)
+        else:
+            override["position"] = {"x": x, "y": y}
+        self._prune_runtime_override(source_id)
+
+    def _baseline_for_source(self, source: dict[str, Any]) -> dict[str, Any]:
+        baseline = source.get("baseline")
+        if not isinstance(baseline, dict) or not isinstance(baseline.get("visible"), bool):
+            raise StreamingError(
+                "live_runtime_unavailable",
+                "The managed source has no valid frozen verified baseline.",
+                409,
+            )
+        return deepcopy(baseline)
+
+    def _expected_for_source(self, source: dict[str, Any]) -> dict[str, Any]:
+        expected = deepcopy(self._baseline_for_source(source))
+        override = self._runtime_overrides().get(str(source.get("id")), {})
+        if isinstance(override, dict):
+            if "visibility" in override:
+                expected["visible"] = bool(override["visibility"])
+            position = override.get("position")
+            if isinstance(position, dict):
+                expected["position"] = {
+                    "x": float(position.get("x") or 0.0),
+                    "y": float(position.get("y") or 0.0),
+                }
+        return expected
+
+    def _runtime_source_snapshot(
+        self,
+        client: Any,
+        source: dict[str, Any],
+        scene_name: str,
+        item_id: int,
+    ) -> dict[str, Any]:
+        items = {
+            int(item["sceneItemId"]): item
+            for item in client.get_scene_item_list(scene_name)
+        }
+        item = items.get(item_id)
+        baseline = self._baseline_for_source(source)
+        expected = self._expected_for_source(source)
+        actual: dict[str, Any] = {
+            "visible": bool(item.get("sceneItemEnabled")) if item is not None else None,
+        }
+        if "position" in baseline and item is not None:
+            transform = client.get_scene_item_transform(scene_name, item_id)
+            actual["position"] = {
+                "x": float(transform.get("positionX") or 0.0),
+                "y": float(transform.get("positionY") or 0.0),
+            }
+        drift: list[str] = []
+        if item is None:
+            drift.append("item_missing")
+        else:
+            if actual["visible"] != expected["visible"]:
+                drift.append("visibility")
+            if "position" in expected:
+                position = actual.get("position")
+                if (
+                    not position
+                    or not _same_number(position["x"], expected["position"]["x"])
+                    or not _same_number(position["y"], expected["position"]["y"])
+                ):
+                    drift.append("position")
+        override = deepcopy(self._runtime_overrides().get(str(source.get("id")), {}))
+        return {
+            "id": source.get("id"),
+            "name": source.get("name"),
+            "type": source.get("type"),
+            "baseline": baseline,
+            "override": override,
+            "effective": expected,
+            "actual": actual,
+            "drift": drift,
+        }
+
+    def _runtime_scene_status(self, client: Any) -> dict[str, Any] | None:
+        if not self._session:
+            return None
+        try:
+            verified_baseline = self._verified_baseline()
+        except StreamingError:
+            return {
+                "status": "UNAVAILABLE",
+                "sources": [],
+                "overrides": deepcopy(self._runtime_overrides()),
+            }
+        scene_name = verified_baseline["scene_name"]
+        try:
+            items = client.get_scene_item_list(scene_name)
+        except Exception:
+            return {
+                "status": "UNAVAILABLE",
+                "sources": [],
+                "overrides": deepcopy(self._runtime_overrides()),
+            }
+        by_name: dict[str, list[dict[str, Any]]] = {}
+        for item in items:
+            by_name.setdefault(str(item.get("sourceName") or ""), []).append(item)
+        sources: list[dict[str, Any]] = []
+        for source in verified_baseline["sources"].values():
+            capability = SOURCE_CATALOG.get(source.get("type"), {})
+            if not capability.get("video"):
+                continue
+            matches = by_name.get(source["obs_source_name"], [])
+            if len(matches) != 1:
+                baseline = self._baseline_for_source(source)
+                sources.append({
+                    "id": source.get("id"),
+                    "name": source.get("name"),
+                    "type": source.get("type"),
+                    "baseline": baseline,
+                    "override": deepcopy(self._runtime_overrides().get(str(source.get("id")), {})),
+                    "effective": self._expected_for_source(source),
+                    "actual": {"visible": None},
+                    "drift": ["item_missing"],
+                })
+                continue
+            sources.append(
+                self._runtime_source_snapshot(
+                    client,
+                    source,
+                    scene_name,
+                    int(matches[0]["sceneItemId"]),
+                )
+            )
+        return {
+            "status": "PASS" if all(not item["drift"] for item in sources) else "DRIFTED",
+            "sources": sources,
+            "overrides": deepcopy(self._runtime_overrides()),
+        }
+
+    def _restore_source_override(
+        self,
+        client: Any,
+        source: dict[str, Any],
+        scene_name: str,
+        item_id: int,
+    ) -> None:
+        source_id = str(source["id"])
+        override = deepcopy(self._runtime_overrides().get(source_id, {}))
+        if not override:
+            return
+        baseline = self._baseline_for_source(source)
+        try:
+            if "visibility" in override:
+                client.set_scene_item_enabled(scene_name, item_id, baseline["visible"])
+            if "position" in override and "position" in baseline:
+                client.set_scene_item_transform(
+                    scene_name,
+                    item_id,
+                    {
+                        "positionX": baseline["position"]["x"],
+                        "positionY": baseline["position"]["y"],
+                    },
+                )
+        except Exception as exc:
+            raise StreamingError(
+                "runtime_restore_failed",
+                f"Could not restore runtime override for source {source.get('name') or source_id}.",
+                409,
+            ) from exc
+        self._runtime_overrides().pop(source_id, None)
+
+    def _restore_runtime_overrides(self, client: Any) -> None:
+        if not self._session:
+            return
+        pending = list(self._runtime_overrides())
+        if not pending:
+            return
+        verified_baseline = self._verified_baseline(error_code="runtime_restore_failed")
+        sources = verified_baseline["sources"]
+        for source_id in pending:
+            source = sources.get(source_id)
+            if source is None:
+                raise StreamingError(
+                    "runtime_restore_failed",
+                    f"Could not restore unknown runtime source {source_id}.",
+                    409,
+                )
+            _, scene_name, item_id = self._runtime_source(client, source_id)
+            self._restore_source_override(client, source, scene_name, item_id)
+            self._record_runtime_activity(
+                "restore",
+                source,
+                None,
+                self._baseline_for_source(source),
+            )
+            self._persist_session()
+
+    def _record_runtime_activity(
+        self,
+        action: str,
+        source: dict[str, Any],
+        before: Any,
+        after: Any,
+    ) -> None:
+        if not self._session:
+            return
+        entries = self._session.setdefault("runtime_activity", [])
+        if not isinstance(entries, list):
+            entries = []
+            self._session["runtime_activity"] = entries
+        entries.append({
+            "at": _now(),
+            "action": action,
+            "source_id": source.get("id"),
+            "source_name": source.get("name"),
+            "before": deepcopy(before),
+            "after": deepcopy(after),
+        })
+        del entries[:-50]
+
+    def _persist_session(self) -> None:
+        if self._session:
+            self.session_store.save_session(self._session)
 
     def _require_obs_ready(self) -> None:
         runtime = self.manager.status()
@@ -406,6 +971,11 @@ class LiveService:
     def _session_profile(self) -> dict[str, Any] | None:
         if not self._session:
             return None
+        baseline = self._session.get("verified_baseline")
+        if isinstance(baseline, dict):
+            profile_id = baseline.get("profile_id")
+            if isinstance(profile_id, str) and profile_id:
+                return {"id": profile_id, "name": baseline.get("profile_name")}
         try:
             profile = self.scene_service.get_profile(self._session["profile_id"])
         except Exception:
@@ -457,3 +1027,23 @@ def _check(identifier: str, passed: bool, message: str) -> dict[str, str]:
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _coordinate(value: Any, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise StreamingError("invalid_request", f"{name} must be a finite number.", 422)
+    number = float(value)
+    if not math.isfinite(number):
+        raise StreamingError("invalid_request", f"{name} must be a finite number.", 422)
+    return number
+
+
+def _same_number(left: Any, right: Any) -> bool:
+    try:
+        return math.isclose(float(left), float(right), rel_tol=0.0, abs_tol=0.01)
+    except (TypeError, ValueError):
+        return False
+
+
+def _finite_number(value: Any) -> bool:
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)

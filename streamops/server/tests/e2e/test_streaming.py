@@ -369,3 +369,114 @@ def test_preflight_fail_blocks_start_and_typed_start_error_is_rendered(page, liv
         assert 'typed-error-secret' not in page.locator('body').inner_text()
     finally:
         live_server.live.start = original_start
+
+
+def test_live_runtime_source_controls_survive_refresh_and_restore_baseline(page, live_server):
+    profile = live_server.obs.create_profile({
+        'name': 'Runtime Control Profile',
+        'sources': [{
+            'name': 'Clock',
+            'type': 'browser_source',
+            'enabled': False,
+            'settings': {
+                'url': 'https://example.invalid/clock',
+                'width': 320,
+                'height': 180,
+            },
+            'transform': {
+                'x': 100,
+                'y': 50,
+                'width': 320,
+                'height': 180,
+            },
+        }],
+    })
+    live_server.obs.apply_profile(profile['id'])
+    live_server.obs.activate_profile(profile['id'])
+    assert live_server.obs.verify_profile(profile['id'], runtime=True).status == 'PASS'
+    profile = live_server.obs.get_profile(profile['id'])
+    source = profile['sources'][0]
+    scene_name = profile['obs_scene_name']
+
+    page.set_viewport_size({'width': 390, 'height': 844})
+    page.goto(live_server.base_url + '/obs/stream')
+    expect(page.locator('#stream-page-state')).to_have_text('IDLE', timeout=7000)
+    expect(page.locator('#stream-profile-list')).to_have_value(profile['id'])
+
+    create_destination_ui(page, secret='runtime-scene-secret')
+    open_card(page, '#stream-preflight-card')
+    page.locator('#run-preflight-button').click()
+    expect(page.locator('#preflight-state')).to_have_text('PASS')
+
+    open_card(page, '#stream-live-card')
+    page.locator('#start-stream-button').click()
+    expect(page.locator('#live-state-pill')).to_have_text('LIVE', timeout=7000)
+
+    open_card(page, '#live-sources-card')
+    row = page.locator('.live-source-row').filter(has_text='Clock')
+    expect(row).to_be_visible()
+    expect(row).to_contain_text('Baseline')
+    expect(row).to_contain_text('Hidden')
+    expect(row).to_contain_text('X 100')
+    expect(row).to_contain_text('Y 50')
+
+    row.locator('.source-visibility-toggle').click()
+    expect(row).to_contain_text('RUNTIME OVERRIDE', timeout=7000)
+    expect(row).to_contain_text('Visible')
+
+    row = page.locator('.live-source-row').filter(has_text='Clock')
+    row.locator('.source-position-x').fill('40')
+    row.locator('.source-position-y').fill('40')
+    row.locator('.apply-position').click()
+    expect(row.locator('.source-position-x')).to_have_value('40', timeout=7000)
+    expect(row.locator('.source-position-y')).to_have_value('40')
+
+    row = page.locator('.live-source-row').filter(has_text='Clock')
+    row.locator('.source-move-step').fill('10')
+    row.get_by_role('button', name='Move right').click()
+    expect(row.locator('.source-position-x')).to_have_value('50', timeout=7000)
+    expect(row.locator('.source-position-y')).to_have_value('40')
+
+    item = next(
+        item for item in live_server.transport.get_scene_item_list(scene_name)
+        if item['sourceName'] == source['obs_name']
+    )
+    item_id = int(item['sceneItemId'])
+    assert item['sceneItemEnabled'] is True
+    transform = live_server.transport.get_scene_item_transform(scene_name, item_id)
+    assert transform['positionX'] == 50
+    assert transform['positionY'] == 40
+    assert live_server.transport.streaming is True
+
+    # A full browser reload must recover the server-owned override without
+    # mutating the saved Scene Profile.
+    page.reload()
+    expect(page.locator('#live-state-pill')).to_have_text('LIVE', timeout=7000)
+    open_card(page, '#live-sources-card')
+    row = page.locator('.live-source-row').filter(has_text='Clock')
+    expect(row).to_contain_text('RUNTIME OVERRIDE')
+    expect(row).to_contain_text('Visible')
+    expect(row.locator('.source-position-x')).to_have_value('50')
+    expect(row.locator('.source-position-y')).to_have_value('40')
+    assert live_server.obs.get_profile(profile['id']) == profile
+    assert page.evaluate(
+        'document.documentElement.scrollWidth <= document.documentElement.clientWidth'
+    )
+
+    # Stop restores the verified baseline and clears runtime-session metadata.
+    open_card(page, '#stream-live-card')
+    page.locator('#stop-stream-button').click()
+    expect(page.locator('#live-state-pill')).to_have_text('IDLE', timeout=7000)
+
+    restored_item = next(
+        item for item in live_server.transport.get_scene_item_list(scene_name)
+        if item['sourceName'] == source['obs_name']
+    )
+    assert restored_item['sceneItemEnabled'] is False
+    restored = live_server.transport.get_scene_item_transform(
+        scene_name, int(restored_item['sceneItemId'])
+    )
+    assert restored['positionX'] == 100
+    assert restored['positionY'] == 50
+    assert live_server.live.session_store.load_session() is None
+    assert live_server.obs.get_profile(profile['id']) == profile

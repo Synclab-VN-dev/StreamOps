@@ -184,6 +184,33 @@
           </div>
         </details>
 
+
+        <details id="live-sources-card" class="operational-card">
+          <summary class="operational-card-summary">
+            <div class="card-title-row">
+              <div>
+                <h2>Live Sources</h2>
+                <p>Safe runtime visibility and position overrides</p>
+              </div>
+              <span id="live-sources-state" class="state-pill" data-tone="neutral">IDLE</span>
+            </div>
+            <div class="summary-grid summary-grid-2">
+              <div><span>Visual sources</span><strong id="live-sources-count">0</strong></div>
+              <div><span>Overrides</span><strong id="live-overrides-count">0</strong></div>
+            </div>
+          </summary>
+          <div class="operational-card-body">
+            <p id="live-sources-empty" class="muted-copy">
+              Runtime controls are available while a managed stream is LIVE.
+            </p>
+            <div id="live-source-list" class="live-source-list" aria-live="polite"></div>
+            <div class="action-row">
+              <button id="reset-live-sources-button" type="button" disabled>Reset all to baseline</button>
+            </div>
+            <p id="live-sources-error" class="error-message" role="alert" hidden></p>
+          </div>
+        </details>
+
         <details id="stream-activity-card" class="operational-card activity-panel">
           <summary class="operational-card-summary">
             <div class="card-title-row">

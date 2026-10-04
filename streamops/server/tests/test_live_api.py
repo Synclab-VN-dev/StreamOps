@@ -17,9 +17,26 @@ class FakeManager:
         return SimpleNamespace(state="READY")
 
 
+RUNTIME_SOURCE_ID = "runtime-clock"
+
+
 class FakeSceneService:
     def __init__(self, profile_id: str) -> None:
-        self.profile = {"id": profile_id, "name": "D4 Livestream", "obs_scene_name": "D4"}
+        self.deleted = False
+        self.profile = {
+            "id": profile_id,
+            "name": "D4 Livestream",
+            "obs_scene_name": "D4",
+            "sources": [{
+                "id": RUNTIME_SOURCE_ID,
+                "name": "Clock",
+                "type": "browser_source",
+                "obs_name": "StreamOps Clock",
+                "enabled": False,
+                "settings": {"url": "http://example.invalid"},
+                "transform": {"x": 100, "y": 50, "width": 320, "height": 180},
+            }],
+        }
 
     def close(self) -> None:
         pass
@@ -28,9 +45,18 @@ class FakeSceneService:
         return "D4"
 
     def get_profile(self, profile_id: str):
-        if profile_id != self.profile["id"]:
+        if self.deleted or profile_id != self.profile["id"]:
             raise KeyError(profile_id)
         return self.profile
+
+    def update_profile(self, profile_id: str, payload: dict):
+        self.get_profile(profile_id)
+        self.profile = {**payload, "id": profile_id}
+        return self.profile
+
+    def delete_profile(self, profile_id: str) -> None:
+        self.get_profile(profile_id)
+        self.deleted = True
 
     def verify_profile(self, profile_id: str, *, runtime: bool = True):
         self.get_profile(profile_id)
@@ -45,6 +71,18 @@ class FakeObsClient:
     def __init__(self) -> None:
         self.active = False
         self.service = {"streamServiceType": "rtmp_common", "streamServiceSettings": {"service": "Existing"}}
+        self.item = {"sceneItemId": 7, "sourceName": "StreamOps Clock", "sceneItemEnabled": False}
+        self.transform = {
+            "positionX": 100.0,
+            "positionY": 50.0,
+            "scaleX": 1.0,
+            "scaleY": 1.0,
+            "rotation": 0.0,
+            "cropLeft": 0,
+            "cropRight": 0,
+            "cropTop": 0,
+            "cropBottom": 0,
+        }
 
     def close(self):
         pass
@@ -74,6 +112,25 @@ class FakeObsClient:
 
     def stop_stream(self):
         self.active = False
+
+    def get_scene_item_list(self, scene_name: str):
+        assert scene_name == "D4"
+        return [dict(self.item)]
+
+    def set_scene_item_enabled(self, scene_name: str, item_id: int, enabled: bool):
+        assert scene_name == "D4"
+        assert item_id == 7
+        self.item["sceneItemEnabled"] = enabled
+
+    def get_scene_item_transform(self, scene_name: str, item_id: int):
+        assert scene_name == "D4"
+        assert item_id == 7
+        return dict(self.transform)
+
+    def set_scene_item_transform(self, scene_name: str, item_id: int, transform: dict):
+        assert scene_name == "D4"
+        assert item_id == 7
+        self.transform.update(transform)
 
 
 class NoopObsStatusHub:
@@ -167,6 +224,65 @@ def test_http_streaming_contract(server_config, capture_service, tmp_path: Path)
         assert client.post("/api/v1/live/start", json=args).json()["state"] == "LIVE"
         assert client.get("/api/v1/live/status").json()["state"] == "LIVE"
 
+        shown = client.patch(
+            f"/api/v1/live/sources/{RUNTIME_SOURCE_ID}/visibility",
+            json={"visible": True},
+        )
+        assert shown.status_code == 200
+        assert shown.json()["actual"]["visible"] is True
+
+        positioned = client.patch(
+            f"/api/v1/live/sources/{RUNTIME_SOURCE_ID}/position",
+            json={"x": 40},
+        )
+        assert positioned.status_code == 200
+        assert positioned.json()["actual"]["position"] == {"x": 40.0, "y": 50.0}
+
+        moved = client.post(
+            f"/api/v1/live/sources/{RUNTIME_SOURCE_ID}/move",
+            json={"dx": 20, "dy": 10},
+        )
+        assert moved.status_code == 200
+        assert moved.json()["actual"]["position"] == {"x": 60.0, "y": 60.0}
+
+        runtime_status = client.get("/api/v1/live/status").json()["runtime_scene"]
+        assert runtime_status["status"] == "PASS"
+        assert runtime_status["sources"][0]["override"]["visibility"] is True
+
+        edited_profile = {
+            **client.get(f"/api/v1/scene-profiles/{profile_id}").json(),
+            "name": "Edited while live",
+        }
+        edited_profile["sources"][0]["obs_name"] = "Edited OBS Binding"
+        edited_profile["sources"][0]["enabled"] = True
+        edited_profile["sources"][0]["transform"]["x"] = 500
+        edited_profile["sources"][0]["transform"]["y"] = 600
+        assert client.put(
+            f"/api/v1/scene-profiles/{profile_id}", json=edited_profile
+        ).status_code == 200
+        assert client.get("/api/v1/live/status").json()["runtime_scene"]["status"] == "PASS"
+        assert client.delete(f"/api/v1/scene-profiles/{profile_id}").status_code == 204
+
+        rejected = client.patch(
+            f"/api/v1/live/sources/{RUNTIME_SOURCE_ID}/position",
+            json={"x": 1, "rotation": 90},
+        )
+        assert rejected.status_code == 422
+        assert rejected.json()["error"]["code"] == "invalid_request"
+
+        reset = client.delete(
+            f"/api/v1/live/sources/{RUNTIME_SOURCE_ID}/overrides"
+        )
+        assert reset.status_code == 200
+        assert reset.json()["override"] == {}
+
+        shown_after_delete = client.patch(
+            f"/api/v1/live/sources/{RUNTIME_SOURCE_ID}/visibility",
+            json={"visible": True},
+        )
+        assert shown_after_delete.status_code == 200
+        assert shown_after_delete.json()["actual"]["visible"] is True
+
         blocked_update = client.put(
             f"/api/v1/stream-destinations/{destination_id}",
             json={**updated_payload, "name": "Blocked While Live"},
@@ -253,6 +369,59 @@ def test_live_websocket_initial_snapshot_and_commands(server_config, capture_ser
                 live_event = _event(websocket, "stream.snapshot", state="LIVE")
             assert live_event["data"]["destination"]["id"] == destination_id
             assert "private-key" not in repr(live_event)
+
+            websocket.send_json({
+                "type": "request",
+                "request_id": "show-source-1",
+                "operation": "live.source.visibility",
+                "payload": {"source_id": RUNTIME_SOURCE_ID, "visible": True},
+            })
+            shown = _response(websocket, "show-source-1")
+            assert shown["ok"] is True
+            assert shown["data"]["actual"]["visible"] is True
+
+            websocket.send_json({
+                "type": "request",
+                "request_id": "move-source-1",
+                "operation": "live.source.move",
+                "payload": {"source_id": RUNTIME_SOURCE_ID, "dx": 20, "dy": 10},
+            })
+            moved = _response(websocket, "move-source-1")
+            assert moved["ok"] is True
+            assert moved["data"]["actual"]["position"] == {"x": 120.0, "y": 60.0}
+
+            with client.websocket_connect("/api/v1/live/ws") as reconnected:
+                initial_after_reconnect = reconnected.receive_json()
+                assert initial_after_reconnect["type"] == "event"
+                assert initial_after_reconnect["event"] == "stream.snapshot"
+                assert initial_after_reconnect["data"]["state"] == "LIVE"
+                runtime_scene = initial_after_reconnect["data"]["runtime_scene"]
+                assert runtime_scene["status"] == "PASS"
+                assert runtime_scene["overrides"][RUNTIME_SOURCE_ID]["visibility"] is True
+                assert runtime_scene["overrides"][RUNTIME_SOURCE_ID]["position"] == {
+                    "x": 120.0,
+                    "y": 60.0,
+                }
+
+            websocket.send_json({
+                "type": "request",
+                "request_id": "bad-transform-1",
+                "operation": "live.source.position",
+                "payload": {"source_id": RUNTIME_SOURCE_ID, "x": 1, "rotation": 90},
+            })
+            rejected = _response(websocket, "bad-transform-1")
+            assert rejected["ok"] is False
+            assert rejected["error"]["code"] == "invalid_request"
+
+            websocket.send_json({
+                "type": "request",
+                "request_id": "reset-source-1",
+                "operation": "live.source.reset",
+                "payload": {"source_id": RUNTIME_SOURCE_ID},
+            })
+            reset = _response(websocket, "reset-source-1")
+            assert reset["ok"] is True
+            assert reset["data"]["override"] == {}
 
             websocket.send_json({
                 "type": "request",

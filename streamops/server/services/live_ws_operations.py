@@ -23,6 +23,11 @@ class LiveWsOperations:
             "live.preflight": self._live_preflight,
             "live.start": self._live_start,
             "live.status": self._live_status,
+            "live.source.visibility": self._live_source_visibility,
+            "live.source.position": self._live_source_position,
+            "live.source.move": self._live_source_move,
+            "live.source.reset": self._live_source_reset,
+            "live.scene.reset_overrides": self._live_scene_reset_overrides,
             "live.stop": self._live_stop,
         }
 
@@ -111,6 +116,46 @@ class LiveWsOperations:
     def _live_status(self, payload: dict[str, Any]) -> Any:
         self._fields(payload)
         return self.service.status()
+
+
+    def _live_source_visibility(self, payload: dict[str, Any]) -> Any:
+        source_id = self._identifier(payload, "source_id", "visible")
+        visible = payload.get("visible")
+        if not isinstance(visible, bool):
+            raise WsOperationError("invalid_request", "visible must be a boolean.")
+        return self._refresh(self.service.set_source_visibility(source_id, visible))
+
+    def _live_source_position(self, payload: dict[str, Any]) -> Any:
+        source_id = self._identifier(payload, "source_id", "x", "y")
+        if "x" not in payload and "y" not in payload:
+            raise WsOperationError("invalid_request", "At least one of x or y is required.")
+        return self._refresh(
+            self.service.set_source_position(
+                source_id,
+                x=payload.get("x"),
+                y=payload.get("y"),
+            )
+        )
+
+    def _live_source_move(self, payload: dict[str, Any]) -> Any:
+        source_id = self._identifier(payload, "source_id", "dx", "dy")
+        if "dx" not in payload or "dy" not in payload:
+            raise WsOperationError("invalid_request", "dx and dy are required.")
+        return self._refresh(
+            self.service.move_source(
+                source_id,
+                dx=payload.get("dx"),
+                dy=payload.get("dy"),
+            )
+        )
+
+    def _live_source_reset(self, payload: dict[str, Any]) -> Any:
+        source_id = self._identifier(payload, "source_id")
+        return self._refresh(self.service.reset_source_overrides(source_id))
+
+    def _live_scene_reset_overrides(self, payload: dict[str, Any]) -> Any:
+        self._fields(payload)
+        return self._refresh(self.service.reset_runtime_overrides())
 
     def _live_stop(self, payload: dict[str, Any]) -> Any:
         self._fields(payload)
