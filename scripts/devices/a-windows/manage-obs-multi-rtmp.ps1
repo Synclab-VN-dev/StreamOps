@@ -409,7 +409,7 @@ function Invoke-Verify {
                 Select-Object -Last 3 |
                 ForEach-Object { $_.Line }
         )
-        $moduleListed = $null -ne (Select-String -LiteralPath $latestLog.FullName -Pattern "^\s+obs-multi-rtmp\.dll\s*$" -CaseSensitive:$false | Select-Object -First 1)
+        $moduleListed = $null -ne (Select-String -LiteralPath $latestLog.FullName -Pattern "obs-multi-rtmp\.dll\s*$" -CaseSensitive:$false | Select-Object -First 1)
     }
     $result = [ordered]@{
         action = "Verify"
@@ -463,7 +463,11 @@ function Invoke-Rollback {
         }
     }
 
-    $baselineConfigPaths = @($transaction.baseline_plugin_configs | ForEach-Object { [string]$_.path })
+    $baselineConfigPaths = @(
+        $transaction.baseline_plugin_configs |
+            Where-Object { $null -ne $_ -and $null -ne $_.PSObject.Properties["path"] } |
+            ForEach-Object { [string]$_.path }
+    )
     $newEmptyConfigs = [Collections.Generic.List[string]]::new()
     foreach ($config in @(Get-PluginConfigMetadata)) {
         if ($config.path -notin $baselineConfigPaths) {
