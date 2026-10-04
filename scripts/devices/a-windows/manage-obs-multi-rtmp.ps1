@@ -483,7 +483,7 @@ function Invoke-Rollback {
             action = "Rollback"
             what_if = $true
             plugin_root = $pluginRoot
-            files_to_remove = $actualFiles.relative_path
+            files_to_remove = @($actualFiles | ForEach-Object { [string]$_.relative_path })
             empty_profile_configs_to_remove = @($newEmptyConfigs)
             backup_to_restore = $transaction.backup_root
         } | ConvertTo-Json -Depth 8
