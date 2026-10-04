@@ -23,7 +23,7 @@ be stopped through StreamOps before `Install` or `Rollback`.
 ```powershell
 pwsh -NoProfile -File .\scripts\devices\a-windows\manage-obs-multi-rtmp.ps1 -Action Inspect
 pwsh -NoProfile -File .\scripts\devices\a-windows\manage-obs-multi-rtmp.ps1 -Action Install -WhatIf
-pwsh -NoProfile -File .\scripts\devices\a-windows\manage-obs-multi-rtmp.ps1 -Action Install
+pwsh -NoProfile -File .\scripts\devices\a-windows\manage-obs-multi-rtmp.ps1 -Action Install -Confirm:$false
 pwsh -NoProfile -File .\scripts\devices\a-windows\manage-obs-multi-rtmp.ps1 -Action Verify
 ```
 
@@ -47,7 +47,7 @@ Inspect the exact rollback first, then apply it while OBS is stopped:
 
 ```powershell
 pwsh -NoProfile -File .\scripts\devices\a-windows\manage-obs-multi-rtmp.ps1 -Action Rollback -WhatIf
-pwsh -NoProfile -File .\scripts\devices\a-windows\manage-obs-multi-rtmp.ps1 -Action Rollback
+pwsh -NoProfile -File .\scripts\devices\a-windows\manage-obs-multi-rtmp.ps1 -Action Rollback -Confirm:$false
 ```
 
 Rollback removes only manifest-owned files whose hashes still match. It restores

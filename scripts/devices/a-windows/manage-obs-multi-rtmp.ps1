@@ -268,6 +268,21 @@ function Assert-NoExistingPluginConfig {
 function Invoke-Install {
     Assert-ObsStopped
     [void](Assert-ObsVersion)
+    Assert-NoExistingPluginConfig
+    if ($WhatIfPreference) {
+        [void]$PSCmdlet.ShouldProcess($pluginRoot, "Install pinned obs-multi-rtmp $releaseTag ($expectedFileCount files)")
+        [ordered]@{
+            action = "Install"
+            what_if = $true
+            release_tag = $releaseTag
+            package_version = $packageVersion
+            artifact_url = $artifactUrl
+            artifact_sha256 = $artifactSha256
+            plugin_root = $pluginRoot
+            expected_file_count = $expectedFileCount
+        } | ConvertTo-Json -Depth 6
+        return
+    }
     $artifact = Get-ValidatedArtifact
     try {
         $currentFiles = @(Get-PluginFiles)
@@ -283,7 +298,6 @@ function Invoke-Install {
             } | ConvertTo-Json -Depth 6
             return
         }
-        Assert-NoExistingPluginConfig
         if (-not $PSCmdlet.ShouldProcess($pluginRoot, "Install pinned obs-multi-rtmp $releaseTag ($expectedFileCount files)")) {
             [ordered]@{ action = "Install"; what_if = $true; plugin_root = $pluginRoot; files = $artifact.files } |
                 ConvertTo-Json -Depth 8
