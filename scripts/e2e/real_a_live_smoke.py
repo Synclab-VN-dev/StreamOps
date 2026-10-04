@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the PR #31 Real-A livestream smoke test from an orchestrator host.
+"""Run the PR #38 Real-A livestream smoke test from an orchestrator host.
 
 The runner intentionally uses only the public HTTP/WebSocket contract.  It does
 not connect directly to OBS and never prints the configured stream credential.
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from copy import deepcopy
 from dataclasses import dataclass
 from fractions import Fraction
 import json
@@ -132,7 +133,11 @@ class WsMonitor:
         if not self.connected.wait(timeout=self.timeout):
             raise SmokeError(self.error or "WebSocket did not connect before timeout")
 
-    def wait_live_snapshot(self, timeout: float) -> dict[str, Any]:
+    def wait_live_snapshot(
+        self,
+        timeout: float,
+        predicate: Callable[[dict[str, Any]], bool] | None = None,
+    ) -> dict[str, Any]:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             with self._lock:
@@ -143,6 +148,7 @@ class WsMonitor:
                         and isinstance(message.get("data"), dict)
                         and message["data"].get("state") == "LIVE"
                         and message["data"].get("output", {}).get("active") is True
+                        and (predicate is None or predicate(message["data"]))
                     ):
                         return message
             if self.error and not self.connected.is_set():
@@ -203,7 +209,14 @@ class SmokeRun:
         self.secret_leak = False
         self.profile_before_runtime: dict[str, Any] | None = None
         self.runtime_source_id: str | None = None
+        self.runtime_source_name: str | None = None
         self.runtime_session_id: str | None = None
+        self.runtime_baseline: dict[str, Any] | None = None
+        self.runtime_expected: dict[str, Any] | None = None
+        self.runtime_override: dict[str, Any] | None = None
+        self.destination_before_runtime: dict[str, Any] | None = None
+        self.destinations_before: dict[str, Any] | None = None
+        self.post_stop_status: dict[str, Any] | None = None
 
     def run(self) -> int:
         try:
@@ -239,6 +252,7 @@ class SmokeRun:
                 self._skip(name, "blocked by OBS_READY")
             return
 
+        self._step("OUTPUT_CONFIG_BASELINE", self._capture_output_config_baseline)
         self._step("DESTINATION_CREATE", self._create_destination)
         if self.destination_id is None:
             for name in (
@@ -277,6 +291,9 @@ class SmokeRun:
         self._step("AC32", self._verify_runtime_scene_control)
         if self._failed("AC32") and not any(result.name == "AC24" for result in self.results):
             self._record("AC24", "FAIL", "runtime continuity could not be proven because AC32 failed")
+        if not self._failed("AC32"):
+            self._step("REFRESH_RECOVERY", self._verify_runtime_refresh_recovery)
+            self._step("WS_RECONNECT_RECOVERY", self._verify_ws_reconnect_recovery)
 
         if self.ws is None:
             self._record("WS_LIVE_SNAPSHOT", "FAIL", "WebSocket monitor was not started")
@@ -326,6 +343,12 @@ class SmokeRun:
             raise SmokeError("new destination did not report credential_configured=false")
         self.destination_id = destination_id
 
+    def _capture_output_config_baseline(self) -> None:
+        destinations = self.api.get("/api/v1/stream-destinations")
+        if not isinstance(destinations, dict):
+            raise SmokeError("stream destination list was not an object")
+        self.destinations_before = destinations
+
     def _set_credential(self) -> None:
         response = self.api.put(
             f"/api/v1/stream-destinations/{self.destination_id}/credential",
@@ -370,7 +393,7 @@ class SmokeRun:
         return samples
 
 
-    def _verify_runtime_scene_control(self) -> None:
+    def _verify_runtime_scene_control(self) -> str:
         profile = self.api.get(f"/api/v1/scene-profiles/{self.config.profile_id}")
         if not isinstance(profile, dict):
             raise SmokeError("Scene Profile response was not an object")
@@ -406,6 +429,7 @@ class SmokeRun:
             raise SmokeError("active profile has no visual source with managed X/Y position")
 
         source_id = source["id"]
+        source_name = str(source.get("name") or source_id)
         actual = source["actual"]
         position = actual["position"]
         visible = bool(actual.get("visible"))
@@ -416,7 +440,16 @@ class SmokeRun:
             raise SmokeError("runtime source did not expose numeric X/Y position") from error
 
         self.runtime_source_id = source_id
+        self.runtime_source_name = source_name
         self.runtime_session_id = session_id
+        self.runtime_baseline = {
+            "visible": visible,
+            "position": {"x": x, "y": y},
+        }
+        destination = self.api.get(f"/api/v1/stream-destinations/{self.destination_id}")
+        if not isinstance(destination, dict):
+            raise SmokeError("active destination response was not an object")
+        self.destination_before_runtime = destination
 
         visibility = self.api.patch(
             f"/api/v1/live/sources/{source_id}/visibility",
@@ -424,6 +457,10 @@ class SmokeRun:
         )
         if visibility.get("actual", {}).get("visible") is not (not visible):
             raise SmokeError("runtime visibility mutation did not converge")
+        visibility_status = self._assert_live_continuity(session_id, "visibility")
+        visibility_source = self._status_source(visibility_status, source_id)
+        if visibility_source.get("actual", {}).get("visible") is not (not visible):
+            raise SmokeError("runtime visibility was not retained in live status")
 
         positioned = self.api.patch(
             f"/api/v1/live/sources/{source_id}/position",
@@ -434,6 +471,13 @@ class SmokeRun:
             raise SmokeError("absolute runtime X position did not converge")
         if abs(float(positioned_actual.get("y")) - (y + 20.0)) > 0.01:
             raise SmokeError("absolute runtime Y position did not converge")
+        positioned_status = self._assert_live_continuity(session_id, "absolute position")
+        self._assert_position(
+            self._status_source(positioned_status, source_id),
+            x + 20.0,
+            y + 20.0,
+            "absolute runtime position was not retained in live status",
+        )
 
         moved = self.api.post(
             f"/api/v1/live/sources/{source_id}/move",
@@ -445,26 +489,125 @@ class SmokeRun:
         if abs(float(moved_actual.get("y")) - (y + 20.0)) > 0.01:
             raise SmokeError("relative runtime Y movement did not converge")
 
-        after = self.api.get("/api/v1/live/status")
-        if after.get("state") != "LIVE" or after.get("output", {}).get("active") is not True:
-            raise SmokeError("stream output stopped during runtime source mutations")
-        if after.get("session_id") != session_id:
-            raise SmokeError("managed stream session changed during runtime source mutations")
+        after = self._assert_live_continuity(session_id, "relative move")
+        after_source = self._status_source(after, source_id)
+        self._assert_position(
+            after_source,
+            x + 30.0,
+            y + 20.0,
+            "relative runtime position was not retained in live status",
+        )
         runtime_after = after.get("runtime_scene")
         if not isinstance(runtime_after, dict) or runtime_after.get("status") != "PASS":
             raise SmokeError("known runtime overrides were reported as unexpected drift")
+        overrides = runtime_after.get("overrides")
+        override = overrides.get(source_id) if isinstance(overrides, dict) else None
+        if not isinstance(override, dict):
+            raise SmokeError("server-owned live status did not contain the runtime override")
+        expected_override = {
+            "visibility": not visible,
+            "position": {"x": x + 30.0, "y": y + 20.0},
+        }
+        if override != expected_override:
+            raise SmokeError("server-owned runtime override did not match the effective source state")
+        self.runtime_override = expected_override
+        self.runtime_expected = deepcopy(after_source.get("actual"))
 
         persisted = self.api.get(f"/api/v1/scene-profiles/{self.config.profile_id}")
         if persisted != self.profile_before_runtime:
             raise SmokeError("runtime source mutation changed the persisted Scene Profile")
+        destination_after = self.api.get(f"/api/v1/stream-destinations/{self.destination_id}")
+        if destination_after != self.destination_before_runtime:
+            raise SmokeError("runtime source mutation changed the stream destination configuration")
 
         self._record(
             "AC24",
             "PASS",
-            f"outputActive=true and session_id={session_id} stayed unchanged across Show/Hide + Move",
+            f"outputActive=true; session_id before={session_id}; session_id after={session_id}",
+        )
+        return (
+            f"source={source_name}; baseline visibility={visible}; baseline x/y={_compact_number(x)},{_compact_number(y)}; "
+            f"runtime visibility={not visible}; absolute x/y={_compact_number(x + 20.0)},{_compact_number(y + 20.0)}; "
+            f"relative move result={_compact_number(x + 30.0)},{_compact_number(y + 20.0)}; "
+            "profile_unchanged=true; destination_unchanged=true; runtime_scene.status=PASS"
         )
 
-    def _verify_runtime_restore(self) -> None:
+    def _assert_live_continuity(self, session_id: str, stage: str) -> dict[str, Any]:
+        status = self.api.get("/api/v1/live/status")
+        if not isinstance(status, dict):
+            raise SmokeError(f"live status was not an object after {stage}")
+        if status.get("state") != "LIVE" or status.get("output", {}).get("active") is not True:
+            raise SmokeError(f"stream output stopped after {stage}")
+        if status.get("session_id") != session_id:
+            raise SmokeError(f"managed stream session changed after {stage}")
+        return status
+
+    @staticmethod
+    def _status_source(status: dict[str, Any], source_id: str) -> dict[str, Any]:
+        runtime_scene = status.get("runtime_scene")
+        sources = runtime_scene.get("sources", []) if isinstance(runtime_scene, dict) else []
+        source = next(
+            (item for item in sources if isinstance(item, dict) and item.get("id") == source_id),
+            None,
+        )
+        if source is None:
+            raise SmokeError("selected runtime source was absent from live status")
+        return source
+
+    @staticmethod
+    def _assert_position(source: dict[str, Any], x: float, y: float, message: str) -> None:
+        position = source.get("actual", {}).get("position", {})
+        try:
+            matched = abs(float(position.get("x")) - x) <= 0.01 and abs(float(position.get("y")) - y) <= 0.01
+        except (TypeError, ValueError):
+            matched = False
+        if not matched:
+            raise SmokeError(message)
+
+    def _verify_runtime_refresh_recovery(self) -> str:
+        if self.runtime_session_id is None or self.runtime_source_id is None or self.runtime_override is None:
+            raise SmokeError("runtime recovery evidence is unavailable")
+        status = self._assert_live_continuity(self.runtime_session_id, "client refresh")
+        runtime_scene = status.get("runtime_scene")
+        overrides = runtime_scene.get("overrides") if isinstance(runtime_scene, dict) else None
+        if not isinstance(overrides, dict) or overrides.get(self.runtime_source_id) != self.runtime_override:
+            raise SmokeError("HTTP refresh did not recover the server-owned runtime override")
+        return "server-owned override remained present after fresh GET /api/v1/live/status"
+
+    def _verify_ws_reconnect_recovery(self) -> str:
+        if (
+            self.runtime_session_id is None
+            or self.runtime_source_id is None
+            or self.runtime_override is None
+            or self.runtime_expected is None
+        ):
+            raise SmokeError("WebSocket recovery evidence is unavailable")
+        if self.ws is not None:
+            self.ws.close()
+        self.ws = WsMonitor(self._ws_url(), self.config.stream_key, self.config.timeout)
+        self.ws.start()
+        self.ws.wait_connected()
+
+        def recovered(data: dict[str, Any]) -> bool:
+            runtime_scene = data.get("runtime_scene")
+            overrides = runtime_scene.get("overrides") if isinstance(runtime_scene, dict) else None
+            try:
+                source = self._status_source(data, self.runtime_source_id or "")
+            except SmokeError:
+                return False
+            return (
+                data.get("session_id") == self.runtime_session_id
+                and isinstance(runtime_scene, dict)
+                and runtime_scene.get("status") == "PASS"
+                and isinstance(overrides, dict)
+                and overrides.get(self.runtime_source_id) == self.runtime_override
+                and deepcopy(source.get("actual")) == self.runtime_expected
+            )
+
+        self.ws.wait_live_snapshot(self.config.live_timeout, recovered)
+        return f"fresh WebSocket snapshot retained session_id={self.runtime_session_id} and runtime override"
+
+    def _verify_runtime_restore(self) -> str:
         if self.profile_before_runtime is None or self.runtime_source_id is None:
             raise SmokeError("runtime baseline evidence is unavailable")
         persisted = self.api.get(f"/api/v1/scene-profiles/{self.config.profile_id}")
@@ -477,6 +620,35 @@ class SmokeRun:
             raise SmokeError(
                 f"post-Stop baseline verification was {self._safe(str(verify.get('status', 'unknown')))}"
             )
+        status = self.post_stop_status or self.api.get("/api/v1/live/status")
+        if (
+            not isinstance(status, dict)
+            or status.get("state") != "IDLE"
+            or status.get("managed") is not False
+            or status.get("session_id") is not None
+            or status.get("runtime_scene") is not None
+        ):
+            raise SmokeError("runtime override metadata was not cleaned after successful Stop restore")
+        checks = verify.get("checks", [])
+        required_ids = {
+            f"item.{self.runtime_source_id}.enabled",
+            f"item.{self.runtime_source_id}.transform.positionX",
+            f"item.{self.runtime_source_id}.transform.positionY",
+        }
+        passed_ids = {
+            item.get("id")
+            for item in checks
+            if isinstance(item, dict) and item.get("status") == "PASS"
+        }
+        if not required_ids.issubset(passed_ids):
+            raise SmokeError("post-Stop Verify did not prove selected source visibility and X/Y baseline")
+        baseline = self.runtime_baseline or {}
+        position = baseline.get("position", {})
+        return (
+            f"source={self.runtime_source_name or self.runtime_source_id}; state=IDLE; "
+            f"baseline visibility={baseline.get('visible')}; baseline x/y={_compact_number(float(position.get('x', 0)))},"
+            f"{_compact_number(float(position.get('y', 0)))}; profile_verify=PASS; overrides_cleaned=true"
+        )
 
     def _verify_ffprobe(self) -> None:
         profile = None
@@ -555,6 +727,7 @@ class SmokeRun:
         output = status.get("output", {}) if isinstance(status, dict) else {}
         if status.get("state") != "IDLE" or output.get("active") is not False:
             raise SmokeError("post-stop status was not IDLE with output.active=false")
+        self.post_stop_status = status
 
     def _verify_quiescent(self) -> None:
         first = self.api.get("/api/v1/live/status")
@@ -583,10 +756,21 @@ class SmokeRun:
                 self.api.delete(f"/api/v1/stream-destinations/{self.destination_id}")
             except Exception as error:
                 cleanup_failures.append(f"destination delete: {self._safe(str(error))}")
+        if self.destinations_before is not None:
+            try:
+                destinations_after = self.api.get("/api/v1/stream-destinations")
+                if destinations_after != self.destinations_before:
+                    cleanup_failures.append("persistent destination configuration changed")
+            except Exception as error:
+                cleanup_failures.append(f"destination verify: {self._safe(str(error))}")
         if cleanup_failures:
             self._record("CLEANUP", "FAIL", "; ".join(cleanup_failures))
         else:
-            self._record("CLEANUP", "PASS", "stop, credential delete and destination delete completed")
+            self._record(
+                "CLEANUP",
+                "PASS",
+                "stop completed; transient credential/destination removed; persistent destinations unchanged",
+            )
 
     def _record_increasing(self, name: str, values: list[float]) -> None:
         ok = len(values) >= 2 and all(right > left for left, right in zip(values, values[1:]))
@@ -596,8 +780,8 @@ class SmokeRun:
         try:
             value = operation()
             evidence = "completed"
-            if isinstance(value, dict):
-                evidence = "completed"
+            if isinstance(value, str) and value:
+                evidence = value
             self._record(name, "PASS", evidence)
         except SecretLeakError:
             self.secret_leak = True

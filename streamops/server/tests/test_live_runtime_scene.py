@@ -80,6 +80,8 @@ class FakeObsClient:
             "boundsType": "OBS_BOUNDS_NONE",
             "boundsWidth": 320.0,
             "boundsHeight": 180.0,
+            "alignment": 5,
+            "boundsAlignment": 5,
         }
         self.fail_transform = False
 
