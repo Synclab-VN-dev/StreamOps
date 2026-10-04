@@ -359,6 +359,19 @@ def test_live_websocket_initial_snapshot_and_commands(server_config, capture_ser
             assert moved["ok"] is True
             assert moved["data"]["actual"]["position"] == {"x": 120.0, "y": 60.0}
 
+            with client.websocket_connect("/api/v1/live/ws") as reconnected:
+                initial_after_reconnect = reconnected.receive_json()
+                assert initial_after_reconnect["type"] == "event"
+                assert initial_after_reconnect["event"] == "stream.snapshot"
+                assert initial_after_reconnect["data"]["state"] == "LIVE"
+                runtime_scene = initial_after_reconnect["data"]["runtime_scene"]
+                assert runtime_scene["status"] == "PASS"
+                assert runtime_scene["overrides"][RUNTIME_SOURCE_ID]["visibility"] is True
+                assert runtime_scene["overrides"][RUNTIME_SOURCE_ID]["position"] == {
+                    "x": 120.0,
+                    "y": 60.0,
+                }
+
             websocket.send_json({
                 "type": "request",
                 "request_id": "bad-transform-1",
