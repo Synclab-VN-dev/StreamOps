@@ -254,9 +254,7 @@ paths:
             p.kill(); p.wait(3)
     def snapshot(self, path: str, timeout: float) -> dict[str, int]:
         data = get_json(f"http://127.0.0.1:{self.api}/v3/rtmp/conns/list", timeout)
-        items = data.get("items", []) if isinstance(data, dict) else []
-        matches = [x for x in items if isinstance(x, dict) and x.get("state") == "publish" and str(x.get("path") or "").strip("/") == path.strip("/")]
-        return {"count": len(matches), "bytes": sum(int(number(x.get("bytesReceived")) or 0) for x in matches)}
+        return publisher_snapshot(data, path)
     def wait(self, path: str, count: int, timeout: float) -> dict[str, int]:
         deadline, last = time.monotonic()+timeout, {"count":-1,"bytes":0}
         while time.monotonic() < deadline:
@@ -363,7 +361,8 @@ class Runner:
     def fault(self,w,h,fps):
         self.obs.start_stream(); wait_stream(self.obs,True,self.args.live_timeout); self.a.wait(self.ta.path,1,self.args.live_timeout); self.b.wait(self.tb.path,1,self.args.live_timeout)
         before=self.a.snapshot(self.ta.path,self.args.timeout); self.b.stop(); time.sleep(2); after=self.a.snapshot(self.ta.path,self.args.timeout)
-        ok=after["count"]==1 and after["bytes"]>before["bytes"] and all(x.status!="FAIL" for x in eval_ffprobe(probe(self.args.ffprobe,self.ta.url,self.secrets,self.args.timeout),w,h,fps))
+        checks = eval_ffprobe(probe(self.args.ffprobe,self.ta.url,self.secrets,self.args.timeout),w,h,fps)
+        ok = fault_isolation_ok(before, after, checks)
         self.record("AC-A-07_FAULT_ISOLATION","PASS" if ok else "FAIL",f"A publisher={after['count']}; bytes_progress={after['bytes']>before['bytes']}")
         self.b.start(self.args.timeout)
         try: self.b.wait(self.tb.path,1,min(15,self.args.live_timeout)); self.record("B_RECONNECT_BEHAVIOR","PASS","B auto-reconnected")
@@ -380,8 +379,7 @@ class Runner:
             if self.cfg_path:
                 try:
                     self.lifecycle("stop")
-                    if self.cfg_raw is None: self.cfg_path.unlink(missing_ok=True)
-                    else: self.cfg_path.write_bytes(self.cfg_raw)
+                    restore_file(self.cfg_path, self.cfg_raw)
                     self.lifecycle("start"); self.connect_obs(); self.check_identity()
                 except Exception as e: errors.append("plugin config: "+redact(str(e),self.secrets))
             self.a.stop(); self.b.stop()
@@ -408,6 +406,26 @@ class Runner:
         finally: self.restore()
         return self.write()
 
+
+def publisher_snapshot(payload: Any, path: str) -> dict[str, int]:
+    items = payload.get("items", []) if isinstance(payload, dict) else []
+    matches = [
+        item for item in items
+        if isinstance(item, dict)
+        and item.get("state") == "publish"
+        and str(item.get("path") or "").strip("/") == path.strip("/")
+    ]
+    return {"count": len(matches), "bytes": sum(int(number(item.get("bytesReceived")) or 0) for item in matches)}
+
+def fault_isolation_ok(before: dict[str, int], after: dict[str, int], checks: Iterable[Result]) -> bool:
+    return after.get("count") == 1 and after.get("bytes", 0) > before.get("bytes", 0) and all(item.status != "FAIL" for item in checks)
+
+def restore_file(path: Path, raw: bytes | None) -> None:
+    if raw is None:
+        path.unlink(missing_ok=True)
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(raw)
 
 def windows_obs_process_count() -> int:
     if os.name != "nt":
