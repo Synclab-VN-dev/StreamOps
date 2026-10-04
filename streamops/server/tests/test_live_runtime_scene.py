@@ -19,6 +19,7 @@ class FakeManager:
 
 class FakeSceneService:
     def __init__(self, profile_id: str, source_id: str) -> None:
+        self.deleted = False
         self.profile = {
             "id": profile_id,
             "name": "Runtime Profile",
@@ -42,7 +43,7 @@ class FakeSceneService:
         }
 
     def get_profile(self, profile_id: str):
-        if profile_id != self.profile["id"]:
+        if self.deleted or profile_id != self.profile["id"]:
             raise KeyError(profile_id)
         return self.profile
 
@@ -308,6 +309,114 @@ def test_runtime_override_recovers_after_live_service_restart(tmp_path: Path) ->
     assert client.item["sceneItemEnabled"] is False
     assert client.transform["positionX"] == 100.0
     assert client.transform["positionY"] == 50.0
+
+
+def test_saved_profile_update_does_not_change_frozen_runtime_baseline(tmp_path: Path) -> None:
+    service, scenes, client, source_id, _ = start_live(tmp_path)
+    persisted = service.session_store.load_session()
+    assert persisted is not None
+    assert persisted["schema_version"] == 2
+    assert persisted["verified_baseline"]["sources"][source_id]["baseline"] == {
+        "visible": False,
+        "position": {"x": 100.0, "y": 50.0},
+    }
+
+    service.set_source_visibility(source_id, True)
+    service.set_source_position(source_id, x=40, y=40)
+    saved_source = scenes.profile["sources"][0]
+    saved_source["name"] = "Edited Clock"
+    saved_source["obs_name"] = "Edited OBS Binding"
+    saved_source["enabled"] = True
+    saved_source["transform"]["x"] = 500
+    saved_source["transform"]["y"] = 600
+
+    status = service.status()
+    assert status["runtime_scene"]["status"] == "PASS"
+    runtime = status["runtime_scene"]["sources"][0]
+    assert runtime["name"] == "Clock"
+    assert runtime["baseline"] == {
+        "visible": False,
+        "position": {"x": 100.0, "y": 50.0},
+    }
+
+    reset = service.reset_source_overrides(source_id)
+    assert reset["actual"]["visible"] is False
+    assert reset["actual"]["position"] == {"x": 100.0, "y": 50.0}
+
+    service.set_source_visibility(source_id, True)
+    service.set_source_position(source_id, x=10, y=20)
+    assert service.stop()["state"] == "IDLE"
+    assert client.item["sceneItemEnabled"] is False
+    assert client.transform["positionX"] == 100.0
+    assert client.transform["positionY"] == 50.0
+
+
+def test_profile_delete_and_service_restart_keep_frozen_baseline(tmp_path: Path) -> None:
+    service, scenes, client, source_id, _ = start_live(tmp_path)
+    service.set_source_visibility(source_id, True)
+    service.set_source_position(source_id, x=40, y=40)
+    scenes.deleted = True
+
+    assert service.status()["runtime_scene"]["status"] == "PASS"
+    recovered = LiveService(
+        FakeManager(),
+        scenes,
+        DestinationStore(tmp_path / "destinations"),
+        SecretStore(tmp_path / "secrets"),
+        client_factory=lambda: client,
+        poll_interval=0.001,
+    )
+    recovered_status = recovered.status()
+    assert recovered_status["state"] == "LIVE"
+    assert recovered_status["profile"]["name"] == "Runtime Profile"
+    assert recovered_status["runtime_scene"]["status"] == "PASS"
+
+    assert recovered.stop()["state"] == "IDLE"
+    assert client.item["sceneItemEnabled"] is False
+    assert client.transform["positionX"] == 100.0
+    assert client.transform["positionY"] == 50.0
+
+
+def test_missing_frozen_baseline_fails_restore_with_typed_recovery_state(tmp_path: Path) -> None:
+    service, _, client, source_id, _ = start_live(tmp_path)
+    service.set_source_position(source_id, x=40, y=40)
+    service._session.pop("verified_baseline")
+    service._persist_session()
+
+    assert service.status()["runtime_scene"] == {
+        "status": "UNAVAILABLE",
+        "sources": [],
+        "overrides": {source_id: {"position": {"x": 40.0, "y": 40.0}}},
+    }
+
+    with pytest.raises(StreamingError) as error:
+        service.stop()
+
+    assert error.value.code == "runtime_restore_failed"
+    assert client.active is False
+    persisted = service.session_store.load_session()
+    assert persisted is not None
+    assert persisted["state"] == "RESTORE_FAILED"
+    assert persisted["runtime_overrides"][source_id]["position"] == {"x": 40.0, "y": 40.0}
+
+
+def test_profile_change_during_start_is_rejected_before_output_start(tmp_path: Path) -> None:
+    service, scenes, client, profile_id, _, destination_id = service_fixture(tmp_path)
+    original_activate = scenes.activate_profile
+
+    def activate_then_edit(active_profile_id: str):
+        result = original_activate(active_profile_id)
+        scenes.profile["name"] = "Concurrent edit"
+        return result
+
+    scenes.activate_profile = activate_then_edit
+
+    with pytest.raises(StreamingError) as error:
+        service.start(profile_id, destination_id)
+
+    assert error.value.code == "profile_changed_during_start"
+    assert client.active is False
+    assert service.session_store.load_session() is None
 
 
 def test_reset_all_restores_baseline_without_touching_output_configuration(tmp_path: Path) -> None:

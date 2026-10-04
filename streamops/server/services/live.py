@@ -234,6 +234,7 @@ class LiveService:
                     raise StreamingError(
                         "profile_verify_failed", "Runtime profile verification failed.", 409
                     )
+                verified_profile = deepcopy(self.scene_service.get_profile(profile_id))
                 self.scene_service.activate_profile(profile_id)
                 verify = self.scene_service.verify_profile(profile_id, runtime=True)
                 if getattr(verify, "status", None) != "PASS":
@@ -242,14 +243,29 @@ class LiveService:
                         "Runtime profile verification failed after activation.",
                         409,
                     )
+                try:
+                    current_profile = self.scene_service.get_profile(profile_id)
+                except Exception as exc:
+                    raise StreamingError(
+                        "profile_changed_during_start",
+                        "Scene Profile changed while the verified baseline was being established.",
+                        409,
+                    ) from exc
+                if current_profile != verified_profile:
+                    raise StreamingError(
+                        "profile_changed_during_start",
+                        "Scene Profile changed while the verified baseline was being established.",
+                        409,
+                    )
 
                 self._session = {
-                    "schema_version": 1,
+                    "schema_version": 2,
                     "session_id": str(uuid4()),
                     "state": "STARTING",
                     "profile_id": profile_id,
                     "destination_ids": [destination_id],
                     "started_at": _now(),
+                    "verified_baseline": self._freeze_verified_baseline(verified_profile),
                 }
                 self.session_store.save_session(self._session)
                 self._transition = "STARTING"
@@ -285,7 +301,7 @@ class LiveService:
                 before = self._runtime_source_snapshot(client, source, scene_name, item_id)
                 client.set_scene_item_enabled(scene_name, item_id, visible)
                 override = self._runtime_override(source_id)
-                if visible == bool(source.get("enabled", True)):
+                if visible == self._baseline_for_source(source)["visible"]:
                     override.pop("visibility", None)
                 else:
                     override["visibility"] = visible
@@ -549,11 +565,8 @@ class LiveService:
             raise StreamingError("invalid_request", "source_id must be a non-empty string.", 422)
         if not self._session:
             raise StreamingError("live_runtime_unavailable", "No managed live session.", 409)
-        profile = self.scene_service.get_profile(self._session["profile_id"])
-        source = next(
-            (item for item in profile.get("sources", []) if item.get("id") == source_id),
-            None,
-        )
+        verified_baseline = self._verified_baseline()
+        source = verified_baseline["sources"].get(source_id)
         if source is None:
             raise StreamingError(
                 "runtime_source_not_owned",
@@ -567,14 +580,14 @@ class LiveService:
                 "Runtime scene control is limited to visual sources in this phase.",
                 409,
             )
-        if require_position and not isinstance(source.get("transform"), dict):
+        if require_position and "position" not in self._baseline_for_source(source):
             raise StreamingError(
                 "runtime_position_unsupported",
                 "Source has no managed position baseline.",
                 409,
             )
-        scene_name = str(profile["obs_scene_name"])
-        source_name = self._source_input_name(source)
+        scene_name = verified_baseline["scene_name"]
+        source_name = source["obs_source_name"]
         matches = [
             item
             for item in client.get_scene_item_list(scene_name)
@@ -594,6 +607,79 @@ class LiveService:
         if capability.get("existing"):
             return str(source.get("settings", {}).get("source_name") or "")
         return str(source.get("obs_name") or "")
+
+    def _freeze_verified_baseline(self, profile: dict[str, Any]) -> dict[str, Any]:
+        sources: dict[str, dict[str, Any]] = {}
+        for source in profile.get("sources", []):
+            source_id = str(source.get("id") or "")
+            if not source_id:
+                continue
+            baseline: dict[str, Any] = {"visible": bool(source.get("enabled", True))}
+            transform = source.get("transform")
+            if isinstance(transform, dict):
+                baseline["position"] = {
+                    "x": float(transform.get("x") or 0.0),
+                    "y": float(transform.get("y") or 0.0),
+                }
+            sources[source_id] = {
+                "id": source_id,
+                "name": source.get("name"),
+                "type": source.get("type"),
+                "obs_source_name": self._source_input_name(source),
+                "baseline": baseline,
+            }
+        return {
+            "profile_id": str(profile["id"]),
+            "profile_name": profile.get("name"),
+            "scene_name": str(profile["obs_scene_name"]),
+            "sources": sources,
+        }
+
+    def _verified_baseline(
+        self,
+        *,
+        error_code: str = "live_runtime_unavailable",
+    ) -> dict[str, Any]:
+        value = self._session.get("verified_baseline") if self._session else None
+        if (
+            not isinstance(value, dict)
+            or not isinstance(value.get("scene_name"), str)
+            or not value["scene_name"]
+            or not isinstance(value.get("sources"), dict)
+        ):
+            raise StreamingError(
+                error_code,
+                "The managed live session has no valid frozen verified baseline.",
+                409,
+            )
+        for source_id, source in value["sources"].items():
+            baseline = source.get("baseline") if isinstance(source, dict) else None
+            position = baseline.get("position") if isinstance(baseline, dict) else None
+            if (
+                not isinstance(source_id, str)
+                or not source_id
+                or not isinstance(source, dict)
+                or source.get("id") != source_id
+                or not isinstance(source.get("type"), str)
+                or not isinstance(source.get("obs_source_name"), str)
+                or not source["obs_source_name"]
+                or not isinstance(baseline, dict)
+                or not isinstance(baseline.get("visible"), bool)
+                or (
+                    position is not None
+                    and (
+                        not isinstance(position, dict)
+                        or not _finite_number(position.get("x"))
+                        or not _finite_number(position.get("y"))
+                    )
+                )
+            ):
+                raise StreamingError(
+                    error_code,
+                    "The managed live session has no valid frozen verified baseline.",
+                    409,
+                )
+        return value
 
     def _runtime_overrides(self) -> dict[str, dict[str, Any]]:
         if not self._session:
@@ -638,14 +724,14 @@ class LiveService:
         self._prune_runtime_override(source_id)
 
     def _baseline_for_source(self, source: dict[str, Any]) -> dict[str, Any]:
-        baseline: dict[str, Any] = {"visible": bool(source.get("enabled", True))}
-        transform = source.get("transform")
-        if isinstance(transform, dict):
-            baseline["position"] = {
-                "x": float(transform.get("x") or 0.0),
-                "y": float(transform.get("y") or 0.0),
-            }
-        return baseline
+        baseline = source.get("baseline")
+        if not isinstance(baseline, dict) or not isinstance(baseline.get("visible"), bool):
+            raise StreamingError(
+                "live_runtime_unavailable",
+                "The managed source has no valid frozen verified baseline.",
+                409,
+            )
+        return deepcopy(baseline)
 
     def _expected_for_source(self, source: dict[str, Any]) -> dict[str, Any]:
         expected = deepcopy(self._baseline_for_source(source))
@@ -714,14 +800,14 @@ class LiveService:
         if not self._session:
             return None
         try:
-            profile = self.scene_service.get_profile(self._session["profile_id"])
-        except Exception:
+            verified_baseline = self._verified_baseline()
+        except StreamingError:
             return {
                 "status": "UNAVAILABLE",
                 "sources": [],
                 "overrides": deepcopy(self._runtime_overrides()),
             }
-        scene_name = str(profile.get("obs_scene_name") or "")
+        scene_name = verified_baseline["scene_name"]
         try:
             items = client.get_scene_item_list(scene_name)
         except Exception:
@@ -734,11 +820,11 @@ class LiveService:
         for item in items:
             by_name.setdefault(str(item.get("sourceName") or ""), []).append(item)
         sources: list[dict[str, Any]] = []
-        for source in profile.get("sources", []):
+        for source in verified_baseline["sources"].values():
             capability = SOURCE_CATALOG.get(source.get("type"), {})
             if not capability.get("video"):
                 continue
-            matches = by_name.get(self._source_input_name(source), [])
+            matches = by_name.get(source["obs_source_name"], [])
             if len(matches) != 1:
                 baseline = self._baseline_for_source(source)
                 sources.append({
@@ -804,11 +890,8 @@ class LiveService:
         pending = list(self._runtime_overrides())
         if not pending:
             return
-        profile = self.scene_service.get_profile(self._session["profile_id"])
-        sources = {
-            str(source.get("id")): source
-            for source in profile.get("sources", [])
-        }
+        verified_baseline = self._verified_baseline(error_code="runtime_restore_failed")
+        sources = verified_baseline["sources"]
         for source_id in pending:
             source = sources.get(source_id)
             if source is None:
@@ -888,6 +971,11 @@ class LiveService:
     def _session_profile(self) -> dict[str, Any] | None:
         if not self._session:
             return None
+        baseline = self._session.get("verified_baseline")
+        if isinstance(baseline, dict):
+            profile_id = baseline.get("profile_id")
+            if isinstance(profile_id, str) and profile_id:
+                return {"id": profile_id, "name": baseline.get("profile_name")}
         try:
             profile = self.scene_service.get_profile(self._session["profile_id"])
         except Exception:
@@ -955,3 +1043,7 @@ def _same_number(left: Any, right: Any) -> bool:
         return math.isclose(float(left), float(right), rel_tol=0.0, abs_tol=0.01)
     except (TypeError, ValueError):
         return False
+
+
+def _finite_number(value: Any) -> bool:
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)

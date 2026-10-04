@@ -22,6 +22,7 @@ RUNTIME_SOURCE_ID = "runtime-clock"
 
 class FakeSceneService:
     def __init__(self, profile_id: str) -> None:
+        self.deleted = False
         self.profile = {
             "id": profile_id,
             "name": "D4 Livestream",
@@ -44,9 +45,18 @@ class FakeSceneService:
         return "D4"
 
     def get_profile(self, profile_id: str):
-        if profile_id != self.profile["id"]:
+        if self.deleted or profile_id != self.profile["id"]:
             raise KeyError(profile_id)
         return self.profile
+
+    def update_profile(self, profile_id: str, payload: dict):
+        self.get_profile(profile_id)
+        self.profile = {**payload, "id": profile_id}
+        return self.profile
+
+    def delete_profile(self, profile_id: str) -> None:
+        self.get_profile(profile_id)
+        self.deleted = True
 
     def verify_profile(self, profile_id: str, *, runtime: bool = True):
         self.get_profile(profile_id)
@@ -239,6 +249,20 @@ def test_http_streaming_contract(server_config, capture_service, tmp_path: Path)
         assert runtime_status["status"] == "PASS"
         assert runtime_status["sources"][0]["override"]["visibility"] is True
 
+        edited_profile = {
+            **client.get(f"/api/v1/scene-profiles/{profile_id}").json(),
+            "name": "Edited while live",
+        }
+        edited_profile["sources"][0]["obs_name"] = "Edited OBS Binding"
+        edited_profile["sources"][0]["enabled"] = True
+        edited_profile["sources"][0]["transform"]["x"] = 500
+        edited_profile["sources"][0]["transform"]["y"] = 600
+        assert client.put(
+            f"/api/v1/scene-profiles/{profile_id}", json=edited_profile
+        ).status_code == 200
+        assert client.get("/api/v1/live/status").json()["runtime_scene"]["status"] == "PASS"
+        assert client.delete(f"/api/v1/scene-profiles/{profile_id}").status_code == 204
+
         rejected = client.patch(
             f"/api/v1/live/sources/{RUNTIME_SOURCE_ID}/position",
             json={"x": 1, "rotation": 90},
@@ -251,6 +275,13 @@ def test_http_streaming_contract(server_config, capture_service, tmp_path: Path)
         )
         assert reset.status_code == 200
         assert reset.json()["override"] == {}
+
+        shown_after_delete = client.patch(
+            f"/api/v1/live/sources/{RUNTIME_SOURCE_ID}/visibility",
+            json={"visible": True},
+        )
+        assert shown_after_delete.status_code == 200
+        assert shown_after_delete.json()["actual"]["visible"] is True
 
         blocked_update = client.put(
             f"/api/v1/stream-destinations/{destination_id}",
