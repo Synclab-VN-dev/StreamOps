@@ -20,6 +20,7 @@
   let lastServerState = null;
   let everConnected = false;
   let staticLoaded = false;
+  let lastRuntimeSceneSignature = null;
 
   function setError(selector, message = '') {
     const element = $(selector);
@@ -530,10 +531,14 @@
     return Object.keys(snapshot?.runtime_scene?.overrides || {}).length;
   }
 
-  function renderRuntimeSources() {
+  function renderRuntimeSources({force = false} = {}) {
     const scene = snapshot?.runtime_scene;
     const sources = runtimeSources();
     const canMutate = runtimeMutable();
+    const signature = JSON.stringify({
+      scene: scene || null,
+      can_mutate: canMutate,
+    });
     const state = $('#live-sources-state');
     const stateValue = scene?.status || (snapshot?.state === 'LIVE' ? 'UNAVAILABLE' : 'IDLE');
     state.textContent = stateValue;
@@ -542,6 +547,9 @@
     $('#live-sources-count').textContent = String(sources.length);
     $('#live-overrides-count').textContent = String(runtimeOverrideCount());
     $('#live-sources-empty').hidden = sources.length > 0;
+
+    if (!force && signature === lastRuntimeSceneSignature) return;
+    lastRuntimeSceneSignature = signature;
 
     const root = $('#live-source-list');
     root.replaceChildren();
@@ -806,8 +814,10 @@
     $('#stop-stream-button').textContent = recovery ? 'Retry Stop / Restore' : 'Stop Streaming';
 
     const runtimeDisabled = busy || !runtimeMutable();
-    for (const element of document.querySelectorAll('#live-source-list button, #live-source-list input')) {
-      element.disabled = runtimeDisabled;
+    if (runtimeDisabled) {
+      for (const element of document.querySelectorAll('#live-source-list button, #live-source-list input')) {
+        element.disabled = true;
+      }
     }
     $('#reset-live-sources-button').disabled = runtimeDisabled || runtimeOverrideCount() === 0;
   }
@@ -913,12 +923,14 @@
 
   liveSocket.onState(({state}) => {
     transportConnected = state === 'connected';
+    lastRuntimeSceneSignature = null;
     if (state === 'connected') {
       activity(everConnected ? 'live socket: reconnected' : 'live socket: connected', 'success');
       everConnected = true;
     } else if (state === 'disconnected') {
       activity('live socket: disconnected', 'warning');
     }
+    renderRuntimeSources({force: true});
     renderButtons();
     if (!transportConnected) {
       const transportLabel = state === 'connecting' && !everConnected ? 'CONNECTING' : 'RECONNECTING';
