@@ -272,3 +272,37 @@ def test_restore_failure_keeps_override_metadata_for_recovery(tmp_path: Path) ->
     assert persisted is not None
     assert persisted["state"] == "RESTORE_FAILED"
     assert persisted["runtime_overrides"][source_id]["position"] == {"x": 40.0, "y": 40.0}
+
+
+def test_runtime_override_recovers_after_live_service_restart(tmp_path: Path) -> None:
+    service, scenes, client, source_id, baseline_profile = start_live(tmp_path)
+    service.set_source_visibility(source_id, True)
+    service.set_source_position(source_id, x=40, y=40)
+
+    recovered = LiveService(
+        FakeManager(),
+        scenes,
+        DestinationStore(tmp_path / "destinations"),
+        SecretStore(tmp_path / "secrets"),
+        client_factory=lambda: client,
+        poll_interval=0.001,
+    )
+
+    status = recovered.status()
+    assert status["state"] == "LIVE"
+    assert status["managed"] is True
+    assert status["runtime_scene"]["status"] == "PASS"
+    runtime = status["runtime_scene"]["sources"][0]
+    assert runtime["override"] == {
+        "visibility": True,
+        "position": {"x": 40.0, "y": 40.0},
+    }
+    assert runtime["actual"]["visible"] is True
+    assert runtime["actual"]["position"] == {"x": 40.0, "y": 40.0}
+    assert scenes.profile == baseline_profile
+
+    stopped = recovered.stop()
+    assert stopped["state"] == "IDLE"
+    assert client.item["sceneItemEnabled"] is False
+    assert client.transform["positionX"] == 100.0
+    assert client.transform["positionY"] == 50.0
