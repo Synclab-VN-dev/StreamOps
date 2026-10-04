@@ -324,9 +324,12 @@ class Runner:
         self.require(validate_mapping(data, mode), "CI_"+mode.upper()+"_MAPPING", "deterministic encoder mapping")
         self.apply(data); self.local_main()
         video = self.obs.get_video_settings()
+        n,d=number(video.get("fpsNumerator")),number(video.get("fpsDenominator"))
+        fps=n/d if n is not None and d else None
         if mode == "shared":
-            w,h = to_int(video.get("outputWidth")), to_int(video.get("outputHeight")); n,d=number(video.get("fpsNumerator")),number(video.get("fpsDenominator")); fps=n/d if n is not None and d else None
-        else: w,h,fps=1280,720,None
+            w,h = to_int(video.get("outputWidth")), to_int(video.get("outputHeight"))
+        else:
+            w,h = 1280,720
         for i in range(1, cycles+1): self.cycle(mode,i,w,h,fps)
         if mode == "shared": self.fault(w,h,fps)
     def cycle(self, mode: str, i: int, w: int|None, h: int|None, fps: float|None):
