@@ -864,6 +864,7 @@
     if (busy) return;
     busy = true;
     setError(errorSelector);
+    renderRuntimeSources({force: true});
     renderButtons();
     try {
       await fn();
@@ -875,6 +876,7 @@
       busy = false;
       renderDestinationState();
       renderProfile();
+      renderRuntimeSources({force: true});
       renderLive();
       renderButtons();
     }
