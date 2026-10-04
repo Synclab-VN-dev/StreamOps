@@ -348,11 +348,6 @@ def test_output_active_delayed_convergence(tmp_path: Path, monkeypatch) -> None:
 
     client = DelayedStartClient()
     service, _, _, _, _, profile_id, destination_id = make_service(tmp_path, client)
-    # This test validates poll-count convergence, not Windows timer precision.
-    # Avoid depending on the scheduler's minimum sleep quantum.
-    service.poll_interval = 0.0
-    service.start_timeout = 0.5
-    service.stop_timeout = 0.5
 
     started = service.start(profile_id, destination_id)
 
