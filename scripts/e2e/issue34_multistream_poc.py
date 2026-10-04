@@ -375,3 +375,112 @@ class Runner:
     def write(self):
         overall="FAIL" if any(x.status=="FAIL" for x in self.results) else ("PASS WITH LIMITATION" if any(x.status=="SKIP" for x in self.results if x.name=="B_RECONNECT_BEHAVIOR") else "PASS")
         self.args.evidence.mkdir(parents=True,exist_ok=True)
+        payload=sanitize({"issue":34,"overall":overall,"results":[asdict(x) for x in self.results],"metrics":self.metrics,"identity":self.identity},self.secrets)
+        (self.args.evidence/"result.json").write_text(json.dumps(payload,indent=2,ensure_ascii=False),encoding="utf-8")
+        for name,data in self.probes.items(): (self.args.evidence/f"ffprobe-{name}.json").write_text(json.dumps(sanitize(data,self.secrets),indent=2),encoding="utf-8")
+        report="# Issue #34 Real-A multistream POC\n\nOverall: **"+overall+"**\n\n"+"\n".join(f"- {x.name}: **{x.status}** — {x.evidence}" for x in self.results)+"\n"
+        if any(x in report for x in self.secrets): raise PocError("secret remained in report")
+        (self.args.evidence/"report.md").write_text(report,encoding="utf-8")
+        print("ISSUE34_MULTISTREAM_POC\n"+"\n".join(f"{x.name:<40} {x.status:<20} {x.evidence}" for x in self.results)+f"\nOVERALL                                  {overall}")
+        return 0 if overall in {"PASS","PASS WITH LIMITATION"} else 1
+    def run(self):
+        try:
+            self.baseline(); self.a.start(self.args.timeout); self.b.start(self.args.timeout); self.main_only(); self.mode("independent",1); self.mode("shared",self.args.cycles)
+        except Exception as e: self.record("UNEXPECTED_ERROR","FAIL",redact(str(e),self.secrets))
+        finally: self.restore()
+        return self.write()
+
+
+def number(v: Any) -> float|None:
+    try: x=float(v)
+    except (TypeError,ValueError): return None
+    return x if math.isfinite(x) else None
+
+def to_int(v: Any) -> int|None:
+    x=number(v); return None if x is None else int(x)
+
+def tcp(port: int) -> bool:
+    try:
+        with socket.create_connection(("127.0.0.1",port),timeout=.2): return True
+    except OSError: return False
+
+def get_json(url: str, timeout: float):
+    with urlopen(url,timeout=timeout) as r: return json.loads(r.read().decode())
+def wait_process(http: Http, expected: str, timeout: float):
+    end=time.monotonic()+timeout; last=None
+    while time.monotonic()<end:
+        last=http.get("/api/v1/obs/process/status").get("state")
+        if last==expected:return
+        time.sleep(.25)
+    raise PocError(f"OBS process state={last}, expected={expected}")
+def wait_stream(obs: Any, active: bool, timeout: float):
+    end=time.monotonic()+timeout
+    while time.monotonic()<end:
+        if bool(obs.get_stream_status().get("outputActive")) is active:return
+        time.sleep(.25)
+    raise PocError(f"OBS streaming active={active} timeout")
+def stop_stream(obs: Any, timeout: float):
+    if obs and obs.get_stream_status().get("outputActive") is True: obs.stop_stream(); wait_stream(obs,False,timeout)
+def probe(exe: str,url: str,secrets_:tuple[str,...],timeout:float):
+    try:r=subprocess.run([exe,"-v","error","-rw_timeout","5000000","-of","json","-show_streams","-show_format",url],capture_output=True,text=True,timeout=max(5,timeout),check=False)
+    except (OSError,subprocess.TimeoutExpired) as e: raise PocError("ffprobe could not run: "+redact(str(e),secrets_)) from None
+    if r.returncode: raise PocError("ffprobe failed: "+redact(r.stderr[:300],secrets_))
+    try:return json.loads(r.stdout)
+    except json.JSONDecodeError as e:raise PocError("ffprobe returned invalid JSON") from e
+def samples(seconds:float,interval:float):
+    out=[];end=time.monotonic()+seconds
+    while True:
+        out.append(sample())
+        if time.monotonic()>=end:return out
+        time.sleep(max(.1,interval))
+def sample():
+    ts=time.monotonic();cpu=ws=net=gpu=enc=None
+    if os.name=="nt":
+        ps='$p=Get-Process obs64 -ErrorAction SilentlyContinue|Select-Object -First 1;$n=(Get-NetAdapterStatistics -ErrorAction SilentlyContinue|Measure-Object -Property SentBytes -Sum).Sum;$o=[ordered]@{cpu=$null;ws=$null;net=$n};if($p){$o.cpu=$p.CPU;$o.ws=$p.WorkingSet64};$o|ConvertTo-Json -Compress'
+        try:
+            r=subprocess.run(["powershell.exe","-NoProfile","-NonInteractive","-Command",ps],capture_output=True,text=True,timeout=5,check=False)
+            if r.returncode==0 and r.stdout.strip():
+                d=json.loads(r.stdout);cpu=number(d.get("cpu"));ws=to_int(d.get("ws"));net=to_int(d.get("net"))
+        except Exception:pass
+    try:
+        r=subprocess.run(["nvidia-smi","--query-gpu=utilization.gpu,utilization.encoder","--format=csv,noheader,nounits"],capture_output=True,text=True,timeout=5,check=False)
+        if r.returncode==0 and r.stdout.strip():
+            p=[x.strip() for x in r.stdout.splitlines()[0].split(",")];gpu=number(p[0]);enc=number(p[1]) if len(p)>1 else None
+    except Exception:pass
+    return Sample(ts,cpu,ws,net,gpu,enc)
+def load_config(raw:bytes|None):
+    if raw is None:return {"targets":[],"video_configs":[],"audio_configs":[]}
+    try:d=json.loads(raw.decode("utf-8-sig"))
+    except (UnicodeDecodeError,json.JSONDecodeError) as e:raise PocError("existing obs-multi-rtmp.json is invalid") from e
+    if not isinstance(d,dict):raise PocError("existing obs-multi-rtmp.json root is not object")
+    return d
+def resolve_config(obs:Any):
+    app=os.environ.get("APPDATA")
+    if not app:raise PocError("APPDATA unavailable; pass --plugin-config")
+    root=Path(app)/"obs-studio"/"basic"/"profiles";current=str(obs.request("GetProfileList").get("currentProfileName") or "")
+    exact=root/current
+    if current and exact.is_dir():return exact/"obs-multi-rtmp.json"
+    found=list(root.glob("*/obs-multi-rtmp.json"))
+    if len(found)==1:return found[0]
+    dirs=[x for x in root.iterdir() if x.is_dir()] if root.is_dir() else []
+    if len(dirs)==1:return dirs[0]/"obs-multi-rtmp.json"
+    raise PocError("cannot resolve current obs-multi-rtmp.json safely; pass --plugin-config")
+def obs_identity(obs:Any):
+    p=obs.request("GetProfileList");c=obs.get_scene_collection_list();return {"profile":p.get("currentProfileName"),"collection":c.get("currentSceneCollectionName"),"scene":obs.get_current_program_scene()}
+def scene_root():
+    app=os.environ.get("APPDATA");return Path(app)/"obs-studio"/"basic"/"scenes" if app else Path("__missing__")
+def hashes(root:Path):
+    return {p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(root.glob("*.json")) if p.is_file()} if root.exists() else {}
+def default_root():return Path(__file__).resolve().parents[2]
+
+def parse_args(argv=None):
+    p=argparse.ArgumentParser(description=__doc__);root=default_root()
+    p.add_argument("--base-url",default=os.environ.get("STREAMOPS_BASE_URL","http://127.0.0.1:8765"));p.add_argument("--plugin-config",type=Path,default=os.environ.get("OBS_MULTI_RTMP_CONFIG"));p.add_argument("--mediamtx",type=Path,default=Path(os.environ.get("MEDIAMTX_EXE",root/".streamops"/"tools"/"mediamtx"/"mediamtx.exe")));p.add_argument("--ffprobe",default=os.environ.get("FFPROBE_EXE","ffprobe"));p.add_argument("--rtmp-a",type=int,default=19351);p.add_argument("--api-a",type=int,default=19997);p.add_argument("--rtmp-b",type=int,default=19352);p.add_argument("--api-b",type=int,default=19998);p.add_argument("--cycles",type=int,default=3);p.add_argument("--timeout",type=float,default=10);p.add_argument("--live-timeout",type=float,default=30);p.add_argument("--metric-seconds",type=float,default=5);p.add_argument("--metric-interval",type=float,default=1);p.add_argument("--independent-encoder",default=os.environ.get("ISSUE34_INDEPENDENT_ENCODER","obs_x264"));p.add_argument("--evidence",type=Path,default=root/".streamops"/"issue-34")
+    a=p.parse_args(argv)
+    if a.cycles<3:p.error("--cycles must be >= 3")
+    return a
+
+def main(argv=None):
+    if os.name!="nt":print("ISSUE34_MULTISTREAM_POC\nOVERALL FAIL — run this acceptance on Windows A");return 2
+    return Runner(parse_args(argv)).run()
+if __name__=="__main__":raise SystemExit(main())
