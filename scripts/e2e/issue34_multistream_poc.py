@@ -305,6 +305,8 @@ class Runner:
     def baseline(self):
         st = self.http.get("/api/v1/obs/process/status"); out = st.get("output", {}); ws = st.get("websocket", {})
         self.require(st.get("state")=="READY" and ws.get("connected") is True and not out.get("streaming") and not out.get("recording"), "AC-A-01", "OBS READY, websocket connected, outputs idle")
+        process_count = windows_obs_process_count()
+        self.require(bool(st.get("process", {}).get("pid")) and process_count == 1, "AC-A-05_SINGLE_OBS", f"one OBS instance; process_count={process_count}")
         pl = self.http.get("/api/v1/obs/plugins/obs-multi-rtmp")
         self.require(pl.get("state")=="LOADED" and pl.get("loaded") is True, "AC-A-01_PLUGIN", "obs-multi-rtmp LOADED")
         self.connect_obs(); self.cfg_path = self.args.plugin_config or resolve_config(self.obs)
@@ -316,7 +318,15 @@ class Runner:
     def main_only(self):
         self.apply(strip_managed(load_config(self.cfg_raw))); self.metrics["idle"] = summarize(samples(self.args.metric_seconds, self.args.metric_interval))
         self.local_main(); self.obs.start_stream()
-        try: wait_stream(self.obs, True, self.args.live_timeout); self.metrics["main-only"] = summarize(samples(self.args.metric_seconds, self.args.metric_interval))
+        try:
+            wait_stream(self.obs, True, self.args.live_timeout)
+            trigger_path = "live/" + self.trigger_key
+            self.a.wait(trigger_path, 1, self.args.live_timeout)
+            before = self.a.snapshot(trigger_path, self.args.timeout); started = time.monotonic()
+            metric = summarize(samples(self.args.metric_seconds, self.args.metric_interval))
+            elapsed = max(0.001, time.monotonic() - started); after = self.a.snapshot(trigger_path, self.args.timeout)
+            metric["rtmp_output_mbps"] = round(max(0, after["bytes"] - before["bytes"]) * 8 / elapsed / 1_000_000, 3)
+            self.metrics["main-only"] = metric
         finally: stop_stream(self.obs, self.args.live_timeout)
         self.record("RESOURCE_MAIN_BASELINE", "PASS", "idle and main-only metrics captured")
     def mode(self, mode: str, cycles: int):
@@ -341,8 +351,13 @@ class Runner:
             for side,payload in (("A",pa),("B",pb)):
                 for r in eval_ffprobe(payload,w,h,fps): self.record(f"{mode}_{i}_{side}_{r.name}",r.status,r.evidence)
                 self.probes[f"{mode}-{i}-{side.lower()}"]=sanitize(payload,self.secrets)
-            self.metrics[mode]=summarize(samples(self.args.metric_seconds,self.args.metric_interval))
-            self.require(self.a.snapshot(self.ta.path,self.args.timeout)["count"]==1 and self.b.snapshot(self.tb.path,self.args.timeout)["count"]==1, f"{mode}_{i}_NO_DUPLICATE", "publisher_count remains exactly one")
+            bytes_before = sa["bytes"] + sb["bytes"]; started = time.monotonic()
+            metric = summarize(samples(self.args.metric_seconds,self.args.metric_interval))
+            elapsed = max(0.001, time.monotonic() - started)
+            current_a = self.a.snapshot(self.ta.path,self.args.timeout); current_b = self.b.snapshot(self.tb.path,self.args.timeout)
+            metric["rtmp_output_mbps"] = round(max(0, current_a["bytes"] + current_b["bytes"] - bytes_before) * 8 / elapsed / 1_000_000, 3)
+            self.metrics.setdefault(mode, []).append(metric)
+            self.require(current_a["count"]==1 and current_b["count"]==1, f"{mode}_{i}_NO_DUPLICATE", "publisher_count remains exactly one")
         finally:
             stop_stream(self.obs,self.args.live_timeout); self.a.wait(self.ta.path,0,self.args.live_timeout); self.b.wait(self.tb.path,0,self.args.live_timeout); self.record(f"{mode}_{i}_STOP","PASS","both publishers stopped")
     def fault(self,w,h,fps):
@@ -393,6 +408,18 @@ class Runner:
         finally: self.restore()
         return self.write()
 
+
+def windows_obs_process_count() -> int:
+    if os.name != "nt":
+        return 0
+    try:
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "@(Get-Process obs64 -ErrorAction SilentlyContinue).Count"],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+        return int(result.stdout.strip()) if result.returncode == 0 and result.stdout.strip().isdigit() else 0
+    except Exception:
+        return 0
 
 def number(v: Any) -> float|None:
     try: x=float(v)
