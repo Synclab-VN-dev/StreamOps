@@ -348,18 +348,56 @@ def test_reconnect_preserves_dirty_draft_and_page_lifecycle(page, live_server, v
     page.locator('#profile-name').fill('Unsaved operator draft')
     expect(page.locator('#profile-summary-state')).to_have_text('Modified')
     expect(page.locator('#streaming-state-pill')).to_have_text('IDLE', timeout=7000)
-    assert len(sockets) == 2
+    assert page.evaluate('window.StreamOpsObs.connected') is True
+    assert page.evaluate('window.StreamOpsLive.connected') is True
+    socket_count = len(sockets)
 
     page.evaluate("Object.defineProperty(document, 'visibilityState', {configurable: true, value: 'hidden'}); document.dispatchEvent(new Event('visibilitychange'))")
     page.wait_for_timeout(500)
-    assert len(sockets) == 2
+    assert len(sockets) == socket_count
     assert page.evaluate('window.StreamOpsObs.connected') is True
     page.evaluate("Object.defineProperty(document, 'visibilityState', {configurable: true, value: 'visible'}); document.dispatchEvent(new Event('visibilitychange'))")
 
+    lifecycle = page.evaluate("""() => {
+        const state = {
+            obsGeneration: window.StreamOpsObs.generation,
+            liveGeneration: window.StreamOpsLive.generation,
+            obsTransitions: [],
+            liveTransitions: [],
+        };
+        window.__streamOpsLifecycle = state;
+        window.addEventListener('streamops:obs-connection', (event) => {
+            state.obsTransitions.push({
+                state: event.detail?.state,
+                generation: window.StreamOpsObs.generation,
+            });
+        });
+        window.addEventListener('streamops:live-connection', (event) => {
+            state.liveTransitions.push({
+                state: event.detail?.state,
+                generation: window.StreamOpsLive.generation,
+            });
+        });
+        return {
+            obsGeneration: state.obsGeneration,
+            liveGeneration: state.liveGeneration,
+        };
+    }""")
+
     page.evaluate("window.dispatchEvent(new PageTransitionEvent('pagehide'))")
-    page.wait_for_timeout(1500)
-    assert len(sockets) == 2
+    page.wait_for_function(
+        "() => window.StreamOpsObs?.destroyed === true && window.StreamOpsLive?.destroyed === true"
+        " && window.StreamOpsObs?.socket === null && window.StreamOpsLive?.socket === null",
+        timeout=5000,
+    )
+    assert len(sockets) == socket_count
+
     page.evaluate("window.dispatchEvent(new PageTransitionEvent('pageshow'))")
+    page.wait_for_function(
+        "() => window.__streamOpsLifecycle.obsTransitions.some(item => item.state === 'connected')"
+        " && window.__streamOpsLifecycle.liveTransitions.some(item => item.state === 'connected')",
+        timeout=10000,
+    )
     expect(page.locator('#activity-log')).to_contain_text('Profile manager synchronized', timeout=7000)
     page.wait_for_function(
         "() => window.StreamOpsObs?.connected === true && window.StreamOpsLive?.connected === true",
@@ -367,8 +405,12 @@ def test_reconnect_preserves_dirty_draft_and_page_lifecycle(page, live_server, v
     )
     expect(page.locator('#profile-name')).to_have_value('Unsaved operator draft')
     expect(page.locator('#profile-summary-state')).to_have_text('Modified')
-    assert sum('/api/v1/obs/ws' in socket.url for socket in sockets) == 2
-    assert sum('/api/v1/live/ws' in socket.url for socket in sockets) == 2
+
+    transitions = page.evaluate('window.__streamOpsLifecycle')
+    obs_connected = next(item for item in transitions['obsTransitions'] if item['state'] == 'connected')
+    live_connected = next(item for item in transitions['liveTransitions'] if item['state'] == 'connected')
+    assert obs_connected['generation'] == lifecycle['obsGeneration'] + 2
+    assert live_connected['generation'] == lifecycle['liveGeneration'] + 2
 
     assert not any('/api/v1/' in url and '/preview' not in url and '/artifacts/' not in url for url in requests)
 
