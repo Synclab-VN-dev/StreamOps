@@ -54,7 +54,7 @@ $arguments = @(
     "--log-level", $LogLevel
 )
 
-Push-Location $repoRoot
+Push-Location $DataDir
 try {
     & $python @arguments 1>> $stdoutLog 2>> $stderrLog
     exit $LASTEXITCODE
