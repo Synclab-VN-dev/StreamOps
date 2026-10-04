@@ -140,7 +140,7 @@ Run on 2026-10-04 (Asia/Ho_Chi_Minh) against Windows 10 Pro build 19045.
 | OBS state preservation | All 18 scene-collection JSON files matched their pre-install length and SHA-256 after rollback/reinstall. Active profile and collection remained `Untitled`; current program scene remained `StreamOps Scene 3bcd93ee-ad1a-4f31-9ec0-87f5eba72c9a` (8 scenes). |
 | Permission behavior | Before the narrow ACL was provisioned, API rollback returned `plugin_install_permission_denied` (HTTP 403) and restored OBS to READY. No UAC prompt was attempted. |
 | Final runtime | StreamOps reports `READY`; WebSocket connected; OBS 32.2.1 / obs-websocket 5.7.4; plugin `LOADED`; streaming and recording false; current scene unchanged. |
-| Tests | Windows A: `314 passed, 84 warnings` before the final two test additions. The warnings are existing WebSocket client deprecation warnings. |
+| Tests | Windows A final clean run: `316 passed, 85 warnings` in 72.39 seconds. The warnings are existing WebSocket client deprecation warnings. |
 
 The existing OBS graceful-close flow was hardened to ignore transient Qt popup,
 tooltip, and drop-shadow windows, so lifecycle calls target an OBS top-level
