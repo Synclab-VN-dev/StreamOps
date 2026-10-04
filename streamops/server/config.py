@@ -38,7 +38,7 @@ class ServerConfig:
         repository_root: Path | None = None,
     ) -> "ServerConfig":
         env = os.environ if environ is None else environ
-        root = (repository_root or _repository_root()).resolve()
+        root = repository_root.resolve() if repository_root is not None else None
         host = _source(namespace.host, env, "STREAMOPS_NODE_HOST", DEFAULT_HOST)
         port = _parse_port(_source(namespace.port, env, "STREAMOPS_NODE_PORT", DEFAULT_PORT))
         output_index = _parse_output_index(
@@ -63,12 +63,12 @@ class ServerConfig:
             namespace.data_dir,
             env,
             "STREAMOPS_NODE_DATA_DIR",
-            root / ".streamops" / "node",
+            (root / ".streamops" / "node") if root else _default_data_dir(env),
         )
         data_dir_value = Path(os.path.expandvars(os.path.expanduser(str(data_dir_raw))))
-        data_dir = (data_dir_value if data_dir_value.is_absolute() else root / data_dir_value).resolve()
-        if data_dir == root or not data_dir.is_relative_to(root):
-            raise ServerConfigError(f"STREAMOPS_NODE_DATA_DIR must be a directory inside the repository: {root}")
+        data_dir = (data_dir_value if data_dir_value.is_absolute() else Path.cwd() / data_dir_value).resolve()
+        if data_dir == Path(data_dir.anchor):
+            raise ServerConfigError("STREAMOPS_NODE_DATA_DIR cannot be a filesystem root.")
         return cls(
             host=host,
             port=port,
@@ -103,8 +103,15 @@ def _source(cli_value: object, env: Mapping[str, str], name: str, default: objec
     return value if value not in (None, "") else default
 
 
-def _repository_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+def _default_data_dir(environ: Mapping[str, str]) -> Path:
+    if os.name == "nt":
+        base = environ.get("LOCALAPPDATA")
+        if base:
+            return Path(base) / "StreamOps" / "node"
+    state_home = environ.get("XDG_STATE_HOME")
+    if state_home:
+        return Path(state_home) / "streamops" / "node"
+    return Path.home() / ".local" / "state" / "streamops" / "node"
 
 
 def _parse_port(value: object) -> int:
