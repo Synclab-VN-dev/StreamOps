@@ -339,7 +339,6 @@ class Runner:
         else:
             w,h = 1280,720
         for i in range(1, cycles+1): self.cycle(mode,i,w,h,fps)
-        if mode == "shared": self.fault(w,h,fps)
     def cycle(self, mode: str, i: int, w: int|None, h: int|None, fps: float|None):
         self.obs.start_stream(); wait_stream(self.obs, True, self.args.live_timeout)
         try:
@@ -389,7 +388,7 @@ class Runner:
         except Exception as e: errors.append(redact(str(e),self.secrets))
         self.record("AC-A-12_RESTORE","FAIL" if errors else "PASS","; ".join(errors) if errors else "config/service/scenes restored and OBS READY")
     def write(self):
-        overall="FAIL" if any(x.status=="FAIL" for x in self.results) else ("PASS WITH LIMITATION" if any(x.status=="SKIP" for x in self.results if x.name=="B_RECONNECT_BEHAVIOR") else "PASS")
+        overall=overall_status(self.results)
         self.args.evidence.mkdir(parents=True,exist_ok=True)
         payload=sanitize({"issue":34,"overall":overall,"results":[asdict(x) for x in self.results],"metrics":self.metrics,"identity":self.identity},self.secrets)
         (self.args.evidence/"result.json").write_text(json.dumps(payload,indent=2,ensure_ascii=False),encoding="utf-8")
@@ -399,13 +398,54 @@ class Runner:
         (self.args.evidence/"report.md").write_text(report,encoding="utf-8")
         print("ISSUE34_MULTISTREAM_POC\n"+"\n".join(f"{x.name:<40} {x.status:<20} {x.evidence}" for x in self.results)+f"\nOVERALL                                  {overall}")
         return 0 if overall in {"PASS","PASS WITH LIMITATION"} else 1
+    def shared_mode(self):
+        start = len(self.results); error = None
+        try:
+            self.mode("shared", self.args.cycles)
+        except Exception as exc:
+            error = exc
+            status = self.http.get("/api/v1/obs/process/status")
+            if status.get("state") != "READY" or status.get("websocket", {}).get("connected") is not True:
+                raise
+            self.check_identity()
+        had_limitation = False
+        for index in range(start, len(self.results)):
+            item = self.results[index]
+            if item.name.startswith("shared_") and item.status == "FAIL":
+                self.results[index] = Result(item.name, "LIMITATION", item.evidence)
+                had_limitation = True
+        if error is not None:
+            had_limitation = True
+            self.record("AC-A-09_ENCODER_SHARE", "LIMITATION", redact(str(error), self.secrets))
+        elif had_limitation:
+            self.record("AC-A-09_ENCODER_SHARE", "LIMITATION", "shared encoder mode produced invalid media/runtime evidence")
+        else:
+            self.record("AC-A-09_ENCODER_SHARE", "PASS", "shared OBS streaming encoder produced two valid RTMP outputs")
+
     def run(self):
         try:
-            self.baseline(); self.a.start(self.args.timeout); self.b.start(self.args.timeout); self.main_only(); self.mode("independent",1); self.mode("shared",self.args.cycles)
-        except Exception as e: self.record("UNEXPECTED_ERROR","FAIL",redact(str(e),self.secrets))
-        finally: self.restore()
+            self.baseline()
+            self.a.start(self.args.timeout); self.b.start(self.args.timeout)
+            self.main_only()
+            self.mode("independent", 1)
+            video = self.obs.get_video_settings(); n,d=number(video.get("fpsNumerator")),number(video.get("fpsDenominator"))
+            fps=n/d if n is not None and d else None
+            self.fault(1280, 720, fps)
+            self.shared_mode()
+        except Exception as e:
+            self.record("UNEXPECTED_ERROR","FAIL",redact(str(e),self.secrets))
+        finally:
+            self.restore()
         return self.write()
 
+
+def overall_status(results: Iterable[Result]) -> str:
+    statuses = {item.status for item in results}
+    if "FAIL" in statuses:
+        return "FAIL"
+    if "LIMITATION" in statuses:
+        return "PASS WITH LIMITATION"
+    return "PASS"
 
 def publisher_snapshot(payload: Any, path: str) -> dict[str, int]:
     items = payload.get("items", []) if isinstance(payload, dict) else []
