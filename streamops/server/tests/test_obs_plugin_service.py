@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from streamops.server.errors import ObsPluginError
+from streamops.server.errors import ObsPluginError, ObsStartError
 from streamops.server.obs.manager import ObsRuntimeStatus
 from streamops.server.services.obs_plugin import (
     ObsPluginService,
@@ -191,6 +191,15 @@ def test_permission_and_incompatible_failures_are_typed():
     with pytest.raises(ObsPluginError) as error:
         run(ObsPluginService(FakeManager(), FakeHost(compatible=False)).install("obs-multi-rtmp"))
     assert error.value.code == "plugin_incompatible"
+
+
+def test_restart_failure_is_typed_and_attempts_safe_rollback():
+    host, manager = FakeHost(), FakeManager()
+    manager.start_error = ObsStartError("OBS did not become ready")
+    with pytest.raises(ObsPluginError) as error:
+        run(ObsPluginService(manager, host).install("obs-multi-rtmp"))
+    assert error.value.code == "obs_restart_failed"
+    assert "rollback" in host.calls
 
 
 def test_unknown_plugin_is_never_sent_to_host():

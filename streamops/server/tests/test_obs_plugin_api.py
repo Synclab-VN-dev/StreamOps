@@ -71,6 +71,15 @@ def test_operations_reject_all_client_input(server_config, capture_service, suff
     assert "secret-token" not in response.text
 
 
+def test_status_rejects_query_parameters(server_config, capture_service):
+    service = FakePluginService()
+    with client(server_config, capture_service, service) as api:
+        response = api.get("/api/v1/obs/plugins/obs-multi-rtmp?path=C%3A%5Ctemp")
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_plugin_request"
+    assert service.calls == []
+
+
 @pytest.mark.parametrize(
     ("code", "status"),
     [

@@ -1,7 +1,8 @@
 # Issue #33 — Multiple RTMP Outputs installation/lifecycle POC
 
-This POC installs only the OBS plugin on Windows host A. It does not create an
-RTMP destination, start a stream, or add multistream behavior to StreamOps.
+This Gate 1 implementation adds a StreamOps backend lifecycle boundary for one
+allowlisted OBS plugin. It does not create an RTMP destination, start a stream,
+add multistream runtime behavior, or add Web UI controls.
 
 ## Pinned upstream package
 
@@ -15,10 +16,41 @@ The upstream EXE installer is intentionally not used. Its NSIS uninstall path
 recursively removes the shared `C:\ProgramData\obs-studio\plugins` directory.
 The pinned ZIP permits an allowlisted, plugin-specific install and rollback.
 
-## Host-layer commands
+## Backend API
 
-Run these commands from a PowerShell 7 prompt in the repository on A. OBS must
-be stopped through StreamOps before `Install` or `Rollback`.
+The API accepts no body or query parameters and never accepts a URL, path,
+command, or binary from a caller:
+
+```text
+GET  /api/v1/obs/plugins/obs-multi-rtmp
+POST /api/v1/obs/plugins/obs-multi-rtmp/install
+POST /api/v1/obs/plugins/obs-multi-rtmp/verify
+POST /api/v1/obs/plugins/obs-multi-rtmp/rollback
+```
+
+`ObsPluginService` owns the safety checks and OBS stop/start/readiness flow;
+`WindowsObsMultiRtmpHost` invokes only the repository-owned PowerShell script
+with a fixed action. Install and rollback are rejected while OBS is streaming
+or recording. `LOADED` requires an exact file manifest, current-process OBS log
+evidence for plugin version `0.7.4.0`, OBS `READY`, and a connected WebSocket.
+
+Example operator acceptance (the same calls later used by Web UI):
+
+```powershell
+$base = "http://127.0.0.1:8765/api/v1/obs/plugins/obs-multi-rtmp"
+Invoke-RestMethod $base
+Invoke-RestMethod -Method Post "$base/install"
+Invoke-RestMethod -Method Post "$base/verify"
+Invoke-RestMethod -Method Post "$base/rollback"
+Invoke-RestMethod -Method Post "$base/install"
+Invoke-RestMethod -Method Post "$base/verify"
+```
+
+## Host-layer installer
+
+These lower-layer commands remain available for deployment diagnostics. Normal
+lifecycle operations use the API above. OBS must be stopped through StreamOps
+before a direct `Install` or `Rollback` call.
 
 ```powershell
 pwsh -NoProfile -File .\scripts\devices\a-windows\manage-obs-multi-rtmp.ps1 -Action Inspect
@@ -51,6 +83,18 @@ tr-TR uk-UA ur-PK vi-VN zh-CN zh-TW
 Each basename above is installed as `data\locale\<basename>.ini`; together
 with the DLL and PDB this is the complete 73-file manifest.
 
+The limited interactive node account receives `Modify` only on this allowlisted
+plugin root. Provision it explicitly once from an elevated deployment prompt;
+the command does not trigger UAC itself:
+
+```powershell
+pwsh -NoProfile -File .\scripts\devices\a-windows\install-streamops-node.ps1 `
+  -ConfigureObsPluginLifecycle
+```
+
+If this provisioning is absent, the API returns HTTP 403 with
+`plugin_install_permission_denied`; it never opens a hidden UAC prompt.
+
 The script downloads only the pinned GitHub release artifact, verifies its
 SHA-256 and 73-entry allowlist, and records ignored transaction evidence under
 `.streamops\issue-33`. It never reads OBS service settings or prints an OBS
@@ -65,8 +109,9 @@ pwsh -NoProfile -File .\scripts\devices\a-windows\manage-obs-multi-rtmp.ps1 -Act
 pwsh -NoProfile -File .\scripts\devices\a-windows\manage-obs-multi-rtmp.ps1 -Action Rollback -Confirm:$false
 ```
 
-Rollback removes only manifest-owned files whose hashes still match. It restores
-the pre-install plugin directory when one was backed up. A newly created
+Rollback removes only manifest-owned files whose hashes still match. It leaves
+the allowlisted root empty so its narrow ACL survives; an empty root is reported
+as `NOT_INSTALLED`. It restores pre-install contents when they were backed up. A newly created
 `obs-multi-rtmp.json` is removed only when it was absent at baseline and contains
 no targets or encoder configuration; OBS profiles and scene collections are
 never removed. Do not invoke the upstream EXE as an uninstaller.
@@ -84,23 +129,23 @@ Run on 2026-10-04 (Asia/Ho_Chi_Minh) against Windows 10 Pro build 19045.
 
 | Check | Observed result |
 | --- | --- |
-| Baseline | OBS 32.2.1 was stopped; no plugin files or `obs-multi-rtmp.json` existed. StreamOps node had stale runtime state and was safely restarted with its existing script before the OBS lifecycle test. |
+| Baseline | OBS 32.2.1 / obs-websocket 5.7.4; StreamOps `READY`; streaming and recording false; current scene `StreamOps Scene 3bcd93ee-ad1a-4f31-9ec0-87f5eba72c9a`. |
 | Pre-install runtime | Existing StreamOps start flow reached `READY`; OBS WebSocket 5.7.4 connected; streaming and recording were false. |
 | WebSocket boundary | `GetVersion` returned 151 available requests and no `InstallPlugin`. No plugin-install WebSocket request was implemented or attempted. |
-| Install | Pinned ZIP hash and 73-entry allowlist passed. Files were installed under `C:\ProgramData\obs-studio\plugins\obs-multi-rtmp`. A second apply returned `already_installed`. |
+| API contract | GET status and POST install/verify/rollback returned only the safe public schema. Client-supplied bodies and query parameters are rejected. |
+| Install | API fresh install stopped OBS, validated the pinned ZIP hash and 73-entry allowlist, installed under `C:\ProgramData\obs-studio\plugins\obs-multi-rtmp`, restarted OBS, and returned `LOADED`. Repeated API installs returned `already_installed` without a restart. |
 | Plugin load | OBS log `2026-10-04 10-37-21.txt` reports `[obs-multi-rtmp] version: 0.7.4.0 by SoraYuki`; module enumeration contains `obs-multi-rtmp.dll`. |
 | UI | The OBS **Docks** menu in the interactive desktop contains **Multiple output**, matching the upstream implementation. |
-| Rollback | Dry-run was inspected, then real rollback removed only the 73 manifest-owned files and the new empty plugin profile config. Reinstall reproduced the same 73-file state. No pre-existing plugin backup was needed. |
+| Rollback | API rollback removed only the 73 manifest-owned files and returned `NOT_INSTALLED`; API verify then failed closed with `plugin_verify_failed`. API reinstall reproduced `LOADED`. |
 | OBS state preservation | All 18 scene-collection JSON files matched their pre-install length and SHA-256 after rollback/reinstall. Active profile and collection remained `Untitled`; current program scene remained `StreamOps Scene 3bcd93ee-ad1a-4f31-9ec0-87f5eba72c9a` (8 scenes). |
-| Final runtime | StreamOps reports `READY`, OBS PID 5760 running interactively from the expected path, WebSocket connected, OBS 32.2.1 / obs-websocket 5.7.4, streaming false, recording false. |
-| Tests | Windows A: `272 passed, 60 warnings` in 80.21 seconds. The warnings are existing WebSocket client deprecation warnings. |
+| Permission behavior | Before the narrow ACL was provisioned, API rollback returned `plugin_install_permission_denied` (HTTP 403) and restored OBS to READY. No UAC prompt was attempted. |
+| Final runtime | StreamOps reports `READY`; WebSocket connected; OBS 32.2.1 / obs-websocket 5.7.4; plugin `LOADED`; streaming and recording false; current scene unchanged. |
+| Tests | Windows A: `314 passed, 84 warnings` before the final two test additions. The warnings are existing WebSocket client deprecation warnings. |
 
-One existing lifecycle edge case was found: if an OBS popup menu is left open,
-the stop flow can select the transient Qt popup window and time out instead of
-closing the main window. Closing the popup and retrying the same StreamOps stop
-flow succeeded. This did not prevent rollback or final readiness, but should be
-handled separately from this plugin-only POC.
+The existing OBS graceful-close flow was hardened to ignore transient Qt popup,
+tooltip, and drop-shadow windows, so lifecycle calls target an OBS top-level
+window rather than a menu popup.
 
 Generated logs, the Docks-menu screenshot, transactions, backups, and sanitized
 JSON evidence remain ignored under `.streamops\issue-33`; no credential or
-service-setting content is committed. Acceptance result: **PASS**.
+service-setting content is committed. Backend Gate 1 acceptance result: **PASS**.
