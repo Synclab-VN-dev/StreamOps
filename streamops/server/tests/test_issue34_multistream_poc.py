@@ -178,3 +178,38 @@ def test_sample_tolerates_missing_optional_system_metrics(monkeypatch):
     result = m.sample()
     assert result.gpu is None
     assert result.enc is None
+
+
+def test_overall_status_ignores_optional_skip_but_honors_limitation_and_fail():
+    assert m.overall_status([m.Result("optional", "SKIP", "not required")]) == "PASS"
+    assert m.overall_status([m.Result("share", "LIMITATION", "unsupported")]) == "PASS WITH LIMITATION"
+    assert m.overall_status([
+        m.Result("share", "LIMITATION", "unsupported"),
+        m.Result("core", "FAIL", "broken"),
+    ]) == "FAIL"
+
+
+def test_shared_mode_failure_is_limitation_when_obs_remains_healthy():
+    class Http:
+        @staticmethod
+        def get(_path):
+            return {"state": "READY", "websocket": {"connected": True}}
+
+    runner = object.__new__(m.Runner)
+    runner.results = []
+    runner.secrets = ()
+    runner.args = type("Args", (), {"cycles": 3})()
+    runner.http = Http()
+    runner.check_identity = lambda: None
+
+    def fail_shared(_mode, _cycles):
+        runner.results.append(m.Result("shared_1_VIDEO_PRESENT", "FAIL", "shared output invalid"))
+        raise m.PocError("encoder reuse unavailable")
+
+    runner.mode = fail_shared
+    runner.shared_mode()
+
+    assert runner.results[0].status == "LIMITATION"
+    assert runner.results[-1].name == "AC-A-09_ENCODER_SHARE"
+    assert runner.results[-1].status == "LIMITATION"
+    assert m.overall_status(runner.results) == "PASS WITH LIMITATION"
