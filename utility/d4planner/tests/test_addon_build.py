@@ -15,7 +15,7 @@ def _load_builder():
     return module
 
 
-def test_nvda_addon_contains_manifest_plugin_and_shared_core(tmp_path):
+def test_nvda_addon_contains_runtime_layout(tmp_path):
     builder = _load_builder()
     output = tmp_path / "d4plannerCapture.nvda-addon"
     builder.build(output)
@@ -24,5 +24,7 @@ def test_nvda_addon_contains_manifest_plugin_and_shared_core(tmp_path):
         names = set(archive.namelist())
 
     assert "manifest.ini" in names
-    assert "addon/globalPlugins/d4plannerCapture/__init__.py" in names
-    assert "addon/globalPlugins/d4plannerCapture/core.py" in names
+    assert "globalPlugins/d4plannerCapture/__init__.py" in names
+    assert "globalPlugins/d4plannerCapture/core.py" in names
+    assert "doc/en/readme.html" in names
+    assert not any(name.startswith("addon/") for name in names)
