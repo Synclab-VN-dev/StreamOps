@@ -121,3 +121,55 @@ def test_strip_managed_preserves_foreign():
     assert result["video_configs"] == [{"id": "keep-v"}]
     assert result["audio_configs"] == [{"id": "keep-a"}]
     assert len(original["targets"]) == 2
+
+
+def test_publisher_snapshot_detects_duplicate_and_ignores_other_paths():
+    payload = {
+        "items": [
+            {"state": "publish", "path": "live/a", "bytesReceived": 100},
+            {"state": "publish", "path": "/live/a/", "bytesReceived": 200},
+            {"state": "publish", "path": "live/b", "bytesReceived": 300},
+            {"state": "read", "path": "live/a", "bytesReceived": 999},
+        ]
+    }
+    result = m.publisher_snapshot(payload, "live/a")
+    assert result == {"count": 2, "bytes": 300}
+
+
+def test_fault_isolation_requires_a_to_continue_and_media_to_stay_valid():
+    passing = [m.Result("VIDEO_PRESENT", "PASS", "ok"), m.Result("AUDIO_PRESENT", "PASS", "ok")]
+    failing = [m.Result("VIDEO_PRESENT", "FAIL", "missing")]
+    assert m.fault_isolation_ok({"count": 1, "bytes": 100}, {"count": 1, "bytes": 200}, passing)
+    assert not m.fault_isolation_ok({"count": 1, "bytes": 100}, {"count": 0, "bytes": 200}, passing)
+    assert not m.fault_isolation_ok({"count": 1, "bytes": 100}, {"count": 1, "bytes": 100}, passing)
+    assert not m.fault_isolation_ok({"count": 1, "bytes": 100}, {"count": 1, "bytes": 200}, failing)
+
+
+def test_restore_file_restores_existing_and_removes_new_file(tmp_path):
+    path = tmp_path / "obs-multi-rtmp.json"
+    m.restore_file(path, b'{"baseline":true}')
+    assert path.read_bytes() == b'{"baseline":true}'
+    m.restore_file(path, None)
+    assert not path.exists()
+
+
+def test_runner_failure_path_still_calls_restore():
+    runner = object.__new__(m.Runner)
+    runner.results = []
+    runner.secrets = ()
+    calls = []
+    runner.baseline = lambda: (_ for _ in ()).throw(m.PocError("boom"))
+    runner.restore = lambda: calls.append("restore")
+    runner.write = lambda: 1
+    assert runner.run() == 1
+    assert calls == ["restore"]
+    assert runner.results[-1].name == "UNEXPECTED_ERROR"
+
+
+def test_sample_tolerates_missing_optional_system_metrics(monkeypatch):
+    def unavailable(*_args, **_kwargs):
+        raise OSError("tool unavailable")
+    monkeypatch.setattr(m.subprocess, "run", unavailable)
+    result = m.sample()
+    assert result.gpu is None
+    assert result.enc is None
