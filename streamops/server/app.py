@@ -88,7 +88,7 @@ def create_app(
     )
     steam = steam_service or SteamService(WindowsSteamBackend())
     obs = obs_manager or ObsManager()
-    obs_plugins = obs_plugin_service or ObsPluginService(obs, WindowsObsMultiRtmpHost())
+    obs_plugins = obs_plugin_service or ObsPluginService(obs, WindowsObsMultiRtmpHost(config.data_dir))
     obs_scenes = obs_scene_service or ObsSceneService(data_dir=config.data_dir / "scene-profiles")
     status_hub = obs_status_hub or ObsStatusHub(obs, obs_scenes, service)
     live = live_service or LiveService(

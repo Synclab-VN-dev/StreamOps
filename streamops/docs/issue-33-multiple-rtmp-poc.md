@@ -4,6 +4,11 @@ This Gate 1 implementation adds a StreamOps backend lifecycle boundary for one
 allowlisted OBS plugin. It does not create an RTMP destination, start a stream,
 add multistream runtime behavior, or add Web UI controls.
 
+Runtime dependency direction is `api/obs_plugins.py -> services/obs_plugin.py
+-> platform/windows/obs_plugin/host.py -> installer.py -> Windows APIs,
+filesystem, and upstream network`. The installer and pinned manifest ship in
+the wheel; the node never resolves the source checkout or root `scripts/`.
+
 ## Pinned upstream package
 
 - Release: `sorayuki/obs-multi-rtmp` tag `0.7.4.3` (published as “for OBS 32.2.1”)
@@ -29,9 +34,9 @@ POST /api/v1/obs/plugins/obs-multi-rtmp/rollback
 ```
 
 `ObsPluginService` owns the safety checks and OBS stop/start/readiness flow;
-`WindowsObsMultiRtmpHost` invokes only the repository-owned PowerShell script
-with a fixed action. Install and rollback are rejected while OBS is streaming
-or recording. `LOADED` requires an exact file manifest, current-process OBS log
+`WindowsObsMultiRtmpHost` delegates to the packaged Python installer and its
+packaged manifest. Install and rollback are rejected while OBS is streaming or
+recording. `LOADED` requires an exact file manifest, current-process OBS log
 evidence for plugin version `0.7.4.0`, OBS `READY`, and a connected WebSocket.
 
 Example operator acceptance (the same calls later used by Web UI):
@@ -48,16 +53,14 @@ Invoke-RestMethod -Method Post "$base/verify"
 
 ## Host-layer installer
 
-These lower-layer commands remain available for deployment diagnostics. Normal
-lifecycle operations use the API above. OBS must be stopped through StreamOps
-before a direct `Install` or `Rollback` call.
+All download, artifact validation, installation, inspection, verification, and
+rollback code is shipped inside the `streamops` wheel. The API is the runtime
+entry point. PowerShell remains only as operator bootstrap for one-time ACL
+provisioning; the server never launches it.
 
-```powershell
-pwsh -NoProfile -File .\scripts\devices\a-windows\manage-obs-multi-rtmp.ps1 -Action Inspect
-pwsh -NoProfile -File .\scripts\devices\a-windows\manage-obs-multi-rtmp.ps1 -Action Install -WhatIf
-pwsh -NoProfile -File .\scripts\devices\a-windows\manage-obs-multi-rtmp.ps1 -Action Install -Confirm:$false
-pwsh -NoProfile -File .\scripts\devices\a-windows\manage-obs-multi-rtmp.ps1 -Action Verify
-```
+CI builds the wheel, installs it into a clean virtual environment under a
+temporary directory outside the checkout, starts the installed server, and
+checks health, plugin status schema, and packaged manifest resolution.
 
 The install root is:
 
@@ -102,12 +105,8 @@ WebSocket password, RTMP URL, stream key, or token.
 
 ## Uninstall and rollback
 
-Inspect the exact rollback first, then apply it while OBS is stopped:
-
-```powershell
-pwsh -NoProfile -File .\scripts\devices\a-windows\manage-obs-multi-rtmp.ps1 -Action Rollback -WhatIf
-pwsh -NoProfile -File .\scripts\devices\a-windows\manage-obs-multi-rtmp.ps1 -Action Rollback -Confirm:$false
-```
+Rollback is invoked through the API and OBS lifecycle is orchestrated by
+`ObsPluginService`.
 
 Rollback removes only manifest-owned files whose hashes still match. It leaves
 the allowlisted root empty so its narrow ACL survives; an empty root is reported
@@ -125,7 +124,7 @@ used only for its existing safe OBS stop/start/readiness lifecycle.
 
 ## Machine-A acceptance result
 
-Run on 2026-10-04 (Asia/Ho_Chi_Minh) against Windows 10 Pro build 19045.
+Lower-layer acceptance before the package refactor ran on 2026-10-04 (Asia/Ho_Chi_Minh) against Windows 10 Pro build 19045. Package refactor acceptance is recorded in the PR review update.
 
 | Check | Observed result |
 | --- | --- |

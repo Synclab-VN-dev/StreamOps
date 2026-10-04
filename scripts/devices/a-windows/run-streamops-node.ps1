@@ -8,6 +8,7 @@ param(
     [int]$OutputIndex = 0,
     [Parameter(Mandatory)]
     [string]$DataDir,
+    [string]$PythonPath,
     [ValidateRange(0.01, 30)]
     [double]$CaptureTimeout = 3,
     [ValidateSet("critical", "error", "warning", "info", "debug", "trace")]
@@ -18,15 +19,24 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
-$python = Join-Path $repoRoot ".venv\Scripts\python.exe"
+$python = if ([string]::IsNullOrWhiteSpace($PythonPath)) {
+    Join-Path $repoRoot ".venv\Scripts\python.exe"
+} elseif ([IO.Path]::IsPathRooted($PythonPath)) {
+    [IO.Path]::GetFullPath($PythonPath)
+} else {
+    [IO.Path]::GetFullPath((Join-Path $repoRoot $PythonPath))
+}
 if (-not (Test-Path -LiteralPath $python)) {
-    throw "Repo-local virtual environment is missing."
+    throw "Configured Python interpreter is missing: $python"
 }
 
 $DataDir = [IO.Path]::GetFullPath($DataDir)
 $repoPrefix = $repoRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 if (-not $DataDir.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw "DataDir must stay inside the repository: $repoRoot"
+}
+if (-not $python.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "PythonPath must stay inside the repository-managed runtime area: $repoRoot"
 }
 
 $logDir = Join-Path $DataDir "logs"

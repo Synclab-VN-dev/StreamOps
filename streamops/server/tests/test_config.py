@@ -77,12 +77,7 @@ def test_streamops_and_node_alias_parse_the_same_options() -> None:
     assert root == alias
 
 
-def test_data_directory_must_stay_inside_repository(tmp_path: Path) -> None:
+def test_data_directory_can_live_outside_the_source_checkout(tmp_path: Path) -> None:
     outside = tmp_path.parent / "outside-node-data"
-
-    with pytest.raises(ServerConfigError, match="inside the repository"):
-        ServerConfig.from_namespace(
-            _namespace(data_dir=outside),
-            environ={},
-            repository_root=tmp_path,
-        )
+    config = ServerConfig.from_namespace(_namespace(data_dir=outside), environ={})
+    assert config.data_dir == outside.resolve()

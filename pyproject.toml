@@ -41,6 +41,7 @@ streamops = [
   "config/scene-templates/*.json",
   "docs/*.md",
   "server/web/*",
+  "server/platform/windows/obs_plugin/*.json",
 ]
 
 [tool.pytest.ini_options]
