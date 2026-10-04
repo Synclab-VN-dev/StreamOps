@@ -387,15 +387,20 @@ class SmokeRun:
 
         runtime_scene = before.get("runtime_scene")
         sources = runtime_scene.get("sources", []) if isinstance(runtime_scene, dict) else []
+        positioned_sources = [
+            item for item in sources
+            if isinstance(item, dict)
+            and isinstance(item.get("id"), str)
+            and isinstance(item.get("actual"), dict)
+            and isinstance(item["actual"].get("position"), dict)
+        ]
+        preferred = ("clock", "overlay", "camera", "cam")
         source = next(
             (
-                item for item in sources
-                if isinstance(item, dict)
-                and isinstance(item.get("id"), str)
-                and isinstance(item.get("actual"), dict)
-                and isinstance(item["actual"].get("position"), dict)
+                item for needle in preferred for item in positioned_sources
+                if needle in str(item.get("name") or "").lower()
             ),
-            None,
+            positioned_sources[0] if positioned_sources else None,
         )
         if source is None:
             raise SmokeError("active profile has no visual source with managed X/Y position")
