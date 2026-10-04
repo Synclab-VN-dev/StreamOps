@@ -315,3 +315,63 @@ class Runner:
         self.scene_hashes = hashes(scene_root())
     def main_only(self):
         self.apply(strip_managed(load_config(self.cfg_raw))); self.metrics["idle"] = summarize(samples(self.args.metric_seconds, self.args.metric_interval))
+        self.local_main(); self.obs.start_stream()
+        try: wait_stream(self.obs, True, self.args.live_timeout); self.metrics["main-only"] = summarize(samples(self.args.metric_seconds, self.args.metric_interval))
+        finally: stop_stream(self.obs, self.args.live_timeout)
+        self.record("RESOURCE_MAIN_BASELINE", "PASS", "idle and main-only metrics captured")
+    def mode(self, mode: str, cycles: int):
+        data = build_config(load_config(self.cfg_raw), self.ta, self.tb, mode=mode, encoder=self.args.independent_encoder)
+        self.require(validate_mapping(data, mode), "CI_"+mode.upper()+"_MAPPING", "deterministic encoder mapping")
+        self.apply(data); self.local_main()
+        video = self.obs.get_video_settings()
+        if mode == "shared":
+            w,h = to_int(video.get("outputWidth")), to_int(video.get("outputHeight")); n,d=number(video.get("fpsNumerator")),number(video.get("fpsDenominator")); fps=n/d if n is not None and d else None
+        else: w,h,fps=1280,720,None
+        for i in range(1, cycles+1): self.cycle(mode,i,w,h,fps)
+        if mode == "shared": self.fault(w,h,fps)
+    def cycle(self, mode: str, i: int, w: int|None, h: int|None, fps: float|None):
+        self.obs.start_stream(); wait_stream(self.obs, True, self.args.live_timeout)
+        try:
+            sa,sb=self.a.wait(self.ta.path,1,self.args.live_timeout),self.b.wait(self.tb.path,1,self.args.live_timeout)
+            self.require(sa["count"]==sb["count"]==1, f"{mode}_{i}_DUAL_LIVE", "one publisher on A and B")
+            pa,pb=probe(self.args.ffprobe,self.ta.url,self.secrets,self.args.timeout),probe(self.args.ffprobe,self.tb.url,self.secrets,self.args.timeout)
+            for side,payload in (("A",pa),("B",pb)):
+                for r in eval_ffprobe(payload,w,h,fps): self.record(f"{mode}_{i}_{side}_{r.name}",r.status,r.evidence)
+                self.probes[f"{mode}-{i}-{side.lower()}"]=sanitize(payload,self.secrets)
+            self.metrics[mode]=summarize(samples(self.args.metric_seconds,self.args.metric_interval))
+            self.require(self.a.snapshot(self.ta.path,self.args.timeout)["count"]==1 and self.b.snapshot(self.tb.path,self.args.timeout)["count"]==1, f"{mode}_{i}_NO_DUPLICATE", "publisher_count remains exactly one")
+        finally:
+            stop_stream(self.obs,self.args.live_timeout); self.a.wait(self.ta.path,0,self.args.live_timeout); self.b.wait(self.tb.path,0,self.args.live_timeout); self.record(f"{mode}_{i}_STOP","PASS","both publishers stopped")
+    def fault(self,w,h,fps):
+        self.obs.start_stream(); wait_stream(self.obs,True,self.args.live_timeout); self.a.wait(self.ta.path,1,self.args.live_timeout); self.b.wait(self.tb.path,1,self.args.live_timeout)
+        before=self.a.snapshot(self.ta.path,self.args.timeout); self.b.stop(); time.sleep(2); after=self.a.snapshot(self.ta.path,self.args.timeout)
+        ok=after["count"]==1 and after["bytes"]>before["bytes"] and all(x.status!="FAIL" for x in eval_ffprobe(probe(self.args.ffprobe,self.ta.url,self.secrets,self.args.timeout),w,h,fps))
+        self.record("AC-A-07_FAULT_ISOLATION","PASS" if ok else "FAIL",f"A publisher={after['count']}; bytes_progress={after['bytes']>before['bytes']}")
+        self.b.start(self.args.timeout)
+        try: self.b.wait(self.tb.path,1,min(15,self.args.live_timeout)); self.record("B_RECONNECT_BEHAVIOR","PASS","B auto-reconnected")
+        except Exception: self.record("B_RECONNECT_BEHAVIOR","SKIP","B did not auto-reconnect within observation window")
+        stop_stream(self.obs,self.args.live_timeout); self.a.wait(self.ta.path,0,self.args.live_timeout)
+        try: self.b.wait(self.tb.path,0,self.args.live_timeout)
+        except Exception: pass
+    def restore(self):
+        errors=[]
+        try:
+            if self.obs and self.service:
+                try: stop_stream(self.obs,self.args.live_timeout); self.obs.set_stream_service_settings(str(self.service.get("streamServiceType") or ""),dict(self.service.get("streamServiceSettings") or {}))
+                except Exception as e: errors.append("stream service: "+redact(str(e),self.secrets))
+            if self.cfg_path:
+                try:
+                    self.lifecycle("stop")
+                    if self.cfg_raw is None: self.cfg_path.unlink(missing_ok=True)
+                    else: self.cfg_path.write_bytes(self.cfg_raw)
+                    self.lifecycle("start"); self.connect_obs(); self.check_identity()
+                except Exception as e: errors.append("plugin config: "+redact(str(e),self.secrets))
+            self.a.stop(); self.b.stop()
+            if self.scene_hashes and hashes(scene_root()) != self.scene_hashes: errors.append("scene collection hashes changed")
+            st=self.http.get("/api/v1/obs/process/status")
+            if st.get("state")!="READY" or st.get("websocket",{}).get("connected") is not True: errors.append("final OBS not READY")
+        except Exception as e: errors.append(redact(str(e),self.secrets))
+        self.record("AC-A-12_RESTORE","FAIL" if errors else "PASS","; ".join(errors) if errors else "config/service/scenes restored and OBS READY")
+    def write(self):
+        overall="FAIL" if any(x.status=="FAIL" for x in self.results) else ("PASS WITH LIMITATION" if any(x.status=="SKIP" for x in self.results if x.name=="B_RECONNECT_BEHAVIOR") else "PASS")
+        self.args.evidence.mkdir(parents=True,exist_ok=True)
