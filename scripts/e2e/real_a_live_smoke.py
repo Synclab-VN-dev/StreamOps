@@ -24,7 +24,7 @@ from urllib.request import Request, urlopen
 from uuid import uuid4
 
 
-DEFAULT_TIMEOUT = 10.0
+# Keep the client timeout above LiveService/ObsNativeOutputEngine's 12s\n# start/stop convergence window so a valid server operation cannot fail locally first.\nDEFAULT_TIMEOUT = 20.0
 POLL_INTERVAL = 1.0
 POLL_SAMPLES = 3
 
