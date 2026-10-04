@@ -16,7 +16,11 @@ from streamops.server.platform.windows.obs_plugin import (
     WindowsObsMultiRtmpHost,
     WindowsObsMultiRtmpInstaller,
 )
-from streamops.server.platform.windows.obs_plugin.installer import ProcessEvidence, _tree_digest
+from streamops.server.platform.windows.obs_plugin.installer import (
+    ProcessEvidence,
+    _tree_digest,
+    _version_from_fixed_info,
+)
 
 
 FILES = {
@@ -76,6 +80,16 @@ def test_manifest_is_loaded_from_package_resource():
     assert manifest["release_tag"] == "0.7.4.3"
     assert manifest["package_version"] == "0.7.4.0"
     assert manifest["file_count"] == 73
+
+
+def test_obs_file_version_falls_back_when_product_version_is_unset():
+    fixed = [0, 0, 0x00200002, 0x00010000, 0, 0] + [0] * 7
+    assert _version_from_fixed_info(fixed) == "32.2.1"
+
+
+def test_obs_file_version_prefers_product_version():
+    fixed = [0, 0, 0x00200001, 0, 0x00200002, 0x00010000] + [0] * 7
+    assert _version_from_fixed_info(fixed) == "32.2.1"
 
 
 def test_install_is_exact_and_idempotent_even_with_obs_running(tmp_path):

@@ -442,9 +442,18 @@ def _file_product_version(path: Path) -> str | None:
     if not version.VerQueryValueW(buffer, "\\", ctypes.byref(value), ctypes.byref(length)) or not value.value:
         return None
     fixed = ctypes.cast(value, ctypes.POINTER(ctypes.c_uint32 * 13)).contents
-    major = (fixed[4] >> 16) & 0xFFFF
-    minor = fixed[4] & 0xFFFF
-    patch = (fixed[5] >> 16) & 0xFFFF
+    return _version_from_fixed_info(fixed)
+
+
+def _version_from_fixed_info(fixed: Any) -> str:
+    # Some OBS builds leave ProductVersion unset while publishing the same
+    # semantic version in FileVersion. Prefer ProductVersion, then fall back.
+    version_ms, version_ls = fixed[4], fixed[5]
+    if version_ms == 0 and version_ls == 0:
+        version_ms, version_ls = fixed[2], fixed[3]
+    major = (version_ms >> 16) & 0xFFFF
+    minor = version_ms & 0xFFFF
+    patch = (version_ls >> 16) & 0xFFFF
     return f"{major}.{minor}.{patch}"
 
 
