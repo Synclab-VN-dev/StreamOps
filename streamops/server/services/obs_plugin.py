@@ -15,6 +15,9 @@ from ..errors import (
 )
 
 
+# TODO(tech-debt): Move plugin identity/version/OBS compatibility into one packaged
+# plugin registry/manifest contract. These service constants intentionally mirror the Windows
+# manifest today and can drift when the pinned plugin or supported OBS version is upgraded.
 PLUGIN_ID = "obs-multi-rtmp"
 EXPECTED_VERSION = "0.7.4.0"
 EXPECTED_OBS_VERSION = "32.2.1"
