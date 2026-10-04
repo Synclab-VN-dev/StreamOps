@@ -13,7 +13,6 @@ import platform
 import re
 import shutil
 import tempfile
-from dataclasses import dataclass
 from typing import Any, BinaryIO, Callable
 from urllib.request import Request, urlopen
 import uuid
@@ -21,6 +20,9 @@ import zipfile
 
 
 
+# TODO(tech-debt): Inject/reuse the OBS executable configured by ObsManager/ServerConfig
+# instead of maintaining a second hard-coded default here. A custom STREAMOPS_OBS_EXECUTABLE
+# can otherwise make lifecycle management and plugin verification inspect different binaries.
 OBS_EXECUTABLE = Path(r"C:\Program Files\obs-studio\bin\64bit\obs64.exe")
 PLUGIN_ROOT = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "obs-studio" / "plugins" / "obs-multi-rtmp"
 PLUGIN_CONFIG_NAME = "obs-multi-rtmp.json"
@@ -180,6 +182,9 @@ class WindowsObsMultiRtmpInstaller:
             }
             self._write_json(transaction_root / "transaction.json", transaction)
             self._write_json(self.pointer, {"transaction_id": transaction_id})
+            # TODO(tech-debt): Reconcile unfinished transactions after process crash/power loss.
+            # In-process exceptions restore the backup, but a hard termination between this journal
+            # write and the final installed state can leave partial files that need manual recovery.
             self.plugin_root.mkdir(parents=True, exist_ok=True)
             try:
                 self._copy_contents(staged, self.plugin_root)
@@ -322,6 +327,8 @@ class WindowsObsMultiRtmpInstaller:
         return [p for p in self.process_probe() if os.path.normcase(str(p.executable.resolve(strict=False))) == expected]
 
     def _load_evidence(self, process: ProcessEvidence) -> tuple[str | None, bool]:
+        # TODO(tech-debt): Prefer direct module enumeration or a plugin/vendor health signal when
+        # available. Parsing OBS logs couples verification to log format and a startup time window.
         if self.appdata is None:
             return None, False
         logs = self.appdata / "obs-studio" / "logs"
