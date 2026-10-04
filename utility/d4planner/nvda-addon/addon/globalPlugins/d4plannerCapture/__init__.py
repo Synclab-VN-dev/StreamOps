@@ -8,7 +8,7 @@ from pathlib import Path
 import api
 import globalPluginHandler
 from logHandler import log
-from speech import extensions as speech_extensions
+import speech
 
 from .core import CaptureSession, JsonlWriter, is_diablo_context
 
@@ -41,12 +41,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         self._session = CaptureSession()
         self._writer = JsonlWriter(_capture_path())
         self._capture_all = os.environ.get("D4PLANNER_CAPTURE_ALL", "").strip() == "1"
-        speech_extensions.pre_speech.register(self._on_pre_speech)
+        speech.pre_speech.register(self._on_pre_speech)
         log.info("D4Planner: raw NVDA speech capture POC loaded")
 
     def terminate(self):
         try:
-            speech_extensions.pre_speech.unregister(self._on_pre_speech)
+            speech.pre_speech.unregister(self._on_pre_speech)
         except Exception:
             log.exception("D4Planner: failed to unregister speech hook")
         super().terminate()
