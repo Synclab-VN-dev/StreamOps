@@ -17,9 +17,17 @@ def build(output: Path) -> Path:
     with tempfile.TemporaryDirectory(prefix="d4planner-nvda-") as temp_dir:
         staging = Path(temp_dir)
         shutil.copy2(ADDON_SOURCE / "manifest.ini", staging / "manifest.ini")
-        shutil.copytree(ADDON_SOURCE / "addon", staging / "addon")
 
-        plugin_dir = staging / "addon" / "globalPlugins" / "d4plannerCapture"
+        # Source keeps NVDA files under nvda-addon/addon for repository clarity.
+        # The distributable archive must expose globalPlugins/doc at its root.
+        for child in (ADDON_SOURCE / "addon").iterdir():
+            destination = staging / child.name
+            if child.is_dir():
+                shutil.copytree(child, destination)
+            else:
+                shutil.copy2(child, destination)
+
+        plugin_dir = staging / "globalPlugins" / "d4plannerCapture"
         shutil.copy2(CORE_SOURCE, plugin_dir / "core.py")
 
         output.parent.mkdir(parents=True, exist_ok=True)
