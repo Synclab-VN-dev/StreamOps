@@ -439,10 +439,18 @@ class LiveService:
             return {
                 "state": "OBS_NOT_READY",
                 "managed": bool(self._session),
+                "session_id": self._session.get("session_id") if self._session else None,
                 "profile": self._session_profile(),
                 "destination": self._session_destination(),
                 "output": {"active": False},
                 "started_at": self._session.get("started_at") if self._session else None,
+                "runtime_scene": {
+                    "status": "UNAVAILABLE",
+                    "sources": [],
+                    "overrides": deepcopy(self._runtime_overrides()),
+                } if self._session else None,
+                "runtime_activity": deepcopy(self._session.get("runtime_activity", []))
+                if self._session else [],
             }
         client = self._client()
         try:
