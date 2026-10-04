@@ -512,6 +512,216 @@
     return pendingTransition || snapshot?.state || 'CONNECTING';
   }
 
+
+  function runtimeSources() {
+    return snapshot?.runtime_scene?.sources || [];
+  }
+
+  function runtimeMutable() {
+    return !!(
+      transportConnected
+      && snapshot?.managed
+      && snapshot?.state === 'LIVE'
+      && snapshot?.output?.active
+    );
+  }
+
+  function runtimeOverrideCount() {
+    return Object.keys(snapshot?.runtime_scene?.overrides || {}).length;
+  }
+
+  function renderRuntimeSources() {
+    const scene = snapshot?.runtime_scene;
+    const sources = runtimeSources();
+    const canMutate = runtimeMutable();
+    const state = $('#live-sources-state');
+    const stateValue = scene?.status || (snapshot?.state === 'LIVE' ? 'UNAVAILABLE' : 'IDLE');
+    state.textContent = stateValue;
+    tone(state, stateValue === 'PASS' ? 'ok' : stateValue === 'DRIFTED' ? 'bad' : stateValue === 'IDLE' ? 'neutral' : 'warn');
+
+    $('#live-sources-count').textContent = String(sources.length);
+    $('#live-overrides-count').textContent = String(runtimeOverrideCount());
+    $('#live-sources-empty').hidden = sources.length > 0;
+
+    const root = $('#live-source-list');
+    root.replaceChildren();
+
+    for (const source of sources) {
+      const row = document.createElement('section');
+      row.className = 'live-source-row';
+      row.dataset.sourceId = source.id || '';
+
+      const heading = document.createElement('div');
+      heading.className = 'live-source-heading';
+      const name = document.createElement('strong');
+      name.textContent = source.name || source.id || 'Source';
+      const badge = document.createElement('span');
+      badge.className = 'state-pill';
+      const overridden = source.override && Object.keys(source.override).length > 0;
+      const drifted = Array.isArray(source.drift) && source.drift.length > 0;
+      badge.textContent = drifted ? 'DRIFT' : overridden ? 'RUNTIME OVERRIDE' : 'BASELINE';
+      tone(badge, drifted ? 'bad' : overridden ? 'blue' : 'neutral');
+      heading.append(name, badge);
+      row.append(heading);
+
+      const baselineLine = document.createElement('div');
+      baselineLine.className = 'live-source-state-line';
+      const baselineLabel = document.createElement('span');
+      baselineLabel.textContent = 'Baseline';
+      const baselineValue = document.createElement('strong');
+      const baselinePosition = source.baseline?.position;
+      baselineValue.textContent = (source.baseline?.visible ? 'Visible' : 'Hidden')
+        + (baselinePosition ? ' · X ' + baselinePosition.x + ' · Y ' + baselinePosition.y : '');
+      baselineLine.append(baselineLabel, baselineValue);
+      row.append(baselineLine);
+
+      const actualLine = document.createElement('div');
+      actualLine.className = 'live-source-state-line';
+      const actualLabel = document.createElement('span');
+      actualLabel.textContent = 'Visible now';
+      const actualValue = document.createElement('strong');
+      actualValue.textContent = source.actual?.visible === true ? 'Visible' : source.actual?.visible === false ? 'Hidden' : 'Unknown';
+      actualLine.append(actualLabel, actualValue);
+      row.append(actualLine);
+
+      const visibilityActions = document.createElement('div');
+      visibilityActions.className = 'live-source-actions';
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'source-visibility-toggle';
+      toggle.textContent = source.actual?.visible ? 'Hide' : 'Show';
+      toggle.disabled = !canMutate;
+      toggle.addEventListener('click', () => run(
+        source.actual?.visible ? 'Hide live source' : 'Show live source',
+        async () => {
+          const visible = !source.actual?.visible;
+          await liveSocket.request('live.source.visibility', {source_id: source.id, visible});
+          activity((source.name || source.id) + (visible ? ' shown' : ' hidden') + ' (runtime override)', 'success');
+        },
+        '#live-sources-error',
+      ));
+      visibilityActions.append(toggle);
+      row.append(visibilityActions);
+
+      if (source.effective?.position) {
+        const position = document.createElement('div');
+        position.className = 'live-source-position';
+
+        const xLabel = document.createElement('label');
+        xLabel.textContent = 'X';
+        const xInput = document.createElement('input');
+        xInput.type = 'number';
+        xInput.step = '1';
+        xInput.className = 'source-position-x';
+        xInput.value = source.actual?.position?.x ?? source.effective.position.x;
+        xInput.disabled = !canMutate;
+        xLabel.append(xInput);
+
+        const yLabel = document.createElement('label');
+        yLabel.textContent = 'Y';
+        const yInput = document.createElement('input');
+        yInput.type = 'number';
+        yInput.step = '1';
+        yInput.className = 'source-position-y';
+        yInput.value = source.actual?.position?.y ?? source.effective.position.y;
+        yInput.disabled = !canMutate;
+        yLabel.append(yInput);
+
+        const apply = document.createElement('button');
+        apply.type = 'button';
+        apply.className = 'apply-position';
+        apply.textContent = 'Apply position';
+        apply.disabled = !canMutate;
+        apply.addEventListener('click', () => run(
+          'Move live source',
+          async () => {
+            const x = Number(xInput.value);
+            const y = Number(yInput.value);
+            if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error('X and Y must be valid numbers.');
+            await liveSocket.request('live.source.position', {source_id: source.id, x, y});
+            activity((source.name || source.id) + ' moved to (' + x + ', ' + y + ')', 'success');
+          },
+          '#live-sources-error',
+        ));
+        position.append(xLabel, yLabel, apply);
+        row.append(position);
+
+        const move = document.createElement('div');
+        move.className = 'live-source-move';
+        const stepLabel = document.createElement('label');
+        stepLabel.className = 'live-source-step';
+        stepLabel.textContent = 'Step';
+        const stepInput = document.createElement('input');
+        stepInput.type = 'number';
+        stepInput.min = '1';
+        stepInput.step = '1';
+        stepInput.value = '10';
+        stepInput.className = 'source-move-step';
+        stepInput.disabled = !canMutate;
+        stepLabel.append(stepInput);
+        move.append(stepLabel);
+
+        const directions = [
+          ['←', -1, 0, 'Move left'],
+          ['↑', 0, -1, 'Move up'],
+          ['↓', 0, 1, 'Move down'],
+          ['→', 1, 0, 'Move right'],
+        ];
+        for (const [label, xFactor, yFactor, title] of directions) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = label;
+          button.title = title;
+          button.setAttribute('aria-label', title);
+          button.disabled = !canMutate;
+          button.addEventListener('click', () => run(
+            title,
+            async () => {
+              const step = Number(stepInput.value);
+              if (!Number.isFinite(step) || step <= 0) throw new Error('Move step must be greater than zero.');
+              const dx = xFactor * step;
+              const dy = yFactor * step;
+              await liveSocket.request('live.source.move', {source_id: source.id, dx, dy});
+              activity((source.name || source.id) + ' moved by (' + dx + ', ' + dy + ')', 'success');
+            },
+            '#live-sources-error',
+          ));
+          move.append(button);
+        }
+        row.append(move);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'live-source-actions';
+      const reset = document.createElement('button');
+      reset.type = 'button';
+      reset.className = 'source-reset-button';
+      reset.textContent = 'Reset to baseline';
+      reset.disabled = !canMutate || !overridden;
+      reset.addEventListener('click', () => run(
+        'Reset live source',
+        async () => {
+          await liveSocket.request('live.source.reset', {source_id: source.id});
+          activity((source.name || source.id) + ' restored to profile baseline', 'success');
+        },
+        '#live-sources-error',
+      ));
+      actions.append(reset);
+      row.append(actions);
+
+      if (drifted) {
+        const drift = document.createElement('p');
+        drift.className = 'error-message';
+        drift.textContent = 'Unexpected drift: ' + source.drift.join(', ');
+        row.append(drift);
+      }
+
+      root.append(row);
+    }
+
+    $('#reset-live-sources-button').disabled = !canMutate || runtimeOverrideCount() === 0;
+  }
+
   function renderLive() {
     const state = liveDisplayState();
     const output = snapshot?.output || {};
@@ -545,6 +755,7 @@
     } else if ($('#live-error').textContent?.includes('operator attention')) {
       setError('#live-error');
     }
+    renderRuntimeSources();
     renderButtons();
   }
 
@@ -593,6 +804,12 @@
     $('#start-stream-button').disabled = !canStart;
     $('#stop-stream-button').disabled = busy || !transportConnected;
     $('#stop-stream-button').textContent = recovery ? 'Retry Stop / Restore' : 'Stop Streaming';
+
+    const runtimeDisabled = busy || !runtimeMutable();
+    for (const element of document.querySelectorAll('#live-source-list button, #live-source-list input')) {
+      element.disabled = runtimeDisabled;
+    }
+    $('#reset-live-sources-button').disabled = runtimeDisabled || runtimeOverrideCount() === 0;
   }
 
   async function startStreaming() {
@@ -761,6 +978,14 @@
   $('#run-preflight-button').addEventListener('click', () => run('Preflight', runPreflight, '#preflight-error'));
   $('#start-stream-button').addEventListener('click', () => run('Start streaming', startStreaming, '#live-error'));
   $('#stop-stream-button').addEventListener('click', () => run('Stop streaming', stopStreaming, '#live-error'));
+  $('#reset-live-sources-button').addEventListener('click', () => run(
+    'Reset live scene',
+    async () => {
+      await liveSocket.request('live.scene.reset_overrides', {});
+      activity('all live source overrides restored to profile baseline', 'success');
+    },
+    '#live-sources-error',
+  ));
 
   window.addEventListener('streamops:streaming-selection', () => {
     renderProfile();
