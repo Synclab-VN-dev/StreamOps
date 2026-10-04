@@ -306,3 +306,21 @@ def test_runtime_override_recovers_after_live_service_restart(tmp_path: Path) ->
     assert client.item["sceneItemEnabled"] is False
     assert client.transform["positionX"] == 100.0
     assert client.transform["positionY"] == 50.0
+
+
+def test_reset_all_restores_baseline_without_touching_output_configuration(tmp_path: Path) -> None:
+    service, _, client, source_id, _ = start_live(tmp_path)
+    output_service = deepcopy(client.service)
+
+    service.set_source_visibility(source_id, True)
+    service.set_source_position(source_id, x=40, y=40)
+    assert service.status()["runtime_scene"]["overrides"]
+
+    reset = service.reset_runtime_overrides()
+
+    assert reset["status"] == "PASS"
+    assert reset["overrides"] == {}
+    assert reset["sources"][0]["actual"]["visible"] is False
+    assert reset["sources"][0]["actual"]["position"] == {"x": 100.0, "y": 50.0}
+    assert client.service == output_service
+    assert client.active is True
