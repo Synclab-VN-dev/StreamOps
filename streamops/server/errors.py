@@ -127,6 +127,15 @@ class InvalidObsProcessRequestError(ObsProcessError):
     """Raised when OBS lifecycle API receives client-controlled execution input."""
 
 
+class ObsPluginError(ServerError):
+    """Stable public error raised by the OBS plugin lifecycle boundary."""
+
+    def __init__(self, code: str, message: str, status_code: int) -> None:
+        self.code = code
+        self.status_code = status_code
+        super().__init__(message)
+
+
 
 class SceneOperationError(ServerError):
     """Raised when a scene apply/verify/review operation cannot complete."""

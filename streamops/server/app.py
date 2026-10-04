@@ -15,6 +15,7 @@ from .api.live import router as live_router
 from .api.live_ws import router as live_ws_router
 from .api.obs import router as obs_router
 from .api.obs_process import router as obs_process_router
+from .api.obs_plugins import router as obs_plugins_router
 from .api.obs_ws import router as obs_ws_router
 from .api.screen import router as screen_router
 from .api.steam import router as steam_router
@@ -26,6 +27,7 @@ from .errors import (
     NoCaptureError,
     ObsExecutableNotAllowedError,
     ObsOperationInProgressError,
+    ObsPluginError,
     ObsReadinessTimeoutError,
     ObsShutdownError,
     ObsShutdownTimeoutError,
@@ -54,8 +56,8 @@ from .errors import (
 )
 from .scene_config import SceneConfigError
 from .obs import ObsManager
-from .platform.windows import WindowsScreenCaptureBackend, WindowsSteamBackend
-from .services import ObsSceneService, ScreenCaptureService, SteamService
+from .platform.windows import WindowsObsMultiRtmpHost, WindowsScreenCaptureBackend, WindowsSteamBackend
+from .services import ObsPluginService, ObsSceneService, ScreenCaptureService, SteamService
 from .services.live import LiveService
 from .services.live_status import LiveStatusHub
 from .services.obs_status import ObsStatusHub
@@ -72,6 +74,7 @@ def create_app(
     capture_service: ScreenCaptureService | None = None,
     steam_service: SteamService | None = None,
     obs_manager: ObsManager | None = None,
+    obs_plugin_service: ObsPluginService | None = None,
     obs_scene_service: ObsSceneService | None = None,
     obs_status_hub: ObsStatusHub | None = None,
     live_service: LiveService | None = None,
@@ -85,6 +88,7 @@ def create_app(
     )
     steam = steam_service or SteamService(WindowsSteamBackend())
     obs = obs_manager or ObsManager()
+    obs_plugins = obs_plugin_service or ObsPluginService(obs, WindowsObsMultiRtmpHost())
     obs_scenes = obs_scene_service or ObsSceneService(data_dir=config.data_dir / "scene-profiles")
     status_hub = obs_status_hub or ObsStatusHub(obs, obs_scenes, service)
     live = live_service or LiveService(
@@ -116,6 +120,7 @@ def create_app(
     app.state.capture_service = service
     app.state.steam_service = steam
     app.state.obs_manager = obs
+    app.state.obs_plugin_service = obs_plugins
     app.state.obs_scene_service = obs_scenes
     app.state.obs_status_hub = status_hub
     app.state.live_service = live
@@ -125,12 +130,17 @@ def create_app(
     app.include_router(live_ws_router)
     app.include_router(obs_router)
     app.include_router(obs_process_router)
+    app.include_router(obs_plugins_router)
     app.include_router(obs_ws_router)
     app.include_router(screen_router)
     app.include_router(steam_router)
 
     @app.exception_handler(StreamingError)
     async def streaming_error_handler(_request, exc: StreamingError) -> JSONResponse:
+        return _error_response(exc.status_code, exc.code, str(exc))
+
+    @app.exception_handler(ObsPluginError)
+    async def obs_plugin_error_handler(_request, exc: ObsPluginError) -> JSONResponse:
         return _error_response(exc.status_code, exc.code, str(exc))
 
     @app.exception_handler(InvalidObsProcessRequestError)

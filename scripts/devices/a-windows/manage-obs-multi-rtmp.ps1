@@ -2,7 +2,7 @@
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = "High")]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet("Inspect", "Install", "Verify", "Rollback")]
+    [ValidateSet("Inspect", "Status", "Install", "Verify", "Rollback")]
     [string]$Action,
     [string]$EvidenceRoot
 )
@@ -10,13 +10,16 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$releaseTag = "0.7.4.3"
-$packageVersion = "0.7.4.0"
-$artifactName = "obs-multi-rtmp-0.7.4.0-windows-x64.zip"
-$artifactUrl = "https://github.com/sorayuki/obs-multi-rtmp/releases/download/$releaseTag/$artifactName"
-$artifactSha256 = "5fc2a14a4222cef914d4703325853b1f97247abe76bbd1fccd0dbd40831affe5"
-$expectedObsVersion = "32.2.1"
-$expectedFileCount = 73
+$desiredState = Get-Content -LiteralPath (Join-Path $PSScriptRoot "obs-multi-rtmp-manifest.json") -Raw | ConvertFrom-Json
+$releaseTag = [string]$desiredState.release_tag
+$packageVersion = [string]$desiredState.package_version
+$artifactName = [string]$desiredState.artifact_name
+$artifactUrl = [string]$desiredState.artifact_url
+$artifactSha256 = [string]$desiredState.artifact_sha256
+$expectedObsVersion = [string]$desiredState.expected_obs_version
+$expectedFileCount = [int]$desiredState.file_count
+$expectedTreeSha256 = [string]$desiredState.tree_sha256
+$expectedRelativePaths = @($desiredState.relative_paths | ForEach-Object { [string]$_ })
 $obsExecutable = "C:\Program Files\obs-studio\bin\64bit\obs64.exe"
 $pluginRoot = Join-Path $env:PROGRAMDATA "obs-studio\plugins\obs-multi-rtmp"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
@@ -35,6 +38,33 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
 
 function Get-Sha256([string]$Path) {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
+function Get-TreeSha256([object[]]$Files) {
+    $lines = @(
+        $Files | Sort-Object relative_path | ForEach-Object {
+            "$($_.relative_path)|$($_.length)|$($_.sha256)"
+        }
+    )
+    $bytes = [Text.Encoding]::UTF8.GetBytes([string]::Join("`n", $lines))
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace("-", "").ToLowerInvariant()
+    }
+    finally { $sha.Dispose() }
+}
+
+function Get-InstallState {
+    $files = @(Get-PluginFiles)
+    if ($files.Count -eq 0 -and -not (Test-Path -LiteralPath $pluginRoot)) {
+        return [ordered]@{ installation = "absent"; files = $files }
+    }
+    $paths = @($files | ForEach-Object { [string]$_.relative_path })
+    $exactPaths = $paths.Count -eq $expectedFileCount -and
+        @($paths | Where-Object { $_ -notin $expectedRelativePaths }).Count -eq 0 -and
+        @($expectedRelativePaths | Where-Object { $_ -notin $paths }).Count -eq 0
+    $exact = $exactPaths -and (Get-TreeSha256 $files) -eq $expectedTreeSha256
+    return [ordered]@{ installation = if ($exact) { "exact" } else { "conflict" }; files = $files }
 }
 
 function Write-JsonFile([string]$Path, [object]$Value) {
@@ -57,7 +87,7 @@ function Assert-ObsVersion {
     }
     $version = (Get-Item -LiteralPath $obsExecutable).VersionInfo.ProductVersion
     if ($version -ne $expectedObsVersion) {
-        throw "This POC is pinned to OBS $expectedObsVersion; found $version at $obsExecutable."
+        throw "incompatible_obs: expected OBS $expectedObsVersion"
     }
     return $version
 }
@@ -244,6 +274,12 @@ function Get-ValidatedArtifact {
         if ($stagedFiles.Count -ne $expectedFileCount) {
             throw "Staged file count mismatch. Expected $expectedFileCount, got $($stagedFiles.Count)."
         }
+        $stagedPaths = @($stagedFiles | ForEach-Object { [string]$_.relative_path })
+        if (@($stagedPaths | Where-Object { $_ -notin $expectedRelativePaths }).Count -gt 0 -or
+            @($expectedRelativePaths | Where-Object { $_ -notin $stagedPaths }).Count -gt 0 -or
+            (Get-TreeSha256 $stagedFiles) -ne $expectedTreeSha256) {
+            throw "Artifact contents do not match the pinned desired-state manifest."
+        }
         return [ordered]@{
             temp_root = $tempRoot
             stage_root = $stageRoot
@@ -258,17 +294,21 @@ function Get-ValidatedArtifact {
     }
 }
 
-function Assert-NoExistingPluginConfig {
-    $configs = @(Get-PluginConfigMetadata)
-    if ($configs.Count -gt 0) {
-        throw "Existing obs-multi-rtmp profile configuration was found. Refusing to inspect or copy possible RTMP credentials: $($configs.path -join ', ')"
-    }
-}
-
 function Invoke-Install {
-    Assert-ObsStopped
     [void](Assert-ObsVersion)
-    Assert-NoExistingPluginConfig
+    $currentState = Get-InstallState
+    if ($currentState.installation -eq "exact") {
+        [ordered]@{
+            ok = $true
+            action = "Install"
+            result = "already_installed"
+            release_tag = $releaseTag
+            package_version = $packageVersion
+            file_count = @($currentState.files).Count
+        }
+        return
+    }
+    Assert-ObsStopped
     if ($WhatIfPreference) {
         [void]$PSCmdlet.ShouldProcess($pluginRoot, "Install pinned obs-multi-rtmp $releaseTag ($expectedFileCount files)")
         [ordered]@{
@@ -278,29 +318,15 @@ function Invoke-Install {
             package_version = $packageVersion
             artifact_url = $artifactUrl
             artifact_sha256 = $artifactSha256
-            plugin_root = $pluginRoot
             expected_file_count = $expectedFileCount
-        } | ConvertTo-Json -Depth 6
+        }
         return
     }
     $artifact = Get-ValidatedArtifact
+    $transaction = $null
     try {
-        $currentFiles = @(Get-PluginFiles)
-        $currentErrors = @(Compare-FileManifest @($artifact.files) $currentFiles)
-        if ($currentErrors.Count -eq 0 -and $currentFiles.Count -eq $expectedFileCount) {
-            [ordered]@{
-                action = "Install"
-                result = "already_installed"
-                release_tag = $releaseTag
-                package_version = $packageVersion
-                plugin_root = $pluginRoot
-                file_count = $currentFiles.Count
-            } | ConvertTo-Json -Depth 6
-            return
-        }
         if (-not $PSCmdlet.ShouldProcess($pluginRoot, "Install pinned obs-multi-rtmp $releaseTag ($expectedFileCount files)")) {
-            [ordered]@{ action = "Install"; what_if = $true; plugin_root = $pluginRoot; files = $artifact.files } |
-                ConvertTo-Json -Depth 8
+            [ordered]@{ ok = $true; action = "Install"; what_if = $true; file_count = @($artifact.files).Count }
             return
         }
 
@@ -349,14 +375,34 @@ function Invoke-Install {
         $transaction.installed_files = $installedFiles
         Write-JsonFile (Join-Path $transactionRoot "transaction.json") $transaction
         [ordered]@{
+            ok = $true
             action = "Install"
             result = "installed"
             release_tag = $releaseTag
             package_version = $packageVersion
-            plugin_root = $pluginRoot
             file_count = $installedFiles.Count
-            transaction = Join-Path $transactionRoot "transaction.json"
-        } | ConvertTo-Json -Depth 6
+        }
+    }
+    catch {
+        if ($null -ne $transaction) {
+            try {
+                if (Test-Path -LiteralPath $pluginRoot) {
+                    Remove-Item -LiteralPath $pluginRoot -Recurse -Force
+                }
+                if ([bool]$transaction.plugin_existed -and
+                    (Test-Path -LiteralPath ([string]$transaction.backup_root) -PathType Container)) {
+                    Copy-Item -LiteralPath ([string]$transaction.backup_root) -Destination $pluginRoot -Recurse
+                }
+                $transaction.state = "failed_restored"
+                $transaction | Add-Member -NotePropertyName "failed_at" `
+                    -NotePropertyValue ([DateTimeOffset]::Now.ToString("o")) -Force
+                Write-JsonFile (Join-Path ([string]$transaction.transaction_root) "transaction.json") $transaction
+            }
+            catch {
+                # Preserve the original install failure; status will expose any remaining conflict.
+            }
+        }
+        throw
     }
     finally {
         if ($null -ne $artifact -and (Test-Path -LiteralPath $artifact.temp_root)) {
@@ -392,42 +438,66 @@ function Get-CurrentTransaction {
     return Read-JsonFile ([string]$pointer.transaction_path)
 }
 
-function Invoke-Verify {
-    $obsVersion = Assert-ObsVersion
-    $transaction = Get-CurrentTransaction
-    $actualFiles = @(Get-PluginFiles)
-    $expectedFiles = @($transaction.expected_files)
-    $errors = @(Compare-FileManifest $expectedFiles $actualFiles)
+function Get-LoadEvidence {
+    $processes = @(
+        Get-CimInstance Win32_Process -Filter "Name = 'obs64.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.ExecutablePath -eq $obsExecutable }
+    )
+    if ($processes.Count -ne 1) {
+        return [ordered]@{ obs_running = $false; loaded = $false; loaded_version = $null }
+    }
+    $startedUtc = $processes[0].CreationDate.ToUniversalTime()
     $latestLog = Get-ChildItem -LiteralPath (Join-Path $env:APPDATA "obs-studio\logs") -Filter "*.txt" -File -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTimeUtc -Descending |
+        Where-Object { $_.CreationTimeUtc -ge $startedUtc.AddSeconds(-5) } |
+        Sort-Object CreationTimeUtc -Descending |
         Select-Object -First 1
-    $loadLines = @()
-    $moduleListed = $false
-    if ($null -ne $latestLog) {
-        $loadLines = @(
-            Select-String -LiteralPath $latestLog.FullName -Pattern "\[obs-multi-rtmp\] version:" -CaseSensitive:$false |
-                Select-Object -Last 3 |
-                ForEach-Object { $_.Line }
-        )
-        $moduleListed = $null -ne (Select-String -LiteralPath $latestLog.FullName -Pattern "obs-multi-rtmp\.dll\s*$" -CaseSensitive:$false | Select-Object -First 1)
+    if ($null -eq $latestLog) {
+        return [ordered]@{ obs_running = $true; loaded = $false; loaded_version = $null }
     }
-    $result = [ordered]@{
+    $versionMatch = Select-String -LiteralPath $latestLog.FullName `
+        -Pattern "\[obs-multi-rtmp\] version:\s*([0-9.]+)" -CaseSensitive:$false |
+        Select-Object -Last 1
+    $moduleListed = $null -ne (Select-String -LiteralPath $latestLog.FullName `
+        -Pattern "obs-multi-rtmp\.dll\s*$" -CaseSensitive:$false | Select-Object -First 1)
+    $loadedVersion = if ($null -eq $versionMatch) { $null } else { $versionMatch.Matches[0].Groups[1].Value }
+    return [ordered]@{
+        obs_running = $true
+        loaded = $moduleListed -and $loadedVersion -eq $packageVersion
+        loaded_version = $loadedVersion
+    }
+}
+
+function Get-SafeStatus {
+    $foundVersion = if (Test-Path -LiteralPath $obsExecutable -PathType Leaf) {
+        (Get-Item -LiteralPath $obsExecutable).VersionInfo.ProductVersion
+    } else { $null }
+    $install = Get-InstallState
+    $load = Get-LoadEvidence
+    return [ordered]@{
+        ok = $true
+        action = "Status"
+        installation = $install.installation
+        compatible = $foundVersion -eq $expectedObsVersion
+        loaded = [bool]$load.loaded
+        loaded_version = $load.loaded_version
+    }
+}
+
+function Invoke-Verify {
+    [void](Assert-ObsVersion)
+    $install = Get-InstallState
+    if ($install.installation -ne "exact") { throw "manifest_mismatch: installed plugin files do not match desired state" }
+    $load = Get-LoadEvidence
+    if (-not $load.obs_running) { throw "obs_not_running: OBS is not running" }
+    if ([string]::IsNullOrWhiteSpace([string]$load.loaded_version)) { throw "version_not_loaded: plugin version evidence is missing" }
+    if (-not $load.loaded) { throw "module_not_loaded: the exact plugin module/version is not loaded" }
+    return [ordered]@{
+        ok = $true
         action = "Verify"
-        obs_version = $obsVersion
-        obs_running = @(Get-Process -Name "obs64" -ErrorAction SilentlyContinue).Count -gt 0
-        plugin_root = $pluginRoot
-        expected_file_count = $expectedFiles.Count
-        actual_file_count = $actualFiles.Count
-        files_valid = $errors.Count -eq 0
-        file_errors = $errors
-        latest_obs_log = if ($null -eq $latestLog) { $null } else { $latestLog.FullName }
-        plugin_load_lines = $loadLines
-        module_listed = $moduleListed
-        profile_configs = Get-PluginConfigMetadata
-    }
-    $result | ConvertTo-Json -Depth 8
-    if ($errors.Count -gt 0) {
-        throw "Installed plugin files do not match the pinned artifact: $($errors -join '; ')"
+        installation = "exact"
+        compatible = $true
+        loaded = $true
+        loaded_version = [string]$load.loaded_version
     }
 }
 
@@ -452,14 +522,18 @@ function Invoke-Rollback {
     $transaction = Get-CurrentTransaction
     $actualFiles = @(Get-PluginFiles)
     $expectedFiles = @($transaction.expected_files)
+    $manifestErrors = @(Compare-FileManifest $expectedFiles $actualFiles)
+    if ($manifestErrors.Count -gt 0) {
+        throw "rollback_conflict: installed plugin files are missing, modified, or unmanaged"
+    }
     $expectedByPath = @{}
     foreach ($file in $expectedFiles) { $expectedByPath[[string]$file.relative_path] = $file }
     foreach ($file in $actualFiles) {
         if (-not $expectedByPath.ContainsKey([string]$file.relative_path)) {
-            throw "Rollback refused because the plugin directory contains an unmanaged file: $($file.relative_path)"
+            throw "rollback_conflict: plugin directory contains an unmanaged file"
         }
         if ($file.sha256 -ne $expectedByPath[[string]$file.relative_path].sha256) {
-            throw "Rollback refused because an installed file changed: $($file.relative_path)"
+            throw "rollback_conflict: an installed file changed"
         }
     }
 
@@ -472,7 +546,7 @@ function Invoke-Rollback {
     foreach ($config in @(Get-PluginConfigMetadata)) {
         if ($config.path -notin $baselineConfigPaths) {
             if (-not (Test-EmptyPluginConfig ([string]$config.path))) {
-                throw "Rollback refused because a new obs-multi-rtmp config is not empty: $($config.path)"
+                throw "config_conflict: a new plugin config is not empty"
             }
             $newEmptyConfigs.Add([string]$config.path)
         }
@@ -480,13 +554,11 @@ function Invoke-Rollback {
 
     if (-not $PSCmdlet.ShouldProcess($pluginRoot, "Rollback obs-multi-rtmp and restore the pre-install plugin state")) {
         [ordered]@{
+            ok = $true
             action = "Rollback"
             what_if = $true
-            plugin_root = $pluginRoot
-            files_to_remove = @($actualFiles | ForEach-Object { [string]$_.relative_path })
-            empty_profile_configs_to_remove = @($newEmptyConfigs)
-            backup_to_restore = $transaction.backup_root
-        } | ConvertTo-Json -Depth 8
+            file_count = $actualFiles.Count
+        }
         return
     }
 
@@ -508,17 +580,44 @@ function Invoke-Rollback {
         -NotePropertyValue ([DateTimeOffset]::Now.ToString("o")) -Force
     Write-JsonFile (Join-Path ([string]$transaction.transaction_root) "transaction.json") $transaction
     [ordered]@{
+        ok = $true
         action = "Rollback"
         result = "rolled_back"
-        plugin_root = $pluginRoot
         restored_previous_plugin = [bool]$transaction.plugin_existed
-        removed_empty_profile_configs = @($newEmptyConfigs)
-    } | ConvertTo-Json -Depth 8
+        removed_empty_profile_config_count = $newEmptyConfigs.Count
+    }
 }
 
-switch ($Action) {
-    "Inspect" { Get-Inspection | ConvertTo-Json -Depth 12 }
-    "Install" { Invoke-Install }
-    "Verify" { Invoke-Verify }
-    "Rollback" { Invoke-Rollback }
+try {
+    $result = switch ($Action) {
+        "Inspect" { Get-Inspection }
+        "Status" { Get-SafeStatus }
+        "Install" { Invoke-Install }
+        "Verify" { Invoke-Verify }
+        "Rollback" { Invoke-Rollback }
+    }
+    $result | ConvertTo-Json -Depth 12 -Compress
+}
+catch {
+    $message = [string]$_.Exception.Message
+    $code = if ($_.Exception -is [UnauthorizedAccessException] -or $_.Exception -is [Security.SecurityException]) {
+        "permission_denied"
+    } elseif ($message -match "^([a-z_]+):") {
+        $Matches[1]
+    } elseif ($message -match "OBS .*found") {
+        "incompatible_obs"
+    } elseif ($message -match "transaction|state file") {
+        "transaction_missing"
+    } elseif ($Action -eq "Install") {
+        "install_failed"
+    } elseif ($Action -eq "Verify") {
+        "verify_failed"
+    } elseif ($Action -eq "Rollback") {
+        "rollback_failed"
+    } else {
+        "status_failed"
+    }
+    [ordered]@{ ok = $false; error = [ordered]@{ code = $code } } |
+        ConvertTo-Json -Depth 4 -Compress
+    exit 1
 }
