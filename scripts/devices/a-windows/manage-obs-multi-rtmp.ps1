@@ -56,7 +56,10 @@ function Get-TreeSha256([object[]]$Files) {
 
 function Get-InstallState {
     $files = @(Get-PluginFiles)
-    if ($files.Count -eq 0 -and -not (Test-Path -LiteralPath $pluginRoot)) {
+    # An empty managed root is equivalent to absent. Keeping the directory lets
+    # a limited StreamOps process retain a narrowly provisioned ACL across
+    # rollback/reinstall without granting access to the parent plugin folder.
+    if ($files.Count -eq 0) {
         return [ordered]@{ installation = "absent"; files = $files }
     }
     $paths = @($files | ForEach-Object { [string]$_.relative_path })
@@ -151,6 +154,20 @@ function Get-PluginFiles([string]$Root = $pluginRoot) {
                 }
             }
     )
+}
+
+function Clear-DirectoryContents([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
+        New-Item -ItemType Directory -Path $Path -Force | Out-Null
+        return
+    }
+    Get-ChildItem -LiteralPath $Path -Force | Remove-Item -Recurse -Force
+}
+
+function Copy-DirectoryContents([string]$Source, [string]$Destination) {
+    New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+    Get-ChildItem -LiteralPath $Source -Force |
+        Copy-Item -Destination $Destination -Recurse -Force
 }
 
 function Get-Inspection {
@@ -360,11 +377,8 @@ function Invoke-Install {
         Write-JsonFile (Join-Path $transactionRoot "transaction.json") $transaction
         Write-JsonFile $transactionPointer ([ordered]@{ transaction_path = (Join-Path $transactionRoot "transaction.json") })
 
-        if (Test-Path -LiteralPath $pluginRoot) {
-            Remove-Item -LiteralPath $pluginRoot -Recurse -Force
-        }
-        New-Item -ItemType Directory -Path (Split-Path -Parent $pluginRoot) -Force | Out-Null
-        Copy-Item -LiteralPath $artifact.stage_root -Destination $pluginRoot -Recurse
+        Clear-DirectoryContents $pluginRoot
+        Copy-DirectoryContents ([string]$artifact.stage_root) $pluginRoot
 
         $installedFiles = @(Get-PluginFiles)
         if ($installedFiles.Count -ne $expectedFileCount) {
@@ -386,12 +400,10 @@ function Invoke-Install {
     catch {
         if ($null -ne $transaction) {
             try {
-                if (Test-Path -LiteralPath $pluginRoot) {
-                    Remove-Item -LiteralPath $pluginRoot -Recurse -Force
-                }
+                Clear-DirectoryContents $pluginRoot
                 if ([bool]$transaction.plugin_existed -and
                     (Test-Path -LiteralPath ([string]$transaction.backup_root) -PathType Container)) {
-                    Copy-Item -LiteralPath ([string]$transaction.backup_root) -Destination $pluginRoot -Recurse
+                    Copy-DirectoryContents ([string]$transaction.backup_root) $pluginRoot
                 }
                 $transaction.state = "failed_restored"
                 $transaction | Add-Member -NotePropertyName "failed_at" `
@@ -562,15 +574,13 @@ function Invoke-Rollback {
         return
     }
 
-    if (Test-Path -LiteralPath $pluginRoot) {
-        Remove-Item -LiteralPath $pluginRoot -Recurse -Force
-    }
+    Clear-DirectoryContents $pluginRoot
     if ([bool]$transaction.plugin_existed) {
         if ([string]::IsNullOrWhiteSpace([string]$transaction.backup_root) -or
             -not (Test-Path -LiteralPath ([string]$transaction.backup_root) -PathType Container)) {
             throw "Rollback backup is missing: $($transaction.backup_root)"
         }
-        Copy-Item -LiteralPath ([string]$transaction.backup_root) -Destination $pluginRoot -Recurse
+        Copy-DirectoryContents ([string]$transaction.backup_root) $pluginRoot
     }
     foreach ($path in $newEmptyConfigs) {
         Remove-Item -LiteralPath $path -Force
