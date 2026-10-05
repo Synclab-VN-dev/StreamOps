@@ -239,3 +239,32 @@ def test_ctrl_c_detaches_logs_without_requesting_stop(monkeypatch, tmp_path):
 
     assert cli.command_logs(paths, follow=True, raw=False) == 0
     assert not paths.stop_request.exists()
+
+
+def test_wait_start_ignores_stale_terminal_state_from_previous_daemon(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    old = {"state": "RUNNING", "supervisorPid": 999, "captureActive": True}
+    new = {"state": "RUNNING", "supervisorPid": 123, "captureActive": True}
+    states = iter([old, new])
+
+    monkeypatch.setattr(cli, "_state", lambda _paths: next(states, new))
+    monkeypatch.setattr(cli, "_pid_alive", lambda _pid: True)
+    monkeypatch.setattr(cli.time, "sleep", lambda _seconds: None)
+
+    result = cli._wait_start(paths, 123, timeout=1)
+    assert result["supervisorPid"] == 123
+    assert result["state"] == "RUNNING"
+
+
+def test_wait_start_reports_blocked_when_new_daemon_exits_before_state(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    monkeypatch.setattr(
+        cli,
+        "_state",
+        lambda _paths: {"state": "RUNNING", "supervisorPid": 999},
+    )
+    monkeypatch.setattr(cli, "_pid_alive", lambda _pid: False)
+
+    result = cli._wait_start(paths, 123, timeout=1)
+    assert result["state"] == "BLOCKED"
+    assert result["supervisorPid"] == 123
