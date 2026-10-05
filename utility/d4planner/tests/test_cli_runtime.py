@@ -268,3 +268,31 @@ def test_wait_start_reports_blocked_when_new_daemon_exits_before_state(monkeypat
     result = cli._wait_start(paths, 123, timeout=1)
     assert result["state"] == "BLOCKED"
     assert result["supervisorPid"] == 123
+
+
+def test_path_restore_refuses_while_runtime_active(monkeypatch, tmp_path, capsys):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    atomic_write_json(
+        paths.runtime_state,
+        {
+            "state": "RUNNING",
+            "supervisorPid": 42,
+        },
+    )
+    monkeypatch.setattr(cli, "_pid_alive", lambda _pid: True)
+
+    class FakeBackend:
+        def get_user_path(self):
+            return str(paths.controller)
+
+        def set_user_path(self, _value):
+            raise AssertionError("PATH must not change while runtime is active")
+
+        def get_machine_path(self):
+            return "MACHINE"
+
+    monkeypatch.setattr(cli, "WindowsRegistryPathBackend", lambda: FakeBackend())
+
+    assert cli.command_path(paths, "restore") == 4
+    assert "Run 'd4planner stop' first" in capsys.readouterr().err
