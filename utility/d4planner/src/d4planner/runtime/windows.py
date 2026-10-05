@@ -192,6 +192,28 @@ class WindowsRuntime:
     def controller_dll(self) -> Path:
         return self.paths.controller / "nvdaControllerClient64.dll"
 
+    def controller_machine(self, path: Path | None = None) -> int | None:
+        """Return PE COFF machine type; AMD64 is 0x8664."""
+        candidate = path or self.controller_dll()
+        try:
+            with candidate.open("rb") as handle:
+                if handle.read(2) != b"MZ":
+                    return None
+                handle.seek(0x3C)
+                offset_raw = handle.read(4)
+                if len(offset_raw) != 4:
+                    return None
+                pe_offset = int.from_bytes(offset_raw, "little")
+                handle.seek(pe_offset)
+                if handle.read(4) != b"PE\x00\x00":
+                    return None
+                machine_raw = handle.read(2)
+                if len(machine_raw) != 2:
+                    return None
+                return int.from_bytes(machine_raw, "little")
+        except OSError:
+            return None
+
     def controller_sha256(self, path: Path | None = None) -> str | None:
         candidate = path or self.controller_dll()
         try:
@@ -213,7 +235,10 @@ class WindowsRuntime:
         path = self.controller_dll()
         if not path.is_file() or path.stat().st_size <= 0:
             return False
-        return self.controller_sha256(path) == self.expected_controller_sha256()
+        return (
+            self.controller_machine(path) == 0x8664
+            and self.controller_sha256(path) == self.expected_controller_sha256()
+        )
 
     def locate_controller_source(self) -> Path | None:
         override = os.environ.get("D4PLANNER_CONTROLLER_DLL")
@@ -252,6 +277,7 @@ class WindowsRuntime:
                 if (
                     candidate.is_file()
                     and candidate.stat().st_size > 0
+                    and self.controller_machine(candidate) == 0x8664
                     and self.controller_sha256(candidate) == self.expected_controller_sha256()
                 ):
                     return candidate
@@ -573,6 +599,8 @@ class WindowsRuntime:
                 "path": str(self.controller_dll()),
                 "sha256": self.controller_sha256(),
                 "expectedSha256": self.expected_controller_sha256(),
+                "peMachine": self.controller_machine(),
+                "expectedPeMachine": 0x8664,
             },
         }
         health = self.probe_tolk()
