@@ -106,3 +106,47 @@ def test_stop_without_live_supervisor_disables_stale_capture(monkeypatch, tmp_pa
 
     assert cli.command_stop(paths, timeout=0.1) == 0
     assert read_json(paths.capture_state)["enabled"] is False
+
+
+def test_status_marks_stale_running_state_when_supervisor_is_dead(monkeypatch, tmp_path, capsys):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    atomic_write_json(
+        paths.runtime_state,
+        {
+            "state": "RUNNING",
+            "supervisorPid": 424242,
+            "captureActive": True,
+        },
+    )
+    monkeypatch.setattr(cli, "_pid_alive", lambda _pid: False)
+
+    assert cli.command_status(paths, raw_json=False) == 2
+    captured = capsys.readouterr()
+    assert "STALE" in captured.out
+    assert "supervisor process is not running" in captured.err
+
+
+def test_start_rejects_mode_change_without_stopping_existing_runtime(monkeypatch, tmp_path, capsys):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    atomic_write_json(
+        paths.runtime_state,
+        {
+            "state": "RUNNING",
+            "supervisorPid": 77,
+            "silent": True,
+        },
+    )
+    monkeypatch.setattr(cli, "_pid_alive", lambda _pid: True)
+
+    result = cli.command_start(
+        paths,
+        speech=True,
+        isolated=False,
+        detached=True,
+        timeout=1,
+    )
+
+    assert result == 4
+    assert "already running in silent mode" in capsys.readouterr().err
