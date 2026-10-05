@@ -169,9 +169,9 @@ class Supervisor:
         except FileNotFoundError:
             pass
         self.transition(RuntimeState.BOOTSTRAPPING, "checking runtime")
-        self._create_session()
 
         try:
+            self._create_session()
             self.runtime.require_windows()
             controller = self.runtime.ensure_controller_runtime()
             self.status.extras["controllerDll"] = str(controller)
