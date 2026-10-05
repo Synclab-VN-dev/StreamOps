@@ -150,3 +150,43 @@ def test_start_rejects_mode_change_without_stopping_existing_runtime(monkeypatch
 
     assert result == 4
     assert "already running in silent mode" in capsys.readouterr().err
+
+
+def test_doctor_reports_stale_supervisor_and_capture_lease(monkeypatch, tmp_path, capsys):
+    from types import SimpleNamespace
+    from d4planner.runtime.store import write_capture_config
+
+    paths = RuntimePaths(tmp_path / "home")
+    store = EventStore.create(paths, silent=True, session_id="doctor")
+    atomic_write_json(
+        paths.runtime_state,
+        {
+            "state": "RUNNING",
+            "supervisorPid": 99,
+            "sessionDir": str(store.session.directory),
+            "captureActive": True,
+            "lastEventAt": None,
+        },
+    )
+    write_capture_config(paths, enabled=False)
+
+    class FakeWindowsRuntime:
+        def __init__(self, _paths):
+            pass
+
+        def doctor(self):
+            return SimpleNamespace(
+                checks={
+                    "nvda": {"status": "PASS", "detail": "ok"},
+                    "tolk": {"status": "PASS", "detail": "NVDA"},
+                }
+            )
+
+    monkeypatch.setattr(cli, "WindowsRuntime", FakeWindowsRuntime)
+    monkeypatch.setattr(cli, "_pid_alive", lambda _pid: False)
+
+    assert cli.command_doctor(paths, raw_json=False) == 1
+    out = capsys.readouterr().out
+    assert "supervisor" in out
+    assert "capture_lease" in out
+    assert "FAIL" in out
