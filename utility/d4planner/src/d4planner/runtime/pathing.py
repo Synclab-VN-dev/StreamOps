@@ -154,7 +154,9 @@ class UserPathManager:
                 },
             )
 
-        after = os.pathsep.join([*parts, managed]) if parts else managed
+        # Prepend to mirror the proven #41 process-scoped discovery flow and
+        # ensure this exact controller client wins over later User PATH entries.
+        after = os.pathsep.join([managed, *parts]) if parts else managed
         self.backend.set_user_path(after)
         updated = _now()
         atomic_write_json(
@@ -190,7 +192,7 @@ class UserPathManager:
             return PathChange(cleaned != before, managed, before, cleaned, None)
 
         original = str(backup.get("originalUserPath") or "")
-        expected_after_parts = [*_parts(original), managed]
+        expected_after_parts = [managed, *_parts(original)]
         expected_after = os.pathsep.join(expected_after_parts) if expected_after_parts else managed
 
         # Exact restore when nobody changed PATH after D4Planner managed it.
