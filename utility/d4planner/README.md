@@ -96,6 +96,11 @@ Normal runtime mode adds:
 to **User PATH only**. The operation is idempotent and tracked for reversible
 cleanup. Machine PATH is read-only to D4Planner.
 
+If no verified controller client exists locally, first-run bootstrap downloads
+the official NVDA 2026.2 controller-client archive from NV Access, extracts only
+the x64 client, then verifies both PE architecture and the SHA-256 established
+during the #41 Real-A POC before installing it into the runtime directory.
+
 Diagnostic restore:
 
     d4planner path status
