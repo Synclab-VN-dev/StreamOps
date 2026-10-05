@@ -1,0 +1,389 @@
+"""D4Planner lifecycle supervisor."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from datetime import datetime, timezone
+import json
+import os
+from pathlib import Path
+import time
+from typing import Any, Protocol
+
+from .model import RuntimeState, RuntimeStatus, can_transition
+from .pathing import UserPathManager
+from .store import (
+    EventStore,
+    RuntimePaths,
+    atomic_write_json,
+    iso_now,
+    write_capture_config,
+)
+from .windows import RuntimeBlocked
+
+
+class RuntimeAdapter(Protocol):
+    def require_windows(self) -> None: ...
+    def ensure_controller_runtime(self) -> Path: ...
+    def controller_ready(self) -> bool: ...
+    def addon_installed(self) -> bool: ...
+    def nvda_version(self) -> str | None: ...
+    def active_console_session_id(self) -> int | None: ...
+    def ensure_nvda_running(self, *, timeout: float = 15.0): ...
+    def nvda_process(self): ...
+    def steam_process(self): ...
+    def game_process(self): ...
+    def probe_tolk(self): ...
+    def process_started_before(self, process, timestamp: str | None) -> bool: ...
+    def launch_game(self) -> None: ...
+    def wait_for_game(self, *, timeout: float = 90.0): ...
+
+
+class Supervisor:
+    def __init__(
+        self,
+        *,
+        paths: RuntimePaths,
+        runtime: RuntimeAdapter,
+        path_manager: UserPathManager,
+        silent: bool = True,
+        isolated: bool = False,
+        poll_interval: float = 0.25,
+        game_start_timeout: float = 90.0,
+    ):
+        self.paths = paths
+        self.runtime = runtime
+        self.path_manager = path_manager
+        self.silent = silent
+        self.isolated = isolated
+        self.poll_interval = poll_interval
+        self.game_start_timeout = game_start_timeout
+        self.store: EventStore | None = None
+        self.status = RuntimeStatus(
+            state=RuntimeState.STOPPED,
+            updated_at=iso_now(),
+            supervisor_pid=os.getpid(),
+            silent=silent,
+        )
+        self._raw_offset = 0
+
+    def _persist_status(self) -> None:
+        self.status.updated_at = iso_now()
+        atomic_write_json(self.paths.runtime_state, self.status.as_dict())
+
+    def _refresh_processes(self) -> None:
+        try:
+            self.status.active_console_session_id = self.runtime.active_console_session_id()
+        except Exception:
+            self.status.active_console_session_id = None
+        try:
+            self.status.nvda = self.runtime.nvda_process()
+        except Exception:
+            self.status.nvda = None
+        try:
+            self.status.steam = self.runtime.steam_process()
+        except Exception:
+            self.status.steam = None
+        try:
+            self.status.game = self.runtime.game_process()
+        except Exception:
+            self.status.game = None
+
+    def transition(
+        self,
+        target: RuntimeState,
+        detail: str,
+        *,
+        error: str | None = None,
+        data: dict[str, Any] | None = None,
+    ) -> None:
+        current = self.status.state
+        if not can_transition(current, target):
+            raise RuntimeError(f"invalid D4Planner transition: {current.value} -> {target.value}")
+        self.status.state = target
+        self.status.detail = detail
+        self.status.last_error = error
+        self._refresh_processes()
+        self._persist_status()
+        if self.store:
+            event_data = {"detail": detail, "from": current.value, "to": target.value}
+            if error:
+                event_data["error"] = error
+            if data:
+                event_data.update(data)
+            self.store.emit(f"runtime.{target.value.casefold()}", event_data)
+
+    def _create_session(self) -> None:
+        self.store = EventStore.create(
+            self.paths,
+            silent=self.silent,
+            metadata={
+                "nvdaVersion": self.runtime.nvda_version(),
+                "isolated": self.isolated,
+            },
+        )
+        self.status.session_id = self.store.session.session_id
+        self.status.session_dir = str(self.store.session.directory)
+        self._persist_status()
+        self.store.emit(
+            "runtime.start",
+            {
+                "detail": "D4Planner supervisor started",
+                "pid": os.getpid(),
+                "silent": self.silent,
+                "isolated": self.isolated,
+            },
+        )
+
+    def _block(self, detail: str, exc: Exception | None = None) -> RuntimeState:
+        error = f"{type(exc).__name__}: {exc}" if exc else detail
+        try:
+            self.transition(RuntimeState.BLOCKED, detail, error=error)
+        except RuntimeError:
+            self.status.state = RuntimeState.BLOCKED
+            self.status.detail = detail
+            self.status.last_error = error
+            self._persist_status()
+        write_capture_config(self.paths, enabled=False)
+        return self.status.state
+
+    def bootstrap(self) -> RuntimeState:
+        self.paths.ensure()
+        try:
+            self.paths.stop_request.unlink()
+        except FileNotFoundError:
+            pass
+        self.transition(RuntimeState.BOOTSTRAPPING, "checking runtime")
+        self._create_session()
+
+        try:
+            self.runtime.require_windows()
+            controller = self.runtime.ensure_controller_runtime()
+            self.status.extras["controllerDll"] = str(controller)
+
+            path_change = None
+            if not self.isolated:
+                path_change = self.path_manager.ensure(self.paths.controller)
+                self.status.extras["userPathManaged"] = True
+                self.status.extras["userPathChanged"] = path_change.changed
+                self.status.extras["userPathUpdatedAt"] = path_change.updated_at
+            else:
+                self.status.extras["userPathManaged"] = False
+
+            if not self.runtime.addon_installed():
+                raise RuntimeBlocked(
+                    "D4Planner NVDA add-on is not installed. Install the PR-built add-on first."
+                )
+
+            console = self.runtime.active_console_session_id()
+            if console is None:
+                raise RuntimeBlocked("no active interactive Windows console session")
+            nvda = self.runtime.ensure_nvda_running()
+            if nvda.session_id != console:
+                raise RuntimeBlocked(
+                    f"NVDA SessionId={nvda.session_id} does not match active console SessionId={console}"
+                )
+            self.status.active_console_session_id = console
+            self.status.nvda = nvda
+            self.transition(RuntimeState.NVDA_READY, f"NVDA ready in Session {console}")
+
+            health = self.runtime.probe_tolk()
+            self.status.tolk = health
+            if not health.ready:
+                raise RuntimeBlocked(
+                    "Tolk cannot detect NVDA"
+                    + (f": {health.error}" if health.error else f" (reader={health.reader})")
+                )
+            self.transition(
+                RuntimeState.TOLK_READY,
+                "Tolk detects NVDA and speech is available",
+                data={"reader": health.reader, "speech": health.speech},
+            )
+
+            steam = self.runtime.steam_process()
+            managed_updated = self.path_manager.managed_updated_at() if not self.isolated else None
+            if (
+                not self.isolated
+                and steam
+                and self.runtime.process_started_before(steam, managed_updated)
+            ):
+                self.status.steam = steam
+                self.transition(
+                    RuntimeState.RESTART_REQUIRED,
+                    "Steam predates D4Planner User PATH update; exit Steam normally and run start again",
+                    data={"steamPid": steam.pid},
+                )
+                write_capture_config(self.paths, enabled=False)
+                return self.status.state
+
+            game = self.runtime.game_process()
+            if game:
+                if game.session_id != console:
+                    raise RuntimeBlocked(
+                        f"Diablo IV SessionId={game.session_id} does not match active console SessionId={console}"
+                    )
+                self.status.game = game
+                self.transition(
+                    RuntimeState.GAME_ATTACHED,
+                    "attached to existing Diablo IV process without restart",
+                    data={"pid": game.pid},
+                )
+            else:
+                self.transition(RuntimeState.GAME_STARTING, "launching Diablo IV through interactive task")
+                self.runtime.launch_game()
+                game = self.runtime.wait_for_game(timeout=self.game_start_timeout)
+                if not game:
+                    self.transition(
+                        RuntimeState.WAITING_FOR_GAME,
+                        "Diablo IV has not appeared yet; supervisor remains active",
+                    )
+                    write_capture_config(
+                        self.paths,
+                        enabled=True,
+                        session=self.store.session if self.store else None,
+                        silent=self.silent,
+                    )
+                    self.status.capture_active = True
+                    self._persist_status()
+                    return self.status.state
+                if game.session_id != console:
+                    raise RuntimeBlocked(
+                        f"Diablo IV SessionId={game.session_id} does not match active console SessionId={console}"
+                    )
+                self.status.game = game
+                self.transition(
+                    RuntimeState.GAME_ATTACHED,
+                    "Diablo IV started in active console session",
+                    data={"pid": game.pid},
+                )
+
+            if not self.store:
+                raise RuntimeBlocked("capture session not initialized")
+            write_capture_config(
+                self.paths,
+                enabled=True,
+                session=self.store.session,
+                silent=self.silent,
+            )
+            self.status.capture_active = True
+            self.transition(RuntimeState.CAPTURE_READY, "NVDA add-on capture enabled")
+            self.transition(RuntimeState.RUNNING, "D4Planner runtime ready")
+            return self.status.state
+        except RuntimeBlocked as exc:
+            return self._block(str(exc), exc)
+        except Exception as exc:
+            return self._block("unexpected bootstrap failure", exc)
+
+    def _read_new_capture(self) -> int:
+        if not self.store:
+            return 0
+        path = self.store.session.raw_speech_path
+        if not path.exists():
+            return 0
+        count = 0
+        with path.open("r", encoding="utf-8") as handle:
+            handle.seek(self._raw_offset)
+            while True:
+                line = handle.readline()
+                if not line:
+                    break
+                self._raw_offset = handle.tell()
+                if not line.strip():
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(event, dict):
+                    continue
+                unified = self.store.ingest_capture(event)
+                self.status.last_event_at = str(unified["timestamp"])
+                count += 1
+        if count:
+            self._persist_status()
+        return count
+
+    def _recover_nvda(self) -> None:
+        current = self.runtime.nvda_process()
+        if current:
+            return
+        previous = self.status.state
+        self.transition(RuntimeState.DEGRADED, "NVDA process exited; attempting recovery")
+        try:
+            nvda = self.runtime.ensure_nvda_running()
+            console = self.runtime.active_console_session_id()
+            if nvda.session_id != console:
+                raise RuntimeBlocked("restarted NVDA is not in the active console session")
+            self.status.nvda = nvda
+            target = RuntimeState.RUNNING if self.runtime.game_process() else RuntimeState.WAITING_FOR_GAME
+            self.transition(target, "NVDA recovered")
+        except Exception as exc:
+            self.status.last_error = f"{type(exc).__name__}: {exc}"
+            self._persist_status()
+
+    def _watch_game(self) -> None:
+        game = self.runtime.game_process()
+        if game is None:
+            if self.status.state in {
+                RuntimeState.RUNNING,
+                RuntimeState.CAPTURE_READY,
+                RuntimeState.GAME_ATTACHED,
+            }:
+                self.transition(RuntimeState.WAITING_FOR_GAME, "Diablo IV exited")
+            return
+
+        if self.status.state == RuntimeState.WAITING_FOR_GAME:
+            console = self.runtime.active_console_session_id()
+            if game.session_id != console:
+                self.transition(
+                    RuntimeState.DEGRADED,
+                    "Diablo IV returned in a different Windows session",
+                    error=f"game={game.session_id}, console={console}",
+                )
+                return
+            steam = self.runtime.steam_process()
+            managed_updated = self.path_manager.managed_updated_at() if not self.isolated else None
+            if (
+                not self.isolated
+                and steam
+                and self.runtime.process_started_before(steam, managed_updated)
+            ):
+                self.transition(
+                    RuntimeState.RESTART_REQUIRED,
+                    "Steam environment is stale; exit Steam normally before continuing",
+                )
+                return
+            self.status.game = game
+            self.transition(RuntimeState.GAME_ATTACHED, "Diablo IV detected and attached")
+            self.transition(RuntimeState.CAPTURE_READY, "capture remains enabled")
+            self.transition(RuntimeState.RUNNING, "D4Planner runtime ready")
+
+    def run(self) -> int:
+        state = self.bootstrap()
+        if state in {RuntimeState.BLOCKED, RuntimeState.RESTART_REQUIRED}:
+            return 2 if state == RuntimeState.BLOCKED else 3
+
+        try:
+            while not self.paths.stop_request.exists():
+                self._read_new_capture()
+                self._recover_nvda()
+                self._watch_game()
+                if self.status.state in {RuntimeState.BLOCKED, RuntimeState.RESTART_REQUIRED}:
+                    break
+                time.sleep(self.poll_interval)
+        finally:
+            write_capture_config(self.paths, enabled=False)
+            self.status.capture_active = False
+            if self.store:
+                self.store.emit("runtime.stop", {"detail": "D4Planner supervisor stopped"})
+            if can_transition(self.status.state, RuntimeState.STOPPED):
+                self.transition(RuntimeState.STOPPED, "D4Planner stopped; game and Steam left untouched")
+            else:
+                self.status.state = RuntimeState.STOPPED
+                self.status.detail = "D4Planner stopped; game and Steam left untouched"
+                self._persist_status()
+            try:
+                self.paths.stop_request.unlink()
+            except FileNotFoundError:
+                pass
+        return 0
