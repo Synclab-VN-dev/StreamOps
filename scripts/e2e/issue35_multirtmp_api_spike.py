@@ -21,6 +21,8 @@ from urllib.request import Request, urlopen
 PREFIX = "issue35-"
 VENDOR = "sorayuki.multi_rtmp"
 OBS_ENCODER = "<OBS_STREAMING_ENCODER>"
+IDENTITY_NAME = f"{PREFIX}identity"
+IDENTITY_RENAMED = f"{IDENTITY_NAME}-renamed"
 SENSITIVE_KEYS = {
     "key", "token", "password", "credential", "stream_key", "streamkey",
     "newstreamkey", "new_stream_key",
@@ -86,6 +88,10 @@ def identity_map(targets: list[dict[str, Any]]) -> dict[str, str]:
 def stable_identity(before: list[dict[str, Any]], after: list[dict[str, Any]], names: set[str]) -> bool:
     left, right = identity_map(before), identity_map(after)
     return all(left.get(name) and left.get(name) == right.get(name) for name in names)
+
+
+def stable_target_id(*target_ids: str) -> bool:
+    return bool(target_ids) and all(target_ids) and len(set(target_ids)) == 1
 
 
 def duplicate_names(targets: list[dict[str, Any]]) -> set[str]:
@@ -236,7 +242,7 @@ class Runner:
         plugin = self.http.get("/api/v1/obs/plugins/obs-multi-rtmp")
         if self.args.phase == "native" and plugin.get("state") != "LOADED":
             raise PocError(f"upstream obs-multi-rtmp must be LOADED, got {plugin.get('state')}")
-        if self.args.phase == "vendor" and plugin.get("state") != "LOADED":
+        if self.args.phase in {"vendor", "identity"} and plugin.get("state") != "LOADED":
             self.record(
                 "CANDIDATE_PINNED_MANIFEST_MISMATCH",
                 "PASS",
@@ -348,11 +354,29 @@ class Runner:
     def vendor_targets(self) -> list[dict[str, Any]]:
         return list(self.vendor("list_targets").get("targets", []))
 
-    def vendor_target(self, name: str) -> dict[str, Any]:
-        matches = [x for x in self.vendor_targets() if x.get("name") == name]
+    def vendor_target(
+        self,
+        name: str,
+        targets: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        source = self.vendor_targets() if targets is None else targets
+        matches = [target for target in source if target.get("name") == name]
         if len(matches) != 1:
             raise PocError(f"expected exactly one target named {name}, got {len(matches)}")
         return matches[0]
+
+    def vendor_wait_available(self) -> list[dict[str, Any]]:
+        deadline = time.monotonic() + self.args.control_timeout
+        last_error = "Vendor API did not become available"
+        while time.monotonic() < deadline:
+            try:
+                return self.vendor_targets()
+            except Exception as exc:
+                last_error = str(exc)
+                if "No vendor was found by that name" not in last_error:
+                    raise
+                time.sleep(0.25)
+        raise PocError(f"Vendor API did not register after websocket reconnect: {last_error}")
 
     def vendor_wait_running(self, target_id: str, expected: bool) -> dict[str, Any]:
         deadline = time.monotonic() + self.args.control_timeout
@@ -363,6 +387,100 @@ class Runner:
                 return last
             time.sleep(0.25)
         raise PocError(f"target {target_id} running state did not become {expected}: {last}")
+
+    def identity_phase(self) -> None:
+        target_ids = {
+            "target_id_before_rename": "",
+            "target_id_after_rename": "",
+            "target_id_before_restart": "",
+            "target_id_after_restart": "",
+        }
+        self.evidence["candidate_identity"] = target_ids
+        try:
+            initial = self.vendor_targets()
+            self.evidence["candidate_identity_initial"] = sanitize(initial, self.secrets)
+            self.capabilities["candidate_vendor"]["list"] = "YES"
+            stale = [raw for raw in initial if str(raw.get("name") or "").startswith(PREFIX)]
+            if stale:
+                raise PocError(f"baseline contains unexpected issue35 targets: {identity_map(stale)}")
+
+            self.vendor("add_target", {"name": IDENTITY_NAME, "protocol": "RTMP"})
+            created = self.vendor_target(IDENTITY_NAME)
+            target_ids["target_id_before_rename"] = str(created.get("id") or "")
+            self.capabilities["candidate_vendor"]["add"] = "YES"
+
+            self.vendor(
+                "update_target_name",
+                {"id": target_ids["target_id_before_rename"], "newName": IDENTITY_RENAMED},
+            )
+            renamed = self.vendor_target(IDENTITY_RENAMED)
+            target_ids["target_id_after_rename"] = str(renamed.get("id") or "")
+            rename_stable = stable_target_id(
+                target_ids["target_id_before_rename"],
+                target_ids["target_id_after_rename"],
+            )
+            self.record(
+                "VENDOR_ID_STABLE_RENAME",
+                "PASS" if rename_stable else "FAIL",
+                "before={target_id_before_rename}, after={target_id_after_rename}".format(**target_ids),
+            )
+            self.capabilities["candidate_vendor"]["update"] = "YES"
+
+            before_restart = self.vendor_target(IDENTITY_RENAMED)
+            target_ids["target_id_before_restart"] = str(before_restart.get("id") or "")
+            self.restart_obs()
+            status = self.http.get("/api/v1/obs/process/status")
+            if (
+                status.get("state") != "READY"
+                or status.get("websocket", {}).get("connected") is not True
+                or status.get("output", {}).get("streaming")
+                or status.get("output", {}).get("recording")
+            ):
+                raise PocError("OBS did not return READY with websocket connected and outputs idle")
+
+            after_targets = self.vendor_wait_available()
+            self.record(
+                "VENDOR_RECONNECT_READY",
+                "PASS",
+                "Vendor API available after websocket reconnect",
+            )
+            after_restart = self.vendor_target(IDENTITY_RENAMED, after_targets)
+            target_ids["target_id_after_restart"] = str(after_restart.get("id") or "")
+            stable = stable_target_id(*target_ids.values())
+            self.capabilities["candidate_vendor"]["stable_target_identity"] = (
+                "YES" if stable else "NO"
+            )
+            self.record(
+                "VENDOR_ID_STABLE_RESTART",
+                "PASS" if stable else "FAIL",
+                ", ".join(f"{key}={value or '<missing>'}" for key, value in target_ids.items()),
+            )
+        except Exception as exc:
+            self.capabilities["candidate_vendor"]["stable_target_identity"] = "NO"
+            if not any(result.name == "VENDOR_ID_STABLE_RESTART" for result in self.results):
+                self.record(
+                    "VENDOR_ID_STABLE_RESTART",
+                    "FAIL",
+                    f"{exc}; " + ", ".join(
+                        f"{key}={value or '<missing>'}" for key, value in target_ids.items()
+                    ),
+                )
+        finally:
+            try:
+                for raw in self.vendor_targets():
+                    if str(raw.get("name") or "") in {IDENTITY_NAME, IDENTITY_RENAMED}:
+                        self.vendor("delete_target", {"id": str(raw.get("id") or "")})
+                left = [
+                    raw for raw in self.vendor_targets()
+                    if str(raw.get("name") or "") in {IDENTITY_NAME, IDENTITY_RENAMED}
+                ]
+                if left:
+                    raise PocError(f"identity target cleanup incomplete: {identity_map(left)}")
+                self.capabilities["candidate_vendor"]["delete"] = "YES"
+                self.record("VENDOR_IDENTITY_CLEANUP", "PASS", "identity target deleted")
+            except Exception as exc:
+                self.capabilities["candidate_vendor"]["delete"] = "NO"
+                self.record("VENDOR_IDENTITY_CLEANUP", "FAIL", str(exc))
 
     def vendor_phase(self) -> None:
         initial = self.vendor_targets()
@@ -490,8 +608,10 @@ class Runner:
             self.baseline()
             if self.args.phase == "native":
                 self.native()
-            else:
+            elif self.args.phase == "vendor":
                 self.vendor_phase()
+            else:
+                self.identity_phase()
         except Exception as exc:
             self.record("UNEXPECTED_ERROR", "FAIL", str(exc))
         finally:
@@ -618,7 +738,7 @@ def _number(value: Any) -> float | None:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     root = Path(__file__).resolve().parents[2]
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--phase", choices=("native", "vendor"), required=True)
+    parser.add_argument("--phase", choices=("native", "vendor", "identity"), required=True)
     parser.add_argument("--base-url", default=os.environ.get("STREAMOPS_BASE_URL", "http://127.0.0.1:8765"))
     parser.add_argument("--plugin-config", type=Path, default=os.environ.get("OBS_MULTI_RTMP_CONFIG"))
     parser.add_argument("--server-a", default="rtmp://127.0.0.1:19351/live")

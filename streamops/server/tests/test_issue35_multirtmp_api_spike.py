@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from argparse import Namespace
 from pathlib import Path
 import sys
 
@@ -62,6 +63,12 @@ def test_stable_identity_requires_same_ids_for_named_targets():
     assert m.stable_identity(before, after, {"issue35-a", "issue35-b"})
     after[0]["id"] = "99"
     assert not m.stable_identity(before, after, {"issue35-a", "issue35-b"})
+
+
+def test_stable_target_id_requires_all_nonempty_ids_to_match():
+    assert m.stable_target_id("42", "42", "42", "42")
+    assert not m.stable_target_id("42", "42", "99", "42")
+    assert not m.stable_target_id("42", "", "42", "42")
 
 
 def test_duplicate_names_are_detected():
@@ -128,3 +135,87 @@ def test_load_config_defaults_missing_arrays():
     assert value["targets"] == []
     assert value["video_configs"] == []
     assert value["audio_configs"] == []
+
+
+def test_identity_phase_uses_only_non_streaming_vendor_requests():
+    class FakeHttp:
+        def get(self, path):
+            assert path == "/api/v1/obs/process/status"
+            return {
+                "state": "READY",
+                "websocket": {"connected": True},
+                "output": {"streaming": False, "recording": False},
+            }
+
+    runner = object.__new__(m.Runner)
+    runner.args = Namespace(control_timeout=1)
+    runner.secrets = ()
+    runner.results = []
+    runner.evidence = {}
+    runner.capabilities = {
+        "native_obs_upstream": m.capability_template(),
+        "upstream_vendor": m.capability_template(),
+        "candidate_vendor": m.capability_template(),
+    }
+    runner.http = FakeHttp()
+    targets = []
+    requests = []
+
+    def vendor(request_type, data=None):
+        data = data or {}
+        requests.append(request_type)
+        if request_type == "list_targets":
+            return {"targets": [dict(target) for target in targets]}
+        if request_type == "add_target":
+            targets.append({"id": "3603807795", "name": data["name"], "protocol": "RTMP"})
+            return {"status": "added"}
+        if request_type == "update_target_name":
+            target = next(target for target in targets if target["id"] == data["id"])
+            target["name"] = data["newName"]
+            return {"status": "updated"}
+        if request_type == "delete_target":
+            targets[:] = [target for target in targets if target["id"] != data["id"]]
+            return {"status": "deleted"}
+        raise AssertionError(f"unexpected Vendor request: {request_type}")
+
+    runner.vendor = vendor
+    runner.restart_obs = lambda: None
+    runner.identity_phase()
+
+    forbidden = {"start_target", "stop_target", "start_all", "stop_all"}
+    assert forbidden.isdisjoint(requests)
+    assert runner.evidence["candidate_identity"] == {
+        "target_id_before_rename": "3603807795",
+        "target_id_after_rename": "3603807795",
+        "target_id_before_restart": "3603807795",
+        "target_id_after_restart": "3603807795",
+    }
+    restart_result = next(
+        result for result in runner.results if result.name == "VENDOR_ID_STABLE_RESTART"
+    )
+    assert restart_result.status == "PASS"
+    assert targets == []
+
+
+def test_identity_phase_is_an_explicit_cli_choice():
+    args = m.parse_args(["--phase", "identity"])
+    assert args.phase == "identity"
+
+
+def test_vendor_wait_available_handles_registration_race(monkeypatch):
+    runner = object.__new__(m.Runner)
+    runner.args = Namespace(control_timeout=1)
+    attempts = iter([
+        m.PocError("CallVendorRequest failed (600): No vendor was found by that name."),
+        [{"id": "42", "name": m.IDENTITY_RENAMED}],
+    ])
+
+    def vendor_targets():
+        value = next(attempts)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    runner.vendor_targets = vendor_targets
+    monkeypatch.setattr(m.time, "sleep", lambda _: None)
+    assert runner.vendor_wait_available() == [{"id": "42", "name": m.IDENTITY_RENAMED}]
