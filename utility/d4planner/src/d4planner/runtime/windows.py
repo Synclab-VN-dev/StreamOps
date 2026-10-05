@@ -71,9 +71,13 @@ class WindowsRuntime:
             "$p=Get-Process -ErrorAction SilentlyContinue | "
             "Where-Object { $names -contains $_.ProcessName } | "
             "Sort-Object StartTime | Select-Object -Last 1;"
-            "if($p){[ordered]@{name=$p.ProcessName;pid=$p.Id;sessionId=$p.SessionId;"
-            "startedAt=try{$p.StartTime.ToString('o')}catch{$null};"
-            "path=try{$p.Path}catch{$null}}|ConvertTo-Json -Compress}"
+            "if($p){"
+            "$started=$null;$path=$null;"
+            "try{$started=$p.StartTime.ToString('o')}catch{};"
+            "try{$path=$p.Path}catch{};"
+            "[ordered]@{name=$p.ProcessName;pid=$p.Id;sessionId=$p.SessionId;"
+            "startedAt=$started;path=$path}|ConvertTo-Json -Compress"
+            "}"
         )
         result = self._powershell(script)
         if result.returncode != 0 or not result.stdout.strip():
