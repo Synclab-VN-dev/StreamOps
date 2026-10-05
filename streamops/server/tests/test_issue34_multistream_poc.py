@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 import sys
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -213,3 +216,118 @@ def test_shared_mode_failure_is_limitation_when_obs_remains_healthy():
     assert runner.results[-1].name == "AC-A-09_ENCODER_SHARE"
     assert runner.results[-1].status == "LIMITATION"
     assert m.overall_status(runner.results) == "PASS WITH LIMITATION"
+
+
+def test_fixture_restore_preserves_unrelated_plugin_and_scene_state(tmp_path):
+    a, b = targets()
+    scene_dir = tmp_path / "scenes"
+    scene_dir.mkdir()
+    scene_file = scene_dir / "Untitled.json"
+    scene_file.write_text('{"scene":"baseline"}', encoding="utf-8")
+    scene_before = m.hashes(scene_dir)
+
+    baseline = {
+        "targets": [{"id": "keep-target", "name": "operator"}],
+        "video_configs": [{"id": "keep-video", "encoder": "keep"}],
+        "audio_configs": [{"id": "keep-audio", "encoder": "keep"}],
+        "operator_metadata": {"profile": "Untitled", "nested": [1, 2, 3]},
+    }
+    raw = json.dumps(baseline, sort_keys=True).encode("utf-8")
+    config_path = tmp_path / "obs-multi-rtmp.json"
+    config_path.write_bytes(raw)
+
+    generated = m.build_config(baseline, a, b, mode="independent")
+    assert generated["operator_metadata"] == baseline["operator_metadata"]
+    assert any(x.get("id") == "keep-target" for x in generated["targets"])
+
+    config_path.write_text(json.dumps(generated), encoding="utf-8")
+    m.restore_file(config_path, raw)
+
+    assert config_path.read_bytes() == raw
+    assert m.hashes(scene_dir) == scene_before
+
+
+def test_config_snapshot_sanitize_redacts_stream_keys():
+    a, b = targets()
+    config = m.build_config(
+        {"targets": [], "video_configs": [], "audio_configs": []},
+        a,
+        b,
+        mode="independent",
+    )
+    sanitized = m.sanitize(config, ("secret-a", "secret-b"))
+    serialized = json.dumps(sanitized)
+    assert "secret-a" not in serialized
+    assert "secret-b" not in serialized
+    assert serialized.count("[REDACTED]") >= 2
+
+
+def test_write_reports_all_resource_modes_and_redacts_outputs(tmp_path, capsys):
+    secret = "issue34-super-secret"
+    runner = object.__new__(m.Runner)
+    runner.args = type("Args", (), {"evidence": tmp_path})()
+    runner.results = []
+    runner.secrets = (secret,)
+    runner.metrics = {
+        "idle": {"marker": secret, "obs_cpu_percent": {"avg": 1}},
+        "main-only": {"rtmp_output_mbps": 6.0},
+        "independent": [{"rtmp_output_mbps": 26.0}],
+        "shared": [{"rtmp_output_mbps": 25.0}],
+    }
+    runner.identity = {"profile": secret, "collection": "Untitled"}
+    runner.probes = {
+        "shared-1-a": {
+            "streams": [{"codec_type": "video", "codec_name": "h264"}],
+            "url": f"rtmp://127.0.0.1/live/{secret}",
+            "key": secret,
+        }
+    }
+    runner.record("ERROR_PATH", "PASS", f"error detail contained {secret}")
+
+    assert runner.write() == 0
+
+    captured = capsys.readouterr()
+    result_text = (tmp_path / "result.json").read_text(encoding="utf-8")
+    report_text = (tmp_path / "report.md").read_text(encoding="utf-8")
+    probe_text = (tmp_path / "ffprobe-shared-1-a.json").read_text(encoding="utf-8")
+    combined = result_text + report_text + probe_text + captured.out + captured.err
+
+    assert secret not in combined
+    for mode in ("idle", "main-only", "independent", "shared"):
+        assert f"- {mode}:" in report_text
+
+    payload = json.loads(result_text)
+    assert set(payload["metrics"]) == {"idle", "main-only", "independent", "shared"}
+    assert payload["identity"]["profile"] == "[REDACTED]"
+
+
+def test_http_error_path_redacts_secret(monkeypatch):
+    secret = "issue34-http-secret"
+
+    def fail(*_args, **_kwargs):
+        raise m.URLError(f"network failed for {secret}")
+
+    monkeypatch.setattr(m, "urlopen", fail)
+    client = m.Http("http://127.0.0.1:1", (secret,), 0.1)
+
+    with pytest.raises(m.PocError) as exc:
+        client.get("/failure")
+
+    assert secret not in str(exc.value)
+    assert "[REDACTED]" in str(exc.value)
+
+
+def test_failure_evidence_survives_cleanup_result():
+    runner = object.__new__(m.Runner)
+    runner.results = []
+    runner.secrets = ()
+    runner.baseline = lambda: (_ for _ in ()).throw(m.PocError("primary failure"))
+    runner.restore = lambda: runner.record("AC-A-12_RESTORE", "PASS", "cleanup succeeded")
+    runner.write = lambda: 1
+
+    assert runner.run() == 1
+
+    by_name = {item.name: item for item in runner.results}
+    assert by_name["UNEXPECTED_ERROR"].status == "FAIL"
+    assert by_name["AC-A-12_RESTORE"].status == "PASS"
+    assert m.overall_status(runner.results) == "FAIL"
