@@ -248,3 +248,28 @@ def test_runtime_event_sink_failure_is_isolated(tmp_path):
     assert supervisor._safe_emit("runtime.test", {"detail": "x"}) is None
     assert "event sink failure" in supervisor.status.last_error
     assert supervisor.status.state == RuntimeState.RUNNING
+
+
+def test_isolated_mode_requires_existing_steam_to_be_restarted(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = FakeRuntime(
+        paths,
+        game=None,
+        steam=ProcessInfo("steam", 21, session_id=1),
+    )
+    manager = UserPathManager(paths, MemoryPathBackend(user_path="", machine_path="M"))
+    supervisor = Supervisor(
+        paths=paths,
+        runtime=runtime,
+        path_manager=manager,
+        silent=True,
+        isolated=True,
+        poll_interval=0.001,
+        game_start_timeout=0.01,
+    )
+
+    state = supervisor.bootstrap()
+
+    assert state == RuntimeState.RESTART_REQUIRED
+    assert runtime.launch_calls == 0
+    assert "isolated mode" in supervisor.status.detail
