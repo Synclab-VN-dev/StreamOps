@@ -16,6 +16,20 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install '.[server,dev]'
       - run: python -m pip install -e 'utility/d4planner[dev]'
+
+      # Keep D4Planner gates early so runtime/CLI failures surface before the
+      # heavier StreamOps browser/ffmpeg setup.
+      - name: Test D4Planner runtime
+        run: python -m pytest -q utility/d4planner/tests
+      - name: Compile D4Planner runtime
+        run: python -m compileall -q utility/d4planner
+      - name: Build D4Planner NVDA add-on
+        run: python utility/d4planner/tools/build_nvda_addon.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d4planner-nvda-addon
+          path: utility/d4planner/dist/*.nvda-addon
+
       - run: python -m playwright install chromium
       - run: choco install ffmpeg --no-progress -y
       - run: python -m pip wheel . --no-deps -w dist
@@ -25,13 +39,3 @@ jobs:
           $env:STREAMOPS_TEST_WHEEL = (Get-ChildItem dist\*.whl | Select-Object -First 1).FullName
           python -m pytest -q streamops/server/tests/test_wheel_acceptance.py
       - run: python -m pytest -q
-      - name: Test D4Planner POC
-        run: python -m pytest -q utility/d4planner/tests
-      - name: Compile D4Planner POC
-        run: python -m compileall -q utility/d4planner
-      - name: Build D4Planner NVDA add-on
-        run: python utility/d4planner/tools/build_nvda_addon.py
-      - uses: actions/upload-artifact@v4
-        with:
-          name: d4planner-nvda-addon
-          path: utility/d4planner/dist/*.nvda-addon
