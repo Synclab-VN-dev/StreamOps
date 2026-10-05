@@ -456,22 +456,29 @@ class Supervisor:
                     break
                 time.sleep(self.poll_interval)
         finally:
+            shutdown_error = self.status.last_error
             try:
                 write_capture_config(self.paths, enabled=False)
             except OSError as exc:
                 # Capture is already protected by a short lease. If this write
                 # fails, the add-on will fail open as soon as the lease expires.
-                self.status.last_error = (
+                shutdown_error = (
                     f"failed to disable capture during shutdown: {type(exc).__name__}: {exc}"
                 )
+                self.status.last_error = shutdown_error
             self.status.capture_active = False
             if self.store:
                 self._safe_emit("runtime.stop", {"detail": "D4Planner supervisor stopped"})
             if can_transition(self.status.state, RuntimeState.STOPPED):
-                self.transition(RuntimeState.STOPPED, "D4Planner stopped; game and Steam left untouched")
+                self.transition(
+                    RuntimeState.STOPPED,
+                    "D4Planner stopped; game and Steam left untouched",
+                    error=shutdown_error,
+                )
             else:
                 self.status.state = RuntimeState.STOPPED
                 self.status.detail = "D4Planner stopped; game and Steam left untouched"
+                self.status.last_error = shutdown_error
                 self._persist_status()
             try:
                 self.paths.stop_request.unlink()
