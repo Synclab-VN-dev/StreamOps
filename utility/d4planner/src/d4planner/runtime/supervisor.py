@@ -50,7 +50,8 @@ class Supervisor:
         path_manager: UserPathManager,
         silent: bool = True,
         isolated: bool = False,
-        poll_interval: float = 0.25,
+        poll_interval: float = 0.10,
+        health_poll_interval: float = 2.0,
         game_start_timeout: float = 90.0,
     ):
         self.paths = paths
@@ -59,6 +60,7 @@ class Supervisor:
         self.silent = silent
         self.isolated = isolated
         self.poll_interval = poll_interval
+        self.health_poll_interval = health_poll_interval
         self.game_start_timeout = game_start_timeout
         self.store: EventStore | None = None
         self.status = RuntimeStatus(
@@ -416,11 +418,18 @@ class Supervisor:
             return 2 if state == RuntimeState.BLOCKED else 3
 
         try:
+            next_health_check = 0.0
             while not self.paths.stop_request.exists():
+                # Capture promotion is latency-sensitive. Process/session health
+                # checks are deliberately slower because the Windows adapter may
+                # use OS probes that are much more expensive than tailing JSONL.
                 self._renew_capture_lease()
                 self._read_new_capture()
-                self._recover_nvda()
-                self._watch_game()
+                now = time.monotonic()
+                if now >= next_health_check:
+                    self._recover_nvda()
+                    self._watch_game()
+                    next_health_check = now + self.health_poll_interval
                 if self.status.state in {RuntimeState.BLOCKED, RuntimeState.RESTART_REQUIRED}:
                     break
                 time.sleep(self.poll_interval)
