@@ -36,6 +36,7 @@ class WindowsRuntime:
     GAME_PROCESS_NAMES = ("Diablo IV",)
     STEAM_PROCESS_NAMES = ("steam",)
     STEAM_APP_ID = "2344520"
+    EXPECTED_ADDON_VERSION = "0.2.0"
     # Official NVDA 2026.2 x64 controller client verified during Real-A #41.
     EXPECTED_CONTROLLER_SHA256 = "598B7EC3DC469814F571275929F676CE73834C469FBDB359A06FD4DB4E0FC866"
 
@@ -102,10 +103,21 @@ class WindowsRuntime:
         roaming = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
         return roaming / "nvda" / "addons" / "d4plannerCapture"
 
+    def addon_version(self) -> str | None:
+        manifest = self.addon_path() / "manifest.ini"
+        try:
+            for line in manifest.read_text(encoding="utf-8", errors="replace").splitlines():
+                stripped = line.strip()
+                if not stripped.startswith("version") or "=" not in stripped:
+                    continue
+                return stripped.split("=", 1)[1].strip().strip('"').strip("'")
+        except OSError:
+            return None
+        return None
+
     def addon_installed(self) -> bool:
-        return (self.addon_path() / "globalPlugins" / "d4plannerCapture").is_dir() or (
-            self.addon_path() / "__init__.py"
-        ).exists()
+        plugin = self.addon_path() / "globalPlugins" / "d4plannerCapture"
+        return plugin.is_dir() and self.addon_version() == self.EXPECTED_ADDON_VERSION
 
     def controller_dll(self) -> Path:
         return self.paths.controller / "nvdaControllerClient64.dll"
@@ -437,7 +449,11 @@ class WindowsRuntime:
         }
         checks["addon"] = {
             "status": "PASS" if self.addon_installed() else "FAIL",
-            "detail": str(self.addon_path()),
+            "detail": {
+                "path": str(self.addon_path()),
+                "version": self.addon_version(),
+                "expectedVersion": self.EXPECTED_ADDON_VERSION,
+            },
         }
         checks["controller"] = {
             "status": "PASS" if self.controller_ready() else "FAIL",
