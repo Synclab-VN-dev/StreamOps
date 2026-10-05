@@ -127,17 +127,41 @@ def _wait_start(paths: RuntimePaths, pid: int, timeout: float = 120.0) -> dict[s
     last_state = None
     while time.monotonic() < deadline:
         status = _state(paths)
-        current = str(status.get("state") or "")
-        if current != last_state and current:
-            detail = str(status.get("detail") or "")
-            print(f"[{current}] {detail}".rstrip())
-            last_state = current
-        if current in TERMINAL_STATES:
-            return status
+        owner_pid = status.get("supervisorPid")
+        try:
+            owned_by_new_daemon = int(owner_pid) == int(pid)
+        except (TypeError, ValueError):
+            owned_by_new_daemon = False
+
+        if owned_by_new_daemon:
+            current = str(status.get("state") or "")
+            if current != last_state and current:
+                detail = str(status.get("detail") or "")
+                print(f"[{current}] {detail}".rstrip())
+                last_state = current
+            if current in TERMINAL_STATES:
+                return status
+
         if not _pid_alive(pid):
-            return status
+            return {
+                "state": RuntimeState.BLOCKED.value,
+                "detail": "supervisor exited before publishing a terminal runtime state",
+                "lastError": f"supervisor PID {pid} exited during bootstrap",
+                "supervisorPid": pid,
+                "captureActive": False,
+            }
         time.sleep(0.25)
-    return _state(paths)
+
+    status = _state(paths)
+    if status.get("supervisorPid") == pid:
+        return status
+    return {
+        "state": RuntimeState.BLOCKED.value,
+        "detail": "timed out waiting for the new supervisor runtime state",
+        "lastError": f"supervisor PID {pid} did not publish state within {timeout:g}s",
+        "supervisorPid": pid,
+        "captureActive": False,
+    }
 
 
 def _event_lines(path: Path, *, follow: bool, from_end: bool) -> Iterator[str]:
