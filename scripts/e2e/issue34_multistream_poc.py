@@ -393,7 +393,16 @@ class Runner:
         payload=sanitize({"issue":34,"overall":overall,"results":[asdict(x) for x in self.results],"metrics":self.metrics,"identity":self.identity},self.secrets)
         (self.args.evidence/"result.json").write_text(json.dumps(payload,indent=2,ensure_ascii=False),encoding="utf-8")
         for name,data in self.probes.items(): (self.args.evidence/f"ffprobe-{name}.json").write_text(json.dumps(sanitize(data,self.secrets),indent=2),encoding="utf-8")
-        report="# Issue #34 Real-A multistream POC\n\nOverall: **"+overall+"**\n\n"+"\n".join(f"- {x.name}: **{x.status}** — {x.evidence}" for x in self.results)+"\n"
+        metric_lines = ["## Resource metrics", ""]
+        for mode in ("idle", "main-only", "independent", "shared"):
+            value = sanitize(self.metrics.get(mode), self.secrets)
+            metric_lines.append(f"- {mode}: `{json.dumps(value, ensure_ascii=False, sort_keys=True)}`")
+        report=(
+            "# Issue #34 Real-A multistream POC\n\n"
+            "Overall: **"+overall+"**\n\n"
+            +"\n".join(f"- {x.name}: **{x.status}** — {x.evidence}" for x in self.results)
+            +"\n\n"+"\n".join(metric_lines)+"\n"
+        )
         if any(x in report for x in self.secrets): raise PocError("secret remained in report")
         (self.args.evidence/"report.md").write_text(report,encoding="utf-8")
         print("ISSUE34_MULTISTREAM_POC\n"+"\n".join(f"{x.name:<40} {x.status:<20} {x.evidence}" for x in self.results)+f"\nOVERALL                                  {overall}")
