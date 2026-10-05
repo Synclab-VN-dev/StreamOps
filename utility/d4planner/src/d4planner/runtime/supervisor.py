@@ -68,6 +68,7 @@ class Supervisor:
             silent=silent,
         )
         self._raw_offset = 0
+        self._next_lease_refresh = 0.0
 
     def _persist_status(self) -> None:
         self.status.updated_at = iso_now()
@@ -294,6 +295,30 @@ class Supervisor:
         except Exception as exc:
             return self._block("unexpected bootstrap failure", exc)
 
+    def _renew_capture_lease(self, *, force: bool = False) -> None:
+        if not self.status.capture_active or not self.store:
+            return
+        now = time.monotonic()
+        if not force and now < self._next_lease_refresh:
+            return
+        try:
+            write_capture_config(
+                self.paths,
+                enabled=True,
+                session=self.store.session,
+                silent=self.silent,
+                lease_seconds=5.0,
+            )
+            self._next_lease_refresh = now + 2.0
+        except OSError as exc:
+            # Do not crash. If renewal keeps failing, the add-on lease expires
+            # and speech automatically passes through instead of staying silent.
+            self.status.last_error = f"capture lease renewal failed: {exc}"
+            try:
+                self._persist_status()
+            except OSError:
+                pass
+
     def _read_new_capture(self) -> int:
         if not self.store:
             return 0
@@ -392,6 +417,7 @@ class Supervisor:
 
         try:
             while not self.paths.stop_request.exists():
+                self._renew_capture_lease()
                 self._read_new_capture()
                 self._recover_nvda()
                 self._watch_game()
