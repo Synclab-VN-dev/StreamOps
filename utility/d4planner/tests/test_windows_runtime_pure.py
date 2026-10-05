@@ -36,3 +36,18 @@ def test_process_started_before_path_update():
         process,
         "2026-10-05T18:59:00+07:00",
     )
+
+
+def test_addon_runtime_sync_is_idempotent(tmp_path, monkeypatch):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    monkeypatch.setenv("APPDATA", str(tmp_path / "roaming"))
+    runtime = WindowsRuntime(paths)
+
+    first = runtime.ensure_addon_runtime()
+    second = runtime.ensure_addon_runtime()
+
+    assert first is True
+    assert second is False
+    assert runtime.addon_installed() is True
+    assert runtime.addon_version() == "0.2.0"
