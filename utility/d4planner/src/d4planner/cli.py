@@ -213,7 +213,9 @@ def command_logs(paths: RuntimePaths, *, follow: bool, raw: bool, from_end: bool
                 rendered = _pretty_event(event)
                 if rendered:
                     print(rendered, flush=True)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, BrokenPipeError):
+        # SSH/stdout disconnect detaches this viewer only; the supervisor owns
+        # capture state independently and must keep running.
         return 0
     return 0
 
