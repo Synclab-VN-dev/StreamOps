@@ -36,6 +36,9 @@ class FakeRuntime:
     def nvda_version(self):
         return "2026.2"
 
+    def nvda_version_compatible(self, version=None):
+        return (version or self.nvda_version()).startswith("2026.2")
+
     def active_console_session_id(self):
         return 1
 
