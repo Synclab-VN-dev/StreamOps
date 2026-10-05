@@ -456,7 +456,14 @@ class Supervisor:
                     break
                 time.sleep(self.poll_interval)
         finally:
-            write_capture_config(self.paths, enabled=False)
+            try:
+                write_capture_config(self.paths, enabled=False)
+            except OSError as exc:
+                # Capture is already protected by a short lease. If this write
+                # fails, the add-on will fail open as soon as the lease expires.
+                self.status.last_error = (
+                    f"failed to disable capture during shutdown: {type(exc).__name__}: {exc}"
+                )
             self.status.capture_active = False
             if self.store:
                 self._safe_emit("runtime.stop", {"detail": "D4Planner supervisor stopped"})
