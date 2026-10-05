@@ -233,10 +233,9 @@ class WindowsRuntime:
             return None
 
     def expected_controller_sha256(self) -> str:
-        return os.environ.get(
-            "D4PLANNER_CONTROLLER_SHA256",
-            self.EXPECTED_CONTROLLER_SHA256,
-        ).strip().upper()
+        # Intentionally not environment-overridable: a user/process environment
+        # must not be able to weaken the verified binary trust boundary.
+        return self.EXPECTED_CONTROLLER_SHA256.strip().upper()
 
     def controller_ready(self) -> bool:
         path = self.controller_dll()
