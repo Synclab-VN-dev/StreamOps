@@ -226,3 +226,22 @@ def test_raw_capture_is_promoted_to_unified_monotonic_stream(tmp_path):
     assert len(speech) == 1
     assert speech[0]["data"]["text"] == "850 Item Power"
     assert [row["eventSeq"] for row in rows] == list(range(1, len(rows) + 1))
+
+
+def test_runtime_event_sink_failure_is_isolated(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = FakeRuntime(
+        paths,
+        game=ProcessInfo("Diablo IV", 31, session_id=1),
+        steam=ProcessInfo("steam", 21, session_id=1),
+    )
+    supervisor = build_supervisor(tmp_path, runtime)
+    assert supervisor.bootstrap() == RuntimeState.RUNNING
+
+    def fail(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    supervisor.store.emit = fail
+    assert supervisor._safe_emit("runtime.test", {"detail": "x"}) is None
+    assert "event sink failure" in supervisor.status.last_error
+    assert supervisor.status.state == RuntimeState.RUNNING
