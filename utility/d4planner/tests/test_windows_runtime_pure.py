@@ -3,6 +3,7 @@ import os
 import pytest
 from datetime import datetime, timezone
 import hashlib
+import zipfile
 
 from d4planner.runtime.model import ProcessInfo
 from d4planner.runtime.store import RuntimePaths
@@ -85,3 +86,25 @@ def test_addon_runtime_sync_is_idempotent(tmp_path, monkeypatch):
 def test_windows_process_probe_script_is_valid(tmp_path):
     runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
     assert runtime._process(("d4planner-process-that-does-not-exist",)) is None
+
+
+def test_extract_official_controller_archive_validates_x64_and_checksum(tmp_path, monkeypatch):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    runtime = WindowsRuntime(paths)
+
+    content = fake_pe(0x8664, b"official")
+    monkeypatch.setenv(
+        "D4PLANNER_CONTROLLER_SHA256",
+        hashlib.sha256(content).hexdigest(),
+    )
+
+    archive = tmp_path / "controller.zip"
+    with zipfile.ZipFile(archive, "w") as package:
+        package.writestr("x64/nvdaControllerClient.dll", content)
+
+    extracted = runtime._extract_controller_archive(archive)
+
+    assert extracted.is_file()
+    assert runtime.controller_machine(extracted) == 0x8664
+    assert runtime.controller_sha256(extracted) == hashlib.sha256(content).hexdigest().upper()
