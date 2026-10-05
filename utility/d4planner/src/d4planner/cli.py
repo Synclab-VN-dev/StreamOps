@@ -338,6 +338,49 @@ def command_doctor(paths: RuntimePaths, *, raw_json: bool) -> int:
     runtime = WindowsRuntime(paths)
     report = runtime.doctor()
     checks = dict(report.checks)
+
+    status = _state(paths)
+    state = str(status.get("state") or RuntimeState.STOPPED.value)
+    alive = bool(status.get("supervisorAlive"))
+    capture_effective = bool(status.get("captureEffective"))
+    active = state in ACTIVE_STATES
+
+    checks["supervisor"] = {
+        "status": "PASS" if (alive or not active) else "FAIL",
+        "detail": {
+            "state": state,
+            "pid": status.get("supervisorPid"),
+            "alive": alive,
+        },
+    }
+
+    session_dir = status.get("sessionDir")
+    session_exists = bool(session_dir and Path(str(session_dir)).is_dir())
+    checks["session"] = {
+        "status": "PASS" if session_exists else ("FAIL" if active else "WARN"),
+        "detail": session_dir or "no active/recent session",
+    }
+
+    requires_capture = state in {
+        RuntimeState.CAPTURE_READY.value,
+        RuntimeState.RUNNING.value,
+        RuntimeState.WAITING_FOR_GAME.value,
+        RuntimeState.DEGRADED.value,
+    }
+    checks["capture_lease"] = {
+        "status": "PASS" if capture_effective else ("FAIL" if requires_capture else "WARN"),
+        "detail": {
+            "effective": capture_effective,
+            "configuredActive": bool(status.get("captureActive")),
+        },
+    }
+
+    last_event = status.get("lastEventAt")
+    checks["last_event"] = {
+        "status": "PASS" if last_event else "WARN",
+        "detail": last_event or "no speech event captured in this session yet",
+    }
+
     stale = False
     if os.name == "nt":
         steam = runtime.steam_process()
@@ -352,12 +395,15 @@ def command_doctor(paths: RuntimePaths, *, raw_json: bool) -> int:
                 else "environment generation is current"
             ),
         }
+
     if raw_json:
         print(json.dumps(checks, ensure_ascii=False, indent=2))
     else:
         for name, item in checks.items():
             print(f"{str(item.get('status')):4}  {name:<18} {item.get('detail')}")
-    return 0 if report.ok and not stale else 1
+
+    overall_ok = all(item.get("status") != "FAIL" for item in checks.values())
+    return 0 if overall_ok else 1
 
 
 def command_path(paths: RuntimePaths, action: str) -> int:
