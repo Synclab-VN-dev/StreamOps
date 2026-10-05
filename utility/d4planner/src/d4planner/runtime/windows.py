@@ -172,12 +172,15 @@ class WindowsRuntime:
         exe = self.locate_nvda_executable()
         if not exe:
             return None
+        escaped = str(exe).replace("'", "''")
         script = (
-            f"$v=(Get-Item -LiteralPath '{str(exe).replace("'", "''")}').VersionInfo.FileVersion;"
+            "$v=(Get-Item -LiteralPath '" + escaped + "').VersionInfo.FileVersion;"
             "$v"
         )
         result = self._powershell(script)
-        return result.stdout.strip() or None if result.returncode == 0 else None
+        if result.returncode != 0:
+            return None
+        return result.stdout.strip() or None
 
     def locate_steam_executable(self) -> Path | None:
         process = self.steam_process()
