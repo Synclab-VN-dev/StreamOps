@@ -79,3 +79,13 @@ def test_start_detach_does_not_follow_logs(monkeypatch, tmp_path):
         detached=True,
         timeout=1,
     ) == 0
+
+
+def test_supervisor_singleton_lock_rejects_duplicate(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    first = daemon._acquire_singleton(paths)
+    assert first is not None
+    try:
+        assert daemon._acquire_singleton(paths) is None
+    finally:
+        first.unlink(missing_ok=True)
