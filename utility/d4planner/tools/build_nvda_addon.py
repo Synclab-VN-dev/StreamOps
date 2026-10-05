@@ -43,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--output",
         type=Path,
-        default=ROOT / "dist" / "d4plannerCapture-0.1.0.nvda-addon",
+        default=ROOT / "dist" / "d4plannerCapture-0.2.0.nvda-addon",
     )
     args = parser.parse_args(argv)
     path = build(args.output.resolve())
