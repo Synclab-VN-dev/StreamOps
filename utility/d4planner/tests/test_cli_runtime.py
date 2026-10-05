@@ -182,6 +182,9 @@ def test_doctor_reports_stale_supervisor_and_capture_lease(monkeypatch, tmp_path
                 }
             )
 
+        def steam_process(self):
+            return None
+
     monkeypatch.setattr(cli, "WindowsRuntime", FakeWindowsRuntime)
     monkeypatch.setattr(cli, "_pid_alive", lambda _pid: False)
 
