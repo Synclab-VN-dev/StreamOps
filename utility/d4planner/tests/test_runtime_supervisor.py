@@ -30,6 +30,9 @@ class FakeRuntime:
     def addon_installed(self):
         return True
 
+    def ensure_addon_runtime(self):
+        return False
+
     def nvda_version(self):
         return "2026.2"
 
@@ -40,6 +43,10 @@ class FakeRuntime:
         return self._nvda
 
     def nvda_process(self):
+        return self._nvda
+
+    def restart_nvda(self, *, timeout=15.0):
+        self._nvda = ProcessInfo("nvda_noUIAccess", self._nvda.pid + 1, session_id=1)
         return self._nvda
 
     def steam_process(self):
