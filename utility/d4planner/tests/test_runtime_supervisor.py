@@ -273,3 +273,31 @@ def test_isolated_mode_requires_existing_steam_to_be_restarted(tmp_path):
     assert state == RuntimeState.RESTART_REQUIRED
     assert runtime.launch_calls == 0
     assert "isolated mode" in supervisor.status.detail
+
+
+def test_shutdown_state_write_failure_remains_fail_open(monkeypatch, tmp_path):
+    import d4planner.runtime.supervisor as supervisor_module
+
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = FakeRuntime(
+        paths,
+        game=ProcessInfo("Diablo IV", 31, session_id=1),
+        steam=ProcessInfo("steam", 21, session_id=1),
+    )
+    supervisor = build_supervisor(tmp_path, runtime)
+    supervisor.status.state = RuntimeState.RUNNING
+    supervisor.status.capture_active = True
+    paths.ensure()
+    paths.stop_request.write_text("stop\n", encoding="utf-8")
+
+    monkeypatch.setattr(supervisor, "bootstrap", lambda: RuntimeState.RUNNING)
+
+    def fail_disable(*_args, **_kwargs):
+        raise OSError("disk unavailable")
+
+    monkeypatch.setattr(supervisor_module, "write_capture_config", fail_disable)
+
+    assert supervisor.run() == 0
+    assert supervisor.status.state == RuntimeState.STOPPED
+    assert supervisor.status.capture_active is False
+    assert "failed to disable capture during shutdown" in supervisor.status.last_error
