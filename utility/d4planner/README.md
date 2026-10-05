@@ -1,70 +1,142 @@
-# D4Planner - NVDA capture POC
+# D4Planner runtime
 
-Issue: #39
+Issues: #39 (capture POC), #43 (runtime/CLI)
 
-This folder is an intentionally independent bounded context for the Diablo IV
-Build Tracker experiment. It must not depend on streamops.server or modify the
-Diablo IV process/game directory.
+D4Planner is an intentionally independent bounded context for Diablo IV build
+capture. It must not depend on `streamops.server` or modify the Diablo IV game
+directory.
 
-## Current scope
+## Runtime flow
 
-Diablo IV -> NVDA accessibility speech -> d4plannerCapture NVDA add-on
--> raw-d4-speech.jsonl -> poc-report.md
+```text
+Diablo IV
+  -> Tolk.dll
+  -> nvdaControllerClient64.dll
+  -> NVDA 2026.2
+  -> d4plannerCapture add-on
+  -> session raw-speech.jsonl
+  -> D4Planner Supervisor
+  -> unified events.jsonl
+  -> CLI / future Web UI / OBS consumers
+```
 
-No item parser, D4 database, target build integration, OCR, memory reading,
-input automation, Web UI, or OBS overlay is part of this POC.
+The Real-A POC in #39/#41 established that Tolk must discover the official NVDA
+controller client. If it cannot, D4 may fall back to SAPI: the user still hears
+speech, but the NVDA add-on receives nothing.
 
-## Build the NVDA add-on
+## Install for development
 
 PowerShell:
 
     python -m pip install -e "utility/d4planner[dev]"
     python utility/d4planner/tools/build_nvda_addon.py
 
-Output:
+The CLI entry point is:
 
-    utility/d4planner/dist/d4plannerCapture-0.1.0.nvda-addon
+    d4planner
 
-Install the generated package through NVDA's Add-on Store / install-from-file
-flow, then restart NVDA.
+The runtime can self-sync the 0.2.0 add-on from an editable StreamOps checkout.
+Packaged deployments may provision the built add-on separately.
 
-By default the add-on only persists speech while the foreground process/title
-looks like Diablo IV.
+## CLI
 
-Capture path:
+Primary commands:
 
-    %LOCALAPPDATA%\d4planner\raw-d4-speech.jsonl
+    d4planner start
+    d4planner status
+    d4planner logs -f
+    d4planner logs -f --raw
+    d4planner stop
+    d4planner doctor
 
-Optional environment variables:
+Default `start` uses **silent D4 capture**: D4 speech is persisted before NVDA
+synthesis and is then suppressed only when the foreground context is confidently
+Diablo IV.
 
-- D4PLANNER_CAPTURE_PATH: override output JSONL path.
-- D4PLANNER_CAPTURE_ALL=1: diagnostic fallback when NVDA cannot reliably
-  identify Diablo IV foreground context. This can log speech from other apps;
-  use only for the POC and review the output before sharing it.
+To keep normal NVDA audio for debugging:
 
-## Manual Real-A acquisition
+    d4planner start --speech
 
-Agent F should install and verify the add-on first. The operator then opens
-Diablo IV and hovers/focuses representative items:
+To keep controller discovery process-scoped for diagnostics:
 
-1. one equipped item;
-2. one normal Legendary/Rare item;
-3. one Unique;
-4. one item with Temper/Masterwork;
-5. one Greater Affix item when available;
-6. Charm/Seal when available.
+    d4planner start --isolated
 
-The operator is only supplying real game input; evidence processing remains
-automated.
+`Ctrl+C` while following logs detaches only the CLI. The supervisor and capture
+remain active. `d4planner stop` stops the planner runtime but does not kill
+Diablo IV or Steam.
 
-## Generate report skeleton
+## Runtime storage
 
-PowerShell:
+Production runtime state is outside the repository:
 
-    python -m d4planner.report.poc_report "%LOCALAPPDATA%\d4planner\raw-d4-speech.jsonl" -o "utility/d4planner/artifacts/d4-nvda-poc/poc-report.md"
+```text
+%LOCALAPPDATA%\d4planner\
+├── runtime\
+│   ├── nvda-controller\
+│   └── bin\
+├── sessions\
+│   └── <timestamp>-<session-id>\
+│       ├── metadata.json
+│       ├── raw-speech.jsonl
+│       ├── events.jsonl
+│       └── runtime.log
+├── state\
+└── logs\
+```
 
-The report deliberately leaves gameplay fields as NOT_EVALUATED. Agent F or a
-reviewer must inspect raw evidence and conclude GO / PARTIAL / NO-GO.
+Each start creates a new session. Prior raw evidence is never cleared or
+renumbered.
+
+## Controller discovery / PATH
+
+Normal runtime mode adds:
+
+    %LOCALAPPDATA%\d4planner\runtime\nvda-controller
+
+to **User PATH only**. The operation is idempotent and tracked for reversible
+cleanup. Machine PATH is read-only to D4Planner.
+
+Diagnostic restore:
+
+    d4planner path status
+    d4planner path restore
+
+If Steam was already running before D4Planner first updated User PATH, its
+environment is stale. D4Planner reports `RESTART_REQUIRED` instead of killing
+Steam or Diablo IV.
+
+## NVDA add-on
+
+Build output:
+
+    utility/d4planner/dist/d4plannerCapture-0.2.0.nvda-addon
+
+The runtime add-on uses NVDA 2026.2's public `filter_speechSequence` extension
+point.
+
+Behavior:
+
+```text
+non-D4 / uncertain context -> passthrough
+D4 + --speech             -> capture + passthrough
+D4 + default silent       -> capture; if persistence succeeds, return []
+capture write failure     -> passthrough
+```
+
+This fail-safe policy avoids silencing the desktop when source detection or
+persistence is uncertain.
+
+## Safety boundary
+
+D4Planner does not:
+
+- read Diablo IV RAM/process memory;
+- inject DLL/code into the game;
+- copy controller DLLs into the game directory;
+- hook DirectX;
+- modify game files;
+- automate mouse/keyboard/controller gameplay;
+- force-kill Diablo IV or Steam by default.
 
 ## CI
 
@@ -73,13 +145,5 @@ reviewer must inspect raw evidence and conclude GO / PARTIAL / NO-GO.
     python -m compileall -q utility/d4planner
     python utility/d4planner/tools/build_nvda_addon.py
 
-## Test ownership
-
-- CI: package/build, JSONL serialization, ordering, context helper, failure
-  isolation, report skeleton.
-- Agent F on A: install/load NVDA add-on, verify capture path and real JSONL,
-  collect artifacts and generate the report.
-- Operator manual: open D4 and hover/focus real items to create authoritative
-  game accessibility input.
-
-A NO-GO result is still a valid POC outcome when supported by evidence.
+Acceptance ownership and the detailed Unit / E2E / Real-A / UAT gate matrix are
+tracked in #43.
