@@ -190,3 +190,52 @@ def test_doctor_reports_stale_supervisor_and_capture_lease(monkeypatch, tmp_path
     assert "supervisor" in out
     assert "capture_lease" in out
     assert "FAIL" in out
+
+
+def test_second_start_does_not_spawn_duplicate_supervisor(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    atomic_write_json(
+        paths.runtime_state,
+        {
+            "state": "RUNNING",
+            "supervisorPid": 123,
+            "silent": True,
+        },
+    )
+    monkeypatch.setattr(cli, "_pid_alive", lambda _pid: True)
+
+    def forbidden_spawn(**_kwargs):
+        raise AssertionError("second start must not spawn another daemon")
+
+    monkeypatch.setattr(cli, "_spawn_daemon", forbidden_spawn)
+
+    assert cli.command_start(
+        paths,
+        speech=False,
+        isolated=False,
+        detached=True,
+        timeout=1,
+    ) == 0
+
+
+def test_ctrl_c_detaches_logs_without_requesting_stop(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    store = EventStore.create(paths, silent=True, session_id="detach")
+    atomic_write_json(
+        paths.runtime_state,
+        {
+            "state": "RUNNING",
+            "supervisorPid": 123,
+            "sessionDir": str(store.session.directory),
+        },
+    )
+
+    def interrupted(*_args, **_kwargs):
+        yield '{"type":"runtime.start","timestamp":"","data":{}}'
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "_event_lines", interrupted)
+
+    assert cli.command_logs(paths, follow=True, raw=False) == 0
+    assert not paths.stop_request.exists()
