@@ -403,14 +403,22 @@ class Runner:
         self.vendor("update_target_name", {"id": aid, "newName": f"{PREFIX}a"})
 
         # Per-target control: a must not implicitly start b, and vice versa.
-        self.vendor("start_target", {"id": aid})
+        self.evidence["candidate_start_a_pre_state"] = sanitize(
+            self.vendor("get_target_state", {"id": aid}), self.secrets
+        )
+        start_a_response = self.vendor("start_target", {"id": aid})
+        self.evidence["candidate_start_a_response"] = sanitize(start_a_response, self.secrets)
         self.vendor_wait_running(aid, True)
         b_state = self.vendor("get_target_state", {"id": bid})
         independent_a = not bool(b_state.get("isRunning", b_state.get("streaming", False)))
         self.vendor("stop_target", {"id": aid})
         self.vendor_wait_running(aid, False)
 
-        self.vendor("start_target", {"id": bid})
+        self.evidence["candidate_start_b_pre_state"] = sanitize(
+            self.vendor("get_target_state", {"id": bid}), self.secrets
+        )
+        start_b_response = self.vendor("start_target", {"id": bid})
+        self.evidence["candidate_start_b_response"] = sanitize(start_b_response, self.secrets)
         self.vendor_wait_running(bid, True)
         a_state = self.vendor("get_target_state", {"id": aid})
         independent_b = not bool(a_state.get("isRunning", a_state.get("streaming", False)))

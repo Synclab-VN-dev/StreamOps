@@ -1,6 +1,6 @@
 # Issue #35 — Multiple RTMP runtime API spike
 
-Status: **implementation harness ready; Real-A evidence pending**
+Status: **Real-A complete; candidate requires a reviewed patch before production evaluation**
 
 This document describes Gate 3 only. It does not define or implement production StreamOps
 multistream backend/UI.
@@ -155,3 +155,14 @@ The imported candidate is GPL-2.0 licensed. Vendoring/modifying/distributing it 
 have licensing implications for distribution and derivative-work boundaries. This PR keeps the
 upstream license and provenance, but merge/release policy must be reviewed before treating the
 vendored plugin as a production dependency.
+
+## Real-A result
+
+The upstream/native phase and candidate Vendor phase were executed on A. The final capability
+matrix, failure evidence, restore verification, and technical decision are recorded in
+`issue-35-decision.md`.
+
+The candidate accepted `start_target` and returned `start_requested`, but the target never became
+running. Interactive-session inspection found an OBS warning stating that the encoder cannot be
+reused while the main stream/recording output is inactive. The Vendor response and target state did
+not expose that failure. No candidate C++ changes were made during this run.
