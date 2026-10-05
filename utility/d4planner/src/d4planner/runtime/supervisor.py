@@ -232,6 +232,17 @@ class Supervisor:
             )
 
             steam = self.runtime.steam_process()
+            if self.isolated and steam:
+                self.status.steam = steam
+                self.transition(
+                    RuntimeState.RESTART_REQUIRED,
+                    "isolated mode cannot retrofit PATH into an existing Steam process; "
+                    "exit Steam normally and run start --isolated again",
+                    data={"steamPid": steam.pid},
+                )
+                write_capture_config(self.paths, enabled=False)
+                return self.status.state
+
             managed_updated = self.path_manager.managed_updated_at() if not self.isolated else None
             if (
                 not self.isolated
