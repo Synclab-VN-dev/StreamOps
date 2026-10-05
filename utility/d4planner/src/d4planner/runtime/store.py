@@ -208,12 +208,13 @@ def write_capture_config(
     silent: bool = True,
     lease_seconds: float = 5.0,
 ) -> None:
+    effective_enabled = bool(enabled and session is not None)
     payload: dict[str, Any] = {
-        "enabled": enabled,
-        "silent": bool(silent),
+        "enabled": effective_enabled,
+        "silent": bool(silent) if effective_enabled else False,
         "updatedAt": iso_now(),
     }
-    if enabled and session:
+    if effective_enabled and session:
         payload.update(
             {
                 "sessionId": session.session_id,
