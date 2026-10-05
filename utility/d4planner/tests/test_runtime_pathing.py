@@ -51,3 +51,18 @@ def test_restore_preserves_unrelated_user_edits(tmp_path):
 
     assert "USER_NEW" in backend.user_path.split(os.pathsep)
     assert str(paths.controller.resolve()) not in backend.user_path.split(os.pathsep)
+
+
+def test_preexisting_managed_path_is_never_removed_on_restore(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    managed = str(paths.controller.resolve())
+    backend = MemoryPathBackend(user_path=os.pathsep.join(["A", managed, "B"]), machine_path="M")
+    manager = UserPathManager(paths, backend)
+
+    change = manager.ensure(paths.controller)
+    assert change.changed is False
+
+    restored = manager.restore()
+    assert restored.changed is False
+    assert managed in backend.user_path.split(os.pathsep)
