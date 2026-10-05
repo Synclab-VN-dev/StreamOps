@@ -177,6 +177,16 @@ class Supervisor:
         try:
             self._create_session()
             self.runtime.require_windows()
+
+            # Fail before persistent PATH/runtime mutation when the proven NVDA
+            # baseline is not present.
+            nvda_version = self.runtime.nvda_version()
+            if not self.runtime.nvda_version_compatible(nvda_version):
+                raise RuntimeBlocked(
+                    f"NVDA 2026.2 is required; detected {nvda_version or 'not installed'}"
+                )
+            self.status.extras["nvdaVersion"] = nvda_version
+
             controller = self.runtime.ensure_controller_runtime()
             self.status.extras["controllerDll"] = str(controller)
 
@@ -188,13 +198,6 @@ class Supervisor:
                 self.status.extras["userPathUpdatedAt"] = path_change.updated_at
             else:
                 self.status.extras["userPathManaged"] = False
-
-            nvda_version = self.runtime.nvda_version()
-            if not self.runtime.nvda_version_compatible(nvda_version):
-                raise RuntimeBlocked(
-                    f"NVDA 2026.2 is required; detected {nvda_version or 'not installed'}"
-                )
-            self.status.extras["nvdaVersion"] = nvda_version
 
             addon_changed = self.runtime.ensure_addon_runtime()
             if not self.runtime.addon_installed():
