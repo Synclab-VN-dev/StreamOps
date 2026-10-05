@@ -64,11 +64,30 @@ def _pid_alive(pid: int | None) -> bool:
         return False
 
 
+def _capture_effective(paths: RuntimePaths) -> bool:
+    config = read_json(paths.capture_state) or {}
+    if not config.get("enabled"):
+        return False
+    try:
+        lease_until = float(config.get("leaseUntilUnix") or 0)
+    except (TypeError, ValueError):
+        return False
+    return lease_until > time.time()
+
+
 def _state(paths: RuntimePaths) -> dict[str, Any]:
-    return read_json(paths.runtime_state) or {
-        "state": RuntimeState.STOPPED.value,
-        "captureActive": False,
-    }
+    state = dict(
+        read_json(paths.runtime_state)
+        or {
+            "state": RuntimeState.STOPPED.value,
+            "captureActive": False,
+        }
+    )
+    pid = state.get("supervisorPid")
+    alive = _pid_alive(int(pid)) if pid else False
+    state["supervisorAlive"] = alive
+    state["captureEffective"] = _capture_effective(paths)
+    return state
 
 
 def _spawn_daemon(*, speech: bool, isolated: bool) -> int:
@@ -167,6 +186,9 @@ def command_status(paths: RuntimePaths, *, raw_json: bool) -> int:
     status = _state(paths)
     if raw_json:
         print(json.dumps(status, ensure_ascii=False, indent=2))
+        state = str(status.get("state") or "")
+        if state not in {RuntimeState.STOPPED.value, ""} and not status.get("supervisorAlive"):
+            return 2
         return 0
     tolk = status.get("tolk") or {}
     nvda = status.get("nvda") or {}
@@ -180,7 +202,12 @@ def command_status(paths: RuntimePaths, *, raw_json: bool) -> int:
         ("Tolk backend", tolk.get("reader") if tolk else "UNKNOWN"),
         ("Steam", f"PID {steam.get('pid')}" if steam else "STOPPED"),
         ("Diablo IV", f"PID {game.get('pid')}" if game else "STOPPED"),
-        ("Capture", "ACTIVE" if status.get("captureActive") else "INACTIVE"),
+        (
+            "Capture",
+            "ACTIVE"
+            if status.get("captureEffective")
+            else ("STALE" if status.get("captureActive") else "INACTIVE"),
+        ),
         ("Mode", "silent" if status.get("silent", True) else "speech"),
         ("Session", status.get("sessionId") or "-"),
         ("Last event", status.get("lastEventAt") or "-"),
@@ -189,6 +216,9 @@ def command_status(paths: RuntimePaths, *, raw_json: bool) -> int:
     for key, value in rows:
         print(f"{key:<{width}}  {value}")
     state = str(status.get("state") or "")
+    if state not in {RuntimeState.STOPPED.value, ""} and not status.get("supervisorAlive"):
+        print("Warning: runtime state is stale; supervisor process is not running.", file=sys.stderr)
+        return 2
     if state == RuntimeState.BLOCKED.value:
         return 2
     if state == RuntimeState.RESTART_REQUIRED.value:
@@ -228,6 +258,17 @@ def command_start(
     if _pid_alive(int(previous_pid)) if previous_pid else False:
         state = str(previous.get("state") or "")
         if state != RuntimeState.STOPPED.value:
+            current_silent = bool(previous.get("silent", True))
+            requested_silent = not speech
+            if current_silent != requested_silent:
+                current_mode = "silent" if current_silent else "speech"
+                requested_mode = "silent" if requested_silent else "speech"
+                print(
+                    f"D4Planner is already running in {current_mode} mode; "
+                    f"requested {requested_mode}. Run 'd4planner stop' first.",
+                    file=sys.stderr,
+                )
+                return 4
             print(f"D4Planner already running (PID {previous_pid}, state {state}).")
             if detached:
                 return 0
