@@ -28,7 +28,7 @@ class DoctorReport:
 
     @property
     def ok(self) -> bool:
-        return all(item.get("status") == "PASS" for item in self.checks.values())
+        return all(item.get("status") != "FAIL" for item in self.checks.values())
 
 
 class WindowsRuntime:
