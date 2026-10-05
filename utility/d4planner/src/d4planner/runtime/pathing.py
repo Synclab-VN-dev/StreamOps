@@ -126,7 +126,21 @@ class UserPathManager:
         parts = _parts(before)
         if any(_norm(part) == _norm(managed) for part in parts):
             state = read_json(self.paths.path_managed) or {}
-            return PathChange(False, managed, before, before, state.get("updatedAt"))
+            updated = state.get("updatedAt")
+            if not updated:
+                # The path pre-existed D4Planner management. Track it conservatively
+                # for stale-Steam detection, but never claim ownership for restore.
+                updated = _now()
+                atomic_write_json(
+                    self.paths.path_managed,
+                    {
+                        "managedPath": managed,
+                        "updatedAt": updated,
+                        "owned": False,
+                        "preExisting": True,
+                    },
+                )
+            return PathChange(False, managed, before, before, str(updated))
 
         if not self.paths.path_backup.exists():
             atomic_write_json(
@@ -150,6 +164,8 @@ class UserPathManager:
                 "updatedAt": updated,
                 "beforeSha256": hashlib.sha256(before.encode()).hexdigest(),
                 "afterSha256": hashlib.sha256(after.encode()).hexdigest(),
+                "owned": True,
+                "preExisting": False,
             },
         )
         return PathChange(True, managed, before, after, updated)
@@ -159,6 +175,12 @@ class UserPathManager:
         managed_state = read_json(self.paths.path_managed) or {}
         managed = str(managed_state.get("managedPath") or self.paths.controller)
         before = self.backend.get_user_path()
+        if managed_state and managed_state.get("owned") is False:
+            try:
+                self.paths.path_managed.unlink()
+            except FileNotFoundError:
+                pass
+            return PathChange(False, managed, before, before, None)
         if not backup:
             cleaned = os.pathsep.join(
                 part for part in _parts(before) if _norm(part) != _norm(managed)
