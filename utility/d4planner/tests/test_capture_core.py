@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from d4planner.capture.core import (
     CaptureSession,
+    capture_decision,
     flatten_speech_sequence,
     is_diablo_context,
     validate_event_order,
@@ -41,3 +42,46 @@ def test_diablo_context_is_broad_but_not_generic():
     assert is_diablo_context("DiabloIV", None)
     assert not is_diablo_context("chrome", "GitHub")
     assert not is_diablo_context(None, None)
+
+
+def test_silent_capture_suppresses_only_confident_d4_context():
+    d4 = capture_decision(
+        enabled=True,
+        silent=True,
+        process="diablo iv",
+        window_title="Diablo IV",
+    )
+    assert d4.capture is True
+    assert d4.suppress is True
+
+    desktop = capture_decision(
+        enabled=True,
+        silent=True,
+        process="explorer",
+        window_title="Desktop",
+    )
+    assert desktop.capture is False
+    assert desktop.suppress is False
+
+
+def test_capture_all_never_suppresses_uncertain_non_d4_speech():
+    decision = capture_decision(
+        enabled=True,
+        silent=True,
+        process=None,
+        window_title=None,
+        capture_all=True,
+    )
+    assert decision.capture is True
+    assert decision.suppress is False
+
+
+def test_speech_mode_captures_but_does_not_suppress():
+    decision = capture_decision(
+        enabled=True,
+        silent=False,
+        process="diablo iv",
+        window_title="Diablo IV",
+    )
+    assert decision.capture is True
+    assert decision.suppress is False
