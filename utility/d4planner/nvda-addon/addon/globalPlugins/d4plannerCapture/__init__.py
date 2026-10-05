@@ -42,6 +42,20 @@ class _ConfigCache:
         self._stamp: int | None = None
         self._value: dict[str, object] = {"enabled": False, "silent": False}
 
+    @staticmethod
+    def _effective(value: dict[str, object]) -> dict[str, object]:
+        if not value.get("enabled"):
+            return value
+        try:
+            lease_until = float(value.get("leaseUntilUnix") or 0)
+        except (TypeError, ValueError):
+            lease_until = 0
+        if lease_until <= time.time():
+            # Supervisor disappeared or stopped renewing the lease. Never leave
+            # NVDA silently suppressing D4 speech after a backend failure.
+            return {"enabled": False, "silent": False}
+        return value
+
     def get(self) -> dict[str, object]:
         path = _capture_state_path()
         try:
@@ -52,7 +66,7 @@ class _ConfigCache:
             return self._value
 
         if stamp == self._stamp:
-            return self._value
+            return self._effective(self._value)
 
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
@@ -63,7 +77,7 @@ class _ConfigCache:
             value = {"enabled": False, "silent": False}
         self._stamp = stamp
         self._value = value
-        return value
+        return self._effective(value)
 
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
