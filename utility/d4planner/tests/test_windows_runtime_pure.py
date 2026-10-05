@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+import os\n\nimport pytest\nfrom datetime import datetime, timezone
 import hashlib
 
 from d4planner.runtime.model import ProcessInfo
@@ -51,3 +51,9 @@ def test_addon_runtime_sync_is_idempotent(tmp_path, monkeypatch):
     assert second is False
     assert runtime.addon_installed() is True
     assert runtime.addon_version() == "0.2.0"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="PowerShell runtime probe is Windows-only")
+def test_windows_process_probe_script_is_valid(tmp_path):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
+    assert runtime._process(("d4planner-process-that-does-not-exist",)) is None
