@@ -12,6 +12,8 @@ from pathlib import Path
 import shutil
 import subprocess
 import time
+import urllib.request
+import zipfile
 from typing import Any
 
 from .model import ProcessInfo, TolkHealth
@@ -39,6 +41,10 @@ class WindowsRuntime:
     EXPECTED_ADDON_VERSION = "0.2.0"
     # Official NVDA 2026.2 x64 controller client verified during Real-A #41.
     EXPECTED_CONTROLLER_SHA256 = "598B7EC3DC469814F571275929F676CE73834C469FBDB359A06FD4DB4E0FC866"
+    CONTROLLER_ARCHIVE_URL = (
+        "https://download.nvaccess.org/releases/2026.2/"
+        "nvda_2026.2_controllerClient.zip"
+    )
 
     def __init__(self, paths: RuntimePaths):
         self.paths = paths
@@ -285,6 +291,84 @@ class WindowsRuntime:
                 continue
         return None
 
+    def _extract_controller_archive(self, archive: Path) -> Path:
+        cache = self.paths.root / "cache"
+        cache.mkdir(parents=True, exist_ok=True)
+        extracted = cache / "nvdaControllerClient64.dll"
+        temp = cache / ".nvdaControllerClient64.dll.tmp"
+        try:
+            with zipfile.ZipFile(archive) as package:
+                member = next(
+                    (
+                        name
+                        for name in package.namelist()
+                        if name.replace("\\", "/").casefold()
+                        == "x64/nvdacontrollerclient.dll"
+                    ),
+                    None,
+                )
+                if not member:
+                    raise RuntimeBlocked(
+                        "official NVDA controller archive does not contain x64/nvdaControllerClient.dll"
+                    )
+                with package.open(member) as source, temp.open("wb") as target:
+                    shutil.copyfileobj(source, target)
+            os.replace(temp, extracted)
+        except (OSError, zipfile.BadZipFile) as exc:
+            try:
+                temp.unlink()
+            except FileNotFoundError:
+                pass
+            raise RuntimeBlocked(f"failed to extract NVDA controller archive: {exc}") from exc
+
+        machine = self.controller_machine(extracted)
+        digest = self.controller_sha256(extracted)
+        if machine != 0x8664 or digest != self.expected_controller_sha256():
+            try:
+                extracted.unlink()
+            except FileNotFoundError:
+                pass
+            raise RuntimeBlocked(
+                "downloaded NVDA controller client validation failed: "
+                f"machine={machine!r} sha256={digest or 'unreadable'}"
+            )
+        return extracted
+
+    def _download_official_controller(self) -> Path:
+        cache = self.paths.root / "cache"
+        cache.mkdir(parents=True, exist_ok=True)
+        archive = cache / "nvda_2026.2_controllerClient.zip"
+
+        if archive.is_file():
+            try:
+                return self._extract_controller_archive(archive)
+            except RuntimeBlocked:
+                # A stale/corrupt cache is not authoritative. Redownload once.
+                try:
+                    archive.unlink()
+                except OSError:
+                    pass
+
+        url = os.environ.get("D4PLANNER_CONTROLLER_URL", self.CONTROLLER_ARCHIVE_URL)
+        temp = archive.with_suffix(archive.suffix + ".tmp")
+        request = urllib.request.Request(
+            url,
+            headers={"User-Agent": "D4Planner/0.2"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response, temp.open("wb") as handle:
+                shutil.copyfileobj(response, handle)
+            os.replace(temp, archive)
+        except Exception as exc:
+            try:
+                temp.unlink()
+            except FileNotFoundError:
+                pass
+            raise RuntimeBlocked(
+                f"unable to obtain official NVDA 2026.2 controller client from {url}: {exc}"
+            ) from exc
+        return self._extract_controller_archive(archive)
+
     def ensure_controller_runtime(self) -> Path:
         self.paths.controller.mkdir(parents=True, exist_ok=True)
         target = self.controller_dll()
@@ -298,10 +382,7 @@ class WindowsRuntime:
             )
         source = self.locate_controller_source()
         if not source:
-            raise RuntimeBlocked(
-                "nvdaControllerClient64.dll not found. Set D4PLANNER_CONTROLLER_DLL "
-                "or place the official NVDA x64 controller client in the D4Planner runtime."
-            )
+            source = self._download_official_controller()
         if source.resolve() != target.resolve():
             shutil.copy2(source, target)
         return target
