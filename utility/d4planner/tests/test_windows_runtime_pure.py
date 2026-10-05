@@ -27,9 +27,8 @@ def test_controller_checksum_validation_is_deterministic(tmp_path, monkeypatch):
     content = fake_pe(0x8664)
     dll.write_bytes(content)
     expected = hashlib.sha256(content).hexdigest()
-    monkeypatch.setenv("D4PLANNER_CONTROLLER_SHA256", expected)
-
     runtime = WindowsRuntime(paths)
+    monkeypatch.setattr(runtime, "EXPECTED_CONTROLLER_SHA256", expected)
     assert runtime.controller_machine() == 0x8664
     assert runtime.controller_ready() is True
 
@@ -43,9 +42,13 @@ def test_controller_rejects_wrong_arch_even_when_checksum_matches(tmp_path, monk
     dll = paths.controller / "nvdaControllerClient64.dll"
     x86 = fake_pe(0x014C)
     dll.write_bytes(x86)
-    monkeypatch.setenv("D4PLANNER_CONTROLLER_SHA256", hashlib.sha256(x86).hexdigest())
 
     runtime = WindowsRuntime(paths)
+    monkeypatch.setattr(
+        runtime,
+        "EXPECTED_CONTROLLER_SHA256",
+        hashlib.sha256(x86).hexdigest(),
+    )
     assert runtime.controller_machine() == 0x014C
     assert runtime.controller_ready() is False
 
@@ -94,8 +97,9 @@ def test_extract_official_controller_archive_validates_x64_and_checksum(tmp_path
     runtime = WindowsRuntime(paths)
 
     content = fake_pe(0x8664, b"official")
-    monkeypatch.setenv(
-        "D4PLANNER_CONTROLLER_SHA256",
+    monkeypatch.setattr(
+        runtime,
+        "EXPECTED_CONTROLLER_SHA256",
         hashlib.sha256(content).hexdigest(),
     )
 
