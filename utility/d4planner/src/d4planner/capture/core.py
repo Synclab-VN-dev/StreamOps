@@ -39,10 +39,35 @@ def flatten_speech_sequence(sequence: Sequence[object] | None) -> tuple[str, lis
 
 
 def is_diablo_context(process: str | None, window_title: str | None) -> bool:
-    """Best-effort foreground-context check for the POC."""
+    """Conservative foreground-context check used by capture and silent mode."""
     haystack = " ".join(part for part in (process, window_title) if part).lower()
     normalized = "".join(ch for ch in haystack if ch.isalnum())
     return "diabloiv" in normalized or "diablo4" in normalized
+
+
+@dataclass(frozen=True, slots=True)
+class CaptureDecision:
+    capture: bool
+    suppress: bool
+
+
+def capture_decision(
+    *,
+    enabled: bool,
+    silent: bool,
+    process: str | None,
+    window_title: str | None,
+    capture_all: bool = False,
+) -> CaptureDecision:
+    """Return fail-safe capture/suppression policy.
+
+    Diagnostic capture-all may collect non-D4 speech, but suppression is *never*
+    allowed unless the foreground context is confidently Diablo IV.
+    """
+    is_d4 = is_diablo_context(process, window_title)
+    capture = bool(enabled and (is_d4 or capture_all))
+    suppress = bool(capture and silent and is_d4)
+    return CaptureDecision(capture=capture, suppress=suppress)
 
 
 @dataclass(frozen=True, slots=True)
