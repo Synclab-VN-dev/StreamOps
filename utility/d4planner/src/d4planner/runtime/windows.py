@@ -36,6 +36,8 @@ class WindowsRuntime:
     GAME_PROCESS_NAMES = ("Diablo IV",)
     STEAM_PROCESS_NAMES = ("steam",)
     STEAM_APP_ID = "2344520"
+    # Official NVDA 2026.2 x64 controller client verified during Real-A #41.
+    EXPECTED_CONTROLLER_SHA256 = "598B7EC3DC469814F571275929F676CE73834C469FBDB359A06FD4DB4E0FC866"
 
     def __init__(self, paths: RuntimePaths):
         self.paths = paths
@@ -108,9 +110,28 @@ class WindowsRuntime:
     def controller_dll(self) -> Path:
         return self.paths.controller / "nvdaControllerClient64.dll"
 
+    def controller_sha256(self, path: Path | None = None) -> str | None:
+        candidate = path or self.controller_dll()
+        try:
+            digest = hashlib.sha256()
+            with candidate.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            return digest.hexdigest().upper()
+        except OSError:
+            return None
+
+    def expected_controller_sha256(self) -> str:
+        return os.environ.get(
+            "D4PLANNER_CONTROLLER_SHA256",
+            self.EXPECTED_CONTROLLER_SHA256,
+        ).strip().upper()
+
     def controller_ready(self) -> bool:
         path = self.controller_dll()
-        return path.is_file() and path.stat().st_size > 0
+        if not path.is_file() or path.stat().st_size <= 0:
+            return False
+        return self.controller_sha256(path) == self.expected_controller_sha256()
 
     def locate_controller_source(self) -> Path | None:
         override = os.environ.get("D4PLANNER_CONTROLLER_DLL")
@@ -133,7 +154,11 @@ class WindowsRuntime:
                 pass
         for candidate in candidates:
             try:
-                if candidate.is_file() and candidate.stat().st_size > 0:
+                if (
+                    candidate.is_file()
+                    and candidate.stat().st_size > 0
+                    and self.controller_sha256(candidate) == self.expected_controller_sha256()
+                ):
                     return candidate
             except OSError:
                 continue
@@ -142,8 +167,14 @@ class WindowsRuntime:
     def ensure_controller_runtime(self) -> Path:
         self.paths.controller.mkdir(parents=True, exist_ok=True)
         target = self.controller_dll()
-        if target.is_file() and target.stat().st_size > 0:
+        if self.controller_ready():
             return target
+        if target.exists():
+            actual = self.controller_sha256(target)
+            raise RuntimeBlocked(
+                "existing nvdaControllerClient64.dll checksum mismatch: "
+                f"actual={actual or 'unreadable'} expected={self.expected_controller_sha256()}"
+            )
         source = self.locate_controller_source()
         if not source:
             raise RuntimeBlocked(
@@ -410,7 +441,11 @@ class WindowsRuntime:
         }
         checks["controller"] = {
             "status": "PASS" if self.controller_ready() else "FAIL",
-            "detail": str(self.controller_dll()),
+            "detail": {
+                "path": str(self.controller_dll()),
+                "sha256": self.controller_sha256(),
+                "expectedSha256": self.expected_controller_sha256(),
+            },
         }
         health = self.probe_tolk()
         checks["tolk"] = {
