@@ -14,7 +14,7 @@ from typing import Any, Iterator
 
 from .runtime.model import RuntimeState
 from .runtime.pathing import UserPathManager, WindowsRegistryPathBackend
-from .runtime.store import RuntimePaths, read_json
+from .runtime.store import RuntimePaths, read_json, write_capture_config
 from .runtime.windows import WindowsRuntime
 
 
@@ -241,7 +241,10 @@ def command_stop(paths: RuntimePaths, *, timeout: float = 10.0) -> int:
     status = _state(paths)
     pid = status.get("supervisorPid")
     if not pid or not _pid_alive(int(pid)):
-        print("D4Planner supervisor is not running.")
+        # A crashed supervisor may have left a still-valid short capture lease.
+        # Disable it explicitly so NVDA immediately returns to passthrough.
+        write_capture_config(paths, enabled=False)
+        print("D4Planner supervisor is not running; capture is disabled.")
         return 0
     paths.stop_request.parent.mkdir(parents=True, exist_ok=True)
     paths.stop_request.write_text("stop\n", encoding="utf-8")
