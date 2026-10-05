@@ -94,9 +94,12 @@ def test_supervisor_singleton_lock_rejects_duplicate(tmp_path):
 def test_stop_without_live_supervisor_disables_stale_capture(monkeypatch, tmp_path):
     paths = RuntimePaths(tmp_path / "home")
     paths.ensure()
-    from d4planner.runtime.store import write_capture_config, read_json
+    from d4planner.runtime.store import read_json
 
-    write_capture_config(paths, enabled=True, session=None, silent=True)
+    atomic_write_json(
+        paths.capture_state,
+        {"enabled": True, "silent": True, "leaseUntilUnix": time.time() + 5},
+    )
     monkeypatch.setattr(cli, "_pid_alive", lambda _pid: False)
     atomic_write_json(paths.runtime_state, {"state": "RUNNING", "supervisorPid": 999999})
 
