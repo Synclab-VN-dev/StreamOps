@@ -375,16 +375,27 @@ class WindowsRuntime:
         if self.controller_ready():
             return target
         if target.exists():
+            # The runtime directory is D4Planner-owned. Quarantine a corrupt or
+            # wrong-architecture copy and self-heal from a verified source.
             actual = self.controller_sha256(target)
-            raise RuntimeBlocked(
-                "existing nvdaControllerClient64.dll checksum mismatch: "
-                f"actual={actual or 'unreadable'} expected={self.expected_controller_sha256()}"
-            )
+            cache = self.paths.root / "cache"
+            cache.mkdir(parents=True, exist_ok=True)
+            suffix = (actual or "unreadable")[:12]
+            quarantine = cache / f"invalid-nvdaControllerClient64-{suffix}.dll"
+            try:
+                os.replace(target, quarantine)
+            except OSError as exc:
+                raise RuntimeBlocked(
+                    "existing nvdaControllerClient64.dll is invalid and could not be quarantined: "
+                    f"{exc}"
+                ) from exc
         source = self.locate_controller_source()
         if not source:
             source = self._download_official_controller()
         if source.resolve() != target.resolve():
             shutil.copy2(source, target)
+        if not self.controller_ready():
+            raise RuntimeBlocked("NVDA controller client failed validation after runtime install")
         return target
 
     def locate_nvda_executable(self) -> Path | None:
