@@ -205,10 +205,11 @@ class UserPathManager:
         changed = after != before
         if changed:
             self.backend.set_user_path(after)
-        try:
-            self.paths.path_managed.unlink()
-        except FileNotFoundError:
-            pass
+        for state_file in (self.paths.path_managed, self.paths.path_backup):
+            try:
+                state_file.unlink()
+            except FileNotFoundError:
+                pass
         return PathChange(changed, managed, before, after, None)
 
     def managed_updated_at(self) -> str | None:
