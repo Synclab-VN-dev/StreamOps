@@ -103,6 +103,72 @@ class WindowsRuntime:
         roaming = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
         return roaming / "nvda" / "addons" / "d4plannerCapture"
 
+    @staticmethod
+    def _same_file(left: Path, right: Path) -> bool:
+        try:
+            return left.read_bytes() == right.read_bytes()
+        except OSError:
+            return False
+
+    @classmethod
+    def _sync_tree(cls, source: Path, destination: Path) -> bool:
+        changed = False
+        for item in source.rglob("*"):
+            relative = item.relative_to(source)
+            target = destination / relative
+            if item.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if not cls._same_file(item, target):
+                shutil.copy2(item, target)
+                changed = True
+        return changed
+
+    def ensure_addon_runtime(self) -> bool:
+        """Install/update the development add-on without touching the game directory.
+
+        In packaged deployments the add-on may already be provisioned by the installer.
+        In an editable StreamOps checkout we can safely sync the versioned source into
+        NVDA's per-user add-ons directory, making `d4planner start` self-contained.
+        """
+        try:
+            project_root = Path(__file__).resolve().parents[3]
+        except IndexError:
+            project_root = Path()
+        source_root = project_root / "nvda-addon"
+        source_addon = source_root / "addon"
+        source_manifest = source_root / "manifest.ini"
+
+        if not source_addon.is_dir() or not source_manifest.is_file():
+            if self.addon_installed():
+                return False
+            raise RuntimeBlocked(
+                "D4Planner NVDA add-on 0.2.0 is missing and no bundled/editable source is available"
+            )
+
+        destination = self.addon_path()
+        destination.mkdir(parents=True, exist_ok=True)
+        changed = self._sync_tree(source_addon, destination)
+
+        manifest_target = destination / "manifest.ini"
+        if not self._same_file(source_manifest, manifest_target):
+            shutil.copy2(source_manifest, manifest_target)
+            changed = True
+
+        core_source = project_root / "src" / "d4planner" / "capture" / "core.py"
+        core_target = destination / "globalPlugins" / "d4plannerCapture" / "core.py"
+        if core_source.is_file() and not self._same_file(core_source, core_target):
+            core_target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(core_source, core_target)
+            changed = True
+
+        if self.addon_version() != self.EXPECTED_ADDON_VERSION:
+            raise RuntimeBlocked(
+                f"D4Planner add-on version mismatch after sync: {self.addon_version()!r}"
+            )
+        return changed
+
     def addon_version(self) -> str | None:
         manifest = self.addon_path() / "manifest.ini"
         try:
@@ -362,6 +428,7 @@ class WindowsRuntime:
             raise RuntimeBlocked("Steam executable not found")
 
         nvda_script = bin_dir / "start-nvda.ps1"
+        nvda_restart_script = bin_dir / "restart-nvda.ps1"
         d4_script = bin_dir / "start-d4.ps1"
         runtime = str(self.paths.controller).replace("'", "''")
         nvda_q = str(nvda).replace("'", "''")
@@ -375,6 +442,14 @@ class WindowsRuntime:
             f"Start-Process -FilePath '{nvda_q}'}}\n",
             encoding="utf-8",
         )
+        nvda_restart_script.write_text(
+            "$ErrorActionPreference='Stop'\n"
+            f"$nvda='{nvda_q}'\n"
+            "& $nvda -q\n"
+            "Start-Sleep -Milliseconds 800\n"
+            "Start-Process -FilePath $nvda\n",
+            encoding="utf-8",
+        )
         d4_script.write_text(
             "$ErrorActionPreference='Stop'\n"
             f"$runtime='{runtime}'\n"
@@ -386,13 +461,14 @@ class WindowsRuntime:
             f"Start-Process -FilePath $steam -ArgumentList '-applaunch {self.STEAM_APP_ID}'\n",
             encoding="utf-8",
         )
-        return {"nvda": nvda_script, "d4": d4_script}
+        return {"nvda": nvda_script, "nvda-restart": nvda_restart_script, "d4": d4_script}
 
     def ensure_interactive_tasks(self) -> None:
         self.require_windows()
         scripts = self.ensure_helper_scripts()
         for name, script_path in (
             ("D4Planner-NVDA", scripts["nvda"]),
+            ("D4Planner-NVDA-Restart", scripts["nvda-restart"]),
             ("D4Planner-D4", scripts["d4"]),
         ):
             escaped = str(script_path).replace("'", "''")
@@ -427,6 +503,19 @@ class WindowsRuntime:
                 return process
             time.sleep(0.5)
         raise RuntimeBlocked("NVDA did not start in time")
+
+    def restart_nvda(self, *, timeout: float = 15.0) -> ProcessInfo:
+        previous = self.nvda_process()
+        previous_pid = previous.pid if previous else None
+        self.ensure_interactive_tasks()
+        self.run_task("D4Planner-NVDA-Restart")
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            current = self.nvda_process()
+            if current and (previous_pid is None or current.pid != previous_pid):
+                return current
+            time.sleep(0.5)
+        raise RuntimeBlocked("NVDA did not restart in time after add-on update")
 
     def launch_game(self) -> None:
         self.ensure_interactive_tasks()
