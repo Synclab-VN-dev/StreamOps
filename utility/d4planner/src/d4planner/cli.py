@@ -26,6 +26,18 @@ TERMINAL_STATES = {
     RuntimeState.DEGRADED.value,
 }
 
+ACTIVE_STATES = {
+    RuntimeState.BOOTSTRAPPING.value,
+    RuntimeState.NVDA_READY.value,
+    RuntimeState.TOLK_READY.value,
+    RuntimeState.GAME_STARTING.value,
+    RuntimeState.GAME_ATTACHED.value,
+    RuntimeState.CAPTURE_READY.value,
+    RuntimeState.RUNNING.value,
+    RuntimeState.WAITING_FOR_GAME.value,
+    RuntimeState.DEGRADED.value,
+}
+
 
 def _paths() -> RuntimePaths:
     override = os.environ.get("D4PLANNER_HOME")
@@ -187,7 +199,7 @@ def command_status(paths: RuntimePaths, *, raw_json: bool) -> int:
     if raw_json:
         print(json.dumps(status, ensure_ascii=False, indent=2))
         state = str(status.get("state") or "")
-        if state not in {RuntimeState.STOPPED.value, ""} and not status.get("supervisorAlive"):
+        if state in ACTIVE_STATES and not status.get("supervisorAlive"):
             return 2
         return 0
     tolk = status.get("tolk") or {}
@@ -216,7 +228,7 @@ def command_status(paths: RuntimePaths, *, raw_json: bool) -> int:
     for key, value in rows:
         print(f"{key:<{width}}  {value}")
     state = str(status.get("state") or "")
-    if state not in {RuntimeState.STOPPED.value, ""} and not status.get("supervisorAlive"):
+    if state in ACTIVE_STATES and not status.get("supervisorAlive"):
         print("Warning: runtime state is stale; supervisor process is not running.", file=sys.stderr)
         return 2
     if state == RuntimeState.BLOCKED.value:
