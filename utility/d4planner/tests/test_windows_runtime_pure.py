@@ -9,18 +9,43 @@ from d4planner.runtime.store import RuntimePaths
 from d4planner.runtime.windows import WindowsRuntime
 
 
+def fake_pe(machine: int, marker: bytes = b"controller-client") -> bytes:
+    payload = bytearray(0xA0)
+    payload[0:2] = b"MZ"
+    payload[0x3C:0x40] = (0x80).to_bytes(4, "little")
+    payload[0x80:0x84] = b"PE\x00\x00"
+    payload[0x84:0x86] = int(machine).to_bytes(2, "little")
+    payload[0x90:0x90 + len(marker)] = marker
+    return bytes(payload)
+
+
 def test_controller_checksum_validation_is_deterministic(tmp_path, monkeypatch):
     paths = RuntimePaths(tmp_path / "home")
     paths.ensure()
     dll = paths.controller / "nvdaControllerClient64.dll"
-    dll.write_bytes(b"controller-client")
-    expected = hashlib.sha256(b"controller-client").hexdigest()
+    content = fake_pe(0x8664)
+    dll.write_bytes(content)
+    expected = hashlib.sha256(content).hexdigest()
     monkeypatch.setenv("D4PLANNER_CONTROLLER_SHA256", expected)
 
     runtime = WindowsRuntime(paths)
+    assert runtime.controller_machine() == 0x8664
     assert runtime.controller_ready() is True
 
-    dll.write_bytes(b"tampered")
+    dll.write_bytes(fake_pe(0x8664, b"tampered"))
+    assert runtime.controller_ready() is False
+
+
+def test_controller_rejects_wrong_arch_even_when_checksum_matches(tmp_path, monkeypatch):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    dll = paths.controller / "nvdaControllerClient64.dll"
+    x86 = fake_pe(0x014C)
+    dll.write_bytes(x86)
+    monkeypatch.setenv("D4PLANNER_CONTROLLER_SHA256", hashlib.sha256(x86).hexdigest())
+
+    runtime = WindowsRuntime(paths)
+    assert runtime.controller_machine() == 0x014C
     assert runtime.controller_ready() is False
 
 
