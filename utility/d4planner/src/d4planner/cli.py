@@ -239,18 +239,27 @@ def command_stop(paths: RuntimePaths, *, timeout: float = 10.0) -> int:
 def command_doctor(paths: RuntimePaths, *, raw_json: bool) -> int:
     runtime = WindowsRuntime(paths)
     report = runtime.doctor()
-    checks = report.checks
+    checks = dict(report.checks)
+    stale = False
+    if os.name == "nt":
+        steam = runtime.steam_process()
+        manager = UserPathManager(paths, WindowsRegistryPathBackend())
+        updated = manager.managed_updated_at()
+        stale = bool(steam and updated and runtime.process_started_before(steam, updated))
+        checks["steam_environment"] = {
+            "status": "FAIL" if stale else "PASS",
+            "detail": (
+                "Steam started before D4Planner PATH update; exit Steam normally and retry"
+                if stale
+                else "environment generation is current"
+            ),
+        }
     if raw_json:
         print(json.dumps(checks, ensure_ascii=False, indent=2))
     else:
         for name, item in checks.items():
             print(f"{str(item.get('status')):4}  {name:<18} {item.get('detail')}")
-        steam = runtime.steam_process() if os.name == "nt" else None
-        manager = UserPathManager(paths, WindowsRegistryPathBackend()) if os.name == "nt" else None
-        updated = manager.managed_updated_at() if manager else None
-        if steam and updated and runtime.process_started_before(steam, updated):
-            print("WARN  steam_environment  Steam started before D4Planner PATH update; restart required")
-    return 0 if report.ok else 1
+    return 0 if report.ok and not stale else 1
 
 
 def command_path(paths: RuntimePaths, action: str) -> int:
