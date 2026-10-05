@@ -234,8 +234,14 @@ class Runner:
         if not ok:
             raise PocError("OBS must be READY with websocket connected and streaming/recording false")
         plugin = self.http.get("/api/v1/obs/plugins/obs-multi-rtmp")
-        if plugin.get("state") != "LOADED":
-            raise PocError(f"obs-multi-rtmp must be LOADED, got {plugin.get('state')}")
+        if self.args.phase == "native" and plugin.get("state") != "LOADED":
+            raise PocError(f"upstream obs-multi-rtmp must be LOADED, got {plugin.get('state')}")
+        if self.args.phase == "vendor" and plugin.get("state") != "LOADED":
+            self.record(
+                "CANDIDATE_PINNED_MANIFEST_MISMATCH",
+                "PASS",
+                f"Gate 1 manifest state={plugin.get('state')} is expected while candidate binary is temporarily installed",
+            )
         self.connect_obs()
         self.config_path = self.args.plugin_config or resolve_config(self.obs)
         self.config_raw = self.config_path.read_bytes() if self.config_path.exists() else None
