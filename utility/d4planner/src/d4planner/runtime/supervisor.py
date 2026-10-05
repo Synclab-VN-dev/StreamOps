@@ -73,6 +73,19 @@ class Supervisor:
         self.status.updated_at = iso_now()
         atomic_write_json(self.paths.runtime_state, self.status.as_dict())
 
+    def _safe_emit(self, event_type: str, data: dict[str, Any] | None = None):
+        if not self.store:
+            return None
+        try:
+            return self.store.emit(event_type, data)
+        except (OSError, TypeError, ValueError) as exc:
+            self.status.last_error = f"event sink failure: {type(exc).__name__}: {exc}"
+            try:
+                self._persist_status()
+            except OSError:
+                pass
+            return None
+
     def _refresh_processes(self) -> None:
         try:
             self.status.active_console_session_id = self.runtime.active_console_session_id()
@@ -113,7 +126,7 @@ class Supervisor:
                 event_data["error"] = error
             if data:
                 event_data.update(data)
-            self.store.emit(f"runtime.{target.value.casefold()}", event_data)
+            self._safe_emit(f"runtime.{target.value.casefold()}", event_data)
 
     def _create_session(self) -> None:
         self.store = EventStore.create(
@@ -127,7 +140,7 @@ class Supervisor:
         self.status.session_id = self.store.session.session_id
         self.status.session_dir = str(self.store.session.directory)
         self._persist_status()
-        self.store.emit(
+        self._safe_emit(
             "runtime.start",
             {
                 "detail": "D4Planner supervisor started",
@@ -303,7 +316,14 @@ class Supervisor:
                     continue
                 if not isinstance(event, dict):
                     continue
-                unified = self.store.ingest_capture(event)
+                try:
+                    unified = self.store.ingest_capture(event)
+                except (OSError, TypeError, ValueError) as exc:
+                    self.status.last_error = (
+                        f"capture event sink failure: {type(exc).__name__}: {exc}"
+                    )
+                    self._persist_status()
+                    continue
                 self.status.last_event_at = str(unified["timestamp"])
                 count += 1
         if count:
@@ -382,7 +402,7 @@ class Supervisor:
             write_capture_config(self.paths, enabled=False)
             self.status.capture_active = False
             if self.store:
-                self.store.emit("runtime.stop", {"detail": "D4Planner supervisor stopped"})
+                self._safe_emit("runtime.stop", {"detail": "D4Planner supervisor stopped"})
             if can_transition(self.status.state, RuntimeState.STOPPED):
                 self.transition(RuntimeState.STOPPED, "D4Planner stopped; game and Steam left untouched")
             else:
