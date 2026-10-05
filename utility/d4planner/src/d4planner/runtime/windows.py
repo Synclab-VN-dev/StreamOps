@@ -373,10 +373,13 @@ class WindowsRuntime:
 
         old_path = os.environ.get("PATH", "")
         os.environ["PATH"] = str(self.paths.controller) + os.pathsep + old_path
-        dll_dir = None
+        dll_dirs = []
         try:
             if hasattr(os, "add_dll_directory"):
-                dll_dir = os.add_dll_directory(str(self.paths.controller))
+                # Keep both the controller client and the game's Tolk dependency
+                # directory visible to the isolated probe process.
+                dll_dirs.append(os.add_dll_directory(str(self.paths.controller)))
+                dll_dirs.append(os.add_dll_directory(str(tolk.parent)))
             dll = ctypes.WinDLL(str(tolk))
             dll.Tolk_Load.argtypes = []
             dll.Tolk_Load.restype = None
@@ -403,8 +406,11 @@ class WindowsRuntime:
         except Exception as exc:
             return TolkHealth(None, False, False, f"{type(exc).__name__}: {exc}")
         finally:
-            if dll_dir:
-                dll_dir.close()
+            for dll_dir in reversed(dll_dirs):
+                try:
+                    dll_dir.close()
+                except Exception:
+                    pass
             os.environ["PATH"] = old_path
 
     @staticmethod
