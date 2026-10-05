@@ -40,6 +40,8 @@ class FakeRuntime:
         return 1
 
     def ensure_nvda_running(self, *, timeout=15.0):
+        if self._nvda is None:
+            self._nvda = ProcessInfo("nvda_noUIAccess", 11, session_id=1)
         return self._nvda
 
     def nvda_process(self):
@@ -147,3 +149,80 @@ def test_session_mismatch_blocks_before_capture(tmp_path):
 
     assert state == RuntimeState.BLOCKED
     assert read_json(paths.capture_state)["enabled"] is False
+
+
+def test_game_exit_and_return_reaches_running_again(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = FakeRuntime(
+        paths,
+        game=ProcessInfo("Diablo IV", 31, session_id=1),
+        steam=ProcessInfo("steam", 21, session_id=1),
+    )
+    supervisor = build_supervisor(tmp_path, runtime)
+    assert supervisor.bootstrap() == RuntimeState.RUNNING
+
+    runtime._game = None
+    supervisor._watch_game()
+    assert supervisor.status.state == RuntimeState.WAITING_FOR_GAME
+
+    runtime._game = ProcessInfo("Diablo IV", 32, session_id=1)
+    supervisor._watch_game()
+    assert supervisor.status.state == RuntimeState.RUNNING
+    assert supervisor.status.game.pid == 32
+
+
+def test_nvda_crash_recovers_without_touching_game(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = FakeRuntime(
+        paths,
+        game=ProcessInfo("Diablo IV", 31, session_id=1),
+        steam=ProcessInfo("steam", 21, session_id=1),
+    )
+    supervisor = build_supervisor(tmp_path, runtime)
+    assert supervisor.bootstrap() == RuntimeState.RUNNING
+
+    runtime._nvda = None
+    supervisor._recover_nvda()
+
+    assert supervisor.status.state == RuntimeState.RUNNING
+    assert runtime.launch_calls == 0
+    assert runtime._game.pid == 31
+
+
+def test_raw_capture_is_promoted_to_unified_monotonic_stream(tmp_path):
+    import json
+
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = FakeRuntime(
+        paths,
+        game=ProcessInfo("Diablo IV", 31, session_id=1),
+        steam=ProcessInfo("steam", 21, session_id=1),
+    )
+    supervisor = build_supervisor(tmp_path, runtime)
+    assert supervisor.bootstrap() == RuntimeState.RUNNING
+    raw = supervisor.store.session.raw_speech_path
+    raw.write_text(
+        json.dumps(
+            {
+                "sessionId": supervisor.store.session.session_id,
+                "sequence": 1,
+                "timestamp": "2026-10-05T19:00:00+07:00",
+                "process": "diablo iv",
+                "windowTitle": "Diablo IV",
+                "text": "850 Item Power",
+                "rawSpeech": ["850 Item Power"],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert supervisor._read_new_capture() == 1
+    rows = [
+        json.loads(line)
+        for line in supervisor.store.session.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    speech = [row for row in rows if row["type"] == "speech.raw"]
+    assert len(speech) == 1
+    assert speech[0]["data"]["text"] == "850 Item Power"
+    assert [row["eventSeq"] for row in rows] == list(range(1, len(rows) + 1))
