@@ -3,11 +3,47 @@
 from __future__ import annotations
 
 import argparse
+import os
+from pathlib import Path
 
 from .runtime.pathing import UserPathManager, WindowsRegistryPathBackend
 from .runtime.store import RuntimePaths
 from .runtime.supervisor import Supervisor
 from .runtime.windows import WindowsRuntime
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except (OSError, ProcessLookupError):
+        return False
+
+
+def _acquire_singleton(paths: RuntimePaths) -> Path | None:
+    paths.ensure()
+    lock = paths.state / "supervisor.lock"
+    for _ in range(2):
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            try:
+                old_pid = int(lock.read_text(encoding="utf-8").strip())
+            except (OSError, ValueError):
+                old_pid = 0
+            if old_pid and _pid_alive(old_pid):
+                return None
+            try:
+                lock.unlink()
+            except FileNotFoundError:
+                pass
+            continue
+        else:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(str(os.getpid()))
+                handle.write("\n")
+            return lock
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -18,18 +54,27 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     paths = RuntimePaths.default()
-    paths.ensure()
-    runtime = WindowsRuntime(paths)
-    path_manager = UserPathManager(paths, WindowsRegistryPathBackend())
-    supervisor = Supervisor(
-        paths=paths,
-        runtime=runtime,
-        path_manager=path_manager,
-        silent=not args.speech,
-        isolated=args.isolated,
-        game_start_timeout=args.game_start_timeout,
-    )
-    return supervisor.run()
+    lock = _acquire_singleton(paths)
+    if lock is None:
+        return 5
+
+    try:
+        runtime = WindowsRuntime(paths)
+        path_manager = UserPathManager(paths, WindowsRegistryPathBackend())
+        supervisor = Supervisor(
+            paths=paths,
+            runtime=runtime,
+            path_manager=path_manager,
+            silent=not args.speech,
+            isolated=args.isolated,
+            game_start_timeout=args.game_start_timeout,
+        )
+        return supervisor.run()
+    finally:
+        try:
+            lock.unlink()
+        except FileNotFoundError:
+            pass
 
 
 if __name__ == "__main__":
