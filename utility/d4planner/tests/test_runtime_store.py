@@ -57,3 +57,4 @@ def test_capture_config_points_addon_to_session_raw_file(tmp_path):
     assert config["silent"] is False
     assert config["sessionId"] == "s"
     assert config["rawSpeechPath"] == str(store.session.raw_speech_path)
+    assert config["leaseUntilUnix"] > time.time()
