@@ -206,6 +206,7 @@ def write_capture_config(
     enabled: bool,
     session: SessionInfo | None = None,
     silent: bool = True,
+    lease_seconds: float = 5.0,
 ) -> None:
     payload: dict[str, Any] = {
         "enabled": enabled,
@@ -217,6 +218,9 @@ def write_capture_config(
             {
                 "sessionId": session.session_id,
                 "rawSpeechPath": str(session.raw_speech_path),
+                # Silent capture is fail-open: the add-on stops suppressing if
+                # the supervisor no longer renews this short lease.
+                "leaseUntilUnix": time.time() + max(1.0, float(lease_seconds)),
             }
         )
     atomic_write_json(paths.capture_state, payload)
