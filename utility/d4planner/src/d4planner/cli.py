@@ -438,6 +438,16 @@ def command_path(paths: RuntimePaths, action: str) -> int:
     if action == "status":
         print("managed" if manager.is_present(paths.controller) else "not-managed")
         return 0
+
+    status = _state(paths)
+    if status.get("supervisorAlive") and str(status.get("state") or "") in ACTIVE_STATES:
+        print(
+            "Refusing to restore User PATH while D4Planner is active. "
+            "Run 'd4planner stop' first.",
+            file=sys.stderr,
+        )
+        return 4
+
     change = manager.restore()
     print("User PATH restored." if change.changed else "User PATH already clean.")
     return 0
