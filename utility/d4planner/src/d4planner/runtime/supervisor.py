@@ -27,9 +27,11 @@ class RuntimeAdapter(Protocol):
     def ensure_controller_runtime(self) -> Path: ...
     def controller_ready(self) -> bool: ...
     def addon_installed(self) -> bool: ...
+    def ensure_addon_runtime(self) -> bool: ...
     def nvda_version(self) -> str | None: ...
     def active_console_session_id(self) -> int | None: ...
     def ensure_nvda_running(self, *, timeout: float = 15.0): ...
+    def restart_nvda(self, *, timeout: float = 15.0): ...
     def nvda_process(self): ...
     def steam_process(self): ...
     def game_process(self): ...
@@ -170,15 +172,20 @@ class Supervisor:
             else:
                 self.status.extras["userPathManaged"] = False
 
+            addon_changed = self.runtime.ensure_addon_runtime()
             if not self.runtime.addon_installed():
-                raise RuntimeBlocked(
-                    "D4Planner NVDA add-on is not installed. Install the PR-built add-on first."
-                )
+                raise RuntimeBlocked("D4Planner NVDA add-on 0.2.0 is not installed correctly")
 
             console = self.runtime.active_console_session_id()
             if console is None:
                 raise RuntimeBlocked("no active interactive Windows console session")
-            nvda = self.runtime.ensure_nvda_running()
+
+            existing_nvda = self.runtime.nvda_process()
+            if addon_changed and existing_nvda:
+                nvda = self.runtime.restart_nvda()
+                self.status.extras["nvdaRestartReason"] = "add-on updated"
+            else:
+                nvda = self.runtime.ensure_nvda_running()
             if nvda.session_id != console:
                 raise RuntimeBlocked(
                     f"NVDA SessionId={nvda.session_id} does not match active console SessionId={console}"
