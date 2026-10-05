@@ -39,6 +39,7 @@ class WindowsRuntime:
     STEAM_PROCESS_NAMES = ("steam",)
     STEAM_APP_ID = "2344520"
     EXPECTED_ADDON_VERSION = "0.2.0"
+    EXPECTED_NVDA_MAJOR_MINOR = (2026, 2)
     # Official NVDA 2026.2 x64 controller client verified during Real-A #41.
     EXPECTED_CONTROLLER_SHA256 = "598B7EC3DC469814F571275929F676CE73834C469FBDB359A06FD4DB4E0FC866"
     CONTROLLER_ARCHIVE_URL = (
@@ -426,6 +427,19 @@ class WindowsRuntime:
             return None
         return result.stdout.strip() or None
 
+    def nvda_version_compatible(self, version: str | None = None) -> bool:
+        value = version if version is not None else self.nvda_version()
+        if not value:
+            return False
+        numeric = value.strip().split()[0].split(".")
+        if len(numeric) < 2:
+            return False
+        try:
+            major_minor = (int(numeric[0]), int(numeric[1]))
+        except ValueError:
+            return False
+        return major_minor == self.EXPECTED_NVDA_MAJOR_MINOR
+
     def locate_steam_executable(self) -> Path | None:
         process = self.steam_process()
         if process and process.path:
@@ -672,6 +686,14 @@ class WindowsRuntime:
         checks["nvda"] = {
             "status": "PASS" if nvda else "FAIL",
             "detail": nvda.as_dict() if nvda else "not running",
+        }
+        version = self.nvda_version()
+        checks["nvda_version"] = {
+            "status": "PASS" if self.nvda_version_compatible(version) else "FAIL",
+            "detail": {
+                "version": version,
+                "expectedMajorMinor": list(self.EXPECTED_NVDA_MAJOR_MINOR),
+            },
         }
         checks["nvda_session"] = {
             "status": "PASS" if nvda and nvda.session_id == console else "FAIL",
