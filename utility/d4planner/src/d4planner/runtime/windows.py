@@ -157,6 +157,19 @@ class WindowsRuntime:
                 self.paths.root / "cache" / "nvdaControllerClient64.dll",
             ]
         )
+        # Development/Real-A migration path from the #41 diagnostic runtime.
+        try:
+            project_root = Path(__file__).resolve().parents[3]
+            candidates.append(
+                project_root / "runtime" / "nvda-controller" / "nvdaControllerClient64.dll"
+            )
+        except IndexError:
+            pass
+        try:
+            candidates.extend(self.paths.root.rglob("nvdaControllerClient64.dll"))
+        except OSError:
+            pass
+
         program_files = Path(os.environ.get("ProgramFiles") or r"C:\Program Files")
         nvda_root = program_files / "NVDA"
         if nvda_root.is_dir():
