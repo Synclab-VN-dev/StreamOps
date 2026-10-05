@@ -77,7 +77,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--game-start-timeout", type=float, default=90.0)
     args = parser.parse_args(argv)
 
-    paths = RuntimePaths.default()
+    home = os.environ.get("D4PLANNER_HOME")
+    paths = RuntimePaths(Path(home)) if home else RuntimePaths.default()
     lock = _acquire_singleton(paths)
     if lock is None:
         return 5
