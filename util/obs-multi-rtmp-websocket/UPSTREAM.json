@@ -1,0 +1,13 @@
+{
+  "repository": "davidcool/obs-multi-rtmp-websocket-support",
+  "commit": "d81f40b769c4f1460132d8bc06207027c681e359",
+  "tree": "9664c76f02b4dad7acc5606250e350a1d5eed34b",
+  "imported_text_files": 200,
+  "omitted_binary_docs": [
+    "docs/install.jpg",
+    "docs/screenshot.jpg",
+    "docs/wechat.jpg",
+    "docs/zhi.png"
+  ],
+  "issue": 35
+}
