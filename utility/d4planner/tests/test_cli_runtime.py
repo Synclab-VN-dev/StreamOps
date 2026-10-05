@@ -296,3 +296,31 @@ def test_path_restore_refuses_while_runtime_active(monkeypatch, tmp_path, capsys
 
     assert cli.command_path(paths, "restore") == 4
     assert "Run 'd4planner stop' first" in capsys.readouterr().err
+
+
+def test_broken_pipe_detaches_logs_without_stop_request(monkeypatch, tmp_path):
+    import builtins
+
+    paths = RuntimePaths(tmp_path / "home")
+    store = EventStore.create(paths, silent=True, session_id="ssh-disconnect")
+    store.emit("speech.raw", {"text": "900 Item Power"})
+    atomic_write_json(
+        paths.runtime_state,
+        {
+            "state": "RUNNING",
+            "supervisorPid": 123,
+            "sessionDir": str(store.session.directory),
+        },
+    )
+
+    original_print = builtins.print
+
+    def disconnected_print(*args, **kwargs):
+        if kwargs.get("flush"):
+            raise BrokenPipeError("ssh disconnected")
+        return original_print(*args, **kwargs)
+
+    monkeypatch.setattr(builtins, "print", disconnected_print)
+
+    assert cli.command_logs(paths, follow=False, raw=False) == 0
+    assert not paths.stop_request.exists()
