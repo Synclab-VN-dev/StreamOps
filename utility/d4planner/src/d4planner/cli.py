@@ -174,6 +174,24 @@ def command_status(paths: RuntimePaths, *, raw_json: bool) -> int:
     return 0
 
 
+def _print_start_summary(status: dict[str, Any]) -> None:
+    nvda = status.get("nvda") if isinstance(status.get("nvda"), dict) else {}
+    steam = status.get("steam") if isinstance(status.get("steam"), dict) else {}
+    game = status.get("game") if isinstance(status.get("game"), dict) else {}
+    tolk = status.get("tolk") if isinstance(status.get("tolk"), dict) else {}
+    checks = [
+        ("Runtime", status.get("state") in {"RUNNING", "WAITING_FOR_GAME", "DEGRADED"}, status.get("state")),
+        ("NVDA", bool(nvda), f"PID {nvda.get('pid')}" if nvda else "not running"),
+        ("Tolk backend", str(tolk.get("reader") or "").casefold() == "nvda", tolk.get("reader") or "unknown"),
+        ("Steam", bool(steam), f"PID {steam.get('pid')}" if steam else "not running"),
+        ("Diablo IV", bool(game), f"PID {game.get('pid')}" if game else "waiting"),
+        ("Capture", bool(status.get("captureActive")), "ACTIVE" if status.get("captureActive") else "INACTIVE"),
+    ]
+    for name, ok, detail in checks:
+        mark = "✓" if ok else "·"
+        print(f"{mark} {name}: {detail}")
+
+
 def command_start(
     paths: RuntimePaths,
     *,
@@ -211,6 +229,8 @@ def command_start(
     if state not in {RuntimeState.RUNNING.value, RuntimeState.WAITING_FOR_GAME.value, RuntimeState.DEGRADED.value}:
         print(f"D4Planner did not become ready (state={state or 'UNKNOWN'}).", file=sys.stderr)
         return 4
+    print()
+    _print_start_summary(status)
     if detached:
         return 0
     print("\n── D4Planner live events (Ctrl+C = detach only) ──")
