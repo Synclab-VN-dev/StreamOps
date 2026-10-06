@@ -10,6 +10,8 @@ public:
     virtual bool ShowEditDlg() = 0;
     virtual void StartStreaming() = 0;
     virtual void StopStreaming() = 0;
+    // Non-interactive stop path for Vendor/WebSocket automation.
+    virtual void StopStreamingForAutomation() = 0;
     virtual void OnOBSEvent(obs_frontend_event ev) = 0;
     virtual QPushButton* GetDeleteButton() = 0;
 
@@ -21,6 +23,11 @@ public:
     virtual void UpdateUI() = 0;
     virtual OutputTargetConfigPtr GetConfig() const = 0;
     virtual bool IsEditing() const = 0;
+    virtual QString GetRuntimeState() const = 0;
+    virtual QString GetRuntimeError() const = 0;
+    virtual int GetRuntimeErrorCode() const = 0;
+    virtual uint64_t GetTotalBytes() const = 0;
+    virtual uint64_t GetTotalFrames() const = 0;
 };
 
 PushWidget* createPushWidget(const std::string& targetId, QWidget* parent = 0);
