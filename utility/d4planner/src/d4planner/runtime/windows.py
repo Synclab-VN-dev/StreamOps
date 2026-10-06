@@ -714,6 +714,32 @@ class WindowsRuntime:
         if result.returncode != 0:
             raise RuntimeBlocked(f"failed to start task {name}: {result.stderr.strip()[:300]}")
 
+    def launch_supervisor_task(self, *, speech: bool, isolated: bool) -> None:
+        """Launch the long-lived supervisor outside the caller's SSH job."""
+        self.require_windows()
+        executable = str(Path(sys.executable)).replace("'", "''")
+        arguments = ["-m", "d4planner.daemon"]
+        if speech:
+            arguments.append("--speech")
+        if isolated:
+            arguments.append("--isolated")
+        argument_text = " ".join(arguments).replace("'", "''")
+        ps = (
+            f"$a=New-ScheduledTaskAction -Execute '{executable}' "
+            f"-Argument '{argument_text}';"
+            "$u=[System.Security.Principal.WindowsIdentity]::GetCurrent().Name;"
+            "$p=New-ScheduledTaskPrincipal -UserId $u -LogonType Interactive -RunLevel Limited;"
+            "Register-ScheduledTask -TaskName 'D4Planner-Supervisor' "
+            "-Action $a -Principal $p -Force | Out-Null;"
+            "Start-ScheduledTask -TaskName 'D4Planner-Supervisor'"
+        )
+        result = self._powershell(ps)
+        if result.returncode != 0:
+            raise RuntimeBlocked(
+                "failed to launch interactive supervisor task: "
+                f"{result.stderr.strip()[:300]}"
+            )
+
     def ensure_nvda_running(self, *, timeout: float = 15.0) -> ProcessInfo:
         existing = self.nvda_process()
         if existing:

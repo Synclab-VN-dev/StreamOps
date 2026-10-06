@@ -82,6 +82,23 @@ def test_start_detach_does_not_follow_logs(monkeypatch, tmp_path):
     ) == 0
 
 
+def test_start_summary_is_safe_for_windows_cp1252(capsys):
+    cli._print_start_summary(
+        {
+            "state": "RUNNING",
+            "nvda": {"pid": 1},
+            "tolk": {"reader": "NVDA"},
+            "steam": {"pid": 2},
+            "game": {"pid": 3},
+            "captureActive": True,
+        }
+    )
+
+    output = capsys.readouterr().out
+    output.encode("cp1252")
+    assert "[OK] Runtime: RUNNING" in output
+
+
 def test_supervisor_singleton_lock_rejects_duplicate(tmp_path):
     paths = RuntimePaths(tmp_path / "home")
     first = daemon._acquire_singleton(paths)

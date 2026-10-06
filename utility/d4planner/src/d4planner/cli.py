@@ -102,7 +102,21 @@ def _state(paths: RuntimePaths) -> dict[str, Any]:
     return state
 
 
-def _spawn_daemon(*, speech: bool, isolated: bool) -> int:
+def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool) -> int:
+    if os.name == "nt":
+        previous = read_json(paths.runtime_state) or {}
+        previous_pid = previous.get("supervisorPid")
+        runtime = WindowsRuntime(paths)
+        runtime.launch_supervisor_task(speech=speech, isolated=isolated)
+        deadline = time.monotonic() + 15.0
+        while time.monotonic() < deadline:
+            current = read_json(paths.runtime_state) or {}
+            pid = current.get("supervisorPid")
+            if pid and pid != previous_pid and _pid_alive(int(pid)):
+                return int(pid)
+            time.sleep(0.1)
+        raise RuntimeError("scheduled supervisor did not publish a live PID within 15s")
+
     cmd = [sys.executable, "-m", "d4planner.daemon"]
     if speech:
         cmd.append("--speech")
@@ -278,7 +292,9 @@ def _print_start_summary(status: dict[str, Any]) -> None:
         ("Capture", bool(status.get("captureActive")), "ACTIVE" if status.get("captureActive") else "INACTIVE"),
     ]
     for name, ok, detail in checks:
-        mark = "✓" if ok else "·"
+        # SSH/non-TTY Windows shells commonly expose CP1252. Keep lifecycle
+        # summaries ASCII so a successful start cannot fail while printing.
+        mark = "[OK]" if ok else "[--]"
         print(f"{mark} {name}: {detail}")
 
 
@@ -317,7 +333,11 @@ def command_start(
     except FileNotFoundError:
         pass
 
-    pid = _spawn_daemon(speech=speech, isolated=isolated)
+    try:
+        pid = _spawn_daemon(paths=paths, speech=speech, isolated=isolated)
+    except (RuntimeError, OSError) as exc:
+        print(f"Unable to start D4Planner supervisor: {exc}", file=sys.stderr)
+        return 4
     print(f"D4Planner supervisor PID {pid}")
     status = _wait_start(paths, pid, timeout=timeout)
     state = str(status.get("state") or "")
