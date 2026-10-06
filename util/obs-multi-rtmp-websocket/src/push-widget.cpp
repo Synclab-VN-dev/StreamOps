@@ -603,7 +603,10 @@ public:
 
 
     void StartStreaming() override {
-        if (IsRunning())
+        // A repeated start while the asynchronous OBS start/reconnect is
+        // already in progress is idempotent.
+        if (IsRunning() || runtime_state_ == "STARTING" || runtime_state_ == "LIVE" ||
+            runtime_state_ == "RECONNECTING")
             return;
 
         SetRuntimeState("STARTING");
@@ -694,7 +697,7 @@ public:
     }
 
     void StopStreamingForAutomation() override {
-        if (!IsRunning())
+        if (runtime_state_ == "STOPPING" || !IsRunning())
             return;
         SetRuntimeState("STOPPING");
         // Never show the delay confirmation modal on a Vendor request.
