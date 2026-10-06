@@ -218,6 +218,69 @@ def test_below_normal_steam_blocks_automated_launch_but_not_attach(tmp_path):
     assert attach_runtime.launch_calls == 0
 
 
+def test_existing_game_with_non_nvda_backend_requires_restart_without_kill(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = FakeRuntime(
+        paths,
+        game=ProcessInfo("Diablo IV", 31, session_id=1),
+        steam=ProcessInfo("steam", 21, session_id=1),
+    )
+    runtime.probe_tolk = lambda: TolkHealth("SAPI", True, False)
+    supervisor = build_supervisor(tmp_path, runtime)
+
+    state = supervisor.bootstrap()
+
+    assert state == RuntimeState.RESTART_REQUIRED
+    assert runtime.launch_calls == 0
+    assert runtime._game.pid == 31
+    assert read_json(paths.capture_state)["enabled"] is False
+    assert "not NVDA" in supervisor.status.detail
+
+
+def test_nvda_recovery_reprobes_tolk_before_returning_running(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = FakeRuntime(
+        paths,
+        game=ProcessInfo("Diablo IV", 31, session_id=1),
+        steam=ProcessInfo("steam", 21, session_id=1),
+    )
+    supervisor = build_supervisor(tmp_path, runtime)
+    assert supervisor.bootstrap() == RuntimeState.RUNNING
+
+    runtime._nvda = None
+    runtime.probe_tolk = lambda: TolkHealth("SAPI", True, False)
+    supervisor._recover_nvda()
+
+    assert supervisor.status.state == RuntimeState.RESTART_REQUIRED
+    assert supervisor.status.capture_active is False
+    assert read_json(paths.capture_state)["enabled"] is False
+    assert runtime._game.pid == 31
+
+
+def test_returning_game_reprobes_tolk_before_reattach(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = FakeRuntime(
+        paths,
+        game=ProcessInfo("Diablo IV", 31, session_id=1),
+        steam=ProcessInfo("steam", 21, session_id=1),
+    )
+    supervisor = build_supervisor(tmp_path, runtime)
+    assert supervisor.bootstrap() == RuntimeState.RUNNING
+
+    runtime._game = None
+    supervisor._watch_game()
+    assert supervisor.status.state == RuntimeState.WAITING_FOR_GAME
+
+    runtime._game = ProcessInfo("Diablo IV", 32, session_id=1)
+    runtime.probe_tolk = lambda: TolkHealth(None, False, False)
+    supervisor._watch_game()
+
+    assert supervisor.status.state == RuntimeState.RESTART_REQUIRED
+    assert supervisor.status.capture_active is False
+    assert read_json(paths.capture_state)["enabled"] is False
+    assert supervisor.status.game.pid == 32
+
+
 def test_nvda_crash_recovers_without_touching_game(tmp_path):
     paths = RuntimePaths(tmp_path / "home")
     runtime = FakeRuntime(
@@ -317,6 +380,29 @@ def test_isolated_mode_requires_existing_steam_to_be_restarted(tmp_path):
     assert state == RuntimeState.RESTART_REQUIRED
     assert runtime.launch_calls == 0
     assert "isolated mode" in supervisor.status.detail
+
+
+def test_capture_lease_renewal_failure_backs_off(monkeypatch, tmp_path):
+    import d4planner.runtime.supervisor as supervisor_module
+
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = FakeRuntime(
+        paths,
+        game=ProcessInfo("Diablo IV", 31, session_id=1),
+        steam=ProcessInfo("steam", 21, session_id=1),
+    )
+    supervisor = build_supervisor(tmp_path, runtime)
+    assert supervisor.bootstrap() == RuntimeState.RUNNING
+
+    def fail_write(*_args, **_kwargs):
+        raise PermissionError("busy")
+
+    monkeypatch.setattr(supervisor_module, "write_capture_config", fail_write)
+    supervisor._next_lease_refresh = 0.0
+    supervisor._renew_capture_lease(force=True)
+
+    assert supervisor._next_lease_refresh > 0.0
+    assert "capture lease renewal failed" in supervisor.status.last_error
 
 
 def test_shutdown_state_write_failure_remains_fail_open(monkeypatch, tmp_path):
