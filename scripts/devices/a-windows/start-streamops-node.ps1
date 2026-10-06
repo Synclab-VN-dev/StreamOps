@@ -19,6 +19,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
+$repoPrefix = $repoRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 $launcher = Join-Path $PSScriptRoot "run-streamops-node.ps1"
 $pwsh = (Get-Command pwsh.exe -ErrorAction Stop).Source
 if ([string]::IsNullOrWhiteSpace($PythonPath)) {
@@ -30,6 +31,9 @@ elseif (-not [IO.Path]::IsPathRooted($PythonPath)) {
 $PythonPath = [IO.Path]::GetFullPath($PythonPath)
 if (-not (Test-Path -LiteralPath $PythonPath -PathType Leaf)) {
     throw "Configured Python interpreter is missing: $PythonPath"
+}
+if (-not $PythonPath.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "PythonPath must stay inside the repository-managed runtime area: $repoRoot"
 }
 
 function ConvertTo-TaskArgument([string]$Value) {
@@ -70,7 +74,6 @@ elseif (-not [IO.Path]::IsPathRooted($DataDir)) {
     $DataDir = [IO.Path]::GetFullPath((Join-Path $repoRoot $DataDir))
 }
 $DataDir = [IO.Path]::GetFullPath($DataDir)
-$repoPrefix = $repoRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 if (-not $DataDir.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw "DataDir must stay inside the repository: $repoRoot"
 }
