@@ -220,6 +220,9 @@ def test_doctor_reports_stale_supervisor_and_capture_lease(monkeypatch, tmp_path
         def steam_process(self):
             return None
 
+        def game_process(self):
+            return None
+
     monkeypatch.setattr(cli, "WindowsRuntime", FakeWindowsRuntime)
     monkeypatch.setattr(cli, "_pid_alive", lambda _pid: False)
 
@@ -228,6 +231,36 @@ def test_doctor_reports_stale_supervisor_and_capture_lease(monkeypatch, tmp_path
     assert "supervisor" in out
     assert "capture_lease" in out
     assert "FAIL" in out
+
+
+def test_task_preparation_failure_persists_blocked_before_supervisor(
+    monkeypatch, tmp_path, capsys
+):
+    from d4planner.runtime.store import read_json
+    from d4planner.runtime.windows import RuntimeBlocked
+
+    paths = RuntimePaths(tmp_path / "home")
+    monkeypatch.setattr(
+        cli,
+        "_spawn_daemon",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeBlocked("priority migration denied")),
+    )
+
+    result = cli.command_start(
+        paths,
+        speech=True,
+        isolated=False,
+        detached=True,
+        timeout=1,
+    )
+
+    assert result == 2
+    state = read_json(paths.runtime_state)
+    assert state["state"] == "BLOCKED"
+    assert state["captureActive"] is False
+    assert "priority migration denied" in state["lastError"]
+    assert read_json(paths.capture_state)["enabled"] is False
+    assert "Unable to start" in capsys.readouterr().err
 
 
 def test_second_start_does_not_spawn_duplicate_supervisor(monkeypatch, tmp_path):

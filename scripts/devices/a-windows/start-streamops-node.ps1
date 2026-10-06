@@ -83,7 +83,9 @@ if ([string]::IsNullOrWhiteSpace($interactiveUser)) {
 $runtimePath = Join-Path $DataDir "runtime.json"
 $existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 $taskUsesPythonPath = $false
+$taskUsesNormalPriority = $false
 if ($null -ne $existingTask) {
+    $taskUsesNormalPriority = [int]$existingTask.Settings.Priority -eq 4
     $taskAction = $existingTask.Actions | Select-Object -First 1
     if ($null -ne $taskAction) {
         $taskArgumentsText = [string]$taskAction.Arguments
@@ -96,7 +98,7 @@ if (Test-Path -LiteralPath $runtimePath) {
         $runtime = Get-Content -LiteralPath $runtimePath -Raw | ConvertFrom-Json
         $probeHost = Get-ProbeHost $runtime.host
         $health = Invoke-RestMethod -Uri "http://${probeHost}:$($runtime.port)/api/v1/health" -TimeoutSec 2
-        $matchesDesiredConfig = $taskUsesPythonPath -and
+        $matchesDesiredConfig = $taskUsesPythonPath -and $taskUsesNormalPriority -and
             $runtime.host -eq $BindHost -and
             [int]$runtime.port -eq $Port -and
             [int]$runtime.output_index -eq $OutputIndex -and
@@ -135,6 +137,7 @@ $actionArguments = @(
 $action = New-ScheduledTaskAction -Execute $pwsh -Argument $actionArguments -WorkingDirectory $repoRoot
 $principal = New-ScheduledTaskPrincipal -UserId $interactiveUser -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet `
+    -Priority 4 `
     -ExecutionTimeLimit ([TimeSpan]::Zero) `
     -MultipleInstances IgnoreNew `
     -AllowStartIfOnBatteries `

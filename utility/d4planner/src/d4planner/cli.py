@@ -14,8 +14,14 @@ from typing import Any, Iterator
 
 from .runtime.model import RuntimeState
 from .runtime.pathing import UserPathManager, WindowsRegistryPathBackend
-from .runtime.store import RuntimePaths, read_json, write_capture_config
-from .runtime.windows import WindowsRuntime
+from .runtime.store import (
+    RuntimePaths,
+    atomic_write_json,
+    iso_now,
+    read_json,
+    write_capture_config,
+)
+from .runtime.windows import RuntimeBlocked, WindowsRuntime
 
 
 TERMINAL_STATES = {
@@ -196,6 +202,21 @@ def _event_lines(path: Path, *, follow: bool, from_end: bool) -> Iterator[str]:
             time.sleep(0.15)
 
 
+def _last_json_object(path: Path) -> dict[str, Any] | None:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in reversed(lines):
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            return value
+    return None
+
+
 def _pretty_event(event: dict[str, Any]) -> str | None:
     event_type = str(event.get("type") or "")
     timestamp = str(event.get("timestamp") or "")
@@ -335,6 +356,22 @@ def command_start(
 
     try:
         pid = _spawn_daemon(paths=paths, speech=speech, isolated=isolated)
+    except RuntimeBlocked as exc:
+        write_capture_config(paths, enabled=False)
+        atomic_write_json(
+            paths.runtime_state,
+            {
+                "state": RuntimeState.BLOCKED.value,
+                "updatedAt": iso_now(),
+                "detail": "interactive task preparation failed before supervisor launch",
+                "supervisorPid": None,
+                "captureActive": False,
+                "silent": not speech,
+                "lastError": f"{type(exc).__name__}: {exc}",
+            },
+        )
+        print(f"Unable to start D4Planner supervisor: {exc}", file=sys.stderr)
+        return 2
     except (RuntimeError, OSError) as exc:
         print(f"Unable to start D4Planner supervisor: {exc}", file=sys.stderr)
         return 4
@@ -418,6 +455,34 @@ def command_doctor(paths: RuntimePaths, *, raw_json: bool) -> int:
         "detail": {
             "effective": capture_effective,
             "configuredActive": bool(status.get("captureActive")),
+        },
+    }
+
+    capture_config = read_json(paths.capture_state) or {}
+    configured_game_pid = capture_config.get("gamePid")
+    live_game = runtime.game_process() if os.name == "nt" else None
+    diagnostics_path = capture_config.get("diagnosticsPath")
+    last_rejection = (
+        _last_json_object(Path(str(diagnostics_path))) if diagnostics_path else None
+    )
+    if requires_capture:
+        if state == RuntimeState.WAITING_FOR_GAME.value:
+            context_ok = configured_game_pid is None and live_game is None
+        else:
+            try:
+                expected_pid = int(configured_game_pid)
+            except (TypeError, ValueError):
+                expected_pid = None
+            context_ok = bool(live_game and expected_pid == live_game.pid)
+        context_status = "PASS" if context_ok else "FAIL"
+    else:
+        context_status = "WARN"
+    checks["capture_context"] = {
+        "status": context_status,
+        "detail": {
+            "expectedGamePid": configured_game_pid,
+            "liveGamePid": live_game.pid if live_game else None,
+            "lastRejectedContext": last_rejection,
         },
     }
 

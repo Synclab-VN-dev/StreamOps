@@ -92,6 +92,7 @@ class SessionInfo:
     directory: Path
     metadata_path: Path
     raw_speech_path: Path
+    context_diagnostics_path: Path
     events_path: Path
     runtime_log_path: Path
 
@@ -134,6 +135,7 @@ class EventStore:
             directory=directory,
             metadata_path=directory / "metadata.json",
             raw_speech_path=directory / "raw-speech.jsonl",
+            context_diagnostics_path=directory / "capture-context.jsonl",
             events_path=directory / "events.jsonl",
             runtime_log_path=directory / "runtime.log",
         )
@@ -194,6 +196,8 @@ class EventStore:
                 "captureSessionId": capture.get("sessionId"),
                 "captureSequence": capture.get("sequence"),
                 "process": capture.get("process"),
+                "processId": capture.get("processId"),
+                "contextSource": capture.get("contextSource"),
                 "windowTitle": capture.get("windowTitle"),
                 "text": capture.get("text"),
                 "rawSpeech": capture.get("rawSpeech") or [],
@@ -207,6 +211,7 @@ def write_capture_config(
     enabled: bool,
     session: SessionInfo | None = None,
     silent: bool = True,
+    game_pid: int | None = None,
     lease_seconds: float = 5.0,
 ) -> None:
     effective_enabled = bool(enabled and session is not None)
@@ -220,6 +225,8 @@ def write_capture_config(
             {
                 "sessionId": session.session_id,
                 "rawSpeechPath": str(session.raw_speech_path),
+                "diagnosticsPath": str(session.context_diagnostics_path),
+                "gamePid": int(game_pid) if game_pid and game_pid > 0 else None,
                 # Silent capture is fail-open: the add-on stops suppressing if
                 # the supervisor no longer renews this short lease.
                 "leaseUntilUnix": time.time() + max(1.0, float(lease_seconds)),

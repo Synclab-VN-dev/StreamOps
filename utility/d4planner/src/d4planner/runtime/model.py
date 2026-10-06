@@ -114,9 +114,14 @@ class ProcessInfo:
     session_id: int | None = None
     started_at: str | None = None
     path: str | None = None
+    priority_class: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        # Existing snake_case fields remain stable; expose the new field in the
+        # public status spelling expected by remote diagnostics consumers.
+        data["priorityClass"] = data.pop("priority_class")
+        return data
 
 
 @dataclass(slots=True)

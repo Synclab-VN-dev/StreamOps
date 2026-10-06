@@ -21,6 +21,8 @@ def test_session_store_creates_immutable_files_and_monotonic_event_stream(tmp_pa
             "sessionId": "session-one",
             "sequence": 1,
             "process": "diablo iv",
+            "processId": 4321,
+            "contextSource": "win32Foreground",
             "windowTitle": "Diablo IV",
             "text": "850 Item Power",
             "rawSpeech": ["850 Item Power"],
@@ -34,6 +36,7 @@ def test_session_store_creates_immutable_files_and_monotonic_event_stream(tmp_pa
     assert metadata["captureBackend"] == "NVDA"
     rows = [json.loads(x) for x in store.session.events_path.read_text().splitlines()]
     assert [row["eventSeq"] for row in rows] == [1, 2]
+    assert rows[1]["data"]["processId"] == 4321
 
 
 def test_two_sessions_never_truncate_each_other(tmp_path):
@@ -51,11 +54,19 @@ def test_two_sessions_never_truncate_each_other(tmp_path):
 def test_capture_config_points_addon_to_session_raw_file(tmp_path):
     paths = RuntimePaths(tmp_path / "d4planner")
     store = EventStore.create(paths, silent=False, session_id="s")
-    write_capture_config(paths, enabled=True, session=store.session, silent=False)
+    write_capture_config(
+        paths,
+        enabled=True,
+        session=store.session,
+        silent=False,
+        game_pid=4321,
+    )
 
     config = read_json(paths.capture_state)
     assert config["enabled"] is True
     assert config["silent"] is False
     assert config["sessionId"] == "s"
     assert config["rawSpeechPath"] == str(store.session.raw_speech_path)
+    assert config["diagnosticsPath"] == str(store.session.context_diagnostics_path)
+    assert config["gamePid"] == 4321
     assert config["leaseUntilUnix"] > time.time()

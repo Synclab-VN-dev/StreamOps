@@ -104,6 +104,7 @@ def test_bootstrap_launches_game_and_reaches_running(tmp_path):
     capture = read_json(paths.capture_state)
     assert capture["enabled"] is True
     assert capture["silent"] is True
+    assert capture["gamePid"] == 30
 
 
 def test_existing_healthy_game_attaches_without_restart(tmp_path):
@@ -167,11 +168,54 @@ def test_game_exit_and_return_reaches_running_again(tmp_path):
     runtime._game = None
     supervisor._watch_game()
     assert supervisor.status.state == RuntimeState.WAITING_FOR_GAME
+    assert supervisor.status.game is None
+    assert read_json(paths.capture_state)["gamePid"] is None
 
     runtime._game = ProcessInfo("Diablo IV", 32, session_id=1)
     supervisor._watch_game()
     assert supervisor.status.state == RuntimeState.RUNNING
     assert supervisor.status.game.pid == 32
+    assert read_json(paths.capture_state)["gamePid"] == 32
+
+
+def test_game_pid_replacement_without_poll_gap_refreshes_capture_identity(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = FakeRuntime(
+        paths,
+        game=ProcessInfo("Diablo IV", 31, session_id=1),
+        steam=ProcessInfo("steam", 21, session_id=1),
+    )
+    supervisor = build_supervisor(tmp_path, runtime)
+    assert supervisor.bootstrap() == RuntimeState.RUNNING
+
+    runtime._game = ProcessInfo("Diablo IV", 33, session_id=1)
+    supervisor._watch_game()
+
+    assert supervisor.status.state == RuntimeState.RUNNING
+    assert supervisor.status.game.pid == 33
+    assert read_json(paths.capture_state)["gamePid"] == 33
+
+
+def test_below_normal_steam_blocks_automated_launch_but_not_attach(tmp_path):
+    launch_paths = RuntimePaths(tmp_path / "launch")
+    low_steam = ProcessInfo("steam", 21, session_id=1, priority_class="BelowNormal")
+    launch_runtime = FakeRuntime(launch_paths, steam=low_steam)
+    launch_supervisor = build_supervisor(tmp_path, launch_runtime)
+
+    assert launch_supervisor.bootstrap() == RuntimeState.RESTART_REQUIRED
+    assert launch_runtime.launch_calls == 0
+    assert "priority" in launch_supervisor.status.detail.casefold()
+
+    attach_paths = RuntimePaths(tmp_path / "attach")
+    attach_runtime = FakeRuntime(
+        attach_paths,
+        steam=low_steam,
+        game=ProcessInfo("Diablo IV", 31, session_id=1),
+    )
+    attach_supervisor = build_supervisor(tmp_path, attach_runtime)
+
+    assert attach_supervisor.bootstrap() == RuntimeState.RUNNING
+    assert attach_runtime.launch_calls == 0
 
 
 def test_nvda_crash_recovers_without_touching_game(tmp_path):

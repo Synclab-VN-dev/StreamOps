@@ -73,6 +73,11 @@ class Supervisor:
         self._raw_offset = 0
         self._next_lease_refresh = 0.0
 
+    @staticmethod
+    def _steam_priority_allows_launch(steam: object) -> bool:
+        priority = str(getattr(steam, "priority_class", None) or "").casefold()
+        return priority in {"normal", "abovenormal", "high", "realtime"}
+
     def _persist_status(self) -> None:
         self.status.updated_at = iso_now()
         atomic_write_json(self.paths.runtime_state, self.status.as_dict())
@@ -274,6 +279,17 @@ class Supervisor:
                     data={"pid": game.pid},
                 )
             else:
+                if steam and not self._steam_priority_allows_launch(steam):
+                    priority = getattr(steam, "priority_class", None) or "unknown"
+                    self.status.steam = steam
+                    self.transition(
+                        RuntimeState.RESTART_REQUIRED,
+                        "Steam priority is not safe for automated game launch; restart Steam "
+                        "normally through StreamOps before retrying",
+                        data={"steamPid": steam.pid, "priorityClass": priority},
+                    )
+                    write_capture_config(self.paths, enabled=False)
+                    return self.status.state
                 self.transition(RuntimeState.GAME_STARTING, "launching Diablo IV through interactive task")
                 self.runtime.launch_game()
                 game = self.runtime.wait_for_game(timeout=self.game_start_timeout)
@@ -287,6 +303,7 @@ class Supervisor:
                         enabled=True,
                         session=self.store.session if self.store else None,
                         silent=self.silent,
+                        game_pid=None,
                     )
                     self.status.capture_active = True
                     self._persist_status()
@@ -309,6 +326,7 @@ class Supervisor:
                 enabled=True,
                 session=self.store.session,
                 silent=self.silent,
+                game_pid=game.pid,
             )
             self.status.capture_active = True
             self.transition(RuntimeState.CAPTURE_READY, "NVDA add-on capture enabled")
@@ -331,6 +349,7 @@ class Supervisor:
                 enabled=True,
                 session=self.store.session,
                 silent=self.silent,
+                game_pid=self.status.game.pid if self.status.game else None,
                 lease_seconds=5.0,
             )
             self._next_lease_refresh = now + 2.0
@@ -400,12 +419,14 @@ class Supervisor:
     def _watch_game(self) -> None:
         game = self.runtime.game_process()
         if game is None:
+            self.status.game = None
             if self.status.state in {
                 RuntimeState.RUNNING,
                 RuntimeState.CAPTURE_READY,
                 RuntimeState.GAME_ATTACHED,
             }:
                 self.transition(RuntimeState.WAITING_FOR_GAME, "Diablo IV exited")
+                self._renew_capture_lease(force=True)
             return
 
         if self.status.state == RuntimeState.WAITING_FOR_GAME:
@@ -431,8 +452,33 @@ class Supervisor:
                 return
             self.status.game = game
             self.transition(RuntimeState.GAME_ATTACHED, "Diablo IV detected and attached")
+            self._renew_capture_lease(force=True)
             self.transition(RuntimeState.CAPTURE_READY, "capture remains enabled")
             self.transition(RuntimeState.RUNNING, "D4Planner runtime ready")
+            return
+
+        current = self.status.game
+        if current is None or current.pid != game.pid:
+            console = self.runtime.active_console_session_id()
+            if game.session_id != console:
+                self.transition(
+                    RuntimeState.DEGRADED,
+                    "Diablo IV process changed into a different Windows session",
+                    error=f"game={game.session_id}, console={console}",
+                )
+                return
+            previous_pid = current.pid if current else None
+            self.status.game = game
+            self._renew_capture_lease(force=True)
+            self._persist_status()
+            self._safe_emit(
+                "runtime.game_context_changed",
+                {
+                    "detail": "Diablo IV PID changed without an observable stopped interval",
+                    "previousPid": previous_pid,
+                    "pid": game.pid,
+                },
+            )
 
     def run(self) -> int:
         state = self.bootstrap()

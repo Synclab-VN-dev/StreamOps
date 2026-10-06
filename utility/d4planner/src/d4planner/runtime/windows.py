@@ -89,11 +89,12 @@ class WindowsRuntime:
             "Where-Object { $names -contains $_.ProcessName } | "
             "Sort-Object StartTime | Select-Object -Last 1;"
             "if($p){"
-            "$started=$null;$path=$null;"
+            "$started=$null;$path=$null;$priority=$null;"
             "try{$started=$p.StartTime.ToString('o')}catch{};"
             "try{$path=$p.Path}catch{};"
+            "try{$priority=$p.PriorityClass.ToString()}catch{};"
             "[ordered]@{name=$p.ProcessName;pid=$p.Id;sessionId=$p.SessionId;"
-            "startedAt=$started;path=$path}|ConvertTo-Json -Compress"
+            "startedAt=$started;path=$path;priorityClass=$priority}|ConvertTo-Json -Compress"
             "}"
         )
         result = self._powershell(script)
@@ -107,6 +108,9 @@ class WindowsRuntime:
                 session_id=int(data["sessionId"]) if data.get("sessionId") is not None else None,
                 started_at=str(data["startedAt"]) if data.get("startedAt") else None,
                 path=str(data["path"]) if data.get("path") else None,
+                priority_class=(
+                    str(data["priorityClass"]) if data.get("priorityClass") else None
+                ),
             )
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):
             return None
@@ -686,33 +690,66 @@ class WindowsRuntime:
             "tolk-probe": tolk_probe_script,
         }
 
-    def ensure_interactive_tasks(self) -> None:
-        self.require_windows()
+    def _interactive_task_specs(self) -> tuple[tuple[str, Path], ...]:
         scripts = self.ensure_helper_scripts()
-        for name, script_path in (
+        return (
             ("D4Planner-NVDA", scripts["nvda"]),
             ("D4Planner-NVDA-Restart", scripts["nvda-restart"]),
             ("D4Planner-D4", scripts["d4"]),
             ("D4Planner-Tolk-Probe", scripts["tolk-probe"]),
-        ):
+        )
+
+    def prepare_interactive_tasks(self) -> None:
+        """Reconcile helper tasks from the interactive CLI control plane.
+
+        This deliberately runs before the limited supervisor task is launched.
+        The supervisor only verifies these definitions, so it never needs to
+        replace a task registered by a more capable caller token.
+        """
+        self.require_windows()
+        for name, script_path in self._interactive_task_specs():
             escaped = str(script_path).replace("'", "''")
             task_name = name.replace("'", "''")
             ps = (
-                f"$existing=Get-ScheduledTask -TaskName '{task_name}' "
-                "-ErrorAction SilentlyContinue;"
-                "if(-not $existing){"
                 f"$a=New-ScheduledTaskAction -Execute 'powershell.exe' "
                 f"-Argument '-NoProfile -ExecutionPolicy Bypass -File \"{escaped}\"';"
                 "$u=[System.Security.Principal.WindowsIdentity]::GetCurrent().Name;"
                 "$p=New-ScheduledTaskPrincipal -UserId $u -LogonType Interactive -RunLevel Limited;"
-                f"Register-ScheduledTask -TaskName '{task_name}' -Action $a -Principal $p | Out-Null"
-                "}"
+                "$s=New-ScheduledTaskSettingsSet -Priority 4 "
+                "-ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew "
+                "-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries;"
+                "$d=New-ScheduledTask -Action $a -Principal $p -Settings $s;"
+                f"Register-ScheduledTask -TaskName '{task_name}' -InputObject $d -Force | Out-Null"
             )
             result = self._powershell(ps)
             if result.returncode != 0:
                 raise RuntimeBlocked(
-                    f"failed to register interactive task {name}: {result.stderr.strip()[:300]}"
+                    f"failed to reconcile interactive task {name}: {result.stderr.strip()[:300]}"
                 )
+
+    def ensure_interactive_tasks(self) -> None:
+        """Verify prepared task definitions without mutating them."""
+        self.require_windows()
+        names = (
+            "D4Planner-NVDA",
+            "D4Planner-NVDA-Restart",
+            "D4Planner-D4",
+            "D4Planner-Tolk-Probe",
+        )
+        quoted = ",".join("'" + name.replace("'", "''") + "'" for name in names)
+        ps = (
+            f"$names=@({quoted});"
+            "$bad=@();foreach($name in $names){"
+            "$task=Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue;"
+            "if((-not $task)-or([int]$task.Settings.Priority -ne 4)){$bad+=$name}};"
+            "if($bad.Count -gt 0){Write-Error ('missing/stale tasks: '+($bad -join ', '));exit 2}"
+        )
+        result = self._powershell(ps)
+        if result.returncode != 0:
+            raise RuntimeBlocked(
+                "D4Planner interactive tasks are missing or stale; run 'd4planner start' "
+                f"from the control plane: {result.stderr.strip()[:300]}"
+            )
 
     def run_task(self, name: str) -> None:
         result = self._powershell(f"Start-ScheduledTask -TaskName '{name}'")
@@ -722,6 +759,7 @@ class WindowsRuntime:
     def launch_supervisor_task(self, *, speech: bool, isolated: bool) -> None:
         """Launch the long-lived supervisor outside the caller's SSH job."""
         self.require_windows()
+        self.prepare_interactive_tasks()
         executable = str(Path(sys.executable)).replace("'", "''")
         arguments = ["-m", "d4planner.daemon"]
         if speech:
@@ -734,8 +772,12 @@ class WindowsRuntime:
             f"-Argument '{argument_text}';"
             "$u=[System.Security.Principal.WindowsIdentity]::GetCurrent().Name;"
             "$p=New-ScheduledTaskPrincipal -UserId $u -LogonType Interactive -RunLevel Limited;"
+            "$s=New-ScheduledTaskSettingsSet -Priority 4 "
+            "-ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew "
+            "-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries;"
+            "$d=New-ScheduledTask -Action $a -Principal $p -Settings $s;"
             "Register-ScheduledTask -TaskName 'D4Planner-Supervisor' "
-            "-Action $a -Principal $p -Force | Out-Null;"
+            "-InputObject $d -Force | Out-Null;"
             "Start-ScheduledTask -TaskName 'D4Planner-Supervisor'"
         )
         result = self._powershell(ps)
@@ -840,6 +882,21 @@ class WindowsRuntime:
         checks["steam"] = {
             "status": "PASS" if steam else "WARN",
             "detail": steam.as_dict() if steam else "not running",
+        }
+        priority = steam.priority_class if steam else None
+        checks["steam_priority"] = {
+            "status": (
+                "PASS"
+                if priority and priority.casefold() in {"normal", "abovenormal", "high", "realtime"}
+                else "WARN"
+            ),
+            "detail": {
+                "priorityClass": priority,
+                "launchEligible": bool(
+                    priority
+                    and priority.casefold() in {"normal", "abovenormal", "high", "realtime"}
+                ),
+            },
         }
         checks["game"] = {
             "status": "PASS" if game else "WARN",

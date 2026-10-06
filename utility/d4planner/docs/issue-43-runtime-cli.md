@@ -34,6 +34,8 @@ The implementation must remain SSH-friendly from machine B / Termux.
 - Production mode manages the controller runtime in User PATH only; Machine PATH must remain unchanged.
 - User PATH changes must be idempotent and reversible.
 - Detect stale Steam environment instead of pretending capture is ready.
+- Reconcile interactive tasks at Normal priority and block automated LAUNCH
+  when an existing Steam process is below Normal/unknown priority.
 - Never force-kill Diablo IV or Steam by default.
 - NVDA must run in the active interactive console session.
 - `Tolk_DetectScreenReader() == NVDA` is required before `CAPTURE_READY`.
@@ -55,6 +57,9 @@ D4Planner filter
 Rules:
 
 - suppress only when the source/context is confidently Diablo IV;
+- require the live Win32 foreground PID to match the supervisor-owned D4 PID;
+- treat process names, titles, and NVDA cached foreground data as diagnostics,
+  never as capture/suppression authority;
 - uncertain/non-D4 speech always passes through;
 - `d4planner start --speech` keeps normal NVDA speech for debugging;
 - avoid double capture when migrating from `pre_speech` to `filter_speechSequence`.
@@ -66,6 +71,8 @@ Each capture lifecycle creates its own immutable session:
 ```text
 %LOCALAPPDATA%\d4planner\sessions\<timestamp>-<session-id>\
 ├── metadata.json
+├── raw-speech.jsonl
+├── capture-context.jsonl
 ├── events.jsonl
 └── runtime.log
 ```

@@ -36,3 +36,21 @@ def test_runtime_plugin_has_fail_open_lease_guard():
     ).read_text(encoding="utf-8")
     assert "leaseUntilUnix" in source
     assert "lease_until <= time.time()" in source
+
+
+def test_runtime_plugin_uses_live_win32_pid_and_never_rejected_speech_text_in_diagnostics():
+    source = (
+        ROOT
+        / "nvda-addon"
+        / "addon"
+        / "globalPlugins"
+        / "d4plannerCapture"
+        / "__init__.py"
+    ).read_text(encoding="utf-8")
+    assert "winUser.getForegroundWindow()" in source
+    assert "winUser.getWindowThreadProcessID(hwnd)" in source
+    assert 'context_source="win32Foreground"' in source
+    diagnostic_body = source.split("def _write_rejection_diagnostic", 1)[1].split(
+        "def _filter_speech", 1
+    )[0]
+    assert "speechSequence" not in diagnostic_body

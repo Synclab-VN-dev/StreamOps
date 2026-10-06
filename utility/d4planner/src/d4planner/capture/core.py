@@ -62,15 +62,29 @@ def capture_decision(
     silent: bool,
     process: str | None,
     window_title: str | None,
+    expected_process_id: int | None = None,
+    foreground_process_id: int | None = None,
     capture_all: bool = False,
 ) -> CaptureDecision:
     """Return fail-safe capture/suppression policy.
 
-    Diagnostic capture-all may collect non-D4 speech, but suppression is *never*
-    allowed unless the foreground context is confidently Diablo IV.
+    The live Win32 foreground PID is authoritative. Process names and window
+    titles are retained only as event/diagnostic metadata; they cannot make a
+    non-game process eligible for capture or suppression.
+
+    Diagnostic capture-all may collect non-D4 speech when a live foreground PID
+    was resolved, but suppression is *never* allowed unless that PID exactly
+    matches the game PID owned by the current runtime session. A failed Win32
+    lookup therefore always fails open.
     """
-    is_d4 = is_diablo_context(process, window_title)
-    capture = bool(enabled and (is_d4 or capture_all))
+    del process, window_title
+    expected_pid = expected_process_id if isinstance(expected_process_id, int) else None
+    foreground_pid = (
+        foreground_process_id if isinstance(foreground_process_id, int) else None
+    )
+    is_d4 = bool(expected_pid and foreground_pid and expected_pid == foreground_pid)
+    live_lookup_succeeded = bool(foreground_pid and foreground_pid > 0)
+    capture = bool(enabled and (is_d4 or (capture_all and live_lookup_succeeded)))
     suppress = bool(capture and silent and is_d4)
     return CaptureDecision(capture=capture, suppress=suppress)
 
@@ -84,6 +98,8 @@ class CaptureEvent:
     window_title: str | None
     text: str
     raw_speech: list[str]
+    process_id: int | None = None
+    context_source: str | None = None
 
     def as_json_dict(self) -> dict[str, object]:
         data = asdict(self)
@@ -95,6 +111,8 @@ class CaptureEvent:
             "windowTitle": data["window_title"],
             "text": data["text"],
             "rawSpeech": data["raw_speech"],
+            "processId": data["process_id"],
+            "contextSource": data["context_source"],
         }
 
 
@@ -112,6 +130,8 @@ class CaptureSession:
         speech_sequence: Sequence[object] | None,
         process: str | None,
         window_title: str | None,
+        process_id: int | None = None,
+        context_source: str | None = None,
     ) -> CaptureEvent:
         text, raw = flatten_speech_sequence(speech_sequence)
         event = CaptureEvent(
@@ -122,6 +142,8 @@ class CaptureSession:
             window_title=window_title,
             text=text,
             raw_speech=raw,
+            process_id=process_id,
+            context_source=context_source,
         )
         self._next_sequence += 1
         return event

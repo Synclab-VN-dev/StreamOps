@@ -78,6 +78,7 @@ Production runtime state is outside the repository:
 │   └── <timestamp>-<session-id>\
 │       ├── metadata.json
 │       ├── raw-speech.jsonl
+│       ├── capture-context.jsonl
 │       ├── events.jsonl
 │       └── runtime.log
 ├── state\
@@ -110,6 +111,12 @@ If Steam was already running before D4Planner first updated User PATH, its
 environment is stale. D4Planner reports `RESTART_REQUIRED` instead of killing
 Steam or Diablo IV.
 
+The interactive helper and supervisor tasks are reconciled at Task Scheduler
+priority 4 (Normal). Automated LAUNCH also requires an existing Steam process
+to be Normal or higher; a lower/unknown priority returns `RESTART_REQUIRED`.
+ATTACH does not restart a running game. StreamOps Steam launch requests set
+`NORMAL_PRIORITY_CLASS` explicitly rather than changing an existing process.
+
 ## NVDA add-on
 
 Build output:
@@ -117,7 +124,10 @@ Build output:
     utility/d4planner/dist/d4plannerCapture-0.2.0.nvda-addon
 
 The runtime add-on uses NVDA 2026.2's public `filter_speechSequence` extension
-point.
+point. Capture identity comes from the live Win32 foreground HWND/PID and must
+match the exact Diablo IV PID published by the supervisor. NVDA's cached
+foreground object, process names, and window titles are diagnostic metadata
+only and can never authorize capture or suppression.
 
 Behavior:
 
@@ -126,6 +136,7 @@ non-D4 / uncertain context -> passthrough
 D4 + --speech             -> capture + passthrough
 D4 + default silent       -> capture; if persistence succeeds, return []
 capture write failure     -> passthrough
+foreground lookup failure -> passthrough
 ```
 
 This fail-safe policy avoids silencing the desktop when source detection or

@@ -52,6 +52,8 @@ def test_silent_capture_suppresses_only_confident_d4_context():
         silent=True,
         process="diablo iv",
         window_title="Diablo IV",
+        expected_process_id=101,
+        foreground_process_id=101,
     )
     assert d4.capture is True
     assert d4.suppress is True
@@ -61,6 +63,8 @@ def test_silent_capture_suppresses_only_confident_d4_context():
         silent=True,
         process="explorer",
         window_title="Desktop",
+        expected_process_id=101,
+        foreground_process_id=202,
     )
     assert desktop.capture is False
     assert desktop.suppress is False
@@ -72,6 +76,8 @@ def test_dwm_diablo_title_is_never_captured_or_suppressed():
         silent=True,
         process="dwm",
         window_title="Diablo IV (Not Responding)",
+        expected_process_id=101,
+        foreground_process_id=202,
     )
     assert decision.capture is False
     assert decision.suppress is False
@@ -83,6 +89,8 @@ def test_capture_all_never_suppresses_uncertain_non_d4_speech():
         silent=True,
         process=None,
         window_title=None,
+        expected_process_id=101,
+        foreground_process_id=202,
         capture_all=True,
     )
     assert decision.capture is True
@@ -95,6 +103,35 @@ def test_speech_mode_captures_but_does_not_suppress():
         silent=False,
         process="diablo iv",
         window_title="Diablo IV",
+        expected_process_id=101,
+        foreground_process_id=101,
     )
     assert decision.capture is True
+    assert decision.suppress is False
+
+
+def test_title_and_process_name_cannot_spoof_game_pid():
+    decision = capture_decision(
+        enabled=True,
+        silent=True,
+        process="diablo iv",
+        window_title="Diablo IV",
+        expected_process_id=101,
+        foreground_process_id=202,
+    )
+    assert decision.capture is False
+    assert decision.suppress is False
+
+
+def test_foreground_lookup_failure_fails_open_even_in_capture_all_mode():
+    decision = capture_decision(
+        enabled=True,
+        silent=True,
+        process="diablo iv",
+        window_title="Diablo IV",
+        expected_process_id=101,
+        foreground_process_id=None,
+        capture_all=True,
+    )
+    assert decision.capture is False
     assert decision.suppress is False

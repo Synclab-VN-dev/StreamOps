@@ -198,7 +198,7 @@ def test_tolk_probe_rejects_result_from_wrong_session(tmp_path, monkeypatch):
     assert health.error == "Tolk probe ran outside active console session: actual=0 expected=1"
 
 
-def test_interactive_tasks_are_only_registered_when_missing(tmp_path, monkeypatch):
+def test_control_plane_reconciles_interactive_tasks_at_normal_priority(tmp_path, monkeypatch):
     runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
     scripts = {
         "nvda": tmp_path / "nvda.ps1",
@@ -216,8 +216,45 @@ def test_interactive_tasks_are_only_registered_when_missing(tmp_path, monkeypatc
 
     monkeypatch.setattr(runtime, "_powershell", fake_powershell)
 
-    runtime.ensure_interactive_tasks()
+    runtime.prepare_interactive_tasks()
 
     assert len(commands) == 4
-    assert all("if(-not $existing)" in command for command in commands)
-    assert all("-Force" not in command for command in commands)
+    assert all("-Priority 4" in command for command in commands)
+    assert all("-Force" in command for command in commands)
+
+
+def test_limited_supervisor_only_verifies_interactive_tasks(tmp_path, monkeypatch):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    commands = []
+
+    def fake_powershell(script, *, timeout=15.0):
+        commands.append(script)
+        return subprocess.CompletedProcess([], 0, "", "")
+
+    monkeypatch.setattr(runtime, "_powershell", fake_powershell)
+
+    runtime.ensure_interactive_tasks()
+
+    assert len(commands) == 1
+    assert "Get-ScheduledTask" in commands[0]
+    assert "Register-ScheduledTask" not in commands[0]
+
+
+def test_supervisor_task_is_normal_priority_and_prepares_helpers_first(tmp_path, monkeypatch):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    calls = []
+    monkeypatch.setattr(runtime, "prepare_interactive_tasks", lambda: calls.append("prepare"))
+
+    def fake_powershell(script, *, timeout=15.0):
+        calls.append(script)
+        return subprocess.CompletedProcess([], 0, "", "")
+
+    monkeypatch.setattr(runtime, "_powershell", fake_powershell)
+
+    runtime.launch_supervisor_task(speech=True, isolated=False)
+
+    assert calls[0] == "prepare"
+    assert "-Priority 4" in calls[1]
+    assert "Register-ScheduledTask" in calls[1]
