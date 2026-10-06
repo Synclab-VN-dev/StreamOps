@@ -16,6 +16,7 @@ from .api.live_ws import router as live_ws_router
 from .api.obs import router as obs_router
 from .api.obs_process import router as obs_process_router
 from .api.obs_plugins import router as obs_plugins_router
+from .api.obs_plugin_ws import router as obs_plugin_ws_router
 from .api.obs_ws import router as obs_ws_router
 from .api.screen import router as screen_router
 from .api.steam import router as steam_router
@@ -131,6 +132,7 @@ def create_app(
     app.include_router(obs_router)
     app.include_router(obs_process_router)
     app.include_router(obs_plugins_router)
+    app.include_router(obs_plugin_ws_router)
     app.include_router(obs_ws_router)
     app.include_router(screen_router)
     app.include_router(steam_router)
