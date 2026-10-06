@@ -251,10 +251,18 @@ def test_nvda_recovery_reprobes_tolk_before_returning_running(tmp_path):
     runtime.probe_tolk = lambda: TolkHealth("SAPI", True, False)
     supervisor._recover_nvda()
 
-    assert supervisor.status.state == RuntimeState.RESTART_REQUIRED
+    assert supervisor.status.state == RuntimeState.DEGRADED
     assert supervisor.status.capture_active is False
     assert read_json(paths.capture_state)["enabled"] is False
     assert runtime._game.pid == 31
+
+    runtime.probe_tolk = lambda: TolkHealth("NVDA", True, True)
+    supervisor._recover_nvda()
+
+    assert supervisor.status.state == RuntimeState.RUNNING
+    assert supervisor.status.capture_active is True
+    assert read_json(paths.capture_state)["enabled"] is True
+    assert read_json(paths.capture_state)["gamePid"] == 31
 
 
 def test_returning_game_reprobes_tolk_before_reattach(tmp_path):
