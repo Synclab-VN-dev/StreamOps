@@ -42,8 +42,10 @@ struct OutputTargetConfig {
     bool syncStart = false;
     bool syncStop = false;
 
-    nlohmann::json serviceParam;
-    nlohmann::json outputParam;
+    // Keep these as JSON objects even before the target is edited in the UI.
+    // nlohmann::json defaults to null, which is not valid OBS settings JSON.
+    nlohmann::json serviceParam = nlohmann::json::object();
+    nlohmann::json outputParam = nlohmann::json::object();
 
     std::optional<std::string> videoConfig;
     std::optional<std::string> audioConfig;
@@ -75,3 +77,7 @@ void SaveMultiOutputConfig();
 bool LoadMultiOutputConfig();
 
 std::string GenerateId(MultiOutputConfig& config);
+
+// Create dedicated encoder configs for an API-created target. The selected
+// encoders must support codecs accepted by the target output.
+bool InitializeDedicatedTargetEncoders(OutputTargetConfig& target);

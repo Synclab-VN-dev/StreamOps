@@ -273,10 +273,16 @@ bool MultiRTMPWebsocketVendor::HandleListTargets(obs_data_t* response_data) {
 
             QString status = widget->GetStatusText();
             obs_data_set_string(targetData, "status", status.toUtf8().constData());
+            obs_data_set_string(targetData, "runtimeState", widget->GetRuntimeState().toUtf8().constData());
+            obs_data_set_int(targetData, "runtimeErrorCode", widget->GetRuntimeErrorCode());
+            obs_data_set_string(targetData, "runtimeError", widget->GetRuntimeError().toUtf8().constData());
             ParseStatusText(status, targetData);
         } else {
             obs_data_set_bool(targetData, "isRunning", false);
             obs_data_set_string(targetData, "status", "stopped");
+            obs_data_set_string(targetData, "runtimeState", "IDLE");
+            obs_data_set_int(targetData, "runtimeErrorCode", 0);
+            obs_data_set_string(targetData, "runtimeError", "");
         }
 
         obs_data_array_push_back(targetsArray, targetData);
@@ -302,6 +308,9 @@ bool MultiRTMPWebsocketVendor::HandleGetTargetState(obs_data_t* request_data, ob
     obs_data_set_string(response_data, "name", targetWidget->GetTargetName().toUtf8().constData());
     obs_data_set_bool(response_data, "isRunning", targetWidget->IsRunning());
     obs_data_set_string(response_data, "status", targetWidget->GetStatusText().toUtf8().constData());
+    obs_data_set_string(response_data, "runtimeState", targetWidget->GetRuntimeState().toUtf8().constData());
+    obs_data_set_int(response_data, "runtimeErrorCode", targetWidget->GetRuntimeErrorCode());
+    obs_data_set_string(response_data, "runtimeError", targetWidget->GetRuntimeError().toUtf8().constData());
 
     if (config) {
         obs_data_set_bool(response_data, "syncStart", config->syncStart);
@@ -335,7 +344,7 @@ bool MultiRTMPWebsocketVendor::HandleStopTarget(obs_data_t* request_data, obs_da
     }
 
     ExecuteInUIThread([targetWidget]() {
-        targetWidget->StopStreaming();
+        targetWidget->StopStreamingForAutomation();
     });
 
     obs_data_set_string(response_data, "status", "stop_requested");
@@ -353,7 +362,7 @@ bool MultiRTMPWebsocketVendor::HandleToggleTarget(obs_data_t* request_data, obs_
     bool isRunning = targetWidget->IsRunning();
     ExecuteInUIThread([targetWidget, isRunning]() {
         if (isRunning) {
-            targetWidget->StopStreaming();
+            targetWidget->StopStreamingForAutomation();
         } else {
             targetWidget->StartStreaming();
         }
@@ -396,7 +405,7 @@ bool MultiRTMPWebsocketVendor::HandleStopAll(obs_data_t* response_data) {
     ExecuteInUIThread([widgets]() {
         for (auto* widget : widgets) {
             if (widget && widget->IsRunning()) {
-                widget->StopStreaming();
+                widget->StopStreamingForAutomation();
             }
         }
     });
@@ -721,6 +730,14 @@ bool MultiRTMPWebsocketVendor::HandleGetTargetStats(obs_data_t* request_data, ob
     }
 
     ParseStatusText(statusText, response_data);
+
+    // Stable machine-readable counters come directly from OBS; rawStatus is
+    // retained only for backwards compatibility with existing clients.
+    obs_data_set_int(response_data, "totalBytes", static_cast<long long>(targetWidget->GetTotalBytes()));
+    obs_data_set_int(response_data, "totalFrames", static_cast<long long>(targetWidget->GetTotalFrames()));
+    obs_data_set_string(response_data, "runtimeState", targetWidget->GetRuntimeState().toUtf8().constData());
+    obs_data_set_int(response_data, "runtimeErrorCode", targetWidget->GetRuntimeErrorCode());
+    obs_data_set_string(response_data, "runtimeError", targetWidget->GetRuntimeError().toUtf8().constData());
 
     obs_data_set_string(response_data, "id", targetWidget->GetTargetId().toUtf8().constData());
     obs_data_set_string(response_data, "name", targetWidget->GetTargetName().toUtf8().constData());

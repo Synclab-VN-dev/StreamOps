@@ -120,6 +120,26 @@ class PushWidgetImpl : public PushWidget, public IOBSOutputEventHanlder
     bool isUseDelay_ = false;
     bool is_editing_ = false;
 
+    QString runtime_state_ = "IDLE";
+    QString runtime_error_;
+    int runtime_error_code_ = 0;
+
+    void SetRuntimeState(const char* state)
+    {
+        runtime_state_ = QString::fromUtf8(state);
+        if (runtime_state_ != "FAILED") {
+            runtime_error_.clear();
+            runtime_error_code_ = 0;
+        }
+    }
+
+    void SetRuntimeFailure(int code, const QString& message)
+    {
+        runtime_state_ = "FAILED";
+        runtime_error_code_ = code;
+        runtime_error_ = message;
+    }
+
     QPushButton* GetDeleteButton() {
         return remove_btn_;
     }
@@ -395,17 +415,10 @@ class PushWidgetImpl : public PushWidget, public IOBSOutputEventHanlder
         }
 
         if (!aenc || !venc) {
-            // If we don't have a valid encoder, we're likely using a special encoder type that
-            // needs to be started by the user (i.e. start streaming or start recording)
+            // Vendor/API paths must never block OBS with a modal dialog. The
+            // caller records a structured FAILED state instead.
             ReleaseOutputEncoder();
-
-            auto msgbox = new QMessageBox(QMessageBox::Icon::Critical, 
-                obs_module_text("Notice.Title"), 
-                obs_module_text("Notice.GetEncoder"),
-                QMessageBox::StandardButton::Ok,
-                this
-                );
-            msgbox->exec();
+            blog(LOG_ERROR, TAG "No valid video/audio encoder for target %s", config_->id.c_str());
             return false;
         }
 
@@ -590,8 +603,13 @@ public:
 
 
     void StartStreaming() override {
-        if (IsRunning())
+        // A repeated start while the asynchronous OBS start/reconnect is
+        // already in progress is idempotent.
+        if (IsRunning() || runtime_state_ == "STARTING" || runtime_state_ == "LIVE" ||
+            runtime_state_ == "RECONNECTING")
             return;
+
+        SetRuntimeState("STARTING");
 
         // recreate output
         ReleaseOutput();
@@ -634,25 +652,25 @@ public:
 
         if (!PrepareOutputService())
         {
-            SetMsg(obs_module_text("Error.CreateRtmpService"));
+            SetRuntimeFailure(-1001, obs_module_text("Error.CreateRtmpService"));
             return;
         }
 
         if (!PrepareOutputEncoders())
         {
-            SetMsg(obs_module_text("Error.CreateEncoder"));
+            SetRuntimeFailure(-1002, obs_module_text("Error.CreateEncoder"));
             return;
         }
 
         if (!PrepareEncoderSource())
         {
-            SetMsg(obs_module_text("Error.SceneNotExist"));
+            SetRuntimeFailure(-1003, obs_module_text("Error.SceneNotExist"));
             return;
         }
 
         if (!obs_output_start(output_))
         {
-            SetMsg(obs_module_text("Error.StartOutput"));
+            SetRuntimeFailure(-1004, obs_module_text("Error.StartOutput"));
         }
     }
 
@@ -676,6 +694,17 @@ public:
             obs_output_stop(output_);
         else
             obs_output_force_stop(output_);
+    }
+
+    void StopStreamingForAutomation() override {
+        if (runtime_state_ == "STOPPING" || !IsRunning())
+            return;
+        SetRuntimeState("STOPPING");
+        // Never show the delay confirmation modal on a Vendor request.
+        if (isUseDelay_)
+            obs_output_force_stop(output_);
+        else
+            obs_output_stop(output_);
     }
    
     void OnOBSEvent(obs_frontend_event ev) override
@@ -716,6 +745,16 @@ public:
 
     bool IsEditing() const override {
         return is_editing_;
+    }
+
+    QString GetRuntimeState() const override { return runtime_state_; }
+    QString GetRuntimeError() const override { return runtime_error_; }
+    int GetRuntimeErrorCode() const override { return runtime_error_code_; }
+    uint64_t GetTotalBytes() const override {
+        return output_ ? obs_output_get_total_bytes(output_) : 0;
+    }
+    uint64_t GetTotalFrames() const override {
+        return output_ ? obs_output_get_total_frames(output_) : 0;
     }
 
     QString GetTargetId() const override {
@@ -784,6 +823,7 @@ public:
     // obs logical
     void OnStarting() override
     {
+        SetRuntimeState("STARTING");
         GetGlobalService().RunInUIThread([this]() {
             begin_time_ = clock::now();
             remove_btn_->setEnabled(false);
@@ -796,6 +836,7 @@ public:
 
     void OnStarted() override
     {
+        SetRuntimeState("LIVE");
         GetGlobalService().RunInUIThread([this]() {
             remove_btn_->setEnabled(false);
             btn_->setText(obs_module_text("Status.Stop"));
@@ -809,6 +850,7 @@ public:
 
     void OnReconnect() override
     {
+        SetRuntimeState("RECONNECTING");
         GetGlobalService().RunInUIThread([this]() {
             timer_->stop();
 
@@ -821,6 +863,7 @@ public:
 
     void OnReconnected() override
     {
+        SetRuntimeState("LIVE");
         GetGlobalService().RunInUIThread([this]() {
             remove_btn_->setEnabled(false);
             btn_->setText(obs_module_text("Status.Stop"));
@@ -834,6 +877,7 @@ public:
 
     void OnStopping() override
     {
+        SetRuntimeState("STOPPING");
         GetGlobalService().RunInUIThread([this]() {
             timer_->stop();
 
@@ -846,6 +890,11 @@ public:
 
     void OnStopped(int code) override
     {
+        if (code == 0)
+            SetRuntimeState("IDLE");
+        else
+            SetRuntimeFailure(code, QString("OBS output stopped with code %1").arg(code));
+
         GetGlobalService().RunInUIThread([this, code]() {
             ResetInfo();
             timer_->stop();
