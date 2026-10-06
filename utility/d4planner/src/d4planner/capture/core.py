@@ -39,10 +39,15 @@ def flatten_speech_sequence(sequence: Sequence[object] | None) -> tuple[str, lis
 
 
 def is_diablo_context(process: str | None, window_title: str | None) -> bool:
-    """Conservative foreground-context check used by capture and silent mode."""
-    haystack = " ".join(part for part in (process, window_title) if part).lower()
-    normalized = "".join(ch for ch in haystack if ch.isalnum())
-    return "diabloiv" in normalized or "diablo4" in normalized
+    """Return true only for a confidently identified Diablo IV process.
+
+    Window titles are intentionally not trusted for production capture/suppression.
+    Windows components such as DWM can expose titles like
+    "Diablo IV (Not Responding)" even though the speech context is not the game.
+    """
+    del window_title
+    normalized_process = "".join(ch for ch in (process or "").lower() if ch.isalnum())
+    return normalized_process in {"diabloiv", "diablo4"}
 
 
 @dataclass(frozen=True, slots=True)
