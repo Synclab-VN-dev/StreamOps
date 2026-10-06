@@ -115,12 +115,13 @@ def test_extract_official_controller_archive_validates_x64_and_checksum(tmp_path
     assert runtime.controller_sha256(extracted) == hashlib.sha256(content).hexdigest().upper()
 
 
-def test_nvda_version_gate_accepts_only_verified_major_minor(tmp_path):
+def test_nvda_version_gate_accepts_only_verified_major_minor(tmp_path, monkeypatch):
     runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
     assert runtime.nvda_version_compatible("2026.2") is True
     assert runtime.nvda_version_compatible("2026.2.1.0") is True
     assert runtime.nvda_version_compatible("2026.1") is False
     assert runtime.nvda_version_compatible("2027.1") is False
+    monkeypatch.setattr(runtime, "nvda_version", lambda: None)
     assert runtime.nvda_version_compatible(None) is False
 
 
