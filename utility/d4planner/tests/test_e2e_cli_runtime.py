@@ -163,3 +163,31 @@ def test_e2e_supervisor_status_logs_and_stop(monkeypatch, tmp_path, capsys):
     assert runtime.launch_calls == 0
     assert runtime._game.pid == 300
     assert runtime._steam.pid == 200
+
+def test_e2e_existing_game_wrong_backend_requires_restart_without_launch(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = E2ERuntime(paths)
+    runtime.probe_tolk = lambda: TolkHealth("SAPI", True, False)
+    manager = UserPathManager(
+        paths,
+        MemoryPathBackend(user_path="", machine_path="MACHINE"),
+    )
+    supervisor = Supervisor(
+        paths=paths,
+        runtime=runtime,
+        path_manager=manager,
+        silent=True,
+        poll_interval=0.02,
+        health_poll_interval=0.10,
+        game_start_timeout=0.01,
+    )
+
+    state = supervisor.bootstrap()
+
+    assert state == RuntimeState.RESTART_REQUIRED
+    assert runtime.launch_calls == 0
+    status = read_json(paths.runtime_state)
+    assert status["state"] == RuntimeState.RESTART_REQUIRED.value
+    assert status["game"]["pid"] == 300
+    assert read_json(paths.capture_state)["enabled"] is False
+
