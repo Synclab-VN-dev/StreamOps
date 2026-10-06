@@ -77,3 +77,7 @@ void SaveMultiOutputConfig();
 bool LoadMultiOutputConfig();
 
 std::string GenerateId(MultiOutputConfig& config);
+
+// Create dedicated encoder configs for an API-created target. The selected
+// encoders must support codecs accepted by the target output.
+bool InitializeDedicatedTargetEncoders(OutputTargetConfig& target);
