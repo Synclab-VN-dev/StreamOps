@@ -2,7 +2,13 @@ import json
 from datetime import datetime, timezone
 import time
 
-from d4planner.runtime.store import EventStore, RuntimePaths, read_json, write_capture_config
+from d4planner.runtime.store import (
+    EventStore,
+    RuntimePaths,
+    atomic_write_json,
+    read_json,
+    write_capture_config,
+)
 
 
 def test_session_store_creates_immutable_files_and_monotonic_event_stream(tmp_path):
@@ -70,3 +76,26 @@ def test_capture_config_points_addon_to_session_raw_file(tmp_path):
     assert config["diagnosticsPath"] == str(store.session.context_diagnostics_path)
     assert config["gamePid"] == 4321
     assert config["leaseUntilUnix"] > time.time()
+
+def test_atomic_write_json_retries_transient_access_denied(monkeypatch, tmp_path):
+    import d4planner.runtime.store as store_module
+
+    path = tmp_path / "state" / "capture.json"
+    real_replace = store_module.os.replace
+    calls = {"count": 0}
+
+    def flaky_replace(source, destination):
+        calls["count"] += 1
+        if calls["count"] < 3:
+            raise PermissionError(13, "access denied", str(destination))
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(store_module.os, "replace", flaky_replace)
+    monkeypatch.setattr(store_module.time, "sleep", lambda _seconds: None)
+
+    atomic_write_json(path, {"enabled": True})
+
+    assert calls["count"] == 3
+    assert read_json(path) == {"enabled": True}
+    assert list(path.parent.glob(".capture.json.*.tmp")) == []
+
