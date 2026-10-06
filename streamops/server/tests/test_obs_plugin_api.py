@@ -102,3 +102,61 @@ def test_typed_error_mapping_has_stable_safe_shape(server_config, capture_servic
         response = api.post("/api/v1/obs/plugins/obs-multi-rtmp/install")
     assert response.status_code == status
     assert response.json() == {"error": {"code": code, "message": "safe public message"}}
+
+
+def test_websocket_uses_same_plugin_service_as_rest(server_config, capture_service):
+    service = FakePluginService()
+    with client(server_config, capture_service, service) as api:
+        with api.websocket_connect("/api/v1/obs/plugins/ws") as websocket:
+            websocket.send_json({
+                "type": "request",
+                "request_id": "status-1",
+                "operation": "obs_plugin.status",
+                "payload": {"plugin_id": "obs-multi-rtmp"},
+            })
+            response = websocket.receive_json()
+
+    assert response == {
+        "type": "response",
+        "request_id": "status-1",
+        "ok": True,
+        "data": LOADED.api_payload(),
+    }
+    assert service.calls == [("status", "obs-multi-rtmp")]
+
+
+def test_websocket_preserves_typed_core_error(server_config, capture_service):
+    service = FakePluginService()
+    service.failure = ObsPluginError("obs_busy_streaming", "OBS plugin changes are blocked while streaming.", 409)
+    with client(server_config, capture_service, service) as api:
+        with api.websocket_connect("/api/v1/obs/plugins/ws") as websocket:
+            websocket.send_json({
+                "type": "request",
+                "request_id": "install-1",
+                "operation": "obs_plugin.install",
+                "payload": {"plugin_id": "obs-multi-rtmp"},
+            })
+            response = websocket.receive_json()
+
+    assert response["ok"] is False
+    assert response["error"] == {
+        "code": "obs_busy_streaming",
+        "message": "OBS plugin changes are blocked while streaming.",
+    }
+
+
+def test_websocket_rejects_transport_specific_extra_input(server_config, capture_service):
+    service = FakePluginService()
+    with client(server_config, capture_service, service) as api:
+        with api.websocket_connect("/api/v1/obs/plugins/ws") as websocket:
+            websocket.send_json({
+                "type": "request",
+                "request_id": "bad-1",
+                "operation": "obs_plugin.install",
+                "payload": {"plugin_id": "obs-multi-rtmp", "url": "https://evil.invalid/plugin.zip"},
+            })
+            response = websocket.receive_json()
+
+    assert response["ok"] is False
+    assert response["error"]["code"] == "invalid_request"
+    assert service.calls == []
