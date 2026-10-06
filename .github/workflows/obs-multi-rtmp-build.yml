@@ -4,11 +4,17 @@ on:
   pull_request:
     paths:
       - "util/obs-multi-rtmp-websocket/**"
+      - ".github/workflows/obs-multi-rtmp-build.yml"
+      - "scripts/e2e/issue35_build_candidate.ps1"
   push:
     branches:
       - master
+      - "fix/issue-45-multirtmp-runtime"
     paths:
       - "util/obs-multi-rtmp-websocket/**"
+      - ".github/workflows/obs-multi-rtmp-build.yml"
+      - "scripts/e2e/issue35_build_candidate.ps1"
+  workflow_dispatch:
 
 jobs:
   windows-build:
@@ -54,22 +60,22 @@ jobs:
       - name: Stage artifact
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path ".streamops/issue-35-ci" | Out-Null
-          Copy-Item "${{ steps.verify.outputs.dll }}" ".streamops/issue-35-ci/obs-multi-rtmp.dll"
+          New-Item -ItemType Directory -Force -Path ".streamops/issue-45-ci" | Out-Null
+          Copy-Item "${{ steps.verify.outputs.dll }}" ".streamops/issue-45-ci/obs-multi-rtmp.dll"
           @"
           {
             "source_commit": "${{ github.sha }}",
             "configuration": "RelWithDebInfo",
             "sha256": "${{ steps.verify.outputs.sha256 }}"
           }
-          "@ | Set-Content ".streamops/issue-35-ci/build-manifest.json" -Encoding UTF8
+          "@ | Set-Content ".streamops/issue-45-ci/build-manifest.json" -Encoding UTF8
 
       - name: Upload plugin artifact
         uses: actions/upload-artifact@v4
         with:
           name: obs-multi-rtmp-windows-x64-${{ github.sha }}
           path: |
-            .streamops/issue-35-ci/obs-multi-rtmp.dll
-            .streamops/issue-35-ci/build-manifest.json
+            .streamops/issue-45-ci/obs-multi-rtmp.dll
+            .streamops/issue-45-ci/build-manifest.json
           if-no-files-found: error
           retention-days: 7
