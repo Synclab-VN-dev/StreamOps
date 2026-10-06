@@ -8,7 +8,7 @@
 #include <unordered_set>
 #include <algorithm>
 #include <util/platform.h>
-#include "json-util.hpp"
+#include "json-util.hpp"\n#include "protocols.h"\n#include "obs.hpp"
 
 
 MultiOutputConfig& GlobalMultiOutputConfig()
@@ -294,4 +294,94 @@ std::string GenerateId(MultiOutputConfig& config) {
             continue;
         return newid;
     }
+}
+
+
+static std::optional<std::string> FindEncoderForSupportedCodecs(const char* codecs)
+{
+    if (!codecs || !*codecs)
+        return std::nullopt;
+
+    std::string supported(codecs);
+    size_t begin = 0;
+    while (begin <= supported.size()) {
+        auto end = supported.find(';', begin);
+        auto codec = supported.substr(begin, end == std::string::npos ? std::string::npos : end - begin);
+        codec.erase(0, codec.find_first_not_of(" \t\r\n"));
+        auto last = codec.find_last_not_of(" \t\r\n");
+        if (last != std::string::npos)
+            codec.erase(last + 1);
+
+        if (!codec.empty()) {
+            size_t index = 0;
+            const char* encoderId = nullptr;
+            while (obs_enum_encoder_types(index++, &encoderId)) {
+                if (!encoderId)
+                    continue;
+                if (obs_get_encoder_caps(encoderId) & OBS_ENCODER_CAP_DEPRECATED)
+                    continue;
+                const char* encoderCodec = obs_get_encoder_codec(encoderId);
+                if (encoderCodec && codec == encoderCodec)
+                    return std::string(encoderId);
+            }
+        }
+
+        if (end == std::string::npos)
+            break;
+        begin = end + 1;
+    }
+    return std::nullopt;
+}
+
+bool InitializeDedicatedTargetEncoders(OutputTargetConfig& target)
+{
+    auto protocolInfo = GetProtocolInfos()->GetInfo(target.protocol.c_str());
+    if (!protocolInfo) {
+        blog(LOG_ERROR, TAG "Cannot initialize target %s: unsupported protocol %s",
+             target.id.c_str(), target.protocol.c_str());
+        return false;
+    }
+
+    OBSDataAutoRelease outputSettings = obs_data_create();
+    OBSOutputAutoRelease output = obs_output_create(
+        protocolInfo->outputId, ("multi-output-probe-" + target.id).c_str(), outputSettings, nullptr);
+    if (!output) {
+        blog(LOG_ERROR, TAG "Cannot initialize target %s: output probe creation failed", target.id.c_str());
+        return false;
+    }
+
+    auto videoEncoderId = FindEncoderForSupportedCodecs(obs_output_get_supported_video_codecs(output));
+    auto audioEncoderId = FindEncoderForSupportedCodecs(obs_output_get_supported_audio_codecs(output));
+    if (!videoEncoderId || !audioEncoderId) {
+        blog(LOG_ERROR, TAG "Cannot initialize target %s: no compatible dedicated video/audio encoder",
+             target.id.c_str());
+        return false;
+    }
+
+    auto& global = GlobalMultiOutputConfig();
+    auto video = std::make_shared<VideoEncoderConfig>();
+    video->id = GenerateId(global);
+    video->encoderId = *videoEncoderId;
+    video->encoderParams = nlohmann::json::object();
+
+    // Generate the audio id before inserting the video config so both ids are
+    // independently checked against the existing config namespace.
+    auto audio = std::make_shared<AudioEncoderConfig>();
+    audio->id = GenerateId(global);
+    while (audio->id == video->id)
+        audio->id = GenerateId(global);
+    audio->encoderId = *audioEncoderId;
+    audio->encoderParams = nlohmann::json::object();
+    audio->mixerId = 0;
+
+    global.videoConfig.emplace_back(video);
+    global.audioConfig.emplace_back(audio);
+    target.videoConfig = video->id;
+    target.audioConfig = audio->id;
+    target.serviceParam = nlohmann::json::object();
+    target.outputParam = nlohmann::json::object();
+
+    blog(LOG_INFO, TAG "Initialized dedicated encoders for target %s: video=%s audio=%s",
+         target.id.c_str(), video->encoderId.c_str(), audio->encoderId.c_str());
+    return true;
 }
