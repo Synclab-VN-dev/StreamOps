@@ -458,27 +458,20 @@ class Supervisor:
                 self.status.capture_active = False
                 game = self.runtime.game_process()
                 self.status.game = game
-                if game:
-                    if game.session_id != console:
-                        self.status.last_error = (
-                            f"game={game.session_id}, console={console}; {detail}"
-                        )
-                        self._persist_status()
-                        return
-                    self.transition(
-                        RuntimeState.RESTART_REQUIRED,
-                        "NVDA recovered but the Tolk backend is not NVDA while Diablo IV "
-                        "is running; exit Diablo IV normally and retry",
-                        error=detail,
-                        data={
-                            "pid": game.pid,
-                            "reader": health.reader,
-                            "speech": health.speech,
-                        },
+                if game and game.session_id != console:
+                    self.status.last_error = (
+                        f"game={game.session_id}, console={console}; {detail}"
                     )
-                else:
-                    self.status.last_error = detail
                     self._persist_status()
+                    return
+
+                # Recovery is allowed to be temporarily DEGRADED: Tolk may need
+                # a moment to reconnect to a freshly restarted NVDA instance.
+                # Keep capture fail-open and retry on the next health interval
+                # instead of declaring RUNNING or forcing a game restart.
+                self.status.detail = "NVDA recovered; waiting for Tolk/NVDA backend"
+                self.status.last_error = detail
+                self._persist_status()
                 return
 
             game = self.runtime.game_process()
