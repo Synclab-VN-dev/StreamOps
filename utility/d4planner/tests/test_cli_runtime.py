@@ -99,6 +99,24 @@ def test_start_summary_is_safe_for_windows_cp1252(capsys):
     assert "[OK] Runtime: RUNNING" in output
 
 
+def test_console_stream_configuration_replaces_unencodable_characters(monkeypatch):
+    configured = []
+
+    class FakeStream:
+        def reconfigure(self, **kwargs):
+            configured.append(kwargs)
+
+    monkeypatch.setattr(cli.sys, "stdout", FakeStream())
+    monkeypatch.setattr(cli.sys, "stderr", FakeStream())
+
+    cli._configure_console_streams()
+
+    assert configured == [
+        {"errors": "backslashreplace"},
+        {"errors": "backslashreplace"},
+    ]
+
+
 def test_supervisor_singleton_lock_rejects_duplicate(tmp_path):
     paths = RuntimePaths(tmp_path / "home")
     first = daemon._acquire_singleton(paths)

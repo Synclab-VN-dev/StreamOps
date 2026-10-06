@@ -505,7 +505,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _configure_console_streams() -> None:
+    """Keep non-TTY Windows shells from crashing on non-CP1252 speech text."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure:
+            try:
+                reconfigure(errors="backslashreplace")
+            except (OSError, ValueError):
+                pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _configure_console_streams()
     args = build_parser().parse_args(argv)
     paths = _paths()
     if args.command == "start":
