@@ -229,10 +229,31 @@ class Supervisor:
             health = self.runtime.probe_tolk()
             self.status.tolk = health
             if not health.ready:
-                raise RuntimeBlocked(
+                game = self.runtime.game_process()
+                self.status.game = game
+                detail = (
                     "Tolk cannot detect NVDA"
                     + (f": {health.error}" if health.error else f" (reader={health.reader})")
                 )
+                if game:
+                    if game.session_id != console:
+                        raise RuntimeBlocked(
+                            f"Diablo IV SessionId={game.session_id} does not match active console SessionId={console}"
+                        )
+                    self.transition(
+                        RuntimeState.RESTART_REQUIRED,
+                        "Diablo IV is already running but the Tolk backend is not NVDA; "
+                        "exit Diablo IV normally and run start again",
+                        error=detail,
+                        data={
+                            "pid": game.pid,
+                            "reader": health.reader,
+                            "speech": health.speech,
+                        },
+                    )
+                    write_capture_config(self.paths, enabled=False)
+                    return self.status.state
+                raise RuntimeBlocked(detail)
             self.transition(
                 RuntimeState.TOLK_READY,
                 "Tolk detects NVDA and speech is available",
@@ -356,6 +377,8 @@ class Supervisor:
         except OSError as exc:
             # Do not crash. If renewal keeps failing, the add-on lease expires
             # and speech automatically passes through instead of staying silent.
+            # Back off instead of retrying every supervisor poll tick.
+            self._next_lease_refresh = now + 0.5
             self.status.last_error = f"capture lease renewal failed: {exc}"
             try:
                 self._persist_status()
@@ -400,18 +423,86 @@ class Supervisor:
 
     def _recover_nvda(self) -> None:
         current = self.runtime.nvda_process()
-        if current:
+        if current and self.status.state != RuntimeState.DEGRADED:
             return
-        previous = self.status.state
-        self.transition(RuntimeState.DEGRADED, "NVDA process exited; attempting recovery")
+
+        if current is None:
+            self.transition(RuntimeState.DEGRADED, "NVDA process exited; attempting recovery")
+            try:
+                write_capture_config(self.paths, enabled=False)
+            except OSError:
+                pass
+            self.status.capture_active = False
+
         try:
-            nvda = self.runtime.ensure_nvda_running()
+            nvda = current or self.runtime.ensure_nvda_running()
             console = self.runtime.active_console_session_id()
             if nvda.session_id != console:
                 raise RuntimeBlocked("restarted NVDA is not in the active console session")
             self.status.nvda = nvda
-            target = RuntimeState.RUNNING if self.runtime.game_process() else RuntimeState.WAITING_FOR_GAME
-            self.transition(target, "NVDA recovered")
+
+            # A live NVDA process is not enough. Tolk can still be SAPI/null after
+            # NVDA restart, so never restore RUNNING until the real backend is
+            # proven healthy again.
+            health = self.runtime.probe_tolk()
+            self.status.tolk = health
+            if not health.ready:
+                detail = (
+                    "NVDA is running but Tolk cannot detect NVDA"
+                    + (f": {health.error}" if health.error else f" (reader={health.reader})")
+                )
+                try:
+                    write_capture_config(self.paths, enabled=False)
+                except OSError:
+                    pass
+                self.status.capture_active = False
+                game = self.runtime.game_process()
+                self.status.game = game
+                if game:
+                    if game.session_id != console:
+                        self.status.last_error = (
+                            f"game={game.session_id}, console={console}; {detail}"
+                        )
+                        self._persist_status()
+                        return
+                    self.transition(
+                        RuntimeState.RESTART_REQUIRED,
+                        "NVDA recovered but the Tolk backend is not NVDA while Diablo IV "
+                        "is running; exit Diablo IV normally and retry",
+                        error=detail,
+                        data={
+                            "pid": game.pid,
+                            "reader": health.reader,
+                            "speech": health.speech,
+                        },
+                    )
+                else:
+                    self.status.last_error = detail
+                    self._persist_status()
+                return
+
+            game = self.runtime.game_process()
+            if game and game.session_id != console:
+                self.status.game = game
+                self.status.last_error = (
+                    f"Diablo IV SessionId={game.session_id} does not match "
+                    f"active console SessionId={console}"
+                )
+                self._persist_status()
+                return
+
+            self.status.game = game
+            if self.store:
+                write_capture_config(
+                    self.paths,
+                    enabled=True,
+                    session=self.store.session,
+                    silent=self.silent,
+                    game_pid=game.pid if game else None,
+                )
+                self.status.capture_active = True
+            target = RuntimeState.RUNNING if game else RuntimeState.WAITING_FOR_GAME
+            self.transition(target, "NVDA/Tolk recovered")
         except Exception as exc:
             self.status.last_error = f"{type(exc).__name__}: {exc}"
             self._persist_status()
@@ -450,6 +541,29 @@ class Supervisor:
                     "Steam environment is stale; exit Steam normally before continuing",
                 )
                 return
+            health = self.runtime.probe_tolk()
+            self.status.tolk = health
+            if not health.ready:
+                detail = (
+                    "Diablo IV returned but Tolk cannot detect NVDA"
+                    + (f": {health.error}" if health.error else f" (reader={health.reader})")
+                )
+                write_capture_config(self.paths, enabled=False)
+                self.status.capture_active = False
+                self.status.game = game
+                self.transition(
+                    RuntimeState.RESTART_REQUIRED,
+                    "Diablo IV returned but the Tolk backend is not NVDA; "
+                    "exit Diablo IV normally and retry",
+                    error=detail,
+                    data={
+                        "pid": game.pid,
+                        "reader": health.reader,
+                        "speech": health.speech,
+                    },
+                )
+                return
+
             self.status.game = game
             self.transition(RuntimeState.GAME_ATTACHED, "Diablo IV detected and attached")
             self._renew_capture_lease(force=True)
@@ -467,6 +581,29 @@ class Supervisor:
                     error=f"game={game.session_id}, console={console}",
                 )
                 return
+            health = self.runtime.probe_tolk()
+            self.status.tolk = health
+            if not health.ready:
+                detail = (
+                    "Diablo IV process changed but Tolk cannot detect NVDA"
+                    + (f": {health.error}" if health.error else f" (reader={health.reader})")
+                )
+                write_capture_config(self.paths, enabled=False)
+                self.status.capture_active = False
+                self.status.game = game
+                self.transition(
+                    RuntimeState.RESTART_REQUIRED,
+                    "Diablo IV process changed but the Tolk backend is not NVDA; "
+                    "exit Diablo IV normally and retry",
+                    error=detail,
+                    data={
+                        "pid": game.pid,
+                        "reader": health.reader,
+                        "speech": health.speech,
+                    },
+                )
+                return
+
             previous_pid = current.pid if current else None
             self.status.game = game
             self._renew_capture_lease(force=True)
