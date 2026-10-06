@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+import errno
 import json
 import os
 from pathlib import Path
@@ -25,9 +26,30 @@ def iso_now(clock: Clock = utc_now) -> str:
 
 def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temp = path.with_name(f".{path.name}.{os.getpid()}.{uuid4().hex}.tmp")
     temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(temp, path)
+
+    attempts = 4
+    base_delay = 0.05
+    try:
+        for attempt in range(attempts):
+            try:
+                os.replace(temp, path)
+                return
+            except OSError as exc:
+                transient_access_denied = (
+                    isinstance(exc, PermissionError)
+                    or getattr(exc, "winerror", None) == 5
+                    or getattr(exc, "errno", None) in {errno.EACCES, errno.EPERM}
+                )
+                if not transient_access_denied or attempt + 1 >= attempts:
+                    raise
+                time.sleep(base_delay * (2**attempt))
+    finally:
+        try:
+            temp.unlink()
+        except FileNotFoundError:
+            pass
 
 
 @dataclass(frozen=True, slots=True)
