@@ -37,10 +37,12 @@ def test_sequence_is_monotonic_even_when_timestamp_is_identical():
     assert validate_event_order([first.as_json_dict(), second.as_json_dict()]) == []
 
 
-def test_diablo_context_is_broad_but_not_generic():
+def test_diablo_context_requires_game_process_identity():
     assert is_diablo_context("diablo iv", "Diablo IV")
     assert is_diablo_context("DiabloIV", None)
     assert not is_diablo_context("chrome", "GitHub")
+    assert not is_diablo_context("dwm", "Diablo IV (Not Responding)")
+    assert not is_diablo_context(None, "Diablo IV")
     assert not is_diablo_context(None, None)
 
 
@@ -62,6 +64,17 @@ def test_silent_capture_suppresses_only_confident_d4_context():
     )
     assert desktop.capture is False
     assert desktop.suppress is False
+
+
+def test_dwm_diablo_title_is_never_captured_or_suppressed():
+    decision = capture_decision(
+        enabled=True,
+        silent=True,
+        process="dwm",
+        window_title="Diablo IV (Not Responding)",
+    )
+    assert decision.capture is False
+    assert decision.suppress is False
 
 
 def test_capture_all_never_suppresses_uncertain_non_d4_speech():
