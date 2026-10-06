@@ -3,6 +3,7 @@ import os
 import pytest
 from datetime import datetime, timezone
 import hashlib
+import subprocess
 import zipfile
 
 from d4planner.runtime.model import ProcessInfo, TolkHealth
@@ -195,3 +196,28 @@ def test_tolk_probe_rejects_result_from_wrong_session(tmp_path, monkeypatch):
     health = runtime.probe_tolk(timeout=0.5)
     assert health.ready is False
     assert health.error == "Tolk probe ran outside active console session: actual=0 expected=1"
+
+
+def test_interactive_tasks_are_only_registered_when_missing(tmp_path, monkeypatch):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
+    scripts = {
+        "nvda": tmp_path / "nvda.ps1",
+        "nvda-restart": tmp_path / "nvda-restart.ps1",
+        "d4": tmp_path / "d4.ps1",
+        "tolk-probe": tmp_path / "tolk-probe.ps1",
+    }
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(runtime, "ensure_helper_scripts", lambda: scripts)
+    commands = []
+
+    def fake_powershell(script, *, timeout=15.0):
+        commands.append(script)
+        return subprocess.CompletedProcess([], 0, "", "")
+
+    monkeypatch.setattr(runtime, "_powershell", fake_powershell)
+
+    runtime.ensure_interactive_tasks()
+
+    assert len(commands) == 4
+    assert all("if(-not $existing)" in command for command in commands)
+    assert all("-Force" not in command for command in commands)

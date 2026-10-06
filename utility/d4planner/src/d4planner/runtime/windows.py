@@ -696,12 +696,17 @@ class WindowsRuntime:
             ("D4Planner-Tolk-Probe", scripts["tolk-probe"]),
         ):
             escaped = str(script_path).replace("'", "''")
+            task_name = name.replace("'", "''")
             ps = (
+                f"$existing=Get-ScheduledTask -TaskName '{task_name}' "
+                "-ErrorAction SilentlyContinue;"
+                "if(-not $existing){"
                 f"$a=New-ScheduledTaskAction -Execute 'powershell.exe' "
                 f"-Argument '-NoProfile -ExecutionPolicy Bypass -File \"{escaped}\"';"
                 "$u=[System.Security.Principal.WindowsIdentity]::GetCurrent().Name;"
                 "$p=New-ScheduledTaskPrincipal -UserId $u -LogonType Interactive -RunLevel Limited;"
-                f"Register-ScheduledTask -TaskName '{name}' -Action $a -Principal $p -Force | Out-Null"
+                f"Register-ScheduledTask -TaskName '{task_name}' -Action $a -Principal $p | Out-Null"
+                "}"
             )
             result = self._powershell(ps)
             if result.returncode != 0:
