@@ -530,8 +530,10 @@ bool MultiOutputWidget::UpdateTargetServiceParam(const QString& targetId, const 
                 SaveConfig();
                 auto pw = FindPushWidgetById(targetId);
                 if (pw) pw->UpdateUI();
-                blog(LOG_INFO, TAG "Updated service param for target %s: %s = %s",
-                     targetId.toUtf8().constData(), key.toUtf8().constData(), value.toUtf8().constData());
+                // Service parameters may contain credentials (stream keys/tokens).
+                // Log the field name only; never echo the value.
+                blog(LOG_INFO, TAG "Updated service param for target %s: %s = <redacted>",
+                     targetId.toUtf8().constData(), key.toUtf8().constData());
                 return true;
             } catch (const std::exception& e) {
                 blog(LOG_WARNING, TAG "Failed to update service param for %s: %s", targetId.toUtf8().constData(), e.what());
