@@ -400,6 +400,13 @@ bool MultiOutputWidget::AddNewTarget(const QString& name, const QString& protoco
     target->id = newId;
     target->name = name.toStdString();
     target->protocol = validProtocol.toStdString();
+
+    if (!InitializeDedicatedTargetEncoders(*target)) {
+        blog(LOG_ERROR, TAG "AddNewTarget failed: no compatible dedicated encoders for target %s",
+             newId.c_str());
+        return false;
+    }
+
     global.targets.emplace_back(target);
 
     AddPushWidget(newId);
