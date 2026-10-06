@@ -138,7 +138,6 @@ class PushWidgetImpl : public PushWidget, public IOBSOutputEventHanlder
         runtime_state_ = "FAILED";
         runtime_error_code_ = code;
         runtime_error_ = message;
-        SetMsg(message);
     }
 
     QPushButton* GetDeleteButton() {
