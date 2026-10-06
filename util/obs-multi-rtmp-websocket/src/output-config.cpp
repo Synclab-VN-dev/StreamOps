@@ -8,7 +8,9 @@
 #include <unordered_set>
 #include <algorithm>
 #include <util/platform.h>
-#include "json-util.hpp"\n#include "protocols.h"\n#include "obs.hpp"
+#include "json-util.hpp"
+#include "protocols.h"
+#include "obs.hpp"
 
 
 MultiOutputConfig& GlobalMultiOutputConfig()
