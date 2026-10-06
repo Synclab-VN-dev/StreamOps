@@ -11,13 +11,14 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import time
 import urllib.request
 import zipfile
 from typing import Any
 
 from .model import ProcessInfo, TolkHealth
-from .store import RuntimePaths
+from .store import RuntimePaths, atomic_write_json, read_json
 
 
 class RuntimeBlocked(RuntimeError):
@@ -70,6 +71,15 @@ class WindowsRuntime:
         if value == 0xFFFFFFFF:
             return None
         return int(value)
+
+    def current_process_session_id(self) -> int | None:
+        self.require_windows()
+        value = ctypes.c_ulong()
+        if not ctypes.windll.kernel32.ProcessIdToSessionId(
+            os.getpid(), ctypes.byref(value)
+        ):
+            return None
+        return int(value.value)
 
     def _process(self, names: tuple[str, ...]) -> ProcessInfo | None:
         quoted = ",".join("'" + n.replace("'", "''") + "'" for n in names)
@@ -494,7 +504,7 @@ class WindowsRuntime:
                 return candidate
         return None
 
-    def probe_tolk(self) -> TolkHealth:
+    def _probe_tolk_local(self) -> TolkHealth:
         self.require_windows()
         tolk = self.locate_tolk_dll()
         if not tolk:
@@ -544,6 +554,64 @@ class WindowsRuntime:
                     pass
             os.environ["PATH"] = old_path
 
+    def probe_tolk(self, *, timeout: float = 15.0) -> TolkHealth:
+        """Probe Tolk in the active console session where NVDA owns its RPC endpoint."""
+        self.require_windows()
+        console_session = self.active_console_session_id()
+        process_session = self.current_process_session_id()
+        if console_session is None:
+            return TolkHealth(None, False, False, "no active console session")
+        if process_session == console_session:
+            return self._probe_tolk_local()
+
+        request_path = self.paths.state / "tolk-probe-request.json"
+        result_path = self.paths.state / "tolk-probe-result.json"
+        request_id = f"{os.getpid()}-{time.time_ns()}"
+        atomic_write_json(
+            request_path,
+            {
+                "requestId": request_id,
+                "consoleSessionId": console_session,
+            },
+        )
+        try:
+            result_path.unlink()
+        except FileNotFoundError:
+            pass
+
+        try:
+            self.ensure_interactive_tasks()
+            self.run_task("D4Planner-Tolk-Probe")
+        except RuntimeBlocked as exc:
+            return TolkHealth(None, False, False, str(exc))
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            result = read_json(result_path)
+            if result and result.get("requestId") == request_id:
+                actual_session = result.get("sessionId")
+                if actual_session != console_session:
+                    return TolkHealth(
+                        None,
+                        False,
+                        False,
+                        "Tolk probe ran outside active console session: "
+                        f"actual={actual_session!r} expected={console_session}",
+                    )
+                return TolkHealth(
+                    str(result["reader"]) if result.get("reader") else None,
+                    bool(result.get("speech")),
+                    bool(result.get("braille")),
+                    str(result["error"]) if result.get("error") else None,
+                )
+            time.sleep(0.1)
+        return TolkHealth(
+            None,
+            False,
+            False,
+            f"interactive Tolk probe timed out after {timeout:g}s",
+        )
+
     @staticmethod
     def process_started_before(process: ProcessInfo | None, timestamp: str | None) -> bool:
         if not process or not process.started_at or not timestamp:
@@ -571,9 +639,12 @@ class WindowsRuntime:
         nvda_script = bin_dir / "start-nvda.ps1"
         nvda_restart_script = bin_dir / "restart-nvda.ps1"
         d4_script = bin_dir / "start-d4.ps1"
+        tolk_probe_script = bin_dir / "probe-tolk.ps1"
         runtime = str(self.paths.controller).replace("'", "''")
         nvda_q = str(nvda).replace("'", "''")
         steam_q = str(steam).replace("'", "''")
+        python_q = str(Path(sys.executable)).replace("'", "''")
+        root_q = str(self.paths.root).replace("'", "''")
         nvda_script.write_text(
             "$ErrorActionPreference='Stop'\n"
             f"$runtime='{runtime}'\n"
@@ -602,7 +673,18 @@ class WindowsRuntime:
             f"Start-Process -FilePath $steam -ArgumentList '-applaunch {self.STEAM_APP_ID}'\n",
             encoding="utf-8",
         )
-        return {"nvda": nvda_script, "nvda-restart": nvda_restart_script, "d4": d4_script}
+        tolk_probe_script.write_text(
+            "$ErrorActionPreference='Stop'\n"
+            f"& '{python_q}' -m d4planner.runtime.tolk_probe --root '{root_q}'\n"
+            "if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}\n",
+            encoding="utf-8",
+        )
+        return {
+            "nvda": nvda_script,
+            "nvda-restart": nvda_restart_script,
+            "d4": d4_script,
+            "tolk-probe": tolk_probe_script,
+        }
 
     def ensure_interactive_tasks(self) -> None:
         self.require_windows()
@@ -611,6 +693,7 @@ class WindowsRuntime:
             ("D4Planner-NVDA", scripts["nvda"]),
             ("D4Planner-NVDA-Restart", scripts["nvda-restart"]),
             ("D4Planner-D4", scripts["d4"]),
+            ("D4Planner-Tolk-Probe", scripts["tolk-probe"]),
         ):
             escaped = str(script_path).replace("'", "''")
             ps = (

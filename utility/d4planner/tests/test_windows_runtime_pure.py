@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 import hashlib
 import zipfile
 
-from d4planner.runtime.model import ProcessInfo
-from d4planner.runtime.store import RuntimePaths
+from d4planner.runtime.model import ProcessInfo, TolkHealth
+from d4planner.runtime.store import RuntimePaths, atomic_write_json
 from d4planner.runtime.windows import WindowsRuntime
 
 
@@ -121,3 +121,77 @@ def test_nvda_version_gate_accepts_only_verified_major_minor(tmp_path):
     assert runtime.nvda_version_compatible("2026.1") is False
     assert runtime.nvda_version_compatible("2027.1") is False
     assert runtime.nvda_version_compatible(None) is False
+
+
+def test_tolk_probe_runs_locally_in_active_console_session(tmp_path, monkeypatch):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
+    expected = TolkHealth("NVDA", True, False)
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(runtime, "active_console_session_id", lambda: 1)
+    monkeypatch.setattr(runtime, "current_process_session_id", lambda: 1)
+    monkeypatch.setattr(runtime, "_probe_tolk_local", lambda: expected)
+
+    assert runtime.probe_tolk() is expected
+
+
+def test_tolk_probe_delegates_to_active_console_session(tmp_path, monkeypatch):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    runtime = WindowsRuntime(paths)
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(runtime, "active_console_session_id", lambda: 1)
+    monkeypatch.setattr(runtime, "current_process_session_id", lambda: 0)
+    monkeypatch.setattr(runtime, "ensure_interactive_tasks", lambda: None)
+
+    def fake_run_task(name):
+        assert name == "D4Planner-Tolk-Probe"
+        request = __import__("json").loads(
+            (paths.state / "tolk-probe-request.json").read_text(encoding="utf-8")
+        )
+        atomic_write_json(
+            paths.state / "tolk-probe-result.json",
+            {
+                "requestId": request["requestId"],
+                "sessionId": 1,
+                "reader": "NVDA",
+                "speech": True,
+                "braille": False,
+                "error": None,
+            },
+        )
+
+    monkeypatch.setattr(runtime, "run_task", fake_run_task)
+
+    assert runtime.probe_tolk(timeout=0.5).ready is True
+
+
+def test_tolk_probe_rejects_result_from_wrong_session(tmp_path, monkeypatch):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    runtime = WindowsRuntime(paths)
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(runtime, "active_console_session_id", lambda: 1)
+    monkeypatch.setattr(runtime, "current_process_session_id", lambda: 0)
+    monkeypatch.setattr(runtime, "ensure_interactive_tasks", lambda: None)
+
+    def fake_run_task(_name):
+        request = __import__("json").loads(
+            (paths.state / "tolk-probe-request.json").read_text(encoding="utf-8")
+        )
+        atomic_write_json(
+            paths.state / "tolk-probe-result.json",
+            {
+                "requestId": request["requestId"],
+                "sessionId": 0,
+                "reader": "NVDA",
+                "speech": True,
+                "braille": False,
+                "error": None,
+            },
+        )
+
+    monkeypatch.setattr(runtime, "run_task", fake_run_task)
+
+    health = runtime.probe_tolk(timeout=0.5)
+    assert health.ready is False
+    assert health.error == "Tolk probe ran outside active console session: actual=0 expected=1"
