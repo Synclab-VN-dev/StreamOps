@@ -12,6 +12,7 @@ import sys
 import time
 from typing import Any, Iterator
 
+from .character.service import CharacterService
 from .runtime.model import RuntimeState
 from .runtime.pathing import UserPathManager, WindowsRegistryPathBackend
 from .runtime.store import (
@@ -585,6 +586,30 @@ def command_path(paths: RuntimePaths, action: str) -> int:
     return 0
 
 
+def command_character_equipment(paths: RuntimePaths, *, raw_json: bool) -> int:
+    equipment = CharacterService(paths.character_db).equipment()
+    if raw_json:
+        print(json.dumps({"equipment": equipment}, ensure_ascii=False, indent=2))
+        return 0
+    if not equipment:
+        print("No equipment has been observed yet.")
+        return 0
+    print("Current equipment")
+    print()
+    for item in equipment:
+        slot = str(item["slotFamily"]).replace("_", " ").title()
+        rarity = str(item.get("rarity") or "")
+        ancestral = "Ancestral " if item.get("ancestral") else ""
+        kind = f"{ancestral}{rarity} {item['itemType']}".strip()
+        print(f"{slot:<10} {item['name']}  {item['itemPower']}  {kind}")
+        for stat in item.get("baseStats") or []:
+            print(f"  base: {stat.get('raw')}")
+        for affix in item.get("affixes") or []:
+            print(f"  affix: {affix.get('raw')}")
+        print(f"  observed: {item['observedAt']}  confidence={item['confidence']}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="d4planner")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -613,6 +638,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = sub.add_parser("doctor")
     doctor.add_argument("--json", action="store_true")
+
+    character = sub.add_parser("character")
+    character_sub = character.add_subparsers(dest="character_command", required=True)
+    equipment = character_sub.add_parser("equipment")
+    equipment.add_argument("--json", action="store_true")
 
     path = sub.add_parser("path")
     path.add_argument("action", choices=("status", "restore"))
@@ -651,6 +681,8 @@ def main(argv: list[str] | None = None) -> int:
         return command_stop(paths, timeout=args.timeout, stop_nvda=args.stop_nvda)
     if args.command == "doctor":
         return command_doctor(paths, raw_json=args.json)
+    if args.command == "character" and args.character_command == "equipment":
+        return command_character_equipment(paths, raw_json=args.json)
     if args.command == "path":
         return command_path(paths, args.action)
     return 2

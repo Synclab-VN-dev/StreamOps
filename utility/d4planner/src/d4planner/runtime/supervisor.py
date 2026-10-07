@@ -10,6 +10,8 @@ from pathlib import Path
 import time
 from typing import Any, Protocol
 
+from ..character.equipment.projector import EquipmentProjector
+from ..character.repository import EquipmentRepository
 from .model import RuntimeState, RuntimeStatus, can_transition
 from .pathing import UserPathManager
 from .store import (
@@ -76,6 +78,7 @@ class Supervisor:
         )
         self._raw_offset = 0
         self._next_lease_refresh = 0.0
+        self.equipment_projector = EquipmentProjector(EquipmentRepository(paths.character_db))
 
     @staticmethod
     def _steam_priority_allows_launch(steam: object) -> bool:
@@ -433,6 +436,14 @@ class Supervisor:
                     self._persist_status()
                     continue
                 self.status.last_event_at = str(unified["timestamp"])
+                # Projection is downstream of the durable append. A parser/state
+                # bug must never break NVDA capture or lose the raw evidence.
+                try:
+                    self.equipment_projector.consume(unified)
+                except Exception as exc:
+                    self.status.last_error = (
+                        f"equipment projector failure: {type(exc).__name__}: {exc}"
+                    )
                 count += 1
         if count:
             self._persist_status()
