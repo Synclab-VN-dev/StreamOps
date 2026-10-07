@@ -92,7 +92,8 @@ class Supervisor:
             if remaining <= 0:
                 break
             time.sleep(min(self.tolk_retry_interval, remaining))
-            health = self._wait_for_tolk_nvda()
+            health = self.runtime.probe_tolk()
+            self.status.tolk = health
         return health
 
     def _persist_status(self) -> None:
