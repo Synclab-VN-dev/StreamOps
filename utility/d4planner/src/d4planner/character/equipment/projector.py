@@ -212,6 +212,14 @@ class EquipmentProjector:
         empty_slot_family = None
         incoming_slot = SLOTS.get(text)
 
+        if incoming_slot is not None:
+            self._diag(
+                "slot.enter",
+                line,
+                slot=incoming_slot,
+                previousSlot=self.context.slot,
+            )
+
         empty_decision = self._resolve_pending_empty(line, incoming_slot)
         if empty_decision and empty_decision.kind == ResolutionKind.CLEAR_SLOT:
             empty_slot_family = empty_decision.slot
