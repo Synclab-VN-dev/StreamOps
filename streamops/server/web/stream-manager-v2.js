@@ -2,7 +2,7 @@
   const ui = window.StreamOpsUI;
   const $ = (s) => document.querySelector(s);
   const STATES = new Set(['IDLE','STARTING','LIVE','RECONNECTING','STOPPING','FAILED']);
-  let destinations = [], obs = null, ws = null, reconnectTimer = null, expanded = null;
+  let destinations = [], obs = null, profiles = [], preflight = null, ws = null, reconnectTimer = null, expanded = null;
   const activity = [];
 
   const escapeHtml = (v='') => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -16,14 +16,13 @@
   };
 
   function sharedChecks() {
-    const process = obs?.process || {};
-    const socket = obs?.websocket || {};
-    return [
-      ['OBS process', obs?.state === 'READY' || process.running === true, obs?.state || (process.running?'READY':'NOT READY')],
-      ['WebSocket', socket.connected === true, socket.connected ? 'CONNECTED':'DISCONNECTED'],
-    ];
+    return (preflight?.checks || []).map(item => [
+      item.id,
+      item.status === 'PASS',
+      item.message || item.status,
+    ]);
   }
-  function sharedReady(){ const c=sharedChecks(); return c.length>0 && c.every(x=>x[1]); }
+  function sharedReady(){ return preflight?.status === 'PASS' && preflight?.profile_id === $('#preflight-profile').value; }
   function destinationReady(d){ return d.enabled !== false && !!d.server_url && ['IDLE','FAILED'].includes(state(d)); }
 
   function renderSession(){
@@ -31,16 +30,16 @@
     $('#obs-state').textContent=obs?.state || 'UNKNOWN';
     $('#obs-state').dataset.tone=obs?.state==='READY'?'ok':'bad';
     $('#obs-scene').textContent=obs?.scene?.name || obs?.active_scene || '--';
-    $('#obs-profile').textContent=obs?.profile?.name || obs?.active_profile || '--';
+    $('#obs-profile').textContent=profiles.find(p=>p.id===$('#preflight-profile').value)?.name || '--';
     $('#obs-canvas').textContent=obs?.canvas ? `${obs.canvas.width}×${obs.canvas.height}` : '--';
     $('#obs-destinations').textContent=`${destinations.length} destinations · ${live} live`;
   }
   function renderPreflight(){
-    const checks=sharedChecks(), passed=sharedReady();
-    $('#preflight-pill').textContent=passed ? `${checks.length}/${checks.length} PASSED` : `${checks.filter(x=>x[1]).length}/${checks.length} FAILED`;
-    $('#preflight-pill').dataset.tone=passed?'ok':'bad';
+    const checks=sharedChecks(), passed=sharedReady(), ran=!!preflight;
+    $('#preflight-pill').textContent=!ran ? 'NOT RUN' : (passed ? `${checks.length}/${checks.length} PASSED` : `${checks.filter(x=>x[1]).length}/${checks.length} FAILED`);
+    $('#preflight-pill').dataset.tone=!ran?'neutral':(passed?'ok':'bad');
     $('#preflight-checks').innerHTML=checks.map(([name,ok,value])=>`<div class="v2-check"><span>${escapeHtml(name)}</span><strong data-tone="${ok?'ok':'bad'}">${escapeHtml(value)}</strong></div>`).join('');
-    $('#preflight-error').hidden=passed;
+    $('#preflight-error').hidden=!ran || passed;
   }
   function renderDestinations(){
     const root=$('#destination-list-v2');
@@ -73,6 +72,22 @@
   async function loadObs(){
     try { obs=await ui.fetchJson('/api/v1/obs/process/status'); }
     catch(e){ obs={state:'UNAVAILABLE'}; addActivity('OBS status unavailable','', 'bad'); }
+  }
+  async function loadProfiles(){
+    const result=await ui.fetchJson('/api/v1/scene-profiles');
+    profiles=result.profiles||[];
+    const select=$('#preflight-profile');
+    select.replaceChildren(...profiles.map(p=>new Option(p.name,p.id)));
+    if(!profiles.length) select.add(new Option('No saved profiles',''));
+  }
+  async function runPreflight(){
+    const profileId=$('#preflight-profile').value;
+    if(!profileId){ preflight=null; render(); addActivity('Preflight blocked: no scene profile','', 'bad'); return; }
+    try{
+      preflight=await ui.fetchJson('/api/v1/live/preflight/shared',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile_id:profileId})});
+      render();
+      addActivity(preflight.status==='PASS'?'Preflight passed':'Preflight failed','',preflight.status==='PASS'?'ok':'bad');
+    }catch(e){ preflight=null; render(); addActivity(publicError(e),'Preflight','bad'); }
   }
   async function reconcile(){
     try {
@@ -129,7 +144,8 @@
   $('#editor-cancel').addEventListener('click',()=>{$('#destination-editor').hidden=true;$('#destination-credential').value='';});
   $('#editor-save').addEventListener('click',saveEditor);
   $('#editor-delete').addEventListener('click',removeEditor);
-  $('#run-preflight').addEventListener('click',async()=>{await loadObs();render();addActivity(sharedReady()?'Preflight passed':'Preflight failed','',sharedReady()?'ok':'bad');});
+  $('#run-preflight').addEventListener('click',runPreflight);
+  $('#preflight-profile').addEventListener('change',()=>{preflight=null;render();});
   $('#destination-list-v2').addEventListener('click',e=>{const button=e.target.closest('button[data-action]');if(!button)return;const card=button.closest('.v2-destination'),id=card?.dataset.id,d=destinations.find(x=>x.destination_id===id);if(button.dataset.action==='expand'){expanded=expanded===id?null:id;renderDestinations();}else if(button.dataset.action==='start'||button.dataset.action==='stop')command(id,button.dataset.action);else if(button.dataset.action==='edit')openEditor(d);else if(button.dataset.action==='stats')stats(id,card);});
-  Promise.all([loadObs(),reconcile()]).then(()=>{render();connect();});
+  Promise.all([loadObs(),loadProfiles(),reconcile()]).then(()=>{render();connect();}).catch(e=>{ $('#page-error').textContent=publicError(e); $('#page-error').hidden=false; });
 })();
