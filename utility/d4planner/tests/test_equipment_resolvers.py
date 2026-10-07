@@ -157,7 +157,7 @@ def test_empty_slot_resolver_fail_closed_for_different_slot_and_ring():
     assert ring.reason == "next_event_slot:ring"
 
 
-def test_empty_slot_resolver_allows_exactly_one_neutral_event():
+def test_empty_slot_resolver_allows_exactly_one_interstitial_event():
     context = EquipmentContext(pending_empty_slot="amulet")
 
     neutral = empty_slot_resolver_pipeline().resolve(
@@ -188,7 +188,7 @@ def test_empty_slot_resolver_allows_exactly_one_neutral_event():
     assert rebound.reason == "same_slot_rebound_after_one_interstitial"
 
 
-def test_empty_slot_resolver_second_neutral_and_semantic_evidence_cancel():
+def test_empty_slot_resolver_second_interstitial_and_semantic_evidence_cancel():
     context = EquipmentContext(
         pending_empty_slot="helm",
         pending_empty_interstitial_count=1,
@@ -196,7 +196,7 @@ def test_empty_slot_resolver_second_neutral_and_semantic_evidence_cancel():
     second_noise = empty_slot_resolver_pipeline().resolve(
         ResolverRequest(
             context=context,
-            line=_line("another tooltip sentence", 50),
+            line=_line("Another explanatory tooltip sentence that is long enough to end here.", 50),
             incoming_slot=None,
         )
     )
@@ -216,4 +216,4 @@ def test_empty_slot_resolver_second_neutral_and_semantic_evidence_cancel():
         assert semantic is not None
         assert semantic.kind == ResolutionKind.NO_MUTATION
         assert semantic.keep_empty_pending is False
-        assert semantic.reason == "semantic_event_before_same_slot_rebound"
+        assert semantic.reason == "semantic_or_unknown_event_before_same_slot_rebound"
