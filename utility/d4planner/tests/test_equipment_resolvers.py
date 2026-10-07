@@ -155,3 +155,65 @@ def test_empty_slot_resolver_fail_closed_for_different_slot_and_ring():
     assert ring is not None
     assert ring.kind == ResolutionKind.NO_MUTATION
     assert ring.reason == "next_event_slot:ring"
+
+
+def test_empty_slot_resolver_allows_exactly_one_neutral_event():
+    context = EquipmentContext(pending_empty_slot="amulet")
+
+    neutral = empty_slot_resolver_pipeline().resolve(
+        ResolverRequest(
+            context=context,
+            line=_line(
+                "Incapacitated enemies cannot perform actions due to Daze, Fear, Frozen, Knockdown or Stun.",
+                40,
+            ),
+            incoming_slot=None,
+        )
+    )
+    assert neutral is not None
+    assert neutral.kind == ResolutionKind.NO_MUTATION
+    assert neutral.keep_empty_pending is True
+    assert neutral.reason == "one_neutral_event_allowed"
+
+    context.keep_empty_pending()
+    rebound = empty_slot_resolver_pipeline().resolve(
+        ResolverRequest(
+            context=context,
+            line=_line("Neck", 41),
+            incoming_slot="amulet",
+        )
+    )
+    assert rebound is not None
+    assert rebound.kind == ResolutionKind.CLEAR_SLOT
+    assert rebound.reason == "same_slot_rebound_after_one_neutral"
+
+
+def test_empty_slot_resolver_second_neutral_and_semantic_evidence_cancel():
+    context = EquipmentContext(
+        pending_empty_slot="helm",
+        pending_empty_neutral_count=1,
+    )
+    second_noise = empty_slot_resolver_pipeline().resolve(
+        ResolverRequest(
+            context=context,
+            line=_line("another tooltip sentence", 50),
+            incoming_slot=None,
+        )
+    )
+    assert second_noise is not None
+    assert second_noise.kind == ResolutionKind.NO_MUTATION
+    assert second_noise.keep_empty_pending is False
+    assert second_noise.reason == "second_neutral_event"
+
+    for text in ("EQUIPPED", "Equip", "Unequip", "Rare Helm", "850 Item Power"):
+        semantic = empty_slot_resolver_pipeline().resolve(
+            ResolverRequest(
+                context=EquipmentContext(pending_empty_slot="helm"),
+                line=_line(text, 51),
+                incoming_slot=None,
+            )
+        )
+        assert semantic is not None
+        assert semantic.kind == ResolutionKind.NO_MUTATION
+        assert semantic.keep_empty_pending is False
+        assert semantic.reason == "semantic_event_before_same_slot_rebound"
