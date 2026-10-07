@@ -142,28 +142,6 @@ def wait_for_state(client: TestClient, destination_id: str, state: str) -> dict:
     raise AssertionError(f"destination {destination_id} did not reach {state}")
 
 
-def receive_until(websocket, predicate, *, max_messages: int = 20) -> dict:
-    """Ignore unrelated/interleaved service events and return the expected WS message."""
-    seen: list[dict] = []
-    for _ in range(max_messages):
-        message = websocket.receive_json()
-        seen.append(message)
-        if predicate(message):
-            return message
-    raise AssertionError(f"expected websocket message not received; seen={seen!r}")
-
-
-def receive_state(websocket, destination_id: str, state: str) -> dict:
-    return receive_until(
-        websocket,
-        lambda message: (
-            message.get("type") == "destination.state_changed"
-            and message.get("data", {}).get("destination_id") == destination_id
-            and message.get("data", {}).get("state") == state
-        ),
-    )
-
-
 def test_core_crud_identity_and_secret_redaction(tmp_path):
     service, adapter = make(tmp_path)
     created = service.create_destination(payload())
@@ -289,14 +267,31 @@ def test_http_ws_shared_core_snapshot_commands_events_and_state_parity(tmp_path,
             assert snapshot["type"] == "multistream.snapshot"
             assert snapshot["data"] == client.get("/api/v1/multistream/destinations").json()
 
+            # Pause the background monitor while asserting command/event ordering.
+            # Runtime polling has its own unit coverage; mixing it into this parity test
+            # creates a race between FakeAdapter state changes and WS delivery.
+            service._stop_event.set()
+            if service._monitor_thread is not None:
+                service._monitor_thread.join(timeout=1)
+
             started = client.post("/api/v1/multistream/destinations/destination-a/start")
             assert started.json()["state"] == "STARTING"
-            start_event = receive_state(websocket, "destination-a", "STARTING")
-            assert start_event["data"]["state"] == "STARTING"
+            start_event = websocket.receive_json()
+            assert (start_event["type"], start_event["data"]["state"]) == (
+                "destination.state_changed",
+                "STARTING",
+            )
+
             adapter.set_state("1", "LIVE")
-            live_event = receive_state(websocket, "destination-a", "LIVE")
-            assert live_event["data"]["state"] == "LIVE"
-            assert wait_for_state(client, "destination-a", "LIVE")["state"] == "LIVE"
+            service.refresh()
+            live_event = websocket.receive_json()
+            assert (live_event["type"], live_event["data"]["state"]) == (
+                "destination.state_changed",
+                "LIVE",
+            )
+            assert client.get(
+                "/api/v1/multistream/destinations/destination-a/status"
+            ).json()["state"] == "LIVE"
 
             websocket.send_json(
                 {
@@ -306,20 +301,23 @@ def test_http_ws_shared_core_snapshot_commands_events_and_state_parity(tmp_path,
                     "payload": {"destination_id": "destination-a"},
                 }
             )
-            response = receive_until(
-                websocket,
-                lambda message: (
-                    message.get("type") == "response"
-                    and message.get("request_id") == "stop-1"
-                ),
+            messages = [websocket.receive_json(), websocket.receive_json()]
+            response = next(message for message in messages if message.get("type") == "response")
+            event = next(
+                message for message in messages
+                if message.get("type") == "destination.state_changed"
             )
+            assert response["request_id"] == "stop-1"
             assert response["ok"] is True and response["data"]["state"] == "STOPPING"
-            event = receive_state(websocket, "destination-a", "STOPPING")
             assert event["data"]["state"] == "STOPPING"
+
             adapter.set_state("1", "IDLE")
-            idle_event = receive_state(websocket, "destination-a", "IDLE")
+            service.refresh()
+            idle_event = websocket.receive_json()
             assert idle_event["data"]["state"] == "IDLE"
-            assert wait_for_state(client, "destination-a", "IDLE")["state"] == "IDLE"
+            assert client.get(
+                "/api/v1/multistream/destinations/destination-a/status"
+            ).json()["state"] == "IDLE"
 
         adapter.set_state("1", "LIVE")
         service.refresh()
