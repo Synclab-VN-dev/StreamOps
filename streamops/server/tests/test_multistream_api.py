@@ -267,13 +267,6 @@ def test_http_ws_shared_core_snapshot_commands_events_and_state_parity(tmp_path,
             assert snapshot["type"] == "multistream.snapshot"
             assert snapshot["data"] == client.get("/api/v1/multistream/destinations").json()
 
-            # Pause the background monitor while asserting command/event ordering.
-            # Runtime polling has its own unit coverage; mixing it into this parity test
-            # creates a race between FakeAdapter state changes and WS delivery.
-            service._stop_event.set()
-            if service._monitor_thread is not None:
-                service._monitor_thread.join(timeout=1)
-
             started = client.post("/api/v1/multistream/destinations/destination-a/start")
             assert started.json()["state"] == "STARTING"
             start_event = websocket.receive_json()
@@ -283,15 +276,7 @@ def test_http_ws_shared_core_snapshot_commands_events_and_state_parity(tmp_path,
             )
 
             adapter.set_state("1", "LIVE")
-            service.refresh()
-            live_event = websocket.receive_json()
-            assert (live_event["type"], live_event["data"]["state"]) == (
-                "destination.state_changed",
-                "LIVE",
-            )
-            assert client.get(
-                "/api/v1/multistream/destinations/destination-a/status"
-            ).json()["state"] == "LIVE"
+            assert wait_for_state(client, "destination-a", "LIVE")["state"] == "LIVE"
 
             websocket.send_json(
                 {
@@ -312,12 +297,7 @@ def test_http_ws_shared_core_snapshot_commands_events_and_state_parity(tmp_path,
             assert event["data"]["state"] == "STOPPING"
 
             adapter.set_state("1", "IDLE")
-            service.refresh()
-            idle_event = websocket.receive_json()
-            assert idle_event["data"]["state"] == "IDLE"
-            assert client.get(
-                "/api/v1/multistream/destinations/destination-a/status"
-            ).json()["state"] == "IDLE"
+            assert wait_for_state(client, "destination-a", "IDLE")["state"] == "IDLE"
 
         adapter.set_state("1", "LIVE")
         service.refresh()
