@@ -309,12 +309,12 @@ def test_real_a_one_neutral_event_then_same_slot_clears(
         if record["event"] == "empty.pending_keep"
     )
     assert keep["slot"] == slot_family
-    assert keep["neutralCount"] == 1
+    assert keep["interstitialCount"] == 1
     confirmed = next(
         record for record in diagnostics.records
         if record["event"] == "empty.confirmed"
     )
-    assert confirmed["reason"] == "same_slot_rebound_after_one_neutral"
+    assert confirmed["reason"] == "same_slot_rebound_after_one_interstitial"
 
 
 def test_two_neutral_events_cancel_empty_transition(tmp_path):
