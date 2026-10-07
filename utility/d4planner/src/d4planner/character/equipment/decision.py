@@ -27,5 +27,6 @@ class Resolution:
     source_seq_start: int | None = None
     source_seq_end: int | None = None
     start_empty_pending: bool = False
+    keep_empty_pending: bool = False
     parse_error_type: str | None = None
     parse_error: str | None = None
