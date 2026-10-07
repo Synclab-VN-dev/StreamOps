@@ -94,7 +94,8 @@ class LiveService:
             self.secret_store.delete(destination_id)
             return {"credential_configured": False}
 
-    def preflight(self, profile_id: str, destination_id: str) -> dict[str, Any]:
+    def shared_preflight(self, profile_id: str) -> dict[str, Any]:
+        """OBS/profile readiness shared by every streaming destination."""
         checks: list[dict[str, str]] = []
 
         runtime = self.manager.status()
@@ -117,6 +118,35 @@ class LiveService:
             )
         except Exception:
             checks.append(_check("profile", False, "Selected scene profile does not exist."))
+
+        if obs_ready and profile is not None:
+            try:
+                verify = self.scene_service.verify_profile(profile_id, runtime=True)
+                passed = getattr(verify, "status", None) == "PASS"
+                checks.append(
+                    _check(
+                        "profile_verify",
+                        passed,
+                        "Runtime profile verification passed."
+                        if passed
+                        else "Runtime profile verification failed.",
+                    )
+                )
+            except Exception:
+                checks.append(
+                    _check("profile_verify", False, "Runtime profile verification failed.")
+                )
+
+        return {
+            "status": "PASS" if all(item["status"] == "PASS" for item in checks) else "FAIL",
+            "profile_id": profile_id,
+            "checks": checks,
+        }
+
+    def preflight(self, profile_id: str, destination_id: str) -> dict[str, Any]:
+        """Legacy single-output preflight, composed from shared readiness plus destination checks."""
+        shared = self.shared_preflight(profile_id)
+        checks = list(shared["checks"])
 
         destination = None
         try:
@@ -166,24 +196,6 @@ class LiveService:
                 f"Output engine supports up to {max_destinations} destination(s).",
             )
         )
-
-        if obs_ready and profile is not None:
-            try:
-                verify = self.scene_service.verify_profile(profile_id, runtime=True)
-                passed = getattr(verify, "status", None) == "PASS"
-                checks.append(
-                    _check(
-                        "profile_verify",
-                        passed,
-                        "Runtime profile verification passed."
-                        if passed
-                        else "Runtime profile verification failed.",
-                    )
-                )
-            except Exception:
-                checks.append(
-                    _check("profile_verify", False, "Runtime profile verification failed.")
-                )
 
         return {
             "status": "PASS" if all(item["status"] == "PASS" for item in checks) else "FAIL",
