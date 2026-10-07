@@ -23,7 +23,7 @@ class EquipmentContext:
     lookback: list[EquipmentLine] = field(default_factory=list)
     active: list[EquipmentLine] | None = None
     pending_empty_slot: str | None = None
-    pending_empty_neutral_count: int = 0
+    pending_empty_interstitial_count: int = 0
 
     def reset_for_slot(self, slot: str) -> None:
         self.slot = slot
@@ -38,11 +38,11 @@ class EquipmentContext:
 
     def start_empty_pending(self, slot: str) -> None:
         self.pending_empty_slot = slot
-        self.pending_empty_neutral_count = 0
+        self.pending_empty_interstitial_count = 0
 
     def keep_empty_pending(self) -> None:
-        self.pending_empty_neutral_count += 1
+        self.pending_empty_interstitial_count += 1
 
     def clear_empty_pending(self) -> None:
         self.pending_empty_slot = None
-        self.pending_empty_neutral_count = 0
+        self.pending_empty_interstitial_count = 0
