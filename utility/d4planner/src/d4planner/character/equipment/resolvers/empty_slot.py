@@ -20,11 +20,20 @@ KNOWN_ITEM_TYPES = {
 }
 
 SEMANTIC_TOKENS = {"EQUIPPED", "Equip", "Unequip"}
+KNOWN_INTERSTITIAL_TOKENS = {"SKILLS UNAVAILABLE"}
 
 
-def _is_neutral_text(text: str) -> bool:
-    """Return True only for text with no known resolver structure."""
+def _is_allowed_interstitial(text: str) -> bool:
+    """Allow only Real-A-shaped non-structural lines between action and slot.
 
+    Fail closed on arbitrary unknown text. Real-A has shown either the exact
+    SKILLS UNAVAILABLE token or a long explanatory sentence ending in sentence
+    punctuation. Known UI noise, item structure, and action markers are never
+    interstitial evidence.
+    """
+
+    if text in KNOWN_INTERSTITIAL_TOKENS:
+        return True
     if text in SEMANTIC_TOKENS or text in NOISE:
         return False
     if POWER_RE.match(text):
@@ -32,16 +41,16 @@ def _is_neutral_text(text: str) -> bool:
     parsed_type = parse_type(text)
     if parsed_type and parsed_type[2] in KNOWN_ITEM_TYPES:
         return False
-    return True
+    return len(text) >= 40 and text.endswith((".", "!", "?"))
 
 
 class EmptySlotResolver(BaseResolver):
     """Resolve equipped -> empty transitions from bounded Real-A evidence.
 
     Strong current-item evidence opens a pending transition. The slot may
-    rebound immediately or after exactly one neutral accessibility line.
-    Anything structural, another slot, a second neutral line, or Ring fails
-    closed without clearing current state.
+    rebound immediately or after exactly one approved interstitial line.
+    Anything structural, another slot, a second interstitial line, arbitrary
+    unknown text, or Ring fails closed without clearing current state.
     """
 
     name = "empty_slot"
@@ -60,7 +69,7 @@ class EmptySlotResolver(BaseResolver):
             reason = (
                 "same_slot_immediate_rebound"
                 if request.context.pending_empty_neutral_count == 0
-                else "same_slot_rebound_after_one_neutral"
+                else "same_slot_rebound_after_one_interstitial"
             )
             return Resolution(
                 resolver=self.name,
@@ -84,12 +93,12 @@ class EmptySlotResolver(BaseResolver):
         if (
             pending in SINGLE_INSTANCE_SLOTS
             and request.context.pending_empty_neutral_count == 0
-            and _is_neutral_text(request.line.text)
+            and _is_allowed_interstitial(request.line.text)
         ):
             return Resolution(
                 resolver=self.name,
                 kind=ResolutionKind.NO_MUTATION,
-                reason="one_neutral_event_allowed",
+                reason="one_interstitial_event_allowed",
                 slot=pending,
                 source_seq_start=request.line.seq,
                 source_seq_end=request.line.seq,
@@ -97,10 +106,10 @@ class EmptySlotResolver(BaseResolver):
             )
 
         reason = (
-            "second_neutral_event"
+            "second_interstitial_event"
             if request.context.pending_empty_neutral_count > 0
-            and _is_neutral_text(request.line.text)
-            else "semantic_event_before_same_slot_rebound"
+            and _is_allowed_interstitial(request.line.text)
+            else "semantic_or_unknown_event_before_same_slot_rebound"
         )
         return Resolution(
             resolver=self.name,
