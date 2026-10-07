@@ -78,6 +78,14 @@ def delete_credential(destination_id: str, request: Request) -> dict[str, bool]:
     return _refresh(request, _service(request).delete_credential(destination_id))
 
 
+@router.post("/live/preflight/shared")
+def shared_preflight(request: Request, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    if set(payload) != {"profile_id"} or not isinstance(payload.get("profile_id"), str) or not payload["profile_id"].strip():
+        from ..errors import StreamingError
+        raise StreamingError("invalid_request", "Body must contain only non-empty string field profile_id.", 422)
+    return _service(request).shared_preflight(payload["profile_id"])
+
+
 @router.post("/live/preflight")
 def preflight(request: Request, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     profile_id, destination_id = _live_args(payload)

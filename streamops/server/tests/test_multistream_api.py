@@ -184,6 +184,30 @@ def test_vendor_ack_is_starting_until_runtime_reports_live(tmp_path):
     assert service.status("destination-a")["state"] == "IDLE"
 
 
+def test_stale_vendor_snapshot_does_not_roll_back_transitional_state(tmp_path):
+    service, adapter = make(tmp_path)
+    service.create_destination(payload())
+    events: list[dict] = []
+    service.subscribe(events.append)
+
+    # Real Vendor commands are asynchronous: the first read can still expose the
+    # state from before the accepted command.
+    adapter.start = lambda target_id: {"status": "start_requested", "id": target_id}
+    assert service.start_destination("destination-a")["state"] == "STARTING"
+    assert service.status("destination-a")["state"] == "STARTING"
+
+    adapter.set_state("1", "LIVE")
+    assert service.status("destination-a")["state"] == "LIVE"
+    adapter.stop = lambda target_id: {"status": "stop_requested", "id": target_id}
+    assert service.stop_destination("destination-a")["state"] == "STOPPING"
+    assert service.status("destination-a")["state"] == "STOPPING"
+
+    adapter.set_state("1", "IDLE")
+    assert service.status("destination-a")["state"] == "IDLE"
+    states = [event["data"]["state"] for event in events if event["type"] == "destination.state_changed"]
+    assert states == ["STARTING", "LIVE", "STOPPING", "IDLE"]
+
+
 @pytest.mark.parametrize("state", ["IDLE", "STARTING", "LIVE", "RECONNECTING", "STOPPING", "FAILED"])
 def test_runtime_state_normalization_uses_vendor_machine_state(tmp_path, state):
     service, adapter = make(tmp_path)
@@ -274,13 +298,14 @@ def test_http_ws_shared_core_snapshot_commands_events_and_state_parity(tmp_path,
                 "destination.state_changed",
                 "STARTING",
             )
+
             adapter.set_state("1", "LIVE")
+            assert wait_for_state(client, "destination-a", "LIVE")["state"] == "LIVE"
             live_event = websocket.receive_json()
             assert (live_event["type"], live_event["data"]["state"]) == (
                 "destination.state_changed",
                 "LIVE",
             )
-            assert wait_for_state(client, "destination-a", "LIVE")["state"] == "LIVE"
 
             websocket.send_json(
                 {
@@ -292,13 +317,21 @@ def test_http_ws_shared_core_snapshot_commands_events_and_state_parity(tmp_path,
             )
             messages = [websocket.receive_json(), websocket.receive_json()]
             response = next(message for message in messages if message.get("type") == "response")
-            event = next(message for message in messages if message.get("type") == "destination.state_changed")
+            event = next(
+                message for message in messages
+                if message.get("type") == "destination.state_changed"
+            )
+            assert response["request_id"] == "stop-1"
             assert response["ok"] is True and response["data"]["state"] == "STOPPING"
             assert event["data"]["state"] == "STOPPING"
+
             adapter.set_state("1", "IDLE")
-            idle_event = websocket.receive_json()
-            assert idle_event["data"]["state"] == "IDLE"
             assert wait_for_state(client, "destination-a", "IDLE")["state"] == "IDLE"
+            idle_event = websocket.receive_json()
+            assert (idle_event["type"], idle_event["data"]["state"]) == (
+                "destination.state_changed",
+                "IDLE",
+            )
 
         adapter.set_state("1", "LIVE")
         service.refresh()

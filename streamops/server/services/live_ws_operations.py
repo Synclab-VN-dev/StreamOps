@@ -21,6 +21,7 @@ class LiveWsOperations:
             "destinations.set_credential": self._destinations_set_credential,
             "destinations.delete_credential": self._destinations_delete_credential,
             "live.preflight": self._live_preflight,
+            "live.preflight.shared": self._live_preflight_shared,
             "live.start": self._live_start,
             "live.status": self._live_status,
             "live.source.visibility": self._live_source_visibility,
@@ -105,6 +106,10 @@ class LiveWsOperations:
     def _live_preflight(self, payload: dict[str, Any]) -> Any:
         profile_id, destination_id = self._live_args(payload)
         return self.service.preflight(profile_id, destination_id)
+
+    def _live_preflight_shared(self, payload: dict[str, Any]) -> Any:
+        profile_id = self._identifier(payload, "profile_id")
+        return self.service.shared_preflight(profile_id)
 
     def _live_start(self, payload: dict[str, Any]) -> Any:
         profile_id, destination_id = self._live_args(payload)

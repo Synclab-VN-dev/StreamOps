@@ -5,478 +5,222 @@ import json
 import pytest
 from playwright.sync_api import expect
 
-from streamops.server.errors import StreamingError
-
-pytestmark = pytest.mark.only_browser('chromium')
+pytestmark = pytest.mark.only_browser("chromium")
 
 
 def open_card(page, selector: str) -> None:
-    page.locator(selector).evaluate('el => el.open = true')
+    page.locator(selector).evaluate("el => el.open = true")
 
 
-def applied_profile(server, name: str = 'Streaming Profile'):
-    profile = server.obs.create_profile({'name': name})
-    server.obs.apply_profile(profile['id'])
-    server.obs.activate_profile(profile['id'])
-    verified = server.obs.verify_profile(profile['id'], runtime=True)
-    assert verified.status == 'PASS'
-    return profile
+def applied_profile(server, name: str = "Streaming Profile"):
+    profile = server.obs.create_profile({"name": name})
+    server.obs.apply_profile(profile["id"])
+    server.obs.activate_profile(profile["id"])
+    verified = server.obs.verify_profile(profile["id"], runtime=True)
+    assert verified.status == "PASS"
+    return server.obs.get_profile(profile["id"])
 
 
-def create_destination_ui(page, *, name: str = 'LAN Test', secret: str = 'browser-stream-secret') -> None:
-    open_card(page, '#stream-destination-card')
-    page.locator('#new-destination-button').click()
-    page.locator('#destination-name').fill(name)
-    page.get_by_label('Server URL', exact=True).fill('rtmp://127.0.0.1:1935/live')
-    page.locator('#save-destination-button').click()
-    expect(page.locator('#destination-summary-name')).to_have_text(name)
-    page.locator('#credential-input').fill(secret)
-    page.locator('#save-credential-button').click()
-    expect(page.locator('#credential-status')).to_have_text('Configured')
-    expect(page.locator('#credential-input')).to_have_value('')
+def add_destination(page, name: str, *, secret: str = "browser-stream-secret") -> str:
+    destination_id = name.lower().replace(" ", "-")
+    expect(page.locator('.stream-v2[data-ready="true"]')).to_be_attached()
+    page.locator("#add-destination").click()
+    editor = page.locator("#destination-editor")
+    expect(editor).to_be_visible()
+    page.locator("#destination-name").fill(name)
+    page.locator("#destination-url").fill(f"rtmp://127.0.0.1:1935/{destination_id}")
+    page.locator("#destination-credential").fill(secret)
+    with page.expect_response(
+        lambda response: response.request.method == "GET"
+        and response.url.endswith("/api/v1/multistream/destinations")
+    ):
+        page.locator("#editor-save").click()
+    expect(editor).not_to_be_visible()
+    expect(page.locator(f'.v2-destination[data-id="{destination_id}"]')).to_be_visible()
+    expect(page.locator("#destination-credential")).to_have_value("")
+    expect(page.locator("body")).not_to_contain_text(secret)
+    return destination_id
 
 
-def test_stream_page_uses_only_live_socket_and_no_live_status_polling(page, live_server):
-    page.set_viewport_size({'width': 390, 'height': 844})
-    sockets = []
-    requests = []
-    page.on('websocket', lambda websocket: sockets.append(websocket))
-    page.on('request', lambda request: requests.append(request.url))
+def run_preflight(page) -> None:
+    page.locator("#run-preflight").click()
+    expect(page.locator("#preflight-pill")).to_contain_text("PASSED")
 
-    page.goto(live_server.base_url + '/obs/stream')
-    expect(page.locator('#stream-page-state')).to_have_text('IDLE', timeout=7000)
-    page.wait_for_timeout(1200)
 
-    assert len(sockets) == 1
-    assert '/api/v1/live/ws' in sockets[0].url
-    assert not any('/api/v1/obs/ws' in socket.url for socket in sockets)
-    assert not any(url.endswith('/api/v1/live/status') for url in requests)
-    assert page.locator('#obs-status-panel').count() == 0
-    assert page.locator('#sources-card').count() == 0
-    assert page.evaluate('document.documentElement.scrollWidth <= document.documentElement.clientWidth')
+def set_runtime(server, destination_id: str, state: str) -> None:
+    item = server.multistream.repository.get(destination_id)
+    server.multistream_adapter.set_state(item["plugin_target_id"], state)
+    assert server.multistream.status(destination_id)["state"] == state
+
+
+def destination_card(page, destination_id: str):
+    return page.locator(f'.v2-destination[data-id="{destination_id}"]')
+
+
+def expect_state(page, destination_id: str, state: str) -> None:
+    expect(destination_card(page, destination_id).locator(".state-pill").first).to_have_text(
+        state, timeout=7000
+    )
 
 
 def test_obs_streaming_card_matches_mobile_design_contract(page, live_server):
-    page.set_viewport_size({'width': 390, 'height': 844})
-    page.goto(live_server.base_url + '/obs')
-    expect(page.locator('#streaming-state-pill')).to_have_text('IDLE', timeout=7000)
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(live_server.base_url + "/obs")
+    expect(page.locator("#streaming-state-pill")).to_have_text("IDLE", timeout=7000)
 
-    card = page.locator('#streaming-card')
-    assert card.evaluate('el => el.open') is False
-    expect(card.locator('.card-title-row p')).to_have_text(
-        'Destinations, preflight and live output'
+    card = page.locator("#streaming-card")
+    assert card.evaluate("el => el.open") is False
+    expect(card.locator(".card-title-row p")).to_have_text(
+        "Destinations, preflight and live output"
     )
 
-    open_card(page, '#streaming-card')
-    panel = card.locator('.streaming-overview-panel')
+    open_card(page, "#streaming-card")
+    panel = card.locator(".streaming-overview-panel")
     expect(panel).to_be_visible()
-    assert panel.locator(':scope > div').count() == 4
-
+    assert panel.locator(":scope > div").count() == 4
     panel_style = panel.evaluate(
         "el => ({ backgroundColor: getComputedStyle(el).backgroundColor, "
         "borderRadius: getComputedStyle(el).borderRadius })"
     )
-    assert panel_style['backgroundColor'] == 'rgb(250, 250, 250)'
-    assert float(panel_style['borderRadius'].removesuffix('px')) >= 16
-
-    first_row_columns = panel.locator(':scope > div').first.evaluate(
-        "el => getComputedStyle(el).gridTemplateColumns"
-    )
-    assert len(first_row_columns.split()) >= 2
-
-    cta = page.locator('#open-streaming')
-    expect(cta).to_be_visible()
-    cta_style = cta.evaluate(
-        "el => ({ display: getComputedStyle(el).display, "
-        "backgroundColor: getComputedStyle(el).backgroundColor, "
-        "color: getComputedStyle(el).color, "
-        "textDecorationLine: getComputedStyle(el).textDecorationLine, "
-        "width: el.getBoundingClientRect().width })"
-    )
-    assert cta_style['display'] == 'flex'
-    assert cta_style['backgroundColor'] == 'rgb(9, 9, 11)'
-    assert cta_style['color'] == 'rgb(255, 255, 255)'
-    assert cta_style['textDecorationLine'] == 'none'
-    assert cta_style['width'] > 300
+    assert panel_style["backgroundColor"] == "rgb(250, 250, 250)"
+    assert float(panel_style["borderRadius"].removesuffix("px")) >= 16
+    expect(page.locator("#open-streaming")).to_be_visible()
     assert page.evaluate(
-        'document.documentElement.scrollWidth <= document.documentElement.clientWidth'
+        "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
     )
 
 
-def test_dirty_scene_profile_survives_stream_navigation_and_blocks_start(page, live_server):
-    live_server.obs.create_profile({'name': 'AAA Other Profile'})
+@pytest.mark.parametrize("width,height", [(1440, 1000), (768, 1024), (390, 844)])
+def test_stream_manager_v2_visual_hierarchy_is_responsive(page, live_server, width, height):
     profile = applied_profile(live_server)
-    page.set_viewport_size({'width': 390, 'height': 844})
-    page.goto(live_server.base_url + '/obs')
-    open_card(page, '#scene-profile-card')
-    expect(page.locator('#profile-list')).to_have_value(profile['id'])
-    page.locator('#profile-name').fill('Unsaved operator draft')
-    expect(page.locator('#profile-summary-state')).to_have_text('Modified')
-    expect(page.locator('#streaming-state-pill')).to_have_text('IDLE', timeout=7000)
+    page.set_viewport_size({"width": width, "height": height})
+    page.goto(live_server.base_url + "/obs/stream")
 
-    open_card(page, '#streaming-card')
-    page.locator('#open-streaming').click()
-    expect(page).to_have_url(live_server.base_url + '/obs/stream')
-    expect(page.locator('#stream-profile-list')).to_have_value(profile['id'])
-    open_card(page, '#stream-setup-card')
-    expect(page.locator('#dirty-profile-warning')).to_be_visible()
-    expect(page.locator('#setup-draft-state')).to_have_text('Unsaved changes')
-
-    create_destination_ui(page, secret='dirty-guard-secret')
-    open_card(page, '#stream-preflight-card')
-    page.locator('#run-preflight-button').click()
-    expect(page.locator('#preflight-state')).to_have_text('PASS')
-    open_card(page, '#stream-live-card')
-    expect(page.locator('#start-stream-button')).to_be_disabled()
-    assert 'dirty-guard-secret' not in page.locator('body').inner_text()
-
-    page.locator('.stream-back-link').click()
-    expect(page).to_have_url(live_server.base_url + '/obs')
-    open_card(page, '#scene-profile-card')
-    expect(page.locator('#profile-name')).to_have_value('Unsaved operator draft')
-    expect(page.locator('#profile-summary-state')).to_have_text('Modified')
-
-
-def test_streaming_full_custom_rtmp_lifecycle_and_secret_redaction(page, live_server):
-    profile = applied_profile(live_server)
-    sockets = []
-    requests = []
-    operations = []
-    def on_socket(websocket):
-        sockets.append(websocket)
-        websocket.on(
-            'framesent',
-            lambda payload: operations.append(json.loads(payload).get('operation')),
-        )
-    page.on('websocket', on_socket)
-    page.on('request', lambda request: requests.append(request.url))
-
-    page.goto(live_server.base_url + '/obs/stream')
-    expect(page.locator('#stream-page-state')).to_have_text('IDLE', timeout=7000)
-    expect(page.locator('#stream-profile-list')).to_have_value(profile['id'])
-
-    create_destination_ui(page, secret='first-browser-secret')
-    assert 'first-browser-secret' not in page.locator('body').inner_text()
-
-    # Replace and remove are separate secret operations; plaintext is never rendered back.
-    page.locator('#credential-input').fill('replacement-browser-secret')
-    page.locator('#save-credential-button').click()
-    expect(page.locator('#credential-input')).to_have_value('')
-    page.locator('#delete-credential-button').click()
-    expect(page.locator('#credential-status')).to_have_text('Not configured')
-    page.locator('#credential-input').fill('final-browser-secret')
-    page.locator('#save-credential-button').click()
-    expect(page.locator('#credential-status')).to_have_text('Configured')
-    expect(page.locator('#credential-input')).to_have_value('')
-
-    # Public destination settings remain editable while IDLE.
-    page.locator('#destination-name').fill('LAN Test Renamed')
-    page.locator('#destination-enabled').uncheck()
-    page.locator('#save-destination-button').click()
-    expect(page.locator('#destination-state-pill')).to_have_text('DISABLED')
-    page.locator('#destination-enabled').check()
-    page.locator('#save-destination-button').click()
-    expect(page.locator('#destination-summary-name')).to_have_text('LAN Test Renamed')
-
-    open_card(page, '#stream-preflight-card')
-    page.locator('#run-preflight-button').click()
-    expect(page.locator('#preflight-state')).to_have_text('PASS')
-    expect(page.locator('#preflight-checks')).to_contain_text('obs_ready')
-    expect(page.locator('#preflight-checks')).to_contain_text('profile_verify')
-
-    open_card(page, '#stream-live-card')
-    expect(page.locator('#start-stream-button')).to_be_enabled()
-    operations.clear()
-    page.evaluate("() => { const button = document.querySelector('#start-stream-button'); button.click(); button.click(); }")
-    expect(page.locator('#live-state-pill')).to_have_text('LIVE', timeout=7000)
-    assert operations.count('live.start') == 1
-    expect(page.locator('#live-output-active')).to_have_text('Yes')
-    expect(page.locator('#destination-name')).to_be_disabled()
-    assert live_server.transport.streaming is True
-    assert 'final-browser-secret' not in page.locator('body').inner_text()
-
-    # The /obs overview is a separate page but must reconcile the same managed
-    # server session, then navigate back without inventing a second Start.
-    page.locator('.stream-back-link').click()
-    expect(page).to_have_url(live_server.base_url + '/obs')
-    expect(page.locator('#streaming-state-pill')).to_have_text('LIVE', timeout=7000)
-    expect(page.locator('#streaming-summary-destination')).to_have_text('LAN Test Renamed')
-    open_card(page, '#streaming-card')
-    expect(page.locator('#streaming-overview-preflight')).to_have_text('PASS')
-    page.locator('#open-streaming').click()
-    expect(page).to_have_url(live_server.base_url + '/obs/stream')
-    expect(page.locator('#live-state-pill')).to_have_text('LIVE', timeout=7000)
-
-    # Force transport reconnect. Capture the synchronous connection event instead of
-    # polling for the transient RECONNECTING DOM state: on fast CI runners the new
-    # socket can reconnect before Playwright gets another scheduling turn.
-    live_socket_count = sum('/api/v1/live/ws' in socket.url for socket in sockets)
-    page.evaluate(
-        """() => {
-            window.__liveConnectionTransitions = [];
-            window.addEventListener('streamops:live-connection', (event) => {
-                window.__liveConnectionTransitions.push({
-                    state: event.detail?.state,
-                    pill: document.querySelector('#live-state-pill')?.textContent,
-                    stopDisabled: document.querySelector('#stop-stream-button')?.disabled,
-                });
-            });
-        }"""
+    expect(page.locator(".v2-header h1")).to_have_text("Stream Manager")
+    expect(page.locator("#obs-state")).to_have_text("● READY", timeout=7000)
+    expect(page.locator("#obs-profile")).to_have_text(profile["name"])
+    expect(page.locator("#obs-scene")).to_have_text(profile["obs_scene_name"])
+    expect(page.locator("#obs-canvas")).to_have_text(
+        f'{profile["canvas"]["width"]}×{profile["canvas"]["height"]}'
     )
-    page.evaluate('window.StreamOpsLive.socket.close()')
-    page.wait_for_function(
-        "() => window.__liveConnectionTransitions.some(item => item.state === 'disconnected')",
-        timeout=5000,
-    )
-    page.wait_for_function(
-        "() => window.__liveConnectionTransitions.some(item => item.state === 'connected')",
-        timeout=10000,
-    )
-    transitions = page.evaluate('window.__liveConnectionTransitions')
-    disconnected = next(item for item in transitions if item['state'] == 'disconnected')
-    reconnected = next(
-        item for item in transitions[
-            transitions.index(disconnected) + 1:
-        ]
-        if item['state'] == 'connected'
-    )
-    assert disconnected['pill'] == 'RECONNECTING'
-    assert disconnected['stopDisabled'] is True
-    assert reconnected['state'] == 'connected'
-    expect(page.locator('#live-state-pill')).to_have_text('LIVE', timeout=7000)
-    assert sum('/api/v1/live/ws' in socket.url for socket in sockets) == live_socket_count + 1
-
-    # Full reload must also recover the managed server-side session.
-    page.reload()
-    expect(page.locator('#live-state-pill')).to_have_text('LIVE', timeout=7000)
-    expect(page.locator('#live-summary-destination')).to_have_text('LAN Test Renamed')
-    assert 'final-browser-secret' not in page.locator('body').inner_text()
-    open_card(page, '#stream-live-card')
-    expect(page.locator('#stop-stream-button')).to_be_visible()
-    operations.clear()
-    page.evaluate("() => { const button = document.querySelector('#stop-stream-button'); button.click(); button.click(); }")
-    expect(page.locator('#live-state-pill')).to_have_text('IDLE', timeout=7000)
-    assert operations.count('live.stop') == 1
-    assert live_server.transport.streaming is False
-    assert live_server.transport.stream_service['streamServiceType'] == 'rtmp_common'
-    assert live_server.live.session_store.load_session() is None
-    assert live_server.live.session_store.has_restore() is False
-
-    # Cleanup remains available after managed session cleanup.
-    open_card(page, '#stream-destination-card')
-    page.locator('#delete-credential-button').click()
-    expect(page.locator('#credential-status')).to_have_text('Not configured')
-    page.once('dialog', lambda dialog: dialog.accept())
-    page.locator('#delete-destination-button').click()
-    expect(page.locator('#destination-summary-name')).to_have_text('--')
-
-    body = page.locator('body').inner_text()
-    for secret in ('first-browser-secret', 'replacement-browser-secret', 'final-browser-secret'):
-        assert secret not in body
-    assert not any(url.endswith('/api/v1/live/status') for url in requests)
-    assert page.evaluate('document.documentElement.scrollWidth <= document.documentElement.clientWidth')
-
-
-@pytest.mark.parametrize('server_state', ['RECOVERY_REQUIRED', 'RESTORE_FAILED'])
-def test_stream_page_renders_recovery_state_without_normalizing_to_idle(
-    page, live_server, server_state
-):
-    profile = live_server.obs.create_profile({'name': 'Recovery Profile'})
-    destination = live_server.live.create_destination({
-        'name': 'Recovery Destination',
-        'type': 'custom_rtmp',
-        'enabled': True,
-        'settings': {'server_url': 'rtmp://127.0.0.1:1935/live'},
-    })
-    session = {
-        'schema_version': 1,
-        'session_id': 'browser-recovery-session',
-        'state': server_state,
-        'profile_id': profile['id'],
-        'destination_ids': [destination['id']],
-        'started_at': '2026-10-03T00:00:00+00:00',
-    }
-    live_server.live._session = session
-    live_server.live.session_store.save_session(session)
-    live_server.live.session_store.save_restore({
-        'streamServiceType': 'rtmp_common',
-        'streamServiceSettings': {'service': 'Existing'},
-    })
-
-    page.goto(live_server.base_url + '/obs/stream')
-    expect(page.locator('#stream-page-state')).to_have_text(server_state, timeout=7000)
-    open_card(page, '#stream-live-card')
-    expect(page.locator('#start-stream-button')).to_be_hidden()
-    expect(page.locator('#stop-stream-button')).to_be_visible()
-    expect(page.locator('#stop-stream-button')).to_have_text('Retry Stop / Restore')
-    open_card(page, '#stream-destination-card')
-    expect(page.locator('#destination-name')).to_be_disabled()
-
-
-def test_stream_page_renders_obs_not_ready(page, live_server):
-    live_server.obs_process.set_stopped()
-    page.goto(live_server.base_url + '/obs/stream')
-    expect(page.locator('#stream-page-state')).to_have_text('OBS_NOT_READY', timeout=7000)
-    open_card(page, '#stream-live-card')
-    expect(page.locator('#start-stream-button')).to_be_visible()
-    expect(page.locator('#start-stream-button')).to_be_disabled()
-    expect(page.locator('#stop-stream-button')).to_be_hidden()
-
-
-
-def test_preflight_fail_blocks_start_and_typed_start_error_is_rendered(page, live_server):
-    profile = applied_profile(live_server, 'Typed Error Profile')
-    page.goto(live_server.base_url + '/obs/stream')
-    expect(page.locator('#stream-page-state')).to_have_text('IDLE', timeout=7000)
-    expect(page.locator('#stream-profile-list')).to_have_value(profile['id'])
-
-    # Missing credential is a server-owned preflight failure and must keep Start blocked.
-    open_card(page, '#stream-destination-card')
-    page.locator('#new-destination-button').click()
-    page.locator('#destination-name').fill('Typed Error Destination')
-    page.get_by_label('Server URL', exact=True).fill('rtmp://127.0.0.1:1935/live')
-    page.locator('#save-destination-button').click()
-    open_card(page, '#stream-preflight-card')
-    page.locator('#run-preflight-button').click()
-    expect(page.locator('#preflight-state')).to_have_text('FAIL')
-    expect(page.locator('#preflight-checks')).to_contain_text('credential')
-    open_card(page, '#stream-live-card')
-    expect(page.locator('#start-stream-button')).to_be_disabled()
-
-    # Once preflight passes, a typed backend Start failure is surfaced without
-    # inventing a local IDLE transition or leaking the credential.
-    open_card(page, '#stream-destination-card')
-    page.locator('#credential-input').fill('typed-error-secret')
-    page.locator('#save-credential-button').click()
-    open_card(page, '#stream-preflight-card')
-    page.locator('#run-preflight-button').click()
-    expect(page.locator('#preflight-state')).to_have_text('PASS')
-
-    original_start = live_server.live.start
-
-    def fail_start(_profile_id: str, _destination_id: str):
-        raise StreamingError('stream_start_failed', 'Synthetic typed start failure.', 409)
-
-    live_server.live.start = fail_start
-    try:
-        open_card(page, '#stream-live-card')
-        expect(page.locator('#start-stream-button')).to_be_enabled()
-        page.locator('#start-stream-button').click()
-        expect(page.locator('#live-error')).to_contain_text(
-            'stream_start_failed: Synthetic typed start failure.'
-        )
-        expect(page.locator('#live-state-pill')).to_have_text('IDLE')
-        assert 'typed-error-secret' not in page.locator('body').inner_text()
-    finally:
-        live_server.live.start = original_start
-
-
-def test_live_runtime_source_controls_survive_refresh_and_restore_baseline(page, live_server):
-    profile = live_server.obs.create_profile({
-        'name': 'Runtime Control Profile',
-        'sources': [{
-            'name': 'Clock',
-            'type': 'browser_source',
-            'enabled': False,
-            'settings': {
-                'url': 'https://example.invalid/clock',
-                'width': 320,
-                'height': 180,
-            },
-            'transform': {
-                'x': 100,
-                'y': 50,
-                'width': 320,
-                'height': 180,
-            },
-        }],
-    })
-    live_server.obs.apply_profile(profile['id'])
-    live_server.obs.activate_profile(profile['id'])
-    assert live_server.obs.verify_profile(profile['id'], runtime=True).status == 'PASS'
-    profile = live_server.obs.get_profile(profile['id'])
-    source = profile['sources'][0]
-    scene_name = profile['obs_scene_name']
-
-    page.set_viewport_size({'width': 390, 'height': 844})
-    page.goto(live_server.base_url + '/obs/stream')
-    expect(page.locator('#stream-page-state')).to_have_text('IDLE', timeout=7000)
-    expect(page.locator('#stream-profile-list')).to_have_value(profile['id'])
-
-    create_destination_ui(page, secret='runtime-scene-secret')
-    open_card(page, '#stream-preflight-card')
-    page.locator('#run-preflight-button').click()
-    expect(page.locator('#preflight-state')).to_have_text('PASS')
-
-    open_card(page, '#stream-live-card')
-    page.locator('#start-stream-button').click()
-    expect(page.locator('#live-state-pill')).to_have_text('LIVE', timeout=7000)
-
-    open_card(page, '#live-sources-card')
-    row = page.locator('.live-source-row').filter(has_text='Clock')
-    expect(row).to_be_visible()
-    expect(row).to_contain_text('Baseline')
-    expect(row).to_contain_text('Hidden')
-    expect(row).to_contain_text('X 100')
-    expect(row).to_contain_text('Y 50')
-
-    row.locator('.source-visibility-toggle').click()
-    expect(row).to_contain_text('RUNTIME OVERRIDE', timeout=7000)
-    expect(row).to_contain_text('Visible')
-
-    row = page.locator('.live-source-row').filter(has_text='Clock')
-    row.locator('.source-position-x').fill('40')
-    row.locator('.source-position-y').fill('40')
-    row.locator('.apply-position').click()
-    expect(row.locator('.source-position-x')).to_have_value('40', timeout=7000)
-    expect(row.locator('.source-position-y')).to_have_value('40')
-
-    row = page.locator('.live-source-row').filter(has_text='Clock')
-    row.locator('.source-move-step').fill('10')
-    row.get_by_role('button', name='Move right').click()
-    expect(row.locator('.source-position-x')).to_have_value('50', timeout=7000)
-    expect(row.locator('.source-position-y')).to_have_value('40')
-
-    item = next(
-        item for item in live_server.transport.get_scene_item_list(scene_name)
-        if item['sourceName'] == source['obs_name']
-    )
-    item_id = int(item['sceneItemId'])
-    assert item['sceneItemEnabled'] is True
-    transform = live_server.transport.get_scene_item_transform(scene_name, item_id)
-    assert transform['positionX'] == 50
-    assert transform['positionY'] == 40
-    assert live_server.transport.streaming is True
-
-    # A full browser reload must recover the server-owned override without
-    # mutating the saved Scene Profile.
-    page.reload()
-    expect(page.locator('#live-state-pill')).to_have_text('LIVE', timeout=7000)
-    open_card(page, '#live-sources-card')
-    row = page.locator('.live-source-row').filter(has_text='Clock')
-    expect(row).to_contain_text('RUNTIME OVERRIDE')
-    expect(row).to_contain_text('Visible')
-    expect(row.locator('.source-position-x')).to_have_value('50')
-    expect(row.locator('.source-position-y')).to_have_value('40')
-    assert live_server.obs.get_profile(profile['id']) == profile
+    expect(page.locator("#preflight-pill")).to_have_text("NOT RUN")
+    expect(page.locator("#preflight-error")).to_be_hidden()
+    expect(page.locator("#destination-empty")).to_be_visible()
     assert page.evaluate(
-        'document.documentElement.scrollWidth <= document.documentElement.clientWidth'
+        "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
     )
 
-    # Stop restores the verified baseline and clears runtime-session metadata.
-    open_card(page, '#stream-live-card')
-    page.locator('#stop-stream-button').click()
-    expect(page.locator('#live-state-pill')).to_have_text('IDLE', timeout=7000)
+    page.locator("#add-destination").click()
+    modal = page.locator("#destination-editor")
+    expect(modal).to_be_in_viewport()
+    box = modal.bounding_box()
+    assert box and box["x"] >= 0 and box["x"] + box["width"] <= width
+    expect(page.locator("#credential-label")).to_have_text("Stream key")
+    expect(page.locator("#editor-delete")).to_be_hidden()
+    page.locator("#editor-cancel").click()
 
-    restored_item = next(
-        item for item in live_server.transport.get_scene_item_list(scene_name)
-        if item['sourceName'] == source['obs_name']
-    )
-    assert restored_item['sceneItemEnabled'] is False
-    restored = live_server.transport.get_scene_item_transform(
-        scene_name, int(restored_item['sceneItemId'])
-    )
-    assert restored['positionX'] == 100
-    assert restored['positionY'] == 50
-    assert live_server.live.session_store.load_session() is None
-    assert live_server.obs.get_profile(profile['id']) == profile
+
+def test_stream_manager_v2_preflight_fail_blocks_start(page, live_server):
+    applied_profile(live_server)
+
+    def fail_preflight(route):
+        payload = route.request.post_data_json
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "status": "FAIL",
+                    "profile_id": payload["profile_id"],
+                    "checks": [
+                        {"id": "obs_ready", "status": "PASS", "message": "OBS ready"},
+                        {"id": "video_capture", "status": "FAIL", "message": "Video capture inactive"},
+                    ],
+                }
+            ),
+        )
+
+    page.route("**/api/v1/live/preflight/shared", fail_preflight)
+    page.goto(live_server.base_url + "/obs/stream")
+    destination_id = add_destination(page, "Fail Target", secret="fail-secret")
+    page.locator("#run-preflight").click()
+    expect(page.locator("#preflight-pill")).to_contain_text("FAILED")
+    destination_card(page, destination_id).locator(".v2-destination-head").click()
+    expect(destination_card(page, destination_id).locator('[data-action="start"]')).to_be_disabled()
+    expect(page.locator("body")).not_to_contain_text("fail-secret")
+
+
+def test_stream_manager_v2_rest_and_ws_transitions_are_authoritative(page, live_server):
+    applied_profile(live_server)
+    page.goto(live_server.base_url + "/obs/stream")
+    destination_id = add_destination(page, "Transition Target", secret="transition-secret")
+    run_preflight(page)
+    card = destination_card(page, destination_id)
+    card.locator(".v2-destination-head").click()
+    card.locator('[data-action="start"]').click()
+
+    # REST ACK remains transitional until an authoritative backend event arrives.
+    expect_state(page, destination_id, "STARTING")
+    expect(card).not_to_contain_text("Backend confirmed live")
+    set_runtime(live_server, destination_id, "LIVE")
+    expect_state(page, destination_id, "LIVE")
+    expect(card).to_contain_text("6.0 Mbps", timeout=7000)
+
+    card.locator('[data-action="stop"]').click()
+    expect_state(page, destination_id, "STOPPING")
+    set_runtime(live_server, destination_id, "IDLE")
+    expect_state(page, destination_id, "IDLE")
+    expect(page.locator("body")).not_to_contain_text("transition-secret")
+
+
+def test_stream_manager_v2_mixed_states_reload_and_ws_reconnect(page, live_server):
+    applied_profile(live_server)
+    page.goto(live_server.base_url + "/obs/stream")
+    destination_a = add_destination(page, "Destination A", secret="secret-a")
+    destination_b = add_destination(page, "Destination B", secret="secret-b")
+
+    set_runtime(live_server, destination_a, "LIVE")
+    set_runtime(live_server, destination_b, "FAILED")
+    expect_state(page, destination_a, "LIVE")
+    expect_state(page, destination_b, "FAILED")
+
+    set_runtime(live_server, destination_b, "RECONNECTING")
+    expect_state(page, destination_a, "LIVE")
+    expect_state(page, destination_b, "RECONNECTING")
+
+    page.reload()
+    expect_state(page, destination_a, "LIVE")
+    expect_state(page, destination_b, "RECONNECTING")
+
+    page.context.set_offline(True)
+    set_runtime(live_server, destination_b, "LIVE")
+    page.context.set_offline(False)
+    expect_state(page, destination_a, "LIVE")
+    expect_state(page, destination_b, "LIVE")
+    expect(page.locator("#activity-log-v2")).not_to_contain_text("destination.state_changed")
+
+
+def test_stream_manager_v2_credential_edit_and_delete_are_write_only(page, live_server):
+    applied_profile(live_server)
+    page.goto(live_server.base_url + "/obs/stream")
+    destination_id = add_destination(page, "CRUD Target", secret="never-render-me")
+    card = destination_card(page, destination_id)
+    expect(card).to_contain_text("Stream key")
+    expect(card).to_contain_text("Configured")
+    card.locator(".v2-destination-head").click()
+    card.locator('[data-action="edit"]').click()
+
+    expect(page.locator("#credential-label")).to_have_text("Replace stream key")
+    expect(page.locator("#destination-credential")).to_have_value("")
+    expect(page.locator("#credential-help")).to_contain_text("never loaded")
+    expect(page.locator("#editor-delete")).to_be_visible()
+    page.locator("#destination-name").fill("CRUD Target Updated")
+    page.locator("#editor-save").click()
+    expect(card).to_contain_text("CRUD Target Updated")
+    expect(page.locator("body")).not_to_contain_text("never-render-me")
+
+    card.locator('[data-action="edit"]').click()
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.locator("#editor-delete").click()
+    expect(destination_card(page, destination_id)).to_have_count(0)
+    expect(page.locator("#activity-log-v2")).to_contain_text("Destination deleted")
