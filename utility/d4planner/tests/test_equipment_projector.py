@@ -8,6 +8,7 @@ import pytest
 from d4planner.character.equipment.parser import is_item_anchor, parse_item
 from d4planner.character.equipment.projector import EquipmentProjector
 from d4planner.character.repository import EquipmentRepository
+from d4planner.runtime.diagnostics import MemoryDiagnosticsSink
 from d4planner.character.service import CharacterService
 
 
@@ -38,6 +39,65 @@ def _consume_texts(
 
 def test_item_anchor_does_not_require_equipped():
     assert is_item_anchor("TEST HELM", "Rare Helm", "850 Item Power")
+
+
+def test_equipment_semantic_diagnostics_explain_resolver_and_db_decisions(tmp_path):
+    repo = EquipmentRepository(tmp_path / "character.db")
+    diagnostics = MemoryDiagnosticsSink(component="equipment")
+    projector = EquipmentProjector(repo, diagnostics)
+
+    _consume_texts(
+        projector,
+        [
+            "Head",
+            "EQUIPPED",
+            "CURRENT HELM",
+            "Rare Helm",
+            "850 Item Power",
+            "Unequip",
+            "Head",
+        ],
+    )
+
+    events = [record["event"] for record in diagnostics.records]
+    assert "anchor.detected" in events
+    assert "parse.success" in events
+    assert "observation.high" in events
+    assert "empty.pending" in events
+    assert "db.upsert" in events
+    assert "empty.confirmed" in events
+    assert "db.clear" in events
+    assert repo.list_equipment() == []
+
+    confirmed = next(
+        record for record in diagnostics.records if record["event"] == "empty.confirmed"
+    )
+    assert confirmed["slot"] == "helm"
+    assert confirmed["reason"] == "same_slot_immediate_rebound"
+    assert confirmed["sourceSeq"] == 7
+
+
+def test_equipment_diagnostics_never_change_projector_behavior(tmp_path):
+    class BrokenDiagnostics:
+        def emit(self, _event, **_fields):
+            raise OSError("diagnostics disk unavailable")
+
+    repo = EquipmentRepository(tmp_path / "character.db")
+    projector = EquipmentProjector(repo, BrokenDiagnostics())
+    _consume_texts(
+        projector,
+        [
+            "Head",
+            "EQUIPPED",
+            "CURRENT HELM",
+            "Rare Helm",
+            "850 Item Power",
+            "Unequip",
+        ],
+    )
+    rows = repo.list_equipment()
+    assert len(rows) == 1
+    assert rows[0]["name"] == "CURRENT HELM"
 
 
 def test_favorite_html_type_and_base_stats():
