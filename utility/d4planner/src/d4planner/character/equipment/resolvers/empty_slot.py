@@ -20,16 +20,19 @@ KNOWN_ITEM_TYPES = {
 }
 
 SEMANTIC_TOKENS = {"EQUIPPED", "Equip", "Unequip"}
-KNOWN_INTERSTITIAL_TOKENS = {"SKILLS UNAVAILABLE"}
+KNOWN_INTERSTITIAL_TOKENS = {
+    "SKILLS UNAVAILABLE",
+    "Re-equip item to access Skills",
+}
+MAX_INTERSTITIAL_EVENTS = 2
 
 
 def _is_allowed_interstitial(text: str) -> bool:
     """Allow only Real-A-shaped non-structural lines between action and slot.
 
-    Fail closed on arbitrary unknown text. Real-A has shown either the exact
-    SKILLS UNAVAILABLE token or a long explanatory sentence ending in sentence
-    punctuation. Known UI noise, item structure, and action markers are never
-    interstitial evidence.
+    Fail closed on arbitrary unknown text. Real-A has shown exact transient
+    status messages and long explanatory tooltip sentences. Known UI noise,
+    item structure, and action markers are never interstitial evidence.
     """
 
     if text in KNOWN_INTERSTITIAL_TOKENS:
@@ -48,8 +51,8 @@ class EmptySlotResolver(BaseResolver):
     """Resolve equipped -> empty transitions from bounded Real-A evidence.
 
     Strong current-item evidence opens a pending transition. The slot may
-    rebound immediately or after exactly one approved interstitial line.
-    Anything structural, another slot, a second interstitial line, arbitrary
+    rebound immediately or after a short burst of approved interstitial lines.
+    Anything structural, another slot, too many interstitials, arbitrary
     unknown text, or Ring fails closed without clearing current state.
     """
 
@@ -61,16 +64,18 @@ class EmptySlotResolver(BaseResolver):
     def build_resolution(self, request: ResolverRequest) -> Resolution:
         pending = request.context.pending_empty_slot
         assert pending is not None
+        count = request.context.pending_empty_interstitial_count
 
         if (
             request.incoming_slot == pending
             and pending in SINGLE_INSTANCE_SLOTS
         ):
-            reason = (
-                "same_slot_immediate_rebound"
-                if request.context.pending_empty_interstitial_count == 0
-                else "same_slot_rebound_after_one_interstitial"
-            )
+            if count == 0:
+                reason = "same_slot_immediate_rebound"
+            elif count == 1:
+                reason = "same_slot_rebound_after_one_interstitial"
+            else:
+                reason = "same_slot_rebound_after_two_interstitials"
             return Resolution(
                 resolver=self.name,
                 kind=ResolutionKind.CLEAR_SLOT,
@@ -92,13 +97,14 @@ class EmptySlotResolver(BaseResolver):
 
         if (
             pending in SINGLE_INSTANCE_SLOTS
-            and request.context.pending_empty_interstitial_count == 0
+            and count < MAX_INTERSTITIAL_EVENTS
             and _is_allowed_interstitial(request.line.text)
         ):
+            next_count = count + 1
             return Resolution(
                 resolver=self.name,
                 kind=ResolutionKind.NO_MUTATION,
-                reason="one_interstitial_event_allowed",
+                reason=f"interstitial_{next_count}_allowed",
                 slot=pending,
                 source_seq_start=request.line.seq,
                 source_seq_end=request.line.seq,
@@ -106,8 +112,8 @@ class EmptySlotResolver(BaseResolver):
             )
 
         reason = (
-            "second_interstitial_event"
-            if request.context.pending_empty_interstitial_count > 0
+            "interstitial_limit_exceeded"
+            if count >= MAX_INTERSTITIAL_EVENTS
             and _is_allowed_interstitial(request.line.text)
             else "semantic_or_unknown_event_before_same_slot_rebound"
         )
