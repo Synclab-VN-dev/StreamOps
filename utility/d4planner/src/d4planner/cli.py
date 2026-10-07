@@ -428,8 +428,20 @@ def command_doctor(paths: RuntimePaths, *, raw_json: bool) -> int:
     capture_effective = bool(status.get("captureEffective"))
     active = state in ACTIVE_STATES
 
+    if active:
+        supervisor_status = "PASS" if alive else "FAIL"
+    elif state in {
+        RuntimeState.BLOCKED.value,
+        RuntimeState.RESTART_REQUIRED.value,
+    }:
+        supervisor_status = "WARN"
+    elif state == RuntimeState.STOPPED.value:
+        supervisor_status = "PASS" if not alive else "WARN"
+    else:
+        supervisor_status = "WARN"
+
     checks["supervisor"] = {
-        "status": "PASS" if (alive or not active) else "FAIL",
+        "status": supervisor_status,
         "detail": {
             "state": state,
             "pid": status.get("supervisorPid"),
