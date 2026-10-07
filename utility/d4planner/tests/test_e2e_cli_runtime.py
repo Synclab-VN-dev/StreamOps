@@ -180,6 +180,8 @@ def test_e2e_existing_game_wrong_backend_requires_restart_without_launch(tmp_pat
         poll_interval=0.02,
         health_poll_interval=0.10,
         game_start_timeout=0.01,
+        tolk_ready_timeout=0.01,
+        tolk_retry_interval=0.001,
     )
 
     state = supervisor.bootstrap()
