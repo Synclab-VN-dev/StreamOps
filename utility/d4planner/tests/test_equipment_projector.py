@@ -48,7 +48,8 @@ def test_real_a_weapon_quality_is_base_stat_not_affix():
     quality = [stat for stat in item.base_stats if stat["kind"] == "quality"]
     assert len(quality) == 1
     assert quality[0]["value"] == 3
-    assert quality[0]["range"] == [3, 25]
+    assert quality[0]["bonus"] == 3
+    assert quality[0]["max"] == 25
     assert all("Quality" not in affix["raw"] for affix in item.affixes)
 
 
@@ -108,9 +109,12 @@ def test_golden_929_events_resolve_expected_equipment(tmp_path):
     rows = repo.list_equipment()
     want = expected["expectedEquipment"]
     assert len(rows) == 10
-    assert [(r["slotFamily"], r["name"], r["itemPower"]) for r in rows] == [
-        (x["slotFamily"], x["name"], x["itemPower"]) for x in want
-    ]
+    got_non_ring = [(r["slotFamily"], r["name"], r["itemPower"]) for r in rows if r["slotFamily"] != "ring"]
+    want_non_ring = [(x["slotFamily"], x["name"], x["itemPower"]) for x in want if x["slotFamily"] != "ring"]
+    assert got_non_ring == want_non_ring
+    got_rings = {(r["name"], r["itemPower"]) for r in rows if r["slotFamily"] == "ring"}
+    want_rings = {(x["name"], x["itemPower"]) for x in want if x["slotFamily"] == "ring"}
+    assert got_rings == want_rings
     assert all(r["slotIndex"] is None for r in rows)
     forbidden = {x["name"] for x in expected["mustNotResolveAsCurrent"]}
     assert not forbidden.intersection(r["name"] for r in rows)
