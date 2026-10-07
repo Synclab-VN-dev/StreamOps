@@ -254,6 +254,116 @@ def test_same_slot_rebound_after_unequip_clears_single_instance_slot(
     assert repo.checkpoint() == ("s", next_seq)
 
 
+@pytest.mark.parametrize(
+    ("slot_label", "type_line", "slot_family", "neutral_text"),
+    [
+        (
+            "Head",
+            "Rare Helm",
+            "helm",
+            "Frozen enemies cannot move or attack. Enemies can be Frozen by repeatedly Chilling them.",
+        ),
+        ("Hands", "Rare Gloves", "gloves", "SKILLS UNAVAILABLE"),
+        (
+            "Feet",
+            "Rare Boots",
+            "boots",
+            "Stealthed characters cannot be directly targeted by enemies. Using an attack or taking damage will instantly remove Stealth.",
+        ),
+        (
+            "Neck",
+            "Rare Amulet",
+            "amulet",
+            "Incapacitated enemies cannot perform actions due to Daze, Fear, Frozen, Knockdown or Stun.",
+        ),
+    ],
+)
+def test_real_a_one_neutral_event_then_same_slot_clears(
+    tmp_path,
+    slot_label,
+    type_line,
+    slot_family,
+    neutral_text,
+):
+    repo = EquipmentRepository(tmp_path / f"{slot_family}-neutral.db")
+    diagnostics = MemoryDiagnosticsSink(component="equipment")
+    projector = EquipmentProjector(repo, diagnostics)
+
+    _consume_texts(
+        projector,
+        [
+            slot_label,
+            "EQUIPPED",
+            f"CURRENT {slot_family.upper()}",
+            type_line,
+            "850 Item Power",
+            "Unequip",
+            neutral_text,
+            slot_label,
+        ],
+    )
+
+    assert repo.list_equipment() == []
+    keep = next(
+        record for record in diagnostics.records
+        if record["event"] == "empty.pending_keep"
+    )
+    assert keep["slot"] == slot_family
+    assert keep["neutralCount"] == 1
+    confirmed = next(
+        record for record in diagnostics.records
+        if record["event"] == "empty.confirmed"
+    )
+    assert confirmed["reason"] == "same_slot_rebound_after_one_neutral"
+
+
+def test_two_neutral_events_cancel_empty_transition(tmp_path):
+    repo = EquipmentRepository(tmp_path / "character.db")
+    projector = EquipmentProjector(repo)
+
+    _consume_texts(
+        projector,
+        [
+            "Head",
+            "EQUIPPED",
+            "CURRENT HELM",
+            "Rare Helm",
+            "850 Item Power",
+            "Unequip",
+            "first neutral tooltip",
+            "second neutral tooltip",
+            "Head",
+        ],
+    )
+
+    rows = repo.list_equipment()
+    assert len(rows) == 1
+    assert rows[0]["name"] == "CURRENT HELM"
+
+
+def test_semantic_event_cancels_empty_transition_before_later_same_slot(tmp_path):
+    repo = EquipmentRepository(tmp_path / "character.db")
+    projector = EquipmentProjector(repo)
+
+    _consume_texts(
+        projector,
+        [
+            "Head",
+            "EQUIPPED",
+            "CURRENT HELM",
+            "Rare Helm",
+            "850 Item Power",
+            "Unequip",
+            "EQUIPPED",
+            "Head",
+        ],
+    )
+
+    rows = repo.list_equipment()
+    assert len(rows) == 1
+    assert rows[0]["name"] == "CURRENT HELM"
+
+
 def test_different_slot_after_unequip_does_not_clear_previous_slot(tmp_path):
     repo = EquipmentRepository(tmp_path / "character.db")
     projector = EquipmentProjector(repo)
