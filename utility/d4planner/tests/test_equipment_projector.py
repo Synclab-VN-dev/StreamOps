@@ -60,6 +60,7 @@ def test_equipment_semantic_diagnostics_explain_resolver_and_db_decisions(tmp_pa
     )
 
     events = [record["event"] for record in diagnostics.records]
+    assert "slot.enter" in events
     assert "anchor.detected" in events
     assert "parse.success" in events
     assert "observation.high" in events
@@ -317,7 +318,41 @@ def test_real_a_one_interstitial_event_then_same_slot_clears(
     assert confirmed["reason"] == "same_slot_rebound_after_one_interstitial"
 
 
-def test_two_interstitial_events_cancel_empty_transition(tmp_path):
+def test_real_a_gloves_two_interstitial_events_then_same_slot_clears(tmp_path):
+    repo = EquipmentRepository(tmp_path / "character.db")
+    diagnostics = MemoryDiagnosticsSink(component="equipment")
+    projector = EquipmentProjector(repo, diagnostics)
+
+    _consume_texts(
+        projector,
+        [
+            "Hands",
+            "EQUIPPED",
+            "EXCEPTIONAL GLOVES OF OVERWHELMING CURRENTS",
+            "Ancestral Legendary Gloves",
+            "900 Item Power",
+            "Unequip",
+            "SKILLS UNAVAILABLE",
+            "Re-equip item to access Skills",
+            "Hands",
+        ],
+    )
+
+    assert repo.list_equipment() == []
+    keeps = [
+        record for record in diagnostics.records
+        if record["event"] == "empty.pending_keep"
+    ]
+    assert [record["interstitialCount"] for record in keeps] == [1, 2]
+    confirmed = next(
+        record for record in diagnostics.records
+        if record["event"] == "empty.confirmed"
+    )
+    assert confirmed["slot"] == "gloves"
+    assert confirmed["reason"] == "same_slot_rebound_after_two_interstitials"
+
+
+def test_three_interstitial_events_cancel_empty_transition(tmp_path):
     repo = EquipmentRepository(tmp_path / "character.db")
     projector = EquipmentProjector(repo)
 
@@ -332,6 +367,7 @@ def test_two_interstitial_events_cancel_empty_transition(tmp_path):
             "Unequip",
             "First explanatory tooltip sentence that is long enough to end here.",
             "Second explanatory tooltip sentence that is long enough to end here.",
+            "Third explanatory tooltip sentence that is long enough to end here.",
             "Head",
         ],
     )
