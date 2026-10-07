@@ -380,3 +380,30 @@ def test_prepare_nvda_stop_task_reconciles_only_stop_task(tmp_path, monkeypatch)
     runtime.prepare_nvda_stop_task()
 
     assert calls == [("D4Planner-NVDA-Stop", stop_script)]
+
+
+def test_input_marker_probe_task_uses_interactive_principal(tmp_path, monkeypatch):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    calls = []
+
+    def fake_powershell(script, *, timeout=15.0):
+        calls.append(script)
+        return subprocess.CompletedProcess([], 0, "", "")
+
+    monkeypatch.setattr(runtime, "_powershell", fake_powershell)
+
+    output = tmp_path / "state" / "input-marker-probe.log"
+    runtime.launch_input_marker_probe_task(
+        key="scroll-lock",
+        seconds=12,
+        output_path=output,
+    )
+
+    script = calls[0]
+    assert "D4Planner-Input-Marker-Probe" in script
+    assert "-LogonType Interactive" in script
+    assert "input-marker-probe --key" in script
+    assert "scroll-lock" in script
+    assert "--seconds 12" in script
+    assert str(output) in script

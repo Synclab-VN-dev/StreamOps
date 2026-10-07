@@ -15,6 +15,7 @@ def test_cli_parser_exposes_expected_commands():
         ["stop"],
         ["stop", "--stop-nvda"],
         ["doctor"],
+        ["input-marker-probe", "--key", "scroll-lock", "--seconds", "5"],
         ["path", "status"],
         ["character", "equipment"],
         ["character", "equipment", "replay", "sample.jsonl", "--trace"],
@@ -615,3 +616,68 @@ def test_stop_nvda_failure_is_nonzero_and_capture_stays_disabled(
     assert read_json(paths.capture_state)["enabled"] is False
     err = capsys.readouterr().err
     assert "no force kill" in err
+
+
+def test_input_marker_probe_rejects_non_windows(monkeypatch, tmp_path, capsys):
+    paths = RuntimePaths(tmp_path / "home")
+    monkeypatch.setattr(cli.os, "name", "posix")
+    assert cli.command_input_marker_probe(
+        paths,
+        key="scroll-lock",
+        seconds=1,
+    ) == 2
+    assert "requires Windows" in capsys.readouterr().err
+
+
+def test_input_marker_probe_rejects_unknown_key(monkeypatch, tmp_path, capsys):
+    paths = RuntimePaths(tmp_path / "home")
+    monkeypatch.setattr(cli.os, "name", "nt")
+    assert cli.command_input_marker_probe(
+        paths,
+        key="f24",
+        seconds=1,
+    ) == 2
+    assert "unsupported marker key" in capsys.readouterr().err
+
+
+def test_input_marker_probe_relays_from_ssh_session(monkeypatch, tmp_path, capsys):
+    paths = RuntimePaths(tmp_path / "home")
+    monkeypatch.setattr(cli.os, "name", "nt")
+    monkeypatch.setattr(cli.time, "sleep", lambda _seconds: None)
+
+    class FakeRuntime:
+        def __init__(self, _paths):
+            assert _paths == paths
+
+        def current_process_session_id(self):
+            return 0
+
+        def active_console_session_id(self):
+            return 1
+
+        def launch_input_marker_probe_task(self, *, key, seconds, output_path):
+            assert key == "scroll-lock"
+            assert seconds == 1
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(
+                "Probe process session: 1\n"
+                "Active console session: 1\n"
+                "Marker key: scroll-lock (VK=0x91)\n"
+                "SCROLL_LOCK DOWN\n"
+                "SCROLL_LOCK UP\n"
+                "Input marker probe complete.\n"
+                f"{cli.INPUT_MARKER_PROBE_COMPLETE}\n",
+                encoding="utf-8",
+            )
+
+    monkeypatch.setattr(cli, "WindowsRuntime", FakeRuntime)
+
+    assert cli.command_input_marker_probe(
+        paths,
+        key="scroll-lock",
+        seconds=1,
+    ) == 0
+    out = capsys.readouterr().out
+    assert "relaying marker probe to interactive desktop" in out
+    assert "Probe process session: 1" in out
+    assert "SCROLL_LOCK DOWN" in out

@@ -700,6 +700,155 @@ def command_character_equipment_replay(path: Path, *, trace: bool) -> int:
     return 1 if failures else 0
 
 
+
+INPUT_MARKER_PROBE_COMPLETE = "__D4PLANNER_INPUT_MARKER_PROBE_COMPLETE__"
+
+
+def _run_input_marker_probe_direct(
+    paths: RuntimePaths,
+    *,
+    key: str,
+    seconds: float,
+    output_path: Path | None,
+) -> int:
+    from .runtime.input_marker import AsyncKeyStateBackend, edge_transition, virtual_key_code
+
+    try:
+        virtual_key = virtual_key_code(key)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    runtime = WindowsRuntime(paths)
+    current_session = runtime.current_process_session_id()
+    active_session = runtime.active_console_session_id()
+
+    lines: list[str] = []
+
+    def emit(message: str, *, error: bool = False) -> None:
+        lines.append(message)
+        print(message, file=sys.stderr if error else sys.stdout, flush=True)
+
+    emit(f"Probe process session: {current_session}")
+    emit(f"Active console session: {active_session}")
+    emit(f"Marker key: {key} (VK=0x{virtual_key:02X})")
+
+    try:
+        backend = AsyncKeyStateBackend()
+    except OSError as exc:
+        emit(f"Unable to start input marker probe: {exc}", error=True)
+        if output_path is not None:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(
+                "\n".join([*lines, INPUT_MARKER_PROBE_COMPLETE, ""]),
+                encoding="utf-8",
+            )
+        return 2
+
+    previous_down = backend.is_down(virtual_key)
+    emit(
+        f"Watching {key} for {seconds:g}s. "
+        "Press the Steam Input dual-bound controller button."
+    )
+    started = time.monotonic()
+    try:
+        while time.monotonic() - started < seconds:
+            current_down = backend.is_down(virtual_key)
+            transition = edge_transition(previous_down, current_down)
+            if transition is not None:
+                emit(f"{key.upper().replace('-', '_')} {transition}")
+            previous_down = current_down
+            time.sleep(0.01)
+    except KeyboardInterrupt:
+        pass
+
+    emit("Input marker probe complete.")
+    if output_path is not None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            "\n".join([*lines, INPUT_MARKER_PROBE_COMPLETE, ""]),
+            encoding="utf-8",
+        )
+    return 0
+
+
+def command_input_marker_probe(
+    paths: RuntimePaths,
+    *,
+    key: str,
+    seconds: float,
+    output_path: Path | None = None,
+) -> int:
+    """Observe a Steam Input keyboard marker, relaying into the interactive session from SSH."""
+    if seconds <= 0:
+        print("--seconds must be greater than 0", file=sys.stderr)
+        return 2
+    if os.name != "nt":
+        print("input-marker-probe requires Windows.", file=sys.stderr)
+        return 2
+
+    from .runtime.input_marker import virtual_key_code
+
+    try:
+        virtual_key_code(key)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    runtime = WindowsRuntime(paths)
+    current_session = runtime.current_process_session_id()
+    active_session = runtime.active_console_session_id()
+
+    if (
+        output_path is None
+        and active_session is not None
+        and current_session != active_session
+    ):
+        paths.ensure()
+        result_path = paths.state / "input-marker-probe-interactive.log"
+        try:
+            result_path.unlink()
+        except FileNotFoundError:
+            pass
+
+        print(
+            f"Control session {current_session} != active console {active_session}; "
+            "relaying marker probe to interactive desktop..."
+        )
+        try:
+            runtime.launch_input_marker_probe_task(
+                key=key,
+                seconds=seconds,
+                output_path=result_path,
+            )
+        except (RuntimeBlocked, OSError) as exc:
+            print(f"Unable to launch interactive input marker probe: {exc}", file=sys.stderr)
+            return 2
+
+        deadline = time.monotonic() + seconds + 15.0
+        while time.monotonic() < deadline:
+            try:
+                content = result_path.read_text(encoding="utf-8")
+            except OSError:
+                content = ""
+            if INPUT_MARKER_PROBE_COMPLETE in content:
+                rendered = content.replace(INPUT_MARKER_PROBE_COMPLETE, "").strip()
+                if rendered:
+                    print(rendered)
+                return 0
+            time.sleep(0.2)
+
+        print("Interactive input marker probe timed out.", file=sys.stderr)
+        return 2
+
+    return _run_input_marker_probe_direct(
+        paths,
+        key=key,
+        seconds=seconds,
+        output_path=output_path,
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="d4planner")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -729,6 +878,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = sub.add_parser("doctor")
     doctor.add_argument("--json", action="store_true")
+
+    input_marker_probe = sub.add_parser("input-marker-probe")
+    input_marker_probe.add_argument("--key", default="scroll-lock")
+    input_marker_probe.add_argument("--seconds", type=float, default=30.0)
+    input_marker_probe.add_argument("--output", type=Path, help=argparse.SUPPRESS)
 
     character = sub.add_parser("character")
     character_sub = character.add_subparsers(dest="character_command", required=True)
@@ -782,6 +936,13 @@ def main(argv: list[str] | None = None) -> int:
         return command_stop(paths, timeout=args.timeout, stop_nvda=args.stop_nvda)
     if args.command == "doctor":
         return command_doctor(paths, raw_json=args.json)
+    if args.command == "input-marker-probe":
+        return command_input_marker_probe(
+            paths,
+            key=args.key,
+            seconds=args.seconds,
+            output_path=args.output,
+        )
     if args.command == "character" and args.character_command == "equipment":
         if getattr(args, "equipment_action", None) == "replay":
             return command_character_equipment_replay(args.path, trace=args.trace)
