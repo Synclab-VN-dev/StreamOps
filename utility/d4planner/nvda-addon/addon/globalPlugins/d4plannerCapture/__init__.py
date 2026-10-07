@@ -356,6 +356,41 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     def event_UIA_notification(self, obj, nextHandler, **kwargs):
         self._probe_then_next("UIA_notification", obj, nextHandler, **kwargs)
 
+    def _write_action_probe_speech(
+        self,
+        event,
+        *,
+        process_id: int | None,
+        process: str | None,
+        window_title: str | None,
+    ) -> None:
+        """Write a control marker proving the existing D4 speech hook is alive."""
+        config = self._action_probe.get()
+        if not bool(config.get("enabled")):
+            return
+
+        path_text = str(config.get("logPath") or "")
+        path = Path(path_text) if path_text else _action_probe_default_log_path()
+        payload = {
+            "timestampUnix": time.time(),
+            "event": "speechHook",
+            "processId": process_id,
+            "process": process,
+            "windowTitle": window_title,
+            "text": str(getattr(event, "text", "") or ""),
+            "rawSpeech": [
+                str(value)
+                for value in (getattr(event, "raw_speech", None) or [])
+            ],
+        }
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write(
+                json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+            )
+            handle.write("\n")
+            handle.flush()
+
     def _filter_speech(self, speechSequence, **kwargs):
         original = speechSequence
         try:
@@ -401,6 +436,18 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             )
             if not event.text and not event.raw_speech:
                 return original
+
+            try:
+                self._write_action_probe_speech(
+                    event,
+                    process_id=process_id,
+                    process=process,
+                    window_title=window_title,
+                )
+            except Exception:
+                # The control marker is diagnostic only and must never affect
+                # the proven speech capture path.
+                log.exception("D4Planner: NVDA speech-hook probe failed")
 
             persisted = bool(self._writer and self._writer.write(event))
             if not persisted:

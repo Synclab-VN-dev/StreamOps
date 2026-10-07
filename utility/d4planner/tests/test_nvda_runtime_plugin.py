@@ -86,3 +86,20 @@ def test_nvda_action_probe_is_debug_only_and_fail_open():
         "def _write_action_probe_event", 1
     )[1].split("def _filter_speech", 1)[0]
     assert "character.db" not in probe_body
+
+
+def test_nvda_action_probe_writes_speech_hook_control_marker():
+    source = (
+        ROOT
+        / "nvda-addon"
+        / "addon"
+        / "globalPlugins"
+        / "d4plannerCapture"
+        / "__init__.py"
+    ).read_text(encoding="utf-8")
+
+    assert "def _write_action_probe_speech" in source
+    assert '"event": "speechHook"' in source
+    assert "NVDA speech-hook probe failed" in source
+    filter_body = source.split("def _filter_speech", 1)[1]
+    assert "_write_action_probe_speech" in filter_body
