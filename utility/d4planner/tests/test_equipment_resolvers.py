@@ -173,7 +173,7 @@ def test_empty_slot_resolver_allows_exactly_one_neutral_event():
     assert neutral is not None
     assert neutral.kind == ResolutionKind.NO_MUTATION
     assert neutral.keep_empty_pending is True
-    assert neutral.reason == "one_neutral_event_allowed"
+    assert neutral.reason == "one_interstitial_event_allowed"
 
     context.keep_empty_pending()
     rebound = empty_slot_resolver_pipeline().resolve(
@@ -185,13 +185,13 @@ def test_empty_slot_resolver_allows_exactly_one_neutral_event():
     )
     assert rebound is not None
     assert rebound.kind == ResolutionKind.CLEAR_SLOT
-    assert rebound.reason == "same_slot_rebound_after_one_neutral"
+    assert rebound.reason == "same_slot_rebound_after_one_interstitial"
 
 
 def test_empty_slot_resolver_second_neutral_and_semantic_evidence_cancel():
     context = EquipmentContext(
         pending_empty_slot="helm",
-        pending_empty_neutral_count=1,
+        pending_empty_interstitial_count=1,
     )
     second_noise = empty_slot_resolver_pipeline().resolve(
         ResolverRequest(
@@ -203,7 +203,7 @@ def test_empty_slot_resolver_second_neutral_and_semantic_evidence_cancel():
     assert second_noise is not None
     assert second_noise.kind == ResolutionKind.NO_MUTATION
     assert second_noise.keep_empty_pending is False
-    assert second_noise.reason == "second_neutral_event"
+    assert second_noise.reason == "second_interstitial_event"
 
     for text in ("EQUIPPED", "Equip", "Unequip", "Rare Helm", "850 Item Power", "blank", "Left action button", "Hold"):
         semantic = empty_slot_resolver_pipeline().resolve(
