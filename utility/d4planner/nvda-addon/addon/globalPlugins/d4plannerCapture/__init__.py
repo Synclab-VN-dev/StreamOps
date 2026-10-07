@@ -26,6 +26,14 @@ def _capture_state_path() -> Path:
     return _local_root() / "state" / "capture.json"
 
 
+def _action_probe_state_path() -> Path:
+    return _local_root() / "state" / "nvda-action-probe.json"
+
+
+def _action_probe_default_log_path() -> Path:
+    return _local_root() / "state" / "nvda-action-probe.jsonl"
+
+
 def _cached_context() -> tuple[str | None, str | None]:
     try:
         foreground = api.getForegroundObject()
@@ -106,10 +114,39 @@ class _ConfigCache:
         return self._effective(value)
 
 
+class _ActionProbeConfigCache:
+    def __init__(self):
+        self._stamp: int | None = None
+        self._value: dict[str, object] = {"enabled": False}
+
+    def get(self) -> dict[str, object]:
+        path = _action_probe_state_path()
+        try:
+            stamp = path.stat().st_mtime_ns
+        except OSError:
+            self._stamp = None
+            self._value = {"enabled": False}
+            return self._value
+
+        if stamp == self._stamp:
+            return self._value
+
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(value, dict):
+                raise ValueError("action probe config root must be object")
+        except (OSError, ValueError, json.JSONDecodeError):
+            value = {"enabled": False}
+        self._stamp = stamp
+        self._value = value
+        return value
+
+
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     def __init__(self):
         super().__init__()
         self._config = _ConfigCache()
+        self._action_probe = _ActionProbeConfigCache()
         self._session: CaptureSession | None = None
         self._writer: JsonlWriter | None = None
         self._capture_all = os.environ.get("D4PLANNER_CAPTURE_ALL", "").strip() == "1"
@@ -193,6 +230,131 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             self._last_diagnostic_at = now
         except (OSError, TypeError, ValueError):
             log.exception("D4Planner: capture context diagnostic could not be persisted")
+
+    @staticmethod
+    def _probe_text(value: object) -> str | None:
+        if value is None:
+            return None
+        try:
+            display = getattr(value, "displayString", None)
+            if display:
+                return str(display)
+            return str(value)
+        except Exception:
+            return None
+
+    def _write_action_probe_event(self, event_name: str, obj, **event_kwargs) -> None:
+        config = self._action_probe.get()
+        if not bool(config.get("enabled")):
+            return
+
+        live_context = _live_context()
+        if live_context is None:
+            return
+        process_id, process, window_title = live_context
+
+        # Prefer the exact game PID already established by capture. If capture
+        # is not active, fall back to the foreground Diablo identity only.
+        capture_config = self._config.get()
+        expected_process_id = self._positive_int(capture_config.get("gamePid"))
+        if expected_process_id is not None:
+            if process_id != expected_process_id:
+                return
+        else:
+            process_text = str(process or "").casefold()
+            title_text = str(window_title or "").casefold()
+            if "diablo" not in process_text and "diablo iv" not in title_text:
+                return
+
+        role = self._probe_text(getattr(obj, "role", None))
+        states_value = getattr(obj, "states", None)
+        states: list[str] = []
+        if states_value is not None:
+            try:
+                states = sorted(
+                    text
+                    for text in (self._probe_text(value) for value in states_value)
+                    if text
+                )
+            except Exception:
+                states = []
+
+        automation_id = None
+        control_type = None
+        try:
+            uia_element = getattr(obj, "UIAElement", None)
+            if uia_element is not None:
+                automation_id = self._probe_text(
+                    getattr(uia_element, "currentAutomationId", None)
+                )
+                control_type = self._probe_text(
+                    getattr(uia_element, "currentControlType", None)
+                )
+        except Exception:
+            pass
+
+        kwargs_payload: dict[str, str] = {}
+        for key, value in event_kwargs.items():
+            text = self._probe_text(value)
+            if text is not None:
+                kwargs_payload[str(key)] = text
+
+        payload = {
+            "timestampUnix": time.time(),
+            "event": event_name,
+            "processId": process_id,
+            "process": process,
+            "windowTitle": window_title,
+            "name": self._probe_text(getattr(obj, "name", None)),
+            "role": role,
+            "value": self._probe_text(getattr(obj, "value", None)),
+            "description": self._probe_text(getattr(obj, "description", None)),
+            "states": states,
+            "windowClassName": self._probe_text(
+                getattr(obj, "windowClassName", None)
+            ),
+            "windowHandle": self._probe_text(getattr(obj, "windowHandle", None)),
+            "uiaAutomationId": automation_id,
+            "uiaControlType": control_type,
+            "eventArgs": kwargs_payload,
+        }
+
+        path_text = str(config.get("logPath") or "")
+        path = Path(path_text) if path_text else _action_probe_default_log_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write(
+                json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+            )
+            handle.write("\n")
+            handle.flush()
+
+    def _probe_then_next(self, event_name: str, obj, nextHandler, **kwargs) -> None:
+        try:
+            self._write_action_probe_event(event_name, obj, **kwargs)
+        except Exception:
+            # Probe is debug-only and must never interfere with NVDA.
+            log.exception("D4Planner: NVDA action probe failed")
+        finally:
+            nextHandler()
+
+    def event_gainFocus(self, obj, nextHandler):
+        self._probe_then_next("gainFocus", obj, nextHandler)
+
+    def event_stateChange(self, obj, nextHandler):
+        self._probe_then_next("stateChange", obj, nextHandler)
+
+    def event_nameChange(self, obj, nextHandler):
+        self._probe_then_next("nameChange", obj, nextHandler)
+
+    def event_valueChange(self, obj, nextHandler):
+        self._probe_then_next("valueChange", obj, nextHandler)
+
+    def event_descriptionChange(self, obj, nextHandler):
+        self._probe_then_next("descriptionChange", obj, nextHandler)
+
+    def event_UIA_notification(self, obj, nextHandler, **kwargs):
+        self._probe_then_next("UIA_notification", obj, nextHandler, **kwargs)
 
     def _filter_speech(self, speechSequence, **kwargs):
         original = speechSequence

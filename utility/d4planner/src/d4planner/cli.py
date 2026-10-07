@@ -700,6 +700,53 @@ def command_character_equipment_replay(path: Path, *, trace: bool) -> int:
     return 1 if failures else 0
 
 
+def command_nvda_action_probe(paths: RuntimePaths, action: str) -> int:
+    """Toggle the debug-only NVDA object-event probe.
+
+    This state is intentionally separate from capture.json so supervisor lease
+    refreshes cannot accidentally enable/disable the probe.
+    """
+    paths.ensure()
+    config_path = paths.state / "nvda-action-probe.json"
+    log_path = paths.state / "nvda-action-probe.jsonl"
+    current = read_json(config_path) or {}
+
+    if action == "on":
+        atomic_write_json(
+            config_path,
+            {
+                "enabled": True,
+                "logPath": str(log_path),
+                "updatedAt": iso_now(),
+            },
+        )
+        print("NVDA action probe ENABLED")
+        print(f"Log: {log_path}")
+        return 0
+
+    if action == "off":
+        atomic_write_json(
+            config_path,
+            {
+                "enabled": False,
+                "logPath": str(current.get("logPath") or log_path),
+                "updatedAt": iso_now(),
+            },
+        )
+        print("NVDA action probe DISABLED")
+        print(f"Log: {current.get('logPath') or log_path}")
+        return 0
+
+    if action == "status":
+        enabled = bool(current.get("enabled"))
+        print(f"NVDA action probe {'ENABLED' if enabled else 'DISABLED'}")
+        print(f"Log: {current.get('logPath') or log_path}")
+        return 0
+
+    print(f"Unknown NVDA action probe action: {action}", file=sys.stderr)
+    return 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="d4planner")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -729,6 +776,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = sub.add_parser("doctor")
     doctor.add_argument("--json", action="store_true")
+
+    nvda_action_probe = sub.add_parser("nvda-action-probe")
+    nvda_action_probe.add_argument("action", choices=("on", "off", "status"))
 
     character = sub.add_parser("character")
     character_sub = character.add_subparsers(dest="character_command", required=True)
@@ -782,6 +832,8 @@ def main(argv: list[str] | None = None) -> int:
         return command_stop(paths, timeout=args.timeout, stop_nvda=args.stop_nvda)
     if args.command == "doctor":
         return command_doctor(paths, raw_json=args.json)
+    if args.command == "nvda-action-probe":
+        return command_nvda_action_probe(paths, args.action)
     if args.command == "character" and args.character_command == "equipment":
         if getattr(args, "equipment_action", None) == "replay":
             return command_character_equipment_replay(args.path, trace=args.trace)

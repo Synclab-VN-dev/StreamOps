@@ -54,3 +54,35 @@ def test_runtime_plugin_uses_live_win32_pid_and_never_rejected_speech_text_in_di
         "def _filter_speech", 1
     )[0]
     assert "speechSequence" not in diagnostic_body
+
+
+def test_nvda_action_probe_is_debug_only_and_fail_open():
+    source = (
+        ROOT
+        / "nvda-addon"
+        / "addon"
+        / "globalPlugins"
+        / "d4plannerCapture"
+        / "__init__.py"
+    ).read_text(encoding="utf-8")
+
+    for handler in (
+        "event_gainFocus",
+        "event_stateChange",
+        "event_nameChange",
+        "event_valueChange",
+        "event_descriptionChange",
+        "event_UIA_notification",
+    ):
+        assert handler in source
+
+    assert "nvda-action-probe.json" in source
+    assert "nvda-action-probe.jsonl" in source
+    assert "nextHandler()" in source
+    assert 'config.get("enabled")' in source
+    assert "D4Planner: NVDA action probe failed" in source
+
+    probe_body = source.split(
+        "def _write_action_probe_event", 1
+    )[1].split("def _filter_speech", 1)[0]
+    assert "character.db" not in probe_body

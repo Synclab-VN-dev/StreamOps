@@ -15,6 +15,7 @@ def test_cli_parser_exposes_expected_commands():
         ["stop"],
         ["stop", "--stop-nvda"],
         ["doctor"],
+        ["nvda-action-probe", "status"],
         ["path", "status"],
         ["character", "equipment"],
         ["character", "equipment", "replay", "sample.jsonl", "--trace"],
@@ -615,3 +616,30 @@ def test_stop_nvda_failure_is_nonzero_and_capture_stays_disabled(
     assert read_json(paths.capture_state)["enabled"] is False
     err = capsys.readouterr().err
     assert "no force kill" in err
+
+
+def test_nvda_action_probe_cli_on_off_status(tmp_path, capsys):
+    from d4planner.runtime.store import read_json
+
+    paths = RuntimePaths(tmp_path / "home")
+
+    assert cli.command_nvda_action_probe(paths, "status") == 0
+    assert "DISABLED" in capsys.readouterr().out
+
+    assert cli.command_nvda_action_probe(paths, "on") == 0
+    out = capsys.readouterr().out
+    assert "ENABLED" in out
+    config_path = paths.state / "nvda-action-probe.json"
+    log_path = paths.state / "nvda-action-probe.jsonl"
+    config = read_json(config_path)
+    assert config["enabled"] is True
+    assert config["logPath"] == str(log_path)
+
+    assert cli.command_nvda_action_probe(paths, "status") == 0
+    status = capsys.readouterr().out
+    assert "ENABLED" in status
+    assert str(log_path) in status
+
+    assert cli.command_nvda_action_probe(paths, "off") == 0
+    capsys.readouterr()
+    assert read_json(config_path)["enabled"] is False
