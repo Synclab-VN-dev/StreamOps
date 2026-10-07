@@ -255,7 +255,7 @@ def test_same_slot_rebound_after_unequip_clears_single_instance_slot(
 
 
 @pytest.mark.parametrize(
-    ("slot_label", "type_line", "slot_family", "neutral_text"),
+    ("slot_label", "type_line", "slot_family", "interstitial_text"),
     [
         (
             "Head",
@@ -278,12 +278,12 @@ def test_same_slot_rebound_after_unequip_clears_single_instance_slot(
         ),
     ],
 )
-def test_real_a_one_neutral_event_then_same_slot_clears(
+def test_real_a_one_interstitial_event_then_same_slot_clears(
     tmp_path,
     slot_label,
     type_line,
     slot_family,
-    neutral_text,
+    interstitial_text,
 ):
     repo = EquipmentRepository(tmp_path / f"{slot_family}-neutral.db")
     diagnostics = MemoryDiagnosticsSink(component="equipment")
@@ -298,7 +298,7 @@ def test_real_a_one_neutral_event_then_same_slot_clears(
             type_line,
             "850 Item Power",
             "Unequip",
-            neutral_text,
+            interstitial_text,
             slot_label,
         ],
     )
@@ -317,7 +317,7 @@ def test_real_a_one_neutral_event_then_same_slot_clears(
     assert confirmed["reason"] == "same_slot_rebound_after_one_interstitial"
 
 
-def test_two_neutral_events_cancel_empty_transition(tmp_path):
+def test_two_interstitial_events_cancel_empty_transition(tmp_path):
     repo = EquipmentRepository(tmp_path / "character.db")
     projector = EquipmentProjector(repo)
 
@@ -330,8 +330,8 @@ def test_two_neutral_events_cancel_empty_transition(tmp_path):
             "Rare Helm",
             "850 Item Power",
             "Unequip",
-            "first neutral tooltip",
-            "second neutral tooltip",
+            "First explanatory tooltip sentence that is long enough to end here.",
+            "Second explanatory tooltip sentence that is long enough to end here.",
             "Head",
         ],
     )
