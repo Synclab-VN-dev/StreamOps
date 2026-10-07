@@ -81,12 +81,10 @@ class WindowsRuntime:
             return None
         return int(value.value)
 
-    def _process(self, names: tuple[str, ...]) -> ProcessInfo | None:
-        quoted = ",".join("'" + n.replace("'", "''") + "'" for n in names)
+    def _process_named(self, name: str) -> ProcessInfo | None:
+        escaped = name.replace("'", "''")
         script = (
-            f"$names=@({quoted});"
-            "$p=Get-Process -ErrorAction SilentlyContinue | "
-            "Where-Object { $names -contains $_.ProcessName } | "
+            f"$p=Get-Process -Name '{escaped}' -ErrorAction SilentlyContinue | "
             "Sort-Object StartTime | Select-Object -Last 1;"
             "if($p){"
             "$started=$null;$path=$null;$priority=$null;"
@@ -103,7 +101,7 @@ class WindowsRuntime:
         try:
             data = json.loads(result.stdout)
             return ProcessInfo(
-                name=str(data.get("name") or names[0]),
+                name=str(data.get("name") or name),
                 pid=int(data["pid"]),
                 session_id=int(data["sessionId"]) if data.get("sessionId") is not None else None,
                 started_at=str(data["startedAt"]) if data.get("startedAt") else None,
@@ -114,6 +112,15 @@ class WindowsRuntime:
             )
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):
             return None
+
+    def _process(self, names: tuple[str, ...]) -> ProcessInfo | None:
+        # Tuple order is priority order. For NVDA, prefer the long-lived
+        # nvda_noUIAccess host and only fall back to nvda.exe.
+        for name in names:
+            process = self._process_named(name)
+            if process is not None:
+                return process
+        return None
 
     def nvda_process(self) -> ProcessInfo | None:
         return self._process(self.NVDA_PROCESS_NAMES)
