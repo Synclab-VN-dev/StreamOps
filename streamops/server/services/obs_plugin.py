@@ -61,7 +61,7 @@ class ObsPluginStatus:
 @dataclass(frozen=True)
 class ObsPluginOperationResult:
     status: ObsPluginStatus
-    operation: Literal["install", "verify", "rollback"]
+    operation: Literal["install", "update", "verify", "rollback"]
     result: str
 
     def api_payload(self) -> dict[str, object]:
@@ -82,7 +82,7 @@ class ObsPluginService:
         self._require_supported(plugin_id)
         return await asyncio.to_thread(self._run_guarded, "install", self._install_sync)
 
-    async def verify(self, plugin_id: str) -> ObsPluginOperationResult:
+    async def update(self, plugin_id: str) -> ObsPluginOperationResult:\n        self._require_supported(plugin_id)\n        return await asyncio.to_thread(self._run_guarded, "update", self._update_sync)\n\n    async def verify(self, plugin_id: str) -> ObsPluginOperationResult:
         self._require_supported(plugin_id)
         return await asyncio.to_thread(self._run_guarded, "verify", self._verify_sync)
 
@@ -192,7 +192,7 @@ class ObsPluginService:
             self._best_effort_start(exc)
             raise ObsPluginError("obs_restart_failed", "OBS did not return to READY after plugin install.", 503) from exc
 
-    def _verify_sync(self) -> ObsPluginOperationResult:
+    def _update_sync(self) -> ObsPluginOperationResult:\n        runtime = self._runtime_for_mutation()\n        initial = self._combine(self.host.status(), runtime)\n        if not initial.installed:\n            raise ObsPluginError("plugin_not_installed", "The OBS plugin must be installed before it can be updated.", 409)\n        self._ensure_compatible(initial)\n        lower = self._host_call("update")\n        return ObsPluginOperationResult(self._status_sync(), "update", lower.result)\n\n    def _verify_sync(self) -> ObsPluginOperationResult:
         status = self._verify_loaded()
         return ObsPluginOperationResult(status, "verify", "verified")
 
@@ -240,7 +240,7 @@ class ObsPluginService:
             self._best_effort_start(exc)
             raise ObsPluginError("obs_restart_failed", "OBS did not return to READY after plugin rollback.", 503) from exc
 
-    def _host_call(self, action: Literal["install", "rollback"]) -> PluginHostResult:
+    def _host_call(self, action: Literal["install", "update", "rollback"]) -> PluginHostResult:
         try:
             return getattr(self.host, action)()
         except ObsPluginError:
@@ -252,7 +252,7 @@ class ObsPluginService:
                 403,
             ) from exc
         except Exception as exc:
-            code = "plugin_install_failed" if action == "install" else "plugin_rollback_failed"
+            code = {"install": "plugin_install_failed", "update": "plugin_update_failed", "rollback": "plugin_rollback_failed"}[action]
             raise ObsPluginError(code, f"OBS plugin {action} failed.", 503) from exc
 
     def _restart_or_start(self, runtime: Any) -> None:
