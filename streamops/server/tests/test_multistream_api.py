@@ -277,6 +277,11 @@ def test_http_ws_shared_core_snapshot_commands_events_and_state_parity(tmp_path,
 
             adapter.set_state("1", "LIVE")
             assert wait_for_state(client, "destination-a", "LIVE")["state"] == "LIVE"
+            live_event = websocket.receive_json()
+            assert (live_event["type"], live_event["data"]["state"]) == (
+                "destination.state_changed",
+                "LIVE",
+            )
 
             websocket.send_json(
                 {
@@ -298,6 +303,11 @@ def test_http_ws_shared_core_snapshot_commands_events_and_state_parity(tmp_path,
 
             adapter.set_state("1", "IDLE")
             assert wait_for_state(client, "destination-a", "IDLE")["state"] == "IDLE"
+            idle_event = websocket.receive_json()
+            assert (idle_event["type"], idle_event["data"]["state"]) == (
+                "destination.state_changed",
+                "IDLE",
+            )
 
         adapter.set_state("1", "LIVE")
         service.refresh()

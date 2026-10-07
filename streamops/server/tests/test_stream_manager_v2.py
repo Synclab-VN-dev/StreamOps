@@ -21,7 +21,7 @@ def test_stream_manager_v2_never_renders_credential_value():
     html = (WEB / "stream.html").read_text(encoding="utf-8")
     assert 'type="password"' in html
     assert "Stored credential is never displayed" in js
-    assert "destination-credential').value=''" in js
+    assert "$('#destination-credential').value = '';" in js
     assert "<strong>Configured</strong>" in js
 
 def test_stream_manager_v2_has_required_hierarchy():

@@ -18,7 +18,49 @@ def applied_profile(server, name: str = "Streaming Profile"):
     server.obs.activate_profile(profile["id"])
     verified = server.obs.verify_profile(profile["id"], runtime=True)
     assert verified.status == "PASS"
-    return profile
+    return server.obs.get_profile(profile["id"])
+
+
+def add_destination(page, name: str, *, secret: str = "browser-stream-secret") -> str:
+    destination_id = name.lower().replace(" ", "-")
+    expect(page.locator('.stream-v2[data-ready="true"]')).to_be_attached()
+    page.locator("#add-destination").click()
+    editor = page.locator("#destination-editor")
+    expect(editor).to_be_visible()
+    page.locator("#destination-name").fill(name)
+    page.locator("#destination-url").fill(f"rtmp://127.0.0.1:1935/{destination_id}")
+    page.locator("#destination-credential").fill(secret)
+    with page.expect_response(
+        lambda response: response.request.method == "GET"
+        and response.url.endswith("/api/v1/multistream/destinations")
+    ):
+        page.locator("#editor-save").click()
+    expect(editor).not_to_be_visible()
+    expect(page.locator(f'.v2-destination[data-id="{destination_id}"]')).to_be_visible()
+    expect(page.locator("#destination-credential")).to_have_value("")
+    expect(page.locator("body")).not_to_contain_text(secret)
+    return destination_id
+
+
+def run_preflight(page) -> None:
+    page.locator("#run-preflight").click()
+    expect(page.locator("#preflight-pill")).to_contain_text("PASSED")
+
+
+def set_runtime(server, destination_id: str, state: str) -> None:
+    item = server.multistream.repository.get(destination_id)
+    server.multistream_adapter.set_state(item["plugin_target_id"], state)
+    assert server.multistream.status(destination_id)["state"] == state
+
+
+def destination_card(page, destination_id: str):
+    return page.locator(f'.v2-destination[data-id="{destination_id}"]')
+
+
+def expect_state(page, destination_id: str, state: str) -> None:
+    expect(destination_card(page, destination_id).locator(".state-pill").first).to_have_text(
+        state, timeout=7000
+    )
 
 
 def test_obs_streaming_card_matches_mobile_design_contract(page, live_server):
@@ -36,187 +78,149 @@ def test_obs_streaming_card_matches_mobile_design_contract(page, live_server):
     panel = card.locator(".streaming-overview-panel")
     expect(panel).to_be_visible()
     assert panel.locator(":scope > div").count() == 4
-
     panel_style = panel.evaluate(
         "el => ({ backgroundColor: getComputedStyle(el).backgroundColor, "
         "borderRadius: getComputedStyle(el).borderRadius })"
     )
     assert panel_style["backgroundColor"] == "rgb(250, 250, 250)"
     assert float(panel_style["borderRadius"].removesuffix("px")) >= 16
-
-    cta = page.locator("#open-streaming")
-    expect(cta).to_be_visible()
+    expect(page.locator("#open-streaming")).to_be_visible()
     assert page.evaluate(
         "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
     )
 
 
-def install_v2_routes(page, profile, *, preflight_status="PASS"):
-    state = {
-        "preflight_status": preflight_status,
-        "destinations": [],
-        "requests": [],
-        "credential_bodies": [],
-    }
+@pytest.mark.parametrize("width,height", [(1440, 1000), (768, 1024), (390, 844)])
+def test_stream_manager_v2_visual_hierarchy_is_responsive(page, live_server, width, height):
+    profile = applied_profile(live_server)
+    page.set_viewport_size({"width": width, "height": height})
+    page.goto(live_server.base_url + "/obs/stream")
 
-    def obs_status(route):
-        route.fulfill(
-            status=200,
-            content_type="application/json",
-            body=json.dumps({"state": "READY"}),
-        )
+    expect(page.locator(".v2-header h1")).to_have_text("Stream Manager")
+    expect(page.locator("#obs-state")).to_have_text("● READY", timeout=7000)
+    expect(page.locator("#obs-profile")).to_have_text(profile["name"])
+    expect(page.locator("#obs-scene")).to_have_text(profile["obs_scene_name"])
+    expect(page.locator("#obs-canvas")).to_have_text(
+        f'{profile["canvas"]["width"]}×{profile["canvas"]["height"]}'
+    )
+    expect(page.locator("#preflight-pill")).to_have_text("NOT RUN")
+    expect(page.locator("#preflight-error")).to_be_hidden()
+    expect(page.locator("#destination-empty")).to_be_visible()
+    assert page.evaluate(
+        "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
+    )
 
-    def profiles(route):
-        route.fulfill(
-            status=200,
-            content_type="application/json",
-            body=json.dumps({"profiles": [profile]}),
-        )
+    page.locator("#add-destination").click()
+    modal = page.locator("#destination-editor")
+    expect(modal).to_be_in_viewport()
+    box = modal.bounding_box()
+    assert box and box["x"] >= 0 and box["x"] + box["width"] <= width
+    expect(page.locator("#credential-label")).to_have_text("Stream key")
+    expect(page.locator("#editor-delete")).to_be_hidden()
+    page.locator("#editor-cancel").click()
 
-    def preflight(route):
+
+def test_stream_manager_v2_preflight_fail_blocks_start(page, live_server):
+    applied_profile(live_server)
+
+    def fail_preflight(route):
         payload = route.request.post_data_json
-        state["requests"].append(("preflight", payload))
-        checks = [
-            {"id": "obs_ready", "status": "PASS", "message": "OBS ready"},
-            {
-                "id": "profile_verify",
-                "status": state["preflight_status"],
-                "message": "Profile verified" if state["preflight_status"] == "PASS" else "Profile mismatch",
-            },
-        ]
         route.fulfill(
             status=200,
             content_type="application/json",
             body=json.dumps(
                 {
-                    "status": state["preflight_status"],
+                    "status": "FAIL",
                     "profile_id": payload["profile_id"],
-                    "checks": checks,
+                    "checks": [
+                        {"id": "obs_ready", "status": "PASS", "message": "OBS ready"},
+                        {"id": "video_capture", "status": "FAIL", "message": "Video capture inactive"},
+                    ],
                 }
             ),
         )
 
-    def multistream(route):
-        request = route.request
-        url = request.url
-        method = request.method
-        suffix = url.split("/api/v1/multistream", 1)[1]
-        state["requests"].append((method, suffix))
-
-        if suffix == "/destinations" and method == "GET":
-            body = {"destinations": state["destinations"]}
-        elif suffix == "/destinations" and method == "POST":
-            payload = request.post_data_json
-            state["credential_bodies"].append(payload.copy())
-            destination = {
-                "destination_id": payload["destination_id"],
-                "name": payload["name"],
-                "server_url": payload["server_url"],
-                "enabled": payload.get("enabled", True),
-                "state": "IDLE",
-            }
-            state["destinations"].append(destination)
-            body = destination
-        elif suffix.endswith("/start") and method == "POST":
-            destination = state["destinations"][0]
-            destination["state"] = "STARTING"
-            body = destination
-        elif suffix.endswith("/stop") and method == "POST":
-            destination = state["destinations"][0]
-            destination["state"] = "STOPPING"
-            body = destination
-        else:
-            route.fulfill(status=404, content_type="application/json", body="{}")
-            return
-        route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
-
-    page.route("**/api/v1/obs/process/status", obs_status)
-    page.route("**/api/v1/scene-profiles", profiles)
-    page.route("**/api/v1/live/preflight/shared", preflight)
-    page.route("**/api/v1/multistream/destinations**", multistream)
-    return state
-
-
-def add_destination_v2(page, *, secret="browser-stream-secret"):
-    page.locator("#add-destination").click()
-    page.locator("#destination-name").fill("LAN Test")
-    page.locator("#destination-url").fill("rtmp://127.0.0.1:1935/live")
-    page.locator("#destination-credential").fill(secret)
-    page.locator("#editor-save").click()
-    expect(page.locator(".v2-destination")).to_have_count(1)
-    expect(page.locator("#destination-credential")).to_have_value("")
-    expect(page.locator("body")).not_to_contain_text(secret)
-
-
-def test_stream_manager_v2_loads_profile_and_is_mobile_safe(page, live_server):
-    profile = applied_profile(live_server)
-    state = install_v2_routes(page, profile)
-    page.set_viewport_size({"width": 390, "height": 844})
+    page.route("**/api/v1/live/preflight/shared", fail_preflight)
     page.goto(live_server.base_url + "/obs/stream")
-
-    expect(page.locator("#obs-state")).to_have_text("READY", timeout=7000)
-    expect(page.locator("#preflight-profile")).to_have_value(profile["id"])
-    expect(page.locator("#preflight-pill")).to_have_text("NOT RUN")
-    expect(page.locator("#destination-empty")).to_be_visible()
-    assert state["destinations"] == []
-    assert page.evaluate(
-        "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
-    )
-
-
-def test_stream_manager_v2_preflight_fail_blocks_start(page, live_server):
-    profile = applied_profile(live_server)
-    state = install_v2_routes(page, profile, preflight_status="FAIL")
-    page.goto(live_server.base_url + "/obs/stream")
-    add_destination_v2(page, secret="fail-secret")
-
+    destination_id = add_destination(page, "Fail Target", secret="fail-secret")
     page.locator("#run-preflight").click()
     expect(page.locator("#preflight-pill")).to_contain_text("FAILED")
-    page.locator(".v2-destination-head").click()
-    expect(page.locator('[data-action="start"]')).to_be_disabled()
-    assert not any(req == ("POST", "/destinations/lan-test/start") for req in state["requests"])
+    destination_card(page, destination_id).locator(".v2-destination-head").click()
+    expect(destination_card(page, destination_id).locator('[data-action="start"]')).to_be_disabled()
     expect(page.locator("body")).not_to_contain_text("fail-secret")
 
 
-def test_stream_manager_v2_start_stop_use_backend_transitional_states(page, live_server):
-    profile = applied_profile(live_server)
-    state = install_v2_routes(page, profile)
+def test_stream_manager_v2_rest_and_ws_transitions_are_authoritative(page, live_server):
+    applied_profile(live_server)
     page.goto(live_server.base_url + "/obs/stream")
-    add_destination_v2(page, secret="transition-secret")
+    destination_id = add_destination(page, "Transition Target", secret="transition-secret")
+    run_preflight(page)
+    card = destination_card(page, destination_id)
+    card.locator(".v2-destination-head").click()
+    card.locator('[data-action="start"]').click()
 
-    page.locator("#run-preflight").click()
-    expect(page.locator("#preflight-pill")).to_contain_text("PASSED")
-    page.locator(".v2-destination-head").click()
-    start = page.locator('[data-action="start"]')
-    expect(start).to_be_enabled()
-    start.click()
+    # REST ACK remains transitional until an authoritative backend event arrives.
+    expect_state(page, destination_id, "STARTING")
+    expect(card).not_to_contain_text("Backend confirmed live")
+    set_runtime(live_server, destination_id, "LIVE")
+    expect_state(page, destination_id, "LIVE")
+    expect(card).to_contain_text("6.0 Mbps", timeout=7000)
 
-    # Start ACK is STARTING. The browser must not invent LIVE.
-    expect(page.locator(".v2-destination .state-pill").first).to_have_text("STARTING")
-    expect(page.locator(".v2-destination")).not_to_contain_text("LIVE")
-
-    # Simulate authoritative backend reconciliation to LIVE.
-    state["destinations"][0]["state"] = "LIVE"
-    page.evaluate("window.dispatchEvent(new Event('focus'))")
-    page.reload()
-    expect(page.locator(".v2-destination .state-pill").first).to_have_text("LIVE", timeout=7000)
-    page.locator(".v2-destination-head").click()
-    stop = page.locator('[data-action="stop"]')
-    expect(stop).to_be_enabled()
-    stop.click()
-    expect(page.locator(".v2-destination .state-pill").first).to_have_text("STOPPING")
+    card.locator('[data-action="stop"]').click()
+    expect_state(page, destination_id, "STOPPING")
+    set_runtime(live_server, destination_id, "IDLE")
+    expect_state(page, destination_id, "IDLE")
     expect(page.locator("body")).not_to_contain_text("transition-secret")
 
 
-def test_stream_manager_v2_credential_is_write_only_and_activity_records_actions(page, live_server):
-    profile = applied_profile(live_server)
-    state = install_v2_routes(page, profile)
+def test_stream_manager_v2_mixed_states_reload_and_ws_reconnect(page, live_server):
+    applied_profile(live_server)
     page.goto(live_server.base_url + "/obs/stream")
-    add_destination_v2(page, secret="never-render-me")
+    destination_a = add_destination(page, "Destination A", secret="secret-a")
+    destination_b = add_destination(page, "Destination B", secret="secret-b")
 
-    assert state["credential_bodies"][0]["credential"] == "never-render-me"
+    set_runtime(live_server, destination_a, "LIVE")
+    set_runtime(live_server, destination_b, "FAILED")
+    expect_state(page, destination_a, "LIVE")
+    expect_state(page, destination_b, "FAILED")
+
+    set_runtime(live_server, destination_b, "RECONNECTING")
+    expect_state(page, destination_a, "LIVE")
+    expect_state(page, destination_b, "RECONNECTING")
+
+    page.reload()
+    expect_state(page, destination_a, "LIVE")
+    expect_state(page, destination_b, "RECONNECTING")
+
+    page.context.set_offline(True)
+    set_runtime(live_server, destination_b, "LIVE")
+    page.context.set_offline(False)
+    expect_state(page, destination_a, "LIVE")
+    expect_state(page, destination_b, "LIVE")
+    expect(page.locator("#activity-log-v2")).not_to_contain_text("destination.state_changed")
+
+
+def test_stream_manager_v2_credential_edit_and_delete_are_write_only(page, live_server):
+    applied_profile(live_server)
+    page.goto(live_server.base_url + "/obs/stream")
+    destination_id = add_destination(page, "CRUD Target", secret="never-render-me")
+    card = destination_card(page, destination_id)
+    expect(card).to_contain_text("Stream key")
+    expect(card).to_contain_text("Configured")
+    card.locator(".v2-destination-head").click()
+    card.locator('[data-action="edit"]').click()
+
+    expect(page.locator("#credential-label")).to_have_text("Replace stream key")
+    expect(page.locator("#destination-credential")).to_have_value("")
+    expect(page.locator("#credential-help")).to_contain_text("never loaded")
+    expect(page.locator("#editor-delete")).to_be_visible()
+    page.locator("#destination-name").fill("CRUD Target Updated")
+    page.locator("#editor-save").click()
+    expect(card).to_contain_text("CRUD Target Updated")
     expect(page.locator("body")).not_to_contain_text("never-render-me")
-    expect(page.locator("#activity-log-v2")).to_contain_text("Destination created")
 
-    page.locator("#run-preflight").click()
-    expect(page.locator("#activity-log-v2")).to_contain_text("Preflight passed")
+    card.locator('[data-action="edit"]').click()
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.locator("#editor-delete").click()
+    expect(destination_card(page, destination_id)).to_have_count(0)
+    expect(page.locator("#activity-log-v2")).to_contain_text("Destination deleted")
