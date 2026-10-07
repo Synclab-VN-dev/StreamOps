@@ -15,7 +15,7 @@ BASE_PATTERNS = (
     ("damagePerSecond", re.compile(r"^([\d,]+) Damage Per Second$")),
     ("damagePerHit", re.compile(r"^\[([\d,]+) - ([\d,]+)\] Damage per Hit$")),
     ("attacksPerSecond", re.compile(r"^([\d.]+) Attacks per Second(?: \(([^)]+)\))?$")),
-    ("quality", re.compile(r"^(\d+) \(\+(\d+)/(\d+)\) Quality$")),
+    ("quality", re.compile(r"^(\d+) \(\s*\+(\d+)/(\d+)\) Quality$")),
 )
 AFFIX_RE = re.compile(r"^(?P<op>[+x])?(?P<value>[\d,.]+)(?P<unit>%?) (?P<name>.+?)(?: \+?\[(?P<min>[\d,.]+) - (?P<max>[\d,.]+)\](?P<rangeunit>%?))?(?: \((?P<delta>[+-][\d.]+%?)\))?$")
 FAVORITE = "[FAVORITED ITEM]. "
