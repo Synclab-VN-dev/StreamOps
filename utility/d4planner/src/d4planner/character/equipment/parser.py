@@ -78,7 +78,11 @@ def parse_item(lines: list[str]) -> ParsedItem:
             if not m: continue
             vals = [_number(v) for v in m.groups() if v is not None and re.match(r"^[\d,.]+$", v)]
             stat = {"kind": kind, "value": vals[0] if vals else None, "raw": line}
-            if len(vals) > 1: stat["range"] = vals[:2]
+            if kind == "quality" and len(vals) == 3:
+                stat["bonus"] = vals[1]
+                stat["max"] = vals[2]
+            elif len(vals) > 1:
+                stat["range"] = vals[:2]
             item.base_stats.append(stat); matched = True; break
         if matched: continue
         if line.startswith("Imprinted:") or line == "Legendary Power" or line == "Empty Socket":
