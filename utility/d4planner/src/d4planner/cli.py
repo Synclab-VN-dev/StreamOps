@@ -700,6 +700,86 @@ def command_character_equipment_replay(path: Path, *, trace: bool) -> int:
     return 1 if failures else 0
 
 
+def command_controller_probe(*, seconds: float) -> int:
+    """Observe XInput button transitions from this external process."""
+    if seconds <= 0:
+        print("--seconds must be greater than 0", file=sys.stderr)
+        return 2
+    if os.name != "nt":
+        print("controller-probe requires Windows/XInput.", file=sys.stderr)
+        return 2
+
+    from .runtime.xinput import XInputBackend, decode_buttons
+
+    try:
+        backend = XInputBackend()
+    except OSError as exc:
+        print(f"Unable to start XInput probe: {exc}", file=sys.stderr)
+        return 2
+
+    print(f"XInput backend: {backend.dll_name}")
+    print(f"Watching slots 0..3 for {seconds:g}s. Press controller buttons on Steam Link.")
+    print("Ctrl+C stops early.")
+
+    previous: dict[int, int | None] = {}
+    ever_connected = False
+    for slot in range(4):
+        try:
+            snapshot = backend.snapshot(slot)
+        except OSError as exc:
+            print(f"slot={slot} ERROR {exc}", file=sys.stderr)
+            previous[slot] = None
+            continue
+        if snapshot is None:
+            previous[slot] = None
+            print(f"slot={slot} DISCONNECTED")
+        else:
+            ever_connected = True
+            previous[slot] = snapshot.buttons
+            names = ",".join(decode_buttons(snapshot.buttons)) or "-"
+            print(f"slot={slot} CONNECTED buttons={names}")
+
+    started = time.monotonic()
+    try:
+        while time.monotonic() - started < seconds:
+            for slot in range(4):
+                try:
+                    snapshot = backend.snapshot(slot)
+                except OSError as exc:
+                    print(f"slot={slot} ERROR {exc}", file=sys.stderr)
+                    continue
+
+                old = previous.get(slot)
+                if snapshot is None:
+                    if old is not None:
+                        print(f"slot={slot} DISCONNECTED", flush=True)
+                        previous[slot] = None
+                    continue
+
+                ever_connected = True
+                current = snapshot.buttons
+                if old is None:
+                    previous[slot] = current
+                    names = ",".join(decode_buttons(current)) or "-"
+                    print(f"slot={slot} CONNECTED buttons={names}", flush=True)
+                    continue
+
+                if current != old:
+                    pressed = current & ~old
+                    released = old & ~current
+                    for name in decode_buttons(pressed):
+                        print(f"slot={slot} {name} DOWN", flush=True)
+                    for name in decode_buttons(released):
+                        print(f"slot={slot} {name} UP", flush=True)
+                    previous[slot] = current
+            time.sleep(0.01)
+    except KeyboardInterrupt:
+        pass
+
+    print(f"Observed XInput controller: {'YES' if ever_connected else 'NO'}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="d4planner")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -729,6 +809,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = sub.add_parser("doctor")
     doctor.add_argument("--json", action="store_true")
+
+    controller_probe = sub.add_parser("controller-probe")
+    controller_probe.add_argument("--seconds", type=float, default=30.0)
 
     character = sub.add_parser("character")
     character_sub = character.add_subparsers(dest="character_command", required=True)
@@ -782,6 +865,8 @@ def main(argv: list[str] | None = None) -> int:
         return command_stop(paths, timeout=args.timeout, stop_nvda=args.stop_nvda)
     if args.command == "doctor":
         return command_doctor(paths, raw_json=args.json)
+    if args.command == "controller-probe":
+        return command_controller_probe(seconds=args.seconds)
     if args.command == "character" and args.character_command == "equipment":
         if getattr(args, "equipment_action", None) == "replay":
             return command_character_equipment_replay(args.path, trace=args.trace)

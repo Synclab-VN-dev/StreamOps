@@ -15,6 +15,7 @@ def test_cli_parser_exposes_expected_commands():
         ["stop"],
         ["stop", "--stop-nvda"],
         ["doctor"],
+        ["controller-probe", "--seconds", "5"],
         ["path", "status"],
         ["character", "equipment"],
         ["character", "equipment", "replay", "sample.jsonl", "--trace"],
@@ -615,3 +616,14 @@ def test_stop_nvda_failure_is_nonzero_and_capture_stays_disabled(
     assert read_json(paths.capture_state)["enabled"] is False
     err = capsys.readouterr().err
     assert "no force kill" in err
+
+
+def test_controller_probe_rejects_non_windows(monkeypatch, capsys):
+    monkeypatch.setattr(cli.os, "name", "posix")
+    assert cli.command_controller_probe(seconds=1) == 2
+    assert "requires Windows/XInput" in capsys.readouterr().err
+
+
+def test_controller_probe_rejects_non_positive_duration(capsys):
+    assert cli.command_controller_probe(seconds=0) == 2
+    assert "--seconds must be greater than 0" in capsys.readouterr().err
