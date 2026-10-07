@@ -224,6 +224,7 @@ def test_control_plane_reconciles_interactive_tasks_at_normal_priority(tmp_path,
     scripts = {
         "nvda": tmp_path / "nvda.ps1",
         "nvda-restart": tmp_path / "nvda-restart.ps1",
+        "nvda-stop": tmp_path / "nvda-stop.ps1",
         "d4": tmp_path / "d4.ps1",
         "tolk-probe": tmp_path / "tolk-probe.ps1",
     }
@@ -239,7 +240,7 @@ def test_control_plane_reconciles_interactive_tasks_at_normal_priority(tmp_path,
 
     runtime.prepare_interactive_tasks()
 
-    assert len(commands) == 4
+    assert len(commands) == 5
     assert all("-Priority 4" in command for command in commands)
     assert all("-Force" in command for command in commands)
 
@@ -279,3 +280,103 @@ def test_supervisor_task_is_normal_priority_and_prepares_helpers_first(tmp_path,
     assert calls[0] == "prepare"
     assert "-Priority 4" in calls[1]
     assert "Register-ScheduledTask" in calls[1]
+
+
+
+def test_stop_nvda_targets_active_console_and_uses_graceful_task(tmp_path, monkeypatch):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
+    current = [ProcessInfo("nvda_noUIAccess", 42, session_id=1)]
+    calls = []
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(runtime, "active_console_session_id", lambda: 1)
+    monkeypatch.setattr(runtime, "nvda_process", lambda: current[0] if current else None)
+    monkeypatch.setattr(runtime, "prepare_nvda_stop_task", lambda: calls.append("prepare-stop"))
+
+    def run_task(name):
+        calls.append(name)
+        current.clear()
+
+    monkeypatch.setattr(runtime, "run_task", run_task)
+
+    assert runtime.stop_nvda(timeout=0.1) is True
+    assert calls == ["prepare-stop", "D4Planner-NVDA-Stop"]
+
+
+def test_stop_nvda_is_idempotent_when_nvda_absent(tmp_path, monkeypatch):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(runtime, "nvda_process", lambda: None)
+    monkeypatch.setattr(
+        runtime,
+        "run_task",
+        lambda _name: (_ for _ in ()).throw(AssertionError("task must not run")),
+    )
+
+    assert runtime.stop_nvda(timeout=0.1) is False
+
+
+def test_stop_nvda_refuses_other_windows_session(tmp_path, monkeypatch):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(runtime, "active_console_session_id", lambda: 1)
+    monkeypatch.setattr(
+        runtime,
+        "nvda_process",
+        lambda: ProcessInfo("nvda_noUIAccess", 42, session_id=2),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "run_task",
+        lambda _name: (_ for _ in ()).throw(AssertionError("task must not run")),
+    )
+
+    with pytest.raises(Exception, match="outside active console session"):
+        runtime.stop_nvda(timeout=0.1)
+
+
+def test_stop_helper_uses_nvda_quit_without_force_kill(tmp_path, monkeypatch):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = WindowsRuntime(paths)
+    nvda = tmp_path / "NVDA" / "nvda_noUIAccess.exe"
+    steam = tmp_path / "Steam" / "steam.exe"
+    nvda.parent.mkdir(parents=True)
+    steam.parent.mkdir(parents=True)
+    nvda.write_bytes(b"")
+    steam.write_bytes(b"")
+    monkeypatch.setattr(runtime, "locate_nvda_executable", lambda: nvda)
+    monkeypatch.setattr(runtime, "locate_steam_executable", lambda: steam)
+
+    scripts = runtime.ensure_helper_scripts()
+    stop_script = scripts["nvda-stop"].read_text(encoding="utf-8")
+
+    assert "nvda.exe" in stop_script
+    assert "-q" in stop_script
+    assert "taskkill" not in stop_script.casefold()
+    assert "stop-process" not in stop_script.casefold()
+    assert "-force" not in stop_script.casefold()
+    assert ("D4Planner-NVDA-Stop", scripts["nvda-stop"]) in runtime._interactive_task_specs()
+
+
+
+def test_prepare_nvda_stop_task_reconciles_only_stop_task(tmp_path, monkeypatch):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
+    stop_script = tmp_path / "stop-nvda.ps1"
+    stop_script.write_text("& 'nvda.exe' -q\n", encoding="utf-8")
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(
+        runtime,
+        "ensure_helper_scripts",
+        lambda: {
+            "nvda-stop": stop_script,
+        },
+    )
+    calls = []
+    monkeypatch.setattr(
+        runtime,
+        "_prepare_interactive_task",
+        lambda name, path: calls.append((name, path)),
+    )
+
+    runtime.prepare_nvda_stop_task()
+
+    assert calls == [("D4Planner-NVDA-Stop", stop_script)]

@@ -16,6 +16,7 @@ class E2ERuntime:
         self._steam = ProcessInfo("steam", 200, session_id=1)
         self._game = ProcessInfo("Diablo IV", 300, session_id=1)
         self.launch_calls = 0
+        self.stop_nvda_calls = 0
 
     def require_windows(self):
         return None
@@ -53,6 +54,13 @@ class E2ERuntime:
 
     def nvda_process(self):
         return self._nvda
+
+    def stop_nvda(self, *, timeout=15.0):
+        self.stop_nvda_calls += 1
+        if self._nvda is None:
+            return False
+        self._nvda = None
+        return True
 
     def steam_process(self):
         return self._steam
@@ -193,3 +201,69 @@ def test_e2e_existing_game_wrong_backend_requires_restart_without_launch(tmp_pat
     assert status["game"]["pid"] == 300
     assert read_json(paths.capture_state)["enabled"] is False
 
+
+
+
+def test_e2e_stop_with_nvda_preserves_d4_and_steam(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = E2ERuntime(paths)
+    manager = UserPathManager(
+        paths,
+        MemoryPathBackend(user_path="", machine_path="MACHINE"),
+    )
+    supervisor = Supervisor(
+        paths=paths,
+        runtime=runtime,
+        path_manager=manager,
+        silent=True,
+        poll_interval=0.02,
+        health_poll_interval=0.10,
+        game_start_timeout=0.01,
+    )
+    thread = threading.Thread(target=supervisor.run, daemon=True)
+    thread.start()
+    assert wait_until(
+        lambda: (read_json(paths.runtime_state) or {}).get("state") == RuntimeState.RUNNING.value
+    )
+
+    monkeypatch.setattr(
+        cli,
+        "_pid_alive",
+        lambda pid: int(pid) == supervisor.status.supervisor_pid and thread.is_alive(),
+    )
+    monkeypatch.setattr(cli, "WindowsRuntime", lambda _paths: runtime)
+    d4_pid = runtime._game.pid
+    steam_pid = runtime._steam.pid
+
+    assert cli.command_stop(paths, timeout=2.0, stop_nvda=True) == 0
+    thread.join(timeout=2.0)
+
+    assert runtime._nvda is None
+    assert runtime.stop_nvda_calls == 1
+    assert runtime._game.pid == d4_pid
+    assert runtime._steam.pid == steam_pid
+    capture = read_json(paths.capture_state)
+    assert capture["enabled"] is False
+
+
+def test_e2e_default_stop_keeps_nvda_running(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = E2ERuntime(paths)
+    monkeypatch.setattr(cli, "_pid_alive", lambda _pid: False)
+    monkeypatch.setattr(cli, "WindowsRuntime", lambda _paths: runtime)
+
+    assert cli.command_stop(paths, timeout=0.1) == 0
+    assert runtime._nvda is not None
+    assert runtime.stop_nvda_calls == 0
+
+
+def test_e2e_repeated_stop_nvda_is_idempotent(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = E2ERuntime(paths)
+    monkeypatch.setattr(cli, "_pid_alive", lambda _pid: False)
+    monkeypatch.setattr(cli, "WindowsRuntime", lambda _paths: runtime)
+
+    assert cli.command_stop(paths, timeout=0.1, stop_nvda=True) == 0
+    assert cli.command_stop(paths, timeout=0.1, stop_nvda=True) == 0
+    assert runtime._nvda is None
+    assert runtime.stop_nvda_calls == 2

@@ -649,6 +649,7 @@ class WindowsRuntime:
 
         nvda_script = bin_dir / "start-nvda.ps1"
         nvda_restart_script = bin_dir / "restart-nvda.ps1"
+        nvda_stop_script = bin_dir / "stop-nvda.ps1"
         d4_script = bin_dir / "start-d4.ps1"
         tolk_probe_script = bin_dir / "probe-tolk.ps1"
         runtime = str(self.paths.controller).replace("'", "''")
@@ -673,6 +674,15 @@ class WindowsRuntime:
             "Start-Process -FilePath $nvda\n",
             encoding="utf-8",
         )
+        nvda_stop_script.write_text(
+            "$ErrorActionPreference='Stop'\n"
+            f"$detected='{nvda_q}'\n"
+            "$nvda=Join-Path (Split-Path -Parent $detected) 'nvda.exe'\n"
+            "if(-not (Test-Path -LiteralPath $nvda)){$nvda=$detected}\n"
+            "& $nvda -q\n"
+            "if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}\n",
+            encoding="utf-8",
+        )
         d4_script.write_text(
             "$ErrorActionPreference='Stop'\n"
             f"$runtime='{runtime}'\n"
@@ -693,6 +703,7 @@ class WindowsRuntime:
         return {
             "nvda": nvda_script,
             "nvda-restart": nvda_restart_script,
+            "nvda-stop": nvda_stop_script,
             "d4": d4_script,
             "tolk-probe": tolk_probe_script,
         }
@@ -702,22 +713,15 @@ class WindowsRuntime:
         return (
             ("D4Planner-NVDA", scripts["nvda"]),
             ("D4Planner-NVDA-Restart", scripts["nvda-restart"]),
+            ("D4Planner-NVDA-Stop", scripts["nvda-stop"]),
             ("D4Planner-D4", scripts["d4"]),
             ("D4Planner-Tolk-Probe", scripts["tolk-probe"]),
         )
 
-    def prepare_interactive_tasks(self) -> None:
-        """Reconcile helper tasks from the interactive CLI control plane.
-
-        This deliberately runs before the limited supervisor task is launched.
-        The supervisor only verifies these definitions, so it never needs to
-        replace a task registered by a more capable caller token.
-        """
-        self.require_windows()
-        for name, script_path in self._interactive_task_specs():
-            escaped = str(script_path).replace("'", "''")
-            task_name = name.replace("'", "''")
-            ps = (
+    def _prepare_interactive_task(self, name: str, script_path: Path) -> None:
+        escaped = str(script_path).replace("'", "''")
+        task_name = name.replace("'", "''")
+        ps = (
                 f"$a=New-ScheduledTaskAction -Execute 'powershell.exe' "
                 f"-Argument '-NoProfile -ExecutionPolicy Bypass -File \"{escaped}\"';"
                 "$u=[System.Security.Principal.WindowsIdentity]::GetCurrent().Name;"
@@ -727,12 +731,24 @@ class WindowsRuntime:
                 "-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries;"
                 "$d=New-ScheduledTask -Action $a -Principal $p -Settings $s;"
                 f"Register-ScheduledTask -TaskName '{task_name}' -InputObject $d -Force | Out-Null"
+        )
+        result = self._powershell(ps)
+        if result.returncode != 0:
+            raise RuntimeBlocked(
+                f"failed to reconcile interactive task {name}: {result.stderr.strip()[:300]}"
             )
-            result = self._powershell(ps)
-            if result.returncode != 0:
-                raise RuntimeBlocked(
-                    f"failed to reconcile interactive task {name}: {result.stderr.strip()[:300]}"
-                )
+
+    def prepare_interactive_tasks(self) -> None:
+        """Reconcile helper tasks from the interactive CLI control plane."""
+        self.require_windows()
+        for name, script_path in self._interactive_task_specs():
+            self._prepare_interactive_task(name, script_path)
+
+    def prepare_nvda_stop_task(self) -> None:
+        """Reconcile only the graceful-stop helper/task for upgrade-safe stop."""
+        self.require_windows()
+        scripts = self.ensure_helper_scripts()
+        self._prepare_interactive_task("D4Planner-NVDA-Stop", scripts["nvda-stop"])
 
     def ensure_interactive_tasks(self) -> None:
         """Verify prepared task definitions without mutating them."""
@@ -740,6 +756,7 @@ class WindowsRuntime:
         names = (
             "D4Planner-NVDA",
             "D4Planner-NVDA-Restart",
+            "D4Planner-NVDA-Stop",
             "D4Planner-D4",
             "D4Planner-Tolk-Probe",
         )
@@ -820,6 +837,50 @@ class WindowsRuntime:
                 return current
             time.sleep(0.5)
         raise RuntimeBlocked("NVDA did not restart in time after add-on update")
+
+    def stop_nvda(self, *, timeout: float = 15.0) -> bool:
+        """Gracefully stop NVDA in the active console session.
+
+        Returns True when a running NVDA instance was stopped and False when
+        NVDA was already absent. This method never force-terminates a process.
+        """
+        self.require_windows()
+        process = self.nvda_process()
+        if process is None:
+            return False
+
+        console_session = self.active_console_session_id()
+        if console_session is None:
+            raise RuntimeBlocked("cannot stop NVDA: no active console session")
+        if process.session_id != console_session:
+            raise RuntimeBlocked(
+                "refusing to stop NVDA outside active console session: "
+                f"nvda={process.session_id!r} active={console_session}"
+            )
+
+        # stop --stop-nvda is itself a control-plane command. Reconcile only
+        # its own helper/task so an upgraded install can stop NVDA immediately,
+        # even when the older task set was prepared before this feature existed.
+        self.prepare_nvda_stop_task()
+        self.run_task("D4Planner-NVDA-Stop")
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            current = self.nvda_process()
+            if current is None:
+                return True
+            if current.session_id != console_session:
+                # The target session is clear. Never chase/terminate an NVDA
+                # process that appeared in another Windows session.
+                raise RuntimeBlocked(
+                    "NVDA graceful stop verification encountered another session: "
+                    f"nvda={current.session_id!r} active={console_session}"
+                )
+            time.sleep(0.25)
+        raise RuntimeBlocked(
+            f"NVDA did not exit within {timeout:g}s after graceful quit; "
+            "no force kill was attempted"
+        )
 
     def launch_game(self) -> None:
         self.ensure_interactive_tasks()

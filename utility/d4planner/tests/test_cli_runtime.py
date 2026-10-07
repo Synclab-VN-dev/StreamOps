@@ -13,6 +13,7 @@ def test_cli_parser_exposes_expected_commands():
         ["status"],
         ["logs"],
         ["stop"],
+        ["stop", "--stop-nvda"],
         ["doctor"],
         ["path", "status"],
     ):
@@ -438,3 +439,89 @@ def test_broken_pipe_detaches_logs_without_stop_request(monkeypatch, tmp_path):
 
     assert cli.command_logs(paths, follow=False, raw=False) == 0
     assert not paths.stop_request.exists()
+
+
+
+def test_stop_parser_exposes_stop_nvda_flag():
+    args = cli.build_parser().parse_args(["stop", "--stop-nvda"])
+    assert args.stop_nvda is True
+
+
+def test_default_stop_never_constructs_nvda_runtime(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    monkeypatch.setattr(cli, "_pid_alive", lambda _pid: False)
+    monkeypatch.setattr(
+        cli,
+        "WindowsRuntime",
+        lambda _paths: (_ for _ in ()).throw(AssertionError("NVDA runtime must be untouched")),
+    )
+
+    assert cli.command_stop(paths, timeout=0.1) == 0
+
+
+def test_stop_nvda_runs_after_capture_disabled_when_planner_already_stopped(
+    monkeypatch, tmp_path
+):
+    from d4planner.runtime.store import read_json
+
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    monkeypatch.setattr(cli, "_pid_alive", lambda _pid: False)
+    observed = []
+
+    class FakeRuntime:
+        def __init__(self, _paths):
+            pass
+
+        def stop_nvda(self, *, timeout):
+            observed.append(read_json(paths.capture_state)["enabled"])
+            return True
+
+    monkeypatch.setattr(cli, "WindowsRuntime", FakeRuntime)
+
+    assert cli.command_stop(paths, timeout=0.1, stop_nvda=True) == 0
+    assert observed == [False]
+
+
+def test_stop_nvda_already_absent_is_success(monkeypatch, tmp_path, capsys):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    monkeypatch.setattr(cli, "_pid_alive", lambda _pid: False)
+
+    class FakeRuntime:
+        def __init__(self, _paths):
+            pass
+
+        def stop_nvda(self, *, timeout):
+            return False
+
+    monkeypatch.setattr(cli, "WindowsRuntime", FakeRuntime)
+
+    assert cli.command_stop(paths, timeout=0.1, stop_nvda=True) == 0
+    assert "NVDA already stopped." in capsys.readouterr().out
+
+
+def test_stop_nvda_failure_is_nonzero_and_capture_stays_disabled(
+    monkeypatch, tmp_path, capsys
+):
+    from d4planner.runtime.store import read_json
+    from d4planner.runtime.windows import RuntimeBlocked
+
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    monkeypatch.setattr(cli, "_pid_alive", lambda _pid: False)
+
+    class FakeRuntime:
+        def __init__(self, _paths):
+            pass
+
+        def stop_nvda(self, *, timeout):
+            raise RuntimeBlocked("NVDA did not exit; no force kill was attempted")
+
+    monkeypatch.setattr(cli, "WindowsRuntime", FakeRuntime)
+
+    assert cli.command_stop(paths, timeout=0.1, stop_nvda=True) == 1
+    assert read_json(paths.capture_state)["enabled"] is False
+    err = capsys.readouterr().err
+    assert "no force kill" in err
