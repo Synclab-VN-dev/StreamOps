@@ -23,17 +23,20 @@ def _execute(service:Any,op:str,p:dict[str,Any])->Any:
 
 @router.websocket("/api/v1/multistream/ws")
 async def multistream_ws(websocket:WebSocket,_access:None=Depends(require_access))->None:
-    await websocket.accept(); service=websocket.app.state.multistream_service; loop=asyncio.get_running_loop(); queue:asyncio.Queue[dict[str,Any]]=asyncio.Queue()
+    await websocket.accept(); service=websocket.app.state.multistream_service; loop=asyncio.get_running_loop(); queue:asyncio.Queue[dict[str,Any]]=asyncio.Queue(); send_lock=asyncio.Lock()
+    async def send(message:dict[str,Any])->None:
+        async with send_lock: await websocket.send_json(message)
     def listener(event:dict[str,Any])->None: loop.call_soon_threadsafe(queue.put_nowait,event)
-    service.subscribe(listener); await websocket.send_json({"type":"multistream.snapshot","data":service.snapshot()})
+    service.subscribe(listener); await send({"type":"multistream.snapshot","data":await asyncio.to_thread(service.snapshot)})
     async def sender():
-        while True: await websocket.send_json(await queue.get())
+        while True: await send(await queue.get())
     task=asyncio.create_task(sender())
     try:
         while True:
             rid=None
             try:
-                rid,op,p=_parse(await websocket.receive_text()); data=await asyncio.to_thread(_execute,service,op,p); await websocket.send_json({"type":"response","request_id":rid,"ok":True,"data":data})
-            except StreamingError as exc: await websocket.send_json({"type":"response","request_id":rid,"ok":False,"error":{"code":exc.code,"message":str(exc)}})
+                rid,op,p=_parse(await websocket.receive_text()); data=await asyncio.to_thread(_execute,service,op,p); await send({"type":"response","request_id":rid,"ok":True,"data":data})
+            except StreamingError as exc: await send({"type":"response","request_id":rid,"ok":False,"error":{"code":exc.code,"message":str(exc)}})
+            except Exception: await send({"type":"response","request_id":rid,"ok":False,"error":{"code":"internal_error","message":"Multistream request failed."}})
     except WebSocketDisconnect: pass
     finally: task.cancel(); await asyncio.gather(task,return_exceptions=True); service.unsubscribe(listener)

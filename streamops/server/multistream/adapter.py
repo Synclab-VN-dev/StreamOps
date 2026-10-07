@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from ..obs.client import ObsClient
+from ..errors import StreamingError
 
 VENDOR_NAME = "sorayuki.multi_rtmp"
 
@@ -27,7 +28,10 @@ class MultiRtmpVendorAdapter:
                 "requestType": request_type,
                 "requestData": data or {},
             })
-        return dict(response.get("responseData") or {})
+        data = dict(response.get("responseData") or {})
+        if data.get("error"):
+            raise StreamingError("multistream_vendor_error", str(data["error"]), 503)
+        return data
 
     def list_targets(self) -> list[dict[str, Any]]:
         return list(self._call("list_targets").get("targets") or [])

@@ -63,7 +63,7 @@ from .services import ObsPluginService, ObsSceneService, ScreenCaptureService, S
 from .services.live import LiveService
 from .services.live_status import LiveStatusHub
 from .services.multistream import MultistreamService
-from .multistream import MultiRtmpVendorAdapter, MultistreamRepository
+from .multistream import MultiRtmpVendorAdapter, MultistreamRepository, MultistreamSecretStore
 from .services.obs_status import ObsStatusHub
 from .services.runtime import RuntimeLease
 from .streaming import DestinationStore, SecretStore
@@ -103,7 +103,11 @@ def create_app(
         SecretStore(config.data_dir / "stream-secrets"),
     )
     live_hub = live_status_hub or LiveStatusHub(live)
-    multistream = multistream_service or MultistreamService(MultistreamRepository(config.data_dir / "multistream-destinations"), MultiRtmpVendorAdapter())
+    multistream = multistream_service or MultistreamService(
+        MultistreamRepository(config.data_dir / "multistream-destinations"),
+        MultiRtmpVendorAdapter(),
+        MultistreamSecretStore(config.data_dir / "multistream-secrets"),
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -112,8 +116,10 @@ def create_app(
             service.start()
             await status_hub.start()
             await live_hub.start()
+            await multistream.start()
             yield
         finally:
+            await multistream.close()
             await live_hub.close()
             await status_hub.close()
             service.close()

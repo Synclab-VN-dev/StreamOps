@@ -16,9 +16,12 @@ class MultistreamRepository:
         p=self._path(destination_id)
         if not p.is_file(): raise StreamingError("destination_not_found", f"Multistream destination not found: {destination_id}",404)
         return self._read(p)
+    def exists(self, destination_id: str) -> bool:
+        with self._lock:
+            return self._path(destination_id).is_file()
     def save(self, item: dict[str, Any], *, create: bool=False) -> dict[str, Any]:
         with self._lock:
-            p=self._path(str(item["id"]))
+            p=self._path(str(item["destination_id"]))
             if create and p.exists(): raise StreamingError("destination_conflict","Multistream destination already exists.",409)
             self.root.mkdir(parents=True, exist_ok=True)
             tmp=p.with_name(f".{p.name}.tmp-{os.getpid()}-{threading.get_ident()}")
