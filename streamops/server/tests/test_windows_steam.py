@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+import subprocess
 import time
 
 import pytest
@@ -210,3 +211,26 @@ def test_wrong_session_fails_before_installation_or_process_mutation(monkeypatch
 
     with pytest.raises(WrongDesktopSessionError, match="Steam restart"):
         backend.restart()
+
+
+def test_spawn_requests_normal_priority_without_console(tmp_path, monkeypatch) -> None:
+    executable = _steam_executable(tmp_path)
+    backend = WindowsSteamBackend()
+    observed = {}
+
+    def fake_popen(command, **kwargs):
+        observed["command"] = command
+        observed.update(kwargs)
+        return SimpleNamespace(pid=123)
+
+    monkeypatch.setattr(
+        "streamops.server.platform.windows.steam.subprocess.Popen",
+        fake_popen,
+    )
+    monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    monkeypatch.setattr(subprocess, "NORMAL_PRIORITY_CLASS", 0x00000020, raising=False)
+
+    backend._spawn(executable, "-bigpicture", SteamLaunchError)
+
+    assert observed["creationflags"] == 0x08000020
+    assert observed["command"] == [str(executable), "-bigpicture"]

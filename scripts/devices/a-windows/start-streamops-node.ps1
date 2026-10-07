@@ -19,6 +19,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
+$repoPrefix = $repoRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 $launcher = Join-Path $PSScriptRoot "run-streamops-node.ps1"
 $pwsh = (Get-Command pwsh.exe -ErrorAction Stop).Source
 if ([string]::IsNullOrWhiteSpace($PythonPath)) {
@@ -30,6 +31,9 @@ elseif (-not [IO.Path]::IsPathRooted($PythonPath)) {
 $PythonPath = [IO.Path]::GetFullPath($PythonPath)
 if (-not (Test-Path -LiteralPath $PythonPath -PathType Leaf)) {
     throw "Configured Python interpreter is missing: $PythonPath"
+}
+if (-not $PythonPath.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "PythonPath must stay inside the repository-managed runtime area: $repoRoot"
 }
 
 function ConvertTo-TaskArgument([string]$Value) {
@@ -70,7 +74,6 @@ elseif (-not [IO.Path]::IsPathRooted($DataDir)) {
     $DataDir = [IO.Path]::GetFullPath((Join-Path $repoRoot $DataDir))
 }
 $DataDir = [IO.Path]::GetFullPath($DataDir)
-$repoPrefix = $repoRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 if (-not $DataDir.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw "DataDir must stay inside the repository: $repoRoot"
 }
@@ -83,7 +86,9 @@ if ([string]::IsNullOrWhiteSpace($interactiveUser)) {
 $runtimePath = Join-Path $DataDir "runtime.json"
 $existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 $taskUsesPythonPath = $false
+$taskUsesNormalPriority = $false
 if ($null -ne $existingTask) {
+    $taskUsesNormalPriority = [int]$existingTask.Settings.Priority -eq 4
     $taskAction = $existingTask.Actions | Select-Object -First 1
     if ($null -ne $taskAction) {
         $taskArgumentsText = [string]$taskAction.Arguments
@@ -96,7 +101,7 @@ if (Test-Path -LiteralPath $runtimePath) {
         $runtime = Get-Content -LiteralPath $runtimePath -Raw | ConvertFrom-Json
         $probeHost = Get-ProbeHost $runtime.host
         $health = Invoke-RestMethod -Uri "http://${probeHost}:$($runtime.port)/api/v1/health" -TimeoutSec 2
-        $matchesDesiredConfig = $taskUsesPythonPath -and
+        $matchesDesiredConfig = $taskUsesPythonPath -and $taskUsesNormalPriority -and
             $runtime.host -eq $BindHost -and
             [int]$runtime.port -eq $Port -and
             [int]$runtime.output_index -eq $OutputIndex -and
@@ -135,6 +140,7 @@ $actionArguments = @(
 $action = New-ScheduledTaskAction -Execute $pwsh -Argument $actionArguments -WorkingDirectory $repoRoot
 $principal = New-ScheduledTaskPrincipal -UserId $interactiveUser -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet `
+    -Priority 4 `
     -ExecutionTimeLimit ([TimeSpan]::Zero) `
     -MultipleInstances IgnoreNew `
     -AllowStartIfOnBatteries `
