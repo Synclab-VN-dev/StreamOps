@@ -811,6 +811,35 @@ class WindowsRuntime:
                 f"{result.stderr.strip()[:300]}"
             )
 
+    def launch_controller_probe_task(self, *, seconds: float, output_path: Path) -> None:
+        """Run the read-only controller probe in the logged-in interactive session."""
+        self.require_windows()
+        executable = str(Path(sys.executable)).replace("'", "''")
+        output_arg = str(output_path).replace('"', '\\"')
+        argument_text = (
+            f'-m d4planner.cli controller-probe --seconds {seconds:g} '
+            f'--output "{output_arg}"'
+        ).replace("'", "''")
+        ps = (
+            f"$a=New-ScheduledTaskAction -Execute '{executable}' "
+            f"-Argument '{argument_text}';"
+            "$u=[System.Security.Principal.WindowsIdentity]::GetCurrent().Name;"
+            "$p=New-ScheduledTaskPrincipal -UserId $u -LogonType Interactive -RunLevel Limited;"
+            "$s=New-ScheduledTaskSettingsSet -Priority 4 "
+            "-ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew "
+            "-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries;"
+            "$d=New-ScheduledTask -Action $a -Principal $p -Settings $s;"
+            "Register-ScheduledTask -TaskName 'D4Planner-Controller-Probe' "
+            "-InputObject $d -Force | Out-Null;"
+            "Start-ScheduledTask -TaskName 'D4Planner-Controller-Probe'"
+        )
+        result = self._powershell(ps)
+        if result.returncode != 0:
+            raise RuntimeBlocked(
+                "failed to launch interactive controller probe task: "
+                f"{result.stderr.strip()[:300]}"
+            )
+
     def ensure_nvda_running(self, *, timeout: float = 15.0) -> ProcessInfo:
         existing = self.nvda_process()
         if existing:

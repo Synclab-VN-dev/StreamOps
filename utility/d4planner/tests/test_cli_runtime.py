@@ -618,12 +618,52 @@ def test_stop_nvda_failure_is_nonzero_and_capture_stays_disabled(
     assert "no force kill" in err
 
 
-def test_controller_probe_rejects_non_windows(monkeypatch, capsys):
+def test_controller_probe_rejects_non_windows(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli.os, "name", "posix")
-    assert cli.command_controller_probe(seconds=1) == 2
+    paths = RuntimePaths(tmp_path / "home")
+    assert cli.command_controller_probe(paths, seconds=1) == 2
     assert "requires Windows/XInput" in capsys.readouterr().err
 
 
-def test_controller_probe_rejects_non_positive_duration(capsys):
-    assert cli.command_controller_probe(seconds=0) == 2
+def test_controller_probe_rejects_non_positive_duration(tmp_path, capsys):
+    paths = RuntimePaths(tmp_path / "home")
+    assert cli.command_controller_probe(paths, seconds=0) == 2
     assert "--seconds must be greater than 0" in capsys.readouterr().err
+
+
+def test_controller_probe_relays_from_ssh_session_to_active_console(monkeypatch, tmp_path, capsys):
+    paths = RuntimePaths(tmp_path / "home")
+    monkeypatch.setattr(cli.os, "name", "nt")
+    monkeypatch.setattr(cli.time, "sleep", lambda _seconds: None)
+
+    class FakeRuntime:
+        def __init__(self, _paths):
+            assert _paths == paths
+
+        def current_process_session_id(self):
+            return 0
+
+        def active_console_session_id(self):
+            return 1
+
+        def launch_controller_probe_task(self, *, seconds, output_path):
+            assert seconds == 1
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(
+                "Probe process session: 1\n"
+                "Active console session: 1\n"
+                "slot=0 CONNECTED buttons=-\n"
+                "slot=0 A DOWN\n"
+                "slot=0 A UP\n"
+                "Observed XInput controller: YES\n"
+                f"{cli.CONTROLLER_PROBE_COMPLETE}\n",
+                encoding="utf-8",
+            )
+
+    monkeypatch.setattr(cli, "WindowsRuntime", FakeRuntime)
+
+    assert cli.command_controller_probe(paths, seconds=1) == 0
+    out = capsys.readouterr().out
+    assert "relaying probe to interactive desktop" in out
+    assert "Probe process session: 1" in out
+    assert "slot=0 A DOWN" in out

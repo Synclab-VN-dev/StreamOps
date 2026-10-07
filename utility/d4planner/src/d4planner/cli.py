@@ -700,26 +700,44 @@ def command_character_equipment_replay(path: Path, *, trace: bool) -> int:
     return 1 if failures else 0
 
 
-def command_controller_probe(*, seconds: float) -> int:
-    """Observe XInput button transitions from this external process."""
-    if seconds <= 0:
-        print("--seconds must be greater than 0", file=sys.stderr)
-        return 2
-    if os.name != "nt":
-        print("controller-probe requires Windows/XInput.", file=sys.stderr)
-        return 2
+CONTROLLER_PROBE_COMPLETE = "__D4PLANNER_CONTROLLER_PROBE_COMPLETE__"
 
+
+def _run_controller_probe_direct(
+    paths: RuntimePaths,
+    *,
+    seconds: float,
+    output_path: Path | None,
+) -> int:
     from .runtime.xinput import XInputBackend, decode_buttons
+
+    lines: list[str] = []
+
+    def emit(message: str, *, error: bool = False) -> None:
+        lines.append(message)
+        print(message, file=sys.stderr if error else sys.stdout, flush=True)
+
+    runtime = WindowsRuntime(paths)
+    current_session = runtime.current_process_session_id()
+    active_session = runtime.active_console_session_id()
+    emit(f"Probe process session: {current_session}")
+    emit(f"Active console session: {active_session}")
 
     try:
         backend = XInputBackend()
     except OSError as exc:
-        print(f"Unable to start XInput probe: {exc}", file=sys.stderr)
+        emit(f"Unable to start XInput probe: {exc}", error=True)
+        if output_path is not None:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(
+                "\n".join([*lines, CONTROLLER_PROBE_COMPLETE, ""]) ,
+                encoding="utf-8",
+            )
         return 2
 
-    print(f"XInput backend: {backend.dll_name}")
-    print(f"Watching slots 0..3 for {seconds:g}s. Press controller buttons on Steam Link.")
-    print("Ctrl+C stops early.")
+    emit(f"XInput backend: {backend.dll_name}")
+    emit(f"Watching slots 0..3 for {seconds:g}s. Press controller buttons on Steam Link.")
+    emit("Ctrl+C stops early.")
 
     previous: dict[int, int | None] = {}
     ever_connected = False
@@ -727,17 +745,17 @@ def command_controller_probe(*, seconds: float) -> int:
         try:
             snapshot = backend.snapshot(slot)
         except OSError as exc:
-            print(f"slot={slot} ERROR {exc}", file=sys.stderr)
+            emit(f"slot={slot} ERROR {exc}", error=True)
             previous[slot] = None
             continue
         if snapshot is None:
             previous[slot] = None
-            print(f"slot={slot} DISCONNECTED")
+            emit(f"slot={slot} DISCONNECTED")
         else:
             ever_connected = True
             previous[slot] = snapshot.buttons
             names = ",".join(decode_buttons(snapshot.buttons)) or "-"
-            print(f"slot={slot} CONNECTED buttons={names}")
+            emit(f"slot={slot} CONNECTED buttons={names}")
 
     started = time.monotonic()
     try:
@@ -746,13 +764,13 @@ def command_controller_probe(*, seconds: float) -> int:
                 try:
                     snapshot = backend.snapshot(slot)
                 except OSError as exc:
-                    print(f"slot={slot} ERROR {exc}", file=sys.stderr)
+                    emit(f"slot={slot} ERROR {exc}", error=True)
                     continue
 
                 old = previous.get(slot)
                 if snapshot is None:
                     if old is not None:
-                        print(f"slot={slot} DISCONNECTED", flush=True)
+                        emit(f"slot={slot} DISCONNECTED")
                         previous[slot] = None
                     continue
 
@@ -761,23 +779,99 @@ def command_controller_probe(*, seconds: float) -> int:
                 if old is None:
                     previous[slot] = current
                     names = ",".join(decode_buttons(current)) or "-"
-                    print(f"slot={slot} CONNECTED buttons={names}", flush=True)
+                    emit(f"slot={slot} CONNECTED buttons={names}")
                     continue
 
                 if current != old:
                     pressed = current & ~old
                     released = old & ~current
                     for name in decode_buttons(pressed):
-                        print(f"slot={slot} {name} DOWN", flush=True)
+                        emit(f"slot={slot} {name} DOWN")
                     for name in decode_buttons(released):
-                        print(f"slot={slot} {name} UP", flush=True)
+                        emit(f"slot={slot} {name} UP")
                     previous[slot] = current
             time.sleep(0.01)
     except KeyboardInterrupt:
         pass
 
-    print(f"Observed XInput controller: {'YES' if ever_connected else 'NO'}")
+    emit(f"Observed XInput controller: {'YES' if ever_connected else 'NO'}")
+    if output_path is not None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            "\n".join([*lines, CONTROLLER_PROBE_COMPLETE, ""]),
+            encoding="utf-8",
+        )
     return 0
+
+
+def command_controller_probe(
+    paths: RuntimePaths,
+    *,
+    seconds: float,
+    output_path: Path | None = None,
+) -> int:
+    """Observe XInput in the active desktop session, relaying from SSH when needed."""
+    if seconds <= 0:
+        print("--seconds must be greater than 0", file=sys.stderr)
+        return 2
+    if os.name != "nt":
+        print("controller-probe requires Windows/XInput.", file=sys.stderr)
+        return 2
+
+    runtime = WindowsRuntime(paths)
+    current_session = runtime.current_process_session_id()
+    active_session = runtime.active_console_session_id()
+
+    # An SSH control process commonly lives outside the logged-in desktop
+    # session. XInput visibility is session-sensitive, so relay the actual
+    # probe through the same Interactive scheduled-task mechanism used by the
+    # D4Planner supervisor.
+    if (
+        output_path is None
+        and active_session is not None
+        and current_session != active_session
+    ):
+        paths.ensure()
+        result_path = paths.state / "controller-probe-interactive.log"
+        try:
+            result_path.unlink()
+        except FileNotFoundError:
+            pass
+
+        print(
+            f"Control session {current_session} != active console {active_session}; "
+            "relaying probe to interactive desktop..."
+        )
+        try:
+            runtime.launch_controller_probe_task(
+                seconds=seconds,
+                output_path=result_path,
+            )
+        except (RuntimeBlocked, OSError) as exc:
+            print(f"Unable to launch interactive controller probe: {exc}", file=sys.stderr)
+            return 2
+
+        deadline = time.monotonic() + seconds + 15.0
+        while time.monotonic() < deadline:
+            try:
+                content = result_path.read_text(encoding="utf-8")
+            except OSError:
+                content = ""
+            if CONTROLLER_PROBE_COMPLETE in content:
+                rendered = content.replace(CONTROLLER_PROBE_COMPLETE, "").strip()
+                if rendered:
+                    print(rendered)
+                return 0
+            time.sleep(0.2)
+
+        print("Interactive controller probe timed out.", file=sys.stderr)
+        return 2
+
+    return _run_controller_probe_direct(
+        paths,
+        seconds=seconds,
+        output_path=output_path,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -812,6 +906,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     controller_probe = sub.add_parser("controller-probe")
     controller_probe.add_argument("--seconds", type=float, default=30.0)
+    controller_probe.add_argument("--output", type=Path, help=argparse.SUPPRESS)
 
     character = sub.add_parser("character")
     character_sub = character.add_subparsers(dest="character_command", required=True)
@@ -866,7 +961,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "doctor":
         return command_doctor(paths, raw_json=args.json)
     if args.command == "controller-probe":
-        return command_controller_probe(seconds=args.seconds)
+        return command_controller_probe(paths, seconds=args.seconds, output_path=args.output)
     if args.command == "character" and args.character_command == "equipment":
         if getattr(args, "equipment_action", None) == "replay":
             return command_character_equipment_replay(args.path, trace=args.trace)
