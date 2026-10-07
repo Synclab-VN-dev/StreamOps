@@ -255,9 +255,20 @@ class MultistreamService:
         destination_id = item["destination_id"]
         cached = self._cached(item)
         deadline = self._deadlines.get(destination_id)
-        if cached["state"] in {"STARTING", "STOPPING"} and runtime["state"] == cached["state"]:
+        stale_during_transition = (
+            cached["state"] == "STARTING" and runtime["state"] in {"IDLE", "STARTING"}
+        ) or (
+            cached["state"] == "STOPPING"
+            and runtime["state"] in {"STARTING", "LIVE", "RECONNECTING", "STOPPING"}
+        )
+        if stale_during_transition:
             if deadline is not None and time.monotonic() >= deadline:
                 runtime = {"state": "FAILED", "vendor_status": "transition_timeout"}
+            else:
+                # The Vendor operation is asynchronous. Immediately after its ACK the
+                # status endpoint can still return the pre-command state; retaining the
+                # Core-owned transition prevents STARTING/STOPPING from bouncing back.
+                runtime = cached
         self._set_state(item, runtime)
         if runtime["state"] not in {"STARTING", "STOPPING"}:
             self._deadlines.pop(destination_id, None)
