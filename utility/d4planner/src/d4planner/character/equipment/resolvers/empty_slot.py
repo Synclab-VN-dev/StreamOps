@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ..decision import Resolution, ResolutionKind
-from ..parser import POWER_RE, parse_type
+from ..parser import NOISE, POWER_RE, parse_type
 from ..slots import SINGLE_INSTANCE_SLOTS
 from .base import BaseResolver, ResolverRequest
 
@@ -25,7 +25,7 @@ SEMANTIC_TOKENS = {"EQUIPPED", "Equip", "Unequip"}
 def _is_neutral_text(text: str) -> bool:
     """Return True only for text with no known resolver structure."""
 
-    if text in SEMANTIC_TOKENS:
+    if text in SEMANTIC_TOKENS or text in NOISE:
         return False
     if POWER_RE.match(text):
         return False
