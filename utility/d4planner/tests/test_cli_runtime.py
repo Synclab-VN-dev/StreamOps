@@ -16,6 +16,8 @@ def test_cli_parser_exposes_expected_commands():
         ["stop", "--stop-nvda"],
         ["doctor"],
         ["path", "status"],
+        ["character", "equipment"],
+        ["character", "equipment", "replay", "sample.jsonl", "--trace"],
     ):
         parsed = parser.parse_args(args)
         assert parsed.command
@@ -62,6 +64,94 @@ def test_logs_pretty_and_raw_use_same_unified_event_stream(tmp_path, capsys):
     event = json.loads(raw)
     assert event["type"] == "speech.raw"
     assert event["data"]["text"] == "900 Item Power"
+
+
+def test_equipment_component_logs_pretty_and_raw(tmp_path, capsys):
+    paths = RuntimePaths(tmp_path / "home")
+    store = EventStore.create(paths, silent=True, session_id="semantic")
+    diagnostics_path = store.session.directory / "equipment-projector.jsonl"
+    record = {
+        "emittedAt": "2026-10-07T12:00:00.000+00:00",
+        "component": "equipment",
+        "event": "observation.high",
+        "sessionId": "semantic",
+        "sourceSeq": 42,
+        "sourceTimestamp": "2026-10-07T19:00:00.000+07:00",
+        "slot": "amulet",
+        "item": "TEST AMULET",
+        "reason": "slot+equipped+anchor+terminal_unequip",
+    }
+    diagnostics_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+    atomic_write_json(
+        paths.runtime_state,
+        {
+            "state": "RUNNING",
+            "sessionDir": str(store.session.directory),
+            "captureActive": True,
+        },
+    )
+
+    assert (
+        cli.command_logs(
+            paths,
+            follow=False,
+            raw=False,
+            component="equipment",
+        )
+        == 0
+    )
+    pretty = capsys.readouterr().out
+    assert "observation.high" in pretty
+    assert "slot=amulet" in pretty
+    assert "item=TEST AMULET" in pretty
+
+    assert (
+        cli.command_logs(
+            paths,
+            follow=False,
+            raw=True,
+            component="equipment",
+        )
+        == 0
+    )
+    raw = json.loads(capsys.readouterr().out)
+    assert raw["event"] == "observation.high"
+    assert raw["sourceSeq"] == 42
+
+
+def test_equipment_replay_uses_isolated_db_and_prints_semantic_trace(tmp_path, capsys):
+    path = tmp_path / "equipment.jsonl"
+    texts = [
+        "Head",
+        "EQUIPPED",
+        "CURRENT HELM",
+        "Rare Helm",
+        "850 Item Power",
+        "Unequip",
+        "Head",
+    ]
+    events = [
+        {
+            "eventSeq": seq,
+            "type": "speech.raw",
+            "timestamp": f"2026-10-07T19:00:{seq:02}+07:00",
+            "sessionId": "replay",
+            "data": {"text": text},
+        }
+        for seq, text in enumerate(texts, start=1)
+    ]
+    path.write_text(
+        "".join(json.dumps(event) + "\n" for event in events),
+        encoding="utf-8",
+    )
+
+    assert cli.command_character_equipment_replay(path, trace=True) == 0
+    output = capsys.readouterr().out
+    assert "observation.high" in output
+    assert "empty.confirmed" in output
+    assert "db.clear" in output
+    assert "0 projector errors" in output
+    assert "0 current equipment rows" in output
 
 
 def test_start_detach_does_not_follow_logs(monkeypatch, tmp_path):

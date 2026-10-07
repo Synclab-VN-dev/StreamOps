@@ -9,10 +9,14 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Any, Iterator
 
+from .character.equipment.projector import EquipmentProjector
+from .character.repository import EquipmentRepository
 from .character.service import CharacterService
+from .runtime.diagnostics import MemoryDiagnosticsSink
 from .runtime.model import RuntimeState
 from .runtime.pathing import UserPathManager, WindowsRegistryPathBackend
 from .runtime.store import (
@@ -230,13 +234,40 @@ def _pretty_event(event: dict[str, Any]) -> str | None:
     return f"[{stamp}] {event_type} {detail}".rstrip()
 
 
-def command_logs(paths: RuntimePaths, *, follow: bool, raw: bool, from_end: bool = False) -> int:
+def _pretty_diagnostic(event: dict[str, Any]) -> str:
+    timestamp = str(event.get("sourceTimestamp") or event.get("emittedAt") or "")
+    stamp = timestamp[11:23] if len(timestamp) >= 23 else timestamp
+    name = str(event.get("event") or "diagnostic")
+    slot = str(event.get("slot") or "-")
+    item = str(event.get("item") or "")
+    reason = str(event.get("reason") or "")
+    seq = event.get("sourceSeq")
+
+    parts = [f"[{stamp}]", f"seq={seq}" if seq is not None else "", name, f"slot={slot}"]
+    if item:
+        parts.append(f"item={item}")
+    if reason:
+        parts.append(f"reason={reason}")
+    if event.get("error"):
+        parts.append(f"error={event.get('error')}")
+    return "  ".join(part for part in parts if part)
+
+
+def command_logs(
+    paths: RuntimePaths,
+    *,
+    follow: bool,
+    raw: bool,
+    from_end: bool = False,
+    component: str | None = None,
+) -> int:
     status = _state(paths)
     session_dir = status.get("sessionDir")
     if not session_dir:
         print("No active/recent D4Planner session.", file=sys.stderr)
         return 2
-    path = Path(str(session_dir)) / "events.jsonl"
+    session = Path(str(session_dir))
+    path = session / ("equipment-projector.jsonl" if component == "equipment" else "events.jsonl")
     try:
         for line in _event_lines(path, follow=follow, from_end=from_end):
             try:
@@ -246,7 +277,7 @@ def command_logs(paths: RuntimePaths, *, follow: bool, raw: bool, from_end: bool
             if raw:
                 print(json.dumps(event, ensure_ascii=False, separators=(",", ":")), flush=True)
             else:
-                rendered = _pretty_event(event)
+                rendered = _pretty_diagnostic(event) if component else _pretty_event(event)
                 if rendered:
                     print(rendered, flush=True)
     except (KeyboardInterrupt, BrokenPipeError):
@@ -610,6 +641,65 @@ def command_character_equipment(paths: RuntimePaths, *, raw_json: bool) -> int:
     return 0
 
 
+def _read_jsonl_events(path: Path) -> list[dict[str, Any]]:
+    data = path.read_bytes()
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        text = data.decode("utf-16")
+    else:
+        text = data.decode("utf-8-sig")
+    events: list[dict[str, Any]] = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            events.append(value)
+    return events
+
+
+def command_character_equipment_replay(path: Path, *, trace: bool) -> int:
+    if not path.is_file():
+        print(f"Replay file not found: {path}", file=sys.stderr)
+        return 2
+    try:
+        events = _read_jsonl_events(path)
+    except (OSError, UnicodeError) as exc:
+        print(f"Unable to read replay file: {exc}", file=sys.stderr)
+        return 2
+
+    diagnostics = MemoryDiagnosticsSink(component="equipment")
+    failures = 0
+    with tempfile.TemporaryDirectory(prefix="d4planner-equipment-replay-") as temp:
+        db_path = Path(temp) / "character.db"
+        repo = EquipmentRepository(db_path)
+        projector = EquipmentProjector(repo, diagnostics)
+        for event in events:
+            try:
+                projector.consume(event)
+            except Exception as exc:
+                failures += 1
+                projector.record_error(event, exc)
+
+        if trace:
+            for record in diagnostics.records:
+                print(_pretty_diagnostic(record))
+
+        equipment = repo.list_equipment()
+        print(
+            f"Replay complete: {len(events)} events, "
+            f"{len(diagnostics.records)} semantic decisions, "
+            f"{failures} projector errors, {len(equipment)} current equipment rows."
+        )
+        for item in equipment:
+            slot = str(item["slotFamily"]).replace("_", " ").title()
+            print(f"{slot:<10} {item['name']}  {item['itemPower']}")
+
+    return 1 if failures else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="d4planner")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -627,6 +717,7 @@ def build_parser() -> argparse.ArgumentParser:
     logs.add_argument("-f", "--follow", action="store_true")
     logs.add_argument("--raw", action="store_true")
     logs.add_argument("--from-end", action="store_true")
+    logs.add_argument("--component", choices=("equipment",))
 
     stop = sub.add_parser("stop")
     stop.add_argument("--timeout", type=float, default=10.0)
@@ -643,6 +734,10 @@ def build_parser() -> argparse.ArgumentParser:
     character_sub = character.add_subparsers(dest="character_command", required=True)
     equipment = character_sub.add_parser("equipment")
     equipment.add_argument("--json", action="store_true")
+    equipment_sub = equipment.add_subparsers(dest="equipment_action")
+    replay = equipment_sub.add_parser("replay")
+    replay.add_argument("path", type=Path)
+    replay.add_argument("--trace", action="store_true")
 
     path = sub.add_parser("path")
     path.add_argument("action", choices=("status", "restore"))
@@ -676,12 +771,20 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "status":
         return command_status(paths, raw_json=args.json)
     if args.command == "logs":
-        return command_logs(paths, follow=args.follow, raw=args.raw, from_end=args.from_end)
+        return command_logs(
+            paths,
+            follow=args.follow,
+            raw=args.raw,
+            from_end=args.from_end,
+            component=args.component,
+        )
     if args.command == "stop":
         return command_stop(paths, timeout=args.timeout, stop_nvda=args.stop_nvda)
     if args.command == "doctor":
         return command_doctor(paths, raw_json=args.json)
     if args.command == "character" and args.character_command == "equipment":
+        if getattr(args, "equipment_action", None) == "replay":
+            return command_character_equipment_replay(args.path, trace=args.trace)
         return command_character_equipment(paths, raw_json=args.json)
     if args.command == "path":
         return command_path(paths, args.action)

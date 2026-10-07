@@ -12,6 +12,7 @@ from typing import Any, Protocol
 
 from ..character.equipment.projector import EquipmentProjector
 from ..character.repository import EquipmentRepository
+from .diagnostics import JsonlDiagnosticsSink
 from .model import RuntimeState, RuntimeStatus, can_transition
 from .pathing import UserPathManager
 from .store import (
@@ -169,6 +170,12 @@ class Supervisor:
         )
         self.status.session_id = self.store.session.session_id
         self.status.session_dir = str(self.store.session.directory)
+        self.equipment_projector.set_diagnostics(
+            JsonlDiagnosticsSink(
+                self.store.session.directory / "equipment-projector.jsonl",
+                component="equipment",
+            )
+        )
         self._persist_status()
         self._safe_emit(
             "runtime.start",
@@ -441,6 +448,7 @@ class Supervisor:
                 try:
                     self.equipment_projector.consume(unified)
                 except Exception as exc:
+                    self.equipment_projector.record_error(unified, exc)
                     self.status.last_error = (
                         f"equipment projector failure: {type(exc).__name__}: {exc}"
                     )
