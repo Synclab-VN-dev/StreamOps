@@ -27,4 +27,11 @@ Page gồm:
 
 Xem `ui-spec.md` và `states.md` trước khi implement.
 
+## MagicPath export snapshot
+
+Source component đã approved được export vào repo tại:
+`docs/design/stream-manager-v2/reference/StreamOpsStreamManagerV2Preflight.tsx`
+
+File này là snapshot/reference để dev đối chiếu implementation. MagicPath vẫn là visual reference chính.
+
 Related: #48 backend contract, #50 design ticket.
