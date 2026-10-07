@@ -157,53 +157,64 @@ def test_empty_slot_resolver_fail_closed_for_different_slot_and_ring():
     assert ring.reason == "next_event_slot:ring"
 
 
-def test_empty_slot_resolver_allows_exactly_one_interstitial_event():
-    context = EquipmentContext(pending_empty_slot="amulet")
+def test_empty_slot_resolver_allows_bounded_interstitial_burst():
+    context = EquipmentContext(pending_empty_slot="gloves")
+    pipeline = empty_slot_resolver_pipeline()
 
-    neutral = empty_slot_resolver_pipeline().resolve(
+    first = pipeline.resolve(
         ResolverRequest(
             context=context,
-            line=_line(
-                "Incapacitated enemies cannot perform actions due to Daze, Fear, Frozen, Knockdown or Stun.",
-                40,
-            ),
+            line=_line("SKILLS UNAVAILABLE", 40),
             incoming_slot=None,
         )
     )
-    assert neutral is not None
-    assert neutral.kind == ResolutionKind.NO_MUTATION
-    assert neutral.keep_empty_pending is True
-    assert neutral.reason == "one_interstitial_event_allowed"
+    assert first is not None
+    assert first.kind == ResolutionKind.NO_MUTATION
+    assert first.keep_empty_pending is True
+    assert first.reason == "interstitial_1_allowed"
 
     context.keep_empty_pending()
-    rebound = empty_slot_resolver_pipeline().resolve(
+    second = pipeline.resolve(
         ResolverRequest(
             context=context,
-            line=_line("Neck", 41),
-            incoming_slot="amulet",
+            line=_line("Re-equip item to access Skills", 41),
+            incoming_slot=None,
+        )
+    )
+    assert second is not None
+    assert second.kind == ResolutionKind.NO_MUTATION
+    assert second.keep_empty_pending is True
+    assert second.reason == "interstitial_2_allowed"
+
+    context.keep_empty_pending()
+    rebound = pipeline.resolve(
+        ResolverRequest(
+            context=context,
+            line=_line("Hands", 42),
+            incoming_slot="gloves",
         )
     )
     assert rebound is not None
     assert rebound.kind == ResolutionKind.CLEAR_SLOT
-    assert rebound.reason == "same_slot_rebound_after_one_interstitial"
+    assert rebound.reason == "same_slot_rebound_after_two_interstitials"
 
 
-def test_empty_slot_resolver_second_interstitial_and_semantic_evidence_cancel():
+def test_empty_slot_resolver_third_interstitial_and_semantic_evidence_cancel():
     context = EquipmentContext(
         pending_empty_slot="helm",
-        pending_empty_interstitial_count=1,
+        pending_empty_interstitial_count=2,
     )
-    second_noise = empty_slot_resolver_pipeline().resolve(
+    third = empty_slot_resolver_pipeline().resolve(
         ResolverRequest(
             context=context,
             line=_line("Another explanatory tooltip sentence that is long enough to end here.", 50),
             incoming_slot=None,
         )
     )
-    assert second_noise is not None
-    assert second_noise.kind == ResolutionKind.NO_MUTATION
-    assert second_noise.keep_empty_pending is False
-    assert second_noise.reason == "second_interstitial_event"
+    assert third is not None
+    assert third.kind == ResolutionKind.NO_MUTATION
+    assert third.keep_empty_pending is False
+    assert third.reason == "interstitial_limit_exceeded"
 
     for text in ("EQUIPPED", "Equip", "Unequip", "Rare Helm", "850 Item Power", "blank", "Left action button", "Hold"):
         semantic = empty_slot_resolver_pipeline().resolve(
