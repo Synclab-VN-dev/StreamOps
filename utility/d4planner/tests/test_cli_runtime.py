@@ -233,6 +233,49 @@ def test_doctor_reports_stale_supervisor_and_capture_lease(monkeypatch, tmp_path
     assert "FAIL" in out
 
 
+def test_doctor_reports_dead_blocked_supervisor_as_warning(monkeypatch, tmp_path, capsys):
+    from types import SimpleNamespace
+
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    atomic_write_json(
+        paths.runtime_state,
+        {
+            "state": "BLOCKED",
+            "supervisorPid": 8884,
+            "captureActive": False,
+            "detail": "Tolk cannot detect NVDA",
+        },
+    )
+
+    class FakeWindowsRuntime:
+        def __init__(self, _paths):
+            pass
+
+        def doctor(self):
+            return SimpleNamespace(
+                checks={
+                    "nvda": {"status": "PASS", "detail": "ok"},
+                    "tolk": {"status": "PASS", "detail": "NVDA"},
+                }
+            )
+
+        def steam_process(self):
+            return None
+
+        def game_process(self):
+            return None
+
+    monkeypatch.setattr(cli, "WindowsRuntime", FakeWindowsRuntime)
+    monkeypatch.setattr(cli, "_pid_alive", lambda _pid: False)
+
+    assert cli.command_doctor(paths, raw_json=True) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["supervisor"]["status"] == "WARN"
+    assert payload["supervisor"]["detail"]["state"] == "BLOCKED"
+    assert payload["supervisor"]["detail"]["alive"] is False
+
+
 def test_task_preparation_failure_persists_blocked_before_supervisor(
     monkeypatch, tmp_path, capsys
 ):
