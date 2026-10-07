@@ -395,22 +395,55 @@ def command_start(
     return command_logs(paths, follow=True, raw=False, from_end=True)
 
 
-def command_stop(paths: RuntimePaths, *, timeout: float = 10.0) -> int:
+def _stop_nvda(paths: RuntimePaths, *, timeout: float) -> int:
+    runtime = WindowsRuntime(paths)
+    print("nvda.stop requested")
+    try:
+        stopped = runtime.stop_nvda(timeout=timeout)
+    except (RuntimeBlocked, RuntimeError, OSError) as exc:
+        print(f"NVDA graceful stop failed: {exc}", file=sys.stderr)
+        print("Diablo IV and Steam were left untouched.")
+        return 1
+    if stopped:
+        print("nvda.stop completed")
+        print("NVDA stopped gracefully.")
+    else:
+        print("NVDA already stopped.")
+    print("Diablo IV and Steam were left untouched.")
+    return 0
+
+
+def command_stop(
+    paths: RuntimePaths,
+    *,
+    timeout: float = 10.0,
+    stop_nvda: bool = False,
+) -> int:
+    print("runtime.stop requested")
     status = _state(paths)
     pid = status.get("supervisorPid")
     if not pid or not _pid_alive(int(pid)):
-        # A crashed supervisor may have left a still-valid short capture lease.
-        # Disable it explicitly so NVDA immediately returns to passthrough.
+        # A crashed/stopped supervisor may have left a still-valid short capture
+        # lease. Disable it before any optional NVDA shutdown.
         write_capture_config(paths, enabled=False)
-        print("D4Planner supervisor is not running; capture is disabled.")
-        return 0
+        print("capture disabled")
+        print("D4Planner already stopped.")
+        return _stop_nvda(paths, timeout=timeout) if stop_nvda else 0
+
     paths.stop_request.parent.mkdir(parents=True, exist_ok=True)
     paths.stop_request.write_text("stop\n", encoding="utf-8")
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         current = _state(paths)
         if current.get("state") == RuntimeState.STOPPED.value or not _pid_alive(int(pid)):
-            print("D4Planner stopped. Diablo IV and Steam were left untouched.")
+            # Make the ordering contract explicit: capture is disabled and
+            # persisted before the NVDA graceful-quit request is issued.
+            write_capture_config(paths, enabled=False)
+            print("capture disabled")
+            print("D4Planner stopped.")
+            if stop_nvda:
+                return _stop_nvda(paths, timeout=timeout)
+            print("Diablo IV and Steam were left untouched.")
             return 0
         time.sleep(0.2)
     print("Stop request sent; supervisor has not exited yet.", file=sys.stderr)
@@ -572,6 +605,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     stop = sub.add_parser("stop")
     stop.add_argument("--timeout", type=float, default=10.0)
+    stop.add_argument(
+        "--stop-nvda",
+        action="store_true",
+        help="gracefully stop NVDA after D4Planner capture has stopped",
+    )
 
     doctor = sub.add_parser("doctor")
     doctor.add_argument("--json", action="store_true")
@@ -610,7 +648,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "logs":
         return command_logs(paths, follow=args.follow, raw=args.raw, from_end=args.from_end)
     if args.command == "stop":
-        return command_stop(paths, timeout=args.timeout)
+        return command_stop(paths, timeout=args.timeout, stop_nvda=args.stop_nvda)
     if args.command == "doctor":
         return command_doctor(paths, raw_json=args.json)
     if args.command == "path":
