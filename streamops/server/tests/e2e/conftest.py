@@ -20,8 +20,11 @@ from streamops.server.errors import ScreenCaptureError, SteamLaunchError
 from streamops.server.services import ScreenCaptureService, SteamService
 from streamops.server.services.live import LiveService
 from streamops.server.services.live_status import LiveStatusHub
+from streamops.server.services.multistream import MultistreamService
 from streamops.server.services.steam import SteamStatus
 from streamops.server.services.obs_scene import ObsSceneService
+from streamops.server.multistream.repository import MultistreamRepository
+from streamops.server.multistream.secrets import MultistreamSecretStore
 from streamops.server.scene_profiles import source_catalog
 from streamops.server.tests.browser_obs import BrowserObs
 from streamops.server.tests.browser_obs_process import ControllableObsManager
@@ -138,6 +141,67 @@ class ControllableCaptureBackend:
         self.closed = True
 
 
+class ControllableMultistreamAdapter:
+    """In-memory plugin boundary used through the real public REST/WS routes."""
+
+    def __init__(self) -> None:
+        self.targets: list[dict[str, Any]] = []
+        self.runtime: dict[str, dict[str, Any]] = {}
+        self.next_id = 1
+
+    def list_targets(self):
+        return [dict(target) for target in self.targets]
+
+    def add_target(self, name):
+        target = {"id": str(self.next_id), "name": name}
+        self.next_id += 1
+        self.targets.append(target)
+        self.runtime[target["id"]] = {"runtimeState": "IDLE", "status": "stopped"}
+        return {"status": "target_added"}
+
+    def delete_target(self, target_id):
+        self.targets = [target for target in self.targets if target["id"] != target_id]
+        self.runtime.pop(target_id, None)
+        return {}
+
+    def update_name(self, target_id, name):
+        next(target for target in self.targets if target["id"] == target_id)["name"] = name
+        return {}
+
+    def update_server(self, _target_id, _server_url):
+        return {}
+
+    def update_stream_key(self, _target_id, _key):
+        return {"status": "updated"}
+
+    def start(self, target_id):
+        self.set_state(target_id, "STARTING")
+        return {"status": "start_requested"}
+
+    def stop(self, target_id):
+        self.set_state(target_id, "STOPPING")
+        return {"status": "stop_requested"}
+
+    def state(self, target_id):
+        return dict(self.runtime[target_id])
+
+    def stats(self, target_id):
+        return {
+            **self.runtime[target_id],
+            "totalBytes": 12_345_678,
+            "totalFrames": 7_890,
+            "bitrateValue": 6_000_000,
+            "fpsValue": 60,
+        }
+
+    def set_state(self, target_id: str, state: str) -> None:
+        self.runtime[target_id] = {
+            "runtimeState": state,
+            "status": state.casefold(),
+            "isRunning": state in {"LIVE", "RECONNECTING"},
+        }
+
+
 @dataclass(frozen=True)
 class BrowserTestServer:
     base_url: str
@@ -147,6 +211,8 @@ class BrowserTestServer:
     transport: BrowserObs
     obs_process: ControllableObsManager
     live: LiveService
+    multistream: MultistreamService
+    multistream_adapter: ControllableMultistreamAdapter
     source_catalog: list[dict[str, Any]]
 
 
@@ -178,6 +244,13 @@ def live_server(tmp_path: Path) -> BrowserTestServer:
         poll_interval=0.001,
     )
     live_hub = LiveStatusHub(live_service, reconcile_interval=0.05, heartbeat_interval=1.0)
+    multistream_adapter = ControllableMultistreamAdapter()
+    multistream_service = MultistreamService(
+        MultistreamRepository(tmp_path / "multistream-destinations"),
+        multistream_adapter,
+        MultistreamSecretStore(tmp_path / "multistream-secrets"),
+        poll_interval=0.01,
+    )
     app = create_app(
         config,
         capture_service=ScreenCaptureService(capture_backend, tmp_path, config.capture_timeout),
@@ -186,6 +259,7 @@ def live_server(tmp_path: Path) -> BrowserTestServer:
         obs_scene_service=obs_service,
         live_service=live_service,
         live_status_hub=live_hub,
+        multistream_service=multistream_service,
         manage_runtime=False,
     )
 
@@ -218,6 +292,8 @@ def live_server(tmp_path: Path) -> BrowserTestServer:
             transport=transport,
             obs_process=obs_manager,
             live=live_service,
+            multistream=multistream_service,
+            multistream_adapter=multistream_adapter,
             source_catalog=catalog,
         )
     finally:

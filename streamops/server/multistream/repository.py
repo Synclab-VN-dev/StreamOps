@@ -13,9 +13,10 @@ class MultistreamRepository:
             self.root.mkdir(parents=True, exist_ok=True)
             return [self._read(p) for p in sorted(self.root.glob("*.json")) if ".tmp-" not in p.name]
     def get(self, destination_id: str) -> dict[str, Any]:
-        p=self._path(destination_id)
-        if not p.is_file(): raise StreamingError("destination_not_found", f"Multistream destination not found: {destination_id}",404)
-        return self._read(p)
+        with self._lock:
+            p=self._path(destination_id)
+            if not p.is_file(): raise StreamingError("destination_not_found", f"Multistream destination not found: {destination_id}",404)
+            return self._read(p)
     def exists(self, destination_id: str) -> bool:
         with self._lock:
             return self._path(destination_id).is_file()
@@ -27,9 +28,10 @@ class MultistreamRepository:
             tmp=p.with_name(f".{p.name}.tmp-{os.getpid()}-{threading.get_ident()}")
             tmp.write_text(json.dumps(item,indent=2,ensure_ascii=False)+"\n",encoding="utf-8"); os.replace(tmp,p); return dict(item)
     def delete(self, destination_id: str) -> None:
-        p=self._path(destination_id)
-        if not p.is_file(): raise StreamingError("destination_not_found",f"Multistream destination not found: {destination_id}",404)
-        p.unlink()
+        with self._lock:
+            p=self._path(destination_id)
+            if not p.is_file(): raise StreamingError("destination_not_found",f"Multistream destination not found: {destination_id}",404)
+            p.unlink()
     def _path(self, value: str) -> Path:
         if not value or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in value): raise StreamingError("destination_invalid","id must contain only letters, digits, '-' or '_'.",422)
         return self.root/f"{value}.json"
