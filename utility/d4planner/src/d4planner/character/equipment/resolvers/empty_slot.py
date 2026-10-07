@@ -68,7 +68,7 @@ class EmptySlotResolver(BaseResolver):
         ):
             reason = (
                 "same_slot_immediate_rebound"
-                if request.context.pending_empty_neutral_count == 0
+                if request.context.pending_empty_interstitial_count == 0
                 else "same_slot_rebound_after_one_interstitial"
             )
             return Resolution(
@@ -92,7 +92,7 @@ class EmptySlotResolver(BaseResolver):
 
         if (
             pending in SINGLE_INSTANCE_SLOTS
-            and request.context.pending_empty_neutral_count == 0
+            and request.context.pending_empty_interstitial_count == 0
             and _is_allowed_interstitial(request.line.text)
         ):
             return Resolution(
@@ -107,7 +107,7 @@ class EmptySlotResolver(BaseResolver):
 
         reason = (
             "second_interstitial_event"
-            if request.context.pending_empty_neutral_count > 0
+            if request.context.pending_empty_interstitial_count > 0
             and _is_allowed_interstitial(request.line.text)
             else "semantic_or_unknown_event_before_same_slot_rebound"
         )
