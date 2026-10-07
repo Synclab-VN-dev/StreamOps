@@ -101,7 +101,7 @@ class EquipmentProjector:
                 result=decision.kind.value,
                 slot=decision.slot,
                 reason=decision.reason,
-                neutralCount=self.context.pending_empty_neutral_count,
+                interstitialCount=self.context.pending_empty_interstitial_count,
                 nextText=line.text,
             )
         elif decision.kind == ResolutionKind.CLEAR_SLOT:
