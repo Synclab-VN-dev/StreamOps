@@ -83,6 +83,10 @@ class RuntimePaths:
         return self.root / "logs"
 
     @property
+    def character_db(self) -> Path:
+        return self.state / "character.db"
+
+    @property
     def runtime_state(self) -> Path:
         return self.state / "runtime.json"
 
