@@ -86,7 +86,46 @@ def build_supervisor(tmp_path, runtime):
         silent=True,
         poll_interval=0.001,
         game_start_timeout=0.01,
+        tolk_ready_timeout=0.01,
+        tolk_retry_interval=0.001,
     )
+
+
+def test_bootstrap_waits_for_tolk_nvda_readiness(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = FakeRuntime(paths)
+    probes = iter(
+        [
+            TolkHealth(None, False, False),
+            TolkHealth(None, False, False),
+            TolkHealth("NVDA", True, True),
+        ]
+    )
+    calls = {"count": 0}
+
+    def probe():
+        calls["count"] += 1
+        return next(probes, TolkHealth("NVDA", True, True))
+
+    runtime.probe_tolk = probe
+    manager = UserPathManager(
+        paths,
+        MemoryPathBackend(user_path="", machine_path="MACHINE"),
+    )
+    supervisor = Supervisor(
+        paths=paths,
+        runtime=runtime,
+        path_manager=manager,
+        silent=True,
+        poll_interval=0.001,
+        game_start_timeout=0.01,
+        tolk_ready_timeout=0.05,
+        tolk_retry_interval=0.001,
+    )
+
+    assert supervisor.bootstrap() == RuntimeState.RUNNING
+    assert calls["count"] >= 3
+    assert supervisor.status.tolk.ready is True
 
 
 def test_bootstrap_launches_game_and_reaches_running(tmp_path):
