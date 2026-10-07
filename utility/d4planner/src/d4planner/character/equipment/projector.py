@@ -88,14 +88,24 @@ class EquipmentProjector:
                 incoming_slot=incoming_slot,
             )
         )
-        # Preserve the current adjacency-sensitive contract: exactly one event
-        # consumes the pending marker. #62 will relax this only after this
-        # architecture refactor is proven behavior-equivalent.
-        self.context.pending_empty_slot = None
-
         if decision is None:
+            self.context.clear_empty_pending()
             return None
-        if decision.kind == ResolutionKind.CLEAR_SLOT:
+
+        if decision.keep_empty_pending:
+            self.context.keep_empty_pending()
+            self._diag(
+                "empty.pending_keep",
+                line,
+                resolver=decision.resolver,
+                result=decision.kind.value,
+                slot=decision.slot,
+                reason=decision.reason,
+                neutralCount=self.context.pending_empty_neutral_count,
+                nextText=line.text,
+            )
+        elif decision.kind == ResolutionKind.CLEAR_SLOT:
+            self.context.clear_empty_pending()
             self._diag(
                 "empty.confirmed",
                 line,
@@ -105,6 +115,7 @@ class EquipmentProjector:
                 reason=decision.reason,
             )
         else:
+            self.context.clear_empty_pending()
             extra = {}
             if incoming_slot is None:
                 extra["nextText"] = line.text
@@ -166,7 +177,7 @@ class EquipmentProjector:
             self._diag("observation.ambiguous", line, **common)
 
         if decision.start_empty_pending and decision.slot:
-            self.context.pending_empty_slot = decision.slot
+            self.context.start_empty_pending(decision.slot)
             if decision.slot in SINGLE_INSTANCE_SLOTS:
                 self._diag(
                     "empty.pending",
