@@ -290,7 +290,7 @@ def test_stop_nvda_targets_active_console_and_uses_graceful_task(tmp_path, monke
     monkeypatch.setattr(runtime, "require_windows", lambda: None)
     monkeypatch.setattr(runtime, "active_console_session_id", lambda: 1)
     monkeypatch.setattr(runtime, "nvda_process", lambda: current[0] if current else None)
-    monkeypatch.setattr(runtime, "ensure_interactive_tasks", lambda: calls.append("verify"))
+    monkeypatch.setattr(runtime, "prepare_nvda_stop_task", lambda: calls.append("prepare-stop"))
 
     def run_task(name):
         calls.append(name)
@@ -299,7 +299,7 @@ def test_stop_nvda_targets_active_console_and_uses_graceful_task(tmp_path, monke
     monkeypatch.setattr(runtime, "run_task", run_task)
 
     assert runtime.stop_nvda(timeout=0.1) is True
-    assert calls == ["verify", "D4Planner-NVDA-Stop"]
+    assert calls == ["prepare-stop", "D4Planner-NVDA-Stop"]
 
 
 def test_stop_nvda_is_idempotent_when_nvda_absent(tmp_path, monkeypatch):
@@ -355,3 +355,28 @@ def test_stop_helper_uses_nvda_quit_without_force_kill(tmp_path, monkeypatch):
     assert "stop-process" not in stop_script.casefold()
     assert "-force" not in stop_script.casefold()
     assert ("D4Planner-NVDA-Stop", scripts["nvda-stop"]) in runtime._interactive_task_specs()
+
+
+
+def test_prepare_nvda_stop_task_reconciles_only_stop_task(tmp_path, monkeypatch):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
+    stop_script = tmp_path / "stop-nvda.ps1"
+    stop_script.write_text("& 'nvda.exe' -q\n", encoding="utf-8")
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(
+        runtime,
+        "ensure_helper_scripts",
+        lambda: {
+            "nvda-stop": stop_script,
+        },
+    )
+    calls = []
+    monkeypatch.setattr(
+        runtime,
+        "_prepare_interactive_task",
+        lambda name, path: calls.append((name, path)),
+    )
+
+    runtime.prepare_nvda_stop_task()
+
+    assert calls == [("D4Planner-NVDA-Stop", stop_script)]
