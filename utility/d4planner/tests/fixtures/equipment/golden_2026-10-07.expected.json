@@ -1,0 +1,252 @@
+{
+  "schemaVersion": 1,
+  "fixture": "golden_2026-10-07.jsonl",
+  "issue": 59,
+  "capture": {
+    "eventCount": 929,
+    "eventSeqStart": 4020,
+    "eventSeqEnd": 4948,
+    "sessionCount": 1,
+    "processCount": 1,
+    "itemAnchorCount": 28,
+    "expectedDistinctEquippedCount": 10
+  },
+  "resolverRules": {
+    "itemAnchor": "<name> + <type> + <N Item Power>",
+    "equippedMarker": "EQUIPPED is weak context only",
+    "highConfidence": "known slot context + exact EQUIPPED + valid item anchor + terminal Unequip",
+    "notEquipped": "valid item followed by Equip or comparison/candidate context",
+    "ambiguous": "EQUIPPED without enough slot/action evidence must not update current equipment",
+    "ringPolicy": "slotFamily=ring; slotIndex=null until positional evidence exists"
+  },
+  "slotMap": {
+    "Head": "helm",
+    "Torso": "chest",
+    "Hands": "gloves",
+    "Legs": "pants",
+    "Feet": "boots",
+    "Main Hand": "main_hand",
+    "Off-Hand": "off_hand",
+    "Ring": "ring",
+    "Neck": "amulet"
+  },
+  "expectedEquipment": [
+    {
+      "slotLabel": "Head",
+      "slotFamily": "helm",
+      "slotIndex": null,
+      "name": "ENCASED SPECTACLE'S COWL",
+      "favorite": true,
+      "ancestral": false,
+      "rarity": "Legendary",
+      "itemType": "Helm",
+      "itemPower": 850,
+      "primaryBaseStat": {
+        "kind": "armor",
+        "value": 1275
+      },
+      "sourceEventSeqStart": 4299,
+      "sourceEventSeqEnd": 4325,
+      "confidence": "HIGH"
+    },
+    {
+      "slotLabel": "Torso",
+      "slotFamily": "chest",
+      "slotIndex": null,
+      "name": "EXCEPTIONAL ARMOR OF AUDACITY",
+      "favorite": true,
+      "ancestral": false,
+      "rarity": "Legendary",
+      "itemType": "Chest Armor",
+      "itemPower": 850,
+      "primaryBaseStat": {
+        "kind": "armor",
+        "value": 2231
+      },
+      "sourceEventSeqStart": 4267,
+      "sourceEventSeqEnd": 4295,
+      "confidence": "HIGH"
+    },
+    {
+      "slotLabel": "Hands",
+      "slotFamily": "gloves",
+      "slotIndex": null,
+      "name": "EXCEPTIONAL GLOVES OF OVERWHELMING CURRENTS",
+      "favorite": true,
+      "ancestral": true,
+      "rarity": "Legendary",
+      "itemType": "Gloves",
+      "itemPower": 900,
+      "primaryBaseStat": {
+        "kind": "armor",
+        "value": 801
+      },
+      "sourceEventSeqStart": 4362,
+      "sourceEventSeqEnd": 4388,
+      "confidence": "HIGH"
+    },
+    {
+      "slotLabel": "Legs",
+      "slotFamily": "pants",
+      "slotIndex": null,
+      "name": "TASSETS OF THE DAWNING SKY",
+      "favorite": false,
+      "ancestral": false,
+      "rarity": "Unique",
+      "itemType": "Pants",
+      "itemPower": 850,
+      "primaryBaseStat": {
+        "kind": "armor",
+        "value": 1594
+      },
+      "sourceEventSeqStart": 4392,
+      "sourceEventSeqEnd": 4418,
+      "confidence": "HIGH"
+    },
+    {
+      "slotLabel": "Feet",
+      "slotFamily": "boots",
+      "slotIndex": null,
+      "name": "WILDBOLT SKOVOSIAN BUSKIN",
+      "favorite": true,
+      "ancestral": false,
+      "rarity": "Legendary",
+      "itemType": "Boots",
+      "itemPower": 850,
+      "primaryBaseStat": {
+        "kind": "armor",
+        "value": 638
+      },
+      "sourceEventSeqStart": 4422,
+      "sourceEventSeqEnd": 4448,
+      "confidence": "HIGH"
+    },
+    {
+      "slotLabel": "Main Hand",
+      "slotFamily": "main_hand",
+      "slotIndex": null,
+      "name": "ORACLE'S WAND OF SPLINTERING ENERGY",
+      "favorite": true,
+      "ancestral": false,
+      "rarity": "Legendary",
+      "itemType": "Wand",
+      "itemPower": 850,
+      "primaryBaseStat": {
+        "kind": "damagePerSecond",
+        "value": 1550
+      },
+      "sourceEventSeqStart": 4453,
+      "sourceEventSeqEnd": 4487,
+      "confidence": "HIGH"
+    },
+    {
+      "slotLabel": "Off-Hand",
+      "slotFamily": "off_hand",
+      "slotIndex": null,
+      "name": "SERPENT STONE OF ARROGANCE",
+      "favorite": false,
+      "ancestral": true,
+      "rarity": "Legendary",
+      "itemType": "Focus",
+      "itemPower": 900,
+      "primaryBaseStat": {
+        "kind": "damagePerSecond",
+        "value": 1892
+      },
+      "sourceEventSeqStart": 4491,
+      "sourceEventSeqEnd": 4520,
+      "confidence": "HIGH"
+    },
+    {
+      "slotLabel": "Ring",
+      "slotFamily": "ring",
+      "slotIndex": null,
+      "name": "SLIVER OF HATE",
+      "favorite": true,
+      "ancestral": false,
+      "rarity": "Unique",
+      "itemType": "Ring",
+      "itemPower": 850,
+      "primaryBaseStat": {
+        "kind": "allResist",
+        "value": 118
+      },
+      "sourceEventSeqStart": 4523,
+      "sourceEventSeqEnd": 4548,
+      "confidence": "HIGH"
+    },
+    {
+      "slotLabel": "Ring",
+      "slotFamily": "ring",
+      "slotIndex": null,
+      "name": "STORM SPLITTER'S ADORNED-IN-BLOOD",
+      "favorite": false,
+      "ancestral": true,
+      "rarity": "Legendary",
+      "itemType": "Ring",
+      "itemPower": 900,
+      "primaryBaseStat": {
+        "kind": "allResist",
+        "value": 173
+      },
+      "sourceEventSeqStart": 4551,
+      "sourceEventSeqEnd": 4575,
+      "confidence": "HIGH"
+    },
+    {
+      "slotLabel": "Neck",
+      "slotFamily": "amulet",
+      "slotIndex": null,
+      "name": "TEARVEIL AMULET OF THE UMBRAL",
+      "favorite": false,
+      "ancestral": false,
+      "rarity": "Legendary",
+      "itemType": "Amulet",
+      "itemPower": 850,
+      "primaryBaseStat": {
+        "kind": "allResist",
+        "value": 157
+      },
+      "sourceEventSeqStart": 4578,
+      "sourceEventSeqEnd": 4599,
+      "confidence": "HIGH"
+    }
+  ],
+  "mustNotResolveAsCurrent": [
+    {
+      "name": "RUNIC GLOVES OF BINDING MORASS",
+      "itemPower": 850,
+      "itemPowerEventSeq": 4089,
+      "terminalAction": "Equip",
+      "terminalActionEventSeq": 4117
+    },
+    {
+      "name": "STORM SPLITTER'S SPIRITOMACHY CORE",
+      "itemPower": 850,
+      "itemPowerEventSeq": 4128,
+      "terminalAction": "Equip",
+      "terminalActionEventSeq": 4156
+    },
+    {
+      "name": "CRUEL HELM",
+      "itemPower": 850,
+      "itemPowerEventSeq": 4167,
+      "terminalAction": "Equip",
+      "terminalActionEventSeq": 4190
+    },
+    {
+      "name": "PROVEN GARB",
+      "itemPower": 900,
+      "itemPowerEventSeq": 4693,
+      "terminalAction": "Equip",
+      "terminalActionEventSeq": 4717
+    },
+    {
+      "name": "HEROIC WHEEL",
+      "itemPower": 850,
+      "itemPowerEventSeq": 4838,
+      "terminalAction": "Equip",
+      "terminalActionEventSeq": 4859
+    }
+  ]
+}
