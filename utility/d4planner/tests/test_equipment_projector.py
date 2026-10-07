@@ -566,3 +566,58 @@ def test_service_reads_materialized_db_only(tmp_path):
     EquipmentRepository(tmp_path / "character.db")
     service = CharacterService(tmp_path / "character.db")
     assert service.equipment() == []
+
+
+def test_real_a_ring_golden_reconciles_two_physical_ring_positions(tmp_path):
+    repo = EquipmentRepository(tmp_path / "character.db")
+    diagnostics = MemoryDiagnosticsSink(component="equipment")
+    projector = EquipmentProjector(repo, diagnostics)
+    events = [
+        json.loads(line)
+        for line in (FIXTURES / "ring_unequip_real_a_2026-10-07.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip()
+    ]
+
+    for event in events:
+        projector.consume(event)
+        seq = event["eventSeq"]
+        if seq == 5878:
+            assert {
+                row["name"]
+                for row in repo.list_equipment()
+                if row["slotFamily"] == "ring"
+            } == {
+                "SLIVER OF HATE",
+                "STORM SPLITTER'S ADORNED-IN-BLOOD",
+            }
+        elif seq == 5965:
+            assert [
+                row for row in repo.list_equipment()
+                if row["slotFamily"] == "ring"
+            ] == []
+
+    assert [
+        row for row in repo.list_equipment()
+        if row["slotFamily"] == "ring"
+    ] == []
+
+    ring_events = [
+        record["event"]
+        for record in diagnostics.records
+        if record["event"].startswith("ring.")
+    ]
+    assert "ring.probe" in ring_events
+    assert "ring.cancelled" in ring_events
+    assert ring_events.count("ring.confirmed_empty") == 4
+
+    deletes = [
+        record for record in diagnostics.records
+        if record["event"] == "db.delete_item"
+    ]
+    assert len(deletes) == 4
+    assert repo.checkpoint() == (
+        "a04e68a61dd54edea72a23084240e28c",
+        6547,
+    )

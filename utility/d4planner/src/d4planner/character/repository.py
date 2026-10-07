@@ -62,6 +62,7 @@ class EquipmentRepository:
         updated_at: str,
         observation: EquipmentObservation | None,
         empty_slot_family: str | None = None,
+        remove_item_fingerprint: str | None = None,
     ):
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -72,6 +73,15 @@ class EquipmentRepository:
                 db.execute(
                     "DELETE FROM equipment_current WHERE slot_family=?",
                     (empty_slot_family,),
+                )
+
+            # Ring removal is item-specific because two physical ring slots
+            # share slot_family='ring' and slot_index=None.
+            if remove_item_fingerprint:
+                db.execute(
+                    "DELETE FROM equipment_current "
+                    "WHERE slot_family='ring' AND item_fingerprint=?",
+                    (remove_item_fingerprint,),
                 )
 
             if observation and observation.confidence == "HIGH":

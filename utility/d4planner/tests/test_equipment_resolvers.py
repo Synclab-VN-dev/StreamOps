@@ -6,6 +6,7 @@ from d4planner.character.equipment.resolvers import (
     ResolverRequest,
     empty_slot_resolver_pipeline,
     item_resolver_pipeline,
+    ring_resolver_pipeline,
 )
 from d4planner.character.equipment.resolvers.base import BaseResolver
 from d4planner.character.equipment.decision import Resolution
@@ -228,3 +229,66 @@ def test_empty_slot_resolver_third_interstitial_and_semantic_evidence_cancel():
         assert semantic.kind == ResolutionKind.NO_MUTATION
         assert semantic.keep_empty_pending is False
         assert semantic.reason == "semantic_or_unknown_event_before_same_slot_rebound"
+
+
+def test_ring_resolver_occupied_probe_is_navigation_not_removal():
+    context = EquipmentContext(
+        ring_pending_fingerprint="ring-a-fp",
+        ring_pending_item_name="RING A",
+    )
+    pipeline = ring_resolver_pipeline()
+
+    probe = pipeline.resolve(
+        ResolverRequest(
+            context=context,
+            line=_line("Ring", 60),
+            incoming_slot="ring",
+        )
+    )
+    assert probe is not None
+    assert probe.kind == ResolutionKind.NO_MUTATION
+    assert probe.open_ring_probe is True
+    assert probe.reason == "ring_probe_started"
+
+    context.open_ring_probe()
+    occupied = pipeline.resolve(
+        ResolverRequest(
+            context=context,
+            line=_line("EQUIPPED", 61),
+            incoming_slot=None,
+        )
+    )
+    assert occupied is not None
+    assert occupied.kind == ResolutionKind.NO_MUTATION
+    assert occupied.delete_fingerprint is None
+    assert occupied.reason == "ring_probe_occupied"
+
+
+def test_ring_resolver_bare_probe_deletes_only_pending_fingerprint():
+    context = EquipmentContext(
+        ring_pending_fingerprint="ring-a-fp",
+        ring_pending_item_name="RING A",
+    )
+    pipeline = ring_resolver_pipeline()
+
+    probe = pipeline.resolve(
+        ResolverRequest(
+            context=context,
+            line=_line("Ring", 70),
+            incoming_slot="ring",
+        )
+    )
+    assert probe is not None and probe.open_ring_probe
+    context.open_ring_probe()
+
+    bare = pipeline.resolve(
+        ResolverRequest(
+            context=context,
+            line=_line("Hands", 71),
+            incoming_slot="gloves",
+        )
+    )
+    assert bare is not None
+    assert bare.kind == ResolutionKind.DELETE_ITEM
+    assert bare.delete_fingerprint == "ring-a-fp"
+    assert bare.reason == "bare_ring_slot_confirmed"

@@ -10,6 +10,7 @@ class ResolutionKind(str, Enum):
     UPSERT = "UPSERT"
     NO_MUTATION = "NO_MUTATION"
     CLEAR_SLOT = "CLEAR_SLOT"
+    DELETE_ITEM = "DELETE_ITEM"
 
 
 @dataclass(slots=True)
@@ -28,5 +29,7 @@ class Resolution:
     source_seq_end: int | None = None
     start_empty_pending: bool = False
     keep_empty_pending: bool = False
+    open_ring_probe: bool = False
+    delete_fingerprint: str | None = None
     parse_error_type: str | None = None
     parse_error: str | None = None

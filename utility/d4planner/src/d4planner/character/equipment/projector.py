@@ -10,6 +10,7 @@ from .resolvers import (
     ResolverRequest,
     empty_slot_resolver_pipeline,
     item_resolver_pipeline,
+    ring_resolver_pipeline,
 )
 from .slots import SINGLE_INSTANCE_SLOTS, SLOTS
 
@@ -35,6 +36,7 @@ class EquipmentProjector:
         self.context = EquipmentContext()
         self.item_resolvers = item_resolver_pipeline()
         self.empty_slot_resolvers = empty_slot_resolver_pipeline()
+        self.ring_resolvers = ring_resolver_pipeline()
 
     def set_diagnostics(self, diagnostics: _Diagnostics | None) -> None:
         self.diagnostics = diagnostics
@@ -72,6 +74,61 @@ class EquipmentProjector:
             errorType=type(exc).__name__,
             error=str(exc),
         )
+
+    def _resolve_pending_ring(
+        self,
+        line: EquipmentLine,
+        incoming_slot: str | None,
+    ) -> Resolution | None:
+        if self.context.ring_pending_fingerprint is None:
+            return None
+
+        decision = self.ring_resolvers.resolve(
+            ResolverRequest(
+                context=self.context,
+                line=line,
+                incoming_slot=incoming_slot,
+            )
+        )
+        if decision is None:
+            self.context.clear_ring_pending()
+            return None
+
+        if decision.open_ring_probe:
+            self.context.open_ring_probe()
+            self._diag(
+                "ring.probe",
+                line,
+                resolver=decision.resolver,
+                result=decision.kind.value,
+                slot="ring",
+                item=decision.item_name,
+                reason=decision.reason,
+            )
+        elif decision.kind == ResolutionKind.DELETE_ITEM:
+            self.context.clear_ring_pending()
+            self._diag(
+                "ring.confirmed_empty",
+                line,
+                resolver=decision.resolver,
+                result=decision.kind.value,
+                slot="ring",
+                item=decision.item_name,
+                reason=decision.reason,
+            )
+        else:
+            self.context.clear_ring_pending()
+            self._diag(
+                "ring.cancelled",
+                line,
+                resolver=decision.resolver,
+                result=decision.kind.value,
+                slot="ring",
+                item=decision.item_name,
+                reason=decision.reason,
+                nextText=line.text,
+            )
+        return decision
 
     def _resolve_pending_empty(
         self,
@@ -177,22 +234,27 @@ class EquipmentProjector:
             self._diag("observation.ambiguous", line, **common)
 
         if decision.start_empty_pending and decision.slot:
-            self.context.start_empty_pending(decision.slot)
-            if decision.slot in SINGLE_INSTANCE_SLOTS:
+            if decision.slot == "ring" and decision.observation is not None:
+                self.context.start_ring_pending(
+                    decision.observation.fingerprint,
+                    decision.observation.item.name,
+                )
+                self._diag(
+                    "ring.pending",
+                    line,
+                    resolver="ring",
+                    slot="ring",
+                    item=decision.observation.item.name,
+                    reason="high_observation_terminal_unequip",
+                )
+            elif decision.slot in SINGLE_INSTANCE_SLOTS:
+                self.context.start_empty_pending(decision.slot)
                 self._diag(
                     "empty.pending",
                     line,
                     resolver="empty_slot",
                     slot=decision.slot,
                     reason="high_observation_terminal_unequip",
-                )
-            else:
-                self._diag(
-                    "empty.excluded",
-                    line,
-                    resolver="empty_slot",
-                    slot=decision.slot,
-                    reason="multi_instance_slot",
                 )
 
     def consume(self, event: dict[str, Any]) -> None:
@@ -210,6 +272,7 @@ class EquipmentProjector:
         line = EquipmentLine(text, seq, ts, session)
         observation = None
         empty_slot_family = None
+        remove_item_fingerprint = None
         incoming_slot = SLOTS.get(text)
 
         if incoming_slot is not None:
@@ -219,6 +282,10 @@ class EquipmentProjector:
                 slot=incoming_slot,
                 previousSlot=self.context.slot,
             )
+
+        ring_decision = self._resolve_pending_ring(line, incoming_slot)
+        if ring_decision and ring_decision.kind == ResolutionKind.DELETE_ITEM:
+            remove_item_fingerprint = ring_decision.delete_fingerprint
 
         empty_decision = self._resolve_pending_empty(line, incoming_slot)
         if empty_decision and empty_decision.kind == ResolutionKind.CLEAR_SLOT:
@@ -285,6 +352,7 @@ class EquipmentProjector:
             updated_at=ts,
             observation=observation,
             empty_slot_family=empty_slot_family,
+            remove_item_fingerprint=remove_item_fingerprint,
         )
 
         if observation is not None:
@@ -305,4 +373,14 @@ class EquipmentProjector:
                 result="CLEAR_SLOT",
                 slot=empty_slot_family,
                 reason="empty_confirmed",
+            )
+        if remove_item_fingerprint is not None:
+            self._diag(
+                "db.delete_item",
+                line,
+                resolver="repository",
+                result="DELETE_ITEM",
+                slot="ring",
+                fingerprint=remove_item_fingerprint,
+                reason="bare_ring_slot_confirmed",
             )

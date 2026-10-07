@@ -24,6 +24,9 @@ class EquipmentContext:
     active: list[EquipmentLine] | None = None
     pending_empty_slot: str | None = None
     pending_empty_interstitial_count: int = 0
+    ring_pending_fingerprint: str | None = None
+    ring_pending_item_name: str | None = None
+    ring_probe_open: bool = False
 
     def reset_for_slot(self, slot: str) -> None:
         self.slot = slot
@@ -46,3 +49,16 @@ class EquipmentContext:
     def clear_empty_pending(self) -> None:
         self.pending_empty_slot = None
         self.pending_empty_interstitial_count = 0
+
+    def start_ring_pending(self, fingerprint: str, item_name: str) -> None:
+        self.ring_pending_fingerprint = fingerprint
+        self.ring_pending_item_name = item_name
+        self.ring_probe_open = False
+
+    def open_ring_probe(self) -> None:
+        self.ring_probe_open = True
+
+    def clear_ring_pending(self) -> None:
+        self.ring_pending_fingerprint = None
+        self.ring_pending_item_name = None
+        self.ring_probe_open = False

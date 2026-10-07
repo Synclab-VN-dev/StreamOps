@@ -8,6 +8,7 @@ from .base import BaseResolver, ResolverRequest
 from .candidate import CandidateResolver
 from .empty_slot import EmptySlotResolver
 from .equipped import EquippedResolver
+from .ring import RingResolver
 
 
 class ResolverPipeline:
@@ -37,3 +38,7 @@ def item_resolver_pipeline() -> ResolverPipeline:
 
 def empty_slot_resolver_pipeline() -> ResolverPipeline:
     return ResolverPipeline((EmptySlotResolver(),))
+
+
+def ring_resolver_pipeline() -> ResolverPipeline:
+    return ResolverPipeline((RingResolver(),))
