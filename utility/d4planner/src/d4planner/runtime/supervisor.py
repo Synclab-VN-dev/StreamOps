@@ -54,6 +54,8 @@ class Supervisor:
         poll_interval: float = 0.10,
         health_poll_interval: float = 2.0,
         game_start_timeout: float = 90.0,
+        tolk_ready_timeout: float = 15.0,
+        tolk_retry_interval: float = 0.5,
     ):
         self.paths = paths
         self.runtime = runtime
@@ -63,6 +65,8 @@ class Supervisor:
         self.poll_interval = poll_interval
         self.health_poll_interval = health_poll_interval
         self.game_start_timeout = game_start_timeout
+        self.tolk_ready_timeout = max(0.0, float(tolk_ready_timeout))
+        self.tolk_retry_interval = max(0.01, float(tolk_retry_interval))
         self.store: EventStore | None = None
         self.status = RuntimeStatus(
             state=RuntimeState.STOPPED,
@@ -77,6 +81,19 @@ class Supervisor:
     def _steam_priority_allows_launch(steam: object) -> bool:
         priority = str(getattr(steam, "priority_class", None) or "").casefold()
         return priority in {"normal", "abovenormal", "high", "realtime"}
+
+    def _wait_for_tolk_nvda(self):
+        """Wait for NVDA's controller endpoint instead of trusting process presence alone."""
+        deadline = time.monotonic() + self.tolk_ready_timeout
+        health = self.runtime.probe_tolk()
+        self.status.tolk = health
+        while not health.ready and time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(self.tolk_retry_interval, remaining))
+            health = self._wait_for_tolk_nvda()
+        return health
 
     def _persist_status(self) -> None:
         self.status.updated_at = iso_now()
@@ -226,8 +243,7 @@ class Supervisor:
             self.status.nvda = nvda
             self.transition(RuntimeState.NVDA_READY, f"NVDA ready in Session {console}")
 
-            health = self.runtime.probe_tolk()
-            self.status.tolk = health
+            health = self._wait_for_tolk_nvda()
             if not health.ready:
                 game = self.runtime.game_process()
                 self.status.game = game
@@ -444,8 +460,7 @@ class Supervisor:
             # A live NVDA process is not enough. Tolk can still be SAPI/null after
             # NVDA restart, so never restore RUNNING until the real backend is
             # proven healthy again.
-            health = self.runtime.probe_tolk()
-            self.status.tolk = health
+            health = self._wait_for_tolk_nvda()
             if not health.ready:
                 detail = (
                     "NVDA is running but Tolk cannot detect NVDA"
@@ -534,8 +549,7 @@ class Supervisor:
                     "Steam environment is stale; exit Steam normally before continuing",
                 )
                 return
-            health = self.runtime.probe_tolk()
-            self.status.tolk = health
+            health = self._wait_for_tolk_nvda()
             if not health.ready:
                 detail = (
                     "Diablo IV returned but Tolk cannot detect NVDA"
