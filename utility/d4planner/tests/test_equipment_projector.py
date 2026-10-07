@@ -36,6 +36,22 @@ def test_favorite_html_type_and_base_stats():
     assert item.affixes[0]["rollMin"] == 83
 
 
+def test_real_a_weapon_quality_is_base_stat_not_affix():
+    item = parse_item([
+        "ORACLE'S WAND OF SPLINTERING ENERGY",
+        "Legendary Wand",
+        "850 Item Power",
+        "1,550 Damage Per Second",
+        "3 ( +3/25) Quality",
+        "+91 Weapon Damage [70 - 117]",
+    ])
+    quality = [stat for stat in item.base_stats if stat["kind"] == "quality"]
+    assert len(quality) == 1
+    assert quality[0]["value"] == 3
+    assert quality[0]["range"] == [3, 25]
+    assert all("Quality" not in affix["raw"] for affix in item.affixes)
+
+
 def test_comparison_is_not_intrinsic_affix():
     item = parse_item([
         "CANDIDATE", "Legendary Ring", "850 Item Power",
