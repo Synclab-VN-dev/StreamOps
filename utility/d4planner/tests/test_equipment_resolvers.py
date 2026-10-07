@@ -205,7 +205,7 @@ def test_empty_slot_resolver_second_neutral_and_semantic_evidence_cancel():
     assert second_noise.keep_empty_pending is False
     assert second_noise.reason == "second_neutral_event"
 
-    for text in ("EQUIPPED", "Equip", "Unequip", "Rare Helm", "850 Item Power"):
+    for text in ("EQUIPPED", "Equip", "Unequip", "Rare Helm", "850 Item Power", "blank", "Left action button", "Hold"):
         semantic = empty_slot_resolver_pipeline().resolve(
             ResolverRequest(
                 context=EquipmentContext(pending_empty_slot="helm"),
