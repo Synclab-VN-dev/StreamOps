@@ -1,43 +1,30 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Protocol
 
-from ..models import EquipmentObservation
 from ..repository import EquipmentRepository
-from .parser import fingerprint, is_item_anchor, normalize, parse_item
-
-SLOTS = {
-    "Head": "helm",
-    "Torso": "chest",
-    "Hands": "gloves",
-    "Legs": "pants",
-    "Feet": "boots",
-    "Main Hand": "main_hand",
-    "Off-Hand": "off_hand",
-    "Ring": "ring",
-    "Neck": "amulet",
-}
-
-# These slots have a single current occupant. Ring is intentionally excluded:
-# Diablo IV has two ring slots while the current contract keeps slot_index=None,
-# so "Ring ... Unequip -> Ring" can simply mean focus moved to the other ring.
-SINGLE_INSTANCE_SLOTS = frozenset(SLOTS.values()) - {"ring"}
+from .context import EquipmentContext, EquipmentLine
+from .decision import Resolution, ResolutionKind
+from .parser import is_item_anchor, normalize
+from .resolvers import (
+    ResolverRequest,
+    empty_slot_resolver_pipeline,
+    item_resolver_pipeline,
+)
+from .slots import SINGLE_INSTANCE_SLOTS, SLOTS
 
 
 class _Diagnostics(Protocol):
     def emit(self, event: str, **fields: Any) -> bool: ...
 
 
-@dataclass
-class _Line:
-    text: str
-    seq: int
-    timestamp: str
-    session_id: str
-
-
 class EquipmentProjector:
+    """Orchestrate stream context -> resolver decisions -> repository commit.
+
+    Item classification and empty-slot semantics live in dedicated resolvers.
+    The projector owns mutable stream state, diagnostics, and DB side effects.
+    """
+
     def __init__(
         self,
         repository: EquipmentRepository,
@@ -45,20 +32,19 @@ class EquipmentProjector:
     ):
         self.repository = repository
         self.diagnostics = diagnostics
-        self.slot: str | None = None
-        self.equipped_marker = False
-        self.lookback: list[_Line] = []
-        self.active: list[_Line] | None = None
-        # An equipped item always ends on the action label "Unequip".
-        # If the *very next* accessibility event rebounds to the same
-        # single-instance slot, Real-A shows that the button was activated and
-        # the slot is now empty. This marker deliberately survives one event.
-        self._just_resolved_unequip_slot: str | None = None
+        self.context = EquipmentContext()
+        self.item_resolvers = item_resolver_pipeline()
+        self.empty_slot_resolvers = empty_slot_resolver_pipeline()
 
     def set_diagnostics(self, diagnostics: _Diagnostics | None) -> None:
         self.diagnostics = diagnostics
 
-    def _diag(self, event: str, line: _Line | None = None, **fields: Any) -> None:
+    def _diag(
+        self,
+        event: str,
+        line: EquipmentLine | None = None,
+        **fields: Any,
+    ) -> None:
         if self.diagnostics is None:
             return
         if line is not None:
@@ -77,7 +63,7 @@ class EquipmentProjector:
     def record_error(self, event: dict[str, Any], exc: Exception) -> None:
         self._diag(
             "projector.error",
-            _Line(
+            EquipmentLine(
                 normalize(str((event.get("data") or {}).get("text") or "")),
                 int(event.get("eventSeq") or 0),
                 str(event.get("timestamp") or ""),
@@ -86,6 +72,117 @@ class EquipmentProjector:
             errorType=type(exc).__name__,
             error=str(exc),
         )
+
+    def _resolve_pending_empty(
+        self,
+        line: EquipmentLine,
+        incoming_slot: str | None,
+    ) -> Resolution | None:
+        if self.context.pending_empty_slot is None:
+            return None
+
+        decision = self.empty_slot_resolvers.resolve(
+            ResolverRequest(
+                context=self.context,
+                line=line,
+                incoming_slot=incoming_slot,
+            )
+        )
+        # Preserve the current adjacency-sensitive contract: exactly one event
+        # consumes the pending marker. #62 will relax this only after this
+        # architecture refactor is proven behavior-equivalent.
+        self.context.pending_empty_slot = None
+
+        if decision is None:
+            return None
+        if decision.kind == ResolutionKind.CLEAR_SLOT:
+            self._diag(
+                "empty.confirmed",
+                line,
+                resolver=decision.resolver,
+                result=decision.kind.value,
+                slot=decision.slot,
+                reason=decision.reason,
+            )
+        else:
+            extra = {}
+            if incoming_slot is None:
+                extra["nextText"] = line.text
+            self._diag(
+                "empty.cancelled",
+                line,
+                resolver=decision.resolver,
+                result=decision.kind.value,
+                slot=decision.slot,
+                reason=decision.reason,
+                **extra,
+            )
+        return decision
+
+    def _trace_item_resolution(
+        self,
+        decision: Resolution,
+        line: EquipmentLine,
+    ) -> None:
+        if decision.parsed_item is not None:
+            self._diag(
+                "parse.success",
+                line,
+                resolver=decision.resolver,
+                slot=decision.slot,
+                item=decision.parsed_item.name,
+                itemType=decision.parsed_item.item_type,
+                itemPower=decision.parsed_item.item_power,
+                action=decision.action,
+                sourceSeqStart=decision.source_seq_start,
+            )
+        elif decision.parse_error:
+            self._diag(
+                "parse.failed",
+                line,
+                resolver=decision.resolver,
+                slot=decision.slot,
+                item=decision.item_name,
+                action=decision.action,
+                sourceSeqStart=decision.source_seq_start,
+                errorType=decision.parse_error_type,
+                error=decision.parse_error,
+            )
+
+        common = {
+            "resolver": decision.resolver,
+            "result": decision.kind.value,
+            "slot": decision.slot,
+            "item": decision.item_name,
+            "action": decision.action,
+            "sourceSeqStart": decision.source_seq_start,
+            "reason": decision.reason,
+        }
+        if decision.resolver == "equipped":
+            self._diag("observation.high", line, **common)
+        elif decision.resolver == "candidate":
+            self._diag("observation.not_equipped", line, **common)
+        elif decision.resolver == "ambiguous":
+            self._diag("observation.ambiguous", line, **common)
+
+        if decision.start_empty_pending and decision.slot:
+            self.context.pending_empty_slot = decision.slot
+            if decision.slot in SINGLE_INSTANCE_SLOTS:
+                self._diag(
+                    "empty.pending",
+                    line,
+                    resolver="empty_slot",
+                    slot=decision.slot,
+                    reason="high_observation_terminal_unequip",
+                )
+            else:
+                self._diag(
+                    "empty.excluded",
+                    line,
+                    resolver="empty_slot",
+                    slot=decision.slot,
+                    reason="multi_instance_slot",
+                )
 
     def consume(self, event: dict[str, Any]) -> None:
         if event.get("type") != "speech.raw":
@@ -99,180 +196,68 @@ class EquipmentProjector:
             return
 
         text = normalize(str((event.get("data") or {}).get("text") or ""))
-        line = _Line(text, seq, ts, session)
+        line = EquipmentLine(text, seq, ts, session)
         observation = None
         empty_slot_family = None
+        incoming_slot = SLOTS.get(text)
 
-        # The current empty-slot signal is adjacency-sensitive. Diagnostics make
-        # the decision visible so Real-A traces can refine the rule safely.
-        previous_unequip_slot = self._just_resolved_unequip_slot
-        self._just_resolved_unequip_slot = None
+        empty_decision = self._resolve_pending_empty(line, incoming_slot)
+        if empty_decision and empty_decision.kind == ResolutionKind.CLEAR_SLOT:
+            empty_slot_family = empty_decision.slot
 
-        if text in SLOTS:
-            incoming_slot = SLOTS[text]
-            if (
-                previous_unequip_slot == incoming_slot
-                and incoming_slot in SINGLE_INSTANCE_SLOTS
-            ):
-                empty_slot_family = incoming_slot
-                self._diag(
-                    "empty.confirmed",
-                    line,
-                    slot=incoming_slot,
-                    reason="same_slot_immediate_rebound",
-                )
-            elif previous_unequip_slot:
-                self._diag(
-                    "empty.cancelled",
-                    line,
-                    slot=previous_unequip_slot,
-                    reason=f"next_event_slot:{incoming_slot}",
-                )
-            self.slot = incoming_slot
-            self.equipped_marker = False
-            self.active = None
-            self.lookback = []
-        else:
-            if previous_unequip_slot:
-                self._diag(
-                    "empty.cancelled",
-                    line,
-                    slot=previous_unequip_slot,
-                    reason="next_event_not_same_slot",
-                    nextText=text,
-                )
-            if text == "EQUIPPED":
-                self.equipped_marker = True
+        if incoming_slot is not None:
+            self.context.reset_for_slot(incoming_slot)
+        elif text == "EQUIPPED":
+            self.context.equipped_marker = True
 
-        if self.active is not None:
-            self.active.append(line)
+        if self.context.active is not None:
+            self.context.active.append(line)
             if text in {"Equip", "Unequip"}:
-                raw = [x.text for x in self.active]
-                item_name = self.active[0].text
-                if text == "Unequip" and self.slot and self.equipped_marker:
-                    try:
-                        item = parse_item(raw)
-                    except Exception as exc:
-                        self._diag(
-                            "parse.failed",
-                            line,
-                            slot=self.slot,
-                            item=item_name,
-                            action=text,
-                            sourceSeqStart=self.active[0].seq,
-                            errorType=type(exc).__name__,
-                            error=str(exc),
-                        )
-                        raise
+                segment = list(self.context.active)
+                request = ResolverRequest(
+                    context=self.context,
+                    line=line,
+                    segment=segment,
+                    action=text,
+                )
+                try:
+                    decision = self.item_resolvers.resolve(request)
+                except Exception as exc:
                     self._diag(
-                        "parse.success",
+                        "parse.failed",
                         line,
-                        slot=self.slot,
-                        item=item.name,
-                        itemType=item.item_type,
-                        itemPower=item.item_power,
+                        resolver="equipped",
+                        slot=self.context.slot,
+                        item=segment[0].text if segment else None,
                         action=text,
-                        sourceSeqStart=self.active[0].seq,
+                        sourceSeqStart=segment[0].seq if segment else None,
+                        errorType=type(exc).__name__,
+                        error=str(exc),
                     )
-                    observation = EquipmentObservation(
-                        self.slot,
-                        None,
-                        item,
-                        ts,
-                        session,
-                        self.active[0].seq,
-                        seq,
-                        "HIGH",
-                        fingerprint(self.slot, item),
-                    )
-                    self._diag(
-                        "observation.high",
-                        line,
-                        slot=self.slot,
-                        item=item.name,
-                        action=text,
-                        sourceSeqStart=self.active[0].seq,
-                        reason="slot+equipped+anchor+terminal_unequip",
-                    )
-                    self._just_resolved_unequip_slot = self.slot
-                    if self.slot in SINGLE_INSTANCE_SLOTS:
-                        self._diag(
-                            "empty.pending",
-                            line,
-                            slot=self.slot,
-                            reason="high_observation_terminal_unequip",
-                        )
-                    else:
-                        self._diag(
-                            "empty.excluded",
-                            line,
-                            slot=self.slot,
-                            reason="multi_instance_slot",
-                        )
-                elif text == "Equip":
-                    try:
-                        candidate = parse_item(raw)
-                        self._diag(
-                            "parse.success",
-                            line,
-                            slot=self.slot,
-                            item=candidate.name,
-                            itemType=candidate.item_type,
-                            itemPower=candidate.item_power,
-                            action=text,
-                            sourceSeqStart=self.active[0].seq,
-                        )
-                        item_name = candidate.name
-                    except Exception as exc:
-                        self._diag(
-                            "parse.failed",
-                            line,
-                            slot=self.slot,
-                            item=item_name,
-                            action=text,
-                            sourceSeqStart=self.active[0].seq,
-                            errorType=type(exc).__name__,
-                            error=str(exc),
-                        )
-                    self._diag(
-                        "observation.not_equipped",
-                        line,
-                        slot=self.slot,
-                        item=item_name,
-                        action=text,
-                        sourceSeqStart=self.active[0].seq,
-                        reason="terminal_equip",
-                    )
-                elif text == "Unequip":
-                    self._diag(
-                        "observation.ambiguous",
-                        line,
-                        slot=self.slot,
-                        item=item_name,
-                        action=text,
-                        sourceSeqStart=self.active[0].seq,
-                        reason="missing_exact_equipped_marker",
-                    )
-                self.active = None
-                self.equipped_marker = False
-                self.lookback = []
+                    raise
+
+                if decision is not None:
+                    self._trace_item_resolution(decision, line)
+                    observation = decision.observation
+
+                self.context.reset_segment()
         else:
-            self.lookback.append(line)
-            self.lookback = self.lookback[-3:]
-            if len(self.lookback) == 3 and is_item_anchor(
-                *(x.text for x in self.lookback)
+            self.context.lookback.append(line)
+            self.context.lookback = self.context.lookback[-3:]
+            if len(self.context.lookback) == 3 and is_item_anchor(
+                *(entry.text for entry in self.context.lookback)
             ):
-                self.active = list(self.lookback)
-                self.lookback = []
+                self.context.active = list(self.context.lookback)
+                self.context.lookback = []
                 self._diag(
                     "anchor.detected",
                     line,
-                    slot=self.slot,
-                    item=self.active[0].text,
-                    itemType=self.active[1].text,
-                    itemPowerText=self.active[2].text,
-                    sourceSeqStart=self.active[0].seq,
-                    equippedMarker=self.equipped_marker,
+                    slot=self.context.slot,
+                    item=self.context.active[0].text,
+                    itemType=self.context.active[1].text,
+                    itemPowerText=self.context.active[2].text,
+                    sourceSeqStart=self.context.active[0].seq,
+                    equippedMarker=self.context.equipped_marker,
                 )
 
         self.repository.commit_event(
@@ -287,6 +272,8 @@ class EquipmentProjector:
             self._diag(
                 "db.upsert",
                 line,
+                resolver="repository",
+                result="UPSERT",
                 slot=observation.slot_family,
                 item=observation.item.name,
                 confidence=observation.confidence,
@@ -295,6 +282,8 @@ class EquipmentProjector:
             self._diag(
                 "db.clear",
                 line,
+                resolver="repository",
+                result="CLEAR_SLOT",
                 slot=empty_slot_family,
                 reason="empty_confirmed",
             )
