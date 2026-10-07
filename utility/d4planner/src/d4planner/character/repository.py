@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 import json
 import sqlite3
 from pathlib import Path
@@ -16,11 +17,19 @@ class EquipmentRepository:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
 
+    @contextmanager
     def _connect(self):
         conn = sqlite3.connect(self.path, timeout=5.0)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
-        return conn
+        try:
+            # sqlite3.Connection.__exit__ commits/rolls back but does not close
+            # the OS handle. Nest it here and always close explicitly so the
+            # high-frequency projector path cannot accumulate Windows handles.
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def _init_schema(self):
         with self._connect() as db:
