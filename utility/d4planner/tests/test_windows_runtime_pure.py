@@ -86,6 +86,26 @@ def test_addon_runtime_sync_is_idempotent(tmp_path, monkeypatch):
     assert runtime.addon_version() == "0.2.0"
 
 
+def test_nvda_process_prefers_no_ui_access_host(tmp_path, monkeypatch):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
+    calls = []
+
+    def fake_process_named(name):
+        calls.append(name)
+        if name == "nvda_noUIAccess":
+            return ProcessInfo("nvda_noUIAccess", 42, session_id=1)
+        return ProcessInfo("nvda", 99, session_id=1)
+
+    monkeypatch.setattr(runtime, "_process_named", fake_process_named)
+
+    selected = runtime.nvda_process()
+
+    assert selected is not None
+    assert selected.name == "nvda_noUIAccess"
+    assert selected.pid == 42
+    assert calls == ["nvda_noUIAccess"]
+
+
 @pytest.mark.skipif(os.name != "nt", reason="PowerShell runtime probe is Windows-only")
 def test_windows_process_probe_script_is_valid(tmp_path):
     runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
