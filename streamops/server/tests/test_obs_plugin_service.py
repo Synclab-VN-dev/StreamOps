@@ -471,3 +471,28 @@ def test_mutation_timeout_is_typed_and_sanitized():
 def test_operation_timeout_must_be_positive():
     with pytest.raises(ValueError):
         ObsPluginService(FakeManager(), FakeHost(), operation_timeout=0)
+
+
+def test_update_operation_reports_previous_and_new_version():
+    class VersionHost(FakeHost):
+        def __init__(self):
+            super().__init__("exact", loaded=True)
+            self.version = "1.0.0"
+        def status(self):
+            return PluginHostStatus(
+                "exact", True, self.loaded, self.version if self.loaded else None,
+                installed_version=self.version, available_version="2.0.0",
+            )
+        def update(self):
+            self.calls.append("update")
+            self.version = "2.0.0"
+            self.loaded = False
+            return PluginHostResult("updated")
+
+    host, manager = VersionHost(), FakeManager()
+    service = ObsPluginService(manager, host, defer_restart=True)
+    result = run(service.update("obs-multi-rtmp"))
+    assert result.api_payload()["previous_version"] == "1.0.0"
+    assert result.api_payload()["installed_version"] == "2.0.0"
+    assert result.api_payload()["available_version"] == "2.0.0"
+    assert result.api_payload()["restart_required"] is True
