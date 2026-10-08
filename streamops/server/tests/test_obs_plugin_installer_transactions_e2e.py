@@ -425,3 +425,22 @@ def test_e2e_post_update_verify_failure_recovers_byte_exact_baseline(package):
     assert manager.state == "READY"
     assert _file_records(root) == baseline
     assert config.read_bytes() == config_baseline
+
+
+def test_update_rejects_invalid_release_hash_before_touching_v1_or_config(package):
+    build, root, appdata, _, _, _ = package
+    base = build()
+    assert base.install().result == "installed"
+    files_before = _file_records(root)
+    pointer_before = base.pointer.read_bytes()
+    config = appdata / "obs-studio" / "basic" / "profiles" / "User" / "obs-multi-rtmp.json"
+    config.parent.mkdir(parents=True)
+    config_before = b'{"targets":[{"stream_key":"preserve-secret"}]}'
+    config.write_bytes(config_before)
+    broken = build(package_version="0.7.5.0", artifact_sha256="f" * 64)
+    with pytest.raises(PluginInstallerFailure) as caught:
+        broken.update()
+    assert caught.value.code == "artifact_hash_mismatch"
+    assert _file_records(root) == files_before
+    assert config.read_bytes() == config_before
+    assert base.pointer.read_bytes() == pointer_before
