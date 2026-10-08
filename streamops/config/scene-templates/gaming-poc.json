@@ -1,9 +1,0 @@
-{
-  "schema_version": 1,
-  "name": "gaming-poc",
-  "canvas": {"width": 3840, "height": 2160, "fps": 30},
-  "sources": [
-    {"name": "Desktop", "type": "display_capture", "enabled": true, "layer": 0, "settings": {"monitor_id": "auto", "method": 2, "capture_cursor": true, "force_sdr": false}, "transform": {"x": 0, "y": 0, "width": 3840, "height": 2160}},
-    {"name": "Clock", "type": "browser_source", "enabled": true, "layer": 1, "settings": {"is_local_file": true, "local_file": "streamops/assets/obs/clock-overlay.html", "width": 845, "height": 475}, "transform": {"x": 2915, "y": 1605, "width": 845, "height": 475}}
-  ]
-}

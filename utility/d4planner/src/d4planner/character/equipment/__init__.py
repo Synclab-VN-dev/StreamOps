@@ -1,1 +1,0 @@
-"""Equipment parsing and projection."""
