@@ -3,6 +3,9 @@ import threading
 import time
 
 from d4planner import cli
+from d4planner.character.repository import EquipmentRepository
+from d4planner.runtime.events.repository import EventLogReader
+from d4planner.runtime.input_marker import MarkerSample
 from d4planner.runtime.model import ProcessInfo, RuntimeState, TolkHealth
 from d4planner.runtime.pathing import MemoryPathBackend, UserPathManager
 from d4planner.runtime.store import RuntimePaths, read_json
@@ -132,14 +135,13 @@ def test_e2e_supervisor_status_logs_and_stop(monkeypatch, tmp_path, capsys):
         encoding="utf-8",
     )
 
-    events_path = supervisor.store.session.events_path
-
     def speech_arrived():
+        reader = EventLogReader(paths.events_db)
         try:
-            rows = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
-        except OSError:
-            return False
-        return any(row.get("type") == "speech.raw" for row in rows)
+            rows = reader.read_after(supervisor.store.session.session_id, 0)
+            return any(row.type == "speech.raw" for row in rows)
+        finally:
+            reader.close()
 
     assert wait_until(speech_arrived)
 
@@ -267,3 +269,152 @@ def test_e2e_repeated_stop_nvda_is_idempotent(monkeypatch, tmp_path):
     assert cli.command_stop(paths, timeout=0.1, stop_nvda=True) == 0
     assert runtime._nvda is None
     assert runtime.stop_nvda_calls == 2
+
+
+class FakeMarkerCapture:
+    def __init__(self):
+        self.target_pid = None
+        self.started = False
+        self.stopped = False
+        self.samples = []
+
+    def set_target_pid(self, pid):
+        self.target_pid = pid
+
+    def start(self):
+        self.started = True
+
+    def stop(self, *, timeout=1.0):
+        self.stopped = True
+
+    def consume_error(self):
+        return None
+
+    def drain(self):
+        values = list(self.samples)
+        self.samples.clear()
+        return values
+
+    def push(self, sample):
+        self.samples.append(sample)
+
+
+def test_e2e_sqlite_stream_orders_speech_and_marker_without_equipment_mutation(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = E2ERuntime(paths)
+    manager = UserPathManager(
+        paths,
+        MemoryPathBackend(user_path="", machine_path="MACHINE"),
+    )
+    marker = FakeMarkerCapture()
+    supervisor = Supervisor(
+        paths=paths,
+        runtime=runtime,
+        path_manager=manager,
+        silent=True,
+        poll_interval=0.01,
+        health_poll_interval=0.05,
+        game_start_timeout=0.01,
+        marker_capture=marker,
+    )
+
+    thread = threading.Thread(target=supervisor.run, daemon=True)
+    thread.start()
+    assert wait_until(
+        lambda: (read_json(paths.runtime_state) or {}).get("state") == RuntimeState.RUNNING.value
+    )
+    assert marker.started is True
+    assert marker.target_pid == 300
+
+    session_id = supervisor.status.session_id
+    raw = supervisor.store.session.raw_speech_path
+    raw.write_text(
+        json.dumps(
+            {
+                "sessionId": session_id,
+                "sequence": 1,
+                "timestamp": "2026-10-09T03:00:00.100+07:00",
+                "process": "diablo iv",
+                "processId": 300,
+                "contextSource": "win32Foreground",
+                "windowTitle": "Diablo IV",
+                "text": "Equip",
+                "rawSpeech": ["Equip"],
+            }
+        )
+        + "\n"
+        + json.dumps(
+            {
+                "sessionId": session_id,
+                "sequence": 2,
+                "timestamp": "2026-10-09T03:00:00.300+07:00",
+                "process": "diablo iv",
+                "processId": 300,
+                "contextSource": "win32Foreground",
+                "windowTitle": "Diablo IV",
+                "text": "Hands",
+                "rawSpeech": ["Hands"],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    marker.push(
+        MarkerSample(
+            timestamp="2026-10-09T03:00:00.200+07:00",
+            key="f11",
+            virtual_key=122,
+            state="DOWN",
+            process_id=300,
+            window_title="Diablo IV",
+        )
+    )
+    marker.push(
+        MarkerSample(
+            timestamp="2026-10-09T03:00:00.210+07:00",
+            key="f11",
+            virtual_key=122,
+            state="UP",
+            process_id=300,
+            window_title="Diablo IV",
+        )
+    )
+
+    observed = []
+
+    def stream_arrived():
+        nonlocal observed
+        reader = EventLogReader(paths.events_db)
+        try:
+            rows = reader.read_after(session_id, 0)
+        finally:
+            reader.close()
+        observed = [
+            row
+            for row in rows
+            if row.type in {"speech.raw", "input.marker.raw"}
+        ]
+        return len(observed) >= 4
+
+    assert wait_until(stream_arrived)
+    assert [row.type for row in observed[:4]] == [
+        "speech.raw",
+        "input.marker.raw",
+        "input.marker.raw",
+        "speech.raw",
+    ]
+    assert [row.event_seq for row in observed[:4]] == sorted(
+        row.event_seq for row in observed[:4]
+    )
+    assert {row.session_id for row in observed[:4]} == {session_id}
+    assert observed[1].data["key"] == "F11"
+    assert observed[1].data["state"] == "down"
+    assert observed[2].data["state"] == "up"
+
+    # Raw marker evidence must never mutate materialized character state.
+    assert EquipmentRepository(paths.character_db).list_equipment() == []
+
+    paths.stop_request.write_text("stop\n", encoding="utf-8")
+    thread.join(timeout=2.0)
+    assert not thread.is_alive()
+    assert marker.stopped is True

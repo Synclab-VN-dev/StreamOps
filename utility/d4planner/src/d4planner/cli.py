@@ -17,6 +17,7 @@ from .character.equipment.projector import EquipmentProjector
 from .character.repository import EquipmentRepository
 from .character.service import CharacterService
 from .runtime.diagnostics import MemoryDiagnosticsSink
+from .runtime.events.repository import EventLogReader
 from .runtime.model import RuntimeState
 from .runtime.pathing import UserPathManager, WindowsRegistryPathBackend
 from .runtime.store import (
@@ -207,6 +208,30 @@ def _event_lines(path: Path, *, follow: bool, from_end: bool) -> Iterator[str]:
             time.sleep(0.15)
 
 
+
+def _sqlite_events(
+    path: Path,
+    *,
+    session_id: str,
+    follow: bool,
+    from_end: bool,
+) -> Iterator[dict[str, Any]]:
+    reader = EventLogReader(path)
+    after_seq = reader.max_sequence(session_id) if from_end else 0
+    try:
+        while True:
+            rows = reader.read_after(session_id, after_seq, limit=1000)
+            if rows:
+                for event in rows:
+                    after_seq = event.event_seq
+                    yield event.as_dict()
+                continue
+            if not follow:
+                return
+            time.sleep(0.15)
+    finally:
+        reader.close()
+
 def _last_json_object(path: Path) -> dict[str, Any] | None:
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
@@ -230,6 +255,11 @@ def _pretty_event(event: dict[str, Any]) -> str | None:
     if event_type == "speech.raw":
         text = str(data.get("text") or "").strip()
         return f"[{stamp}] {text}" if text else None
+    if event_type == "input.marker.raw":
+        key = str(data.get("key") or "").upper()
+        state = str(data.get("state") or "").upper()
+        suffix = " ".join(part for part in (key, state) if part)
+        return f"[{stamp}] input.marker.raw {suffix}".rstrip()
     detail = str(data.get("detail") or "")
     return f"[{stamp}] {event_type} {detail}".rstrip()
 
@@ -262,22 +292,72 @@ def command_logs(
     component: str | None = None,
 ) -> int:
     status = _state(paths)
+    session_id = str(status.get("sessionId") or "")
     session_dir = status.get("sessionDir")
-    if not session_dir:
+
+    if component:
+        if not session_dir:
+            print("No active/recent D4Planner session.", file=sys.stderr)
+            return 2
+        path = Path(str(session_dir)) / "equipment-projector.jsonl"
+        try:
+            for line in _event_lines(path, follow=follow, from_end=from_end):
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if raw:
+                    print(
+                        json.dumps(event, ensure_ascii=False, separators=(",", ":")),
+                        flush=True,
+                    )
+                else:
+                    print(_pretty_diagnostic(event), flush=True)
+        except (KeyboardInterrupt, BrokenPipeError):
+            return 0
+        return 0
+
+    if not session_id:
         print("No active/recent D4Planner session.", file=sys.stderr)
         return 2
-    session = Path(str(session_dir))
-    path = session / ("equipment-projector.jsonl" if component == "equipment" else "events.jsonl")
+
     try:
-        for line in _event_lines(path, follow=follow, from_end=from_end):
+        if paths.events_db.exists():
+            events = _sqlite_events(
+                paths.events_db,
+                session_id=session_id,
+                follow=follow,
+                from_end=from_end,
+            )
+            for event in events:
+                if raw:
+                    print(
+                        json.dumps(event, ensure_ascii=False, separators=(",", ":")),
+                        flush=True,
+                    )
+                else:
+                    rendered = _pretty_event(event)
+                    if rendered:
+                        print(rendered, flush=True)
+            return 0
+
+        # Upgrade fallback before the first SQLite-backed runtime start.
+        if not session_dir:
+            print("No canonical event store found.", file=sys.stderr)
+            return 2
+        legacy_path = Path(str(session_dir)) / "events.jsonl"
+        for line in _event_lines(legacy_path, follow=follow, from_end=from_end):
             try:
                 event = json.loads(line)
             except json.JSONDecodeError:
                 continue
             if raw:
-                print(json.dumps(event, ensure_ascii=False, separators=(",", ":")), flush=True)
+                print(
+                    json.dumps(event, ensure_ascii=False, separators=(",", ":")),
+                    flush=True,
+                )
             else:
-                rendered = _pretty_diagnostic(event) if component else _pretty_event(event)
+                rendered = _pretty_event(event)
                 if rendered:
                     print(rendered, flush=True)
     except (KeyboardInterrupt, BrokenPipeError):
@@ -285,7 +365,6 @@ def command_logs(
         # capture state independently and must keep running.
         return 0
     return 0
-
 
 def command_status(paths: RuntimePaths, *, raw_json: bool) -> int:
     status = _state(paths)

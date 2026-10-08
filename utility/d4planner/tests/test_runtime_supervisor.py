@@ -375,10 +375,7 @@ def test_raw_capture_is_promoted_to_unified_monotonic_stream(tmp_path):
     )
 
     assert supervisor._read_new_capture() == 1
-    rows = [
-        json.loads(line)
-        for line in supervisor.store.session.events_path.read_text(encoding="utf-8").splitlines()
-    ]
+    rows = supervisor.store.read_after(0)
     speech = [row for row in rows if row["type"] == "speech.raw"]
     assert len(speech) == 1
     assert speech[0]["data"]["text"] == "850 Item Power"

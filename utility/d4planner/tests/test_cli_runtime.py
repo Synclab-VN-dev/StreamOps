@@ -3,7 +3,8 @@ import time
 from pathlib import Path
 
 from d4planner import cli, daemon
-from d4planner.runtime.store import EventStore, RuntimePaths, atomic_write_json
+from d4planner.runtime.events.store import EventStore
+from d4planner.runtime.store import RuntimePaths, atomic_write_json
 
 
 def test_cli_parser_exposes_expected_commands():
@@ -52,6 +53,7 @@ def test_logs_pretty_and_raw_use_same_unified_event_stream(tmp_path, capsys):
         {
             "state": "RUNNING",
             "sessionDir": str(store.session.directory),
+            "sessionId": store.session.session_id,
             "captureActive": True,
         },
     )
@@ -88,6 +90,7 @@ def test_equipment_component_logs_pretty_and_raw(tmp_path, capsys):
         {
             "state": "RUNNING",
             "sessionDir": str(store.session.directory),
+            "sessionId": store.session.session_id,
             "captureActive": True,
         },
     )
@@ -291,6 +294,7 @@ def test_doctor_reports_stale_supervisor_and_capture_lease(monkeypatch, tmp_path
             "state": "RUNNING",
             "supervisorPid": 99,
             "sessionDir": str(store.session.directory),
+            "sessionId": store.session.session_id,
             "captureActive": True,
             "lastEventAt": None,
         },
@@ -434,14 +438,21 @@ def test_ctrl_c_detaches_logs_without_requesting_stop(monkeypatch, tmp_path):
             "state": "RUNNING",
             "supervisorPid": 123,
             "sessionDir": str(store.session.directory),
+            "sessionId": store.session.session_id,
         },
     )
 
     def interrupted(*_args, **_kwargs):
-        yield '{"type":"runtime.start","timestamp":"","data":{}}'
+        yield {
+            "eventSeq": 1,
+            "type": "runtime.start",
+            "timestamp": "",
+            "sessionId": "detach",
+            "data": {},
+        }
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(cli, "_event_lines", interrupted)
+    monkeypatch.setattr(cli, "_sqlite_events", interrupted)
 
     assert cli.command_logs(paths, follow=True, raw=False) == 0
     assert not paths.stop_request.exists()
@@ -516,6 +527,7 @@ def test_broken_pipe_detaches_logs_without_stop_request(monkeypatch, tmp_path):
             "state": "RUNNING",
             "supervisorPid": 123,
             "sessionDir": str(store.session.directory),
+            "sessionId": store.session.session_id,
         },
     )
 
