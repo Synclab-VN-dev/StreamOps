@@ -8,7 +8,7 @@
 | Surface | URL | Approved revision |
 | --- | --- | --- |
 | OBS Dashboard | https://designs.magicpath.ai/v1/smart-cliff-3265 | `458892152907374592` |
-| OBS Plugin Manager | https://designs.magicpath.ai/v1/nicely-village-8080 | `458897546841038848` |
+| OBS Plugin Manager | https://designs.magicpath.ai/v1/nicely-village-8080 | `458975004185468928` |
 
 The design was updated **in place**, not recreated. Use the final revision of the Plugin Manager; earlier revisions contain prototype-only "Design & developer tools" cards and placeholder Unicode icons, which were intentionally removed from the main UI.
 
@@ -102,3 +102,13 @@ OBS Plugin Manager page
 ## Acceptance boundary
 
 This document is the **handoff artifact** for #49. It does not assert FE implementation, BE completion, or manual approval of every individual Install/Update/Rollback interaction. The last manual review item in #49 remains unchecked pending operator review.
+
+
+## Not-installed card — latest MagicPath revision 458975004185468928
+
+- `Multiple RTMP Outputs` is shown as **Not installed** with a prominent **Install plugin** action on its card (expanded by default for review).
+- Install opens confirmation, with a design-only simulated operation and restart-required state; no real backend calls are made in the prototype.
+- Available version and compatibility are illustrative; runtime must use server registry/allowlist and approved managed distribution source `Synclab-VN-dev/StreamOps-OBS-Plugins` per issue #47. Never query arbitrary upstream releases or accept client-supplied URLs.
+- Install must be disabled when OBS is streaming/recording; unsupported or incompatible releases must not be installable.
+- `OpenStream OBS Plugin` remains a **design fixture**, not a supported backend plugin in #47.
+- Canonical export: [PluginManager.tsx](./PluginManager.tsx). Preview: https://designs.magicpath.ai/v1/nicely-village-8080.
