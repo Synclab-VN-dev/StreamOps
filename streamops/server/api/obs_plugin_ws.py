@@ -79,7 +79,9 @@ async def obs_plugin_websocket(websocket: WebSocket, _access: None = Depends(req
             except Exception as exc:
                 code, message = public_ws_error(exc)
                 if code == "internal_error":
-                    logger.exception("Unhandled OBS Plugin Manager WebSocket operation error")
+                    # Never log exception details/tracebacks: providers and OBS drivers
+                    # can embed secrets, paths and stream keys in raw exceptions.
+                    logger.error("Unhandled OBS Plugin Manager WebSocket operation error")
                 response = {
                     "type": "response",
                     "request_id": request_id,
