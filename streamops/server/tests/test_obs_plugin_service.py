@@ -369,7 +369,7 @@ def test_vendor_probe_requires_registered_handler_and_sanitizes_error():
 def test_version_status_transition(installed, available, expected):
     class Host(FakeHost):
         def status(self):
-            return PluginHostStatus("exact", True, True, "0.7.4.0",
+            return PluginHostStatus("exact", True, True, installed,
                                     installed_version=installed, available_version=available)
     value = run(ObsPluginService(FakeManager(), Host()).status("obs-multi-rtmp"))
     assert value.state == expected
