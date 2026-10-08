@@ -8,6 +8,12 @@ def test_virtual_key_code_accepts_scroll_lock_aliases():
     assert virtual_key_code("SCROLL_LOCK") == 0x91
 
 
+def test_virtual_key_code_accepts_function_keys():
+    assert virtual_key_code("f1") == 0x70
+    assert virtual_key_code("F11") == 0x7A
+    assert virtual_key_code("f12") == 0x7B
+
+
 def test_virtual_key_code_rejects_unknown_key():
     with pytest.raises(ValueError):
         virtual_key_code("f24")

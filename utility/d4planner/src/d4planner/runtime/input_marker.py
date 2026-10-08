@@ -8,6 +8,7 @@ import os
 
 KEY_CODES: dict[str, int] = {
     "scroll-lock": 0x91,
+    **{f"f{index}": 0x6F + index for index in range(1, 13)},
 }
 
 
