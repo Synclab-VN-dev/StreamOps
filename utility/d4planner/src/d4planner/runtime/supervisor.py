@@ -446,7 +446,7 @@ class Supervisor:
 
     def _collect_marker_drafts(self) -> list[EventDraft]:
         capture = self.marker_capture
-        if capture is None or not self._marker_started:
+        if capture is None:
             return []
 
         error = capture.consume_error()
