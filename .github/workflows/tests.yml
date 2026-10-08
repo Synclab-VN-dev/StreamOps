@@ -8,7 +8,7 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,14 +39,23 @@ jobs:
             $d4planner = $true
             $server = $true
           } else {
-            $d4planner = @(
-              $realFiles | Where-Object { $_ -like "utility/d4planner/*" }
+            # Overlay POC requires REAL regression of both independent
+            # Python contexts, not a green job containing only skipped steps.
+            $overlay = @(
+              $realFiles | Where-Object {
+                $_ -like "utility/d4planner-overlay-poc/*" -or
+                $_ -like "scripts/*/d4-overlay-poc*" -or
+                $_ -eq ".github/workflows/d4-overlay-poc.yml"
+              }
             ).Count -gt 0
-            $server = @(
+            $d4planner = $overlay -or (@(
+              $realFiles | Where-Object { $_ -like "utility/d4planner/*" }
+            ).Count -gt 0)
+            $server = $overlay -or (@(
               $realFiles | Where-Object {
                 $_ -like "streamops/*" -or $_ -eq "pyproject.toml"
               }
-            ).Count -gt 0
+            ).Count -gt 0)
           }
 
           "d4planner=$($d4planner.ToString().ToLowerInvariant())" |
