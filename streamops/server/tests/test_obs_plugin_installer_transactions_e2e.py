@@ -295,3 +295,131 @@ def test_e2e_managed_provider_switch_without_direct_url_download(package):
     )
     assert installer.release_source is not None
     assert calls == []
+
+
+def test_e2e_provider_artifact_is_consumed_from_approved_source_only(package):
+    from streamops.server.services.obs_plugin_release_source import (
+        ManagedPluginReleaseSource, PluginRelease,
+    )
+    build, root, appdata, untrusted_calls, manifest, archive = package
+
+    class Provider:
+        def __init__(self):
+            self.calls = []
+        def latest(self, plugin_id):
+            self.calls.append(("latest", plugin_id))
+            return PluginRelease(
+                plugin_id=plugin_id,
+                version=manifest["package_version"],
+                source_commit="abcdef1234",
+                platform="windows", architecture="x64",
+                obs_version=manifest["expected_obs_version"],
+                artifact_name=manifest["artifact_name"],
+                artifact_sha256=manifest["artifact_sha256"],
+                vendor="sorayuki.multi_rtmp",
+                metadata={key: manifest[key] for key in
+                          ("file_count", "relative_paths", "tree_sha256")},
+            )
+        def open_artifact(self, release):
+            self.calls.append(("open", release.version))
+            return BytesIO(archive)
+
+    provider = Provider()
+    installer = WindowsObsMultiRtmpInstaller(
+        root.parent / "managed-state", plugin_root=root, appdata=appdata,
+        process_probe=lambda: [], version_probe=lambda _: "32.2.1",
+        release_source=ManagedPluginReleaseSource(provider),
+    )
+    assert installer.install().result == "installed"
+    assert installer.status().installed_version == "0.7.4.0"
+    assert provider.calls[:2] == [("latest", "obs-multi-rtmp"), ("open", "0.7.4.0")]
+    assert untrusted_calls == []
+
+
+def test_e2e_post_update_verify_failure_recovers_byte_exact_baseline(package):
+    import asyncio
+    from streamops.server.errors import ObsPluginError
+    from streamops.server.services.obs_plugin import (
+        ObsPluginService, PluginHostResult, PluginHostStatus,
+    )
+    from streamops.server.obs.manager import ObsRuntimeStatus
+
+    build, root, appdata, _, manifest, archive = package
+    installer = build()
+    installer.install()
+    baseline = _file_records(root)
+    config = appdata / "obs-studio" / "basic" / "profiles" / "User" / "obs-multi-rtmp.json"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_bytes(b'{"targets":[{"stream_key":"must-preserve"}]}')
+    config_baseline = config.read_bytes()
+
+    # Produce a distinct v2 package and tree manifest.
+    updated = BytesIO()
+    with zipfile.ZipFile(BytesIO(archive)) as original, zipfile.ZipFile(updated, "w") as target:
+        for item in original.infolist():
+            data = original.read(item.filename)
+            target.writestr(item.filename, b"plugin-dll-v2" if item.filename.endswith(".dll") else data)
+    new_bytes = updated.getvalue()
+    from tempfile import TemporaryDirectory
+    with TemporaryDirectory() as scratch:
+        expected = Path(scratch)
+        with zipfile.ZipFile(BytesIO(new_bytes)) as content:
+            for entry in content.infolist():
+                path = expected / ("bin/64bit/" + Path(entry.filename).name
+                                   if entry.filename.startswith("obs-plugins/")
+                                   else "data/locale/" + Path(entry.filename).name)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(content.read(entry.filename))
+        v2 = build(package_version="0.7.5.0",
+                   artifact_sha256=hashlib.sha256(new_bytes).hexdigest(),
+                   tree_sha256=_tree_digest(_file_records(expected)))
+    v2.downloader = lambda url: BytesIO(new_bytes)
+
+    class Manager:
+        def __init__(self):
+            self.state = "READY"
+            self.calls = []
+        def status(self):
+            return ObsRuntimeStatus(
+                state=self.state, process={"running": self.state == "READY"},
+                websocket={"connected": self.state == "READY", "obs_version": "32.2.1"},
+                output={"streaming": False, "recording": False},
+                last_operation=None, error=None,
+            )
+        def stop(self):
+            self.calls.append("stop")
+            self.state = "STOPPED"
+            return self.status()
+        def start(self):
+            self.calls.append("start")
+            self.state = "READY"
+            return self.status()
+
+    class Host:
+        def __init__(self):
+            self.calls = []
+        def status(self):
+            installed = v2.status()
+            return PluginHostStatus(
+                "exact", True, True, "0.7.4.0",
+                installed_version=installed.installed_version,
+                available_version="0.7.5.0",
+            )
+        def update(self):
+            self.calls.append("update")
+            return PluginHostResult(v2.update().result)
+        def verify(self):
+            self.calls.append("verify")
+            raise ObsPluginError("plugin_verify_failed", "injected failure", 409)
+        def rollback(self):
+            self.calls.append("rollback")
+            return PluginHostResult(v2.rollback().result)
+
+    manager, host = Manager(), Host()
+    with pytest.raises(ObsPluginError) as caught:
+        asyncio.run(ObsPluginService(manager, host).update("obs-multi-rtmp"))
+    assert caught.value.code == "plugin_verify_failed"
+    assert host.calls == ["update", "verify", "rollback"]
+    assert manager.state == "READY"
+    assert _file_records(root) == baseline
+    assert config.read_bytes() == config_baseline
