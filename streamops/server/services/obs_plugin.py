@@ -96,6 +96,7 @@ class ObsPluginService:
         self.operation_timeout = operation_timeout
         self._pending_change: str | None = None
         self._verified_at: str | None = None
+        self._verification_failed = False
         self._operation_lock = threading.Lock()
 
     async def status(self, plugin_id: str) -> ObsPluginStatus:
@@ -192,6 +193,8 @@ class ObsPluginService:
             state = "NOT_INSTALLED"
         elif getattr(host, "restart_required", False) or self._pending_change:
             state = "RESTART_REQUIRED"
+        elif self._verification_failed:
+            state = "VERIFY_FAILED"
         elif update_available:
             state = "UPDATE_AVAILABLE"
         elif loaded:
@@ -243,6 +246,7 @@ class ObsPluginService:
                 raise
             self._pending_change = "install"
             self._verified_at = None
+            self._verification_failed = False
             return ObsPluginOperationResult(
                 replace(self._status_sync(), state="RESTART_REQUIRED", restart_required=True),
                 "install", lower.result,
@@ -297,6 +301,7 @@ class ObsPluginService:
                 raise
             self._pending_change = "update"
             self._verified_at = None
+            self._verification_failed = False
             return ObsPluginOperationResult(
                 replace(self._status_sync(), state="RESTART_REQUIRED", restart_required=True),
                 "update", lower.result, previous_version=initial.installed_version,
@@ -325,11 +330,13 @@ class ObsPluginService:
         try:
             status = self._verify_loaded()
         except ObsPluginError:
+            self._verification_failed = True
             if self.defer_restart and self._pending_change in {"install", "update"}:
                 self._recover_failed_install()
                 self._pending_change = None
             raise
         self._pending_change = None
+        self._verification_failed = False
         self._verified_at = datetime.now(timezone.utc).isoformat()
         return ObsPluginOperationResult(
             replace(status, last_verification=self._verified_at, restart_required=False),
@@ -402,6 +409,7 @@ class ObsPluginService:
                 raise
             self._pending_change = "rollback"
             self._verified_at = None
+            self._verification_failed = False
             return ObsPluginOperationResult(
                 replace(self._status_sync(), restart_required=True),
                 "rollback", lower.result,
