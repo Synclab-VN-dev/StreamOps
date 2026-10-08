@@ -170,7 +170,9 @@ class WindowsObsMultiRtmpInstaller:
         loaded_version = None
         processes = self._matching_obs_processes()
         if len(processes) == 1:
-            loaded_version, module_loaded = self._load_evidence(processes[0])
+            loaded_version, module_loaded = self._load_evidence(
+                processes[0], installed_version or self.manifest["package_version"]
+            )
         else:
             module_loaded = False
         return InstallerStatus(
@@ -342,7 +344,7 @@ class WindowsObsMultiRtmpInstaller:
         processes = self._matching_obs_processes()
         if len(processes) != 1:
             raise PluginInstallerFailure("obs_not_running", "OBS is not running from the expected executable.")
-        if not status.loaded or status.loaded_version != self.manifest["package_version"]:
+        if not status.loaded or status.loaded_version != status.installed_version:
             raise PluginInstallerFailure("module_not_loaded", "Current OBS process has no matching plugin load evidence.")
         return status
 
@@ -464,7 +466,7 @@ class WindowsObsMultiRtmpInstaller:
         expected = os.path.normcase(str(self.obs_executable.resolve(strict=False)))
         return [p for p in self.process_probe() if os.path.normcase(str(p.executable.resolve(strict=False))) == expected]
 
-    def _load_evidence(self, process: ProcessEvidence) -> tuple[str | None, bool]:
+    def _load_evidence(self, process: ProcessEvidence, expected_version: str) -> tuple[str | None, bool]:
         # TODO(tech-debt): Prefer direct module enumeration or a plugin/vendor health signal when
         # available. Parsing OBS logs couples verification to log format and a startup time window.
         if self.appdata is None:
@@ -483,7 +485,7 @@ class WindowsObsMultiRtmpInstaller:
         versions = re.findall(r"\[obs-multi-rtmp\]\s+version:\s*([0-9.]+)", content, re.IGNORECASE)
         version = versions[-1] if versions else None
         module_loaded = re.search(r"obs-multi-rtmp\.dll\s*$", content, re.IGNORECASE | re.MULTILINE) is not None
-        return version, module_loaded and version == self.manifest["package_version"]
+        return version, module_loaded and version == expected_version
 
     def _plugin_configs(self) -> list[dict[str, Any]]:
         if self.appdata is None:
