@@ -312,6 +312,7 @@ class WindowsObsMultiRtmpInstaller:
                 "expected_files": expected,
                 "installed_version": new_version,
                 "previous_version": previous_version,
+                "previous_transaction_id": previous["transaction_id"],
             }
             self._write_json(transaction_root / "transaction.json", transaction)
             # Do not point rollback at a pending update: preserve previous
@@ -371,6 +372,13 @@ class WindowsObsMultiRtmpInstaller:
         transaction["state"] = "rolled_back"
         transaction["rolled_back_at"] = datetime.now(timezone.utc).isoformat()
         self._write_json(transaction_root / "transaction.json", transaction)
+        previous_id = transaction.get("previous_transaction_id")
+        if previous_id:
+            # A rolled-back update must expose the restored v1 baseline, not
+            # report a v2 manifest conflict on subsequent status calls.
+            if not re.fullmatch(r"\\d{8}-\\d{6}-[a-f0-9]{8}", previous_id):
+                raise PluginInstallerFailure("transaction_missing", "Previous transaction identity is invalid.")
+            self._write_json(self.pointer, {"transaction_id": previous_id})
         return InstallerResult("rolled_back")
 
     def _stage_artifact(self, destination: Path) -> list[dict[str, Any]]:
