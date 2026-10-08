@@ -272,6 +272,8 @@ def test_e2e_update_rollback_restores_v1_bytes(package):
     assert v2.update().result == "updated"
     assert v2.rollback().result == "rolled_back"
     assert _file_records(root) == before
+    assert v2.status().installation == "exact"
+    assert v2.status().installed_version == "0.7.4.0"
 
 
 def test_e2e_managed_provider_switch_without_direct_url_download(package):
