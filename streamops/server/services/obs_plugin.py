@@ -80,10 +80,16 @@ class ObsPluginOperationResult:
 
 
 class ObsPluginService:
-    def __init__(self, obs_manager: Any, host: ObsPluginHost, *, defer_restart: bool = False) -> None:
+    def __init__(
+        self, obs_manager: Any, host: ObsPluginHost, *,
+        defer_restart: bool = False, operation_timeout: float = 120.0,
+    ) -> None:
         self.obs_manager = obs_manager
         self.host = host
         self.defer_restart = defer_restart
+        if operation_timeout <= 0:
+            raise ValueError("operation_timeout must be positive")
+        self.operation_timeout = operation_timeout
         self._pending_change: str | None = None
         self._verified_at: str | None = None
         self._operation_lock = threading.Lock()
@@ -98,19 +104,34 @@ class ObsPluginService:
 
     async def install(self, plugin_id: str) -> ObsPluginOperationResult:
         self._require_supported(plugin_id)
-        return await asyncio.to_thread(self._run_guarded, "install", self._install_sync)
+        return await self._mutation("install", self._install_sync)
 
     async def update(self, plugin_id: str) -> ObsPluginOperationResult:
         self._require_supported(plugin_id)
-        return await asyncio.to_thread(self._run_guarded, "update", self._update_sync)
+        return await self._mutation("update", self._update_sync)
 
     async def verify(self, plugin_id: str) -> ObsPluginOperationResult:
         self._require_supported(plugin_id)
-        return await asyncio.to_thread(self._run_guarded, "verify", self._verify_sync)
+        return await self._mutation("verify", self._verify_sync)
 
     async def rollback(self, plugin_id: str) -> ObsPluginOperationResult:
         self._require_supported(plugin_id)
-        return await asyncio.to_thread(self._run_guarded, "rollback", self._rollback_sync)
+        return await self._mutation("rollback", self._rollback_sync)
+
+    async def _mutation(self, operation: str, callback: Any) -> ObsPluginOperationResult:
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(self._run_guarded, operation, callback),
+                timeout=self.operation_timeout,
+            )
+        except asyncio.TimeoutError as exc:
+            # The timed-out worker may still own the mutation lock. Never
+            # start a second operation until the original worker exits.
+            raise ObsPluginError(
+                "plugin_operation_timeout",
+                "OBS plugin operation timed out; inspect status before retrying.",
+                504,
+            ) from exc
 
     def _require_supported(self, plugin_id: str) -> None:
         if plugin_id != PLUGIN_ID:
