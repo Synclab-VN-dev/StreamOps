@@ -141,7 +141,7 @@ class ObsPluginService:
         loaded = bool(
             installed
             and host.loaded
-            and host.loaded_version == EXPECTED_VERSION
+            and host.loaded_version == (getattr(host, "installed_version", None) or EXPECTED_VERSION)
             and runtime.state == "READY"
             and runtime.websocket.get("connected") is True
         )
