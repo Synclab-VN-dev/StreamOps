@@ -217,3 +217,65 @@ def test_rest_rejects_source_override_for_every_mutation(server_config, capture_
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "invalid_plugin_request"
     assert service.calls == []
+
+
+def test_websocket_correlates_multiple_requests_and_preserves_order(server_config, capture_service):
+    service = FakePluginService()
+    with client(server_config, capture_service, service) as api:
+        with api.websocket_connect("/api/v1/obs/plugins/ws") as websocket:
+            for request_id in ("status-first", "status-second", "status-third"):
+                websocket.send_json({
+                    "type": "request",
+                    "request_id": request_id,
+                    "operation": "obs_plugin.status",
+                    "payload": {"plugin_id": "obs-multi-rtmp"},
+                })
+                response = websocket.receive_json()
+                assert response["type"] == "response"
+                assert response["request_id"] == request_id
+                assert response["ok"] is True
+                assert response["data"] == LOADED.api_payload()
+    assert service.calls == [("status", "obs-multi-rtmp")] * 3
+
+
+@pytest.mark.parametrize("operation", ["install", "verify", "rollback"])
+def test_rest_ws_operation_parity_for_success(server_config, capture_service, operation):
+    service = FakePluginService()
+    with client(server_config, capture_service, service) as api:
+        rest = api.post(f"/api/v1/obs/plugins/obs-multi-rtmp/{operation}")
+        with api.websocket_connect("/api/v1/obs/plugins/ws") as websocket:
+            websocket.send_json({
+                "type": "request",
+                "request_id": f"parity-{operation}",
+                "operation": f"obs_plugin.{operation}",
+                "payload": {"plugin_id": "obs-multi-rtmp"},
+            })
+            ws = websocket.receive_json()
+    assert rest.status_code == 200
+    assert ws["ok"] is True
+    assert ws["data"] == rest.json()
+    assert service.calls == [(operation, "obs-multi-rtmp")] * 2
+
+
+@pytest.mark.parametrize("code,status", [
+    ("obs_busy_streaming", 409),
+    ("plugin_incompatible", 409),
+    ("plugin_install_failed", 503),
+])
+def test_rest_ws_operation_parity_for_typed_failure(server_config, capture_service, code, status):
+    service = FakePluginService()
+    service.failure = ObsPluginError(code, "safe error", status)
+    with client(server_config, capture_service, service) as api:
+        rest = api.post("/api/v1/obs/plugins/obs-multi-rtmp/install")
+        with api.websocket_connect("/api/v1/obs/plugins/ws") as websocket:
+            websocket.send_json({
+                "type": "request",
+                "request_id": "parity-failure",
+                "operation": "obs_plugin.install",
+                "payload": {"plugin_id": "obs-multi-rtmp"},
+            })
+            ws = websocket.receive_json()
+    assert rest.status_code == status
+    assert ws["ok"] is False
+    assert ws["error"] == rest.json()["error"]
+    assert ws["request_id"] == "parity-failure"
