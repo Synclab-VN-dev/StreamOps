@@ -339,3 +339,88 @@ def test_rest_ws_typed_error_equivalence_for_every_mutation(server_config, captu
     assert received["ok"] is False
     assert received["request_id"] == "error-" + operation
     assert received["error"] == rest.json()["error"]
+
+
+def test_e2e_real_service_install_process_api_restart_verify_and_inventory(server_config, capture_service):
+    """HTTP transport -> lifecycle service -> fake OBS process/vendor boundaries."""
+    from streamops.server.services.obs_plugin import (
+        ObsPluginService, PluginHostResult, PluginHostStatus,
+    )
+    from streamops.server.obs.manager import ObsRuntimeStatus
+
+    class VendorClient:
+        def connect(self):
+            pass
+        def request(self, request_type, payload):
+            assert request_type == "CallVendorRequest"
+            assert payload["vendorName"] == "sorayuki.multi_rtmp"
+            return {"vendorResponseData": {"targets": [], "count": 0}}
+        def close(self):
+            pass
+
+    class Manager:
+        def __init__(self):
+            self.state = "READY"
+            self.calls = []
+            self.client_factory = VendorClient
+        def status(self):
+            return ObsRuntimeStatus(
+                state=self.state, process={"running": self.state == "READY"},
+                websocket={"connected": self.state == "READY", "obs_version": "32.2.1"},
+                output={"streaming": False, "recording": False},
+                last_operation=None, error=None,
+            )
+        def stop(self):
+            self.calls.append("stop")
+            self.state = "STOPPED"
+            return self.status()
+        def start(self):
+            self.calls.append("start")
+            self.state = "READY"
+            return self.status()
+
+    class Host:
+        def __init__(self):
+            self.installed, self.loaded = False, False
+        def status(self):
+            return PluginHostStatus(
+                "exact" if self.installed else "absent", True, self.loaded,
+                "0.7.4.0" if self.loaded else None,
+                installed_version="0.7.4.0" if self.installed else None,
+                available_version="0.7.4.0",
+            )
+        def install(self):
+            self.installed = True
+            return PluginHostResult("installed")
+        def verify(self):
+            self.loaded = True
+            return self.status()
+        def rollback(self):
+            self.installed, self.loaded = False, False
+            return PluginHostResult("rolled_back")
+
+    manager, host = Manager(), Host()
+    service = ObsPluginService(manager, host, defer_restart=True)
+    with TestClient(create_app(
+        server_config, capture_service=capture_service, obs_manager=manager,
+        obs_plugin_service=service, manage_runtime=False,
+    )) as api:
+        result = api.post("/api/v1/obs/plugins/obs-multi-rtmp/install")
+        assert result.status_code == 200
+        assert result.json()["state"] == "RESTART_REQUIRED"
+        assert result.json()["restart_required"] is True
+        assert manager.calls == ["stop"]
+        inventory = api.get("/api/v1/obs/plugins").json()["plugins"]
+        assert inventory[0]["restart_required"] is True
+        assert inventory[0]["state"] == "RESTART_REQUIRED"
+        started = api.post("/api/v1/obs/process/start")
+        assert started.status_code == 200
+        assert manager.calls == ["stop", "start"]
+        verified = api.post("/api/v1/obs/plugins/obs-multi-rtmp/verify")
+        assert verified.status_code == 200
+        assert verified.json()["state"] == "VERIFIED"
+        assert verified.json()["restart_required"] is False
+        assert verified.json()["last_verification"] is not None
+        status = api.get("/api/v1/obs/plugins/obs-multi-rtmp").json()
+        assert status["state"] == "VERIFIED"
+        assert status["last_verification"] is not None
