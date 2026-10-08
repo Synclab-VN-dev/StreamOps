@@ -452,7 +452,9 @@ def test_websocket_unexpected_error_never_logs_or_returns_secret(server_config, 
 
 
 def test_e2e_http_update_timeout_is_bounded_and_typed(server_config, capture_service):
-    import time
+    import threading
+    entered = threading.Event()
+    release = threading.Event()
     from streamops.server.services.obs_plugin import ObsPluginService, PluginHostStatus, PluginHostResult
     from streamops.server.obs.manager import ObsRuntimeStatus
 
@@ -479,7 +481,8 @@ def test_e2e_http_update_timeout_is_bounded_and_typed(server_config, capture_ser
         def status(self):
             return PluginHostStatus("exact", True, False, None)
         def update(self):
-            time.sleep(0.15)
+            entered.set()
+            assert release.wait(timeout=3)
             return PluginHostResult("updated")
         def verify(self):
             return self.status()
@@ -491,9 +494,13 @@ def test_e2e_http_update_timeout_is_bounded_and_typed(server_config, capture_ser
         obs_manager=manager, obs_plugin_service=service,
         manage_runtime=False,
     )) as api:
-        started = time.monotonic()
-        response = api.post("/api/v1/obs/plugins/obs-multi-rtmp/update")
-        elapsed = time.monotonic() - started
-    assert response.status_code == 504
-    assert response.json()["error"]["code"] == "plugin_operation_timeout"
-    assert elapsed < 0.15
+        try:
+            response = api.post("/api/v1/obs/plugins/obs-multi-rtmp/update")
+            assert entered.is_set()
+            # The HTTP request must return even though the worker has not
+            # finished. Event gating avoids timing-dependent/flaky assertions.
+            assert response.status_code == 504
+            assert response.json()["error"]["code"] == "plugin_operation_timeout"
+            assert not release.is_set()
+        finally:
+            release.set()
