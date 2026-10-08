@@ -382,3 +382,69 @@ def test_inventory_only_reports_registered_plugin():
     assert len(value) == 1
     assert value[0].plugin_id == "obs-multi-rtmp"
     assert value[0].state == "NOT_INSTALLED"
+
+
+def test_manual_restart_workflow_install_then_process_start_then_verify():
+    host, manager = FakeHost(), FakeManager()
+    service = ObsPluginService(manager, host, defer_restart=True)
+    result = run(service.install("obs-multi-rtmp"))
+    assert result.result == "installed"
+    assert result.operation == "install"
+    assert result.status.restart_required is True
+    assert result.status.state == "RESTART_REQUIRED"
+    assert manager.value.state == "STOPPED"
+    assert manager.calls.count("stop") == 1
+    assert manager.calls.count("start") == 0
+    # Operator invokes the existing Process API, then Plugin Manager verify.
+    manager.start()
+    verified = run(service.verify("obs-multi-rtmp"))
+    assert verified.status.state == "VERIFIED"
+    assert verified.status.restart_required is False
+    assert verified.status.last_verification is not None
+    assert verified.result == "verified"
+
+
+def test_manual_restart_workflow_update_is_not_an_install_alias():
+    class Host(FakeHost):
+        def update(self):
+            self.calls.append("update")
+            return PluginHostResult("updated")
+    host, manager = Host("exact", loaded=True), FakeManager()
+    service = ObsPluginService(manager, host, defer_restart=True)
+    update = run(service.update("obs-multi-rtmp"))
+    assert update.operation == "update"
+    assert update.status.restart_required
+    assert update.status.state == "RESTART_REQUIRED"
+    assert manager.calls.count("start") == 0
+    assert host.calls.count("update") == 1
+    assert "install" not in host.calls
+    manager.start()
+    verified = run(service.verify("obs-multi-rtmp"))
+    assert verified.status.state == "VERIFIED"
+    assert verified.status.last_verification is not None
+
+
+def test_manual_restart_verify_failure_triggers_rollback_and_restarts_obs():
+    host, manager = FakeHost(), FakeManager()
+    service = ObsPluginService(manager, host, defer_restart=True)
+    result = run(service.install("obs-multi-rtmp"))
+    assert result.status.restart_required
+    manager.start()
+    host.failures["verify"] = ObsPluginError("plugin_verify_failed", "Vendor absent", 409)
+    with pytest.raises(ObsPluginError) as caught:
+        run(service.verify("obs-multi-rtmp"))
+    assert caught.value.code == "plugin_verify_failed"
+    assert "rollback" in host.calls
+    assert manager.value.state == "READY"
+
+
+def test_deferred_install_preserves_active_output_and_does_not_stop():
+    for output in ("streaming", "recording"):
+        manager = FakeManager(runtime(**{output: True}))
+        host = FakeHost()
+        service = ObsPluginService(manager, host, defer_restart=True)
+        with pytest.raises(ObsPluginError) as caught:
+            run(service.install("obs-multi-rtmp"))
+        assert caught.value.code == "obs_busy_" + output
+        assert "stop" not in manager.calls
+        assert "install" not in host.calls
