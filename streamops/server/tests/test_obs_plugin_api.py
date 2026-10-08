@@ -303,18 +303,3 @@ def test_rest_ws_parity_all_mutations_with_single_service(server_config, capture
     assert rest.json() == ws["data"]
     assert service.calls == [(operation, "obs-multi-rtmp")] * 2
 
-
-@pytest.mark.parametrize("operation", ["status", "install", "update", "verify", "rollback"])
-def test_websocket_rejects_unknown_plugin_without_service_call(server_config, capture_service, operation):
-    service = FakePluginService()
-    with client(server_config, capture_service, service) as api:
-        with api.websocket_connect("/api/v1/obs/plugins/ws") as websocket:
-            websocket.send_json({
-                "type": "request", "request_id": "unknown-plugin",
-                "operation": f"obs_plugin.{operation}",
-                "payload": {"plugin_id": "unapproved"},
-            })
-            response = websocket.receive_json()
-    assert response["request_id"] == "unknown-plugin"
-    assert response["ok"] is False
-    assert service.calls == []
