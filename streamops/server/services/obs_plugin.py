@@ -74,9 +74,13 @@ class ObsPluginOperationResult:
     status: ObsPluginStatus
     operation: Literal["install", "update", "verify", "rollback"]
     result: str
+    previous_version: str | None = None
 
     def api_payload(self) -> dict[str, object]:
-        return {**self.status.api_payload(), "operation": self.operation, "result": self.result}
+        return {
+            **self.status.api_payload(), "operation": self.operation,
+            "result": self.result, "previous_version": self.previous_version,
+        }
 
 
 class ObsPluginService:
@@ -295,7 +299,7 @@ class ObsPluginService:
             self._verified_at = None
             return ObsPluginOperationResult(
                 replace(self._status_sync(), state="RESTART_REQUIRED", restart_required=True),
-                "update", lower.result,
+                "update", lower.result, previous_version=initial.installed_version,
             )
         stopped = False
         updated = False
@@ -307,7 +311,9 @@ class ObsPluginService:
             updated = lower.result == "updated"
             self._start_obs()
             verified = self._verify_loaded()
-            return ObsPluginOperationResult(verified, "update", lower.result)
+            return ObsPluginOperationResult(
+                verified, "update", lower.result, previous_version=initial.installed_version
+            )
         except Exception:
             if updated:
                 self._recover_failed_install()
