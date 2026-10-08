@@ -71,7 +71,7 @@ pub fn run() {
             app.handle().plugin(
                 tauri_plugin_global_shortcut::Builder::new()
                     .with_handler(move |handle, shortcut, event| {
-                        if event.state() != ShortcutState::Pressed {
+                        if event.state != ShortcutState::Pressed {
                             return;
                         }
                         if shortcut == &exit {
