@@ -22,7 +22,7 @@ PLUGIN_ID = "obs-multi-rtmp"
 EXPECTED_VERSION = "0.7.4.0"
 EXPECTED_OBS_VERSION = "32.2.1"
 
-PluginState = Literal["NOT_INSTALLED", "INSTALLED", "LOADED", "INCOMPATIBLE", "ERROR"]
+PluginState = Literal["NOT_INSTALLED", "INSTALLED", "LOADED", "INCOMPATIBLE", "ERROR", "VERIFIED", "UPDATE_AVAILABLE", "RESTART_REQUIRED", "VERIFY_FAILED", "FAILED"]
 
 
 @dataclass(frozen=True)
@@ -31,6 +31,9 @@ class PluginHostStatus:
     compatible: bool
     loaded: bool
     loaded_version: str | None = None
+    installed_version: str | None = None
+    available_version: str | None = None
+    restart_required: bool = False
 
 
 @dataclass(frozen=True)
@@ -41,6 +44,7 @@ class PluginHostResult:
 class ObsPluginHost(Protocol):
     def status(self) -> PluginHostStatus: ...
     def install(self) -> PluginHostResult: ...
+    def update(self) -> PluginHostResult: ...
     def verify(self) -> PluginHostStatus: ...
     def rollback(self) -> PluginHostResult: ...
 
@@ -53,6 +57,11 @@ class ObsPluginStatus:
     installed: bool
     loaded: bool
     compatible: bool
+    installed_version: str | None = None
+    available_version: str | None = None
+    restart_required: bool = False
+    display_name: str = "OBS Multi RTMP"
+    last_verification: str | None = None
 
     def api_payload(self) -> dict[str, object]:
         return asdict(self)
@@ -141,7 +150,13 @@ class ObsPluginService:
             state = "LOADED"
         else:
             state = "INSTALLED"
-        return ObsPluginStatus(PLUGIN_ID, EXPECTED_VERSION, state, installed, loaded, compatible)
+        return ObsPluginStatus(
+            PLUGIN_ID, EXPECTED_VERSION, state, installed, loaded, compatible,
+            installed_version=getattr(host, "installed_version", None) or (EXPECTED_VERSION if installed else None),
+            available_version=getattr(host, "available_version", None),
+            restart_required=getattr(host, "restart_required", False),
+            last_verification="verified" if loaded else None,
+        )
 
     def _runtime_for_mutation(self) -> Any:
         runtime = self.obs_manager.status()
@@ -202,8 +217,23 @@ class ObsPluginService:
         if not initial.installed:
             raise ObsPluginError("plugin_not_installed", "The OBS plugin must be installed before it can be updated.", 409)
         self._ensure_compatible(initial)
-        lower = self._host_call("update")
-        return ObsPluginOperationResult(self._status_sync(), "update", lower.result)
+        stopped = False
+        updated = False
+        try:
+            if runtime.state == "READY":
+                self.obs_manager.stop()
+                stopped = True
+            lower = self._host_call("update")
+            updated = lower.result == "updated"
+            self._start_obs()
+            verified = self._verify_loaded()
+            return ObsPluginOperationResult(verified, "update", lower.result)
+        except Exception:
+            if updated:
+                self._recover_failed_install()
+            elif stopped:
+                self._best_effort_start(None)
+            raise
 
     def _verify_sync(self) -> ObsPluginOperationResult:
         status = self._verify_loaded()

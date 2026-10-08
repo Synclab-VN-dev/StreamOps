@@ -9,6 +9,8 @@ or another release host.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
+from pathlib import PurePosixPath
 from typing import BinaryIO, Mapping, Protocol
 
 from ..errors import ObsPluginError
@@ -72,6 +74,23 @@ class ManagedPluginReleaseSource:
                 "Managed distribution source returned a release for a different plugin.",
                 409,
             )
+        # Metadata is untrusted until validated, even when provided by the
+        # configured managed source. Reject before opening any artifact.
+        name = release.artifact_name
+        valid = (
+            bool(re.fullmatch(r"[0-9]+(?:\\.[0-9]+){1,3}", release.version))
+            and bool(re.fullmatch(r"[A-Za-z0-9._-]{6,128}", release.source_commit))
+            and release.platform == "windows"
+            and release.architecture == "x64"
+            and release.obs_version == "32.2.1"
+            and isinstance(name, str) and name == PurePosixPath(name).name
+            and bool(re.fullmatch(r"[A-Za-z0-9._-]+\\.zip", name))
+            and bool(re.fullmatch(r"[a-fA-F0-9]{64}", release.artifact_sha256))
+            and isinstance(release.vendor, str) and bool(release.vendor)
+            and isinstance(release.metadata, Mapping)
+        )
+        if not valid:
+            raise ObsPluginError("plugin_release_invalid", "Approved plugin release metadata is invalid.", 409)
         return release
 
     def open_artifact(self, release: PluginRelease) -> BinaryIO:

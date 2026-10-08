@@ -14,6 +14,9 @@ import re
 import shutil
 import tempfile
 from typing import Any, BinaryIO, Callable
+
+from ....errors import ObsPluginError
+from ....services.obs_plugin_release_source import ManagedPluginReleaseSource
 from urllib.request import Request, urlopen
 import uuid
 import zipfile
@@ -45,6 +48,9 @@ class InstallerStatus:
     compatible: bool
     loaded: bool
     loaded_version: str | None = None
+    installed_version: str | None = None
+    available_version: str | None = None
+    restart_required: bool = False
 
 
 @dataclass(frozen=True)
@@ -109,11 +115,16 @@ class WindowsObsMultiRtmpInstaller:
         process_probe: Callable[[], list[ProcessEvidence]] | None = None,
         version_probe: Callable[[Path], str | None] | None = None,
         appdata: Path | None = None,
+        release_source: ManagedPluginReleaseSource | None = None,
     ) -> None:
         self.data_dir = Path(data_dir).resolve()
         self.plugin_root = Path(plugin_root)
         self.obs_executable = Path(obs_executable)
-        self.manifest = manifest or _load_manifest()
+        self.manifest = manifest if manifest is not None else _load_manifest()
+        self.release_source = release_source
+        # Explicit manifests are supported for isolated package fixture tests only.
+        # Production cannot install from the bundled upstream URL.
+        self._fixture_manifest = manifest is not None
         self.state_root = self.data_dir / "obs-plugins" / "obs-multi-rtmp"
         self.transactions_root = self.state_root / "transactions"
         self.pointer = self.state_root / "current-transaction.json"
@@ -131,12 +142,30 @@ class WindowsObsMultiRtmpInstaller:
     def status(self) -> InstallerStatus:
         version = self.version_probe(self.obs_executable)
         records = _file_records(self.plugin_root)
+        installed_version = None
         if not records:
             installation = "absent"
         elif self._is_exact(records):
             installation = "exact"
+            installed_version = self.manifest["package_version"]
         else:
             installation = "conflict"
+        # During an update the installed version may differ from the latest
+        # manifest; a hash-verified transaction is still a managed installation.
+        if records:
+            try:
+                _, journal = self._read_current_transaction()
+                if self._record_map(records) == self._record_map(journal["expected_files"]) and journal["state"] == "installed":
+                    installation = "exact"
+                    installed_version = journal.get("installed_version") or installed_version
+            except (PluginInstallerFailure, KeyError, TypeError):
+                pass
+        available_version = self.manifest["package_version"] if self._fixture_manifest else None
+        if self.release_source is not None:
+            try:
+                available_version = self.release_source.latest("obs-multi-rtmp").version
+            except ObsPluginError:
+                available_version = None
         loaded_version = None
         processes = self._matching_obs_processes()
         if len(processes) == 1:
@@ -148,9 +177,45 @@ class WindowsObsMultiRtmpInstaller:
             compatible=version == self.manifest["expected_obs_version"],
             loaded=module_loaded,
             loaded_version=loaded_version,
+            installed_version=installed_version,
+            available_version=available_version,
         )
 
+    def _require_managed_release(self) -> None:
+        if self.release_source is None and not self._fixture_manifest:
+            raise PluginInstallerFailure(
+                "release_unavailable", "No approved managed distribution source is configured."
+            )
+
+    def _prepare_release(self) -> None:
+        self._require_managed_release()
+        if self.release_source is None:
+            return
+        try:
+            release = self.release_source.latest("obs-multi-rtmp")
+        except ObsPluginError as exc:
+            raise PluginInstallerFailure("release_unavailable", "Approved managed release is unavailable.") from exc
+        metadata = release.metadata
+        if not (
+            isinstance(metadata.get("file_count"), int)
+            and isinstance(metadata.get("relative_paths"), list)
+            and isinstance(metadata.get("tree_sha256"), str)
+            and re.fullmatch(r"[a-fA-F0-9]{64}", metadata["tree_sha256"])
+        ):
+            raise PluginInstallerFailure("artifact_manifest_mismatch", "Approved release lacks an exact file manifest.")
+        self.manifest = {
+            "plugin_id": release.plugin_id,
+            "package_version": release.version,
+            "expected_obs_version": release.obs_version,
+            "artifact_name": release.artifact_name,
+            "artifact_sha256": release.artifact_sha256,
+            "file_count": metadata["file_count"],
+            "relative_paths": metadata["relative_paths"],
+            "tree_sha256": metadata["tree_sha256"],
+        }
+
     def install(self) -> InstallerResult:
+        self._prepare_release()
         self._assert_compatible()
         records = _file_records(self.plugin_root)
         if records and self._is_exact(records):
@@ -179,6 +244,7 @@ class WindowsObsMultiRtmpInstaller:
                 "backup_relative": backup_root.relative_to(transaction_root).as_posix() if existing_root else None,
                 "baseline_plugin_configs": baseline_configs,
                 "expected_files": expected_records,
+                "installed_version": self.manifest["package_version"],
             }
             self._write_json(transaction_root / "transaction.json", transaction)
             self._write_json(self.pointer, {"transaction_id": transaction_id})
@@ -204,8 +270,66 @@ class WindowsObsMultiRtmpInstaller:
             shutil.rmtree(staged, ignore_errors=True)
 
     def update(self) -> InstallerResult:
-        """Keep update distinct until the v1-to-v2 transaction is implemented."""
-        raise PluginInstallerFailure("update_failed", "Managed plugin update is not implemented yet.")
+        """Replace v1 with a verified v2 package in a separate rollback journal."""
+        self._prepare_release()
+        self._assert_compatible()
+        self._assert_obs_stopped()
+        current = _file_records(self.plugin_root)
+        if not current:
+            raise PluginInstallerFailure("plugin_state_conflict", "Plugin is not installed.")
+        try:
+            _, previous = self._read_current_transaction()
+        except PluginInstallerFailure as exc:
+            raise PluginInstallerFailure("transaction_missing", "Cannot update without a verified baseline.") from exc
+        if (previous.get("state") != "installed" or
+                self._record_map(current) != self._record_map(previous.get("expected_files", []))):
+            raise PluginInstallerFailure("plugin_state_conflict", "Current plugin differs from verified baseline.")
+        previous_version = previous.get("installed_version")
+        new_version = self.manifest["package_version"]
+        if previous_version is not None:
+            def parts(value: str) -> tuple[int, ...]:
+                return tuple(int(piece) for piece in value.split("."))
+            if parts(new_version) <= parts(previous_version):
+                raise PluginInstallerFailure("update_not_available", "No newer approved version exists.")
+        staged = Path(tempfile.mkdtemp(prefix="streamops-obs-multi-rtmp-update-"))
+        try:
+            expected = self._stage_artifact(staged)
+            self.state_root.mkdir(parents=True, exist_ok=True)
+            transaction_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8]
+            transaction_root = self.transactions_root / transaction_id
+            backup = transaction_root / "backup" / "obs-multi-rtmp"
+            backup.parent.mkdir(parents=True)
+            shutil.copytree(self.plugin_root, backup)
+            current_configs = self._plugin_configs()
+            transaction = {
+                "state": "pending", "transaction_id": transaction_id,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "plugin_root_existed": True,
+                "backup_relative": backup.relative_to(transaction_root).as_posix(),
+                "baseline_plugin_configs": current_configs,
+                "expected_files": expected,
+                "installed_version": new_version,
+                "previous_version": previous_version,
+            }
+            self._write_json(transaction_root / "transaction.json", transaction)
+            # Do not point rollback at a pending update: preserve previous
+            # committed baseline until the replacement files verify.
+            try:
+                self._clear_contents(self.plugin_root)
+                self._copy_contents(staged, self.plugin_root)
+                if self._record_map(_file_records(self.plugin_root)) != self._record_map(expected):
+                    raise PluginInstallerFailure("update_failed", "Updated files failed verification.")
+                if self._plugin_configs() != current_configs:
+                    raise PluginInstallerFailure("config_conflict", "OBS config changed during update.")
+                transaction["state"] = "installed"
+                self._write_json(transaction_root / "transaction.json", transaction)
+                self._write_json(self.pointer, {"transaction_id": transaction_id})
+            except Exception:
+                self._restore_backup(transaction_root, transaction)
+                raise
+            return InstallerResult("updated")
+        finally:
+            shutil.rmtree(staged, ignore_errors=True)
 
     def verify(self) -> InstallerStatus:
         self._assert_compatible()
@@ -251,7 +375,7 @@ class WindowsObsMultiRtmpInstaller:
         artifact_path = destination / str(self.manifest["artifact_name"])
         digest = hashlib.sha256()
         try:
-            with self.downloader(str(self.manifest["artifact_url"])) as source, artifact_path.open("wb") as target:
+            with (self.release_source.open_artifact(self.release_source.latest("obs-multi-rtmp")) if self.release_source is not None else self.downloader(str(self.manifest["artifact_url"]))) as source, artifact_path.open("wb") as target:
                 for block in iter(lambda: source.read(1024 * 1024), b""):
                     target.write(block)
                     digest.update(block)

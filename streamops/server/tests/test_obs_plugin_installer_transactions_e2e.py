@@ -147,13 +147,13 @@ def test_rollback_removes_only_empty_new_plugin_config(package):
     assert not config.exists()
 
 
-def test_update_not_implemented_is_explicit_failure_not_false_success(package):
+def test_update_same_version_is_rejected_without_false_success(package):
     build, _, _, _, _, _ = package
     installer = build()
     installer.install()
     with pytest.raises(PluginInstallerFailure) as caught:
         installer.update()
-    assert caught.value.code == "update_failed"
+    assert caught.value.code == "update_not_available"
 
 
 def test_install_rejects_unexpected_archive_file_before_mutation(package):
@@ -243,12 +243,34 @@ def test_e2e_update_v1_to_v2_changes_bytes_and_preserves_config(package):
 
 
 def test_e2e_update_rollback_restores_v1_bytes(package):
-    build, root, _, _, _, _ = package
+    build, root, _, _, manifest, archive = package
     installer = build()
     installer.install()
     before = _file_records(root)
-    assert installer.update().result == "updated"
-    assert installer.rollback().result == "rolled_back"
+    from io import BytesIO
+    replacement = BytesIO()
+    with zipfile.ZipFile(BytesIO(archive)) as source, zipfile.ZipFile(replacement, "w") as dest:
+        for entry in source.infolist():
+            payload = source.read(entry.filename)
+            if entry.filename.endswith(".dll"):
+                payload = b"plugin-dll-v2"
+            dest.writestr(entry.filename, payload)
+    new_bytes = replacement.getvalue()
+    from tempfile import TemporaryDirectory
+    with TemporaryDirectory() as scratch:
+        expected = Path(scratch)
+        with zipfile.ZipFile(BytesIO(new_bytes)) as content:
+            for entry in content.infolist():
+                mapped = ("bin/64bit/" + Path(entry.filename).name) if entry.filename.startswith("obs-plugins/") else ("data/locale/" + Path(entry.filename).name)
+                dest = expected / mapped
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(content.read(entry.filename))
+        v2 = build(package_version="0.7.5.0",
+                   artifact_sha256=hashlib.sha256(new_bytes).hexdigest(),
+                   tree_sha256=_tree_digest(_file_records(expected)))
+    v2.downloader = lambda url: BytesIO(new_bytes)
+    assert v2.update().result == "updated"
+    assert v2.rollback().result == "rolled_back"
     assert _file_records(root) == before
 
 
