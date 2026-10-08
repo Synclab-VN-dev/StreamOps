@@ -162,25 +162,25 @@ def test_websocket_rejects_transport_specific_extra_input(server_config, capture
     assert service.calls == []
 
 
-def test_websocket_update_uses_distinct_service_operation(tmp_path):
+def test_websocket_update_uses_distinct_service_operation(server_config, capture_service):
     class FakePluginService:
         def __init__(self):
             self.calls = []
 
         async def update(self, plugin_id):
             self.calls.append(("update", plugin_id))
-            return _FakePluginResult({"plugin_id": plugin_id, "operation": "update", "result": "updated"})
+            return ObsPluginOperationResult(LOADED, "update", "updated")
 
     service = FakePluginService()
-    client = _client(tmp_path, service)
-    with client.websocket_connect("/api/v1/obs/plugins/ws") as websocket:
-        websocket.send_json({
+    with client(server_config, capture_service, service) as api:
+      with api.websocket_connect("/api/v1/obs/plugins/ws") as websocket:
+          websocket.send_json({
             "type": "request",
             "request_id": "plugin-update-1",
             "operation": "obs_plugin.update",
             "payload": {"plugin_id": "obs-multi-rtmp"},
         })
-        response = websocket.receive_json()
+          response = websocket.receive_json()
 
     assert response["ok"] is True
     assert response["request_id"] == "plugin-update-1"
