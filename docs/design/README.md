@@ -1,6 +1,6 @@
 # StreamOps UI design registry
 
-**Canonical review branch:** `docs/issue-49-plugin-manager-handoff` (PR #73). After merge, `master` becomes the canonical source of UI design documentation. Avoid separate long-lived docs branches.
+**Canonical review branch:** `docs/ui-design` (PR #73). After merge, `master` becomes the canonical source of UI design documentation. Avoid separate long-lived docs branches.
 
 | Area | Spec / handoff | UI source | Notes |
 | --- | --- | --- | --- |
