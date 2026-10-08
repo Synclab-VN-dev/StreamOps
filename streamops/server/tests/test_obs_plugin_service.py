@@ -258,3 +258,66 @@ def test_update_failure_has_typed_sanitized_error():
         run(ObsPluginService(FakeManager(), BrokenHost("exact")).update("obs-multi-rtmp"))
     assert caught.value.code == "plugin_update_failed"
     assert "do-not-leak" not in str(caught.value)
+
+
+@pytest.mark.parametrize("action", ["install", "update", "rollback"])
+def test_mutations_reject_transitional_obs_state_without_stopping(action):
+    host = FakeHost("exact", loaded=True)
+    manager = FakeManager(runtime("STARTING"))
+    with pytest.raises(ObsPluginError) as caught:
+        run(getattr(ObsPluginService(manager, host), action)("obs-multi-rtmp"))
+    assert caught.value.code == "plugin_state_conflict"
+    assert "stop" not in manager.calls
+
+
+@pytest.mark.parametrize("action", ["install", "update", "verify", "rollback"])
+def test_unknown_plugin_rejected_for_every_operation(action):
+    host = FakeHost("exact", loaded=True)
+    manager = FakeManager()
+    with pytest.raises(ObsPluginError) as caught:
+        run(getattr(ObsPluginService(manager, host), action)("unapproved-plugin"))
+    assert caught.value.code == "plugin_not_supported"
+    assert host.calls == []
+
+
+def test_host_status_exception_is_sanitized_and_typed():
+    host = FakeHost()
+    host.failures["status"] = RuntimeError("private-path")
+    with pytest.raises(ObsPluginError) as caught:
+        run(ObsPluginService(FakeManager(), host).status("obs-multi-rtmp"))
+    assert caught.value.code == "plugin_status_failed"
+    assert "private-path" not in str(caught.value)
+
+
+def test_install_from_stopped_state_does_not_stop_again():
+    host, manager = FakeHost(), FakeManager(runtime("STOPPED"))
+    result = run(ObsPluginService(manager, host).install("obs-multi-rtmp"))
+    assert result.status.state == "LOADED"
+    assert "stop" not in manager.calls
+    assert manager.calls.count("start") == 1
+
+
+def test_concurrent_mutations_reject_second_operation():
+    import threading
+    entered = threading.Event()
+    release = threading.Event()
+    class BlockingHost(FakeHost):
+        def install(self):
+            entered.set()
+            assert release.wait(timeout=5)
+            return super().install()
+    host = BlockingHost()
+    service = ObsPluginService(FakeManager(), host)
+    async def scenario():
+        first = asyncio.create_task(service.install("obs-multi-rtmp"))
+        assert await asyncio.to_thread(entered.wait, 5)
+        try:
+            with pytest.raises(ObsPluginError) as caught:
+                await service.rollback("obs-multi-rtmp")
+            assert caught.value.code == "plugin_state_conflict"
+        finally:
+            release.set()
+        await first
+    run(scenario())
+    assert host.calls.count("install") == 1
+    assert "rollback" not in host.calls
