@@ -202,3 +202,74 @@ def test_rollback_without_transaction_is_typed_and_non_destructive(package):
         build().rollback()
     assert caught.value.code == "transaction_missing"
     assert original.read_bytes() == b"untouched"
+
+
+def test_e2e_update_v1_to_v2_changes_bytes_and_preserves_config(package):
+    build, root, appdata, _, manifest, archive_v1 = package
+    config = appdata / "obs-studio" / "basic" / "profiles" / "User" / "obs-multi-rtmp.json"
+    config.parent.mkdir(parents=True)
+    original = b'{"targets":[{"name":"retained"}]}'
+    config.write_bytes(original)
+    v1 = build()
+    assert v1.install().result == "installed"
+    old_dll = (root / "bin/64bit/obs-multi-rtmp.dll").read_bytes()
+    from io import BytesIO
+    replacement = BytesIO()
+    with zipfile.ZipFile(BytesIO(archive_v1)) as source, zipfile.ZipFile(replacement, "w") as dest:
+        for entry in source.infolist():
+            payload = source.read(entry.filename)
+            if entry.filename.endswith(".dll"):
+                payload = b"plugin-dll-v2"
+            dest.writestr(entry.filename, payload)
+    new_bytes = replacement.getvalue()
+    expected = package[1].parent / "expected-v2"
+    for path in (package[1].parent / "expected").rglob("*"):
+        if path.is_file():
+            destination = expected / path.relative_to(package[1].parent / "expected")
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(b"plugin-dll-v2" if path.name.endswith(".dll") else path.read_bytes())
+    next_manifest = dict(manifest)
+    next_manifest.update(
+        package_version="0.7.5.0",
+        artifact_sha256=hashlib.sha256(new_bytes).hexdigest(),
+        tree_sha256=_tree_digest(_file_records(expected)),
+    )
+    v2 = build(**next_manifest)
+    v2.downloader = lambda url: BytesIO(new_bytes)
+    assert v2.update().result == "updated"
+    assert (root / "bin/64bit/obs-multi-rtmp.dll").read_bytes() != old_dll
+    assert v2.status().installation == "exact"
+    assert config.read_bytes() == original
+
+
+def test_e2e_update_rollback_restores_v1_bytes(package):
+    build, root, _, _, _, _ = package
+    installer = build()
+    installer.install()
+    before = _file_records(root)
+    assert installer.update().result == "updated"
+    assert installer.rollback().result == "rolled_back"
+    assert _file_records(root) == before
+
+
+def test_e2e_managed_provider_switch_without_direct_url_download(package):
+    build, root, _, calls, _, _ = package
+    from streamops.server.services.obs_plugin_release_source import ManagedPluginReleaseSource
+    class Provider:
+        def latest(self, plugin_id):
+            from streamops.server.services.obs_plugin_release_source import PluginRelease
+            return PluginRelease(
+                plugin_id=plugin_id, version="0.7.4.0", source_commit="abc123",
+                platform="windows", architecture="x64", obs_version="32.2.1",
+                artifact_name="plugin.zip", artifact_sha256="a" * 64,
+                vendor="approved", metadata={},
+            )
+        def open_artifact(self, release):
+            return BytesIO(b"fixture")
+    installer = WindowsObsMultiRtmpInstaller(
+        package[1].parent / "managed-state", plugin_root=root,
+        process_probe=lambda: [], version_probe=lambda _: "32.2.1",
+        release_source=ManagedPluginReleaseSource(Provider()),
+    )
+    assert installer.release_source is not None
+    assert calls == []
