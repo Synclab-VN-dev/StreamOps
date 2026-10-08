@@ -115,3 +115,21 @@ def test_artifact_failure_does_not_try_another_source():
 
 def test_release_version_is_explicit():
     assert _release().version == "1.0.0"
+
+
+@pytest.mark.parametrize("field,value", [
+    ("version", ""), ("source_commit", ""), ("platform", "linux"),
+    ("architecture", "arm64"), ("obs_version", "0.0.0"),
+    ("artifact_sha256", "invalid"), ("artifact_name", "../bad.zip"),
+])
+def test_invalid_release_metadata_fails_closed(field, value):
+    from dataclasses import replace
+    release = replace(_release(), **{field: value})
+    class Source:
+        def latest(self, plugin_id):
+            return release
+        def open_artifact(self, release):
+            raise AssertionError("download must not occur")
+    with pytest.raises(ObsPluginError) as caught:
+        ManagedPluginReleaseSource(Source()).latest("obs-multi-rtmp")
+    assert caught.value.code == "plugin_release_invalid"
