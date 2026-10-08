@@ -397,6 +397,9 @@ def test_manual_restart_workflow_install_then_process_start_then_verify():
     assert manager.calls.count("start") == 0
     # Operator invokes the existing Process API, then Plugin Manager verify.
     manager.start()
+    pending = run(service.status("obs-multi-rtmp"))
+    assert pending.restart_required is True
+    assert pending.state == "RESTART_REQUIRED"
     verified = run(service.verify("obs-multi-rtmp"))
     assert verified.status.state == "VERIFIED"
     assert verified.status.restart_required is False
