@@ -203,7 +203,10 @@ class WindowsObsMultiRtmpInstaller:
         finally:
             shutil.rmtree(staged, ignore_errors=True)
 
-    def update(self) -> InstallerResult:\n        """Keep update distinct until the v1-to-v2 transaction is implemented."""\n        raise PluginInstallerFailure("update_failed", "Managed plugin update is not implemented yet.")\n
+    def update(self) -> InstallerResult:
+        """Keep update distinct until the v1-to-v2 transaction is implemented."""
+        raise PluginInstallerFailure("update_failed", "Managed plugin update is not implemented yet.")
+
     def verify(self) -> InstallerStatus:
         self._assert_compatible()
         status = self.status()
