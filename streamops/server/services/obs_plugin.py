@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
+from datetime import datetime, timezone
 import threading
 from typing import Any, Literal, Protocol
 
@@ -79,9 +80,12 @@ class ObsPluginOperationResult:
 
 
 class ObsPluginService:
-    def __init__(self, obs_manager: Any, host: ObsPluginHost) -> None:
+    def __init__(self, obs_manager: Any, host: ObsPluginHost, *, defer_restart: bool = False) -> None:
         self.obs_manager = obs_manager
         self.host = host
+        self.defer_restart = defer_restart
+        self._pending_change: str | None = None
+        self._verified_at: str | None = None
         self._operation_lock = threading.Lock()
 
     async def status(self, plugin_id: str) -> ObsPluginStatus:
@@ -174,7 +178,7 @@ class ObsPluginService:
             installed_version=installed_version,
             available_version=available_version,
             restart_required=getattr(host, "restart_required", False),
-            last_verification=None,
+            last_verification=self._verified_at if loaded else None,
         )
 
     def _runtime_for_mutation(self) -> Any:
@@ -199,6 +203,25 @@ class ObsPluginService:
         runtime = self._runtime_for_mutation()
         initial = self._combine(self.host.status(), runtime)
         self._ensure_compatible(initial)
+        if self.defer_restart:
+            if initial.loaded:
+                return ObsPluginOperationResult(initial, "install", "already_installed")
+            stopped = False
+            try:
+                if runtime.state == "READY":
+                    self.obs_manager.stop()
+                    stopped = True
+                lower = self._host_call("install")
+            except Exception:
+                if stopped:
+                    self._best_effort_start(None)
+                raise
+            self._pending_change = "install"
+            self._verified_at = None
+            return ObsPluginOperationResult(
+                replace(self._status_sync(), state="RESTART_REQUIRED", restart_required=True),
+                "install", lower.result,
+            )
 
         # The lower layer checks the exact manifest before requiring OBS to stop.
         if initial.installed:
@@ -236,6 +259,23 @@ class ObsPluginService:
         if not initial.installed:
             raise ObsPluginError("plugin_not_installed", "The OBS plugin must be installed before it can be updated.", 409)
         self._ensure_compatible(initial)
+        if self.defer_restart:
+            stopped = False
+            try:
+                if runtime.state == "READY":
+                    self.obs_manager.stop()
+                    stopped = True
+                lower = self._host_call("update")
+            except Exception:
+                if stopped:
+                    self._best_effort_start(None)
+                raise
+            self._pending_change = "update"
+            self._verified_at = None
+            return ObsPluginOperationResult(
+                replace(self._status_sync(), state="RESTART_REQUIRED", restart_required=True),
+                "update", lower.result,
+            )
         stopped = False
         updated = False
         try:
@@ -255,8 +295,19 @@ class ObsPluginService:
             raise
 
     def _verify_sync(self) -> ObsPluginOperationResult:
-        status = self._verify_loaded()
-        return ObsPluginOperationResult(status, "verify", "verified")
+        try:
+            status = self._verify_loaded()
+        except ObsPluginError:
+            if self.defer_restart and self._pending_change in {"install", "update"}:
+                self._recover_failed_install()
+                self._pending_change = None
+            raise
+        self._pending_change = None
+        self._verified_at = datetime.now(timezone.utc).isoformat()
+        return ObsPluginOperationResult(
+            replace(status, last_verification=self._verified_at, restart_required=False),
+            "verify", "verified",
+        )
 
     def _verify_loaded(self) -> ObsPluginStatus:
         runtime = self.obs_manager.status()
@@ -310,6 +361,23 @@ class ObsPluginService:
         if current.state in {"ERROR", "FAILED"}:
             raise ObsPluginError(
                 "plugin_state_conflict", "Rollback refused because installed plugin files were modified.", 409
+            )
+        if self.defer_restart:
+            stopped = False
+            try:
+                if runtime.state == "READY":
+                    self.obs_manager.stop()
+                    stopped = True
+                lower = self._host_call("rollback")
+            except Exception:
+                if stopped:
+                    self._best_effort_start(None)
+                raise
+            self._pending_change = "rollback"
+            self._verified_at = None
+            return ObsPluginOperationResult(
+                replace(self._status_sync(), restart_required=True),
+                "rollback", lower.result,
             )
         stopped_by_service = False
         try:
