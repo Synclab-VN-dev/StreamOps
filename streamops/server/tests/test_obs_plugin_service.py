@@ -105,9 +105,9 @@ def run(awaitable):
     [
         (FakeHost(), FakeManager(runtime("STOPPED")), "NOT_INSTALLED"),
         (FakeHost("exact"), FakeManager(), "INSTALLED"),
-        (FakeHost("exact", loaded=True), FakeManager(), "LOADED"),
+        (FakeHost("exact", loaded=True), FakeManager(), "VERIFIED"),
         (FakeHost("exact", compatible=False), FakeManager(), "INCOMPATIBLE"),
-        (FakeHost("conflict"), FakeManager(), "ERROR"),
+        (FakeHost("conflict"), FakeManager(), "FAILED"),
     ],
 )
 def test_status_state_model(host, manager, state):
@@ -118,7 +118,7 @@ def test_fresh_install_stops_installs_starts_and_verifies():
     host, manager = FakeHost(), FakeManager()
     result = run(ObsPluginService(manager, host).install("obs-multi-rtmp"))
     assert result.result == "installed"
-    assert result.status.state == "LOADED"
+    assert result.status.state == "VERIFIED"
     assert manager.calls.count("stop") == 1
     assert manager.calls.count("start") == 1
     assert host.calls.count("install") == 1
@@ -136,7 +136,7 @@ def test_exact_files_not_loaded_are_restarted_and_verified():
     host, manager = FakeHost("exact"), FakeManager()
     result = run(ObsPluginService(manager, host).install("obs-multi-rtmp"))
     assert result.result == "already_installed"
-    assert result.status.state == "LOADED"
+    assert result.status.state == "VERIFIED"
     assert manager.calls.count("restart") == 1
 
 
@@ -292,7 +292,7 @@ def test_host_status_exception_is_sanitized_and_typed():
 def test_install_from_stopped_state_does_not_stop_again():
     host, manager = FakeHost(), FakeManager(runtime("STOPPED"))
     result = run(ObsPluginService(manager, host).install("obs-multi-rtmp"))
-    assert result.status.state == "LOADED"
+    assert result.status.state == "VERIFIED"
     assert "stop" not in manager.calls
     assert manager.calls.count("start") == 1
 
@@ -321,3 +321,64 @@ def test_concurrent_mutations_reject_second_operation():
     run(scenario())
     assert host.calls.count("install") == 1
     assert "rollback" not in host.calls
+
+
+def test_vendor_probe_requires_registered_handler_and_sanitizes_error():
+    class VendorClient:
+        def __init__(self, reply=None, failure=None):
+            self.reply, self.failure, self.calls, self.closed = reply, failure, [], False
+        def connect(self):
+            self.calls.append("connect")
+        def request(self, name, payload):
+            self.calls.append((name, payload))
+            if self.failure:
+                raise self.failure
+            return self.reply
+        def close(self):
+            self.closed = True
+
+    for good in (True, False):
+        client = VendorClient(
+            {"vendorResponseData": {"targets": [], "count": 0}} if good
+            else {"vendorResponseData": {}},
+            None if good else RuntimeError("stream_key=must-never-leak"),
+        )
+        manager = FakeManager()
+        manager.client_factory = lambda: client
+        service = ObsPluginService(manager, FakeHost("exact", loaded=True))
+        if good:
+            assert run(service.verify("obs-multi-rtmp")).result == "verified"
+        else:
+            with pytest.raises(ObsPluginError) as caught:
+                run(service.verify("obs-multi-rtmp"))
+            assert caught.value.code == "plugin_verify_failed"
+            assert "must-never-leak" not in str(caught.value)
+        assert client.closed is True
+        assert ("CallVendorRequest", {
+            "vendorName": "sorayuki.multi_rtmp",
+            "requestType": "list_targets",
+            "requestData": {},
+        }) in client.calls
+
+
+@pytest.mark.parametrize("installed,available,expected", [
+    ("1.0.0", "2.0.0", "UPDATE_AVAILABLE"),
+    ("1.0.0", "1.0.0", "VERIFIED"),
+    ("2.0.0", "1.0.0", "VERIFIED"),
+])
+def test_version_status_transition(installed, available, expected):
+    class Host(FakeHost):
+        def status(self):
+            return PluginHostStatus("exact", True, True, "0.7.4.0",
+                                    installed_version=installed, available_version=available)
+    value = run(ObsPluginService(FakeManager(), Host()).status("obs-multi-rtmp"))
+    assert value.state == expected
+    assert value.installed_version == installed
+    assert value.available_version == available
+
+
+def test_inventory_only_reports_registered_plugin():
+    value = run(ObsPluginService(FakeManager(), FakeHost()).inventory())
+    assert len(value) == 1
+    assert value[0].plugin_id == "obs-multi-rtmp"
+    assert value[0].state == "NOT_INSTALLED"
