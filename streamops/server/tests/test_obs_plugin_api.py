@@ -449,3 +449,51 @@ def test_websocket_unexpected_error_never_logs_or_returns_secret(server_config, 
     assert response["error"]["code"] == "internal_error"
     assert secret not in repr(response)
     assert secret not in caplog.text
+
+
+def test_e2e_http_update_timeout_is_bounded_and_typed(server_config, capture_service):
+    import time
+    from streamops.server.services.obs_plugin import ObsPluginService, PluginHostStatus, PluginHostResult
+    from streamops.server.obs.manager import ObsRuntimeStatus
+
+    class Manager:
+        def __init__(self):
+            self.state = "STOPPED"
+        def status(self):
+            return ObsRuntimeStatus(
+                state=self.state, process={"running": False},
+                websocket={"connected": False, "obs_version": "32.2.1"},
+                output={"streaming": False, "recording": False},
+                last_operation=None, error=None,
+            )
+        def start(self):
+            self.state = "READY"
+            return ObsRuntimeStatus(
+                state=self.state, process={"running": True},
+                websocket={"connected": True, "obs_version": "32.2.1"},
+                output={"streaming": False, "recording": False},
+                last_operation=None, error=None,
+            )
+
+    class Host:
+        def status(self):
+            return PluginHostStatus("exact", True, False, None)
+        def update(self):
+            time.sleep(0.15)
+            return PluginHostResult("updated")
+        def verify(self):
+            return self.status()
+
+    manager = Manager()
+    service = ObsPluginService(manager, Host(), operation_timeout=0.01)
+    with TestClient(create_app(
+        server_config, capture_service=capture_service,
+        obs_manager=manager, obs_plugin_service=service,
+        manage_runtime=False,
+    )) as api:
+        started = time.monotonic()
+        response = api.post("/api/v1/obs/plugins/obs-multi-rtmp/update")
+        elapsed = time.monotonic() - started
+    assert response.status_code == 504
+    assert response.json()["error"]["code"] == "plugin_operation_timeout"
+    assert elapsed < 0.15
