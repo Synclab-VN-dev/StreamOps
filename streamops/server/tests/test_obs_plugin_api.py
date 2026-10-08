@@ -279,3 +279,42 @@ def test_rest_ws_operation_parity_for_typed_failure(server_config, capture_servi
     assert ws["ok"] is False
     assert ws["error"] == rest.json()["error"]
     assert ws["request_id"] == "parity-failure"
+
+
+@pytest.mark.parametrize("operation", ["install", "update", "verify", "rollback"])
+def test_rest_ws_parity_all_mutations_with_single_service(server_config, capture_service, operation):
+    class FullService(FakePluginService):
+        async def update(self, plugin_id):
+            self.calls.append(("update", plugin_id))
+            return ObsPluginOperationResult(LOADED, "update", "updated")
+    service = FullService()
+    with client(server_config, capture_service, service) as api:
+        rest = api.post(f"/api/v1/obs/plugins/obs-multi-rtmp/{operation}")
+        with api.websocket_connect("/api/v1/obs/plugins/ws") as websocket:
+            websocket.send_json({
+                "type": "request", "request_id": f"all-{operation}",
+                "operation": f"obs_plugin.{operation}",
+                "payload": {"plugin_id": "obs-multi-rtmp"},
+            })
+            ws = websocket.receive_json()
+    assert rest.status_code == 200
+    assert ws["ok"] is True
+    assert ws["request_id"] == f"all-{operation}"
+    assert rest.json() == ws["data"]
+    assert service.calls == [(operation, "obs-multi-rtmp")] * 2
+
+
+@pytest.mark.parametrize("operation", ["status", "install", "update", "verify", "rollback"])
+def test_websocket_rejects_unknown_plugin_without_service_call(server_config, capture_service, operation):
+    service = FakePluginService()
+    with client(server_config, capture_service, service) as api:
+        with api.websocket_connect("/api/v1/obs/plugins/ws") as websocket:
+            websocket.send_json({
+                "type": "request", "request_id": "unknown-plugin",
+                "operation": f"obs_plugin.{operation}",
+                "payload": {"plugin_id": "unapproved"},
+            })
+            response = websocket.receive_json()
+    assert response["request_id"] == "unknown-plugin"
+    assert response["ok"] is False
+    assert service.calls == []
