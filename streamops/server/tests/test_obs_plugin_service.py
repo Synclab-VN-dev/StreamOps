@@ -208,3 +208,53 @@ def test_unknown_plugin_is_never_sent_to_host():
         run(ObsPluginService(FakeManager(), host).status("arbitrary.dll"))
     assert error.value.code == "plugin_not_supported"
     assert host.calls == []
+
+
+@pytest.mark.parametrize(
+    ("streaming", "recording", "code"),
+    [(True, False, "obs_busy_streaming"), (False, True, "obs_busy_recording")],
+)
+def test_update_rejects_active_outputs_without_mutating_host(streaming, recording, code):
+    host = FakeHost("exact", loaded=True)
+    manager = FakeManager(runtime(streaming=streaming, recording=recording))
+    with pytest.raises(ObsPluginError) as caught:
+        run(ObsPluginService(manager, host).update("obs-multi-rtmp"))
+    assert caught.value.code == code
+    assert "update" not in host.calls
+    assert "stop" not in manager.calls
+    assert "restart" not in manager.calls
+
+
+def test_update_rejects_missing_plugin_before_mutation():
+    host = FakeHost("absent")
+    manager = FakeManager()
+    with pytest.raises(ObsPluginError) as caught:
+        run(ObsPluginService(manager, host).update("obs-multi-rtmp"))
+    assert caught.value.code == "plugin_not_installed"
+    assert "update" not in host.calls
+    assert "stop" not in manager.calls
+
+
+def test_update_calls_distinct_host_operation_not_install():
+    class UpdatableHost(FakeHost):
+        def update(self):
+            self.calls.append("update")
+            return PluginHostResult("updated")
+
+    host = UpdatableHost("exact", loaded=True)
+    result = run(ObsPluginService(FakeManager(), host).update("obs-multi-rtmp"))
+    assert result.operation == "update"
+    assert result.result == "updated"
+    assert host.calls.count("update") == 1
+    assert "install" not in host.calls
+
+
+def test_update_failure_has_typed_sanitized_error():
+    class BrokenHost(FakeHost):
+        def update(self):
+            raise RuntimeError("sensitive token=do-not-leak")
+
+    with pytest.raises(ObsPluginError) as caught:
+        run(ObsPluginService(FakeManager(), BrokenHost("exact")).update("obs-multi-rtmp"))
+    assert caught.value.code == "plugin_update_failed"
+    assert "do-not-leak" not in str(caught.value)
