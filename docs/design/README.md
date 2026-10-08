@@ -1,6 +1,6 @@
 # StreamOps UI design registry
 
-**Canonical review branch:** `docs/ui-design` (PR #73). After merge, `master` becomes the canonical source of UI design documentation. Avoid separate long-lived docs branches.
+**Canonical documentation branch:** `docs/ui-design` — long-lived, documentation-only branch. **Do not merge into `master`.**
 
 | Area | Spec / handoff | UI source | Notes |
 | --- | --- | --- | --- |
@@ -13,7 +13,7 @@
 ## Rules
 
 1. Keep designs grouped under `docs/design/` and implementation guidance near its feature docs.
-2. Update one consolidated docs branch/PR at a time; after merging, start changes from latest `master`.
-3. Do not merge old docs branches wholesale; copy verified files only to avoid unrelated historical commits.
+2. Commit future UI design updates directly to `docs/ui-design` (or use a short-lived review branch targeting `docs/ui-design`), never `master`.
+3. This branch intentionally contains only UI design documents and reference TSX; no application/runtime source, CI or build configs.
 4. MagicPath exports are design references, not production-ready FE or backend-integrated code.
 5. The older OBS Dashboard reference is retained for history; for Plugin Manager integration, prefer the #49 Dashboard export.
