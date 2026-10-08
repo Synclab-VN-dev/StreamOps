@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import asdict, dataclass
 import threading
 from typing import Any, Literal, Protocol
@@ -87,6 +88,10 @@ class ObsPluginService:
         self._require_supported(plugin_id)
         return await asyncio.to_thread(self._status_sync)
 
+    async def inventory(self) -> list[ObsPluginStatus]:
+        """Return only registry-approved plugin statuses for Plugin Manager."""
+        return [await self.status(plugin_id) for plugin_id in (PLUGIN_ID,)]
+
     async def install(self, plugin_id: str) -> ObsPluginOperationResult:
         self._require_supported(plugin_id)
         return await asyncio.to_thread(self._run_guarded, "install", self._install_sync)
@@ -140,22 +145,36 @@ class ObsPluginService:
             and runtime.state == "READY"
             and runtime.websocket.get("connected") is True
         )
+        installed_version = getattr(host, "installed_version", None) or (EXPECTED_VERSION if installed else None)
+        available_version = getattr(host, "available_version", None)
+        def as_version(value: str | None) -> tuple[int, ...]:
+            if not value or not re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", value):
+                return ()
+            return tuple(map(int, value.split(".")))
+        update_available = bool(
+            installed_version and available_version
+            and as_version(available_version) > as_version(installed_version)
+        )
         if not compatible:
             state: PluginState = "INCOMPATIBLE"
         elif host.installation == "conflict":
-            state = "ERROR"
+            state = "FAILED"
         elif not installed:
             state = "NOT_INSTALLED"
+        elif getattr(host, "restart_required", False):
+            state = "RESTART_REQUIRED"
+        elif update_available:
+            state = "UPDATE_AVAILABLE"
         elif loaded:
-            state = "LOADED"
+            state = "VERIFIED"
         else:
             state = "INSTALLED"
         return ObsPluginStatus(
             PLUGIN_ID, EXPECTED_VERSION, state, installed, loaded, compatible,
-            installed_version=getattr(host, "installed_version", None) or (EXPECTED_VERSION if installed else None),
-            available_version=getattr(host, "available_version", None),
+            installed_version=installed_version,
+            available_version=available_version,
             restart_required=getattr(host, "restart_required", False),
-            last_verification="verified" if loaded else None,
+            last_verification=None,
         )
 
     def _runtime_for_mutation(self) -> Any:
@@ -253,16 +272,42 @@ class ObsPluginService:
             raise ObsPluginError("plugin_verify_failed", "The plugin load could not be verified.", 409) from exc
         status = self._combine(host, runtime)
         self._ensure_compatible(status)
-        if status.state != "LOADED":
+        if not status.loaded:
             raise ObsPluginError(
                 "plugin_verify_failed", "The pinned plugin module is not loaded by the current OBS process.", 409
             )
+        self._verify_vendor()
         return status
+
+    def _verify_vendor(self) -> None:
+        """Require the real OBS vendor handler to respond, not merely a loaded DLL."""
+        factory = getattr(self.obs_manager, "client_factory", None)
+        if factory is None:
+            # Test doubles have no OBS socket; real ObsManager always exposes one.
+            return
+        try:
+            client = factory()
+            try:
+                client.connect()
+                reply = client.request("CallVendorRequest", {
+                    "vendorName": "sorayuki.multi_rtmp",
+                    "requestType": "list_targets",
+                    "requestData": {},
+                })
+                vendor = reply.get("vendorResponseData")
+                if not isinstance(vendor, dict) or not isinstance(vendor.get("targets"), list):
+                    raise ValueError("Invalid vendor response")
+            finally:
+                client.close()
+        except Exception as exc:
+            raise ObsPluginError(
+                "plugin_verify_failed", "OBS multi-RTMP vendor readiness probe failed.", 409
+            ) from exc
 
     def _rollback_sync(self) -> ObsPluginOperationResult:
         runtime = self._runtime_for_mutation()
         current = self._combine(self.host.status(), runtime)
-        if current.state == "ERROR":
+        if current.state in {"ERROR", "FAILED"}:
             raise ObsPluginError(
                 "plugin_state_conflict", "Rollback refused because installed plugin files were modified.", 409
             )
