@@ -216,21 +216,29 @@ def _sqlite_events(
     follow: bool,
     from_end: bool,
 ) -> Iterator[dict[str, Any]]:
+    # Capture the initial cursor eagerly. If this were a generator function,
+    # its body would not run until first iteration and an event emitted between
+    # command creation and iteration could be incorrectly skipped by --from-end.
     reader = EventLogReader(path)
     after_seq = reader.max_sequence(session_id) if from_end else 0
-    try:
-        while True:
-            rows = reader.read_after(session_id, after_seq, limit=1000)
-            if rows:
-                for event in rows:
-                    after_seq = event.event_seq
-                    yield event.as_dict()
-                continue
-            if not follow:
-                return
-            time.sleep(0.15)
-    finally:
-        reader.close()
+
+    def iterate() -> Iterator[dict[str, Any]]:
+        nonlocal after_seq
+        try:
+            while True:
+                rows = reader.read_after(session_id, after_seq, limit=1000)
+                if rows:
+                    for event in rows:
+                        after_seq = event.event_seq
+                        yield event.as_dict()
+                    continue
+                if not follow:
+                    return
+                time.sleep(0.15)
+        finally:
+            reader.close()
+
+    return iterate()
 
 def _last_json_object(path: Path) -> dict[str, Any] | None:
     try:

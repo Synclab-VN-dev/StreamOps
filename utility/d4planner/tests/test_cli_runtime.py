@@ -744,14 +744,14 @@ def test_sqlite_follow_from_end_skips_history_and_yields_new_event(tmp_path):
         finally:
             writer.close()
 
-    thread = threading.Thread(target=append_later)
-    thread.start()
     events = cli._sqlite_events(
         paths.events_db,
         session_id="follow",
         follow=True,
         from_end=True,
     )
+    thread = threading.Thread(target=append_later)
+    thread.start()
     try:
         event = next(events)
     finally:
