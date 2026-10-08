@@ -621,3 +621,31 @@ def test_real_a_ring_golden_reconciles_two_physical_ring_positions(tmp_path):
         "a04e68a61dd54edea72a23084240e28c",
         6547,
     )
+
+
+def test_input_marker_raw_is_ignored_by_equipment_projector(tmp_path):
+    repo = EquipmentRepository(tmp_path / "character.db")
+    projector = EquipmentProjector(repo)
+
+    projector.consume(
+        {
+            "eventSeq": 1,
+            "type": "input.marker.raw",
+            "timestamp": "2026-10-09T03:45:00.000+07:00",
+            "sessionId": "s",
+            "data": {
+                "source": "steamInput",
+                "device": "keyboard",
+                "key": "F11",
+                "virtualKey": 122,
+                "state": "down",
+                "process": "diablo iv",
+                "processId": 1280,
+                "contextSource": "win32Foreground",
+                "windowTitle": "Diablo IV",
+            },
+        }
+    )
+
+    assert repo.list_equipment() == []
+    assert repo.checkpoint() is None

@@ -418,3 +418,56 @@ def test_e2e_sqlite_stream_orders_speech_and_marker_without_equipment_mutation(t
     thread.join(timeout=2.0)
     assert not thread.is_alive()
     assert marker.stopped is True
+
+
+def test_e2e_shutdown_drains_pending_marker_before_store_close(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = E2ERuntime(paths)
+    manager = UserPathManager(
+        paths,
+        MemoryPathBackend(user_path="", machine_path="MACHINE"),
+    )
+    marker = FakeMarkerCapture()
+    supervisor = Supervisor(
+        paths=paths,
+        runtime=runtime,
+        path_manager=manager,
+        silent=True,
+        poll_interval=0.01,
+        health_poll_interval=0.05,
+        game_start_timeout=0.01,
+        marker_capture=marker,
+    )
+
+    thread = threading.Thread(target=supervisor.run, daemon=True)
+    thread.start()
+    assert wait_until(
+        lambda: (read_json(paths.runtime_state) or {}).get("state")
+        == RuntimeState.RUNNING.value
+    )
+    session_id = supervisor.status.session_id
+    marker.push(
+        MarkerSample(
+            timestamp="2026-10-09T03:40:00.200+07:00",
+            key="f11",
+            virtual_key=122,
+            state="DOWN",
+            process_id=300,
+            window_title="Diablo IV",
+        )
+    )
+
+    # Stop before the next normal poll; Supervisor.finally must drain the queue.
+    paths.stop_request.write_text("stop\n", encoding="utf-8")
+    thread.join(timeout=2.0)
+    assert not thread.is_alive()
+
+    reader = EventLogReader(paths.events_db)
+    try:
+        rows = reader.read_after(session_id, 0)
+    finally:
+        reader.close()
+    markers = [row for row in rows if row.type == "input.marker.raw"]
+    assert len(markers) == 1
+    assert markers[0].data["key"] == "F11"
+    assert markers[0].data["state"] == "down"

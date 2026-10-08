@@ -65,3 +65,46 @@ def test_large_batch_preserves_sequence_without_missing_rows(tmp_path):
         assert [row.event_seq for row in rows] == list(range(1, 501))
     finally:
         repo.close()
+
+
+def test_schema_initialization_is_idempotent(tmp_path):
+    path = tmp_path / "events.db"
+    first = SQLiteEventRepository(path)
+    first.append_batch([event(1)])
+    first.close()
+
+    second = SQLiteEventRepository(path)
+    try:
+        assert second.journal_mode() == "wal"
+        second.append_batch([event(2)])
+        assert [row.event_seq for row in second.read_after("s", 0)] == [1, 2]
+    finally:
+        second.close()
+
+
+def test_event_envelope_round_trip_preserves_all_fields(tmp_path):
+    repo = SQLiteEventRepository(tmp_path / "events.db")
+    original = EventEnvelope(
+        event_seq=7,
+        type="input.marker.raw",
+        timestamp="2026-10-09T03:10:00.123+07:00",
+        session_id="session-x",
+        data={
+            "source": "steamInput",
+            "device": "keyboard",
+            "key": "F11",
+            "virtualKey": 122,
+            "state": "down",
+            "process": "diablo iv",
+            "processId": 1280,
+            "contextSource": "win32Foreground",
+            "windowTitle": "Diablo IV",
+            "nested": {"unicode": "đúng"},
+        },
+    )
+    try:
+        repo.append_batch([original])
+        loaded = repo.read_after("session-x", 0)[0]
+        assert loaded.as_dict() == original.as_dict()
+    finally:
+        repo.close()

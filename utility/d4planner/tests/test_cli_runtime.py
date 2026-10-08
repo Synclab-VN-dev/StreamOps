@@ -1,8 +1,11 @@
 import json
+import threading
 import time
 from pathlib import Path
 
 from d4planner import cli, daemon
+from d4planner.runtime.events.model import EventEnvelope
+from d4planner.runtime.events.repository import SQLiteEventRepository
 from d4planner.runtime.events.store import EventStore
 from d4planner.runtime.store import RuntimePaths, atomic_write_json
 
@@ -693,3 +696,68 @@ def test_input_marker_probe_relays_from_ssh_session(monkeypatch, tmp_path, capsy
     assert "relaying marker probe to interactive desktop" in out
     assert "Probe process session: 1" in out
     assert "SCROLL_LOCK DOWN" in out
+
+
+def test_pretty_event_renders_input_marker():
+    rendered = cli._pretty_event(
+        {
+            "eventSeq": 1,
+            "type": "input.marker.raw",
+            "timestamp": "2026-10-09T03:20:12.315+07:00",
+            "sessionId": "s",
+            "data": {"key": "F11", "state": "down"},
+        }
+    )
+    assert rendered == "[03:20:12.315] input.marker.raw F11 DOWN"
+
+
+def test_sqlite_follow_from_end_skips_history_and_yields_new_event(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    store = EventStore.create(paths, silent=True, session_id="follow")
+    store.emit("speech.raw", {"text": "old"})
+
+    def append_later():
+        time.sleep(0.05)
+        writer = SQLiteEventRepository(paths.events_db)
+        try:
+            writer.append_batch(
+                [
+                    EventEnvelope(
+                        event_seq=2,
+                        type="input.marker.raw",
+                        timestamp="2026-10-09T03:20:00.200+07:00",
+                        session_id="follow",
+                        data={
+                            "source": "steamInput",
+                            "device": "keyboard",
+                            "key": "F11",
+                            "virtualKey": 122,
+                            "state": "down",
+                            "process": "diablo iv",
+                            "processId": 1280,
+                            "contextSource": "win32Foreground",
+                            "windowTitle": "Diablo IV",
+                        },
+                    )
+                ]
+            )
+        finally:
+            writer.close()
+
+    thread = threading.Thread(target=append_later)
+    thread.start()
+    events = cli._sqlite_events(
+        paths.events_db,
+        session_id="follow",
+        follow=True,
+        from_end=True,
+    )
+    try:
+        event = next(events)
+    finally:
+        events.close()
+        thread.join(timeout=1.0)
+        store.close()
+
+    assert event["eventSeq"] == 2
+    assert event["type"] == "input.marker.raw"

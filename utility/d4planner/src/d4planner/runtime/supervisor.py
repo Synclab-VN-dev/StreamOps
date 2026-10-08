@@ -57,7 +57,7 @@ class Supervisor:
         path_manager: UserPathManager,
         silent: bool = True,
         isolated: bool = False,
-        poll_interval: float = 0.10,
+        poll_interval: float = 0.05,
         health_poll_interval: float = 2.0,
         game_start_timeout: float = 90.0,
         tolk_ready_timeout: float = 15.0,

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
 from pathlib import Path
 from typing import Any, Callable, Iterable
 from uuid import uuid4
 
 from ..store import RuntimePaths, SessionInfo, atomic_write_json, iso_now, utc_now
 from .migration import MigrationReport, migrate_legacy_jsonl
-from .model import EventDraft, EventEnvelope
+from .model import EventDraft, EventEnvelope, validate_event_draft
 from .repository import SQLiteEventRepository
 
 Clock = Callable[[], datetime]
@@ -47,11 +48,36 @@ class EventStore:
         paths.ensure()
         repository = SQLiteEventRepository(paths.events_db)
         migrated_at = iso_now(clock)
+        malformed_diagnostics: list[dict[str, Any]] = []
+
+        def on_malformed(path: Path, line_no: int, error: str) -> None:
+            malformed_diagnostics.append(
+                {
+                    "timestamp": migrated_at,
+                    "source": str(path),
+                    "line": line_no,
+                    "error": error,
+                }
+            )
+
         migration_report = migrate_legacy_jsonl(
             paths.sessions,
             repository,
             migrated_at=migrated_at,
+            on_malformed=on_malformed,
         )
+        if malformed_diagnostics:
+            migration_log = paths.logs / "event-migration.jsonl"
+            with migration_log.open("a", encoding="utf-8", newline="\n") as handle:
+                for diagnostic in malformed_diagnostics:
+                    handle.write(
+                        json.dumps(
+                            diagnostic,
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        )
+                    )
+                    handle.write("\n")
 
         sid = session_id or uuid4().hex
         started = iso_now(clock)
@@ -107,6 +133,7 @@ class EventStore:
     def emit_batch(self, drafts: Iterable[EventDraft]) -> list[dict[str, Any]]:
         events: list[EventEnvelope] = []
         for draft in drafts:
+            validate_event_draft(draft)
             timestamp = draft.timestamp or iso_now(self._clock)
             events.append(
                 EventEnvelope(

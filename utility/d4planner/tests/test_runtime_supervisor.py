@@ -475,3 +475,63 @@ def test_shutdown_state_write_failure_remains_fail_open(monkeypatch, tmp_path):
     assert supervisor.status.state == RuntimeState.STOPPED
     assert supervisor.status.capture_active is False
     assert "failed to disable capture during shutdown" in supervisor.status.last_error
+
+
+class ErrorMarkerCapture:
+    def __init__(self):
+        self.error = "synthetic marker backend failure"
+
+    def set_target_pid(self, _pid):
+        return None
+
+    def start(self):
+        return None
+
+    def stop(self, *, timeout=1.0):
+        return None
+
+    def consume_error(self):
+        value = self.error
+        self.error = None
+        return value
+
+    def drain(self):
+        return []
+
+
+def test_marker_capture_failure_is_fail_open_for_speech_ingress(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = FakeRuntime(
+        paths,
+        game=ProcessInfo("Diablo IV", 31, session_id=1),
+        steam=ProcessInfo("steam", 21, session_id=1),
+    )
+    supervisor = build_supervisor(tmp_path, runtime)
+    assert supervisor.bootstrap() == RuntimeState.RUNNING
+
+    supervisor.marker_capture = ErrorMarkerCapture()
+    supervisor._marker_started = True
+    raw = supervisor.store.session.raw_speech_path
+    raw.write_text(
+        json.dumps(
+            {
+                "sessionId": supervisor.store.session.session_id,
+                "sequence": 1,
+                "timestamp": "2026-10-09T03:30:00.100+07:00",
+                "process": "diablo iv",
+                "processId": 31,
+                "contextSource": "win32Foreground",
+                "windowTitle": "Diablo IV",
+                "text": "Hands",
+                "rawSpeech": ["Hands"],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert supervisor._flush_ingress() == 1
+    rows = supervisor.store.read_after(0)
+    assert any(row["type"] == "speech.raw" for row in rows)
+    assert "input marker capture failure" in supervisor.status.last_error
+    assert supervisor.status.state == RuntimeState.RUNNING

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 import ctypes
+from ctypes import wintypes
 import os
 import queue
 import threading
@@ -53,20 +54,43 @@ class AsyncKeyStateBackend:
         self._get_async_key_state.argtypes = [ctypes.c_int]
         self._get_async_key_state.restype = ctypes.c_short
 
+        self._get_foreground_window = self._user32.GetForegroundWindow
+        self._get_foreground_window.argtypes = []
+        self._get_foreground_window.restype = wintypes.HWND
+
+        self._get_window_thread_process_id = self._user32.GetWindowThreadProcessId
+        self._get_window_thread_process_id.argtypes = [
+            wintypes.HWND,
+            ctypes.POINTER(wintypes.DWORD),
+        ]
+        self._get_window_thread_process_id.restype = wintypes.DWORD
+
+        self._get_window_text_length = self._user32.GetWindowTextLengthW
+        self._get_window_text_length.argtypes = [wintypes.HWND]
+        self._get_window_text_length.restype = ctypes.c_int
+
+        self._get_window_text = self._user32.GetWindowTextW
+        self._get_window_text.argtypes = [
+            wintypes.HWND,
+            wintypes.LPWSTR,
+            ctypes.c_int,
+        ]
+        self._get_window_text.restype = ctypes.c_int
+
     def is_down(self, virtual_key: int) -> bool:
         return bool(int(self._get_async_key_state(int(virtual_key))) & 0x8000)
 
     def foreground_context(self) -> tuple[int | None, str]:
-        hwnd = self._user32.GetForegroundWindow()
+        hwnd = self._get_foreground_window()
         if not hwnd:
             return None, ""
-        pid = ctypes.c_ulong()
-        self._user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        length = int(self._user32.GetWindowTextLengthW(hwnd))
+        pid = wintypes.DWORD()
+        self._get_window_thread_process_id(hwnd, ctypes.byref(pid))
+        length = int(self._get_window_text_length(hwnd))
         title = ""
         if length > 0:
             buffer = ctypes.create_unicode_buffer(length + 1)
-            self._user32.GetWindowTextW(hwnd, buffer, length + 1)
+            self._get_window_text(hwnd, buffer, length + 1)
             title = str(buffer.value)
         return (int(pid.value) if pid.value else None), title
 
