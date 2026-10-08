@@ -376,7 +376,7 @@ class WindowsObsMultiRtmpInstaller:
         if previous_id:
             # A rolled-back update must expose the restored v1 baseline, not
             # report a v2 manifest conflict on subsequent status calls.
-            if not re.fullmatch(r"\\d{8}-\\d{6}-[a-f0-9]{8}", previous_id):
+            if not re.fullmatch(r"\d{8}-\d{6}-[a-f0-9]{8}", previous_id):
                 raise PluginInstallerFailure("transaction_missing", "Previous transaction identity is invalid.")
             self._write_json(self.pointer, {"transaction_id": previous_id})
         return InstallerResult("rolled_back")
