@@ -5,12 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from ....errors import ObsPluginError
+from ....services.obs_plugin_release_source import configured_plugin_release_source
 from .installer import InstallerResult, InstallerStatus, PluginInstallerFailure, WindowsObsMultiRtmpInstaller
 
 
 class WindowsObsMultiRtmpHost:
     def __init__(self, data_dir: Path) -> None:
-        self.installer = WindowsObsMultiRtmpInstaller(data_dir)
+        self.installer = WindowsObsMultiRtmpInstaller(data_dir, release_source=configured_plugin_release_source())
 
     def status(self) -> InstallerStatus:
         try:
@@ -65,6 +66,8 @@ _ERRORS = {
     "artifact_manifest_mismatch": ("plugin_install_failed", 503),
     "install_failed": ("plugin_install_failed", 503),
     "update_failed": ("plugin_update_failed", 503),
+    "update_not_available": ("plugin_state_conflict", 409),
+    "release_unavailable": ("plugin_release_unavailable", 503),
 }
 
 _PUBLIC_MESSAGES = {
@@ -73,6 +76,7 @@ _PUBLIC_MESSAGES = {
     "plugin_install_permission_denied": "StreamOps does not have permission to modify the OBS plugin directory.",
     "plugin_install_failed": "OBS plugin installation failed.",
     "plugin_update_failed": "OBS plugin update failed.",
+    "plugin_release_unavailable": "No approved managed plugin release is available.",
     "plugin_verify_failed": "The pinned plugin load could not be verified.",
     "plugin_rollback_failed": "OBS plugin rollback failed.",
 }

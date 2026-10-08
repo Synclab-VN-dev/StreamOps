@@ -122,6 +122,7 @@ class WindowsObsMultiRtmpInstaller:
         self.obs_executable = Path(obs_executable)
         self.manifest = manifest if manifest is not None else _load_manifest()
         self.release_source = release_source
+        self._approved_release = None
         # Explicit manifests are supported for isolated package fixture tests only.
         # Production cannot install from the bundled upstream URL.
         self._fixture_manifest = manifest is not None
@@ -195,6 +196,7 @@ class WindowsObsMultiRtmpInstaller:
             release = self.release_source.latest("obs-multi-rtmp")
         except ObsPluginError as exc:
             raise PluginInstallerFailure("release_unavailable", "Approved managed release is unavailable.") from exc
+        self._approved_release = release
         metadata = release.metadata
         if not (
             isinstance(metadata.get("file_count"), int)
@@ -375,7 +377,7 @@ class WindowsObsMultiRtmpInstaller:
         artifact_path = destination / str(self.manifest["artifact_name"])
         digest = hashlib.sha256()
         try:
-            with (self.release_source.open_artifact(self.release_source.latest("obs-multi-rtmp")) if self.release_source is not None else self.downloader(str(self.manifest["artifact_url"]))) as source, artifact_path.open("wb") as target:
+            with (self.release_source.open_artifact(self._approved_release) if self.release_source is not None else self.downloader(str(self.manifest["artifact_url"]))) as source, artifact_path.open("wb") as target:
                 for block in iter(lambda: source.read(1024 * 1024), b""):
                     target.write(block)
                     digest.update(block)

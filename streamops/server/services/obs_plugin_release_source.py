@@ -9,6 +9,9 @@ or another release host.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+import os
+from pathlib import Path
 import re
 from pathlib import PurePosixPath
 from typing import BinaryIO, Mapping, Protocol
@@ -104,3 +107,48 @@ class ManagedPluginReleaseSource:
                 "Approved plugin artifact is unavailable from the configured managed distribution source.",
                 503,
             ) from exc
+
+
+class DirectoryPluginReleaseSource:
+    """Read approved artifacts only from server-controlled managed mirror."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = Path(root).resolve(strict=False)
+
+    def _directory(self, plugin_id: str) -> Path:
+        if not re.fullmatch(r"[a-z0-9-]{1,80}", plugin_id):
+            raise ObsPluginError("plugin_release_invalid", "Invalid plugin ID.", 409)
+        directory = (self.root / plugin_id).resolve(strict=False)
+        if directory.parent != self.root:
+            raise ObsPluginError("plugin_release_invalid", "Invalid plugin directory.", 409)
+        return directory
+
+    def latest(self, plugin_id: str) -> PluginRelease:
+        try:
+            data = json.loads((self._directory(plugin_id) / "release.json").read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("Invalid release manifest")
+            return PluginRelease(**data)
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            raise ObsPluginError("plugin_release_unavailable", "Managed release manifest unavailable.", 503) from exc
+
+    def open_artifact(self, release: PluginRelease) -> BinaryIO:
+        directory = self._directory(release.plugin_id)
+        name = release.artifact_name
+        if not isinstance(name, str) or name != Path(name).name:
+            raise ObsPluginError("plugin_release_invalid", "Unsafe artifact name.", 409)
+        artifact = directory / name
+        if artifact.is_symlink() or artifact.resolve(strict=False).parent != directory:
+            raise ObsPluginError("plugin_release_invalid", "Unsafe artifact path.", 409)
+        try:
+            return artifact.open("rb")
+        except OSError as exc:
+            raise ObsPluginError("plugin_release_unavailable", "Approved managed artifact unavailable.", 503) from exc
+
+
+def configured_plugin_release_source() -> ManagedPluginReleaseSource | None:
+    """Server-only configuration; no direct upstream/network fallback."""
+    path = os.environ.get("STREAMOPS_OBS_PLUGIN_RELEASE_DIR")
+    if not path:
+        return None
+    return ManagedPluginReleaseSource(DirectoryPluginReleaseSource(Path(path)))

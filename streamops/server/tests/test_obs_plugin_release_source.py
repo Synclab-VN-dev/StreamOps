@@ -133,3 +133,30 @@ def test_invalid_release_metadata_fails_closed(field, value):
     with pytest.raises(ObsPluginError) as caught:
         ManagedPluginReleaseSource(Source()).latest("obs-multi-rtmp")
     assert caught.value.code == "plugin_release_invalid"
+
+
+def test_configured_directory_provider_no_external_fallback(tmp_path, monkeypatch):
+    import hashlib
+    import json
+    from streamops.server.services.obs_plugin_release_source import configured_plugin_release_source
+    root = tmp_path / "approved"
+    plugin = root / "obs-multi-rtmp"
+    plugin.mkdir(parents=True)
+    content = b"approved-build"
+    manifest = {
+        "plugin_id": "obs-multi-rtmp", "version": "2.0.0",
+        "source_commit": "abcdef1234", "platform": "windows", "architecture": "x64",
+        "obs_version": "32.2.1", "artifact_name": "plugin.zip",
+        "artifact_sha256": hashlib.sha256(content).hexdigest(),
+        "vendor": "sorayuki.multi_rtmp", "metadata": {},
+    }
+    (plugin / "release.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (plugin / "plugin.zip").write_bytes(content)
+    monkeypatch.setenv("STREAMOPS_OBS_PLUGIN_RELEASE_DIR", str(root))
+    approved = configured_plugin_release_source()
+    assert approved.latest("obs-multi-rtmp").version == "2.0.0"
+    with approved.open_artifact(approved.latest("obs-multi-rtmp")) as opened:
+        assert opened.read() == content
+    for plugin_id in ("../outside", "unapproved"):
+        with pytest.raises(ObsPluginError):
+            approved.latest(plugin_id)
