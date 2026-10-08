@@ -303,3 +303,39 @@ def test_rest_ws_parity_all_mutations_with_single_service(server_config, capture
     assert rest.json() == ws["data"]
     assert service.calls == [(operation, "obs-multi-rtmp")] * 2
 
+
+
+def test_inventory_schema_is_renderable_without_hardcoded_ui_state(server_config, capture_service):
+    class Service(FakePluginService):
+        async def inventory(self):
+            return [LOADED]
+    with client(server_config, capture_service, Service()) as api:
+        response = api.get("/api/v1/obs/plugins")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    plugins = response.json()["plugins"]
+    assert len(plugins) == 1
+    fields = {"plugin_id", "display_name", "installed", "installed_version",
+              "available_version", "state", "restart_required", "compatible",
+              "last_verification"}
+    assert fields <= set(plugins[0])
+
+
+@pytest.mark.parametrize("operation", ["install", "update", "verify", "rollback"])
+def test_rest_ws_typed_error_equivalence_for_every_mutation(server_config, capture_service, operation):
+    class AllOperations(FakePluginService):
+        async def update(self, plugin_id):
+            return await self._result("install", plugin_id)
+    service = AllOperations()
+    service.failure = ObsPluginError("plugin_state_conflict", "Safe conflict", 409)
+    with client(server_config, capture_service, service) as api:
+        rest = api.post(f"/api/v1/obs/plugins/obs-multi-rtmp/{operation}")
+        with api.websocket_connect("/api/v1/obs/plugins/ws") as ws:
+            ws.send_json({"type": "request", "operation": f"obs_plugin.{operation}",
+                          "request_id": "error-" + operation,
+                          "payload": {"plugin_id": "obs-multi-rtmp"}})
+            received = ws.receive_json()
+    assert rest.status_code == 409
+    assert received["ok"] is False
+    assert received["request_id"] == "error-" + operation
+    assert received["error"] == rest.json()["error"]
