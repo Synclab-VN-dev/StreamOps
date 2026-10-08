@@ -70,3 +70,5 @@ and WebView2. CI artifact requires neither Node nor Rust on Windows A.
   suites for overlay PRs, rather than reporting green skipped-only suites.
 - Even full CI PASS cannot verify in-game focus, physical mouse passthrough,
   or physical global keyboard event handling under Diablo IV.
+
+CI artifact is retained for 14 days; rebuild on PR when it expires.
