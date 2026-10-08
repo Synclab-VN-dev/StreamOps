@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "D4Planner Overlay POC",
+  "version": "0.1.0",
+  "identifier": "vn.synclab.d4planner.overlaypoc",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": {
+      "csp": null
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "D4Planner Overlay POC",
+        "width": 342,
+        "height": 290,
+        "x": 30,
+        "y": 35,
+        "center": false,
+        "resizable": false,
+        "fullscreen": false,
+        "transparent": true,
+        "decorations": false,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": false,
+        "visible": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": false,
+    "icon": [
+      "icons/icon.ico"
+    ]
+  }
+}

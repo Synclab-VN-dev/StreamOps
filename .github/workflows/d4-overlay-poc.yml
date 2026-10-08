@@ -1,0 +1,71 @@
+name: D4 Overlay POC (Windows EXE)
+
+on:
+  pull_request:
+    paths:
+      - "utility/d4planner-overlay-poc/**"
+      - "scripts/local/d4-overlay-poc.ps1"
+      - "scripts/e2e/d4-overlay-poc-smoke.ps1"
+      - ".github/workflows/d4-overlay-poc.yml"
+  push:
+    branches: ["feat/71-tauri-overlay-poc"]
+    paths:
+      - "utility/d4planner-overlay-poc/**"
+      - "scripts/local/d4-overlay-poc.ps1"
+      - "scripts/e2e/d4-overlay-poc-smoke.ps1"
+      - ".github/workflows/d4-overlay-poc.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-exe:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: utility/d4planner-overlay-poc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: utility/d4planner-overlay-poc/src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: npm install --no-audit --no-fund
+      - name: Generate Windows icon
+        run: npm run icon
+      - name: React unit tests
+        run: npm test
+      - name: Compile React bundle
+        run: npm run build
+      - name: Rust unit tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Build portable Windows EXE
+        run: npm run tauri:build
+      - name: Validate and package artifact
+        shell: pwsh
+        run: |
+          $exe = "src-tauri/target/release/d4planner-overlay-poc.exe"
+          if (-not (Test-Path $exe)) { throw "EXE not found: $exe" }
+          & "../../scripts/e2e/d4-overlay-poc-smoke.ps1" -ExePath $exe
+          if ($LASTEXITCODE -ne 0) { throw "Smoke failed" }
+          New-Item -ItemType Directory -Force portable | Out-Null
+          Copy-Item $exe portable/
+          Copy-Item README.md portable/README.md
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash
+          "$hash  d4planner-overlay-poc.exe" | Set-Content portable/SHA256.txt -Encoding ascii
+          Write-Host "Portable EXE: $hash"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d4planner-overlay-poc-win-x64
+          path: utility/d4planner-overlay-poc/portable/
+          if-no-files-found: error
+          retention-days: 14
