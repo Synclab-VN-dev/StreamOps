@@ -23,7 +23,10 @@ class WindowsObsMultiRtmpHost:
     def install(self) -> InstallerResult:
         return self._invoke("install")
 
-    def update(self) -> InstallerResult:\n        return self._invoke("update")\n\n    def verify(self) -> InstallerStatus:
+    def update(self) -> InstallerResult:
+        return self._invoke("update")
+
+    def verify(self) -> InstallerStatus:
         return self._invoke("verify")
 
     def rollback(self) -> InstallerResult:
@@ -60,14 +63,16 @@ _ERRORS = {
     "artifact_hash_mismatch": ("plugin_install_failed", 503),
     "artifact_invalid": ("plugin_install_failed", 503),
     "artifact_manifest_mismatch": ("plugin_install_failed", 503),
-    "install_failed": ("plugin_install_failed", 503),\n    "update_failed": ("plugin_update_failed", 503),
+    "install_failed": ("plugin_install_failed", 503),
+    "update_failed": ("plugin_update_failed", 503),
 }
 
 _PUBLIC_MESSAGES = {
     "plugin_incompatible": "The pinned plugin is incompatible with this OBS version.",
     "plugin_state_conflict": "The plugin state cannot be changed safely.",
     "plugin_install_permission_denied": "StreamOps does not have permission to modify the OBS plugin directory.",
-    "plugin_install_failed": "OBS plugin installation failed.",\n    "plugin_update_failed": "OBS plugin update failed.",
+    "plugin_install_failed": "OBS plugin installation failed.",
+    "plugin_update_failed": "OBS plugin update failed.",
     "plugin_verify_failed": "The pinned plugin load could not be verified.",
     "plugin_rollback_failed": "OBS plugin rollback failed.",
 }
