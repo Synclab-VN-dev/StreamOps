@@ -186,3 +186,34 @@ def test_websocket_update_uses_distinct_service_operation(server_config, capture
     assert response["request_id"] == "plugin-update-1"
     assert response["data"]["operation"] == "update"
     assert service.calls == [("update", "obs-multi-rtmp")]
+
+
+@pytest.mark.parametrize("operation", ["install", "update", "verify", "rollback"])
+def test_websocket_rejects_source_override_for_every_mutation(server_config, capture_service, operation):
+    service = FakePluginService()
+    with client(server_config, capture_service, service) as api:
+        with api.websocket_connect("/api/v1/obs/plugins/ws") as websocket:
+            websocket.send_json({
+                "type": "request",
+                "request_id": "reject-source",
+                "operation": f"obs_plugin.{operation}",
+                "payload": {"plugin_id": "obs-multi-rtmp", "source": "https://untrusted.invalid"},
+            })
+            response = websocket.receive_json()
+    assert response["ok"] is False
+    assert response["request_id"] == "reject-source"
+    assert response["error"]["code"] == "invalid_request"
+    assert service.calls == []
+
+
+@pytest.mark.parametrize("operation", ["install", "update", "verify", "rollback"])
+def test_rest_rejects_source_override_for_every_mutation(server_config, capture_service, operation):
+    service = FakePluginService()
+    with client(server_config, capture_service, service) as api:
+        response = api.post(
+            f"/api/v1/obs/plugins/obs-multi-rtmp/{operation}",
+            json={"source": "https://untrusted.invalid"},
+        )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_plugin_request"
+    assert service.calls == []
