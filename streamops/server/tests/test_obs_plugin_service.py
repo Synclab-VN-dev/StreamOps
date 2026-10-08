@@ -448,3 +448,26 @@ def test_deferred_install_preserves_active_output_and_does_not_stop():
         assert caught.value.code == "obs_busy_" + output
         assert "stop" not in manager.calls
         assert "install" not in host.calls
+
+
+def test_mutation_timeout_is_typed_and_sanitized():
+    import time
+
+    class SlowHost(FakeHost):
+        def update(self):
+            time.sleep(0.15)
+            self.calls.append("update")
+            return PluginHostResult("updated")
+
+    host = SlowHost("exact", loaded=True)
+    service = ObsPluginService(FakeManager(), host, operation_timeout=0.01)
+    with pytest.raises(ObsPluginError) as caught:
+        run(service.update("obs-multi-rtmp"))
+    assert caught.value.code == "plugin_operation_timeout"
+    assert caught.value.status_code == 504
+    assert "password" not in str(caught.value)
+
+
+def test_operation_timeout_must_be_positive():
+    with pytest.raises(ValueError):
+        ObsPluginService(FakeManager(), FakeHost(), operation_timeout=0)
