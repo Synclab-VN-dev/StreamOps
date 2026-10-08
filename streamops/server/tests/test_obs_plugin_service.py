@@ -499,3 +499,28 @@ def test_update_operation_reports_previous_and_new_version():
     assert result.api_payload()["installed_version"] == "2.0.0"
     assert result.api_payload()["available_version"] == "2.0.0"
     assert result.api_payload()["restart_required"] is True
+
+
+def test_failed_vendor_probe_sets_verify_failed_until_subsequent_success():
+    class FlakyVendor:
+        def __init__(self):
+            self.healthy = False
+        def connect(self):
+            pass
+        def request(self, request_type, payload):
+            if not self.healthy:
+                raise RuntimeError("Vendor missing")
+            return {"vendorResponseData": {"targets": [], "count": 0}}
+        def close(self):
+            pass
+
+    vendor = FlakyVendor()
+    manager = FakeManager()
+    manager.client_factory = lambda: vendor
+    service = ObsPluginService(manager, FakeHost("exact", loaded=True))
+    with pytest.raises(ObsPluginError):
+        run(service.verify("obs-multi-rtmp"))
+    assert run(service.status("obs-multi-rtmp")).state == "VERIFY_FAILED"
+    vendor.healthy = True
+    assert run(service.verify("obs-multi-rtmp")).status.state == "VERIFIED"
+    assert run(service.status("obs-multi-rtmp")).state == "VERIFIED"
