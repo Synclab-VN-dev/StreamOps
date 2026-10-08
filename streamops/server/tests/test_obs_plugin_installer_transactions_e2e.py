@@ -154,3 +154,51 @@ def test_update_not_implemented_is_explicit_failure_not_false_success(package):
     with pytest.raises(PluginInstallerFailure) as caught:
         installer.update()
     assert caught.value.code == "update_failed"
+
+
+def test_install_rejects_unexpected_archive_file_before_mutation(package):
+    build, root, _, _, manifest, _ = package
+    archive = BytesIO()
+    with zipfile.ZipFile(archive, "w") as z:
+        z.writestr("unexpected.exe", b"untrusted")
+    data = archive.getvalue()
+    installer = build(artifact_sha256=hashlib.sha256(data).hexdigest())
+    installer.downloader = lambda url: BytesIO(data)
+    with pytest.raises(PluginInstallerFailure) as caught:
+        installer.install()
+    assert caught.value.code == "artifact_invalid"
+    assert not root.exists()
+
+
+def test_rollback_preserves_preexisting_config_byte_for_byte(package):
+    build, _, appdata, _, _, _ = package
+    config = appdata / "obs-studio" / "basic" / "profiles" / "User" / "obs-multi-rtmp.json"
+    config.parent.mkdir(parents=True)
+    original = b'{"targets":[{"name":"saved"}]}\\r\\n'
+    config.write_bytes(original)
+    installer = build()
+    installer.install()
+    assert installer.rollback().result == "rolled_back"
+    assert config.read_bytes() == original
+
+
+def test_installer_never_downloads_when_existing_tree_conflicts(package):
+    build, root, _, calls, _, _ = package
+    root.mkdir(parents=True)
+    (root / "unknown.dll").write_bytes(b"keep")
+    with pytest.raises(PluginInstallerFailure) as caught:
+        build().install()
+    assert caught.value.code == "plugin_state_conflict"
+    assert calls == []
+    assert (root / "unknown.dll").read_bytes() == b"keep"
+
+
+def test_rollback_without_transaction_is_typed_and_non_destructive(package):
+    build, root, _, _, _, _ = package
+    root.mkdir(parents=True)
+    original = root / "user.txt"
+    original.write_bytes(b"untouched")
+    with pytest.raises(PluginInstallerFailure) as caught:
+        build().rollback()
+    assert caught.value.code == "transaction_missing"
+    assert original.read_bytes() == b"untouched"
