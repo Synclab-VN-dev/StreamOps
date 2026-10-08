@@ -1,3 +1,16 @@
+# OBS Manager
+
+**Route:** `/obs`  
+**Current UI:** [ObsManager.tsx](./ObsManager.tsx) — latest approved Dashboard export with Plugin Manager card (MagicPath revision `458892152907374592`).  
+**Preview:** https://designs.magicpath.ai/v1/smart-cliff-3265
+
+## Child pages
+
+- [Stream Manager](./stream-manager/README.md) — `/obs/stream`
+- [Plugin Manager](./plugin-manager/README.md) — `/obs/plugins`
+
+## Design spec
+
 # DESIGN SPEC — OBS Mobile Dashboard v2
 
 ## 1. Design principle
@@ -249,3 +262,8 @@ Desktop vẫn phải usable:
 - Không nhét Start/Stop Streaming trực tiếp vào dashboard `/obs`; control này thuộc `/obs/stream`.
 - Không hard-code Gaming/Camera/BRB thành scene cố định.
 - Không đưa React/Tailwind vào production chỉ vì reference component dùng React/Tailwind.
+
+
+## Implementation reference (not production code)
+
+See [implementation-mapping.md](./implementation-mapping.md).
