@@ -186,7 +186,7 @@ class ObsPluginService:
             state = "FAILED"
         elif not installed:
             state = "NOT_INSTALLED"
-        elif getattr(host, "restart_required", False):
+        elif getattr(host, "restart_required", False) or (self._pending_change and not loaded):
             state = "RESTART_REQUIRED"
         elif update_available:
             state = "UPDATE_AVAILABLE"
@@ -198,7 +198,7 @@ class ObsPluginService:
             PLUGIN_ID, EXPECTED_VERSION, state, installed, loaded, compatible,
             installed_version=installed_version,
             available_version=available_version,
-            restart_required=getattr(host, "restart_required", False),
+            restart_required=bool(getattr(host, "restart_required", False) or (self._pending_change and not loaded)),
             last_verification=self._verified_at if loaded else None,
         )
 
