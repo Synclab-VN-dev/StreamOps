@@ -28,7 +28,14 @@ def _refresh(request: Request) -> None:
     request.app.state.live_status_hub.trigger_refresh()
 
 
-@router.get("")\nasync def plugin_inventory(request: Request, response: Response) -> dict[str, object]:\n    await _reject_input(request)\n    response.headers["Cache-Control"] = "no-store"\n    return {"plugins": [item.api_payload() for item in await _service(request).inventory()]}\n\n\n@router.get("/{plugin_id}")
+@router.get("")
+async def plugin_inventory(request: Request, response: Response) -> dict[str, object]:
+    await _reject_input(request)
+    response.headers["Cache-Control"] = "no-store"
+    return {"plugins": [item.api_payload() for item in await _service(request).inventory()]}
+
+
+@router.get("/{plugin_id}")
 async def plugin_status(plugin_id: str, request: Request, response: Response) -> dict[str, object]:
     await _reject_input(request)
     response.headers["Cache-Control"] = "no-store"
@@ -45,7 +52,17 @@ async def install_plugin(plugin_id: str, request: Request, response: Response) -
         _refresh(request)
 
 
-@router.post("/{plugin_id}/update")\nasync def update_plugin(plugin_id: str, request: Request, response: Response) -> dict[str, object]:\n    await _reject_input(request)\n    response.headers["Cache-Control"] = "no-store"\n    try:\n        return (await _service(request).update(plugin_id)).api_payload()\n    finally:\n        _refresh(request)\n\n\n@router.post("/{plugin_id}/verify")
+@router.post("/{plugin_id}/update")
+async def update_plugin(plugin_id: str, request: Request, response: Response) -> dict[str, object]:
+    await _reject_input(request)
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return (await _service(request).update(plugin_id)).api_payload()
+    finally:
+        _refresh(request)
+
+
+@router.post("/{plugin_id}/verify")
 async def verify_plugin(plugin_id: str, request: Request, response: Response) -> dict[str, object]:
     await _reject_input(request)
     response.headers["Cache-Control"] = "no-store"
