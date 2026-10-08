@@ -82,7 +82,11 @@ class ObsPluginService:
         self._require_supported(plugin_id)
         return await asyncio.to_thread(self._run_guarded, "install", self._install_sync)
 
-    async def update(self, plugin_id: str) -> ObsPluginOperationResult:\n        self._require_supported(plugin_id)\n        return await asyncio.to_thread(self._run_guarded, "update", self._update_sync)\n\n    async def verify(self, plugin_id: str) -> ObsPluginOperationResult:
+    async def update(self, plugin_id: str) -> ObsPluginOperationResult:
+        self._require_supported(plugin_id)
+        return await asyncio.to_thread(self._run_guarded, "update", self._update_sync)
+
+    async def verify(self, plugin_id: str) -> ObsPluginOperationResult:
         self._require_supported(plugin_id)
         return await asyncio.to_thread(self._run_guarded, "verify", self._verify_sync)
 
@@ -192,7 +196,16 @@ class ObsPluginService:
             self._best_effort_start(exc)
             raise ObsPluginError("obs_restart_failed", "OBS did not return to READY after plugin install.", 503) from exc
 
-    def _update_sync(self) -> ObsPluginOperationResult:\n        runtime = self._runtime_for_mutation()\n        initial = self._combine(self.host.status(), runtime)\n        if not initial.installed:\n            raise ObsPluginError("plugin_not_installed", "The OBS plugin must be installed before it can be updated.", 409)\n        self._ensure_compatible(initial)\n        lower = self._host_call("update")\n        return ObsPluginOperationResult(self._status_sync(), "update", lower.result)\n\n    def _verify_sync(self) -> ObsPluginOperationResult:
+    def _update_sync(self) -> ObsPluginOperationResult:
+        runtime = self._runtime_for_mutation()
+        initial = self._combine(self.host.status(), runtime)
+        if not initial.installed:
+            raise ObsPluginError("plugin_not_installed", "The OBS plugin must be installed before it can be updated.", 409)
+        self._ensure_compatible(initial)
+        lower = self._host_call("update")
+        return ObsPluginOperationResult(self._status_sync(), "update", lower.result)
+
+    def _verify_sync(self) -> ObsPluginOperationResult:
         status = self._verify_loaded()
         return ObsPluginOperationResult(status, "verify", "verified")
 
