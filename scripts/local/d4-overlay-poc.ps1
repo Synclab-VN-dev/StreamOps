@@ -1,6 +1,6 @@
 param(
     [Parameter(Position=0)]
-    [ValidateSet('Doctor','Run','Build','Test','Smoke','Stop')]
+    [ValidateSet('Doctor','Run','Build','Test','Smoke','SmokeRuntime','SmokeLaunch','Stop')]
     [string]$Action='Doctor'
 )
 $ErrorActionPreference = 'Stop'
@@ -54,6 +54,8 @@ switch ($Action) {
         try {
             npm test
             if ($LASTEXITCODE -ne 0) { throw 'Frontend tests failed' }
+            cargo test --manifest-path src-tauri/Cargo.toml
+            if ($LASTEXITCODE -ne 0) { throw 'Rust tests failed' }
         } finally { Pop-Location }
     }
     'Build' {
@@ -68,6 +70,12 @@ switch ($Action) {
     }
     'Smoke' {
         & (Join-Path $Root 'scripts\e2e\d4-overlay-poc-smoke.ps1') -ExePath $Exe
+    }
+    'SmokeRuntime' {
+        & (Join-Path $Root 'scripts\e2e\d4-overlay-poc-smoke.ps1') -ExePath $Exe -Runtime
+    }
+    'SmokeLaunch' {
+        & (Join-Path $Root 'scripts\e2e\d4-overlay-poc-smoke.ps1') -ExePath $Exe -Launch
     }
     'Stop' {
         $procs=@(Get-Process -Name 'd4planner-overlay-poc' -ErrorAction SilentlyContinue)

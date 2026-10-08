@@ -16,14 +16,18 @@ export default function App() {
 
   useEffect(() => {
     let mounted = true;
+    let sawEvent = false;
     let unlisten: UnlistenFn | undefined;
     async function initialize() {
       unlisten = await listen<OverlayStatus>("overlay-mode-changed", (event) => {
+        sawEvent = true;
         if (mounted) setStatus(event.payload);
       });
       const current = await invoke<OverlayStatus>("get_overlay_status");
       if (mounted) {
-        setStatus(current);
+        // A global hotkey might have fired while get_overlay_status was pending.
+        // Do not replace its newer event with a stale initial snapshot.
+        if (!sawEvent) setStatus(current);
         setReady(true);
       }
     }
@@ -37,7 +41,7 @@ export default function App() {
   }, []);
 
   async function setMode() {
-    if (!ready || busy) return;
+    if (!ready || busy || !status.interactive) return;
     setBusy(true);
     try {
       setStatus(await invoke<OverlayStatus>("set_overlay_mode", {

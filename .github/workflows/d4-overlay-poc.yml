@@ -7,13 +7,6 @@ on:
       - "scripts/local/d4-overlay-poc.ps1"
       - "scripts/e2e/d4-overlay-poc-smoke.ps1"
       - ".github/workflows/d4-overlay-poc.yml"
-  push:
-    branches: ["feat/71-tauri-overlay-poc"]
-    paths:
-      - "utility/d4planner-overlay-poc/**"
-      - "scripts/local/d4-overlay-poc.ps1"
-      - "scripts/e2e/d4-overlay-poc-smoke.ps1"
-      - ".github/workflows/d4-overlay-poc.yml"
   workflow_dispatch:
 
 permissions:
@@ -42,20 +35,23 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Generate Windows icon
         run: npm run icon
-      - name: React unit tests
+      - name: React unit + IPC interaction tests
         run: npm test
       - name: Compile React bundle
         run: npm run build
-      - name: Rust unit tests
+      - name: Rust mode/hotkey tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: Build portable Windows EXE
         run: npm run tauri:build
-      - name: Validate and package artifact
+      - name: Static + real native GUI smoke (fail if unavailable)
         shell: pwsh
         run: |
           $exe = "src-tauri/target/release/d4planner-overlay-poc.exe"
-          if (-not (Test-Path $exe)) { throw "EXE not found: $exe" }
-          & "../../scripts/e2e/d4-overlay-poc-smoke.ps1" -ExePath $exe
+          & "../../scripts/e2e/d4-overlay-poc-smoke.ps1" -ExePath $exe -Runtime -TimeoutSeconds 60
+      - name: Package artifact
+        shell: pwsh
+        run: |
+          $exe = "src-tauri/target/release/d4planner-overlay-poc.exe"
           New-Item -ItemType Directory -Force portable | Out-Null
           Copy-Item $exe portable/
           Copy-Item README.md portable/README.md
