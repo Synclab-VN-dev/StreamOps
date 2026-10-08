@@ -12,6 +12,15 @@
 
 The design was updated **in place**, not recreated. Use the final revision of the Plugin Manager; earlier revisions contain prototype-only "Design & developer tools" cards and placeholder Unicode icons, which were intentionally removed from the main UI.
 
+## Exported UI source (actual MagicPath TSX)
+
+The approved UI component source is committed alongside this document:
+
+- [StreamOpsMobileDashboard.tsx](./issue-49-ui-export/StreamOpsMobileDashboard.tsx) — OBS Dashboard with Plugin Manager navigation card.
+- [StreamOpsOBSPluginManager.tsx](./issue-49-ui-export/StreamOpsOBSPluginManager.tsx) — approved dedicated Plugin Manager UI, including manager overview, plugin cards, Activity Log and state fixtures.
+
+These are **raw MagicPath React/TSX component exports for design handoff**, not a ready-to-run integrated StreamOps FE. They require the existing React/Tailwind/Lucide dependencies, route wiring and real API bindings. Do not treat prototype fixtures as live data.
+
 ## Information architecture
 
 ```text
