@@ -111,3 +111,7 @@ def test_artifact_failure_does_not_try_another_source():
 
     assert caught.value.code == "plugin_release_unavailable"
     assert calls == ["obs-multi-rtmp"]
+
+
+def test_release_version_is_explicit():
+    assert _release().version == "1.0.0"
