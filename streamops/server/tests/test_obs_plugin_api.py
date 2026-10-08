@@ -424,3 +424,28 @@ def test_e2e_real_service_install_process_api_restart_verify_and_inventory(serve
         status = api.get("/api/v1/obs/plugins/obs-multi-rtmp").json()
         assert status["state"] == "VERIFIED"
         assert status["last_verification"] is not None
+
+
+def test_websocket_unexpected_error_never_logs_or_returns_secret(server_config, capture_service, caplog):
+    import logging
+
+    secret = "SUPERSECRET-stream-key-test"
+
+    class BrokenService(FakePluginService):
+        async def install(self, plugin_id):
+            raise RuntimeError("credential=" + secret)
+
+    with caplog.at_level(logging.ERROR, logger="streamops.server.api.obs_plugin_ws"):
+        with client(server_config, capture_service, BrokenService()) as api:
+            with api.websocket_connect("/api/v1/obs/plugins/ws") as ws:
+                ws.send_json({
+                    "type": "request", "request_id": "sanitized-1",
+                    "operation": "obs_plugin.install",
+                    "payload": {"plugin_id": "obs-multi-rtmp"},
+                })
+                response = ws.receive_json()
+    assert response["ok"] is False
+    assert response["request_id"] == "sanitized-1"
+    assert response["error"]["code"] == "internal_error"
+    assert secret not in repr(response)
+    assert secret not in caplog.text
