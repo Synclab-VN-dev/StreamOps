@@ -335,11 +335,16 @@ class ObsPluginService:
                 self._recover_failed_install()
                 self._pending_change = None
             raise
+        # _verify_loaded() builds its snapshot while the prior pending/failure
+        # markers are still set. Clear them before recomputing the public state,
+        # otherwise a successful vendor probe still reports RESTART_REQUIRED or
+        # VERIFY_FAILED.
         self._pending_change = None
         self._verification_failed = False
         self._verified_at = datetime.now(timezone.utc).isoformat()
+        verified = self._status_sync()
         return ObsPluginOperationResult(
-            replace(status, last_verification=self._verified_at, restart_required=False),
+            replace(verified, last_verification=self._verified_at, restart_required=False),
             "verify", "verified",
         )
 
