@@ -11,10 +11,21 @@ from d4planner.runtime.store import atomic_write_json, read_json
 from d4planner.runtime.windows import WindowsRuntime
 
 from .rawinput import RawInputBackend
+from .wgi import WGIBackend
+from .gameinput import GameInputBackend
+from .directinput import DirectInputBackend
 from .runner import run_backends
 
+MODES = ("auto", "all", "hid", "wgi", "gameinput", "directinput")
+MODE_CLASSES = (
+    ("hid", "RawInput", RawInputBackend),
+    ("wgi", "Windows.Gaming.Input", WGIBackend),
+    ("gameinput", "GameInput", GameInputBackend),
+    ("directinput", "DirectInput", DirectInputBackend),
+)
 
-def probe_payload(runtime: WindowsRuntime, seconds: float) -> dict[str, Any]:
+
+def probe_payload(runtime: WindowsRuntime, seconds: float, mode: str = "auto") -> dict[str, Any]:
     """Executed only when process session equals the active desktop session."""
     current = runtime.current_process_session_id()
     active = runtime.active_console_session_id()
@@ -22,17 +33,29 @@ def probe_payload(runtime: WindowsRuntime, seconds: float) -> dict[str, Any]:
         raise RuntimeError(
             f"wrong interactive session: probe={current!r}, active={active!r}"
         )
-    class LazyRawInput:
-        name = "RawInput"
+    if mode not in MODES:
+        raise ValueError(f"invalid --mode: {mode}")
 
-        def probe(self, duration: float):
-            # Native DLL/WinAPI initialization is inside the isolation boundary.
-            return RawInputBackend().probe(duration)
+    class LazyBackend:
+        def __init__(self, name, factory):
+            self.name = name
+            self.factory = factory
 
+        def probe(self, duration):
+            return self.factory().probe(duration)
+
+    backends = [
+        LazyBackend(name, factory)
+        for key, name, factory in MODE_CLASSES
+        if mode in ("auto", "all", key)
+    ]
     return {
         "probeProcessSession": current,
         "activeConsoleSession": active,
-        "backends": [r.as_dict() for r in run_backends(seconds, [LazyRawInput()])],
+        "mode": mode,
+        "backends": [r.as_dict() for r in run_backends(
+            seconds, backends, stop_on_usable=(mode != "all")
+        )],
     }
 
 
@@ -47,7 +70,7 @@ def execute_request(
     try:
         if not 0 < seconds <= 300:
             raise ValueError("seconds must be between 0 and 300")
-        payload.update(probe_payload(runtime, seconds))
+        payload.update(probe_payload(runtime, seconds, str(request.get("mode", "auto"))))
     except Exception as exc:
         payload["error"] = f"{type(exc).__name__}: {exc}"
     atomic_write_json(output_path, payload)
