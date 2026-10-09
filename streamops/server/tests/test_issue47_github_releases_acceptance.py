@@ -290,6 +290,27 @@ def test_u22_download_redirect_host_allowlist(url, allowed):
     assert validate_github_download_url(url, REPO) is allowed
 
 
+def test_u22_redirect_denies_upstream_and_strips_api_credentials():
+    from urllib.request import Request
+    from streamops.server.services.obs_plugin_release_source import _SafeGitHubRedirect
+
+    handler = _SafeGitHubRedirect(REPO)
+    initial = Request(API + "/releases/assets/1002",
+                      headers={"Authorization": "Bearer must-not-leak"})
+    for denied in ("https://github.com/sorayuki/obs-multi-rtmp/releases/download/x/plugin.zip",
+                   "https://release-assets.githubusercontent.com.evil.test/asset"):
+        with pytest.raises(ObsPluginError):
+            handler.redirect_request(initial, None, 302, "Found", {}, denied)
+
+    redirect = handler.redirect_request(
+        initial, None, 302, "Found", {},
+        "https://release-assets.githubusercontent.com/approved-object",
+    )
+    assert redirect is not None
+    assert redirect.get_header("Authorization") is None
+    assert "must-not-leak" not in repr(redirect.headers)
+
+
 def test_u23_static_available_route_and_reject_client_source(server_config, capture_service, tmp_path, caplog):
     http = GitHubFixture()
     http.add()
