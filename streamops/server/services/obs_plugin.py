@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 import threading
 from typing import Any, Literal, Protocol
+from .obs_plugin_release_source import ManagedPluginReleaseSource
 
 from ..errors import (
     ObsOperationInProgressError,
@@ -87,9 +88,11 @@ class ObsPluginService:
     def __init__(
         self, obs_manager: Any, host: ObsPluginHost, *,
         defer_restart: bool = False, operation_timeout: float = 120.0,
+        release_source: ManagedPluginReleaseSource | None = None,
     ) -> None:
         self.obs_manager = obs_manager
         self.host = host
+        self.release_source = release_source if release_source is not None else getattr(host, "release_source", None)
         self.defer_restart = defer_restart
         if operation_timeout <= 0:
             raise ValueError("operation_timeout must be positive")
@@ -106,6 +109,55 @@ class ObsPluginService:
     async def inventory(self) -> list[ObsPluginStatus]:
         """Return only registry-approved plugin statuses for Plugin Manager."""
         return [await self.status(plugin_id) for plugin_id in (PLUGIN_ID,)]
+
+
+    async def available(self) -> dict[str, object]:
+        """Server-approved published plugin catalog (not the registry inventory)."""
+        return await asyncio.to_thread(self._available_sync)
+
+    def _available_sync(self) -> dict[str, object]:
+        if self.release_source is None:
+            return {"plugins": [], "source_state": "EMPTY"}
+        try:
+            # Catalog may show an approved but incompatible release; mutation
+            # still resolves via latest(), which strictly enforces OBS version.
+            release = self.release_source.catalog_release(PLUGIN_ID)
+        except ObsPluginError as exc:
+            if exc.code == "plugin_release_unavailable":
+                return {"plugins": [], "source_state": "EMPTY"}
+            raise
+        current = self._status_sync()
+        installed_version = current.installed_version
+        def version_parts(version: str | None) -> tuple[int, ...]:
+            if not version or not re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", version):
+                return ()
+            return tuple(int(v) for v in version.split("."))
+        compatible = bool(
+            release.platform == "windows" and release.architecture == "x64"
+            and release.obs_version == EXPECTED_OBS_VERSION and current.compatible
+        )
+        can_install = bool(
+            compatible and (not current.installed or
+                            version_parts(release.version) > version_parts(installed_version))
+        )
+        reason = None
+        if not compatible:
+            reason = "incompatible_obs"
+        elif current.installed and not can_install:
+            reason = "already_installed"
+        return {
+            "plugins": [{
+                "plugin_id": PLUGIN_ID, "display_name": current.display_name,
+                "available_version": release.version,
+                "installed_version": installed_version,
+                "compatibility": "compatible" if compatible else "incompatible",
+                "installable": can_install,
+                "reason": reason,
+                "source_commit": release.source_commit,
+                "release_ref": f"{PLUGIN_ID}/v{release.version}",
+            }],
+            "source_state": "READY",
+        }
 
     async def install(self, plugin_id: str) -> ObsPluginOperationResult:
         self._require_supported(plugin_id)
