@@ -22,10 +22,17 @@ def probe_payload(runtime: WindowsRuntime, seconds: float) -> dict[str, Any]:
         raise RuntimeError(
             f"wrong interactive session: probe={current!r}, active={active!r}"
         )
+    class LazyRawInput:
+        name = "RawInput"
+
+        def probe(self, duration: float):
+            # Native DLL/WinAPI initialization is inside the isolation boundary.
+            return RawInputBackend().probe(duration)
+
     return {
         "probeProcessSession": current,
         "activeConsoleSession": active,
-        "backends": [r.as_dict() for r in run_backends(seconds, [RawInputBackend()])],
+        "backends": [r.as_dict() for r in run_backends(seconds, [LazyRawInput()])],
     }
 
 
