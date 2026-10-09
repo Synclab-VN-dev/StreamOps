@@ -74,7 +74,7 @@ object CaptureState {
         snapshot.forEach { appendLine(it.asDiagnosticLine()) }
     }
 
-    fun controllerDevices(): List<String> = InputDevice.getDeviceIds().mapNotNull { id ->
+    fun controllerDevices(): List<String> = InputDevice.getDeviceIds().asList().mapNotNull { id: Int ->
         val device = InputDevice.getDevice(id) ?: return@mapNotNull null
         if (!ControllerSource.isController(device.sources)) return@mapNotNull null
         "id=" + id + " name=" + device.name +
