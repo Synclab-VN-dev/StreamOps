@@ -31,7 +31,7 @@
 |---|---|---|
 | E01 | UI inventory/card data | `test_inventory_schema_is_renderable_without_hardcoded_ui_state`, `test_inventory_only_reports_registered_plugin` |
 | E02 | Install → restart-required → Process API → vendor verify | `test_e2e_real_service_install_process_api_restart_verify_and_inventory`, `test_manual_restart_workflow_install_then_process_start_then_verify` |
-| E03 | Update v1→v2 config preservation + verify | `test_e2e_update_v1_to_v2_changes_bytes_and_preserves_config`, `test_manual_restart_workflow_update_is_not_an_install_alias` |
+| E03 | Update v1→v2 config preservation + verify | `test_e2e_update_v1_to_v2_changes_bytes_and_preserves_config`, `test_manual_restart_workflow_update_is_not_an_install_alias`, `test_e2e_v1_to_v2_update_through_service_then_vendor_verify_preserves_config` |
 | E04 | Invalid release fails before mutation | `test_bad_hash_fails_before_any_installed_file_mutation`, `test_incompatible_obs_rejected_without_download`, `test_update_rejects_invalid_release_hash_before_touching_v1_or_config` |
 | E05 | Configured provider, no direct source fallback | `test_e2e_provider_artifact_is_consumed_from_approved_source_only`, `test_configured_directory_provider_no_external_fallback`, `test_unit_release_provider_is_swappable` |
 | E06 | Failed post-update verify auto rollback | `test_e2e_post_update_verify_failure_recovers_byte_exact_baseline` |
