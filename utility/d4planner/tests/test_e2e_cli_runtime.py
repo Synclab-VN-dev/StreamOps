@@ -471,3 +471,89 @@ def test_e2e_shutdown_drains_pending_marker_before_store_close(tmp_path):
     assert len(markers) == 1
     assert markers[0].data["key"] == "F11"
     assert markers[0].data["state"] == "down"
+
+
+
+def test_e2e_sqlite_speech_ingress_still_materializes_equipment(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = E2ERuntime(paths)
+    manager = UserPathManager(
+        paths,
+        MemoryPathBackend(user_path="", machine_path="MACHINE"),
+    )
+    supervisor = Supervisor(
+        paths=paths,
+        runtime=runtime,
+        path_manager=manager,
+        silent=True,
+        poll_interval=0.01,
+        health_poll_interval=0.05,
+        game_start_timeout=0.01,
+    )
+
+    thread = threading.Thread(target=supervisor.run, daemon=True)
+    thread.start()
+    assert wait_until(
+        lambda: (read_json(paths.runtime_state) or {}).get("state")
+        == RuntimeState.RUNNING.value
+    )
+
+    session_id = supervisor.status.session_id
+    raw_path = supervisor.store.session.raw_speech_path
+    texts = [
+        "Head",
+        "EQUIPPED",
+        "CURRENT HELM",
+        "Rare Helm",
+        "850 Item Power",
+        "Unequip",
+    ]
+    raw_path.write_text(
+        "".join(
+            json.dumps(
+                {
+                    "sessionId": session_id,
+                    "sequence": seq,
+                    "timestamp": f"2026-10-09T04:00:00.{seq:03}+07:00",
+                    "process": "diablo iv",
+                    "processId": 300,
+                    "contextSource": "win32Foreground",
+                    "windowTitle": "Diablo IV",
+                    "text": text,
+                    "rawSpeech": [text],
+                }
+            )
+            + "\n"
+            for seq, text in enumerate(texts, start=1)
+        ),
+        encoding="utf-8",
+    )
+
+    def equipment_materialized():
+        rows = EquipmentRepository(paths.character_db).list_equipment()
+        return (
+            len(rows) == 1
+            and rows[0]["slotFamily"] == "helm"
+            and rows[0]["name"] == "CURRENT HELM"
+            and rows[0]["itemPower"] == 850
+        )
+
+    assert wait_until(equipment_materialized)
+
+    reader = EventLogReader(paths.events_db)
+    try:
+        speech = [
+            row
+            for row in reader.read_after(session_id, 0, limit=1000)
+            if row.type == "speech.raw"
+        ]
+    finally:
+        reader.close()
+
+    assert [row.data["text"] for row in speech] == texts
+    assert [row.event_seq for row in speech] == sorted(row.event_seq for row in speech)
+    assert {row.session_id for row in speech} == {session_id}
+
+    paths.stop_request.write_text("stop\n", encoding="utf-8")
+    thread.join(timeout=2.0)
+    assert not thread.is_alive()
