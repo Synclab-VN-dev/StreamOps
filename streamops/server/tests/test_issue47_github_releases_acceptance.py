@@ -412,7 +412,27 @@ def test_e15_github_provider_v1_v2_update_verify_rollback(tmp_path):
     undone = asyncio.run(service.rollback(PLUGIN))
     assert undone.status.restart_required is True
     manager.start()
-    assert asyncio.run(service.verify(PLUGIN)).status.state == "VERIFIED"
+    verified_baseline = asyncio.run(service.verify(PLUGIN))
+    # Baseline v1 is installed and verified, while Synclab still offers v2;
+    # UPDATE_AVAILABLE is correct (not a false "VERIFIED" catalog state).
+    assert verified_baseline.status.state == "UPDATE_AVAILABLE"
+    assert verified_baseline.status.last_verification is not None
+    assert verified_baseline.status.restart_required is False
+    assert _file_records(root) == digest_v1
+    assert config.read_bytes() == baseline
+    assert installer.status().installed_version == "1.0.0"
+
+    # Update again and force the *real vendor probe boundary* to fail.
+    asyncio.run(service.update(PLUGIN))
+    manager.start()
+    Vendor.fail = True
+    try:
+        with pytest.raises(ObsPluginError) as failed:
+            asyncio.run(service.verify(PLUGIN))
+        assert failed.value.code == "plugin_verify_failed"
+    finally:
+        Vendor.fail = False
+    assert manager.state == "READY"
     assert _file_records(root) == digest_v1
     assert config.read_bytes() == baseline
     assert installer.status().installed_version == "1.0.0"
@@ -437,15 +457,44 @@ def test_e16_github_release_failure_no_mutation_no_fallback(tmp_path, mode):
     assert all(call[0].startswith(API + "/") for call in http.calls)
 
 
-def test_e17_provider_swap_does_not_change_rest_api(server_config, capture_service, tmp_path):
+def test_e17_provider_swap_does_not_change_rest_ws_api(server_config, capture_service, tmp_path):
+    from streamops.server.services.obs_plugin_release_source import DirectoryPluginReleaseSource
+
     http = GitHubFixture()
     http.add("1.0.0")
-    service, manager, _, _, _ = environment(tmp_path, http)
+    service, manager, installer, _, _ = environment(tmp_path, http)
     with TestClient(create_app(server_config, capture_service=capture_service,
                                obs_manager=manager, obs_plugin_service=service,
                                manage_runtime=False)) as api:
-        first = api.get(PFX + "/available")
-        second = api.get(PFX + "/" + PLUGIN)
-    assert first.status_code == second.status_code == 200
-    assert first.json()["plugins"][0]["available_version"] == second.json()["available_version"]
-    assert "source" not in repr(first.json()).lower() or first.json()["source_state"] == "READY"
+        before = api.get(PFX + "/available")
+        inventory_before = api.get(PFX)
+        with api.websocket_connect(PFX + "/ws") as ws:
+            ws.send_json({"type": "request", "operation": "obs_plugin.status",
+                          "request_id": "source-before", "payload": {"plugin_id": PLUGIN}})
+            before_ws = ws.receive_json()
+        assert before.status_code == inventory_before.status_code == 200
+        assert before_ws["ok"] is True
+
+        # Change solely the server-side configured provider. Routes, request
+        # shape and lifecycle service are unchanged.
+        root = tmp_path / "mirror" / PLUGIN
+        root.mkdir(parents=True)
+        metadata, aid = http.add("1.1.0")
+        (root / "release.json").write_text(json.dumps(metadata), encoding="utf-8")
+        (root / metadata["artifact_name"]).write_bytes(http.assets[aid])
+        approved_dir = ManagedPluginReleaseSource(DirectoryPluginReleaseSource(root.parent))
+        installer.release_source = approved_dir
+        service.release_source = approved_dir
+        after = api.get(PFX + "/available")
+        inventory_after = api.get(PFX)
+        with api.websocket_connect(PFX + "/ws") as ws:
+            ws.send_json({"type": "request", "operation": "obs_plugin.status",
+                          "request_id": "source-after", "payload": {"plugin_id": PLUGIN}})
+            after_ws = ws.receive_json()
+    assert after.status_code == inventory_after.status_code == 200
+    assert before.json()["plugins"][0]["available_version"] == "1.0.0"
+    assert after.json()["plugins"][0]["available_version"] == "1.1.0"
+    assert set(before.json()["plugins"][0]) == set(after.json()["plugins"][0])
+    assert before_ws["data"]["plugin_id"] == after_ws["data"]["plugin_id"] == PLUGIN
+    assert before_ws["request_id"] == "source-before"
+    assert after_ws["request_id"] == "source-after"
