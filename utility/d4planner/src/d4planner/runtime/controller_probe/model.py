@@ -46,6 +46,10 @@ class BackendResult:
     events: list[ControlEdge] = field(default_factory=list)
     detail: str = ""
 
+    def __post_init__(self) -> None:
+        if self.status == ProbeStatus.UNAVAILABLE:
+            self.runtime = "UNAVAILABLE"
+
     @property
     def usable(self) -> bool:
         return self.status == ProbeStatus.EVENTS_OBSERVED and bool(self.events)
