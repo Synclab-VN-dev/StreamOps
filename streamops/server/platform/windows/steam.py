@@ -362,7 +362,9 @@ class WindowsSteamBackend:
             time.sleep(self.poll_interval)
 
     def _spawn(self, executable: Path, argument: str, error_type: type[Exception]):
-        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
+            subprocess, "NORMAL_PRIORITY_CLASS", 0x00000020
+        )
         try:
             return subprocess.Popen(
                 [str(executable), argument],

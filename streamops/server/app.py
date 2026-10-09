@@ -13,6 +13,8 @@ from fastapi.staticfiles import StaticFiles
 from .api.health import router as health_router
 from .api.live import router as live_router
 from .api.live_ws import router as live_ws_router
+from .api.multistream import router as multistream_router
+from .api.multistream_ws import router as multistream_ws_router
 from .api.obs import router as obs_router
 from .api.obs_process import router as obs_process_router
 from .api.obs_plugins import router as obs_plugins_router
@@ -61,6 +63,8 @@ from .platform.windows import WindowsObsMultiRtmpHost, WindowsScreenCaptureBacke
 from .services import ObsPluginService, ObsSceneService, ScreenCaptureService, SteamService
 from .services.live import LiveService
 from .services.live_status import LiveStatusHub
+from .services.multistream import MultistreamService
+from .multistream import MultiRtmpVendorAdapter, MultistreamRepository, MultistreamSecretStore
 from .services.obs_status import ObsStatusHub
 from .services.runtime import RuntimeLease
 from .streaming import DestinationStore, SecretStore
@@ -80,6 +84,7 @@ def create_app(
     obs_status_hub: ObsStatusHub | None = None,
     live_service: LiveService | None = None,
     live_status_hub: LiveStatusHub | None = None,
+    multistream_service: MultistreamService | None = None,
     manage_runtime: bool = True,
 ) -> FastAPI:
     service = capture_service or ScreenCaptureService(
@@ -99,6 +104,11 @@ def create_app(
         SecretStore(config.data_dir / "stream-secrets"),
     )
     live_hub = live_status_hub or LiveStatusHub(live)
+    multistream = multistream_service or MultistreamService(
+        MultistreamRepository(config.data_dir / "multistream-destinations"),
+        MultiRtmpVendorAdapter(),
+        MultistreamSecretStore(config.data_dir / "multistream-secrets"),
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -107,8 +117,10 @@ def create_app(
             service.start()
             await status_hub.start()
             await live_hub.start()
+            await multistream.start()
             yield
         finally:
+            await multistream.close()
             await live_hub.close()
             await status_hub.close()
             service.close()
@@ -126,9 +138,12 @@ def create_app(
     app.state.obs_status_hub = status_hub
     app.state.live_service = live
     app.state.live_status_hub = live_hub
+    app.state.multistream_service = multistream
     app.include_router(health_router)
     app.include_router(live_router)
     app.include_router(live_ws_router)
+    app.include_router(multistream_router)
+    app.include_router(multistream_ws_router)
     app.include_router(obs_router)
     app.include_router(obs_process_router)
     app.include_router(obs_plugins_router)

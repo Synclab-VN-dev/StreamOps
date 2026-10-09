@@ -1,0 +1,31 @@
+:root { font-family: Inter, "Segoe UI", system-ui, sans-serif; color: #e8eef7; font-synthesis: none; }
+html, body, #root { margin: 0; width: 100%; height: 100%; background: transparent !important; overflow: hidden; }
+* { box-sizing: border-box; }
+.surface { width: 100%; height: 100%; padding: 8px; background: transparent; }
+.hud { width: 100%; background: rgba(13, 20, 33, 0.95); border: 1px solid #344b60; border-radius: 13px; box-shadow: 0 14px 28px rgba(0,0,0,.24); overflow: hidden; }
+.hud-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #263646; padding: 13px 14px; cursor: move; user-select: none; }
+.identity { display: flex; gap: 10px; align-items: center; pointer-events: none; }
+.identity strong { display: block; font-size: 12px; letter-spacing: 1.2px; }
+.identity small { display: block; color: #8295a9; font-size: 9px; letter-spacing: 1px; margin-top: 4px; }
+.bolt { color: #5bf0ce; font-size: 24px; }
+.live { border: 1px solid #344f4c; border-radius: 50px; font-size: 9px; font-weight: 700; letter-spacing: 1px; padding: 5px 7px; color: #77d5bc; }
+.dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: #56d9ac; margin-right: 3px; }
+.body { padding: 10px 14px 11px; }
+.score-row { display: flex; justify-content: space-between; align-items: baseline; }
+.big { font-size: 37px; font-weight: 750; letter-spacing: -1px; }
+.total { color: #8394a6; font-size: 13px; }
+.issues { color: #f3bd78; font-size: 11px; }
+.score-rail, .mini { border-radius: 6px; background: #243447; overflow: hidden; }
+.score-rail { height: 5px; margin: 4px 0 12px; }
+.score-rail span { display: block; width: 78%; height: 100%; background: #4bd0ac; }
+.metrics { display: grid; gap: 10px; }
+.metric { display: grid; align-items: center; grid-template-columns: 85px 1fr 43px; gap: 9px; font-size: 11px; }
+.metric b { text-align: right; font-size: 10px; color: #b8c8d8; }
+.mini { height: 4px; }
+.mini span { height: 100%; display: block; background: #70acd6; }
+footer { border-top: 1px solid #263646; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.state { font-size: 9px; font-weight: 700; letter-spacing: .5px; color: #8cdcc6; }
+button { background: #243c47; border: 1px solid #355862; color: #d7f3e9; padding: 6px 9px; border-radius: 6px; cursor: pointer; font-size: 10px; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.hint { margin: 5px 2px 0; font-size: 9px; color: #b0c7de; text-shadow: 0 1px 2px #000; }
+.error { background: #5a242d; padding: 6px; font-size: 10px; border-radius: 4px; overflow: hidden; max-height: 35px; }
