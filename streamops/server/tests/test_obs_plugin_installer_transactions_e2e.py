@@ -444,3 +444,138 @@ def test_update_rejects_invalid_release_hash_before_touching_v1_or_config(packag
     assert _file_records(root) == files_before
     assert config.read_bytes() == config_before
     assert base.pointer.read_bytes() == pointer_before
+
+
+def test_e2e_v1_to_v2_update_through_service_then_vendor_verify_preserves_config(package, tmp_path):
+    """True filesystem transaction + process lifecycle + vendor probe, no OBS hardware."""
+    import asyncio
+    import shutil
+
+    from streamops.server.obs.manager import ObsRuntimeStatus
+    from streamops.server.services.obs_plugin import (
+        ObsPluginService, PluginHostResult, PluginHostStatus,
+    )
+
+    build, root, appdata, _, manifest, v1_artifact = package
+    config = appdata / "obs-studio" / "basic" / "profiles" / "User" / "obs-multi-rtmp.json"
+    config.parent.mkdir(parents=True)
+    baseline_config = b'{"targets":[{"stream_key":"keep-original"}]}'
+    config.write_bytes(baseline_config)
+    v1 = build()
+    assert v1.install().result == "installed"
+    baseline_files = _file_records(root)
+
+    artifact_v2 = BytesIO()
+    with zipfile.ZipFile(BytesIO(v1_artifact)) as source, zipfile.ZipFile(artifact_v2, "w") as target:
+        for entry in source.infolist():
+            data = source.read(entry.filename)
+            target.writestr(entry.filename, b"plugin-dll-v2" if entry.filename.endswith(".dll") else data)
+    v2_bytes = artifact_v2.getvalue()
+    expected_v2 = tmp_path / "expected-v2-e2e"
+    shutil.copytree(root, expected_v2)
+    (expected_v2 / "bin" / "64bit" / "obs-multi-rtmp.dll").write_bytes(b"plugin-dll-v2")
+    v2 = build(
+        package_version="0.7.5.0",
+        artifact_sha256=hashlib.sha256(v2_bytes).hexdigest(),
+        tree_sha256=_tree_digest(_file_records(expected_v2)),
+    )
+    v2.downloader = lambda _url: BytesIO(v2_bytes)
+
+    class VendorClient:
+        def connect(self):
+            pass
+
+        def request(self, request_type, payload):
+            assert request_type == "CallVendorRequest"
+            assert payload == {
+                "vendorName": "sorayuki.multi_rtmp",
+                "requestType": "list_targets",
+                "requestData": {},
+            }
+            return {"vendorResponseData": {"targets": [], "count": 0}}
+
+        def close(self):
+            pass
+
+    class Manager:
+        def __init__(self):
+            self.state = "READY"
+            self.calls = []
+            self.client_factory = VendorClient
+
+        def status(self):
+            ready = self.state == "READY"
+            return ObsRuntimeStatus(
+                state=self.state, process={"running": ready},
+                websocket={"connected": ready, "obs_version": "32.2.1"},
+                output={"streaming": False, "recording": False},
+                last_operation=None, error=None,
+            )
+
+        def stop(self):
+            self.calls.append("stop")
+            self.state = "STOPPED"
+            return self.status()
+
+        def start(self):
+            self.calls.append("start")
+            self.state = "READY"
+            return self.status()
+
+    manager = Manager()
+
+    class Host:
+        def __init__(self):
+            self.loaded_version = "0.7.4.0"
+            self.calls = []
+
+        def status(self):
+            installed = v2.status()
+            return PluginHostStatus(
+                installation=installed.installation,
+                compatible=installed.compatible,
+                loaded=manager.state == "READY",
+                loaded_version=self.loaded_version if manager.state == "READY" else None,
+                installed_version=installed.installed_version,
+                available_version="0.7.5.0",
+            )
+
+        def update(self):
+            self.calls.append("update")
+            result = v2.update()
+            self.loaded_version = "0.7.5.0"
+            return PluginHostResult(result.result)
+
+        def verify(self):
+            self.calls.append("verify")
+            return self.status()
+
+        def rollback(self):
+            return PluginHostResult(v2.rollback().result)
+
+    host = Host()
+    service = ObsPluginService(manager, host, defer_restart=True)
+    initial = asyncio.run(service.status("obs-multi-rtmp"))
+    assert initial.state == "UPDATE_AVAILABLE"
+    assert initial.installed_version == "0.7.4.0"
+    assert initial.available_version == "0.7.5.0"
+
+    updated = asyncio.run(service.update("obs-multi-rtmp"))
+    assert updated.result == "updated"
+    assert updated.previous_version == "0.7.4.0"
+    assert updated.status.installed_version == "0.7.5.0"
+    assert updated.status.state == "RESTART_REQUIRED"
+    assert manager.calls == ["stop"]
+    assert config.read_bytes() == baseline_config
+    assert _file_records(root) != baseline_files
+
+    manager.start()  # Existing OBS Process API operation.
+    assert asyncio.run(service.status("obs-multi-rtmp")).state == "RESTART_REQUIRED"
+    verified = asyncio.run(service.verify("obs-multi-rtmp"))
+    assert verified.status.state == "VERIFIED"
+    assert verified.status.restart_required is False
+    assert verified.status.last_verification is not None
+    assert manager.calls == ["stop", "start"]
+    assert host.calls == ["update", "verify"]
+    assert _file_records(root) == _file_records(expected_v2)
+    assert config.read_bytes() == baseline_config
