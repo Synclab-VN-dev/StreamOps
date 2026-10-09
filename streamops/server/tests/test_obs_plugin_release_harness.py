@@ -145,3 +145,36 @@ def test_harness_detects_modified_zip_manifest_and_provenance(tmp_path, harness_
     proof.write_text(json.dumps(obj))
     with pytest.raises(ValueError, match="Provenance"):
         HARNESS["verify_package"](out)
+
+
+
+def test_harness_generated_zip_is_accepted_by_windows_plugin_installer(tmp_path, harness_source):
+    """End-to-end package format agreement: CMake tree → manifest/ZIP → real installer."""
+    import shutil
+
+    from streamops.server.platform.windows.obs_plugin.installer import (
+        WindowsObsMultiRtmpInstaller, _file_records,
+    )
+    from streamops.server.services.obs_plugin_release_source import (
+        DirectoryPluginReleaseSource, ManagedPluginReleaseSource,
+    )
+
+    manifest, out = package(tmp_path, harness_source, approved=True)
+    repo_root = tmp_path / "managed" / "obs-multi-rtmp"
+    repo_root.mkdir(parents=True)
+    shutil.copy2(out / "obs-multi-rtmp.release.json", repo_root / "release.json")
+    shutil.copy2(out / manifest["artifact_name"], repo_root / manifest["artifact_name"])
+    provider = ManagedPluginReleaseSource(DirectoryPluginReleaseSource(repo_root.parent))
+    destination = tmp_path / "installed-plugin"
+    installer = WindowsObsMultiRtmpInstaller(
+        tmp_path / "state", plugin_root=destination, appdata=tmp_path / "appdata",
+        obs_executable=tmp_path / "obs64.exe", release_source=provider,
+        process_probe=lambda: [], version_probe=lambda _: "32.2.1",
+    )
+    assert installer.install().result == "installed"
+    assert installer.status().installed_version == "0.7.4.3"
+    actual_records = _file_records(destination)
+    assert len(actual_records) == 3
+    assert (destination / "bin" / "64bit" / "obs-multi-rtmp.dll").read_bytes().startswith(b"MZ CUSTOM")
+    assert installer.rollback().result == "rolled_back"
+    assert not _file_records(destination)
