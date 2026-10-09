@@ -319,6 +319,10 @@ class GitHubReleaseSource:
             candidates.append((tuple(int(part) for part in version.split(".")), version, entry))
         if not candidates:
             raise ObsPluginError("plugin_release_unavailable", "No approved managed plugin release available.", 503)
+        # Duplicate versions (including 1.09.0 vs 1.9.0) would make the
+        # selected artifact depend on GitHub API ordering. Fail closed.
+        if len({rank for rank, _, _ in candidates}) != len(candidates):
+            raise ObsPluginError("plugin_release_invalid", "Ambiguous managed release versions.", 409)
         _, version, entry = max(candidates, key=lambda item: item[0])
         assets = entry.get("assets")
         if not isinstance(assets, list) or not isinstance(entry.get("id"), int):
@@ -349,8 +353,15 @@ class GitHubReleaseSource:
                 re.fullmatch(r"[a-fA-F0-9]{64}", artifact.artifact_sha256) and
                 isinstance(artifact.artifact_name, str) and
                 re.fullmatch(r"[A-Za-z0-9._-]+\.zip", artifact.artifact_name) and
-                isinstance(metadata.get("file_count"), int) and
+                type(metadata.get("file_count")) is int and
+                0 < metadata["file_count"] <= 10000 and
                 isinstance(metadata.get("relative_paths"), list) and
+                len(metadata["relative_paths"]) == metadata["file_count"] and
+                len(set(map(str, metadata["relative_paths"]))) == metadata["file_count"] and
+                all(isinstance(p, str) and bool(p) and
+                    not p.startswith("/") and "\\\\" not in p and
+                    all(part not in {"", ".", ".."} for part in p.split("/"))
+                    for p in metadata["relative_paths"]) and
                 isinstance(metadata.get("tree_sha256"), str) and
                 re.fullmatch(r"[a-fA-F0-9]{64}", metadata["tree_sha256"])):
             raise ObsPluginError("plugin_release_invalid", "Managed release metadata invalid.", 409)
