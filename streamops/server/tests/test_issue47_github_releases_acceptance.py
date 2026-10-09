@@ -265,6 +265,9 @@ def test_u21_empty_is_distinct_from_source_failure(tmp_path, failure, code):
     empty = GitHubFixture()
     service, _, _, _, _ = environment(tmp_path, empty)
     assert asyncio.run(service.available()) == {"plugins": [], "source_state": "EMPTY"}
+    service.release_source = None
+    assert asyncio.run(service.available()) == {"plugins": [], "source_state": "UNCONFIGURED"}
+    service.release_source = managed(empty)
     with pytest.raises(ObsPluginError) as caught:
         managed(empty).latest(PLUGIN)
     assert caught.value.code == "plugin_release_unavailable"
