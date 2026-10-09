@@ -328,9 +328,12 @@ def test_e11_discovery_manifest_asset_from_expected_github_api():
     http = GitHubFixture()
     http.add("1.0.0")
     _, asset_id = http.add("1.2.0")
-    release = managed(http).latest(PLUGIN)
+    # Discovery pins asset ID inside a specific provider instance. Reuse that
+    # instance for download; recreating it must not bypass the approval pin.
+    provider = managed(http)
+    release = provider.latest(PLUGIN)
     assert release.version == "1.2.0"
-    with managed(http).open_artifact(release) as data:
+    with provider.open_artifact(release) as data:
         assert data.read() == http.assets[asset_id]
     urls = [call[0] for call in http.calls]
     assert API + "/releases?per_page=100" in urls
