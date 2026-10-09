@@ -226,7 +226,9 @@ class RawInputBackend:
             0, 0x01, 0, 0x39, ctypes.byref(hat),
             preparsed, raw, len(report)
         )
-        if status >= 0:
+        # Most HID hats use 0..7 for directions and 8/15 for neutral.
+        # Do not fabricate an initial DOWN transition for a neutral hat.
+        if status >= 0 and 0 <= hat.value <= 7:
             pressed.add(f"hat:0x01:0x39:{hat.value}")
         return pressed
 
@@ -304,7 +306,11 @@ class RawInputBackend:
 
         def on_message(hwnd, message, wparam, lparam):
             if message == WM_INPUT:
-                self._on_input(lparam)
+                try:
+                    self._on_input(lparam)
+                except Exception:
+                    # Never let an exception unwind through a native WNDPROC.
+                    self._decode_failures += 1
             return self.user32.DefWindowProcW(hwnd, message, wparam, lparam)
 
         callback = wndproc_type(on_message)
@@ -339,7 +345,9 @@ class RawInputBackend:
             msg = MSG()
             while time.monotonic() < deadline:
                 handled = False
-                while self.user32.PeekMessageW(ctypes.byref(msg), hwnd, 0, 0, PM_REMOVE):
+                while time.monotonic() < deadline and self.user32.PeekMessageW(
+                    ctypes.byref(msg), hwnd, 0, 0, PM_REMOVE
+                ):
                     self.user32.TranslateMessage(ctypes.byref(msg))
                     self.user32.DispatchMessageW(ctypes.byref(msg))
                     handled = True
