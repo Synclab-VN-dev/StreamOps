@@ -5,12 +5,15 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import com.synclab.d4planner.bridge.capture.CaptureState
+import com.synclab.d4planner.bridge.ack.AckGate
+import com.synclab.d4planner.bridge.ack.AckSettings
 
 /**
  * Feasibility only. Returning false on EVERY path keeps events available to
  * Steam Link; this does not guarantee that Android will dispatch shared input.
  */
 class ControllerAccessibilityService : AccessibilityService() {
+    private val ackGate = AckGate()
     override fun onServiceConnected() {
         super.onServiceConnected()
         val config = serviceInfo
@@ -28,7 +31,13 @@ class ControllerAccessibilityService : AccessibilityService() {
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
         try {
-            CaptureState.observe(event)
+            val captured = CaptureState.observe(event)
+            if (captured != null) {
+                val config = AckSettings.load(this)
+                if (config.enabled) {
+                    CaptureState.recordAck(ackGate.waitForCommit(captured, config))
+                }
+            }
         } catch (failure: Exception) {
             CaptureState.setError("capture: " + failure.javaClass.simpleName + ": " + failure.message)
         }
@@ -40,6 +49,7 @@ class ControllerAccessibilityService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        ackGate.close()
         CaptureState.setActive(false)
         super.onDestroy()
     }

@@ -33,6 +33,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: ACK receiver unit and HTTP/SQLite integration tests
+        run: python3 -m unittest discover -s ack_poc -p 'test_*.py' -v
       - name: Unit tests and APK
         run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
       - name: Publish debug APK

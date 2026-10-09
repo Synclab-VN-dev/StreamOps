@@ -17,6 +17,7 @@ class CaptureHistoryTest {
 
         history.clear()
         val cleared = history.snapshot()
+        assertNotEquals(before.sessionId, cleared.sessionId)
         assertEquals(0L, cleared.highWatermark)
         assertEquals(0L, cleared.droppedCount)
         assertTrue(cleared.entries.isEmpty())
@@ -40,5 +41,16 @@ class CaptureHistoryTest {
         assertEquals(snapshot.entries.distinct(), snapshot.entries)
         assertEquals((1L..snapshot.highWatermark).toList(), snapshot.entries)
         assertEquals(0L, snapshot.droppedCount)
+    }
+
+    @Test fun recordReturningUsesSameSessionAndSequenceAsSnapshot() {
+        val history = CaptureHistory<Pair<String, Long>>(8)
+        val first = history.recordReturning { session, seq -> session to seq }
+        assertEquals(history.snapshot().sessionId, first.first)
+        assertEquals(1L, first.second)
+        history.clear()
+        val second = history.recordReturning { session, seq -> session to seq }
+        assertNotEquals(first.first, second.first)
+        assertEquals(1L, second.second)
     }
 }

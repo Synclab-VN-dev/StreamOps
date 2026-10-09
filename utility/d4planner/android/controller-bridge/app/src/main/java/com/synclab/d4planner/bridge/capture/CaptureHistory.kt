@@ -1,10 +1,13 @@
 package com.synclab.d4planner.bridge.capture
 
+import java.util.UUID
+
 /** One coherent snapshot even while a background observer records events. */
 data class CaptureSnapshot<T>(
     val highWatermark: Long,
     val droppedCount: Long,
-    val entries: List<T>
+    val entries: List<T>,
+    val sessionId: String
 )
 
 /**
@@ -14,6 +17,7 @@ data class CaptureSnapshot<T>(
 class CaptureHistory<T>(capacity: Int) {
     private val ring = EvidenceRing<T>(capacity)
     private var nextSequence = 0L
+    private var sessionId = UUID.randomUUID().toString()
 
     @Synchronized
     fun record(create: (Long) -> T) {
@@ -24,12 +28,22 @@ class CaptureHistory<T>(capacity: Int) {
     }
 
     @Synchronized
+    fun recordReturning(create: (String, Long) -> T): T {
+        val seq = nextSequence + 1
+        val event = create(sessionId, seq)
+        ring.offer(event)
+        nextSequence = seq
+        return event
+    }
+
+    @Synchronized
     fun clear() {
         ring.clear()
         nextSequence = 0L
+        sessionId = UUID.randomUUID().toString()
     }
 
     @Synchronized
     fun snapshot(): CaptureSnapshot<T> =
-        CaptureSnapshot(nextSequence, ring.droppedCount(), ring.snapshot())
+        CaptureSnapshot(nextSequence, ring.droppedCount(), ring.snapshot(), sessionId)
 }

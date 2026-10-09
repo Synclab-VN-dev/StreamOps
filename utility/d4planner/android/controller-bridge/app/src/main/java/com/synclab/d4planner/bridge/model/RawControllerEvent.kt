@@ -16,7 +16,8 @@ data class RawControllerEvent(
     val action: Int,
     val repeatCount: Int,
     val edge: String,
-    val foregroundPackageAtCapture: String = "(unknown)"
+    val foregroundPackageAtCapture: String = "(unknown)",
+    val sessionId: String = "local-poc"
 ) {
     fun asDiagnosticLine(): String = buildString {
         append("#").append(clientSeq)
@@ -30,5 +31,6 @@ data class RawControllerEvent(
         append(" src=0x").append(source.toString(16))
         append(" ").append(deviceName)
         append(" foreground=").append(foregroundPackageAtCapture)
+        append(" session=").append(sessionId.take(8))
     }
 }
