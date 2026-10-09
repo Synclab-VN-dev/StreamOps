@@ -35,6 +35,13 @@ async def plugin_inventory(request: Request, response: Response) -> dict[str, ob
     return {"plugins": [item.api_payload() for item in await _service(request).inventory()]}
 
 
+@router.get("/available")
+async def available_plugins(request: Request, response: Response) -> dict[str, object]:
+    await _reject_input(request)
+    response.headers["Cache-Control"] = "no-store"
+    return await _service(request).available()
+
+
 @router.get("/{plugin_id}")
 async def plugin_status(plugin_id: str, request: Request, response: Response) -> dict[str, object]:
     await _reject_input(request)
