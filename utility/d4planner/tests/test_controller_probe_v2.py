@@ -233,3 +233,34 @@ def test_backend_status_and_device_serialization():
     assert result.as_dict()["controller"] == "NO"
     assert result.as_dict()["status"] == "NO_DEVICE"
     assert BackendResult("GameInput", ProbeStatus.UNAVAILABLE, runtime="UNAVAILABLE").usable is False
+
+
+def test_win64_rawinput_struct_layout_is_explicit():
+    import ctypes
+    from d4planner.runtime.controller_probe.rawinput import (
+        HIDP_CAPS, RAWINPUTDEVICE, RAWINPUTHEADER, RID_DEVICE_INFO,
+    )
+    if os.name != "nt":
+        pytest.skip("native Windows ABI layout only")
+    assert ctypes.sizeof(ctypes.c_void_p) == 8, "Win32 64-bit expected on host A"
+    assert ctypes.sizeof(RAWINPUTHEADER) == 24
+    assert ctypes.sizeof(RAWINPUTDEVICE) == 16
+    assert ctypes.sizeof(RID_DEVICE_INFO) == 24
+    assert ctypes.sizeof(HIDP_CAPS) == 64
+
+
+def test_missing_native_backend_is_reported_not_fatal(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    rt = FakeRuntime(paths, control=1, active=1)
+
+    def missing_dll():
+        raise OSError("hid.dll could not be loaded")
+
+    monkeypatch.setattr(worker, "RawInputBackend", missing_dll)
+    request = tmp_path / "request.json"
+    output = tmp_path / "result.json"
+    atomic_write_json(request, {"requestId": "missing-hid", "seconds": 0.01})
+    assert worker.execute_request(rt, request, output) == 0
+    results = json.loads(output.read_text(encoding="utf-8"))["backends"]
+    assert results[0]["status"] == "ERROR"
+    assert "hid.dll could not be loaded" in results[0]["detail"]
