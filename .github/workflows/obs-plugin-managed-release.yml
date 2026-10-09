@@ -1,0 +1,138 @@
+name: OBS Plugin - Build managed release draft
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_version:
+        description: "Must match util/obs-multi-rtmp-websocket/buildspec.json exactly (e.g. 0.7.4.3)"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: obs-plugin-managed-release
+  cancel-in-progress: false
+
+jobs:
+  windows-build:
+    name: Build source + package Windows x64 (no release credential)
+    if: github.ref == 'refs/heads/master' && github.repository == 'Synclab-VN-dev/StreamOps'
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact source commit
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate source identity
+        shell: pwsh
+        env:
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+        run: |
+          if ($env:EXPECTED_VERSION -notmatch '^\d+\.\d+\.\d+\.\d+$') {
+            throw 'Expected version must be four numeric components.'
+          }
+          $spec = Get-Content util/obs-multi-rtmp-websocket/buildspec.json -Raw | ConvertFrom-Json
+          if ($spec.version -ne $env:EXPECTED_VERSION) {
+            throw "buildspec.json version differs from expected release version."
+          }
+          if ($spec.dependencies.'obs-studio'.version -ne '32.2.1') {
+            throw 'Custom source must target OBS 32.2.1.'
+          }
+
+      - name: Build custom OBS Multi-RTMP from checked-out source
+        shell: pwsh
+        run: |
+          pwsh scripts/e2e/issue35_build_candidate.ps1 -Configuration RelWithDebInfo
+          if ($LASTEXITCODE -ne 0) { throw "Source build failed." }
+
+      - name: Create manifest and deterministic ZIP
+        shell: pwsh
+        env:
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+        run: |
+          $sourceCommit = (git rev-parse HEAD).Trim()
+          python scripts/release/obs_plugin_package.py pack --source-root util/obs-multi-rtmp-websocket --configuration RelWithDebInfo --source-commit $sourceCommit --output-dir .streamops/obs-release-ready --release-approved
+          if ($LASTEXITCODE -ne 0) { throw "Packaging custom binary failed." }
+          python scripts/release/obs_plugin_package.py verify --output-dir .streamops/obs-release-ready --require-approved --expected-version $env:EXPECTED_VERSION --expected-commit $sourceCommit
+          if ($LASTEXITCODE -ne 0) { throw "Managed package validation failed." }
+
+      - name: Upload candidate for draft stage
+        uses: actions/upload-artifact@v4
+        with:
+          name: obs-multi-rtmp-reviewed-candidate
+          path: .streamops/obs-release-ready/*
+          if-no-files-found: error
+          retention-days: 30
+
+  stage-draft:
+    name: Stage GitHub Release DRAFT in Synclab repo
+    needs: windows-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Admin must configure required reviewers and branch restrictions for this
+    # environment. Cross-repo token is only available to this job.
+    environment: obs-plugin-release
+    env:
+      RELEASE_REPO: Synclab-VN-dev/StreamOps-OBS-Plugins
+      GH_TOKEN: ${{ secrets.SYNCLAB_OBS_RELEASE_TOKEN }}
+      EXPECTED_VERSION: ${{ inputs.expected_version }}
+      SOURCE_COMMIT: ${{ github.sha }}
+    steps:
+      - name: Checkout source for verifier (no credentials)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download exact build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: obs-multi-rtmp-reviewed-candidate
+          path: .streamops/obs-release-ready
+
+      - name: Verify manifest, source commit and output bytes
+        run: |
+          set -euo pipefail
+          python scripts/release/obs_plugin_package.py verify \
+            --output-dir .streamops/obs-release-ready \
+            --require-approved \
+            --expected-version "$EXPECTED_VERSION" \
+            --expected-commit "$SOURCE_COMMIT"
+
+      - name: Create draft without overwriting any existing release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" || { echo "SYNCLAB_OBS_RELEASE_TOKEN not configured" >&2; exit 1; }
+          gh repo view "$RELEASE_REPO" --json name --jq .name >/dev/null
+          tag="obs-multi-rtmp/v$EXPECTED_VERSION"
+          if gh release view "$tag" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
+            echo "Release already exists: $tag. Immutable releases are never overwritten." >&2
+            exit 1
+          fi
+          assets=".streamops/obs-release-ready"
+          cat > "$RUNNER_TEMP/obs-managed-notes.md" <<EOF
+          Custom OBS Multi-RTMP build from Synclab-VN-dev/StreamOps.
+
+          Plugin source: https://github.com/Synclab-VN-dev/StreamOps/tree/$SOURCE_COMMIT/util/obs-multi-rtmp-websocket
+          Source commit: $SOURCE_COMMIT
+          Package version: $EXPECTED_VERSION
+          OBS compatibility target: 32.2.1 (Windows x64).
+          License: GPL-2.0 (see LICENSE-GPL-2.0.txt asset).
+          See obs-multi-rtmp.provenance.json and obs-multi-rtmp.release.json for checksums.
+          Publication of a draft is NOT an operator/Dev-F approval to install.
+          EOF
+          gh release create "$tag" \
+            "$assets/obs-multi-rtmp-$EXPECTED_VERSION-windows-x64.zip" \
+            "$assets/obs-multi-rtmp.release.json" \
+            "$assets/obs-multi-rtmp.provenance.json" \
+            "$assets/LICENSE-GPL-2.0.txt" \
+            --repo "$RELEASE_REPO" --target main \
+            --draft --title "Synclab custom obs-multi-rtmp $EXPECTED_VERSION" \
+            --notes-file "$RUNNER_TEMP/obs-managed-notes.md"
+          test "$(gh release view "$tag" --repo "$RELEASE_REPO" --json isDraft --jq .isDraft)" = "true"
+          echo "DRAFT_CREATED=$tag" >> "$GITHUB_STEP_SUMMARY"
+          echo "Draft only; use the protected promote workflow after review." >> "$GITHUB_STEP_SUMMARY"
