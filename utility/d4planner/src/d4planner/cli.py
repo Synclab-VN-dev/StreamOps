@@ -700,7 +700,7 @@ def command_character_equipment_replay(path: Path, *, trace: bool) -> int:
     return 1 if failures else 0
 
 
-def command_controller_probe_v2(paths: RuntimePaths, *, seconds: float) -> int:
+def command_controller_probe_v2(paths: RuntimePaths, *, seconds: float, mode: str = "auto") -> int:
     """Read-only Windows controller visibility probe; never emits domain events."""
     if not 0 < seconds <= 300:
         print("controller-probe-v2: --seconds must be between 0 and 300", file=sys.stderr)
@@ -712,7 +712,7 @@ def command_controller_probe_v2(paths: RuntimePaths, *, seconds: float) -> int:
     from .runtime.controller_probe.runner import render
 
     try:
-        result = run_or_relay(WindowsRuntime(paths), seconds)
+        result = run_or_relay(WindowsRuntime(paths), seconds, mode)
     except (OSError, RuntimeBlocked, RuntimeError, ValueError) as exc:
         print(f"controller-probe-v2 failed: {exc}", file=sys.stderr)
         return 2
@@ -736,7 +736,7 @@ def command_controller_probe_v2(paths: RuntimePaths, *, seconds: float) -> int:
             detail=item.get("detail", ""),
         ))
     print(render(backends))
-    print("Remaining Windows backends: deferred until RawInput Real-A gate.")
+    print(f"Mode: {result.get('mode', mode)}")
     return 0
 
 
@@ -779,8 +779,9 @@ def build_parser() -> argparse.ArgumentParser:
     replay.add_argument("path", type=Path)
     replay.add_argument("--trace", action="store_true")
 
-    controller_v2 = sub.add_parser("controller-probe-v2", help="Read-only Steam Link HID visibility probe")
+    controller_v2 = sub.add_parser("controller-probe-v2", help="Read-only Steam Link controller visibility probe")
     controller_v2.add_argument("--seconds", type=float, default=30.0)
+    controller_v2.add_argument("--mode", choices=("auto", "all", "hid", "wgi", "gameinput", "directinput"), default="auto")
 
     path = sub.add_parser("path")
     path.add_argument("action", choices=("status", "restore"))
@@ -830,7 +831,7 @@ def main(argv: list[str] | None = None) -> int:
             return command_character_equipment_replay(args.path, trace=args.trace)
         return command_character_equipment(paths, raw_json=args.json)
     if args.command == "controller-probe-v2":
-        return command_controller_probe_v2(paths, seconds=args.seconds)
+        return command_controller_probe_v2(paths, seconds=args.seconds, mode=args.mode)
     if args.command == "path":
         return command_path(paths, args.action)
     return 2
