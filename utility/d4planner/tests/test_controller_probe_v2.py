@@ -171,7 +171,7 @@ class FakeRuntime:
 
 def test_local_interactive_probe_does_not_schedule_task(monkeypatch, tmp_path):
     rt = FakeRuntime(RuntimePaths(tmp_path / "home"), control=1, active=1)
-    monkeypatch.setattr(relay, "probe_payload", lambda runtime, seconds: {
+    monkeypatch.setattr(relay, "probe_payload", lambda runtime, seconds, mode="auto": {
         "probeProcessSession": 1, "activeConsoleSession": 1, "backends": [],
     })
     data = relay.run_or_relay(rt, 0.01)
@@ -259,7 +259,7 @@ def test_missing_native_backend_is_reported_not_fatal(monkeypatch, tmp_path):
     monkeypatch.setattr(worker, "RawInputBackend", missing_dll)
     request = tmp_path / "request.json"
     output = tmp_path / "result.json"
-    atomic_write_json(request, {"requestId": "missing-hid", "seconds": 0.01})
+    atomic_write_json(request, {"requestId": "missing-hid", "seconds": 0.01, "mode": "hid"})
     assert worker.execute_request(rt, request, output) == 0
     results = json.loads(output.read_text(encoding="utf-8"))["backends"]
     assert results[0]["status"] == "UNAVAILABLE"
@@ -275,7 +275,7 @@ def test_unavailable_status_always_reports_runtime_unavailable():
 def test_cli_fake_end_to_end_renders_session_and_raw_identity(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli, "os", SimpleNamespace(name="nt"))
     monkeypatch.setattr(cli, "WindowsRuntime", lambda paths: SimpleNamespace(paths=paths))
-    monkeypatch.setattr(relay, "run_or_relay", lambda runtime, seconds: {
+    monkeypatch.setattr(relay, "run_or_relay", lambda runtime, seconds, mode="auto": {
         "controlSession": 0,
         "activeConsoleSession": 1,
         "probeProcessSession": 1,
@@ -334,3 +334,125 @@ def test_worker_rejects_invalid_duration(tmp_path):
 def test_cli_rejects_too_long_probe(tmp_path, capsys):
     assert cli.command_controller_probe_v2(RuntimePaths(tmp_path), seconds=301) == 2
     assert "between 0 and 300" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("mode", (
+    "auto", "all", "hid", "wgi", "gameinput", "directinput",
+))
+def test_mode_parser_accepts_modes(mode):
+    parsed = cli.build_parser().parse_args([
+        "controller-probe-v2", "--seconds", "0.1", "--mode", mode,
+    ])
+    assert parsed.mode == mode
+
+
+def test_mode_parser_rejects_unknown_mode():
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["controller-probe-v2", "--mode", "xinput"])
+
+
+def test_mode_is_forwarded_to_interactive_task(tmp_path):
+    rt = FakeRuntime(RuntimePaths(tmp_path / "home"))
+    rt.worker_payload = {"probeProcessSession": 1, "activeConsoleSession": 1,
+                         "mode": "wgi", "backends": []}
+    result = relay.run_or_relay(rt, 0.01, "wgi")
+    assert result["mode"] == "wgi"
+    req = json.loads((rt.prepared[0][1].parent / "request.json").read_text())
+    assert req["mode"] == "wgi"
+
+
+def test_auto_stops_early_and_all_runs_every_backend(monkeypatch, tmp_path):
+    rt = FakeRuntime(RuntimePaths(tmp_path / "home"), control=1, active=1)
+    b1 = FakeBackend("RawInput", ProbeStatus.EVENTS_OBSERVED,
+                     devices=[{"deviceId": "d"}], events=[edge()])
+    b2 = FakeBackend("Windows.Gaming.Input", ProbeStatus.NO_DEVICE)
+    b3 = FakeBackend("GameInput", ProbeStatus.UNAVAILABLE)
+    b4 = FakeBackend("DirectInput", ProbeStatus.NO_DEVICE)
+    monkeypatch.setattr(worker, "MODE_CLASSES", (
+        ("hid", "RawInput", lambda: b1),
+        ("wgi", "Windows.Gaming.Input", lambda: b2),
+        ("gameinput", "GameInput", lambda: b3),
+        ("directinput", "DirectInput", lambda: b4),
+    ))
+    auto = worker.probe_payload(rt, 0.01, "auto")
+    assert [x["backend"] for x in auto["backends"]] == ["RawInput"]
+    all_results = worker.probe_payload(rt, 0.01, "all")
+    assert [x["backend"] for x in all_results["backends"]] == [
+        "RawInput", "Windows.Gaming.Input", "GameInput", "DirectInput",
+    ]
+    assert b1.calls == [0.01, 0.01]
+    assert b2.calls == [0.01]
+
+
+@pytest.mark.parametrize("mode,expected", [
+    ("hid", "RawInput"), ("wgi", "Windows.Gaming.Input"),
+    ("gameinput", "GameInput"), ("directinput", "DirectInput"),
+])
+def test_single_mode_only_runs_selected_backend(monkeypatch, tmp_path, mode, expected):
+    rt = FakeRuntime(RuntimePaths(tmp_path / "home"), control=1, active=1)
+    fake = FakeBackend(expected, ProbeStatus.NO_DEVICE)
+    monkeypatch.setattr(worker, "MODE_CLASSES", (
+        (mode, expected, lambda: fake),
+    ))
+    got = worker.probe_payload(rt, 0.01, mode)
+    assert len(got["backends"]) == 1
+    assert got["backends"][0]["backend"] == expected
+
+
+def test_wgi_gamepad_bitmask_is_exact():
+    from d4planner.runtime.controller_probe.wgi import pressed_buttons
+    assert pressed_buttons(0x04 | 0x400) == {
+        "button:0x0004:A", "button:0x0400:LB",
+    }
+
+
+def test_gameinput_gamepad_bits_keep_raw_identity():
+    from d4planner.runtime.controller_probe.gameinput import pressed_buttons
+    assert pressed_buttons(0x81) == {
+        "gameinput-bit:0x00000001", "gameinput-bit:0x00000080",
+    }
+
+
+def test_directinput_binary_button_and_hat_decoding():
+    from d4planner.runtime.controller_probe.directinput import (
+        _format_objects, decode_state,
+    )
+    result = _format_objects([
+        ("button", 0x0c), ("button", 0x10c),
+        ("pov", 0x110), ("button", 0x20c),
+    ])
+    assert result is not None
+    fmt, objects, descriptors, size = result
+    state = bytearray(size)
+    state[0] = 0x80
+    state[1] = 0
+    state[2] = 0x80
+    pov_offset = descriptors[3][1]
+    state[pov_offset:pov_offset + 4] = (9000).to_bytes(4, "little")
+    assert decode_state(state, descriptors) == {
+        "button:0", "button:2", "pov:3:angle:9000",
+    }
+
+
+def test_native_com_guids_are_known_and_16_bytes():
+    import ctypes
+    from d4planner.runtime.controller_probe._native import GUID
+    from d4planner.runtime.controller_probe.wgi import IGAMEPAD_STATICS
+    from d4planner.runtime.controller_probe.gameinput import IID_IGAMEINPUT_V2
+    assert ctypes.sizeof(GUID) == 16
+    assert IGAMEPAD_STATICS.Data1 == 0x8bbce529
+    assert IID_IGAMEINPUT_V2.Data1 == 0xbbaa66d2
+
+
+def test_all_mode_preserves_unavailable_and_error_diagnostics():
+    broken = FakeBackend("RawInput", ProbeStatus.ERROR, error=RuntimeError("read failure"))
+    wgi = FakeBackend("Windows.Gaming.Input", ProbeStatus.NO_DEVICE)
+    gameinput = FakeBackend("GameInput", ProbeStatus.UNAVAILABLE)
+    dinput = FakeBackend("DirectInput", ProbeStatus.NO_DEVICE)
+    statuses = [r.status for r in run_backends(
+        .01, [broken, wgi, gameinput, dinput], stop_on_usable=False,
+    )]
+    assert statuses == [
+        ProbeStatus.ERROR, ProbeStatus.NO_DEVICE,
+        ProbeStatus.UNAVAILABLE, ProbeStatus.NO_DEVICE,
+    ]
