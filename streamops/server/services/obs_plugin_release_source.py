@@ -359,7 +359,7 @@ class GitHubReleaseSource:
                 len(metadata["relative_paths"]) == metadata["file_count"] and
                 len(set(map(str, metadata["relative_paths"]))) == metadata["file_count"] and
                 all(isinstance(p, str) and bool(p) and
-                    not p.startswith("/") and "\\\\" not in p and
+                    not p.startswith("/") and chr(92) not in p and
                     all(part not in {"", ".", ".."} for part in p.split("/"))
                     for p in metadata["relative_paths"]) and
                 isinstance(metadata.get("tree_sha256"), str) and
