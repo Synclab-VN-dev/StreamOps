@@ -639,7 +639,13 @@ def test_u21_http_failure_is_exactly_typed(http_status):
 def test_u22_max_download_size_rejects_before_install(tmp_path, monkeypatch):
     import streamops.server.services.obs_plugin_release_source as module
 
-    fixture = GitHubFixture()
+    class OversizedResponseFixture(GitHubFixture):
+        def __call__(self, url, *, accept, token=None, max_bytes=None):
+            # Intentionally ignore the requested limit so the actual HTTP
+            # response-size enforcement (rather than the fixture) is tested.
+            return super().__call__(url, accept=accept, token=token, max_bytes=None)
+
+    fixture = OversizedResponseFixture()
     fixture.add()
     service, _, installer, root, state = environment(tmp_path, fixture)
     release = installer.release_source.latest(PLUGIN)
