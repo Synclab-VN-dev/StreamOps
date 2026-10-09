@@ -537,12 +537,45 @@ def test_gameinput_v2_preferred_when_supported(monkeypatch):
     assert calls == [gameinput.IID_IGAMEINPUT_V2.Data1]
 
 
-def test_gameinput_unavailable_only_when_v1_and_v2_missing(monkeypatch):
+def test_gameinput_unavailable_only_when_v0_v1_and_v2_missing(monkeypatch):
     import ctypes
     from d4planner.runtime.controller_probe import gameinput
     from d4planner.runtime.controller_probe.runner import BackendUnavailable
     monkeypatch.setattr(gameinput, "_query_interface", lambda ptr, iid: (
         (_ for _ in ()).throw(OSError("E_NOINTERFACE"))
     ))
-    with pytest.raises(BackendUnavailable, match="v1/v2"):
+    with pytest.raises(BackendUnavailable, match="v0/v1/v2"):
         gameinput.negotiate_interface(ctypes.c_void_p(123))
+
+
+def test_gameinput_v0_fallback_for_old_windows_runtime(monkeypatch):
+    import ctypes
+    from d4planner.runtime.controller_probe import gameinput
+    calls = []
+
+    def fake_query(ptr, iid):
+        calls.append(iid.Data1)
+        if iid.Data1 != gameinput.IID_IGAMEINPUT_V0.Data1:
+            raise OSError("E_NOINTERFACE")
+        return ctypes.c_void_p(777)
+
+    monkeypatch.setattr(gameinput, "_query_interface", fake_query)
+    ptr, version = gameinput.negotiate_interface(ctypes.c_void_p(123))
+    assert version == 0
+    assert ptr.value == 777
+    assert calls == [
+        gameinput.IID_IGAMEINPUT_V2.Data1,
+        gameinput.IID_IGAMEINPUT_V1.Data1,
+        gameinput.IID_IGAMEINPUT_V0.Data1,
+    ]
+    # Legacy v0 reading vtable includes sequence number, raw report,
+    # touch and motion methods absent from v1 and v2.
+    assert gameinput.IID_IGAMEINPUT_READING_V0.Data1 == 0x2156947a
+
+
+def test_gameinput_v0_guid_matches_public_header():
+    from d4planner.runtime.controller_probe.gameinput import (
+        IID_IGAMEINPUT_V0, IID_IGAMEINPUT_READING_V0,
+    )
+    assert IID_IGAMEINPUT_V0.Data1 == 0x11be2a7e
+    assert IID_IGAMEINPUT_READING_V0.Data1 == 0x2156947a
