@@ -18,7 +18,7 @@ class ProbeBackend(Protocol):
     def probe(self, seconds: float) -> BackendResult: ...
 
 
-def run_backends(seconds: float, backends: Sequence[ProbeBackend]) -> list[BackendResult]:
+def run_backends(\n    seconds: float, backends: Sequence[ProbeBackend], *,\n    stop_on_usable: bool = True,\n) -> list[BackendResult]:
     if seconds <= 0:
         raise ValueError("--seconds must be greater than zero")
     results: list[BackendResult] = []
@@ -41,7 +41,7 @@ def run_backends(seconds: float, backends: Sequence[ProbeBackend]) -> list[Backe
                 detail=f"{type(exc).__name__}: {exc}",
             )
         results.append(result)
-        if result.usable:
+        if result.usable and stop_on_usable:
             break
     return results
 
