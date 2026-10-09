@@ -483,13 +483,16 @@ def test_e2e_http_update_timeout_is_bounded_and_typed(server_config, capture_ser
             return PluginHostStatus("exact", True, False, None)
         def update(self):
             entered.set()
-            assert release.wait(timeout=3)
+            # Keep the host call blocked past the service deadline on busy runners.
+            assert release.wait(timeout=30)
             return PluginHostResult("updated")
         def verify(self):
             return self.status()
 
     manager = Manager()
-    service = ObsPluginService(manager, Host(), operation_timeout=0.01)
+    # A 10 ms timeout can expire before Windows dispatches the test worker.
+    # Use a realistic deadline while synchronizing on Host.update entry.
+    service = ObsPluginService(manager, Host(), operation_timeout=2.0)
     with TestClient(create_app(
         server_config, capture_service=capture_service,
         obs_manager=manager, obs_plugin_service=service,
@@ -499,11 +502,16 @@ def test_e2e_http_update_timeout_is_bounded_and_typed(server_config, capture_ser
             future = executor.submit(api.post, "/api/v1/obs/plugins/obs-multi-rtmp/update")
             try:
                 # Synchronize on the actual worker, not Windows runner timing.
-                assert entered.wait(timeout=3)
-                response = future.result(timeout=3)
+                assert entered.wait(timeout=15), "update worker did not start in time"
+                response = future.result(timeout=15)
                 assert response.status_code == 504
                 assert response.json()["error"]["code"] == "plugin_operation_timeout"
                 # The response must return without waiting for blocked mutation.
                 assert not release.is_set()
+                # A timed-out operation must retain the mutation lock until
+                # the host worker returns, preventing overlapping updates.
+                conflict = api.post("/api/v1/obs/plugins/obs-multi-rtmp/update")
+                assert conflict.status_code == 409
+                assert conflict.json()["error"]["code"] == "plugin_state_conflict"
             finally:
                 release.set()
