@@ -117,6 +117,15 @@ Check the receiver tests without an Android device:
 python -m unittest discover -s .\utility\d4planner\android\controller-bridge\ack_poc -p "test_*.py" -v
 ```
 
+### Evidence matrix for Real-C / Real-A
+
+Run OBSERVE_ONLY vs WAIT_ACK for the same Xbox button sequence (A, B, X, Y,
+then LB/RB, VIEW/MENU, DPAD). Capture both DOWN and UP in XC diagnostics.
+Record the ratio of `COMMITTED` / `*_UNCONFIRMED` and the per-event
+`waitMs`; observe Steam Link key responsiveness, input-mode changes and
+cursor flicker. Include the A-side receiptSeq and local C source/capture
+timestamps in evidence. No production enablement until owner UAT.
+
 ### Important limits
 
 - The causal ordering guarantee holds only for **COMMITTED** responses and
