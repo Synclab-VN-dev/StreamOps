@@ -4,13 +4,10 @@ import android.os.SystemClock
 import android.view.InputDevice
 import android.view.KeyEvent
 import com.synclab.d4planner.bridge.model.RawControllerEvent
-import java.util.concurrent.atomic.AtomicLong
-
 /** Same-process ephemeral state, readable from activity after leaving Steam Link. */
 object CaptureState {
     private const val CAPACITY = 512
-    private val events = EvidenceRing<RawControllerEvent>(CAPACITY)
-    private val counter = AtomicLong(0)
+    private val history = CaptureHistory<RawControllerEvent>(CAPACITY)
 
     @Volatile var serviceActive: Boolean = false
         private set
@@ -36,8 +33,8 @@ object CaptureState {
         val device = event.device
         val sources = (device?.sources ?: 0) or event.source
         if (!ControllerSource.isController(sources)) return
-        val raw = RawControllerEvent(
-            clientSeq = counter.incrementAndGet(),
+        history.record { nextSequence -> RawControllerEvent(
+            clientSeq = nextSequence,
             sourceTimestampC = event.eventTime,
             captureTimestampC = SystemClock.uptimeMillis(),
             deviceId = event.deviceId,
@@ -50,26 +47,32 @@ object CaptureState {
             scanCode = event.scanCode,
             action = event.action,
             repeatCount = event.repeatCount,
-            edge = EdgeNormalizer.action(event.action, event.repeatCount)
-        )
-        events.offer(raw)
+            edge = EdgeNormalizer.action(event.action, event.repeatCount),
+            foregroundPackageAtCapture = lastForegroundPackage
+        ) }
+    }
+
+    /** Safe to call while AccessibilityService continues receiving input. */
+    fun clearEvidence() {
+        history.clear()
     }
 
     fun report(devices: List<String>): String = buildString {
+        val evidence = history.snapshot()
         appendLine("D4Planner Android Controller Bridge | Issue #79 | Milestone 1")
         appendLine("Read-only; no network; no injection")
         appendLine("serviceActive=" + serviceActive)
         appendLine("lastForegroundPackage=" + lastForegroundPackage)
         appendLine("clockDomain=android.uptimeMillis")
-        appendLine("clientSeqHighWatermark=" + counter.get())
+        appendLine("clientSeqHighWatermark=" + evidence.highWatermark)
         appendLine("ringCapacity=" + CAPACITY)
-        appendLine("ringDropped=" + events.droppedCount())
+        appendLine("ringDropped=" + evidence.droppedCount)
         if (lastError.isNotBlank()) appendLine("lastError=" + lastError)
         appendLine("Controller candidates:")
         if (devices.isEmpty()) appendLine("  (none)")
         devices.forEach { appendLine("  " + it) }
         appendLine("Recent raw events:")
-        val snapshot = events.snapshot()
+        val snapshot = evidence.entries
         if (snapshot.isEmpty()) appendLine("  (none)")
         snapshot.forEach { appendLine(it.asDiagnosticLine()) }
     }

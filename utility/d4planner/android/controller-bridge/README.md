@@ -7,6 +7,8 @@ is foreground**, without changing Steam Link input delivery.
 **This is not a LAN bridge yet.** There is no INTERNET permission, WebSocket,
 A-side receiver, clock synchronization, input injection, root, or DB writer.
 Only APK/local observation, instrumentation and human evidence are in scope.
+The launcher app is labeled **XC - Xbox Input Capture**; the service remains
+**Controller Bridge Key Observer** to preserve its existing Accessibility identity.
 
 ## Build
 
@@ -33,9 +35,18 @@ and publishes `issue79-controller-bridge-debug-apk` on PR builds.
 5. With APK foreground, press digital controls and check raw event lines.
 6. Keep Accessibility service enabled; switch to Steam Link. Connect to A,
    open Diablo IV, verify gameplay control, press buttons, then return to APK.
-7. Tap **Copy diagnostic evidence** and paste into a private evidence note;
+7. Tap **Copy evidence** and paste into a private evidence note;
    include the device model, Android version, Steam Link version and precise
    topology. This copy action is the ONLY evidence export in Milestone 1.
+
+To isolate a new test: while XC is visible tap **Clear log** (the Accessibility
+service remains active); confirm `clientSeqHighWatermark=0`, `ringDropped=0`
+and no recent events. Then switch to Steam Link and press the controls.
+Return to XC using touch (not the Xbox pad) to view the new events.
+`foreground=...` on each raw line is the last window-state-change package
+known at capture; it is diagnostic context, not a cryptographic proof of focus.
+Clearing resets the local POC sequence; Milestone 2 requires a session epoch or
+client instance identifier for cross-session deduplication.
 
 Do not enable competing key-filter AccessibilityServices while testing:
 Android only grants key-filter delivery to one requesting service at a time.
@@ -55,7 +66,9 @@ A sample line is `#582 tC=9876543 captureC=9876547 DOWN key=96 scan=304 repeat=0
 - Service emits no events when Android does not dispatch them to the callback;
   absence cannot be fixed by polling this UI.
 - Background screen refresh only happens in MainActivity; service holds events
-  in process memory while Steam Link is foreground.
+  in process memory while Steam Link is foreground. The service is not stopped
+  when the UI goes into the background. Android may still kill the process;
+  records are not persisted to disk in this feasibility POC.
 
 ## Feasibility gate
 

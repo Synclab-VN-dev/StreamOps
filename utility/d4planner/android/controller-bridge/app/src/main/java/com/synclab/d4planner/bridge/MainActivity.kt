@@ -36,7 +36,7 @@ class MainActivity : Activity() {
             setPadding(20, 20, 20, 20)
         }
         val title = TextView(this).apply {
-            text = "Controller Bridge | POC #79"
+            text = "XC | Xbox Input Capture | #79"
             textSize = 22f
             setTypeface(null, Typeface.BOLD)
         }
@@ -56,14 +56,25 @@ class MainActivity : Activity() {
             text = "Open Accessibility settings"
             setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
         })
-        layout.addView(Button(this).apply {
-            text = "Copy diagnostic evidence"
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        actions.addView(Button(this).apply {
+            text = "Copy evidence"
             setOnClickListener {
                 val content = CaptureState.report(CaptureState.controllerDevices())
                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("D4Planner #79 evidence", content))
+                clipboard.setPrimaryClip(ClipData.newPlainText("XC #79 evidence", content))
             }
-        })
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        actions.addView(Button(this).apply {
+            text = "Clear log"
+            setOnClickListener {
+                CaptureState.clearEvidence()
+                reportView.text = CaptureState.report(CaptureState.controllerDevices())
+            }
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        layout.addView(actions)
         reportView = TextView(this).apply {
             textSize = 12f
             typeface = Typeface.MONOSPACE

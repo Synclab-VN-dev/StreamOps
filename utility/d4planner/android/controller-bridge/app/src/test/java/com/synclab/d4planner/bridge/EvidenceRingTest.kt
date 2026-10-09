@@ -38,6 +38,19 @@ class EvidenceRingTest {
         assertEquals(3900L, ring.droppedCount())
     }
 
+    @Test fun clearResetsEntriesAndOverflowCount() {
+        val ring = EvidenceRing<Int>(2)
+        ring.offer(10)
+        ring.offer(11)
+        ring.offer(12)
+        assertEquals(1L, ring.droppedCount())
+        ring.clear()
+        assertTrue(ring.snapshot().isEmpty())
+        assertEquals(0L, ring.droppedCount())
+        ring.offer(99)
+        assertEquals(listOf(99), ring.snapshot())
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun zeroCapacityRejected() {
         EvidenceRing<Int>(0)

@@ -20,7 +20,8 @@ class RawControllerEventTest {
             scanCode = 304,
             action = 0,
             repeatCount = 0,
-            edge = "DOWN"
+            edge = "DOWN",
+            foregroundPackageAtCapture = "com.valvesoftware.steamlink"
         )
         val line = event.asDiagnosticLine()
         assertTrue(line.contains("#582"))
@@ -30,6 +31,7 @@ class RawControllerEventTest {
         assertTrue(line.contains("key=96"))
         assertTrue(line.contains("scan=304"))
         assertTrue(line.contains("device=7"))
+        assertTrue(line.contains("foreground=com.valvesoftware.steamlink"))
         assertFalse(line.contains("Equip"))
     }
 }

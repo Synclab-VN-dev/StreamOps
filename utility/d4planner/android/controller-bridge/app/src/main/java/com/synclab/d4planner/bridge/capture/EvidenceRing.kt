@@ -20,4 +20,10 @@ class EvidenceRing<T>(private val capacity: Int) {
 
     @Synchronized
     fun droppedCount(): Long = dropped
+
+    @Synchronized
+    fun clear() {
+        entries.clear()
+        dropped = 0L
+    }
 }

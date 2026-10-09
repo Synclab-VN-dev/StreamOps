@@ -15,7 +15,8 @@ data class RawControllerEvent(
     val scanCode: Int,
     val action: Int,
     val repeatCount: Int,
-    val edge: String
+    val edge: String,
+    val foregroundPackageAtCapture: String = "(unknown)"
 ) {
     fun asDiagnosticLine(): String = buildString {
         append("#").append(clientSeq)
@@ -28,5 +29,6 @@ data class RawControllerEvent(
         append(" device=").append(deviceId)
         append(" src=0x").append(source.toString(16))
         append(" ").append(deviceName)
+        append(" foreground=").append(foregroundPackageAtCapture)
     }
 }
