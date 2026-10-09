@@ -94,3 +94,7 @@ boundaries. GameInput and DirectInput remain conditional later phases.
 
 **Out of scope**: semantic Equip correlation, production EventStore writes,
 EquipmentResolver and `character.db` mutations, APK/bridge on C.
+
+## Real-A 2026-10-09: all modes baseline
+
+SSH relay 0 → active/worker session 1: PASS. RawInput `NO_DEVICE`, WGI `NO_DEVICE`, DirectInput `NO_DEVICE`. GameInput v2 and v1 both report `0x80004002 E_NOINTERFACE`, so the GameInput result was `UNAVAILABLE`, not `NO_DEVICE`. A new v0 fallback was added after this run; it requires an additional Real-A run with `--mode gameinput`.
