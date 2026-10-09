@@ -117,7 +117,7 @@ class ObsPluginService:
 
     def _available_sync(self) -> dict[str, object]:
         if self.release_source is None:
-            return {"plugins": [], "source_state": "EMPTY"}
+            return {"plugins": [], "source_state": "UNCONFIGURED"}
         try:
             # Catalog may show an approved but incompatible release; mutation
             # still resolves via latest(), which strictly enforces OBS version.
