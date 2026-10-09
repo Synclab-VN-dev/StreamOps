@@ -542,3 +542,315 @@ def test_e17_provider_swap_does_not_change_rest_ws_api(server_config, capture_se
     assert before_ws["data"]["plugin_id"] == after_ws["data"]["plugin_id"] == PLUGIN
     assert before_ws["request_id"] == "source-before"
     assert after_ws["request_id"] == "source-after"
+
+
+
+# Hardening of U18/U19/U21/U22/U23/U24/E16/E17. These tests cover
+# adversarial provider behavior and preserve the installed baseline.
+
+
+def test_u18_releases_pagination_and_duplicate_versions():
+    fixture = GitHubFixture()
+    # The first GitHub page is full of unrelated plugins. We MUST fetch page
+    # two rather than incorrectly reporting a missing approved release.
+    for n in range(100):
+        fixture.add(f"1.{n}.0", plugin="other-plugin")
+    fixture.add("2.0.0")
+    calls = []
+
+    def paged(url, *, accept, token=None, max_bytes=None):
+        calls.append(url)
+        if url == API + "/releases?per_page=100":
+            return json.dumps(fixture.releases[:100]).encode()
+        if url == API + "/releases?per_page=100&page=2":
+            return json.dumps(fixture.releases[100:]).encode()
+        return fixture(url, accept=accept, token=token, max_bytes=max_bytes)
+
+    assert GitHubReleaseSource(REPO, transport=paged).latest(PLUGIN).version == "2.0.0"
+    assert API + "/releases?per_page=100&page=2" in calls
+
+    duplicate = GitHubFixture()
+    duplicate.add("1.0.0")
+    duplicate.add("1.0.0")
+    with pytest.raises(ObsPluginError) as caught:
+        managed(duplicate).latest(PLUGIN)
+    assert caught.value.code == "plugin_release_invalid"
+
+    ambiguous = GitHubFixture()
+    ambiguous.add("1.9.0")
+    ambiguous.add("1.09.0")
+    with pytest.raises(ObsPluginError) as caught:
+        managed(ambiguous).latest(PLUGIN)
+    assert caught.value.code == "plugin_release_invalid"
+
+    invalid_latest = GitHubFixture()
+    invalid_latest.add("1.0.0")
+    invalid_latest.add("2.0.0", approved=False)
+    with pytest.raises(ObsPluginError) as caught:
+        managed(invalid_latest).latest(PLUGIN)
+    assert caught.value.code == "plugin_release_invalid"
+    # Never silently install the older version when the latest has failed
+    # security/approval validation.
+
+
+@pytest.mark.parametrize("bad", [
+    {"missing_field": "source_commit"},
+    {"manifest_change": {"source_commit": "bad!"}},
+    {"manifest_change": {"platform": "linux"}},
+    {"manifest_change": {"architecture": "arm64"}},
+    {"manifest_change": {"artifact_name": "../plugin.zip"}},
+    {"metadata_change": {"file_count": 4}},
+    {"metadata_change": {"file_count": -1}},
+    {"metadata_change": {"relative_paths": ["same.dll", "same.dll", "other.dll"]}},
+    {"metadata_change": {"relative_paths": ["../escape.dll", "a.dll", "b.dll"]}},
+    {"duplicate_asset": True},
+])
+def test_u19_bad_manifest_and_duplicate_asset_fail_closed(bad):
+    fixture = GitHubFixture()
+    manifest, _ = fixture.add()
+    metadata = manifest.get("metadata", {})
+    manifest.update(bad.get("manifest_change", {}))
+    metadata.update(bad.get("metadata_change", {}))
+    manifest.pop(bad.get("missing_field", ""), None)
+    manifest_asset_id = fixture.releases[0]["assets"][0]["id"]
+    fixture.assets[manifest_asset_id] = json.dumps(manifest).encode()
+    if bad.get("duplicate_asset"):
+        fixture.releases[0]["assets"].append(dict(fixture.releases[0]["assets"][1]))
+    with pytest.raises(ObsPluginError) as caught:
+        managed(fixture).latest(PLUGIN)
+    assert caught.value.code == "plugin_release_invalid"
+
+
+@pytest.mark.parametrize("http_status", [401, 403, 404, 429])
+def test_u21_http_failure_is_exactly_typed(http_status):
+    from urllib.error import HTTPError
+
+    fixture = GitHubFixture()
+    fixture.add()
+    fixture.failure = HTTPError(API + "/releases", http_status, "HTTP failure", {}, None)
+    with pytest.raises(ObsPluginError) as caught:
+        managed(fixture).latest(PLUGIN)
+    assert caught.value.code == "plugin_release_source_error"
+    assert caught.value.status_code == 503
+    assert str(http_status) not in str(caught.value)
+    assert all(url.startswith(API + "/") for url, _, _ in fixture.calls)
+
+
+def test_u22_max_download_size_rejects_before_install(tmp_path, monkeypatch):
+    import streamops.server.services.obs_plugin_release_source as module
+
+    fixture = GitHubFixture()
+    fixture.add()
+    service, _, installer, root, state = environment(tmp_path, fixture)
+    release = installer.release_source.latest(PLUGIN)
+    monkeypatch.setattr(module, "MAX_ARTIFACT_BYTES", 8)
+    with pytest.raises(ObsPluginError) as caught:
+        installer.release_source.open_artifact(release)
+    assert caught.value.code == "plugin_release_invalid"
+    assert_clean(root, state)
+
+
+def test_u22_multiple_redirects_never_forward_token():
+    from urllib.request import Request
+    from streamops.server.services.obs_plugin_release_source import _SafeGitHubRedirect
+
+    handler = _SafeGitHubRedirect(REPO)
+    token = "SECRET-MUST-NOT-LEAK"
+    original = Request(API + "/releases/assets/1002",
+                       headers={"Authorization": "Bearer " + token, "Cookie": token})
+    first = handler.redirect_request(
+        original, None, 302, "Found", {},
+        "https://release-assets.githubusercontent.com/signed-asset",
+    )
+    assert first.get_header("Authorization") is None
+    assert first.get_header("Cookie") is None
+    second = handler.redirect_request(
+        first, None, 302, "Found", {},
+        "https://objects.githubusercontent.com/signed-asset",
+    )
+    assert second.get_header("Authorization") is None
+    assert second.get_header("Cookie") is None
+    assert token not in repr(first.headers) + repr(second.headers)
+    with pytest.raises(ObsPluginError):
+        handler.redirect_request(
+            second, None, 302, "Found", {},
+            "https://github.com/sorayuki/obs-multi-rtmp/releases/download/v1/unapproved.zip",
+        )
+
+
+def test_u22_local_http_release_server_exercises_real_http_transport():
+    """Loopback HTTP reproduces GitHub JSON + octet asset endpoints without internet."""
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from threading import Thread
+
+    fixture = GitHubFixture()
+    fixture.add("1.0.0")
+    payload, artifact_id = fixture.add("1.1.0")
+    seen = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen.append((self.path, self.headers.get("Accept")))
+            if self.path == "/releases?per_page=100":
+                content = json.dumps(fixture.releases).encode()
+            elif self.path.startswith("/releases/assets/"):
+                content = fixture.assets[int(self.path.rsplit("/", 1)[1])]
+            else:
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+
+        def log_message(self, *args):
+            return  # Avoid test secrets and noisy server logs.
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        provider = GitHubReleaseSource(REPO)
+        # Test-only transport endpoint override, never a production config path.
+        provider._api = f"http://127.0.0.1:{server.server_port}"
+        release = provider.latest(PLUGIN)
+        assert release.version == "1.1.0"
+        with provider.open_artifact(release) as opened:
+            assert opened.read() == fixture.assets[artifact_id]
+        assert len(seen) == 3
+        assert seen[0][0] == "/releases?per_page=100"
+        assert seen[0][1] == "application/vnd.github+json"
+        assert all(x[1] == "application/octet-stream" for x in seen[1:])
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
+
+
+def test_u23_no_token_in_rest_or_websocket_errors(
+    server_config, capture_service, tmp_path, caplog,
+):
+    from urllib.error import URLError
+    import logging
+
+    secret = "SECRET-GITHUB-PROVIDER-CANARY"
+    fixture = GitHubFixture()
+    fixture.add()
+    fixture.failure = URLError("token=" + secret)
+    service, manager, installer, _, _ = environment(tmp_path, fixture)
+    # API errors must be sanitized even when transport exception has secrets.
+    with caplog.at_level(logging.ERROR):
+        with TestClient(create_app(
+            server_config, capture_service=capture_service,
+            obs_manager=manager, obs_plugin_service=service,
+            manage_runtime=False,
+        )) as api:
+            available = api.get(PFX + "/available")
+            assert available.status_code == 503
+            assert available.json()["error"]["code"] == "plugin_release_source_error"
+            with api.websocket_connect(PFX + "/ws") as ws:
+                ws.send_json({
+                    "type": "request", "request_id": "github-error",
+                    "operation": "obs_plugin.install", "payload": {"plugin_id": PLUGIN},
+                })
+                response = ws.receive_json()
+            assert response["ok"] is False
+            assert response["request_id"] == "github-error"
+            assert "error" in response
+    assert secret not in available.text
+    assert secret not in repr(response)
+    assert secret not in caplog.text
+
+
+@pytest.mark.parametrize("failure_mode", [
+    "sha-mismatch", "invalid-tree", "asset-missing",
+    "http-403", "http-429", "timeout",
+])
+def test_e16_failed_v2_update_preserves_v1_config_and_journal(tmp_path, failure_mode):
+    from urllib.error import HTTPError, URLError
+
+    fixture = GitHubFixture()
+    fixture.add("1.0.0")
+    service, manager, installer, root, state = environment(tmp_path, fixture)
+    config = (tmp_path / "AppData" / "obs-studio" / "basic" /
+              "profiles" / "User" / "obs-multi-rtmp.json")
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_bytes(b'{"targets":[{"stream_key":"keep-existing"}]}')
+    assert asyncio.run(service.install(PLUGIN)).result == "installed"
+    manager.start()
+    assert asyncio.run(service.verify(PLUGIN)).status.state == "VERIFIED"
+    before_records = _file_records(root)
+    before_config = config.read_bytes()
+    before_pointer = installer.pointer.read_bytes()
+    before_journals = sorted(p.name for p in installer.transactions_root.iterdir())
+    kwargs = {
+        "sha-mismatch": {"sha_override": "0" * 64},
+        "invalid-tree": {"metadata_override": {"tree_sha256": "0" * 64}},
+        "asset-missing": {"omit_asset": True},
+    }.get(failure_mode, {})
+    fixture.add("1.1.0", **kwargs)
+    if failure_mode == "http-403":
+        fixture.failure = HTTPError(API + "/releases", 403, "Forbidden", {}, None)
+    elif failure_mode == "http-429":
+        fixture.failure = HTTPError(API + "/releases", 429, "Rate limit", {}, None)
+    elif failure_mode == "timeout":
+        fixture.failure = URLError("network timed out")
+
+    with pytest.raises(ObsPluginError):
+        asyncio.run(service.update(PLUGIN))
+    assert _file_records(root) == before_records, "v1 DLL must remain byte-identical"
+    assert config.read_bytes() == before_config
+    assert installer.pointer.read_bytes() == before_pointer
+    assert sorted(p.name for p in installer.transactions_root.iterdir()) == before_journals
+    assert manager.state == "READY", "OBS must resume on update failure"
+    if failure_mode in {"sha-mismatch", "invalid-tree"}:
+        # Source was accessible and the replacement asset was fetched.
+        assert any("/releases/assets/" in url for url, _, _ in fixture.calls)
+
+
+def test_e17_provider_swap_then_real_rest_install_update_verify(
+    server_config, capture_service, tmp_path,
+):
+    from streamops.server.services.obs_plugin_release_source import DirectoryPluginReleaseSource
+
+    fixture = GitHubFixture()
+    release_v1, asset_v1 = fixture.add("1.0.0")
+    service, manager, installer, root, _ = environment(tmp_path, fixture)
+
+    directory = tmp_path / "mirror" / PLUGIN
+    directory.mkdir(parents=True)
+    (directory / "release.json").write_text(json.dumps(release_v1), encoding="utf-8")
+    (directory / release_v1["artifact_name"]).write_bytes(fixture.assets[asset_v1])
+    first_provider = ManagedPluginReleaseSource(DirectoryPluginReleaseSource(directory.parent))
+    installer.release_source = first_provider
+    service.release_source = first_provider
+
+    with TestClient(create_app(
+        server_config, capture_service=capture_service,
+        obs_manager=manager, obs_plugin_service=service, manage_runtime=False,
+    )) as api:
+        assert api.get(PFX + "/available").json()["plugins"][0]["available_version"] == "1.0.0"
+        installed = api.post(PFX + "/" + PLUGIN + "/install")
+        assert installed.status_code == 200
+        assert installed.json()["state"] == "RESTART_REQUIRED"
+        manager.start()
+        verified = api.post(PFX + "/" + PLUGIN + "/verify")
+        assert verified.status_code == 200
+        assert verified.json()["state"] == "VERIFIED"
+        before = _file_records(root)
+
+        fixture.add("1.1.0")
+        github_provider = managed(fixture)
+        installer.release_source = github_provider
+        service.release_source = github_provider
+        assert api.get(PFX + "/available").json()["plugins"][0]["available_version"] == "1.1.0"
+        updated = api.post(PFX + "/" + PLUGIN + "/update")
+        assert updated.status_code == 200
+        assert updated.json()["state"] == "RESTART_REQUIRED"
+        manager.start()
+        verified_v2 = api.post(PFX + "/" + PLUGIN + "/verify")
+        assert verified_v2.status_code == 200
+        assert verified_v2.json()["installed_version"] == "1.1.0"
+        assert _file_records(root) != before
+        assert (root / "bin/64bit/obs-multi-rtmp.dll").read_bytes() == b"dll 1.1.0"
