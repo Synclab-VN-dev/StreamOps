@@ -438,21 +438,38 @@ def test_e15_github_provider_v1_v2_update_verify_rollback(tmp_path):
     assert installer.status().installed_version == "1.0.0"
 
 
-@pytest.mark.parametrize("mode", ["invalid-sha", "missing-asset", "unapproved", "http-error"])
+@pytest.mark.parametrize("mode", [
+    "invalid-sha", "bad-sha-format", "bad-tree", "missing-asset",
+    "unapproved", "no-redistribution", "no-release",
+    "http-401", "http-403", "http-404", "http-429", "timeout", "invalid-json",
+])
 def test_e16_github_release_failure_no_mutation_no_fallback(tmp_path, mode):
+    from urllib.error import HTTPError, URLError
     http = GitHubFixture()
     kwargs = {
         "invalid-sha": {"sha_override": "0" * 64},
+        "bad-sha-format": {"sha_override": "invalid"},
+        "bad-tree": {"metadata_override": {"tree_sha256": "invalid"}},
         "missing-asset": {"omit_asset": True},
         "unapproved": {"approved": False},
-        "http-error": {},
-    }[mode]
-    http.add(**kwargs)
-    if mode == "http-error":
-        http.failure = ObsPluginError("plugin_release_source_error", "HTTP 429", 503)
+        "no-redistribution": {"metadata_override": {"redistribution_approved": False}},
+    }.get(mode, {})
+    if mode != "no-release":
+        http.add(**kwargs)
+    status_codes = {"http-401": 401, "http-403": 403, "http-404": 404, "http-429": 429}
+    if mode in status_codes:
+        http.failure = HTTPError(API + "/releases", status_codes[mode], "status failure", {}, None)
+    elif mode == "timeout":
+        http.failure = URLError("offline / timed out")
+    elif mode == "invalid-json":
+        http.assets[next(iter(http.assets))] = b"{ invalid JSON"
     service, _, installer, root, state = environment(tmp_path, http)
-    with pytest.raises(ObsPluginError):
+    with pytest.raises(ObsPluginError) as caught:
         asyncio.run(service.install(PLUGIN))
+    assert caught.value.code in {
+        "plugin_install_failed", "plugin_release_source_error",
+        "plugin_release_invalid", "plugin_release_unavailable",
+    }
     assert_clean(root, state)
     assert all(call[0].startswith(API + "/") for call in http.calls)
 
