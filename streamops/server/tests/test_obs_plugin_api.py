@@ -452,6 +452,7 @@ def test_websocket_unexpected_error_never_logs_or_returns_secret(server_config, 
 
 
 def test_e2e_http_update_timeout_is_bounded_and_typed(server_config, capture_service):
+    import concurrent.futures
     import threading
     entered = threading.Event()
     release = threading.Event()
@@ -494,13 +495,15 @@ def test_e2e_http_update_timeout_is_bounded_and_typed(server_config, capture_ser
         obs_manager=manager, obs_plugin_service=service,
         manage_runtime=False,
     )) as api:
-        try:
-            response = api.post("/api/v1/obs/plugins/obs-multi-rtmp/update")
-            assert entered.is_set()
-            # The HTTP request must return even though the worker has not
-            # finished. Event gating avoids timing-dependent/flaky assertions.
-            assert response.status_code == 504
-            assert response.json()["error"]["code"] == "plugin_operation_timeout"
-            assert not release.is_set()
-        finally:
-            release.set()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(api.post, "/api/v1/obs/plugins/obs-multi-rtmp/update")
+            try:
+                # Synchronize on the actual worker, not Windows runner timing.
+                assert entered.wait(timeout=3)
+                response = future.result(timeout=3)
+                assert response.status_code == 504
+                assert response.json()["error"]["code"] == "plugin_operation_timeout"
+                # The response must return without waiting for blocked mutation.
+                assert not release.is_set()
+            finally:
+                release.set()
