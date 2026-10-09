@@ -21,9 +21,12 @@ def _ps_quote(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-def run_or_relay(runtime: WindowsRuntime, seconds: float) -> dict:
+def run_or_relay(runtime: WindowsRuntime, seconds: float, mode: str = "auto") -> dict:
     if not 0 < seconds <= 300:
         raise ValueError("--seconds must be between 0 and 300")
+    from .worker import MODES
+    if mode not in MODES:
+        raise ValueError(f"invalid mode: {mode}")
     runtime.require_windows()
     current = runtime.current_process_session_id()
     active = runtime.active_console_session_id()
@@ -32,7 +35,7 @@ def run_or_relay(runtime: WindowsRuntime, seconds: float) -> dict:
     if current == active:
         return {
             "controlSession": current, "relayed": False,
-            **probe_payload(runtime, seconds),
+            **probe_payload(runtime, seconds, mode),
         }
     request_id = uuid.uuid4().hex
     directory = runtime.paths.runtime / "probes" / "controller-v2" / request_id
@@ -40,7 +43,7 @@ def run_or_relay(runtime: WindowsRuntime, seconds: float) -> dict:
     request = directory / "request.json"
     result_path = directory / "result.json"
     helper = directory / "run-probe.ps1"
-    atomic_write_json(request, {"requestId": request_id, "seconds": seconds})
+    atomic_write_json(request, {"requestId": request_id, "seconds": seconds, "mode": mode})
     helper.write_text(
         "$ErrorActionPreference='Stop'\n"
         f"& {_ps_quote(str(Path(sys.executable)))} -m "
@@ -50,7 +53,8 @@ def run_or_relay(runtime: WindowsRuntime, seconds: float) -> dict:
     )
     runtime._prepare_interactive_task(TASK_NAME, helper)
     runtime.run_task(TASK_NAME)
-    deadline = time.monotonic() + seconds + 20
+    max_elapsed = seconds * (4 if mode in ("all", "auto") else 1) + 20
+    deadline = time.monotonic() + max_elapsed
     while time.monotonic() < deadline:
         result = read_json(result_path)
         if isinstance(result, dict) and result.get("requestId") == request_id:
@@ -61,6 +65,6 @@ def run_or_relay(runtime: WindowsRuntime, seconds: float) -> dict:
             return {"controlSession": current, "relayed": True, **result}
         time.sleep(0.1)
     raise RuntimeBlocked(
-        f"interactive controller probe did not return within {seconds + 20:g}s; "
+        f"interactive controller probe did not return within {max_elapsed:g}s; "
         f"request={request_id} (worker is time-bounded)"
     )
