@@ -47,3 +47,49 @@
 - Synthetic CI proves contracts and filesystem transaction behavior; it does **not** prove real OBS plugin Vendor readiness on Windows-A.
 - DEV-F real-A 11 and MANUAL operator 9 remain **NOT RUN**, and PR should remain Draft until these have evidence.
 - Backend persistent Activity Log is intentionally out of scope.
+
+## GitHub Releases + available catalog acceptance (new scope, 2026-10-09)
+
+The following 8 UNIT and 7 E2E rows are newly added and **are not covered
+by run #460**. All direct test names are defined in
+streamops/server/tests/test_issue47_github_releases_acceptance.py.
+Only mark new acceptance complete once CI PASS is verified on the new HEAD.
+
+| ID | Requirement | Direct named test |
+|---|---|---|
+| U17 | Server-controlled GitHubReleaseSource configuration | test_u17_server_only_github_provider_configuration |
+| U18 | Correct semver ordering, draft/prerelease policy | test_u18_version_sort_draft_prerelease_policy |
+| U19 | Approval/provenance/manifest checks | test_u19_release_identity_provenance_approval_validation |
+| U20 | Catalog intersection allowlist and release | test_u20_catalog_intersects_registry_and_release |
+| U21 | Empty repo versus typed source errors | test_u21_empty_is_distinct_from_source_failure |
+| U22 | Redirect trust policy | test_u22_download_redirect_host_allowlist |
+| U23 | Static available route and client-source injection guard | test_u23_static_available_route_and_reject_client_source |
+| U24 | SHA identity pinned from discovery to asset bytes | test_u24_mutated_approved_asset_fails_before_mutation |
+| E11 | GitHub HTTP release index, manifest and asset fixture | test_e11_discovery_manifest_asset_from_expected_github_api |
+| E12 | FastAPI catalog, inventory and allowlist parity | test_e12_catalog_rest_inventory_allowlist_parity |
+| E13 | Empty/incompatible/installed/update catalog states | test_e13_catalog_empty_incompatible_installed_update |
+| E14 | Install, real filesystem transaction, restart and vendor probe | test_e14_github_provider_install_restart_verify_real_filesystem |
+| E15 | Update/verify/manual rollback and failed vendor auto rollback | test_e15_github_provider_v1_v2_update_verify_rollback |
+| E16 | Corrupt release/source outage does not mutate filesystem | test_e16_github_release_failure_no_mutation_no_fallback |
+| E17 | Swap GitHub to directory provider without API contract changes | test_e17_provider_swap_does_not_change_rest_ws_api |
+
+### Managed GitHub release publication contract
+
+Windows A runtime must select source via server-side environment settings:
+- STREAMOPS_OBS_PLUGIN_SOURCE_PROVIDER = github-release
+- STREAMOPS_OBS_PLUGIN_SOURCE_LOCATION = Synclab-VN-dev/StreamOps-OBS-Plugins
+- Optional credential variable NAME configured by STREAMOPS_OBS_PLUGIN_GITHUB_TOKEN_ENV;
+  never log, echo or put its secret value in REST/WS.
+
+Release tag: obs-multi-rtmp/v<version>. Must include exactly the assets
+obs-multi-rtmp.release.json and the ZIP named by manifest.artifact_name.
+JSON manifest must match PluginRelease fields and metadata approval flags
+approved=true, redistribution_approved=true, plus exact tree metadata
+file_count/relative_paths/tree_sha256.
+
+GitHubReleaseSource downloads only from the configured GitHub API release
+asset ID and enforces SHA-256/approved manifest. No upstream fallback.
+CI uses mocked GitHub HTTP and OBS/Vendor; DEV-F must prove source/version/SHA
+against **real Synclab GitHub Releases** on Windows A. Current audited release
+count is zero, so destructive real-A install/update/rollback are BLOCKED until
+approved release(s) are available.
