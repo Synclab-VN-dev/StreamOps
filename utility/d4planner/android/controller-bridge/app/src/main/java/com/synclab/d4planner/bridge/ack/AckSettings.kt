@@ -16,6 +16,15 @@ object AckSettings {
         return if (saved.enabled && !saved.isValid()) saved.copy(enabled = false) else saved
     }
 
+    /**
+     * Android debug Activity may prefill the token through an explicit ADB intent.
+     * Never enable WAIT_ACK as a side effect of provisioning.
+     */
+    fun provisionToken(context: Context, token: String?): Boolean {
+        val updated = AckProvisioning.withToken(load(context), token) ?: return false
+        return save(context, updated)
+    }
+
     fun save(context: Context, config: AckConfig): Boolean {
         if (config.enabled && !config.isValid()) return false
         return context.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)

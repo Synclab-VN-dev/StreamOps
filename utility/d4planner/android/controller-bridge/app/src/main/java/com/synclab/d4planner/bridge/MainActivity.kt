@@ -1,6 +1,7 @@
 package com.synclab.d4planner.bridge
 
 import android.app.Activity
+import android.content.pm.ApplicationInfo
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -21,11 +22,13 @@ import android.widget.ScrollView
 import android.widget.TextView
 import com.synclab.d4planner.bridge.capture.CaptureState
 import com.synclab.d4planner.bridge.ack.AckConfig
+import com.synclab.d4planner.bridge.ack.AckProvisioning
 import com.synclab.d4planner.bridge.ack.AckSettings
 
 class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var reportView: TextView
+    private lateinit var tokenInput: EditText
     private val refresh = object : Runnable {
         override fun run() {
             if (::reportView.isInitialized) {
@@ -37,6 +40,10 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Only honor explicit provisioning on a fresh launch, not Activity recreation.
+        if (savedInstanceState == null) {
+            provisionFromIntent(intent)
+        }
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(20, 20, 20, 20)
@@ -109,7 +116,7 @@ class MainActivity : Activity() {
         targetRow.addView(portInput, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         layout.addView(targetRow)
 
-        val tokenInput = EditText(this).apply {
+        tokenInput = EditText(this).apply {
             setSingleLine(true)
             hint = "XC_ACK_TOKEN on A (private)"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
@@ -174,6 +181,29 @@ class MainActivity : Activity() {
             )
         )
         setContentView(layout)
+    }
+
+    override fun onNewIntent(newIntent: Intent) {
+        super.onNewIntent(newIntent)
+        // Activity can be reused with --activity-single-top or FLAG_ACTIVITY_SINGLE_TOP.
+        if (provisionFromIntent(newIntent) && ::tokenInput.isInitialized) {
+            tokenInput.setText(AckSettings.load(this).token)
+        }
+    }
+
+    private fun provisionFromIntent(incoming: Intent?): Boolean {
+        if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) return false
+        if (incoming?.action != AckProvisioning.ACTION_PROVISION) return false
+        val token = incoming.getStringExtra(AckProvisioning.EXTRA_TOKEN)
+        val provisioned = AckSettings.provisionToken(this, token)
+        if (provisioned) {
+            Toast.makeText(this, "ACK token saved; WAIT_ACK mode unchanged", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "Invalid ACK token (16-256 printable chars)", Toast.LENGTH_SHORT).show()
+        }
+        // Never retain a token-bearing Intent in Activity's managed intent state.
+        incoming.removeExtra(AckProvisioning.EXTRA_TOKEN)
+        return provisioned
     }
 
     override fun onStart() {

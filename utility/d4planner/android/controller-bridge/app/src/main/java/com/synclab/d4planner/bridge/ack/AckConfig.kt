@@ -8,9 +8,12 @@ data class AckConfig(
     val token: String = ""
 ) {
     fun isValid(): Boolean = isPrivateLanIpv4(host) && port in 1024..65535 &&
-        token.length >= 16 && token.length <= 256 && token.all { it.code in 33..126 }
+        isValidToken(token)
 
     companion object {
+        fun isValidToken(token: String): Boolean =
+            token.length in 16..256 && token.all { it.code in 33..126 }
+
         fun isPrivateLanIpv4(ip: String): Boolean {
             val parts = ip.split('.')
             if (parts.size != 4 || parts.any { it.isEmpty() || it.length > 3 || it.any { c -> c !in '0'..'9' } }) {

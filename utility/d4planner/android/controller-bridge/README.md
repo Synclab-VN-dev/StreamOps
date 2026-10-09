@@ -78,6 +78,30 @@ during the test, then remove the firewall exception. Do not expose this HTTP
 endpoint to the Internet. It uses shared-token authentication, no encryption
 and no production hardening. The Python receiver logs no token.
 
+### Provision XC token from Termux B with ADB (no typing on C)
+
+With debug APK installed on C, Termux B can send one **explicit** Intent
+containing the token; XC validates it, saves to private preferences, and fills
+the token input automatically. This does **not** turn WAIT_ACK on (if already
+on, it stays on). Both cold launch and `--activity-single-top` updates work:
+
+```bash
+A="huy@192.168.1.8"
+C="192.168.1.27:5555"
+TOKEN="1234567890123456" # example only; must match A's XC_ACK_TOKEN
+adb -s "$C" shell am start --activity-single-top \
+  -n com.synclab.d4planner.bridge/.MainActivity \
+  -a com.synclab.d4planner.bridge.action.PROVISION_ACK \
+  --es com.synclab.d4planner.bridge.extra.ACK_TOKEN "$TOKEN"
+```
+
+Use this only with the **debug** build and trusted ADB access. Android exported
+Activity Intent extras are **not a secure secret provisioning channel**: the
+ADB command can be visible in shell history/process listings, and other apps
+could attempt to launch the exported Activity. This helper changes **only
+the token**, not server IP, port, or WAIT_ACK mode. Production would require
+a protected provisioning channel and authenticated transport.
+
 ### Configure XC on Android C
 
 1. Ensure the Xbox controller is paired and AccessibilityService is active.
