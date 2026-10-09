@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">D4Planner Controller Bridge POC</string>
+    <string name="service_name">Controller Bridge Key Observer</string>
+    <string name="service_description">Read-only gamepad key event feasibility test. Does not control other apps or transmit data.</string>
+</resources>
