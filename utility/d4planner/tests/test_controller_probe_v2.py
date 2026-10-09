@@ -502,3 +502,47 @@ def test_native_backend_subprocess_smoke(module, class_name):
         f"Native crash in {module}: returncode={run.returncode}, "
         f"stdout={run.stdout}, stderr={run.stderr}"
     )
+
+
+def test_gameinput_v2_v1_interface_fallback(monkeypatch):
+    import ctypes
+    from d4planner.runtime.controller_probe import gameinput
+    calls = []
+    expected = ctypes.c_void_p(555)
+
+    def fake_query(ptr, iid):
+        calls.append(iid.Data1)
+        if iid.Data1 == gameinput.IID_IGAMEINPUT_V2.Data1:
+            raise OSError("QueryInterface: HRESULT 0x80004002")
+        if iid.Data1 == gameinput.IID_IGAMEINPUT_V1.Data1:
+            return expected
+        raise AssertionError("unexpected requested COM interface")
+
+    monkeypatch.setattr(gameinput, "_query_interface", fake_query)
+    ptr, version = gameinput.negotiate_interface(ctypes.c_void_p(123))
+    assert ptr is expected
+    assert version == 1
+    assert calls == [gameinput.IID_IGAMEINPUT_V2.Data1, gameinput.IID_IGAMEINPUT_V1.Data1]
+
+
+def test_gameinput_v2_preferred_when_supported(monkeypatch):
+    import ctypes
+    from d4planner.runtime.controller_probe import gameinput
+    calls = []
+    monkeypatch.setattr(gameinput, "_query_interface", lambda ptr, iid: (
+        calls.append(iid.Data1) or ctypes.c_void_p(999)
+    ))
+    _, version = gameinput.negotiate_interface(ctypes.c_void_p(123))
+    assert version == 2
+    assert calls == [gameinput.IID_IGAMEINPUT_V2.Data1]
+
+
+def test_gameinput_unavailable_only_when_v1_and_v2_missing(monkeypatch):
+    import ctypes
+    from d4planner.runtime.controller_probe import gameinput
+    from d4planner.runtime.controller_probe.runner import BackendUnavailable
+    monkeypatch.setattr(gameinput, "_query_interface", lambda ptr, iid: (
+        (_ for _ in ()).throw(OSError("E_NOINTERFACE"))
+    ))
+    with pytest.raises(BackendUnavailable, match="v1/v2"):
+        gameinput.negotiate_interface(ctypes.c_void_p(123))
