@@ -456,3 +456,49 @@ def test_all_mode_preserves_unavailable_and_error_diagnostics():
         ProbeStatus.ERROR, ProbeStatus.NO_DEVICE,
         ProbeStatus.UNAVAILABLE, ProbeStatus.NO_DEVICE,
     ]
+
+
+def test_native_struct_sizes_in_windows_64_bit():
+    if os.name != "nt":
+        pytest.skip("native Windows layouts")
+    import ctypes
+    from d4planner.runtime.controller_probe.wgi import GamepadReading
+    from d4planner.runtime.controller_probe.gameinput import GameInputGamepadState
+    from d4planner.runtime.controller_probe.directinput import DATA_FORMAT, OBJECT_FORMAT
+    assert ctypes.sizeof(ctypes.c_void_p) == 8
+    assert ctypes.sizeof(GamepadReading) == 64
+    assert ctypes.sizeof(GameInputGamepadState) == 28
+    assert ctypes.sizeof(DATA_FORMAT) == 32
+    assert ctypes.sizeof(OBJECT_FORMAT) == 24
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows native APIs")
+@pytest.mark.parametrize("module,class_name", [
+    ("wgi", "WGIBackend"),
+    ("gameinput", "GameInputBackend"),
+    ("directinput", "DirectInputBackend"),
+])
+def test_native_backend_subprocess_smoke(module, class_name):
+    """Native ABI crash must not terminate CI or the invoking test process.
+
+    API absent/permission denied is acceptable; access violation is not.
+    Does not require a physical controller or interactive game session.
+    """
+    import subprocess
+    import sys
+    script = (
+        f"from d4planner.runtime.controller_probe.{module} import {class_name}\n"
+        f"try:\n"
+        f"    result = {class_name}().probe(0.05)\n"
+        f"    print(result.status.value)\n"
+        f"except Exception as exc:\n"
+        f"    print(type(exc).__name__ + ': ' + str(exc))\n"
+    )
+    run = subprocess.run(
+        [sys.executable, "-c", script], text=True, capture_output=True,
+        timeout=20, check=False,
+    )
+    assert run.returncode == 0, (
+        f"Native crash in {module}: returncode={run.returncode}, "
+        f"stdout={run.stdout}, stderr={run.stderr}"
+    )
