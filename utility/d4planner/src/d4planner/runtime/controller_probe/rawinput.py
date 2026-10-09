@@ -143,6 +143,8 @@ class RawInputBackend:
         self._preparsed: dict[int, object] = {}
         self._events: list[ControlEdge] = []
         self._decode_failures = 0
+        self._raw_messages = 0
+        self._raw_reports = 0
 
     def _info(self, handle: int) -> dict[str, str | int] | None:
         info = RID_DEVICE_INFO()
@@ -260,6 +262,7 @@ class RawInputBackend:
             if info is None:
                 return
             self._devices[handle] = info
+        self._raw_messages += 1
         data_offset = ctypes.sizeof(RAWINPUTHEADER)
         size_hid, report_count = struct.unpack_from("<II", raw.raw, data_offset)
         if not 0 < size_hid <= 4096 or not 0 < report_count <= 64:
@@ -268,6 +271,7 @@ class RawInputBackend:
         if start + size_hid * report_count > rc:
             return
         device_id = str(self._devices[handle]["deviceId"])
+        self._raw_reports += report_count
         for i in range(report_count):
             report = raw.raw[start + size_hid * i:start + size_hid * (i + 1)]
             try:
@@ -378,5 +382,8 @@ class RawInputBackend:
         return BackendResult(
             backend=self.name, status=status, devices=list(self._devices.values()),
             events=self._events,
-            detail=f"hidDecodeFailures={self._decode_failures}; cappedEvents={MAX_EVENTS}",
+            detail=(
+                f"rawInputMessages={self._raw_messages}; rawHidReports={self._raw_reports}; "
+                f"hidDecodeFailures={self._decode_failures}; cappedEvents={MAX_EVENTS}"
+            ),
         )
