@@ -60,9 +60,9 @@ def test_harness_deterministic_custom_zip_and_manifest(tmp_path, harness_source)
     with zipfile.ZipFile(zip_path) as zf:
         names = zf.namelist()
         assert names == [
-            "data/obs-plugins/obs-multi-rtmp/locale/en-US.ini",
             "obs-plugins/64bit/obs-multi-rtmp.dll",
             "obs-plugins/64bit/obs-multi-rtmp.pdb",
+            "data/obs-plugins/obs-multi-rtmp/locale/en-US.ini",
         ]
         assert zf.read("obs-plugins/64bit/obs-multi-rtmp.dll") == b"MZ CUSTOM SOURCE DLL v0.7.4.3"
     original = zip_path.read_bytes()
