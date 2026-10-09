@@ -94,13 +94,44 @@ class RawInputBackend:
         self.user32 = ctypes.WinDLL("user32", use_last_error=True)
         self.kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         self.hid = ctypes.WinDLL("hid", use_last_error=True)
-        self.user32.GetRawInputDeviceList.restype = wintypes.UINT
-        self.user32.GetRawInputDeviceInfoW.restype = wintypes.UINT
-        self.user32.GetRawInputData.restype = wintypes.UINT
-        self.user32.CreateWindowExW.restype = ctypes.c_void_p
+        ptr, uint, word = ctypes.c_void_p, wintypes.UINT, wintypes.USHORT
+        self.user32.GetRawInputDeviceList.argtypes = [ptr, ctypes.POINTER(uint), uint]
+        self.user32.GetRawInputDeviceList.restype = uint
+        self.user32.GetRawInputDeviceInfoW.argtypes = [ptr, uint, ptr, ctypes.POINTER(uint)]
+        self.user32.GetRawInputDeviceInfoW.restype = uint
+        self.user32.GetRawInputData.argtypes = [ptr, uint, ptr, ctypes.POINTER(uint), uint]
+        self.user32.GetRawInputData.restype = uint
+        self.user32.CreateWindowExW.argtypes = [
+            wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD,
+            ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            ptr, ptr, ptr, ptr,
+        ]
+        self.user32.CreateWindowExW.restype = ptr
+        self.user32.DefWindowProcW.argtypes = [ptr, uint, ctypes.c_size_t, ctypes.c_ssize_t]
         self.user32.DefWindowProcW.restype = ctypes.c_ssize_t
-        self.user32.RegisterClassW.restype = wintypes.ATOM
-        self.kernel32.GetModuleHandleW.restype = ctypes.c_void_p
+        self.user32.RegisterClassW.argtypes = [ptr]
+        self.user32.RegisterClassW.restype = word
+        self.user32.RegisterRawInputDevices.argtypes = [
+            ctypes.POINTER(RAWINPUTDEVICE), uint, uint,
+        ]
+        self.user32.RegisterRawInputDevices.restype = wintypes.BOOL
+        self.user32.PeekMessageW.argtypes = [ptr, ptr, uint, uint, uint]
+        self.user32.PeekMessageW.restype = wintypes.BOOL
+        self.user32.TranslateMessage.argtypes = [ptr]
+        self.user32.DispatchMessageW.argtypes = [ptr]
+        self.user32.DestroyWindow.argtypes = [ptr]
+        self.user32.UnregisterClassW.argtypes = [wintypes.LPCWSTR, ptr]
+        self.kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+        self.kernel32.GetModuleHandleW.restype = ptr
+        self.hid.HidP_GetCaps.argtypes = [ptr, ptr]
+        self.hid.HidP_GetUsages.argtypes = [
+            ctypes.c_int, word, word, ptr, ctypes.POINTER(wintypes.ULONG),
+            ptr, ptr, wintypes.ULONG,
+        ]
+        self.hid.HidP_GetUsageValue.argtypes = [
+            ctypes.c_int, word, word, word, ctypes.POINTER(wintypes.ULONG),
+            ptr, ptr, wintypes.ULONG,
+        ]
         for fn in ("HidP_GetUsages", "HidP_GetUsageValue", "HidP_GetCaps"):
             getattr(self.hid, fn).restype = ctypes.c_long
         self._tracker = EdgeTracker(self.name)
