@@ -5,6 +5,8 @@ on:
     paths:
       - "util/obs-multi-rtmp-websocket/**"
       - ".github/workflows/obs-multi-rtmp-build.yml"
+      - "scripts/release/obs_plugin_package.py"
+      - "streamops/server/tests/test_obs_plugin_release_harness.py"
       - "scripts/e2e/issue35_build_candidate.ps1"
   push:
     branches:
@@ -23,8 +25,10 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Checkout
+      - name: Checkout exact source
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Build candidate plugin
         shell: pwsh
@@ -79,3 +83,25 @@ jobs:
             .streamops/issue-45-ci/build-manifest.json
           if-no-files-found: error
           retention-days: 7
+
+      - name: Package managed Synclab release candidate
+        shell: pwsh
+        run: |
+          $sha = (git rev-parse HEAD).Trim()
+          python scripts/release/obs_plugin_package.py pack `
+            --source-root util/obs-multi-rtmp-websocket `
+            --source-commit $sha `
+            --output-dir .streamops/obs-managed-candidate
+          if ($LASTEXITCODE -ne 0) { throw "Managed plugin package generation failed." }
+          python scripts/release/obs_plugin_package.py verify `
+            --output-dir .streamops/obs-managed-candidate `
+            --expected-commit $sha
+          if ($LASTEXITCODE -ne 0) { throw "Managed plugin package verification failed." }
+
+      - name: Upload managed plugin candidate (not published)
+        uses: actions/upload-artifact@v4
+        with:
+          name: obs-multi-rtmp-managed-candidate-${{ github.sha }}
+          path: .streamops/obs-managed-candidate/*
+          if-no-files-found: error
+          retention-days: 14
