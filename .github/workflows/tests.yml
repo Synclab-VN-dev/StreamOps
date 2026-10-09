@@ -19,6 +19,17 @@ jobs:
       - run: python -m playwright install chromium
       - run: choco install ffmpeg --no-progress -y
       - run: python -m pip wheel . --no-deps -w dist
+      - name: Build hash-pinned Windows deployment bundle
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .streamops/node-deployment/wheelhouse | Out-Null
+          Copy-Item dist/*.whl .streamops/node-deployment/wheelhouse/
+          python -m pip download --only-binary=:all: --dest .streamops/node-deployment/wheelhouse `
+            fastapi pillow uvicorn websockets PyYAML 'dxcam[winrt]'
+          python scripts/release/streamops_node_bundle.py pack `
+            --root .streamops/node-deployment --source-commit "${{ github.event.pull_request.head.sha || github.sha }}"
+          python scripts/release/streamops_node_bundle.py verify `
+            --root .streamops/node-deployment --source-commit "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Test installed wheel outside source checkout
         shell: pwsh
         run: |
@@ -35,3 +46,8 @@ jobs:
         with:
           name: d4planner-nvda-addon
           path: utility/d4planner/dist/*.nvda-addon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: streamops-node-deployment-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .streamops/node-deployment/**
+          if-no-files-found: error

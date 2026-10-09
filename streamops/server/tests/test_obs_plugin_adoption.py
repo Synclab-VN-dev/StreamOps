@@ -1,0 +1,458 @@
+from __future__ import annotations
+
+import asyncio
+from dataclasses import replace
+from datetime import datetime, timezone
+import hashlib
+from io import BytesIO
+import json
+from pathlib import Path
+import threading
+import zipfile
+
+import pytest
+
+from streamops.server.app import create_app
+from streamops.server.errors import ObsPluginError
+from streamops.server.obs.manager import ObsRuntimeStatus
+from streamops.server.platform.windows.obs_plugin.installer import (
+    PluginInstallerFailure,
+    ProcessEvidence,
+    WindowsObsMultiRtmpInstaller,
+    _file_records,
+    _tree_digest,
+)
+from streamops.server.services.obs_plugin import (
+    ObsPluginOperationResult,
+    ObsPluginService,
+    ObsPluginStatus,
+    PluginHostResult,
+    PluginHostStatus,
+)
+from streamops.server.services.obs_plugin_release_source import PluginRelease
+
+
+APPROVED_FILES = {
+    "bin/64bit/obs-multi-rtmp.dll": b"approved-dll-v1",
+    "bin/64bit/obs-multi-rtmp.pdb": b"approved-pdb-v1",
+    "data/locale/en-US.ini": b"approved-locale",
+}
+
+
+def _archive(files: dict[str, bytes]) -> bytes:
+    mapping = {
+        "bin/64bit/obs-multi-rtmp.dll": "obs-plugins/64bit/obs-multi-rtmp.dll",
+        "bin/64bit/obs-multi-rtmp.pdb": "obs-plugins/64bit/obs-multi-rtmp.pdb",
+        "data/locale/en-US.ini": "data/obs-plugins/obs-multi-rtmp/locale/en-US.ini",
+    }
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w") as package:
+        for target, payload in files.items():
+            package.writestr(mapping[target], payload)
+    return output.getvalue()
+
+
+def _records(files: dict[str, bytes]) -> list[dict[str, object]]:
+    return sorted([
+        {"relative_path": path, "length": len(payload), "sha256": hashlib.sha256(payload).hexdigest()}
+        for path, payload in files.items()
+    ], key=lambda item: str(item["relative_path"]))
+
+
+def _write_tree(root: Path, files: dict[str, bytes]) -> None:
+    for relative, payload in files.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+
+
+def _installer(tmp_path: Path, *, legacy: dict[str, bytes] | None = None, running: bool = False):
+    archive = _archive(APPROVED_FILES)
+    records = _records(APPROVED_FILES)
+    plugin_root = tmp_path / "plugin"
+    if legacy is not None:
+        _write_tree(plugin_root, legacy)
+    appdata = tmp_path / "appdata"
+    config = appdata / "obs-studio/basic/profiles/User/obs-multi-rtmp.json"
+    config.parent.mkdir(parents=True)
+    config.write_bytes(b'{"targets":[{"stream_key":"fixture-secret"}]}')
+    exe = tmp_path / "obs64.exe"
+    exe.touch()
+    processes = [ProcessEvidence(10, exe, datetime.now(timezone.utc))] if running else []
+    manifest = {
+        "plugin_id": "obs-multi-rtmp",
+        "package_version": "1.0.0",
+        "expected_obs_version": "32.2.1",
+        "artifact_name": "approved.zip",
+        "artifact_url": "https://managed.invalid/approved.zip",
+        "artifact_sha256": hashlib.sha256(archive).hexdigest(),
+        "file_count": len(records),
+        "relative_paths": sorted(APPROVED_FILES),
+        "tree_sha256": _tree_digest(records),
+    }
+    installer = WindowsObsMultiRtmpInstaller(
+        tmp_path / "state", plugin_root=plugin_root, obs_executable=exe,
+        manifest=manifest, downloader=lambda _url: BytesIO(archive),
+        process_probe=lambda: list(processes), version_probe=lambda _path: "32.2.1",
+        appdata=appdata,
+    )
+    return installer, config, processes
+
+
+def _runtime(state="STOPPED", *, streaming=False, recording=False):
+    return ObsRuntimeStatus(
+        state=state, process={},
+        websocket={"connected": state == "READY", "obs_version": "32.2.1"},
+        output={"streaming": streaming, "recording": recording}, last_operation=None,
+    )
+
+
+class _Manager:
+    def __init__(self, value=None):
+        self.value = value or _runtime()
+        self.calls: list[str] = []
+
+    def status(self):
+        return self.value
+
+    def stop(self):
+        self.calls.append("stop")
+        self.value = _runtime("STOPPED")
+        return self.value
+
+    def start(self):
+        self.calls.append("start")
+        self.value = _runtime("READY")
+        return self.value
+
+
+class _Host:
+    def __init__(self, installer: WindowsObsMultiRtmpInstaller):
+        self.installer = installer
+        self.calls: list[str] = []
+
+    def status(self):
+        return self.installer.status()
+
+    def adopt(self):
+        self.calls.append("adopt")
+        return PluginHostResult(self.installer.adopt().result)
+
+    def install(self):
+        self.calls.append("install")
+        return PluginHostResult(self.installer.install().result)
+
+    def update(self):
+        self.calls.append("update")
+        return PluginHostResult(self.installer.update().result)
+
+    def rollback(self):
+        self.calls.append("rollback")
+        return PluginHostResult(self.installer.rollback().result)
+
+    def verify(self):
+        self.calls.append("verify")
+        value = self.installer.status()
+        return replace(value, loaded=True, loaded_version=value.installed_version)
+
+
+def test_ad01_detects_legacy_tree_without_journal(tmp_path):
+    installer, _, _ = _installer(tmp_path, legacy=APPROVED_FILES)
+    assert installer.status().installation == "unmanaged"
+
+
+def test_ad02_adopt_creates_verified_snapshot_and_legacy_journal(tmp_path):
+    legacy = {**APPROVED_FILES, "bin/64bit/obs-multi-rtmp.dll": b"legacy"}
+    installer, config, _ = _installer(tmp_path, legacy=legacy)
+    assert installer.adopt().result == "adopted"
+    root, journal = installer._read_current_transaction()
+    assert journal["state"] == "legacy_adopted"
+    assert journal["installed_version"] is None
+    assert journal.get("source_commit") is None
+    assert journal["backup_verified"] is True
+    assert _file_records(root / "backup/obs-multi-rtmp") == _file_records(installer.plugin_root)
+    assert journal["baseline_plugin_configs"][0]["sha256"] == hashlib.sha256(config.read_bytes()).hexdigest()
+
+
+def test_ad03_second_adopt_is_idempotent(tmp_path):
+    installer, _, _ = _installer(tmp_path, legacy=APPROVED_FILES)
+    installer.adopt()
+    pointer = installer.pointer.read_bytes()
+    count = len(list(installer.transactions_root.iterdir()))
+    assert installer.adopt().result == "already_adopted"
+    assert installer.pointer.read_bytes() == pointer
+    assert len(list(installer.transactions_root.iterdir())) == count
+
+
+def test_ad04_exact_approved_legacy_is_not_rewritten(tmp_path):
+    installer, _, _ = _installer(tmp_path, legacy=APPROVED_FILES)
+    installer.adopt()
+    dll = installer.plugin_root / "bin/64bit/obs-multi-rtmp.dll"
+    before = (dll.read_bytes(), dll.stat().st_mtime_ns)
+    assert installer.install().result == "installed"
+    assert (dll.read_bytes(), dll.stat().st_mtime_ns) == before
+    _, journal = installer._read_current_transaction()
+    assert journal["state"] == "approved_release_installed"
+    assert journal["previous_transaction_id"] is not None
+
+
+def test_ad05_mismatched_legacy_remains_unchanged_until_install(tmp_path):
+    legacy = {**APPROVED_FILES, "bin/64bit/obs-multi-rtmp.dll": b"legacy-mismatch"}
+    installer, _, _ = _installer(tmp_path, legacy=legacy)
+    before = _file_records(installer.plugin_root)
+    installer.adopt()
+    assert _file_records(installer.plugin_root) == before
+    installer.install()
+    assert _file_records(installer.plugin_root) == _records(APPROVED_FILES)
+
+
+def test_ad06_corrupt_backup_fails_without_changing_legacy(tmp_path, monkeypatch):
+    legacy = {**APPROVED_FILES, "bin/64bit/obs-multi-rtmp.dll": b"legacy"}
+    installer, _, _ = _installer(tmp_path, legacy=legacy)
+    before = _file_records(installer.plugin_root)
+    original = installer._snapshot_and_verify
+
+    def corrupt(transaction_root, transaction, records):
+        original(transaction_root, transaction, records)
+        (transaction_root / "backup/obs-multi-rtmp/bin/64bit/obs-multi-rtmp.dll").write_bytes(b"corrupt")
+        raise PluginInstallerFailure("backup_invalid", "injected backup corruption")
+
+    monkeypatch.setattr(installer, "_snapshot_and_verify", corrupt)
+    with pytest.raises(PluginInstallerFailure) as error:
+        installer.adopt()
+    assert error.value.code == "backup_invalid"
+    assert _file_records(installer.plugin_root) == before
+    assert not installer.pointer.exists()
+
+
+def test_ad06_missing_config_backup_blocks_recovery_without_overwrite(tmp_path):
+    legacy = {**APPROVED_FILES, "bin/64bit/obs-multi-rtmp.dll": b"legacy"}
+    installer, config, _ = _installer(tmp_path, legacy=legacy)
+    installer.adopt()
+    installer.install()
+    root, _ = installer._read_current_transaction()
+    (root / "backup/configs/0000.bin").unlink()
+    approved_before = _file_records(installer.plugin_root)
+    config_before = config.read_bytes()
+    with pytest.raises(PluginInstallerFailure) as error:
+        installer.rollback()
+    assert error.value.code == "backup_invalid"
+    assert _file_records(installer.plugin_root) == approved_before
+    assert config.read_bytes() == config_before
+
+
+@pytest.mark.parametrize("streaming,recording,code", [
+    (True, False, "obs_busy_streaming"), (False, True, "obs_busy_recording"),
+])
+def test_ad07_active_outputs_reject_adopt(streaming, recording, code):
+    class Host:
+        calls: list[str] = []
+        def status(self):
+            return PluginHostStatus("unmanaged", True, False)
+        def adopt(self):
+            self.calls.append("adopt")
+            return PluginHostResult("adopted")
+    host = Host()
+    with pytest.raises(ObsPluginError) as error:
+        asyncio.run(ObsPluginService(_Manager(_runtime("READY", streaming=streaming, recording=recording)), host).adopt("obs-multi-rtmp"))
+    assert error.value.code == code
+    assert host.calls == []
+
+
+def test_ad08_installer_rejects_adopt_while_obs_holds_dll(tmp_path):
+    installer, _, _ = _installer(tmp_path, legacy=APPROVED_FILES, running=True)
+    with pytest.raises(PluginInstallerFailure) as error:
+        installer.adopt()
+    assert error.value.code == "obs_running"
+    assert not installer.state_root.exists()
+
+
+def test_ad09_legacy_to_approved_creates_real_transaction_chain(tmp_path):
+    legacy = {**APPROVED_FILES, "bin/64bit/obs-multi-rtmp.dll": b"legacy"}
+    installer, config, _ = _installer(tmp_path, legacy=legacy)
+    config_before = config.read_bytes()
+    installer.adopt()
+    _, adopted = installer._read_current_transaction()
+    installer.install()
+    _, approved = installer._read_current_transaction()
+    assert approved["previous_transaction_id"] == adopted["transaction_id"]
+    assert approved["state"] == "approved_release_installed"
+    assert config.read_bytes() == config_before
+
+
+def test_ad09_service_stops_obs_before_legacy_to_approved_install(tmp_path):
+    legacy = {**APPROVED_FILES, "bin/64bit/obs-multi-rtmp.dll": b"legacy"}
+    installer, _, _ = _installer(tmp_path, legacy=legacy)
+    installer.adopt()
+    host, manager = _Host(installer), _Manager(_runtime("READY"))
+    result = asyncio.run(ObsPluginService(manager, host).install("obs-multi-rtmp"))
+    assert result.result == "installed"
+    assert manager.calls == ["stop", "start"]
+    assert installer.status().installation == "exact"
+
+
+def test_ad10_verify_failure_restores_legacy_byte_for_byte(tmp_path):
+    legacy = {**APPROVED_FILES, "bin/64bit/obs-multi-rtmp.dll": b"legacy"}
+    installer, config, _ = _installer(tmp_path, legacy=legacy)
+    before, config_before = _file_records(installer.plugin_root), config.read_bytes()
+    installer.adopt()
+    host, manager = _Host(installer), _Manager(_runtime("READY"))
+    service = ObsPluginService(manager, host, defer_restart=True)
+    asyncio.run(service.install("obs-multi-rtmp"))
+    manager.value = _runtime("READY")
+    host.verify = lambda: (_ for _ in ()).throw(ObsPluginError("plugin_verify_failed", "safe", 409))
+    with pytest.raises(ObsPluginError):
+        asyncio.run(service.verify("obs-multi-rtmp"))
+    assert _file_records(installer.plugin_root) == before
+    assert config.read_bytes() == config_before
+    assert installer.status().installation == "legacy_adopted"
+
+
+def test_ad11_manual_rollback_restores_legacy_and_config(tmp_path):
+    legacy = {**APPROVED_FILES, "bin/64bit/obs-multi-rtmp.dll": b"legacy"}
+    installer, config, _ = _installer(tmp_path, legacy=legacy)
+    before, config_before = _file_records(installer.plugin_root), config.read_bytes()
+    installer.adopt()
+    installer.install()
+    config.write_bytes(b'{"targets":[]}')
+    assert installer.rollback().result == "rolled_back"
+    assert _file_records(installer.plugin_root) == before
+    assert config.read_bytes() == config_before
+    assert installer.status().installation == "legacy_adopted"
+
+
+@pytest.mark.parametrize("state,mutation_started", [("preparing", False), ("backup_verified", False)])
+def test_ad12_pending_without_mutation_is_detected_and_aborted_safely(tmp_path, state, mutation_started):
+    installer, _, _ = _installer(tmp_path, legacy=APPROVED_FILES)
+    baseline = _file_records(installer.plugin_root)
+    root, journal = installer._begin_transaction(
+        kind="legacy_adoption", baseline_records=baseline, expected_files=baseline,
+        previous_transaction_id=None, installed_version=None,
+    )
+    journal["state"], journal["mutation_started"] = state, mutation_started
+    installer._write_json(root / "transaction.json", journal)
+    assert installer.status().installation == "recovery_required"
+    assert installer.rollback().result == "recovered_no_mutation"
+    assert _file_records(installer.plugin_root) == baseline
+
+
+@pytest.mark.parametrize("pending_state", ["mutation_pending", "recovery_required"])
+def test_ad12_mutation_pending_restores_only_verified_backup(tmp_path, pending_state):
+    legacy = {**APPROVED_FILES, "bin/64bit/obs-multi-rtmp.dll": b"legacy"}
+    installer, _, _ = _installer(tmp_path, legacy=legacy)
+    baseline = _file_records(installer.plugin_root)
+    root, journal = installer._begin_transaction(
+        kind="approved_release_install", baseline_records=baseline,
+        expected_files=_records(APPROVED_FILES), previous_transaction_id=None, installed_version="1.0.0",
+    )
+    installer._snapshot_and_verify(root, journal, baseline)
+    journal["state"], journal["mutation_started"] = pending_state, True
+    installer._write_json(root / "transaction.json", journal)
+    installer._write_json(installer.pointer, {"transaction_id": journal["transaction_id"]})
+    _write_tree(installer.plugin_root, APPROVED_FILES)
+    assert installer.rollback().result == "recovered_rolled_back"
+    assert _file_records(installer.plugin_root) == baseline
+    assert not installer.pointer.exists()
+
+
+def test_ad12_catalog_is_not_installable_while_recovery_is_required():
+    class Host:
+        def status(self):
+            return PluginHostStatus("recovery_required", True, False)
+
+    class Source:
+        def catalog_release(self, plugin_id):
+            return PluginRelease(
+                plugin_id=plugin_id, version="1.0.0", source_commit="a" * 40,
+                platform="windows", architecture="x64", obs_version="32.2.1",
+                artifact_name="approved.zip", artifact_sha256="0" * 64,
+                vendor="sorayuki.multi_rtmp", metadata={},
+            )
+
+    catalog = asyncio.run(ObsPluginService(_Manager(), Host(), release_source=Source()).available())
+    assert catalog["plugins"][0]["installable"] is False
+    assert catalog["plugins"][0]["reason"] == "recovery_required"
+
+
+def test_ad12_invalid_current_pointer_fails_closed(tmp_path):
+    installer, _, _ = _installer(tmp_path, legacy=APPROVED_FILES)
+    installer.pointer.parent.mkdir(parents=True)
+    installer.pointer.write_text('{"transaction_id":"unsafe"}', encoding="utf-8")
+    assert installer.status().installation == "recovery_required"
+    for operation in (installer.adopt, installer.install):
+        with pytest.raises(PluginInstallerFailure) as error:
+            operation()
+        assert error.value.code == "recovery_required"
+
+
+def test_ad13_concurrent_adopt_rejects_second_mutation():
+    entered, release = threading.Event(), threading.Event()
+
+    class Host:
+        def status(self):
+            return PluginHostStatus("unmanaged", True, False)
+        def adopt(self):
+            entered.set(); release.wait(5)
+            return PluginHostResult("adopted")
+
+    async def scenario():
+        service = ObsPluginService(_Manager(), Host())
+        first = asyncio.create_task(service.adopt("obs-multi-rtmp"))
+        assert await asyncio.to_thread(entered.wait, 2)
+        with pytest.raises(ObsPluginError) as error:
+            await service.adopt("obs-multi-rtmp")
+        assert error.value.code == "plugin_state_conflict"
+        release.set()
+        await first
+
+    asyncio.run(scenario())
+
+
+def test_ad14_vendor_failure_is_typed_and_restores_legacy(tmp_path):
+    legacy = {**APPROVED_FILES, "bin/64bit/obs-multi-rtmp.dll": b"legacy"}
+    installer, _, _ = _installer(tmp_path, legacy=legacy)
+    before = _file_records(installer.plugin_root)
+    installer.adopt()
+    host, manager = _Host(installer), _Manager(_runtime("READY"))
+
+    class Client:
+        def connect(self): pass
+        def request(self, *_args, **_kwargs): raise RuntimeError("stream_key=never-return")
+        def close(self): pass
+
+    manager.client_factory = Client
+    service = ObsPluginService(manager, host, defer_restart=True)
+    asyncio.run(service.install("obs-multi-rtmp"))
+    manager.value = _runtime("READY")
+    with pytest.raises(ObsPluginError) as error:
+        asyncio.run(service.verify("obs-multi-rtmp"))
+    assert error.value.code == "plugin_verify_failed"
+    assert "stream_key" not in str(error.value)
+    assert _file_records(installer.plugin_root) == before
+
+
+def test_ad15_rest_and_websocket_adopt_contract(server_config, capture_service):
+    stopped = ObsPluginStatus(
+        "obs-multi-rtmp", "0.7.4.0", "LEGACY_ADOPTED", True, False, True,
+        managed=True, adoptable=False,
+    )
+
+    class Service:
+        async def adopt(self, plugin_id):
+            assert plugin_id == "obs-multi-rtmp"
+            return ObsPluginOperationResult(stopped, "adopt", "adopted")
+
+    app = create_app(server_config, capture_service=capture_service, obs_plugin_service=Service(), manage_runtime=False)
+    from fastapi.testclient import TestClient
+    with TestClient(app) as client:
+        rest = client.post("/api/v1/obs/plugins/obs-multi-rtmp/adopt")
+        assert rest.status_code == 200
+        assert rest.json()["operation"] == "adopt"
+        with client.websocket_connect("/api/v1/obs/plugins/ws") as ws:
+            ws.send_json({"type": "request", "request_id": "adopt-1", "operation": "obs_plugin.adopt", "payload": {"plugin_id": "obs-multi-rtmp"}})
+            response = ws.receive_json()
+        assert response["ok"] is True
+        assert response["data"] == rest.json()
+        rejected = client.post("/api/v1/obs/plugins/obs-multi-rtmp/adopt", json={"source": "secret"})
+        assert rejected.status_code == 400
+        assert "secret" not in rejected.text

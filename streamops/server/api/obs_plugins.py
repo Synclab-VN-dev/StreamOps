@@ -59,6 +59,16 @@ async def install_plugin(plugin_id: str, request: Request, response: Response) -
         _refresh(request)
 
 
+@router.post("/{plugin_id}/adopt")
+async def adopt_plugin(plugin_id: str, request: Request, response: Response) -> dict[str, object]:
+    await _reject_input(request)
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return (await _service(request).adopt(plugin_id)).api_payload()
+    finally:
+        _refresh(request)
+
+
 @router.post("/{plugin_id}/update")
 async def update_plugin(plugin_id: str, request: Request, response: Response) -> dict[str, object]:
     await _reject_input(request)

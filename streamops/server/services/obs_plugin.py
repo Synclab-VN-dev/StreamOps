@@ -25,12 +25,12 @@ PLUGIN_ID = "obs-multi-rtmp"
 EXPECTED_VERSION = "0.7.4.0"
 EXPECTED_OBS_VERSION = "32.2.1"
 
-PluginState = Literal["NOT_INSTALLED", "INSTALLED", "LOADED", "INCOMPATIBLE", "ERROR", "VERIFIED", "UPDATE_AVAILABLE", "RESTART_REQUIRED", "VERIFY_FAILED", "FAILED"]
+PluginState = Literal["NOT_INSTALLED", "UNMANAGED", "LEGACY_ADOPTED", "RECOVERY_REQUIRED", "INSTALLED", "LOADED", "INCOMPATIBLE", "ERROR", "VERIFIED", "UPDATE_AVAILABLE", "RESTART_REQUIRED", "VERIFY_FAILED", "FAILED"]
 
 
 @dataclass(frozen=True)
 class PluginHostStatus:
-    installation: Literal["absent", "exact", "conflict"]
+    installation: Literal["absent", "unmanaged", "legacy_adopted", "approved_release_installed", "exact", "recovery_required", "conflict"]
     compatible: bool
     loaded: bool
     loaded_version: str | None = None
@@ -46,6 +46,7 @@ class PluginHostResult:
 
 class ObsPluginHost(Protocol):
     def status(self) -> PluginHostStatus: ...
+    def adopt(self) -> PluginHostResult: ...
     def install(self) -> PluginHostResult: ...
     def update(self) -> PluginHostResult: ...
     def verify(self) -> PluginHostStatus: ...
@@ -63,6 +64,8 @@ class ObsPluginStatus:
     installed_version: str | None = None
     available_version: str | None = None
     restart_required: bool = False
+    managed: bool = False
+    adoptable: bool = False
     display_name: str = "OBS Multi RTMP"
     last_verification: str | None = None
 
@@ -73,7 +76,7 @@ class ObsPluginStatus:
 @dataclass(frozen=True)
 class ObsPluginOperationResult:
     status: ObsPluginStatus
-    operation: Literal["install", "update", "verify", "rollback"]
+    operation: Literal["adopt", "install", "update", "verify", "rollback"]
     result: str
     previous_version: str | None = None
 
@@ -136,13 +139,21 @@ class ObsPluginService:
             release.platform == "windows" and release.architecture == "x64"
             and release.obs_version == EXPECTED_OBS_VERSION and current.compatible
         )
+        unsafe_state = current.state in {"UNMANAGED", "RECOVERY_REQUIRED", "FAILED", "VERIFY_FAILED"}
         can_install = bool(
-            compatible and (not current.installed or
-                            version_parts(release.version) > version_parts(installed_version))
+            compatible and not unsafe_state and
+            (not current.installed or current.state == "LEGACY_ADOPTED" or
+             version_parts(release.version) > version_parts(installed_version))
         )
         reason = None
         if not compatible:
             reason = "incompatible_obs"
+        elif current.state == "UNMANAGED":
+            reason = "adoption_required"
+        elif current.state == "RECOVERY_REQUIRED":
+            reason = "recovery_required"
+        elif current.state in {"FAILED", "VERIFY_FAILED"}:
+            reason = "state_conflict"
         elif current.installed and not can_install:
             reason = "already_installed"
         return {
@@ -162,6 +173,10 @@ class ObsPluginService:
     async def install(self, plugin_id: str) -> ObsPluginOperationResult:
         self._require_supported(plugin_id)
         return await self._mutation("install", self._install_sync)
+
+    async def adopt(self, plugin_id: str) -> ObsPluginOperationResult:
+        self._require_supported(plugin_id)
+        return await self._mutation("adopt", self._adopt_sync)
 
     async def update(self, plugin_id: str) -> ObsPluginOperationResult:
         self._require_supported(plugin_id)
@@ -219,15 +234,18 @@ class ObsPluginService:
     def _combine(self, host: PluginHostStatus, runtime: Any) -> ObsPluginStatus:
         runtime_version = runtime.websocket.get("obs_version") if runtime.websocket else None
         compatible = host.compatible and runtime_version in (None, EXPECTED_OBS_VERSION)
-        installed = host.installation == "exact"
+        installed = host.installation != "absent"
+        managed = host.installation in {"legacy_adopted", "approved_release_installed", "exact"}
+        adoptable = host.installation == "unmanaged"
+        approved = host.installation in {"approved_release_installed", "exact"}
         loaded = bool(
-            installed
+            approved
             and host.loaded
             and host.loaded_version == (getattr(host, "installed_version", None) or EXPECTED_VERSION)
             and runtime.state == "READY"
             and runtime.websocket.get("connected") is True
         )
-        installed_version = getattr(host, "installed_version", None) or (EXPECTED_VERSION if installed else None)
+        installed_version = getattr(host, "installed_version", None) if approved else None
         available_version = getattr(host, "available_version", None)
         def as_version(value: str | None) -> tuple[int, ...]:
             if not value or not re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", value):
@@ -237,8 +255,14 @@ class ObsPluginService:
             installed_version and available_version
             and as_version(available_version) > as_version(installed_version)
         )
-        if not compatible:
-            state: PluginState = "INCOMPATIBLE"
+        if host.installation == "recovery_required":
+            state: PluginState = "RECOVERY_REQUIRED"
+        elif host.installation == "unmanaged":
+            state = "UNMANAGED"
+        elif host.installation == "legacy_adopted":
+            state = "LEGACY_ADOPTED"
+        elif not compatible:
+            state = "INCOMPATIBLE"
         elif host.installation == "conflict":
             state = "FAILED"
         elif not installed:
@@ -258,8 +282,25 @@ class ObsPluginService:
             installed_version=installed_version,
             available_version=available_version,
             restart_required=bool(getattr(host, "restart_required", False) or self._pending_change),
+            managed=managed, adoptable=adoptable,
             last_verification=self._verified_at if loaded else None,
         )
+
+    def _adopt_sync(self) -> ObsPluginOperationResult:
+        runtime = self._runtime_for_mutation()
+        if runtime.state != "STOPPED":
+            raise ObsPluginError(
+                "plugin_adopt_requires_obs_stopped",
+                "OBS must be stopped before adopting existing plugin files.", 409,
+            )
+        initial = self._combine(self.host.status(), runtime)
+        if initial.state == "RECOVERY_REQUIRED":
+            raise ObsPluginError("plugin_recovery_required", "An unfinished plugin transaction requires recovery.", 409)
+        if not initial.installed:
+            raise ObsPluginError("plugin_not_installed", "No existing OBS plugin is available to adopt.", 409)
+        lower = self._host_call("adopt")
+        status = self._status_sync()
+        return ObsPluginOperationResult(status, "adopt", lower.result)
 
     def _runtime_for_mutation(self) -> Any:
         runtime = self.obs_manager.status()
@@ -282,6 +323,10 @@ class ObsPluginService:
     def _install_sync(self) -> ObsPluginOperationResult:
         runtime = self._runtime_for_mutation()
         initial = self._combine(self.host.status(), runtime)
+        if initial.state == "UNMANAGED":
+            raise ObsPluginError("plugin_adoption_required", "Existing plugin files must be explicitly adopted first.", 409)
+        if initial.state == "RECOVERY_REQUIRED":
+            raise ObsPluginError("plugin_recovery_required", "An unfinished plugin transaction requires recovery.", 409)
         self._ensure_compatible(initial)
         if self.defer_restart:
             if initial.loaded:
@@ -305,7 +350,7 @@ class ObsPluginService:
             )
 
         # The lower layer checks the exact manifest before requiring OBS to stop.
-        if initial.installed:
+        if initial.installed and initial.state != "LEGACY_ADOPTED":
             lower = self._host_call("install")
             if initial.loaded:
                 return ObsPluginOperationResult(initial, "install", lower.result)
@@ -337,6 +382,12 @@ class ObsPluginService:
     def _update_sync(self) -> ObsPluginOperationResult:
         runtime = self._runtime_for_mutation()
         initial = self._combine(self.host.status(), runtime)
+        if initial.state == "UNMANAGED":
+            raise ObsPluginError("plugin_adoption_required", "Existing plugin files must be explicitly adopted first.", 409)
+        if initial.state == "LEGACY_ADOPTED":
+            raise ObsPluginError("plugin_state_conflict", "Install the first approved release before updating.", 409)
+        if initial.state == "RECOVERY_REQUIRED":
+            raise ObsPluginError("plugin_recovery_required", "An unfinished plugin transaction requires recovery.", 409)
         if not initial.installed:
             raise ObsPluginError("plugin_not_installed", "The OBS plugin must be installed before it can be updated.", 409)
         self._ensure_compatible(initial)
@@ -488,7 +539,7 @@ class ObsPluginService:
             self._best_effort_start(exc)
             raise ObsPluginError("obs_restart_failed", "OBS did not return to READY after plugin rollback.", 503) from exc
 
-    def _host_call(self, action: Literal["install", "update", "rollback"]) -> PluginHostResult:
+    def _host_call(self, action: Literal["adopt", "install", "update", "rollback"]) -> PluginHostResult:
         try:
             return getattr(self.host, action)()
         except ObsPluginError:
@@ -500,7 +551,7 @@ class ObsPluginService:
                 403,
             ) from exc
         except Exception as exc:
-            code = {"install": "plugin_install_failed", "update": "plugin_update_failed", "rollback": "plugin_rollback_failed"}[action]
+            code = {"adopt": "plugin_adopt_failed", "install": "plugin_install_failed", "update": "plugin_update_failed", "rollback": "plugin_rollback_failed"}[action]
             raise ObsPluginError(code, f"OBS plugin {action} failed.", 503) from exc
 
     def _restart_or_start(self, runtime: Any) -> None:

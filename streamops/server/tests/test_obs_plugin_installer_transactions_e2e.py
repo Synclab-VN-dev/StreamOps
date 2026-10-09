@@ -188,7 +188,7 @@ def test_installer_never_downloads_when_existing_tree_conflicts(package):
     (root / "unknown.dll").write_bytes(b"keep")
     with pytest.raises(PluginInstallerFailure) as caught:
         build().install()
-    assert caught.value.code == "plugin_state_conflict"
+    assert caught.value.code == "adoption_required"
     assert calls == []
     assert (root / "unknown.dll").read_bytes() == b"keep"
 

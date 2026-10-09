@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 _OPERATIONS = {
     "obs_plugin.status": "status",
+    "obs_plugin.adopt": "adopt",
     "obs_plugin.install": "install",
     "obs_plugin.update": "update",
     "obs_plugin.verify": "verify",

@@ -43,7 +43,7 @@
 ## Release/real-device gate
 
 - Current managed distribution repository: `Synclab-VN-dev/StreamOps-OBS-Plugins`. Its GitHub Releases list was empty at audit time, so **no approved StreamOps-built v1/v2 package with Vendor `sorayuki.multi_rtmp` was evidenced**.
-- Server-controlled local managed directory source can be configured with `STREAMOPS_OBS_PLUGIN_RELEASE_DIR`, containing `obs-multi-rtmp/release.json` and its SHA-pinned zip. Missing source must fail closed. Direct Github Release provider is not yet implemented.
+- Server-controlled directory and GitHub Release providers are implemented. Missing, empty, or invalid sources fail closed; neither provider falls back to upstream artifacts.
 - Synthetic CI proves contracts and filesystem transaction behavior; it does **not** prove real OBS plugin Vendor readiness on Windows-A.
 - DEV-F real-A 11 and MANUAL operator 9 remain **NOT RUN**, and PR should remain Draft until these have evidence.
 - Backend persistent Activity Log is intentionally out of scope.
@@ -93,3 +93,27 @@ CI uses mocked GitHub HTTP and OBS/Vendor; DEV-F must prove source/version/SHA
 against **real Synclab GitHub Releases** on Windows A. Current audited release
 count is zero, so destructive real-A install/update/rollback are BLOCKED until
 approved release(s) are available.
+
+## Legacy adoption acceptance (P0)
+
+These tests use a real isolated filesystem tree, config fixture, backup, journal,
+and rollback. They do not mutate Windows A and do not qualify any D01–D15 real-A
+acceptance as PASS.
+
+| ID | Requirement | Direct evidence |
+|---|---|---|
+| AD01 | Legacy files without journal are unmanaged | `test_ad01_detects_legacy_tree_without_journal` |
+| AD02 | Explicit adoption snapshots and commits a legacy journal | `test_ad02_adopt_creates_verified_snapshot_and_legacy_journal` |
+| AD03 | Repeated adoption is idempotent | `test_ad03_second_adopt_is_idempotent` |
+| AD04 | Exact approved bytes are promoted without rewrite | `test_ad04_exact_approved_legacy_is_not_rewritten` |
+| AD05 | Mismatched legacy remains unchanged until approved install | `test_ad05_mismatched_legacy_remains_unchanged_until_install` |
+| AD06 | Missing/corrupt backup fails before mutation | `test_ad06_corrupt_backup_fails_without_changing_legacy` |
+| AD07 | Streaming/recording guard | `test_ad07_active_outputs_reject_adopt` |
+| AD08 | OBS-held DLL guard | `test_ad08_installer_rejects_adopt_while_obs_holds_dll` |
+| AD09 | Legacy to approved v1 transaction chain | `test_ad09_legacy_to_approved_creates_real_transaction_chain`, `test_ad09_service_stops_obs_before_legacy_to_approved_install` |
+| AD10 | Failed verification restores legacy bytes | `test_ad10_verify_failure_restores_legacy_byte_for_byte` |
+| AD11 | Manual rollback restores files and config baseline | `test_ad11_manual_rollback_restores_legacy_and_config` |
+| AD12 | Pending/crashed transaction fails closed and recovers explicitly | `test_ad12_pending_without_mutation_is_detected_and_aborted_safely`, `test_ad12_mutation_pending_restores_only_verified_backup` |
+| AD13 | Concurrent mutation is rejected | `test_ad13_concurrent_adopt_rejects_second_mutation` |
+| AD14 | Restart/vendor failure is typed, sanitized, and recovered | `test_restart_failure_is_typed_and_attempts_safe_rollback`, `test_ad14_vendor_failure_is_typed_and_restores_legacy` |
+| AD15 | REST/WS adoption parity and input sanitization | `test_ad15_rest_and_websocket_adopt_contract` |
