@@ -82,6 +82,8 @@ class Supervisor:
             silent=silent,
         )
         self._raw_offset = 0
+        self._pending_ingress: list[EventDraft] = []
+        self._pending_raw_offset: int | None = None
         self._next_lease_refresh = 0.0
         self.marker_capture = marker_capture
         self._marker_started = False
@@ -418,21 +420,22 @@ class Supervisor:
             except OSError:
                 pass
 
-    def _collect_speech_drafts(self) -> list[EventDraft]:
+    def _collect_speech_drafts(self) -> tuple[list[EventDraft], int]:
         if not self.store:
-            return []
+            return [], self._raw_offset
         path = self.store.session.raw_speech_path
         if not path.exists():
-            return []
+            return [], self._raw_offset
 
         drafts: list[EventDraft] = []
+        next_offset = self._raw_offset
         with path.open("r", encoding="utf-8") as handle:
             handle.seek(self._raw_offset)
             while True:
                 line = handle.readline()
                 if not line:
                     break
-                self._raw_offset = handle.tell()
+                next_offset = handle.tell()
                 if not line.strip():
                     continue
                 try:
@@ -442,7 +445,7 @@ class Supervisor:
                 if not isinstance(event, dict):
                     continue
                 drafts.append(EventStore.capture_draft(event))
-        return drafts
+        return drafts, next_offset
 
     def _collect_marker_drafts(self) -> list[EventDraft]:
         capture = self.marker_capture
@@ -469,29 +472,53 @@ class Supervisor:
                 pass
             return []
 
+    def _prepare_ingress(self, *, include_marker: bool) -> list[EventDraft]:
+        # A failed canonical write keeps the exact same batch pending. Do not
+        # re-read speech or drain more marker edges until that batch commits.
+        if self._pending_ingress:
+            return self._pending_ingress
+
+        drafts, next_offset = self._collect_speech_drafts()
+        if include_marker:
+            drafts.extend(self._collect_marker_drafts())
+
+        if not drafts:
+            # Blank/malformed raw-speech lines have no canonical event to
+            # persist, so they can be acknowledged immediately.
+            self._raw_offset = next_offset
+            return []
+
+        # Both NVDA capture and marker capture timestamp their raw evidence on A.
+        # Sorting before sequence allocation preserves cross-source chronology.
+        drafts.sort(key=lambda draft: draft.timestamp or "")
+        self._pending_ingress = drafts
+        self._pending_raw_offset = next_offset
+        return self._pending_ingress
+
     def _flush_ingress(self, *, include_marker: bool = True) -> int:
         if not self.store:
             return 0
 
-        drafts = self._collect_speech_drafts()
-        if include_marker:
-            drafts.extend(self._collect_marker_drafts())
+        drafts = self._prepare_ingress(include_marker=include_marker)
         if not drafts:
             return 0
-
-        # Both NVDA capture and marker capture timestamp their raw evidence on A.
-        # Sorting before sequence allocation preserves cross-source chronology
-        # while EventStore remains the single SQLite writer.
-        drafts.sort(key=lambda draft: draft.timestamp or "")
 
         try:
             unified_events = self.store.emit_batch(drafts)
         except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
+            # Keep the pending batch and raw offset untouched. The next runtime
+            # loop retries exactly the same evidence rather than losing it.
             self.status.last_error = (
                 f"capture event sink failure: {type(exc).__name__}: {exc}"
             )
             self._persist_status()
             return 0
+
+        committed_raw_offset = self._pending_raw_offset
+        self._pending_ingress = []
+        self._pending_raw_offset = None
+        if committed_raw_offset is not None:
+            self._raw_offset = committed_raw_offset
 
         for unified in unified_events:
             if unified.get("type") != "speech.raw":
@@ -768,7 +795,19 @@ class Supervisor:
         finally:
             self._stop_marker_capture()
             # Drain any marker/speech evidence queued immediately before stop.
-            self._flush_ingress()
+            # Retry briefly because a transient SQLite lock must not drop the
+            # already-captured pending batch during graceful shutdown.
+            drain_deadline = time.monotonic() + 0.5
+            while time.monotonic() < drain_deadline:
+                flushed = self._flush_ingress()
+                if self._pending_ingress:
+                    time.sleep(0.05)
+                    continue
+                if flushed:
+                    # One more pass picks up marker/speech queued behind a batch
+                    # that had been pending from an earlier failed write.
+                    continue
+                break
 
             shutdown_error = self.status.last_error
             try:

@@ -131,37 +131,48 @@ class EventStore:
         return self.emit_batch([EventDraft(event_type, data or {})])[0]
 
     def emit_batch(self, drafts: Iterable[EventDraft]) -> list[dict[str, Any]]:
-        events: list[EventEnvelope] = []
-        for draft in drafts:
-            validate_event_draft(draft)
-            timestamp = draft.timestamp or iso_now(self._clock)
-            events.append(
-                EventEnvelope(
-                    event_seq=self._next_seq,
-                    type=draft.type,
-                    timestamp=timestamp,
-                    session_id=self.session.session_id,
-                    data=dict(draft.data),
-                )
-            )
-            self._next_seq += 1
-        if not events:
+        pending = list(drafts)
+        if not pending:
             return []
-        try:
-            self.repository.append_batch(events)
-        except Exception:
-            self._next_seq -= len(events)
-            raise
 
+        # Validate the complete batch before reserving sequence numbers. A bad
+        # draft must not create a gap in the canonical stream.
+        for draft in pending:
+            validate_event_draft(draft)
+
+        base_seq = self._next_seq
+        events = [
+            EventEnvelope(
+                event_seq=base_seq + index,
+                type=draft.type,
+                timestamp=draft.timestamp or iso_now(self._clock),
+                session_id=self.session.session_id,
+                data=dict(draft.data),
+            )
+            for index, draft in enumerate(pending)
+        ]
+
+        # Sequence allocation is committed together with the SQLite write. On a
+        # transient write failure the caller can retry the identical batch.
+        self.repository.append_batch(events)
+        self._next_seq = base_seq + len(events)
+
+        # runtime.log is diagnostic only. Once the canonical SQLite transaction
+        # committed, a secondary text-log failure must never make callers retry
+        # and collide with already-persisted event sequences.
         for event in events:
-            if event.type.startswith("runtime."):
-                detail = str(event.data.get("detail") or "")
+            if not event.type.startswith("runtime."):
+                continue
+            detail = str(event.data.get("detail") or "")
+            try:
                 with self.session.runtime_log_path.open(
                     "a", encoding="utf-8", newline="\n"
                 ) as log:
                     log.write(
                         f"[{event.timestamp}] {event.type} {detail}".rstrip() + "\n"
                     )
+            except OSError:
+                pass
         return [event.as_dict() for event in events]
 
     @staticmethod

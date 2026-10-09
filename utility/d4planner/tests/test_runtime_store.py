@@ -215,3 +215,58 @@ def test_event_store_reports_malformed_legacy_lines_to_diagnostic_log(tmp_path):
         assert "legacy" in lines[0]["source"]
     finally:
         store.close()
+
+
+
+def test_invalid_later_draft_does_not_consume_event_sequence(tmp_path):
+    paths = RuntimePaths(tmp_path / "d4planner")
+    store = EventStore.create(paths, silent=True, session_id="batch-validation")
+    try:
+        with pytest.raises(ValueError, match="missing required fields"):
+            store.emit_batch(
+                [
+                    EventDraft("speech.raw", {"text": "valid-first"}),
+                    EventDraft(
+                        "input.marker.raw",
+                        {
+                            "source": "steamInput",
+                            "device": "keyboard",
+                            "key": "F11",
+                        },
+                    ),
+                ]
+            )
+
+        event = store.emit("speech.raw", {"text": "after-invalid-batch"})
+        assert event["eventSeq"] == 1
+        assert [row["eventSeq"] for row in store.read_after(0)] == [1]
+    finally:
+        store.close()
+
+
+def test_sqlite_write_failure_does_not_consume_event_sequence(monkeypatch, tmp_path):
+    import sqlite3
+
+    paths = RuntimePaths(tmp_path / "d4planner")
+    store = EventStore.create(paths, silent=True, session_id="write-retry")
+    real_append = store.repository.append_batch
+    calls = {"count": 0}
+
+    def fail_once(events, *, ignore_duplicates=False):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise sqlite3.OperationalError("database is temporarily locked")
+        return real_append(events, ignore_duplicates=ignore_duplicates)
+
+    monkeypatch.setattr(store.repository, "append_batch", fail_once)
+    try:
+        with pytest.raises(sqlite3.OperationalError):
+            store.emit_batch([EventDraft("speech.raw", {"text": "retry-me"})])
+
+        event = store.emit("speech.raw", {"text": "retry-me"})
+        assert event["eventSeq"] == 1
+        rows = store.read_after(0)
+        assert len(rows) == 1
+        assert rows[0]["data"]["text"] == "retry-me"
+    finally:
+        store.close()
