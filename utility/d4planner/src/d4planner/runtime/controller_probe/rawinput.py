@@ -14,6 +14,7 @@ import struct
 import time
 
 from .model import BackendResult, ControlEdge, EdgeTracker, ProbeStatus
+from .runner import BackendUnavailable
 
 
 RIM_TYPEHID = 2
@@ -91,9 +92,12 @@ class RawInputBackend:
         if os.name != "nt":
             raise OSError("Raw Input requires Windows")
         # Lazy native loading avoids import failures on Linux CI.
-        self.user32 = ctypes.WinDLL("user32", use_last_error=True)
-        self.kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        self.hid = ctypes.WinDLL("hid", use_last_error=True)
+        try:
+            self.user32 = ctypes.WinDLL("user32", use_last_error=True)
+            self.kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            self.hid = ctypes.WinDLL("hid", use_last_error=True)
+        except OSError as exc:
+            raise BackendUnavailable(f"Raw Input/HID runtime unavailable: {exc}") from exc
         ptr, uint, word = ctypes.c_void_p, wintypes.UINT, wintypes.USHORT
         self.user32.GetRawInputDeviceList.argtypes = [ptr, ctypes.POINTER(uint), uint]
         self.user32.GetRawInputDeviceList.restype = uint
