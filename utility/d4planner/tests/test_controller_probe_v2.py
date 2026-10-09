@@ -14,7 +14,7 @@ from d4planner.runtime.controller_probe import relay, worker
 from d4planner.runtime.controller_probe.model import (
     BackendResult, ControlEdge, EdgeTracker, ProbeStatus,
 )
-from d4planner.runtime.controller_probe.runner import render, run_backends
+from d4planner.runtime.controller_probe.runner import BackendUnavailable, render, run_backends
 from d4planner.runtime.store import RuntimePaths, atomic_write_json
 
 
@@ -254,7 +254,7 @@ def test_missing_native_backend_is_reported_not_fatal(monkeypatch, tmp_path):
     rt = FakeRuntime(paths, control=1, active=1)
 
     def missing_dll():
-        raise OSError("hid.dll could not be loaded")
+        raise BackendUnavailable("hid.dll could not be loaded")
 
     monkeypatch.setattr(worker, "RawInputBackend", missing_dll)
     request = tmp_path / "request.json"
@@ -262,5 +262,6 @@ def test_missing_native_backend_is_reported_not_fatal(monkeypatch, tmp_path):
     atomic_write_json(request, {"requestId": "missing-hid", "seconds": 0.01})
     assert worker.execute_request(rt, request, output) == 0
     results = json.loads(output.read_text(encoding="utf-8"))["backends"]
-    assert results[0]["status"] == "ERROR"
+    assert results[0]["status"] == "UNAVAILABLE"
+    assert results[0]["runtime"] == "UNAVAILABLE"
     assert "hid.dll could not be loaded" in results[0]["detail"]
