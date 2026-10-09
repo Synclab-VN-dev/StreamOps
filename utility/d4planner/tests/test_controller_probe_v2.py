@@ -265,3 +265,72 @@ def test_missing_native_backend_is_reported_not_fatal(monkeypatch, tmp_path):
     assert results[0]["status"] == "UNAVAILABLE"
     assert results[0]["runtime"] == "UNAVAILABLE"
     assert "hid.dll could not be loaded" in results[0]["detail"]
+
+
+def test_unavailable_status_always_reports_runtime_unavailable():
+    result = BackendResult("GameInput", ProbeStatus.UNAVAILABLE)
+    assert result.as_dict()["runtime"] == "UNAVAILABLE"
+
+
+def test_cli_fake_end_to_end_renders_session_and_raw_identity(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(cli, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(cli, "WindowsRuntime", lambda paths: SimpleNamespace(paths=paths))
+    monkeypatch.setattr(relay, "run_or_relay", lambda runtime, seconds: {
+        "controlSession": 0,
+        "activeConsoleSession": 1,
+        "probeProcessSession": 1,
+        "relayed": True,
+        "backends": [
+            BackendResult(
+                "RawInput", ProbeStatus.EVENTS_OBSERVED,
+                devices=[{"deviceId": "C-controller"}],
+                events=[edge(), edge(state="UP")],
+            ).as_dict()
+        ],
+    })
+    assert cli.command_controller_probe_v2(RuntimePaths(tmp_path), seconds=30) == 0
+    output = capsys.readouterr().out
+    assert "Control session: 0" in output
+    assert "Probe process session: 1" in output
+    assert "Relayed probe to interactive desktop." in output
+    assert "control=usage:0x09:0x01 DOWN" in output
+    assert "control=usage:0x09:0x01 UP" in output
+
+
+def test_fake_wgi_to_cli_renderer_and_gameinput_unavailable():
+    raw = FakeBackend("RawInput", ProbeStatus.NO_DEVICE)
+    wgi = FakeBackend(
+        "Windows.Gaming.Input", ProbeStatus.EVENTS_OBSERVED,
+        devices=[{"deviceId": "gamepad-1"}], events=[edge("Windows.Gaming.Input")]
+    )
+    gameinput = FakeBackend("GameInput", ProbeStatus.UNAVAILABLE)
+    got = run_backends(0.01, [raw, wgi, gameinput])
+    output = render(got)
+    assert "Backend Windows.Gaming.Input:" in output
+    assert "control=usage:0x09:0x01 DOWN" in output
+    assert gameinput.calls == []
+
+
+def test_relay_timeout_is_bounded_and_does_not_claim_success(monkeypatch, tmp_path):
+    rt = FakeRuntime(RuntimePaths(tmp_path / "home"))
+    clock = iter([0.0, 30.0])
+    monkeypatch.setattr(relay, "time", SimpleNamespace(
+        monotonic=lambda: next(clock), sleep=lambda delay: None
+    ))
+    with pytest.raises(Exception, match="did not return"):
+        relay.run_or_relay(rt, 0.01)
+    assert rt.started == [relay.TASK_NAME]
+
+
+def test_worker_rejects_invalid_duration(tmp_path):
+    rt = FakeRuntime(RuntimePaths(tmp_path / "home"), control=1, active=1)
+    request = tmp_path / "request.json"
+    output = tmp_path / "result.json"
+    atomic_write_json(request, {"requestId": "bad-time", "seconds": -10})
+    assert worker.execute_request(rt, request, output) == 2
+    assert "seconds must be between 0 and 300" in output.read_text(encoding="utf-8")
+
+
+def test_cli_rejects_too_long_probe(tmp_path, capsys):
+    assert cli.command_controller_probe_v2(RuntimePaths(tmp_path), seconds=301) == 2
+    assert "between 0 and 300" in capsys.readouterr().err
