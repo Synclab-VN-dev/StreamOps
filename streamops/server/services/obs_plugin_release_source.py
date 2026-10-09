@@ -113,8 +113,22 @@ class ManagedPluginReleaseSource:
             raise
         except Exception as exc:
             raise ObsPluginError("plugin_release_source_error", "Managed plugin release metadata unavailable.", 503) from exc
-        if release.plugin_id != plugin_id or not re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", release.version):
-            raise ObsPluginError("plugin_release_invalid", "Managed plugin release identity invalid.", 409)
+        if (release.plugin_id != plugin_id or
+                not isinstance(release.version, str) or
+                not re.fullmatch(r"[0-9]+(?:\\.[0-9]+){1,3}", release.version) or
+                not isinstance(release.source_commit, str) or
+                not re.fullmatch(r"[A-Za-z0-9._-]{6,128}", release.source_commit) or
+                release.platform != "windows" or release.architecture != "x64" or
+                not isinstance(release.obs_version, str) or
+                not re.fullmatch(r"[0-9]+(?:\\.[0-9]+){1,3}", release.obs_version) or
+                not isinstance(release.artifact_name, str) or
+                not re.fullmatch(r"[A-Za-z0-9._-]+\\.zip", release.artifact_name) or
+                not isinstance(release.artifact_sha256, str) or
+                not re.fullmatch(r"[a-fA-F0-9]{64}", release.artifact_sha256) or
+                not isinstance(release.metadata, Mapping) or
+                release.metadata.get("approved") is not True or
+                release.metadata.get("redistribution_approved") is not True):
+            raise ObsPluginError("plugin_release_invalid", "Managed plugin release metadata invalid.", 409)
         return release
 
     def open_artifact(self, release: PluginRelease) -> BinaryIO:
