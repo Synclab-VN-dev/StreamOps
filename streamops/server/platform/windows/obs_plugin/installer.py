@@ -779,7 +779,10 @@ class WindowsObsMultiRtmpInstaller:
 
     @staticmethod
     def _sync_file(path: Path) -> None:
-        with path.open("rb") as handle:
+        # Windows rejects fsync on a read-only descriptor (Errno 9). Backups
+        # are owned by this transaction, so open writable without changing
+        # bytes before flushing them to disk.
+        with path.open("r+b") as handle:
             os.fsync(handle.fileno())
 
     @classmethod
