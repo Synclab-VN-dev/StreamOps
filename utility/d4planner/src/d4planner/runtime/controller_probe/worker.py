@@ -18,10 +18,10 @@ from .runner import run_backends
 
 MODES = ("auto", "all", "hid", "wgi", "gameinput", "directinput")
 MODE_CLASSES = (
-    ("hid", "RawInput", RawInputBackend),
-    ("wgi", "Windows.Gaming.Input", WGIBackend),
-    ("gameinput", "GameInput", GameInputBackend),
-    ("directinput", "DirectInput", DirectInputBackend),
+    ("hid", "RawInput", lambda: RawInputBackend()),
+    ("wgi", "Windows.Gaming.Input", lambda: WGIBackend()),
+    ("gameinput", "GameInput", lambda: GameInputBackend()),
+    ("directinput", "DirectInput", lambda: DirectInputBackend()),
 )
 
 
