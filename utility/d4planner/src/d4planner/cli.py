@@ -700,6 +700,46 @@ def command_character_equipment_replay(path: Path, *, trace: bool) -> int:
     return 1 if failures else 0
 
 
+def command_controller_probe_v2(paths: RuntimePaths, *, seconds: float) -> int:
+    """Read-only Windows controller visibility probe; never emits domain events."""
+    if not 0 < seconds <= 300:
+        print("controller-probe-v2: --seconds must be between 0 and 300", file=sys.stderr)
+        return 2
+    if os.name != "nt":
+        print("controller-probe-v2 requires Windows", file=sys.stderr)
+        return 2
+    from .runtime.controller_probe.relay import run_or_relay
+    from .runtime.controller_probe.runner import render
+
+    try:
+        result = run_or_relay(WindowsRuntime(paths), seconds)
+    except (OSError, RuntimeBlocked, RuntimeError, ValueError) as exc:
+        print(f"controller-probe-v2 failed: {exc}", file=sys.stderr)
+        return 2
+    print(f"Control session: {result.get('controlSession')}")
+    print(f"Active console session: {result.get('activeConsoleSession')}")
+    print(f"Probe process session: {result.get('probeProcessSession')}")
+    if result.get("relayed"):
+        print("Relayed probe to interactive desktop.")
+    from .runtime.controller_probe.model import BackendResult, ControlEdge, ProbeStatus
+
+    backends = []
+    for item in result["backends"]:
+        edges = [ControlEdge(
+            backend=edge["backend"], device_id=edge["deviceId"],
+            raw_control_id=edge["rawControlId"], state=edge["state"],
+            timestamp=edge["timestamp"],
+        ) for edge in item["events"]]
+        backends.append(BackendResult(
+            backend=item["backend"], status=ProbeStatus(item["status"]),
+            runtime=item["runtime"], devices=item["devices"], events=edges,
+            detail=item.get("detail", ""),
+        ))
+    print(render(backends))
+    print("Remaining Windows backends: deferred until RawInput Real-A gate.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="d4planner")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -738,6 +778,9 @@ def build_parser() -> argparse.ArgumentParser:
     replay = equipment_sub.add_parser("replay")
     replay.add_argument("path", type=Path)
     replay.add_argument("--trace", action="store_true")
+
+    controller_v2 = sub.add_parser("controller-probe-v2", help="Read-only Steam Link HID visibility probe")
+    controller_v2.add_argument("--seconds", type=float, default=30.0)
 
     path = sub.add_parser("path")
     path.add_argument("action", choices=("status", "restore"))
@@ -786,6 +829,8 @@ def main(argv: list[str] | None = None) -> int:
         if getattr(args, "equipment_action", None) == "replay":
             return command_character_equipment_replay(args.path, trace=args.trace)
         return command_character_equipment(paths, raw_json=args.json)
+    if args.command == "controller-probe-v2":
+        return command_controller_probe_v2(paths, seconds=args.seconds)
     if args.command == "path":
         return command_path(paths, args.action)
     return 2
