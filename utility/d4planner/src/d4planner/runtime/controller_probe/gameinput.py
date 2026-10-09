@@ -11,6 +11,11 @@ from .runner import BackendUnavailable
 
 # Values and IIDs from Microsoft's GameInput v2 headers.
 GAMEINPUT_KIND_GAMEPAD = 0x00040000
+# Source: microsoftconnect/GameInput/include/v1 and include/v2/GameInput.h.
+# v1 and v2 use identical IGameInput.GetCurrentReading ABI but differ
+# in IGameInputReading.GetGamepadState vtable slot (v1=17, v2=18).
+IID_IGAMEINPUT_V1 = GUID.parse("40ffb7e4-6150-407a-b439-132badc08d2d")
+IID_IGAMEINPUT_READING_V1 = GUID.parse("86318e60-0b3c-40d6-befa-c62f2d952724")
 IID_IGAMEINPUT_V2 = GUID.parse("bbaa66d2-837a-40f7-a303-917d500955f4")
 IID_IGAMEINPUT_READING_V2 = GUID.parse("65f06483-db76-40b7-b745-f591fae55fc9")
 
@@ -37,6 +42,17 @@ def _query_interface(ptr: ctypes.c_void_p, iid: GUID) -> ctypes.c_void_p:
     return result
 
 
+def negotiate_interface(base: ctypes.c_void_p) -> tuple[ctypes.c_void_p, int]:
+    """Use the newest runtime-supported COM interface; do not install a runtime."""
+    failures = []
+    for version, iid in ((2, IID_IGAMEINPUT_V2), (1, IID_IGAMEINPUT_V1)):
+        try:
+            return _query_interface(base, iid), version
+        except OSError as exc:
+            failures.append(f"v{version}={exc}")
+    raise BackendUnavailable("GameInput v1/v2 interface unavailable: " + "; ".join(failures))
+
+
 class GameInputBackend:
     name = "GameInput"
 
@@ -56,14 +72,12 @@ class GameInputBackend:
         devices: dict[str, dict[str, str]] = {}
         events = []
         no_reading = 0
+        version = 0
         try:
             hr = create(ctypes.byref(base))
             if hr < 0 or not base.value:
                 raise BackendUnavailable(f"GameInputCreate HRESULT 0x{hr & 0xffffffff:08X}")
-            try:
-                api = _query_interface(base, IID_IGAMEINPUT_V2)
-            except OSError as exc:
-                raise BackendUnavailable(f"GameInput v2 interface unavailable: {exc}") from exc
+            api, version = negotiate_interface(base)
             deadline = time.monotonic() + seconds
             while time.monotonic() < deadline:
                 reading = ctypes.c_void_p()
@@ -77,14 +91,19 @@ class GameInputBackend:
                         no_reading += 1
                         time.sleep(0.01)
                         continue
-                    reading_v2 = _query_interface(reading, IID_IGAMEINPUT_READING_V2)
+                    reading_iid = (
+                        IID_IGAMEINPUT_READING_V2 if version == 2
+                        else IID_IGAMEINPUT_READING_V1
+                    )
+                    reading_v2 = _query_interface(reading, reading_iid)
                     method(reading_v2, 5, None, ctypes.POINTER(ctypes.c_void_p))(
                         reading_v2, ctypes.byref(device))
                     # Pointer identity is diagnostic-only within this run.
                     identity = f"gameinput-device:{device.value:x}" if device.value else "gameinput-device:unknown"
                     devices[identity] = {"deviceId": identity}
                     state = GameInputGamepadState()
-                    success = method(reading_v2, 18, ctypes.c_bool,
+                    reading_gamepad_slot = 18 if version == 2 else 17
+                    success = method(reading_v2, reading_gamepad_slot, ctypes.c_bool,
                                      ctypes.POINTER(GameInputGamepadState))(
                         reading_v2, ctypes.byref(state))
                     if success:
@@ -103,4 +122,4 @@ class GameInputBackend:
                   else ProbeStatus.NO_DEVICE)
         return BackendResult(self.name, status, devices=list(devices.values()),
                              events=events[:2048],
-                             detail=f"GameInput v2 GetCurrentReading; emptyPolls={no_reading}")
+                             detail=f"GameInput v{version} GetCurrentReading; emptyPolls={no_reading}")
