@@ -8,6 +8,10 @@ from typing import Protocol
 from .model import BackendResult, ProbeStatus
 
 
+class BackendUnavailable(OSError):
+    """A native Windows API/runtime required by a backend is not installed."""
+
+
 class ProbeBackend(Protocol):
     name: str
 
@@ -23,6 +27,13 @@ def run_backends(seconds: float, backends: Sequence[ProbeBackend]) -> list[Backe
             result = backend.probe(seconds)
             if result.backend != backend.name:
                 raise ValueError("backend identity mismatch")
+        except BackendUnavailable as exc:
+            result = BackendResult(
+                backend=backend.name,
+                status=ProbeStatus.UNAVAILABLE,
+                runtime="UNAVAILABLE",
+                detail=f"{type(exc).__name__}: {exc}",
+            )
         except Exception as exc:
             result = BackendResult(
                 backend=backend.name,
