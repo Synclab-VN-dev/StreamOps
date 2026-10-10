@@ -170,7 +170,7 @@ export function createPluginStore(onChange) {
     // BE operations are bounded at 120s; silence alone must not kill a valid mutation.
     idleTimeoutMs:180000
   });
-  const store = new PluginStore({client,obsClient:window.StreamOpsObs,onChange});
-  store.start();
-  return store;
+  // IMPORTANT: do not start synchronously. connect() emits "connecting" and
+  // calls onChange immediately; page modules first need to bind their store.
+  return new PluginStore({client,obsClient:window.StreamOpsObs,onChange});
 }

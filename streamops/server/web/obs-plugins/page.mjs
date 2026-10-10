@@ -107,7 +107,8 @@ function renderPlugin(plugin) {
   pill.dataset.tone = statusTone(plugin.state);
   right.append(pill,text('span','plugin-chevron',expandedId === plugin.plugin_id ? '⌃' : '⌄'));
   header.append(left,right);
-  header.addEventListener('click',() => {expandedId = expandedId === plugin.plugin_id ? null : plugin.plugin_id; render();});
+  header.addEventListener('click',() => {expandedId = expandedId === plugin.plugin_id ? null : plugin.plugin_id; render();
+store.start();});
   card.append(header);
   const mini = text('div','plugin-mini-details');
   mini.append(
