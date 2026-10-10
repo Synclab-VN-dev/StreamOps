@@ -208,7 +208,7 @@ def test_games_catalog_filter_and_detail(page: Page, games_ui_server):
     expect(page.locator("#game-library button")).to_have_count(1)
     page.locator("#game-library button").first.click()
     # Display is user-friendly, but its canonical state remains machine-readable.
-    expect(page.locator('#game-detail [data-code="CONFIGURED_ONLY"]')).to_have_count(1)
+    expect(page.locator('#game-detail .gm-detail-section').first.locator('[data-code="CONFIGURED_ONLY"]')).to_have_count(1)
     expect(page.locator('#game-detail [data-code="VERIFIED_ACTIVE"]')).to_have_count(0)
     page.locator("#game-detail .gm-detail-advanced summary").click()
     expect(page.get_by_role("button",name="Force Stop (disabled)")).to_be_disabled()
