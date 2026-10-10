@@ -168,3 +168,30 @@ def test_issue75_mobile_has_no_horizontal_overflow(page: Page, live_server: Brow
     expect(page.locator("#plugin-managed-count")).to_have_text("1")
     expect(page.get_by_role("heading", name="OBS Plugin Manager")).to_be_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+
+def test_issue75_dashboard_lazy_plugin_socket_keeps_obs_default_socket_contract(
+    page: Page, live_server: BrowserTestServer
+):
+    """A new domain must not silently open a third WS on the existing OBS dashboard."""
+    fake = MockPluginWebSocket(page)
+    plugin_sockets = []
+    page.on("websocket", lambda ws: plugin_sockets.append(ws.url) if "/obs/plugins/ws" in ws.url else None)
+    page.goto(live_server.base_url + "/obs")
+    expect(page.locator("#plugin-dashboard-state")).to_have_text("On request")
+    assert plugin_sockets == []
+    assert not fake.calls
+    expect(page.locator("#plugin-dashboard-managed")).to_have_text("—")
+
+    page.get_by_role("button", name="Load summary").click()
+    expect(page.locator("#plugin-dashboard-managed")).to_have_text("1")
+    expect(page.locator("#plugin-dashboard-installed")).to_have_text("1")
+    expect(page.locator("#plugin-dashboard-state")).to_have_text("No alerts")
+    assert len(plugin_sockets) == 1
+    assert any(req["operation"] == "obs_plugin.inventory" for req in fake.calls)
+    assert any(req["operation"] == "obs_plugin.subscribe" for req in fake.calls)
+    assert not any(req["operation"].startswith("obs_plugin.adopt") for req in fake.calls)
+
+    page.get_by_role("button", name="Refresh summary").click()
+    expect(page.locator("#plugin-dashboard-managed")).to_have_text("1")
+    assert len(plugin_sockets) == 1, "Refresh must reuse the same plugin WS"
