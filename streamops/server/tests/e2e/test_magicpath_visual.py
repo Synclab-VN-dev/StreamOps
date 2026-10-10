@@ -120,7 +120,7 @@ def _stage_reference(page, url, design, scenario):
     if scenario == "detail":
         # Open the very first game's panel in the original MagicPath design.
         page.get_by_role("button", name="Diablo IV").first.click()
-        expect(page.get_by_label("Game details")).to_be_visible()
+        expect(page.get_by_role("complementary", name="Game details")).to_be_visible()
 
 
 def _visual_diff(expected_path, actual_path, diff_path):
