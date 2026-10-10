@@ -77,6 +77,23 @@ def _ready(page):
 
 
 def _stage_production(page, fake, base, design, scenario):
+    # Match the *visible* MagicPath scenario fixtures for visual comparison only.
+    # Production UI remains data-driven; #85 V1 static seed is unchanged.
+    if design == "steam":
+        fake.games = [game("Diablo IV", "steam:2344520", "RUNNING")] + [
+            game("Registered " + str(i), "steam:" + str(200 + i), "STOPPED")
+            for i in range(7)
+        ]
+        fake.steam.update(pid=6432, uptime_seconds=13335)
+    else:
+        names = ["Diablo IV", "Hollow Knight: Silksong", "Minecraft",
+                 "Elden Ring", "Hades II", "World of Warcraft", "Fortnite",
+                 "Path of Exile 2", "Baldur's Gate 3", "Forza Horizon 5"]
+        fake.games = [
+            game(name, "steam:2344520" if i == 0 else "steam:" + str(200 + i),
+                 "RUNNING" if i == 0 else "STOPPED")
+            for i, name in enumerate(names)
+        ]
     page.goto(base + ("/steam" if design == "steam" else "/games"))
     if design == "steam":
         expect(page.locator("#steam-state")).not_to_have_text("Checking")
@@ -89,7 +106,7 @@ def _stage_production(page, fake, base, design, scenario):
             page.evaluate("() => { window.StreamOpsSteam.destroy(); window.StreamOpsGames.client.destroy(); }")
             expect(page.locator("#steam-state")).to_have_text("UNKNOWN")
     else:
-        expect(page.locator("#game-library button")).to_have_count(1)
+        expect(page.locator("#game-library button")).to_have_count(len(fake.games))
         if scenario == "empty":
             fake.set_library([])
             expect(page.locator("#game-library")).to_contain_text("No matching games")
@@ -103,7 +120,7 @@ def _stage_production(page, fake, base, design, scenario):
         elif scenario == "loading":
             page.evaluate("() => { const s=window.StreamOpsGames.store; s.reset(); s.connected=true; s.loading=true; s.stale=true; s.emit(); }")
         elif scenario == "stopTimeout":
-            page.locator("#game-library button").first.click()
+            page.locator('#game-library button[data-game-id="steam:2344520"]').click()
             page.evaluate("""() => {
               const store=window.StreamOpsGames.store;
               store.operation({operation_id:'visual-op',game_id:'steam:2344520',
@@ -153,6 +170,20 @@ def test_pinned_magicpath_visual_parity(
         # Original reference and product are NEVER the same server or codebase.
         _stage_reference(expected_page, magicpath_reference_url, design, scenario)
         _ready(expected_page)
+        expected_page.screenshot(path=str(path/"source-original.png"), animations="disabled")
+        # MagicPath's scenario selector and prototype footer are design-tool
+        # scaffolding. Keep raw screenshot for audit, exclude scaffolding only
+        # from the layout comparison with production (no mock controls).
+        expected_page.evaluate("""() => {
+          const selector=document.querySelector('select[aria-label="Design scenario"]');
+          let node=selector;
+          while(node && !node.classList.contains('mb-3')) node=node.parentElement;
+          if(node) node.style.display='none';
+          for (const el of document.querySelectorAll('p')) {
+            if (el.textContent?.includes('StreamOps UI Prototype')) el.style.display='none';
+          }
+        }""")
+        _ready(expected_page)
         expected_page.screenshot(path=str(expected), animations="disabled")
         if MANIFEST["approved"]:
             approved = ROOT / "goldens" / (label + ".png")
@@ -163,6 +194,9 @@ def test_pinned_magicpath_visual_parity(
             assert drift <= .015, f"Pinned design renderer drift against approved Golden: {label}: {drift}"
         _stage_production(actual_page, fake, base, design, scenario)
         _ready(actual_page)
+        # Credential controls are a required production-only security affordance,
+        # not part of the MagicPath design. Tested separately in Steam E2E.
+        actual_page.add_style_tag(content=".gm-control-panel{display:none!important}")
         actual_page.screenshot(path=str(actual), animations="disabled")
         verified_reference=ROOT / "goldens" / (label + ".png") if MANIFEST["approved"] else expected
         score=_visual_diff(verified_reference,actual,diff)
@@ -171,7 +205,7 @@ def test_pinned_magicpath_visual_parity(
             "revision_id":next(r["revision_id"] for r in MANIFEST["references"] if r["name"]==design),
             "difference_mean_rgb":score, "owner_approved":MANIFEST["approved"],
             "reference_source":"original MagicPath revision source, NOT production UI",
-            "artifacts":["expected-magicpath.png","actual-streamops.png","diff.png"],
+            "artifacts":["source-original.png","expected-magicpath.png","actual-streamops.png","diff.png"],
         },indent=2),encoding="utf-8")
         # Strict threshold; never relax it automatically to make red CI green.
         assert score <= .08, f"{label}: visual diff mean={score:.3f}, allowed=.08; see diff artifact"
