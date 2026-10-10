@@ -432,3 +432,27 @@ def test_issue75_timeout_with_late_terminal_success_reconciles_readonly_once(
     expect(page.locator("#plugin-activity")).to_contain_text("reconciled-succeeded")
     assert len(fake.mutations("obs_plugin.adopt"))==1
     assert any(r["operation"]=="obs_plugin.operation_status" for r in fake.calls)
+
+
+def test_issue75_catalog_incompatible_never_exposes_unsafe_install(page:Page,live_server:BrowserTestServer):
+    fake=ScenarioWS(page,plugin_state="NOT_INSTALLED")
+    original=fake.approved_release
+    fake.approved_release=lambda: {**original(),"compatibility":"incompatible",
+                                   "reason":"OBS version is unsupported"}
+    launch(page,live_server,fake)
+    expect(page.get_by_role("button",name="Install plugin")).to_be_disabled()
+    expect(page.locator(".plugin-card")).to_contain_text("unsupported")
+    assert fake.mutations()==[]
+
+
+def test_issue75_activity_request_id_matches_actual_ws_request(page:Page,live_server:BrowserTestServer):
+    fake=ScenarioWS(page,plugin_state="UNMANAGED",catalog=False)
+    launch(page,live_server,fake)
+    act(page,"Adopt existing")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("Legacy baseline adopted")
+    page.locator(".plugin-activity-details").evaluate("el=>el.open=true")
+    request=fake.mutations("obs_plugin.adopt")[0]
+    expect(page.locator("#plugin-activity")).to_contain_text(request["request_id"])
+    expect(page.locator("#plugin-activity")).to_contain_text("adopted")
+    assert len(fake.mutations("obs_plugin.adopt"))==1
