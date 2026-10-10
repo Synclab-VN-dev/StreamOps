@@ -684,7 +684,10 @@ class ObsPluginService:
 
         if not isinstance(reply, dict):
             raise self._vendor_probe_failure("response_invalid")
-        vendor = reply.get("vendorResponseData")
+        # OBS WebSocket v5 CallVendorRequest returns the callback data under
+        # responseData.responseData (client.request already unwraps the outer
+        # RequestResponse.responseData). There is no vendorResponseData key.
+        vendor = reply.get("responseData")
         if not isinstance(vendor, dict):
             raise self._vendor_probe_failure("vendor_response_missing")
         if vendor.get("error"):
