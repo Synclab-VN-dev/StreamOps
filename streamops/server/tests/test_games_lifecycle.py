@@ -139,3 +139,51 @@ def test_slow_subscriber_gets_explicit_resync_marker(tmp_path):
         finally:
             hub.unsubscribe(q)
     asyncio.run(scenario())
+
+def test_concurrent_mutations_blocked_without_double_start(tmp_path):
+    import threading
+    class Blocking(FakeGamePlatform):
+        def __init__(self):
+            super().__init__()
+            self.started=threading.Event()
+            self.release=threading.Event()
+        def start(self, game):
+            self.start_calls+=1
+            self.started.set()
+            if not self.release.wait(timeout=3):
+                raise RuntimeError("synthetic start timeout")
+            self.running=True
+    async def scenario():
+        platform=Blocking()
+        service,_=build_service(tmp_path,platform)
+        op=await service.action(GAME,"start","first")
+        try:
+            with pytest.raises(GameServiceError) as exc:
+                await service.action(GAME,"start","second")
+            assert exc.value.code=="operation_in_progress"
+            assert await asyncio.to_thread(platform.started.wait,1)
+        finally:
+            platform.release.set()
+        for _ in range(200):
+            state=service.operation(op["operation_id"])["status"]
+            if state in ("SUCCEEDED","FAILED","UNKNOWN"):
+                break
+            await asyncio.sleep(.01)
+        assert state=="SUCCEEDED"
+        assert platform.start_calls==1
+        await service.lifecycle.close()
+    asyncio.run(scenario())
+
+def test_wrong_session_blocks_all_actions(tmp_path):
+    class WrongSession(FakeGamePlatform):
+        def capabilities(self, game, observation):
+            return {"start":False,"stop":False,"restart":False},"wrong_desktop_session"
+    async def scenario():
+        service,platform=build_service(tmp_path,WrongSession())
+        game=await service.get(GAME)
+        assert not any(game["capabilities"].values())
+        assert game["capability_reason"]=="wrong_desktop_session"
+        with pytest.raises(GameServiceError):
+            await service.action(GAME,"start","wrong-session")
+        assert platform.start_calls==0
+    asyncio.run(scenario())
