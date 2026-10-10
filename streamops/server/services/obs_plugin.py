@@ -504,6 +504,11 @@ class ObsPluginService:
             raise ObsPluginError(
                 "plugin_state_conflict", "Rollback refused because installed plugin files were modified.", 409
             )
+        if current.state == "RECOVERY_REQUIRED" and runtime.state != "STOPPED":
+            raise ObsPluginError(
+                "plugin_recovery_requires_obs_stopped",
+                "Stop OBS via the Process API before recovering an unfinished plugin transaction.", 409,
+            )
         if self.defer_restart:
             stopped = False
             try:

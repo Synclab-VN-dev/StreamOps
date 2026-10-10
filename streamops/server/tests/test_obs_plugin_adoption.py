@@ -314,7 +314,6 @@ def test_ad11_manual_rollback_restores_legacy_and_config(tmp_path):
     before, config_before = _file_records(installer.plugin_root), config.read_bytes()
     installer.adopt()
     installer.install()
-    config.write_bytes(b'{"targets":[]}')
     assert installer.rollback().result == "rolled_back"
     assert _file_records(installer.plugin_root) == before
     assert config.read_bytes() == config_before
@@ -456,3 +455,247 @@ def test_ad15_rest_and_websocket_adopt_contract(server_config, capture_service):
         rejected = client.post("/api/v1/obs/plugins/obs-multi-rtmp/adopt", json={"source": "secret"})
         assert rejected.status_code == 400
         assert "secret" not in rejected.text
+
+
+# Rollback safety regressions: data retention, crash injection, and restart.
+def _installed_legacy_for_rollback(tmp_path):
+    legacy = {**APPROVED_FILES, "bin/64bit/obs-multi-rtmp.dll": b"legacy"}
+    installer, config, processes = _installer(tmp_path, legacy=legacy)
+    installer.adopt()
+    installer.install()
+    return installer, config, processes, _records(legacy)
+
+
+def _reopen(installer, tmp_path, config, processes):
+    return WindowsObsMultiRtmpInstaller(
+        tmp_path / "state", plugin_root=installer.plugin_root,
+        obs_executable=tmp_path / "obs64.exe", manifest=dict(installer.manifest),
+        process_probe=lambda: list(processes), version_probe=lambda _p: "32.2.1",
+        appdata=config.parents[4],
+    )
+
+
+@pytest.mark.parametrize("modified", [
+    b'{"targets":[{"stream_key":"NEW-KEY-DO-NOT-LOSE"}]}',
+    b'{"targets":[]}',
+])
+def test_rb02_rb03_manual_rollback_rejects_changed_config_before_touching_dll(tmp_path, modified):
+    installer, config, _, _ = _installed_legacy_for_rollback(tmp_path)
+    before_files = _file_records(installer.plugin_root)
+    before_pointer = installer.pointer.read_bytes()
+    config.write_bytes(modified)
+    with pytest.raises(PluginInstallerFailure) as error:
+        installer.rollback()
+    assert error.value.code == "config_conflict"
+    assert _file_records(installer.plugin_root) == before_files
+    assert installer.pointer.read_bytes() == before_pointer
+    assert config.read_bytes() == modified
+    assert "NEW-KEY" not in str(error.value)
+    assert installer.status().installation == "exact"
+
+
+def test_rb04_manual_rollback_rejects_new_nonempty_profile(tmp_path):
+    installer, config, _, _ = _installed_legacy_for_rollback(tmp_path)
+    before = _file_records(installer.plugin_root)
+    new_config = config.parents[1] / "SecondProfile" / config.name
+    new_config.parent.mkdir(parents=True)
+    new_config.write_bytes(b'{"targets":[{"stream_key":"fresh"}]}')
+    with pytest.raises(PluginInstallerFailure) as error:
+        installer.rollback()
+    assert error.value.code == "config_conflict"
+    assert _file_records(installer.plugin_root) == before
+    assert new_config.read_bytes().endswith(b'fresh"}]}')
+
+
+def test_rb05_empty_new_config_is_removable(tmp_path):
+    installer, config, _, legacy_records = _installed_legacy_for_rollback(tmp_path)
+    empty_config = config.parents[1] / "SecondProfile" / config.name
+    empty_config.parent.mkdir(parents=True)
+    empty_config.write_bytes(b'{"targets":[]}')
+    assert installer.rollback().result == "rolled_back"
+    assert not empty_config.exists()
+    assert _file_records(installer.plugin_root) == legacy_records
+
+
+def test_rb06_corrupted_config_backup_fails_before_dll_mutation(tmp_path):
+    installer, config, _, _ = _installed_legacy_for_rollback(tmp_path)
+    files_before = _file_records(installer.plugin_root)
+    pointer_before = installer.pointer.read_bytes()
+    root, _ = installer._read_current_transaction()
+    (root / "backup/configs/0000.bin").write_bytes(b"broken")
+    with pytest.raises(PluginInstallerFailure) as error:
+        installer.rollback()
+    assert error.value.code == "backup_invalid"
+    assert _file_records(installer.plugin_root) == files_before
+    assert installer.pointer.read_bytes() == pointer_before
+
+
+@pytest.mark.parametrize("cut", ["before_files", "after_clear", "after_restore", "after_pointer"])
+def test_cr01_cr02_cr05_cr06_recovery_after_simulated_process_death(tmp_path, monkeypatch, cut):
+    installer, config, processes, legacy_records = _installed_legacy_for_rollback(tmp_path)
+    original_clear = installer._clear_contents
+    original_restore = installer._restore_backup_verified
+    original_pointer = installer._restore_previous_pointer
+
+    def kill_before_clear(path):
+        if cut == "before_files":
+            raise SystemExit("injected process death before file clear")
+        original_clear(path)
+        if cut == "after_clear":
+            raise SystemExit("injected death just after file clear")
+
+    def kill_after_restore(root, transaction, **kwargs):
+        original_restore(root, transaction, **kwargs)
+        if cut == "after_restore":
+            raise SystemExit("injected death before pointer change")
+
+    def kill_after_pointer(transaction):
+        original_pointer(transaction)
+        if cut == "after_pointer":
+            raise SystemExit("injected death after pointer change")
+
+    monkeypatch.setattr(installer, "_clear_contents", kill_before_clear)
+    monkeypatch.setattr(installer, "_restore_backup_verified", kill_after_restore)
+    monkeypatch.setattr(installer, "_restore_previous_pointer", kill_after_pointer)
+    with pytest.raises(SystemExit):
+        installer.rollback()
+
+    reopened = _reopen(installer, tmp_path, config, processes)
+    assert reopened.status().installation == "recovery_required"
+    assert reopened.rollback().result == "recovered_rolled_back"
+    assert _file_records(reopened.plugin_root) == legacy_records
+    assert reopened.status().installation == "legacy_adopted"
+
+
+def test_cr03_mid_file_copy_recovery(tmp_path, monkeypatch):
+    installer, config, processes, legacy_records = _installed_legacy_for_rollback(tmp_path)
+    real_copy = installer._copy_contents
+
+    def interrupted_copy(source, destination):
+        # Partial copy of one managed file followed by hard process termination.
+        (destination / "bin/64bit").mkdir(parents=True, exist_ok=True)
+        (destination / "bin/64bit/obs-multi-rtmp.dll").write_bytes(b"partial")
+        raise SystemExit("killed while copying plugin tree")
+
+    monkeypatch.setattr(installer, "_copy_contents", interrupted_copy)
+    with pytest.raises(SystemExit):
+        installer.rollback()
+    reopened = _reopen(installer, tmp_path, config, processes)
+    assert reopened.status().installation == "recovery_required"
+    assert reopened.rollback().result == "recovered_rolled_back"
+    assert _file_records(reopened.plugin_root) == legacy_records
+
+
+def test_cr07_corrupt_backup_after_crash_never_overwrites_partial_plugin(tmp_path, monkeypatch):
+    installer, config, processes, _ = _installed_legacy_for_rollback(tmp_path)
+    original = installer._clear_contents
+
+    def interrupted_clear(path):
+        original(path)
+        raise SystemExit("crash after deleting current plugin")
+    monkeypatch.setattr(installer, "_clear_contents", interrupted_clear)
+    with pytest.raises(SystemExit):
+        installer.rollback()
+    reopened = _reopen(installer, tmp_path, config, processes)
+    backup_root, _ = reopened._pending_transactions()[0]
+    (backup_root / "backup/obs-multi-rtmp/bin/64bit/obs-multi-rtmp.dll").write_bytes(b"tampered")
+    before = _file_records(reopened.plugin_root)
+    with pytest.raises(PluginInstallerFailure) as error:
+        reopened.rollback()
+    assert error.value.code == "backup_invalid"
+    assert _file_records(reopened.plugin_root) == before
+    assert reopened.status().installation == "recovery_required"
+
+
+def test_cr08_modified_config_after_crash_fails_closed(tmp_path, monkeypatch):
+    installer, config, processes, _ = _installed_legacy_for_rollback(tmp_path)
+    original = installer._clear_contents
+
+    def interrupted_clear(path):
+        original(path)
+        raise SystemExit("crash after clear")
+    monkeypatch.setattr(installer, "_clear_contents", interrupted_clear)
+    with pytest.raises(SystemExit):
+        installer.rollback()
+    new_content = b'{"targets":[{"stream_key":"changed-after-crash"}]}'
+    config.write_bytes(new_content)
+    reopened = _reopen(installer, tmp_path, config, processes)
+    with pytest.raises(PluginInstallerFailure) as error:
+        reopened.rollback()
+    assert error.value.code == "config_conflict"
+    assert config.read_bytes() == new_content
+    assert reopened.status().installation == "recovery_required"
+
+
+def test_cr09_recovered_rollback_is_idempotent(tmp_path, monkeypatch):
+    installer, config, processes, legacy_records = _installed_legacy_for_rollback(tmp_path)
+    original = installer._clear_contents
+
+    def interrupted_clear(path):
+        original(path)
+        raise SystemExit("crash after clear")
+    monkeypatch.setattr(installer, "_clear_contents", interrupted_clear)
+    with pytest.raises(SystemExit):
+        installer.rollback()
+    reopened = _reopen(installer, tmp_path, config, processes)
+    assert reopened.rollback().result == "recovered_rolled_back"
+    assert _file_records(reopened.plugin_root) == legacy_records
+    assert not reopened._pending_transactions()
+    with pytest.raises(PluginInstallerFailure) as error:
+        reopened.rollback()
+    assert error.value.code == "plugin_state_conflict"
+
+
+def test_cr10_pending_rollback_blocks_other_operations(tmp_path, monkeypatch):
+    installer, config, processes, _ = _installed_legacy_for_rollback(tmp_path)
+    original = installer._clear_contents
+
+    def interrupted_clear(path):
+        original(path)
+        raise SystemExit("crash after clear")
+    monkeypatch.setattr(installer, "_clear_contents", interrupted_clear)
+    with pytest.raises(SystemExit):
+        installer.rollback()
+    reopened = _reopen(installer, tmp_path, config, processes)
+    for method in (reopened.install, reopened.adopt, reopened.update):
+        with pytest.raises(PluginInstallerFailure) as error:
+            method()
+        assert error.value.code == "recovery_required"
+
+
+def test_cr11_service_requires_explicit_obs_stop_before_recovery(tmp_path, monkeypatch):
+    installer, config, processes, _ = _installed_legacy_for_rollback(tmp_path)
+    original = installer._clear_contents
+
+    def interrupted_clear(path):
+        original(path)
+        raise SystemExit("crash after clear")
+    monkeypatch.setattr(installer, "_clear_contents", interrupted_clear)
+    with pytest.raises(SystemExit):
+        installer.rollback()
+    reopened = _reopen(installer, tmp_path, config, processes)
+    host, manager = _Host(reopened), _Manager(_runtime("READY"))
+    with pytest.raises(ObsPluginError) as error:
+        asyncio.run(ObsPluginService(manager, host, defer_restart=True).rollback("obs-multi-rtmp"))
+    assert error.value.code == "plugin_recovery_requires_obs_stopped"
+    assert manager.calls == []
+    assert reopened.status().installation == "recovery_required"
+
+
+def test_cr12_recovery_preserves_config_and_pointer_snapshot(tmp_path, monkeypatch):
+    installer, config, processes, legacy_records = _installed_legacy_for_rollback(tmp_path)
+    baseline_config = config.read_bytes()
+    original = installer._restore_previous_pointer
+
+    def interrupted_pointer(transaction):
+        original(transaction)
+        raise SystemExit("crash after previous pointer was committed")
+    monkeypatch.setattr(installer, "_restore_previous_pointer", interrupted_pointer)
+    with pytest.raises(SystemExit):
+        installer.rollback()
+    reopened = _reopen(installer, tmp_path, config, processes)
+    assert reopened.rollback().result == "recovered_rolled_back"
+    assert _file_records(reopened.plugin_root) == legacy_records
+    assert config.read_bytes() == baseline_config
+    assert reopened.status().installation == "legacy_adopted"
+    assert not reopened._pending_transactions()

@@ -34,7 +34,7 @@ ZIP_TO_INSTALL = {
     "obs-plugins/64bit/obs-multi-rtmp.pdb": "bin/64bit/obs-multi-rtmp.pdb",
 }
 LOCALE_PREFIX = "data/obs-plugins/obs-multi-rtmp/locale/"
-ACTIVE_TRANSACTION_STATES = {"preparing", "backup_verified", "mutation_pending", "recovery_required"}
+ACTIVE_TRANSACTION_STATES = {"preparing", "backup_verified", "mutation_pending", "rollback_pending", "recovery_required"}
 APPROVED_TRANSACTION_STATES = {"installed", "approved_release_installed"}
 
 
@@ -423,8 +423,21 @@ class WindowsObsMultiRtmpInstaller:
                 transaction["recovered_at"] = datetime.now(timezone.utc).isoformat()
                 self._write_json(transaction_root / "transaction.json", transaction)
                 return InstallerResult("recovered_no_mutation")
-            if (transaction.get("state") in {"mutation_pending", "recovery_required"} and
+            if (transaction.get("state") in {"mutation_pending", "rollback_pending", "recovery_required"} and
                     transaction.get("backup_verified") is True and transaction.get("mutation_started") is True):
+                if transaction.get("state") == "rollback_pending":
+                    # A crash after switching the pointer but before committing the
+                    # journal is valid. Never recover an unrelated transaction.
+                    previous_id = transaction.get("previous_transaction_id")
+                    if self.pointer.exists():
+                        try:
+                            pointed_id = json.loads(self.pointer.read_text(encoding="utf-8"))["transaction_id"]
+                        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                            raise PluginInstallerFailure("recovery_required", "Invalid rollback pointer.") from exc
+                        if pointed_id not in {transaction["transaction_id"], previous_id}:
+                            raise PluginInstallerFailure("recovery_required", "Rollback pointer changed unexpectedly.")
+                    elif previous_id is not None:
+                        raise PluginInstallerFailure("recovery_required", "Rollback pointer disappeared unexpectedly.")
                 self._restore_backup_verified(transaction_root, transaction)
                 self._restore_previous_pointer(transaction)
                 transaction["state"] = "recovered_rolled_back"
@@ -442,10 +455,16 @@ class WindowsObsMultiRtmpInstaller:
         expected = transaction.get("expected_files", [])
         if self._record_map(current) != self._record_map(expected):
             raise PluginInstallerFailure("rollback_conflict", "Plugin files are missing, modified, or unmanaged.")
+        # Validate every backup and config SHA before recording mutation intent.
+        # A manual rollback must never overwrite changed user RTMP targets/keys.
+        self._validate_restore_prerequisites(transaction_root, transaction)
+        transaction["state"] = "rollback_pending"
+        transaction["mutation_started"] = True
+        transaction["rollback_started_at"] = datetime.now(timezone.utc).isoformat()
+        self._write_json(transaction_root / "transaction.json", transaction)
+        # A crash anywhere below leaves rollback_pending, including after the
+        # previous pointer is switched; rollback() can safely finish the work.
         self._restore_backup_verified(transaction_root, transaction)
-        # Switch to the already-committed previous baseline before retiring
-        # this transaction. A crash leaves either a recoverable current
-        # transaction or a pointer to a byte-matching committed baseline.
         self._restore_previous_pointer(transaction)
         transaction["state"] = "rolled_back"
         transaction["rolled_back_at"] = datetime.now(timezone.utc).isoformat()
@@ -684,33 +703,58 @@ class WindowsObsMultiRtmpInstaller:
             f"obs-multi-rtmp/v{self.manifest['package_version']}" if release is not None else None
         )
 
-    def _restore_backup_verified(
-        self, transaction_root: Path, transaction: dict[str, Any], *, restore_configs: bool = True,
-    ) -> None:
+    def _validate_restore_prerequisites(
+        self, transaction_root: Path, transaction: dict[str, Any], *,
+        restore_configs: bool = True,
+    ) -> list[tuple[Path, Path, dict[str, Any]]]:
+        """Preflight all backups and detect config drift BEFORE touching plugin DLLs."""
         if transaction.get("backup_verified") is not True:
             raise PluginInstallerFailure("backup_invalid", "Transaction backup was not verified.")
         baseline = transaction.get("baseline_files", [])
-        backup = None
         if transaction.get("plugin_root_existed"):
             relative = _safe_relative(str(transaction.get("backup_relative") or ""))
             backup = transaction_root.joinpath(*relative.parts)
             if not backup.is_dir() or self._record_map(_file_records(backup)) != self._record_map(baseline):
                 raise PluginInstallerFailure("backup_invalid", "Transaction backup is missing or corrupt.")
+        elif baseline:
+            raise PluginInstallerFailure("backup_invalid", "Transaction baseline has no backup.")
+
         config_backups: list[tuple[Path, Path, dict[str, Any]]] = []
-        if restore_configs:
-            baseline_configs = transaction.get("baseline_plugin_configs", [])
-            baseline_paths = {str(item["path"]) for item in baseline_configs}
-            for item in self._plugin_configs():
-                if item["path"] not in baseline_paths and not self._is_empty_plugin_config(Path(item["path"])):
-                    raise PluginInstallerFailure("config_conflict", "A new plugin configuration contains settings.")
-            for index, item in enumerate(baseline_configs):
-                destination = self._safe_config_path(str(item["path"]))
-                source = transaction_root / "backup" / "configs" / f"{index:04d}.bin"
-                if (not source.is_file() or source.stat().st_size != item["length"] or
-                        _sha256_file(source) != item["sha256"]):
-                    raise PluginInstallerFailure("backup_invalid", "Plugin configuration backup is missing or corrupt.")
-                config_backups.append((source, destination, item))
-        if backup is not None:
+        if not restore_configs:
+            return config_backups
+        baseline_configs = transaction.get("baseline_plugin_configs", [])
+        if not isinstance(baseline_configs, list):
+            raise PluginInstallerFailure("backup_invalid", "Invalid configuration snapshot.")
+        current_configs = {item["path"]: item for item in self._plugin_configs()}
+        baseline_paths = {str(item["path"]) for item in baseline_configs}
+        for item in self._plugin_configs():
+            if item["path"] not in baseline_paths and not self._is_empty_plugin_config(Path(item["path"])):
+                raise PluginInstallerFailure("config_conflict", "A new plugin configuration contains settings.")
+        for index, item in enumerate(baseline_configs):
+            destination = self._safe_config_path(str(item["path"]))
+            # An existing profile modified after install/adopt belongs to the user.
+            # Never restore old targets or secrets over a newer config.
+            if current_configs.get(str(item["path"])) != item:
+                raise PluginInstallerFailure("config_conflict", "Plugin configuration changed since its baseline.")
+            source = transaction_root / "backup" / "configs" / f"{index:04d}.bin"
+            if (not source.is_file() or source.stat().st_size != item["length"] or
+                    _sha256_file(source) != item["sha256"]):
+                raise PluginInstallerFailure("backup_invalid", "Plugin configuration backup is missing or corrupt.")
+            config_backups.append((source, destination, item))
+        return config_backups
+
+    def _restore_backup_verified(
+        self, transaction_root: Path, transaction: dict[str, Any], *, restore_configs: bool = True,
+    ) -> None:
+        # Repeat preflight immediately before filesystem mutation, including
+        # crash-recovery paths invoked from a fresh process.
+        config_backups = self._validate_restore_prerequisites(
+            transaction_root, transaction, restore_configs=restore_configs,
+        )
+        baseline = transaction.get("baseline_files", [])
+        if transaction.get("plugin_root_existed"):
+            relative = _safe_relative(str(transaction.get("backup_relative") or ""))
+            backup = transaction_root.joinpath(*relative.parts)
             self._clear_contents(self.plugin_root)
             self._copy_contents(backup, self.plugin_root)
         else:
@@ -718,6 +762,8 @@ class WindowsObsMultiRtmpInstaller:
         if self._record_map(_file_records(self.plugin_root)) != self._record_map(baseline):
             raise PluginInstallerFailure("backup_invalid", "Restored plugin differs from its baseline.")
         if restore_configs:
+            # Configs already equal their snapshot. Do not rewrite them;
+            # only remove genuinely empty new configs left by the plugin.
             baseline_paths = {str(item["path"]) for _, _, item in config_backups}
             for item in self._plugin_configs():
                 if item["path"] not in baseline_paths:
@@ -725,12 +771,6 @@ class WindowsObsMultiRtmpInstaller:
                     if not self._is_empty_plugin_config(extra):
                         raise PluginInstallerFailure("config_conflict", "A new plugin configuration changed during recovery.")
                     extra.unlink(missing_ok=True)
-            for source, destination, _ in config_backups:
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                temporary = destination.with_name(destination.name + ".tmp-" + uuid.uuid4().hex)
-                shutil.copy2(source, temporary)
-                self._sync_file(temporary)
-                os.replace(temporary, destination)
             if self._plugin_configs() != transaction.get("baseline_plugin_configs", []):
                 raise PluginInstallerFailure("config_conflict", "Plugin configuration differs from the rollback baseline.")
 
