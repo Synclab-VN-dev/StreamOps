@@ -66,8 +66,9 @@ class F11Sample:
     message: int
     state: str
     flags: int
-    foreground_pid: int
+    foreground_pid: int | None
     suppressed: bool
+    target_match: bool = True
 
     def as_dict(self) -> dict[str, object]:
         stamp = datetime.fromtimestamp(self.timestamp_ms / 1000).astimezone()
@@ -81,6 +82,7 @@ class F11Sample:
             "injected": bool(self.flags & 0x10),  # not Steam-specific proof
             "foregroundPid": self.foreground_pid,
             "suppressed": self.suppressed,
+            "targetMatch": self.target_match,
         }
 
 
@@ -170,15 +172,21 @@ def require_game_pid(pid: int) -> None:
 class WindowsF11Hook:
     """Message-pumped low-level keyboard hook; no game-process injection."""
 
-    def __init__(self, *, game_pid: int, block: bool, capacity: int = 2048) -> None:
+    def __init__(self, *, game_pid: int, block: bool, diagnose: bool = False,
+                 capacity: int = 2048) -> None:
         if os.name != "nt":
             raise OSError("WindowsF11Hook requires Windows")
         if game_pid <= 0:
             raise ValueError("game_pid must be positive")
         self.game_pid = game_pid
         self.block = block
+        self.diagnose = diagnose
         self.samples = BoundedSamples(capacity)
         self.hook_errors = 0
+        self.keyboard_seen = 0
+        self.f11_seen = 0
+        self.f11_target = 0
+        self.f11_other_foreground = 0
         self._hook: int | None = None
         self._hook_proc = None
         self._user32 = ctypes.WinDLL("user32", use_last_error=True)
@@ -255,15 +263,33 @@ class WindowsF11Hook:
                     kb = ctypes.cast(
                         param, ctypes.POINTER(self._kb_struct)
                     ).contents
+                    self.keyboard_seen += 1
                     if kb.vkCode == VK_F11:
+                        self.f11_seen += 1
                         hwnd = self._foreground()
                         pid = wintypes.DWORD()
                         if hwnd:
                             self._foreground_pid(hwnd, ctypes.byref(pid))
+                        foreground_pid = int(pid.value) or None
+                        if foreground_pid == self.game_pid:
+                            self.f11_target += 1
+                        else:
+                            self.f11_other_foreground += 1
+                            if self.diagnose:
+                                # Diagnostic trace only: off-target F11 always passes.
+                                self.samples.append(F11Sample(
+                                    timestamp_ms=time.time_ns() // 1_000_000,
+                                    message=message,
+                                    state=KEY_STATES[message],
+                                    flags=kb.flags,
+                                    foreground_pid=foreground_pid,
+                                    suppressed=False,
+                                    target_match=False,
+                                ))
                         if safe_capture_or_pass(
                             on_error=self._count_error,
                             n_code=n_code, message=message, vk=kb.vkCode,
-                            flags=kb.flags, foreground_pid=int(pid.value) or None,
+                            flags=kb.flags, foreground_pid=foreground_pid,
                             game_pid=self.game_pid, block=self.block,
                             samples=self.samples, timestamp_ms=time.time_ns() // 1_000_000,
                         ):
@@ -309,7 +335,8 @@ class WindowsF11Hook:
         self.close()
 
 
-def run_poc(*, pid: int, seconds: float, block: bool, jsonl: bool) -> int:
+def run_poc(*, pid: int, seconds: float, block: bool,
+            jsonl: bool, diagnose: bool = False) -> int:
     if seconds <= 0 or seconds > 300:
         raise ValueError("--seconds must be > 0 and <= 300")
     require_game_pid(pid)
@@ -317,7 +344,7 @@ def run_poc(*, pid: int, seconds: float, block: bool, jsonl: bool) -> int:
           f"duration={seconds:g}s; Ctrl+C stops", flush=True)
     print("WARNING: --block also intercepts physical F11 while D4 is foreground; "
           "Steam Input provenance is not verified.", flush=True)
-    with WindowsF11Hook(game_pid=pid, block=block) as hook:
+    with WindowsF11Hook(game_pid=pid, block=block, diagnose=diagnose) as hook:
         end = time.monotonic() + seconds
         try:
             while time.monotonic() < end:
@@ -330,7 +357,8 @@ def run_poc(*, pid: int, seconds: float, block: bool, jsonl: bool) -> int:
                     else:
                         print(f"[{item['timestamp']}] F11 {sample.state.upper()}"
                               f" injected={item['injected']} suppressed={sample.suppressed}"
-                              f" foregroundPid={pid}", flush=True)
+                              f" foregroundPid={item['foregroundPid']}"
+                              f" targetMatch={item['targetMatch']}", flush=True)
                 time.sleep(0.01)
         except KeyboardInterrupt:
             print("Ctrl+C: stopping hook", flush=True)
@@ -338,7 +366,11 @@ def run_poc(*, pid: int, seconds: float, block: bool, jsonl: bool) -> int:
             hook.pump()
             for sample in hook.samples.drain():
                 print(json.dumps(sample.as_dict(), ensure_ascii=False), flush=True)
-            print(f"SUMMARY: queue_dropped={hook.samples.dropped} "
+            print(f"SUMMARY: keyboard_seen={hook.keyboard_seen} "
+                  f"f11_seen={hook.f11_seen} "
+                  f"f11_target={hook.f11_target} "
+                  f"f11_other_foreground={hook.f11_other_foreground} "
+                  f"queue_dropped={hook.samples.dropped} "
                   f"hook_errors={hook.hook_errors}", flush=True)
     return 0
 
@@ -350,10 +382,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--block", action="store_true",
                         help="Opt-in: swallow F11 ONLY when Diablo IV is foreground")
     parser.add_argument("--jsonl", action="store_true", help="Print newline JSON events")
+    parser.add_argument("--diagnose", action="store_true",
+                        help="Also log F11 outside game foreground and count all keyboard events")
     args = parser.parse_args(argv)
     try:
         return run_poc(pid=args.pid, seconds=args.seconds, block=args.block,
-                       jsonl=args.jsonl)
+                       jsonl=args.jsonl, diagnose=args.diagnose)
     except (OSError, ValueError, RuntimeError) as exc:
         print(f"POC BLOCKED: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
