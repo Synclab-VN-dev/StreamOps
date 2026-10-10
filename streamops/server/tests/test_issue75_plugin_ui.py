@@ -22,6 +22,10 @@ def test_issue75_page_and_browser_assets(server_config, capture_service):
             response = client.get("/assets/" + asset)
             assert response.status_code == 200, asset
             assert response.content
+            if asset.endswith(".mjs"):
+                assert "javascript" in response.headers["content-type"].lower(), (
+                    asset, response.headers.get("content-type")
+                )
 
 
 def test_issue75_dashboard_links_to_plugin_manager(server_config, capture_service):

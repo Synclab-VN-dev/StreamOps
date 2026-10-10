@@ -10,6 +10,21 @@ from .conftest import BrowserTestServer
 pytestmark = pytest.mark.only_browser("chromium")
 
 
+@pytest.fixture(autouse=True)
+def issue75_browser_diagnostics(page: Page):
+    """Show startup JS/HTTP errors on failure without changing assertions."""
+    errors = []
+    page.on("pageerror", lambda exc: errors.append(f"PAGE ERROR: {exc}"))
+    page.on("console", lambda msg: errors.append(f"CONSOLE {msg.type}: {msg.text}") if msg.type == "error" else None)
+    page.on("response", lambda response: errors.append(
+        f"HTTP {response.status} {response.url}"
+    ) if response.status >= 400 and "/assets/" in response.url else None)
+    yield
+    if errors:
+        print("\nIssue #75 browser diagnostics:\n" + "\n".join(errors[-30:]))
+
+
+
 class MockPluginWebSocket:
     """Production UI over simulated WS; NOT evidence that PR #52 supports list/catalog WS."""
 
