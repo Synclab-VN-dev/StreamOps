@@ -55,3 +55,53 @@ def test_process_fixture_lifecycle_and_cleanup_does_not_target_real_game():
             child.kill()
             child.wait(timeout=3)
     assert child.poll() is not None
+
+def test_real_synthetic_child_drives_two_ws_observers_without_client_polling(
+        server_config,capture_service,tmp_path):
+    from streamops.server.app import create_app
+    from streamops.server.tests.test_games_lifecycle import FakeGamePlatform,build_service
+    class ProcessBacked(FakeGamePlatform):
+        def __init__(self):
+            super().__init__()
+            self.child=None
+        def inspect(self,game):
+            self.running=self.child is not None and self.child.poll() is None
+            observation=super().inspect(game)
+            if self.running:
+                observation=observation.model_copy(update={"process":observation.process.model_copy(
+                    update={"pid":self.child.pid,"executable":sys.executable})})
+            return observation
+
+    platform=ProcessBacked()
+    service,_=build_service(tmp_path,platform)
+    client=TestClient(create_app(server_config,capture_service=capture_service,
+                                 game_service=service,manage_runtime=False))
+    child=None
+    try:
+        with client:
+            with client.websocket_connect("/api/v1/games/ws") as first:
+                with client.websocket_connect("/api/v1/games/ws") as second:
+                    _snapshot(first)
+                    _snapshot(second)
+                    child=subprocess.Popen([sys.executable,"-c","import time;time.sleep(30)"],
+                                            stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,
+                                            stderr=subprocess.DEVNULL)
+                    platform.child=child
+                    service.hub.trigger_refresh()
+                    for ws in (first,second):
+                        event=ws.receive_json()
+                        assert event["event"]=="games.changed"
+                        assert event["data"]["game"]["observation"]["process"]["pid"]==child.pid
+                    child.terminate()
+                    child.wait(timeout=3)
+                    service.hub.trigger_refresh()
+                    for ws in (first,second):
+                        event=ws.receive_json()
+                        assert event["event"]=="games.changed"
+                        assert event["data"]["game"]["observation"]["process"]["state"]=="STOPPED"
+                    assert not service.hub._subscribers or len(service.hub._subscribers)==2
+    finally:
+        if child is not None and child.poll() is None:
+            child.kill()
+            child.wait(timeout=3)
+    assert child is not None and child.poll() is not None

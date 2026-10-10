@@ -115,8 +115,12 @@ def test_installed_wheel_runs_outside_source_checkout():
             )
             # Test the WS server as a separate process using the installed
             # wheel's venv, never site-packages from this CI checkout.
-            subprocess.run([str(python), "-c", ws_probe, str(port)], cwd=workdir,
-                           check=True, timeout=30, capture_output=True, text=True)
+            ws_result = subprocess.run([str(python), "-c", ws_probe, str(port)], cwd=workdir,
+                                       timeout=30, capture_output=True, text=True)
+            assert ws_result.returncode == 0, (
+                "Installed-wheel WebSocket smoke failed:\\n"
+                + ws_result.stdout + "\\n" + ws_result.stderr
+            )
         finally:
             process.terminate()
             try:

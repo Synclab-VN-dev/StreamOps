@@ -234,3 +234,29 @@ def test_reconcile_read_only_on_observation_failure(tmp_path):
         assert not any(result["capabilities"].values())
         assert platform.start_calls==platform.stop_calls==0
     asyncio.run(scenario())
+
+def test_node_close_drains_inflight_native_action_instead_of_canceling(tmp_path):
+    import threading
+    class Blocking(FakeGamePlatform):
+        def __init__(self):
+            super().__init__()
+            self.entered=threading.Event()
+            self.release=threading.Event()
+        def start(self,game):
+            self.entered.set()
+            assert self.release.wait(timeout=2)
+            self.running=True
+    async def scenario():
+        platform=Blocking()
+        svc,_=build_service(tmp_path,platform)
+        op=await svc.action(GAME,"start","shutdown")
+        try:
+            assert await asyncio.to_thread(platform.entered.wait,1)
+            closing=asyncio.create_task(svc.lifecycle.close())
+            await asyncio.sleep(0)
+            assert not closing.done()
+        finally:
+            platform.release.set()
+        await asyncio.wait_for(closing,timeout=2)
+        assert svc.operation(op["operation_id"])["status"]=="SUCCEEDED"
+    asyncio.run(scenario())
