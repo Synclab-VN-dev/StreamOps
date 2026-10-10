@@ -175,14 +175,15 @@ def test_issue75_dashboard_autoloads_server_inventory_with_dedicated_plugin_ws(
 ):
     """Summary is populated on load, with one plugin WS and no business REST calls."""
     fake = MockPluginWebSocket(page)
-    sockets, http_requests = [], []
-    page.on("websocket", lambda ws: sockets.append(ws.url))
+    http_requests = []
     page.on("request", lambda req: http_requests.append(req.url))
     page.goto(live_server.base_url + "/obs")
     expect(page.locator("#plugin-dashboard-managed")).to_have_text("1")
     expect(page.locator("#plugin-dashboard-installed")).to_have_text("1")
     expect(page.locator("#plugin-dashboard-state")).to_have_text("No alerts")
-    assert sum("/api/v1/obs/plugins/ws" in url for url in sockets) == 1
+    # route_web_socket is the transport endpoint for fake WS connections;
+    # Playwright's page.on("websocket") only covers non-intercepted sockets.
+    assert len(fake.sockets) == 1
     assert any(req["operation"] == "obs_plugin.inventory" for req in fake.calls)
     assert any(req["operation"] == "obs_plugin.subscribe" for req in fake.calls)
     assert not any(req["operation"] == "obs_plugin.adopt" for req in fake.calls)

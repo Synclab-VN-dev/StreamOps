@@ -17,7 +17,10 @@ def approved_plugin_ws_contract_for_independent_fe(page):
     so this fixture models its documented read-only WS v2 contract. This does
     not patch production behavior and does not permit file/OBS mutations.
     """
+    plugin_ws_sessions = []
+
     def handle_socket(ws):
+        plugin_ws_sessions.append(ws)
         def on_message(message):
             request = json.loads(message)
             op = request.get('operation')
@@ -56,6 +59,7 @@ def approved_plugin_ws_contract_for_independent_fe(page):
             }))
         ws.on_message(on_message)
     page.route_web_socket('**/api/v1/obs/plugins/ws', handle_socket)
+    return plugin_ws_sessions
 
 
 MOBILE_VIEWPORTS = [
@@ -348,7 +352,9 @@ def test_healthy_websocket_stops_status_polling(page, live_server):
 
 
 @pytest.mark.parametrize('viewport', MOBILE_VIEWPORTS)
-def test_dashboard_uses_one_socket_per_domain_and_no_business_rest(page, live_server, viewport):
+def test_dashboard_uses_one_socket_per_domain_and_no_business_rest(
+    page, live_server, viewport, approved_plugin_ws_contract_for_independent_fe
+):
     page.set_viewport_size(viewport)
     sockets = []
     requests = []
@@ -360,12 +366,16 @@ def test_dashboard_uses_one_socket_per_domain_and_no_business_rest(page, live_se
     page.locator('#verify-button').click()
     expect(page.locator('#obs-result')).not_to_have_text('--')
 
-    # One connection for each actual backend domain (OBS, Live, Plugin).
-    # A hard-coded total of 2 would be obsolete now that #75 introduces Plugin.
-    domains = ['/api/v1/obs/ws', '/api/v1/live/ws', '/api/v1/obs/plugins/ws']
+    # The browser WebSocket event captures real OBS + Live network sockets.
+    # Playwright route_web_socket terminates plugin WS in the mock route, and
+    # therefore its session is observed at the fixture, not page.on('websocket').
+    domains = ['/api/v1/obs/ws', '/api/v1/live/ws']
     assert len(sockets) == len(domains)
     for path in domains:
         assert sum(path in socket.url for socket in sockets) == 1, path
+    assert len(approved_plugin_ws_contract_for_independent_fe) == 1, (
+        "Plugin domain must have exactly one mock WebSocket session."
+    )
     # Do not disable product summary to make socket counts pass.
     expect(page.locator('#plugin-dashboard-managed')).to_have_text('1')
     expect(page.locator('#plugin-dashboard-installed')).to_have_text('0')
