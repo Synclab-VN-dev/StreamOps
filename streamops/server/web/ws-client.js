@@ -1,9 +1,10 @@
 (() => {
   class StreamOpsWebSocketClient {
-    constructor({path, label, connectionEvent}) {
+    constructor({path, label, connectionEvent, idleTimeoutMs = 30000}) {
       this.path = path;
       this.label = label;
       this.connectionEvent = connectionEvent;
+      this.idleTimeoutMs = idleTimeoutMs;
       this.socket = null;
       this.pending = new Map();
       this.listeners = new Map();
@@ -98,7 +99,7 @@
         );
       }
       const requestId = `req-${Date.now()}-${++this.requestCounter}`;
-      return new Promise((resolve, reject) => {
+      const requestPromise = new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           this.pending.delete(requestId);
           reject(new Error(`Operation timed out: ${operation}`));
@@ -117,6 +118,9 @@
           reject(error);
         }
       });
+      // Allows a caller to record request_id alongside its activity record.
+      requestPromise.requestId = requestId;
+      return requestPromise;
     }
 
     on(eventName, listener, {replay = false} = {}) {
@@ -220,7 +224,7 @@
     _startWatchdog() {
       if (this.watchdogTimer !== null) return;
       this.watchdogTimer = setInterval(() => {
-        if (this.connected && Date.now() - this.lastMessageAt > 30000) this.socket?.close();
+        if (this.connected && Date.now() - this.lastMessageAt > this.idleTimeoutMs) this.socket?.close();
       }, 5000);
     }
   }

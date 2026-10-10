@@ -41,6 +41,7 @@ streamops = [
   "config/scene-templates/*.json",
   "docs/*.md",
   "server/web/*",
+  "server/web/obs-plugins/*",
   "server/platform/windows/obs_plugin/*.json",
 ]
 

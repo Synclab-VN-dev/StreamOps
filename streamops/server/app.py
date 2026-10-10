@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import mimetypes
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -310,6 +311,12 @@ def create_app(
     async def stream_page() -> FileResponse:
         return FileResponse(WEB_ROOT / "stream.html", headers={"Cache-Control": "no-store"})
 
+    @app.get("/obs/plugins", include_in_schema=False)
+    async def plugins_page() -> FileResponse:
+        return FileResponse(WEB_ROOT / "plugins.html", headers={"Cache-Control": "no-store"})
+
+    # Browser ES modules must be served with a JavaScript MIME type even on Windows.
+    mimetypes.add_type("text/javascript", ".mjs", strict=True)
     app.mount("/assets", StaticFiles(directory=WEB_ROOT), name="web-assets")
     return app
 
