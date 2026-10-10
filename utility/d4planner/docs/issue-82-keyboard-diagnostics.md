@@ -1,6 +1,6 @@
 # Issue #82 — F11 capture + selective suppression (Windows diagnostics)
 
-**Status:** standalone diagnostic with SSH->interactive task relay; Real-A/Manual UAT NOT YET VERIFIED.
+**Status:** optional standalone diagnostic for the production hook; the original manual behavior was verified on Real-A. Production integration verification is separately gated.
 
 ## Why
 PR #70 emits two Steam Input bindings for controller A on C: original gamepad A
@@ -42,7 +42,7 @@ From B Termux, update the PR #83 worktree on A and obtain the current PID:
 
 ~~~sh
 A="huy@192.168.1.8"
-ssh "$A" 'cd C:\Users\huy\codex-work\StreamOps-82 && git fetch origin poc/82-f11-suppress-hook && git switch --detach origin/poc/82-f11-suppress-hook'
+ssh "$A" 'cd C:\Users\huy\codex-work\StreamOps-82 && git fetch origin pull/83/head && git switch --detach FETCH_HEAD'
 ssh "$A" 'powershell -NoProfile -Command "(Get-Process -Name \"Diablo IV\" | Select-Object -First 1).Id"'
 ~~~
 
@@ -83,7 +83,7 @@ of status=0 does NOT prove the UI stopped blinking; verify on C manually.
 
 
 
-Check out the child branch poc/82-f11-suppress-hook in a **separate**
+Check out PR #83 head in a **separate**
 working tree. Make sure the Steam Input profile still dual-binds controller
 A to the original gamepad A + keyboard F11.
 
@@ -136,7 +136,7 @@ queue and fail-open. They do not replace interactive Real-A tests.
 ## PR strategy
 
 - Parent PR #70 branch: probe/69-steam-input-marker.
-- Integration child PR: poc/82-f11-suppress-hook, base must remain parent.
+- Integration child PR: #83, base must remain the parent PR #70.
 - Keep PR **draft** and ticket #82 **open** until Dev F and Manual acceptance
   pass. If PR #70 merges, retarget the child PR as appropriate.
 
