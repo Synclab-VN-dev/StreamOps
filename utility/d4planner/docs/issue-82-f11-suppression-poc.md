@@ -1,6 +1,6 @@
 # Issue #82 — F11 capture + selective suppression (Windows POC)
 
-**Status:** implemented as a **standalone opt-in diagnostic**; Real-A/Manual UAT NOT YET VERIFIED.
+**Status:** standalone diagnostic with SSH->interactive task relay; Real-A/Manual UAT NOT YET VERIFIED.
 
 ## Why
 PR #70 emits two Steam Input bindings for controller A on C: original gamepad A
@@ -23,8 +23,7 @@ production InputMarkerCapture or either SQLite database.
   also blocked when Diablo IV is foreground.**
 - Win32 hook suppression does not guarantee suppression on D4's Raw Input
   or other input paths: zero blink requires proof on Real-A.
-- Start in interactive Windows session 1, not SSH/service session 0.
-  No DLL injection into Diablo IV.
+- The POC may be invoked from SSH / session 0: a new interactive Scheduled Task runs the hook in the game desktop session. No DLL injection into Diablo IV.
 - Callback only queues events, no filesystem IO. Windows may silently
   remove hooks if callbacks/pump are too slow.
 - Auto-exits and unhooks after timeout (default 30 s, max 300 s);
@@ -33,7 +32,56 @@ production InputMarkerCapture or either SQLite database.
 - If the block works, existing GetAsyncKeyState polling may not see the
   blocked F11; integrating later requires consuming hook events directly.
 
-## Run on A, in interactive PowerShell
+## Run from Android B over SSH to Windows A (preferred)
+
+Updated PR #83 automatically detects a Session 0 SSH invocation and relays
+into a Session 1 interactive Scheduled Task. No RustDesk or manual login to
+an A terminal is needed **provided the game desktop is already logged on**.
+
+From B Termux, update the PR #83 worktree on A and obtain the current PID:
+
+~~~sh
+A="huy@192.168.1.8"
+ssh "$A" 'cd C:\Users\huy\codex-work\StreamOps-82 && git fetch origin poc/82-f11-suppress-hook && git switch --detach origin/poc/82-f11-suppress-hook'
+ssh "$A" 'powershell -NoProfile -Command "(Get-Process -Name \"Diablo IV\" | Select-Object -First 1).Id"'
+~~~
+
+Replace 14872 below if the reported game PID differs. Run **one command at
+a time**, and press controller A on C several times while each command
+is active (60 seconds).
+
+~~~sh
+# OBSERVE: diagnose only, no key suppression
+ssh "$A" 'C:\Users\huy\AppData\Local\Programs\Python\Python312\python.exe C:\Users\huy\codex-work\StreamOps-82\utility\d4planner\src\d4planner\poc_keyboard_suppress.py --pid 14872 --seconds 60 --diagnose'
+
+# BLOCK: suppress keyboard F11 only while D4 is foreground
+ssh "$A" 'C:\Users\huy\AppData\Local\Programs\Python\Python312\python.exe C:\Users\huy\codex-work\StreamOps-82\utility\d4planner\src\d4planner\poc_keyboard_suppress.py --pid 14872 --seconds 60 --diagnose --block'
+~~~
+
+Expected diagnostic categories (examples, not yet verified on Real-A):
+
+~~~text
+RELAY: control_session=0 game_session=1 active_console=1; task=...
+LOG_PATH: C:\Users\huy\AppData\Local\d4planner\state\poc82\f11-<id>.log
+POC_SESSION worker=1 game=1 active=1
+...
+SUMMARY: keyboard_seen=... f11_seen=... f11_target=...
+POC82_REMOTE_COMPLETE status=0
+~~~
+
+Log path on A is preserved and is readable over SSH. The controller prints
+new log lines while the interactive hook runs; task deregistration occurs at
+completion and on Ctrl+C. A hard SSH disconnect may interrupt the control
+process before cleanup, but worker exits/unhooks within 300 seconds.
+
+The interactive worker refuses to run unless its Session ID equals Diablo
+IV's active console session. The Python worker is run by absolute source path
+and does not depend on PYTHONPATH inherited from the SSH shell. The presence
+of status=0 does NOT prove the UI stopped blinking; verify on C manually.
+
+## Alternate: run on A in interactive PowerShell
+
+
 
 Check out the child branch poc/82-f11-suppress-hook in a **separate**
 working tree. Make sure the Steam Input profile still dual-binds controller
@@ -127,3 +175,7 @@ with targetMatch=False and add SUMMARY counters:
 The --diagnose option never broadens the suppression guard. Off-target
 F11 is **only logged**, never blocked. This mode reports minimal aggregate
 counts of other keyboard events; it does not log key content for other keys.
+
+SSH session mismatch (PowerShell Session 0; Diablo IV Session 1) is now
+handled by the automatic interactive-task relay rather than silently
+missing F11 events.
