@@ -247,6 +247,10 @@ bool MultiRTMPWebsocketVendor::HandleListTargets(obs_data_t* response_data) {
     obs_data_array_t* targetsArray = obs_data_array_create();
     auto& global = GlobalMultiOutputConfig();
     int activeCount = 0;
+    // Keep count in sync with the serialized array even when a config entry
+    // is null (e.g. during a transient profile change). The v1 count used
+    // global.targets.size(), which could over-report ignored entries.
+    int validCount = 0;
 
     for (const auto& targetConfig : global.targets) {
         if (!targetConfig) continue;
@@ -287,10 +291,11 @@ bool MultiRTMPWebsocketVendor::HandleListTargets(obs_data_t* response_data) {
 
         obs_data_array_push_back(targetsArray, targetData);
         obs_data_release(targetData);
+        ++validCount;
     }
 
     obs_data_set_array(response_data, "targets", targetsArray);
-    obs_data_set_int(response_data, "count", static_cast<long long>(global.targets.size()));
+    obs_data_set_int(response_data, "count", validCount);
     obs_data_set_int(response_data, "activeCount", activeCount);
     obs_data_array_release(targetsArray);
     return true;
