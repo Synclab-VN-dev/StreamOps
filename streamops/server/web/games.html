@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Game Manager · StreamOps</title>
+<link rel="stylesheet" href="/assets/app.css"><link rel="stylesheet" href="/assets/games.css">
+</head>
+<body class="gm-page">
+<header class="topbar"><a class="brand" href="/">StreamOps Node</a><nav><a href="/steam">Steam Manager</a></nav><span id="status-text" class="gm-top-status" aria-live="polite">Connecting…</span></header>
+<main class="page-shell gm-shell">
+<div class="gm-page-heading"><div><p class="eyebrow">APPLICATION / LIBRARY</p><h1>Game Manager</h1><p>Observe and safely manage registered games on this node.</p></div><a class="gm-button gm-secondary gm-nav" href="/steam">← Steam</a></div>
+<section id="games-overview" class="gm-card" aria-labelledby="overview-title"><h2 id="overview-title">Games Overview</h2><div id="game-summary" aria-live="polite"></div></section>
+<div class="gm-workspace" id="games-workspace">
+<div id="games-main">
+<section class="gm-card" aria-labelledby="running-title"><div class="gm-section-heading"><h2 id="running-title">Running Games</h2><span id="running-caption" class="gm-muted"></span></div><div id="running-games" class="gm-rows" aria-live="polite"></div></section>
+<section class="gm-card" aria-labelledby="library-title"><div class="gm-section-heading"><h2 id="library-title">Game Library</h2><button id="refresh-catalog" class="gm-button gm-secondary" type="button">Refresh Library</button></div>
+<div class="gm-filters"><label class="gm-search-label">Search<input id="game-search" type="search" placeholder="Search games or launchers" autocomplete="off"></label>
+<label class="gm-search-label">Status<select id="game-filter"><option value="all">All</option><option value="running">Running</option><option value="stopped">Stopped</option></select></label></div>
+<div id="game-library" class="gm-rows" aria-live="polite"></div></section>
+<section class="gm-card" aria-labelledby="activity-title"><div class="gm-section-heading"><h2 id="activity-title">Activity Log</h2><small>Browser session only</small></div><ol id="activity-log" class="activity-log"></ol></section>
+</div>
+<aside class="gm-card gm-detail" id="game-detail" aria-label="Game detail" tabindex="-1"><p class="gm-empty">Select a game to see details.</p></aside>
+</div>
+<section class="gm-card gm-control-panel" aria-label="Control credentials"><details><summary>Game-control credential (optional)</summary><p class="gm-muted">Read-only status needs no control token. Control commands use a separate WebSocket connection with a token held only in this browser tab's memory.</p><label>Operator token<input id="game-control-token" type="password" autocomplete="off" placeholder="Token ≥24 characters"></label><button id="apply-token" class="gm-button gm-secondary" type="button">Use for this tab</button><span id="token-status" role="status"></span></details></section>
+<p id="games-error" class="gm-error" role="alert" hidden></p>
+</main>
+<script src="/assets/common.js" defer></script>
+<script src="/assets/ws-client.js" defer></script>
+<script src="/assets/games-store.js" defer></script>
+<script src="/assets/games-components.js" defer></script>
+<script src="/assets/games-ws.js" defer></script>
+<script src="/assets/games-control.js" defer></script>
+<script src="/assets/games.js" defer></script>
+</body></html>

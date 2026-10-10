@@ -1,148 +1,62 @@
-const ui = window.StreamOpsUI;
-const addActivity = ui.createActivityLog("#activity-log");
-const statusPanel = document.querySelector("#steam-status-panel");
-const stateElement = document.querySelector("#steam-state");
-const stateDot = document.querySelector("#steam-status-dot");
-const pidElement = document.querySelector("#steam-pid");
-const startedElement = document.querySelector("#steam-started");
-const uptimeElement = document.querySelector("#steam-uptime");
-const sessionElement = document.querySelector("#steam-session");
-const interactiveElement = document.querySelector("#steam-interactive");
-const installationElement = document.querySelector("#steam-installation");
-const restartButton = document.querySelector("#restart-button");
-const errorMessage = document.querySelector("#error-message");
-
-let restartInFlight = false;
-let lastStatusSignature = null;
-let statusRequestInFlight = null;
-let latestStatus = null;
-
-async function updateHealth() {
-  try {
-    ui.updateNodeStatus(await ui.fetchJson("/api/v1/health"));
-  } catch {
-    ui.updateNodeStatus(null);
-  }
-}
-
-async function updateSteamStatus({ log = true, force = false, clearError = true } = {}) {
-  if (restartInFlight && !force) return;
-  if (statusRequestInFlight) {
-    await statusRequestInFlight;
-    if (!force) return;
-  }
-
-  const request = fetchAndRenderSteamStatus({ log, clearError, force });
-  statusRequestInFlight = request;
-  try {
-    await request;
-  } finally {
-    if (statusRequestInFlight === request) statusRequestInFlight = null;
-  }
-}
-
-async function fetchAndRenderSteamStatus({ log, clearError, force }) {
-  try {
-    const status = await ui.fetchJson("/api/v1/steam/status");
-    if (restartInFlight && !force) return;
-    latestStatus = status;
-    renderStatus(status);
-    if (clearError) setError("");
-    const signature = `${status.state}:${status.pid}:${status.interactive}:${status.installation_detected}`;
-    if (log && signature !== lastStatusSignature) {
-      addActivity(
-        status.running ? `Steam status: running (PID ${status.pid})` : "Steam status: stopped",
-        status.running ? "success" : "info",
-      );
+/* Ticket #86: Steam and Game Manager are WS-only. No HTTP/REST polling. */
+(() => {
+  const $=s=>document.querySelector(s), format=window.StreamOpsUI;
+  const log=format.createActivityLog("#activity-log"), ws=window.StreamOpsSteam;
+  const games=window.StreamOpsGames, components=window.StreamOpsGamesComponents, control=window.StreamOpsGameControl;
+  let current=null, connected=false, busy=false, previous="", lastGames="";
+  function setError(message) {$("#error-message").textContent=message||"";$("#error-message").hidden=!message;}
+  function render() {
+    const fresh=connected && current && current.stale!==true;
+    const state=fresh?(current.running===true?"Running":current.running===false?"Stopped":"UNKNOWN"):"UNKNOWN";
+    $("#steam-state").textContent=busy?"Restarting":state;
+    $("#steam-status-dot").className="status-dot "+(state==="Running"?"online":state==="Stopped"?"warning":"offline");
+    $("#steam-pid").textContent=fresh?current.pid??"--":"--";
+    $("#steam-started").textContent=fresh?format.formatDateTime(current.started_at):"--";
+    $("#steam-uptime").textContent=fresh?format.formatDuration(current.uptime_seconds):"--";
+    $("#steam-session").textContent=fresh?current.session_id??"--":"--";
+    $("#steam-interactive").textContent=fresh && current.interactive!=null?(current.interactive?"Yes":"No"):"--";
+    $("#steam-installation").textContent=fresh && current.installation_detected!=null?(current.installation_detected?"Detected":"Not detected"):"Unknown";
+    $("#restart-button").disabled=busy||!fresh||current.installation_detected!==true||current.interactive!==true;
+    $("#restart-button").textContent=busy?"Restarting…":"Restart in Big Picture";
+    $("#steam-status-panel").setAttribute("aria-busy",String(busy));
+    $("#status-text").textContent=connected?"Steam WS connected":"Steam WS offline";
+    $("#status-dot").className="status-dot "+(connected?"online":"offline");
+    if (fresh) {
+      const signature=current.state+":"+current.pid+":"+current.interactive;
+      if (signature!==previous) {previous=signature;log("Steam state: "+state);}
     }
-    lastStatusSignature = signature;
-  } catch (error) {
-    if (restartInFlight && !force) return;
-    latestStatus = null;
-    renderErrorState();
-    const message = error.message || "Steam status failed.";
-    if (clearError) setError(message);
-    if (log && lastStatusSignature !== "error") addActivity(`Steam status failed: ${message}`, "error");
-    lastStatusSignature = "error";
   }
-}
-
-function renderStatus(status) {
-  stateElement.textContent = status.running ? "Running" : "Stopped";
-  stateDot.className = status.running ? "status-dot online" : "status-dot warning";
-  pidElement.textContent = status.pid ?? "--";
-  startedElement.textContent = ui.formatDateTime(status.started_at);
-  uptimeElement.textContent = ui.formatDuration(status.uptime_seconds);
-  sessionElement.textContent = status.session_id ?? "--";
-  interactiveElement.textContent = status.running ? (status.interactive ? "Yes" : "No") : "--";
-  installationElement.textContent = status.installation_detected ? "Detected" : "Not detected";
-  restartButton.disabled = restartInFlight || !status.installation_detected;
-}
-
-function renderErrorState() {
-  stateElement.textContent = "Error";
-  stateDot.className = "status-dot offline";
-  for (const element of [pidElement, startedElement, uptimeElement, sessionElement, interactiveElement]) {
-    element.textContent = "--";
-  }
-  installationElement.textContent = "Unknown";
-  restartButton.disabled = true;
-}
-
-function renderRestartingState() {
-  statusPanel.setAttribute("aria-busy", "true");
-  stateElement.textContent = "Restarting";
-  stateDot.className = "status-dot warning";
-  for (const element of [pidElement, startedElement, uptimeElement, sessionElement, interactiveElement]) {
-    element.textContent = "--";
-  }
-  restartButton.disabled = true;
-}
-
-function finishRestartingState() {
-  statusPanel.removeAttribute("aria-busy");
-  restartButton.textContent = "Restart in Big Picture";
-  restartButton.disabled = !latestStatus?.installation_detected;
-}
-
-async function restartSteam() {
-  if (restartInFlight) return;
-  addActivity("Restart requested");
-  if (!window.confirm("Restart Steam in Big Picture Mode? Active games or downloads may be interrupted.")) {
-    addActivity("Restart cancelled");
-    return;
-  }
-  addActivity("Operator confirmed restart");
-  restartInFlight = true;
-  restartButton.textContent = "Restarting...";
-  renderRestartingState();
-  setError("");
-  let restartFailed = false;
-  try {
-    const result = await ui.fetchJson("/api/v1/steam/restart", { method: "POST" });
-    addActivity(`Restart completed (PID ${result.pid})`, "success");
-  } catch (error) {
-    restartFailed = true;
-    const message = error.message || "Steam restart failed.";
-    setError(message);
-    addActivity(`Restart failed: ${message}`, "error");
-  } finally {
-    await updateSteamStatus({ force: true, clearError: !restartFailed });
-    restartInFlight = false;
-    finishRestartingState();
-  }
-}
-
-function setError(message) {
-  errorMessage.textContent = message;
-  errorMessage.hidden = !message;
-}
-
-async function poll() {
-  await Promise.all([updateHealth(), updateSteamStatus()]);
-  window.setTimeout(poll, 15000);
-}
-
-restartButton.addEventListener("click", restartSteam);
-addActivity("Page loaded");
-poll();
+  ws.onState(({state})=>{
+    connected=state==="connected";
+    if (!connected) current=null;
+    render();
+    if (connected) ws.request("steam.status").then(s=>{current=s;render();}).catch(e=>setError(e.message));
+  },{replay:true});
+  ws.on("steam.snapshot",data=>{current=data;render();});
+  games.store.on(store=>{
+    const summary=store.summary();
+    components.renderSummary($("#steam-games-summary"),store);
+    $("#games-connection").textContent=store.stale?"UNKNOWN":"LIVE";
+    const visible=store.stale?[]:store.items().filter(g=>g.observation?.process?.state==="RUNNING" && !g.observation?.process?.stale);
+    components.renderRows($("#steam-running-games"),visible,null,()=>location.assign("/games"),store.stale?"Game status unavailable":"No running games");
+    const sig=store.epoch+":"+store.revision+":"+store.stale;
+    if(sig!==lastGames && !store.loading && !store.stale){lastGames=sig; log("Games: "+(summary.running??"Unknown")+" running");}
+  });
+  $("#steam-apply-token").addEventListener("click",()=>{
+    control.setCredential($("#steam-control-token").value);
+    $("#steam-control-token").value="";
+    $("#steam-token-status").textContent=control.hasCredential()?"Credential ready":"Invalid token (min 24 characters)";
+  });
+  $("#restart-button").addEventListener("click",async()=>{
+    if(busy || !connected || !current?.installation_detected || !current?.interactive) return;
+    if(!window.confirm("Restart Steam in Big Picture Mode? Active games or downloads may be interrupted.")) {log("Restart cancelled");return;}
+    busy=true;render();setError("");log("Steam restart requested");
+    try {
+      const value=await control.command("/api/v1/steam/ws","steam.lifecycle.restart",{});
+      log("Steam restart completed (PID "+(value?.pid??"Unknown")+")","success");
+      current=await ws.request("steam.status");render();
+    }catch(e){setError(e.message);log("Steam restart failed: "+e.message,"error");}
+    finally {busy=false;render();}
+  });
+  log("Steam Manager opened");
+})();
