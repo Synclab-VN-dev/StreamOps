@@ -624,7 +624,7 @@ def test_issue75_stale_open_adopt_dialog_refuses_newly_invalid_mutation(
     fake.push_changed()
     expect(page.locator(".plugin-card")).to_contain_text("Legacy baseline adopted")
     page.get_by_role("button",name="Confirm",exact=True).click()
-    expect(page.locator("#plugin-notice")).to_contain_text("not adoptable")
+    expect(page.locator("#plugin-notice")).to_contain_text("Only an existing unmanaged")
     assert fake.mutations("obs_plugin.adopt")==[]
 
 
