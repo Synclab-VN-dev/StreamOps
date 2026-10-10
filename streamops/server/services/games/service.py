@@ -25,13 +25,16 @@ class GameService:
         return value.model_dump()
 
     async def action(self, game_id: str, action: str, key: str):
-        return await self.lifecycle.submit(game_id, action, key)
+        op = await self.lifecycle.submit(game_id, action, key)
+        return {"operation_id": op["id"], "game_id": op["game_id"],
+                "action": op["action"], "status": op["status"], "phase": op["phase"],
+                "code": op["code"]}
 
     def operation(self, operation_id: str):
         value = self.lifecycle.store.get(operation_id)
         if value is None:
             raise GameServiceError("operation_not_found","Unknown operation.")
-        return value
+        return {"operation_id":value["id"], **value}
 
     async def reconcile(self, game_id: str):
         return await self.get(game_id)

@@ -64,5 +64,5 @@ def test_games_ws_authenticated_lifecycle_and_operation_lookup(monkeypatch,serve
         ws.send_json({"type":"request","request_id":"r3","operation":"games.lifecycle.start",
                       "payload":{"game_id":GAME,"idempotency_key":"started-over-ws"}})
         result=_response(ws,"r3")
-        assert result["ok"] and result["data"]["id"].startswith("op-")
+        assert result["ok"] and result["data"]["operation_id"].startswith("op-")
         assert result["data"]["game_id"]==GAME

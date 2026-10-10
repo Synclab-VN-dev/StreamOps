@@ -54,9 +54,9 @@ class GameObserver:
                 result.append(GameRecord(id=game.id, provider=game.provider, name=game.name,
                     metadataSource=game.metadataSource, enabled=game.enabled,
                     observation=observed, capabilities=caps, capability_reason=reason))
-            self._last = {item.id: item for item in result}
             if self._hub is not None:
-                self._hub.publish(result)
+                result = self._hub.publish(result)
+            self._last = {item.id: item for item in result}
             return result
 
     async def get(self, game_id: str) -> GameRecord | None:

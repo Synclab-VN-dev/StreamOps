@@ -55,7 +55,9 @@ class SteamStatusHub:
 
     async def _run(self):
         while True:
-            try: await self.snapshot()
+            try:
+                if self._subscribers:
+                    await self.snapshot()
             except asyncio.CancelledError: raise
             except Exception: pass
             try:

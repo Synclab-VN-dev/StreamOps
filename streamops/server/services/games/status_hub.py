@@ -58,6 +58,9 @@ class GameStatusHub:
         self._subscribers.add(q)
         try:
             await self.observer.refresh()
+            # Initial event must be a complete snapshot, never a premature delta.
+            while not q.empty():
+                q.get_nowait()
             self._enqueue(q, {"type":"event","event":"games.snapshot","data":self.snapshot()})
             return q
         except BaseException:
@@ -90,19 +93,22 @@ class GameStatusHub:
             signature = _signature(record)
             if self._signatures.get(record.id) != signature:
                 self._revision += 1
-                changed.append(record.id)
+                changed.append((record.id, self._revision))
                 self._signatures[record.id] = signature
-            record = record.model_copy(update={"revision": self._revision})
+                record_revision = self._revision
+            else:
+                record_revision = self._records[record.id].revision
+            record = record.model_copy(update={"revision": record_revision})
             self._records[record.id] = record
         for removed in old - {r.id for r in records}:
             self._records.pop(removed, None)
             self._signatures.pop(removed, None)
             self._revision += 1
-            changed.append(removed)
-        for game_id in changed:
-            self.broadcast("games.changed", {"revision":self._revision,"game_id":game_id,
+            changed.append((removed, self._revision))
+        for game_id, revision in changed:
+            self.broadcast("games.changed", {"revision":revision,"game_id":game_id,
                 "game":self._records[game_id].model_dump() if game_id in self._records else None})
-        return self.snapshot()
+        return [self._records[item.id] for item in records]
 
     async def _monitor(self):
         while True:
