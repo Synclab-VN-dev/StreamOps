@@ -13,6 +13,9 @@ import android.provider.Settings
 import android.graphics.Typeface
 import android.text.InputType
 import android.view.ViewGroup
+import android.view.InputDevice
+import android.view.MotionEvent
+import android.os.SystemClock
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Switch
@@ -59,9 +62,9 @@ class MainActivity : Activity() {
                 "2. Enable Controller Bridge in Accessibility settings.\n" +
                 "3. Open Steam Link, control Diablo IV and press buttons.\n" +
                 "4. Return here; copy raw evidence and compare gameplay.\n" +
-                "Only KeyEvents can be observed in this milestone. " +
-                "DPAD may be delivered as MotionEvent and thus absent. " +
-                "Never enable motion interception during this feasibility test."
+                "KeyEvents are captured by the AccessibilityService. " +
+                "D-pad HAT axes are captured LOCALLY only when XC is foreground. " +
+                "Steam Link foreground MotionEvents cannot be seen by this Activity."
             textSize = 14f
         }
         layout.addView(help)
@@ -183,6 +186,49 @@ class MainActivity : Activity() {
         setContentView(layout)
     }
 
+    /**
+     * XC foreground-only read-only observation. dispatchGenericMotionEvent is
+     * earlier than View dispatch, so focused EditText/ScrollView cannot hide
+     * joystick events from the diagnostic observer.
+     *
+     * ALWAYS dispatch normally to Android views; never intercept or consume.
+     * This cannot observe MotionEvents targeted at Steam Link.
+     */
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        try {
+            val controllerSource = event.isFromSource(InputDevice.SOURCE_JOYSTICK) ||
+                event.isFromSource(InputDevice.SOURCE_GAMEPAD) ||
+                event.isFromSource(InputDevice.SOURCE_DPAD)
+            if (controllerSource && event.actionMasked == MotionEvent.ACTION_MOVE) {
+                val deviceName = event.device?.name ?: "(unknown)"
+                val capturedAt = SystemClock.uptimeMillis()
+                for (h in 0 until event.historySize) {
+                    CaptureState.observeForegroundHat(
+                        eventTimeC = event.getHistoricalEventTime(h),
+                        captureTimeC = capturedAt,
+                        deviceId = event.deviceId,
+                        deviceName = deviceName,
+                        source = event.source,
+                        x = event.getHistoricalAxisValue(MotionEvent.AXIS_HAT_X, h),
+                        y = event.getHistoricalAxisValue(MotionEvent.AXIS_HAT_Y, h)
+                    )
+                }
+                CaptureState.observeForegroundHat(
+                    eventTimeC = event.eventTime,
+                    captureTimeC = capturedAt,
+                    deviceId = event.deviceId,
+                    deviceName = deviceName,
+                    source = event.source,
+                    x = event.getAxisValue(MotionEvent.AXIS_HAT_X),
+                    y = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
+                )
+            }
+        } catch (failure: Exception) {
+            CaptureState.setError("foregroundHat: " + failure.javaClass.simpleName)
+        }
+        return super.dispatchGenericMotionEvent(event)
+    }
+
     override fun onNewIntent(newIntent: Intent) {
         super.onNewIntent(newIntent)
         // Activity can be reused with --activity-single-top or FLAG_ACTIVITY_SINGLE_TOP.
@@ -213,6 +259,7 @@ class MainActivity : Activity() {
 
     override fun onStop() {
         handler.removeCallbacks(refresh)
+        CaptureState.leaveXcForeground()
         super.onStop()
     }
 }

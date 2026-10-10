@@ -51,6 +51,53 @@ client instance identifier for cross-session deduplication.
 Do not enable competing key-filter AccessibilityServices while testing:
 Android only grants key-filter delivery to one requesting service at a time.
 
+## XC-foreground D-pad HAT diagnostic (Android C only)
+
+The Xbox D-pad was NOT delivered as a `KeyEvent` to the current
+AccessibilityService, even when XC was foreground. Android often reports this
+control as joystick HAT axes `AXIS_HAT_X` and `AXIS_HAT_Y`; this remains a
+hypothesis until hardware evidence on the actual C device confirms it.
+
+**This POC is a diagnostic, not background capture.** When XC is the foreground
+app, `MainActivity.dispatchGenericMotionEvent()` observes joystick/gamepad
+`MotionEvent.ACTION_MOVE` and historical batched axis samples before normal
+View dispatch, then calls `super.dispatchGenericMotionEvent(event)` unchanged.
+It does NOT request AccessibilityService motion capture, consume input,
+inject a controller event, or read joystick MotionEvents in Steam Link.
+
+The debug report / **Copy evidence** now includes:
+- `hatSamplesObserved`: total local XC-foreground MotionEvent axis samples.
+- `hatLastSample`: latest raw `hatX`/`hatY`, `tC` (MotionEvent.eventTime)
+  and `captureC` (SystemClock.uptimeMillis), device ID/name and input source.
+- `Recent D-pad HAT transitions`: `DPAD_UP/DOWN/LEFT/RIGHT DOWN/UP` inferred
+  from axis thresholds -0.5 / +0.5, including return to center and diagonals.
+  Kept in a 128-transition bounded in-memory ring, logging changes only.
+- KeyEvent diagnostic names include `button=LB/RB/A/B/...` beside original
+  raw keycodes so that KeyCode 102/103 are not misreported as absent.
+
+### Controlled Real-C test from Termux B
+
+1. Install the new `issue79-controller-bridge-debug-apk` artifact.
+   Open XC on C with
+   `adb -s 192.168.1.27:5555 shell am start -n com.synclab.d4planner.bridge/.MainActivity`.
+2. Use the touchscreen to tap **Clear log**, then **leave XC in foreground**.
+   Press/hold/release DPAD_UP, DPAD_DOWN, DPAD_LEFT, DPAD_RIGHT in turn.
+3. Observe `hatSamplesObserved`, `hatLastSample` and direction transitions;
+   copy diagnostics or take a screenshot. Expected axis signs are
+   `hatY=-1` for UP, `hatY=+1` for DOWN, `hatX=-1` for LEFT,
+   `hatX=+1` for RIGHT, and 0 when released (device-dependent).
+4. If `hatSamplesObserved=0` throughout, XC did not receive eligible
+   foreground MotionEvents. If samples increase but hat axes stay 0, the
+   MotionEvents reached XC but that input did not use these HAT axes. Neither
+   observation proves anything about the unprivileged `getevent` syscall.
+5. Switch to Steam Link and test gameplay; **HAT logging WILL NOT run while
+   Steam Link is foreground**, by design. Existing KeyEvent → A ACK logic
+   remains unchanged. No MotionEvent is sent to A by this diagnostic.
+
+Do not use this as evidence for background DPAD ACK-before-forward, full
+14-button Xbox coverage, or production synchronization. That would require
+a distinct safe input-capture architecture and real-device verification.
+
 ## ACK-before-forward experiment (optional)
 
 This is an **additional gated POC**, not the production C→A EventStore integration.
@@ -212,7 +259,9 @@ as joystick hat axes instead of KeyEvents; such devices may be partial/NO-GO.
   `SYSTEM_ALERT_WINDOW`, recording, storage or shell permissions.
 - Service returns `false` on every KeyEvent path.
 - UI retains the last 512 digital raw observations only in memory.
-- No screen text, password, window content, joystick motion or speech collected.
+- No screen text, password, other apps' window content or speech collected.
+- Only **XC foreground** joystick MotionEvent HAT axes are sampled locally
+  (no full stick motion paths saved and no MotionEvents forwarded to A).
 - Foreground Android package name is shown only as diagnostic context; this
   APK does not inspect other apps' UI.
 - Disable the Accessibility service when finished with the POC.

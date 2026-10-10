@@ -29,6 +29,7 @@ class RawControllerEventTest {
         assertTrue(line.contains("captureC=9876547"))
         assertTrue(line.contains("DOWN"))
         assertTrue(line.contains("key=96"))
+        assertTrue(line.contains("button=A"))
         assertTrue(line.contains("scan=304"))
         assertTrue(line.contains("device=7"))
         assertTrue(line.contains("foreground=com.valvesoftware.steamlink"))

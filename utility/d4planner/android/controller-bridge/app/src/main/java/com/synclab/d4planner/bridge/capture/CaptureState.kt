@@ -10,6 +10,7 @@ object CaptureState {
     private const val CAPACITY = 512
     private val history = CaptureHistory<RawControllerEvent>(CAPACITY)
     private val ackTraces = EvidenceRing<AckTrace>(128)
+    private val foregroundHat = HatDiagnostics(128)
 
     @Volatile var serviceActive: Boolean = false
         private set
@@ -55,10 +56,33 @@ object CaptureState {
         ) }
     }
 
+    /**
+     * Called by the XC Activity only. NEVER register motion-source capture
+     * in AccessibilityService, since Steam Link must retain its joystick input.
+     */
+    fun observeForegroundHat(
+        eventTimeC: Long,
+        captureTimeC: Long,
+        deviceId: Int,
+        deviceName: String,
+        source: Int,
+        x: Float,
+        y: Float
+    ) {
+        foregroundHat.observe(
+            HatSample(eventTimeC, captureTimeC, deviceId, deviceName, source, x, y)
+        )
+    }
+
+    fun leaveXcForeground() {
+        foregroundHat.resetActiveStates()
+    }
+
     /** Safe to call while AccessibilityService continues receiving input. */
     fun clearEvidence() {
         history.clear()
         ackTraces.clear()
+        foregroundHat.clear()
     }
 
     fun recordAck(trace: AckTrace) {
@@ -80,7 +104,15 @@ object CaptureState {
         appendLine("Controller candidates:")
         if (devices.isEmpty()) appendLine("  (none)")
         devices.forEach { appendLine("  " + it) }
-        appendLine("Recent raw events:")
+        val hat = foregroundHat.snapshot()
+        appendLine("XC foreground MotionEvent HAT diagnostic (LOCAL ONLY; NOT sent to A):")
+        appendLine("hatSamplesObserved=" + hat.samplesObserved)
+        appendLine("hatTransitionDropped=" + hat.droppedCount)
+        appendLine("hatLastSample=" + (hat.lastSample?.diagnostic() ?: "(none)"))
+        appendLine("Recent D-pad HAT transitions:")
+        if (hat.transitions.isEmpty()) appendLine("  (none)")
+        hat.transitions.forEach { appendLine("  " + it.diagnostic()) }
+        appendLine("Recent raw KeyEvents:")
         val snapshot = evidence.entries
         if (snapshot.isEmpty()) appendLine("  (none)")
         snapshot.forEach { appendLine(it.asDiagnosticLine()) }

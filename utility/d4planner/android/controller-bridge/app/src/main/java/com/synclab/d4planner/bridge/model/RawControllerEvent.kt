@@ -25,6 +25,7 @@ data class RawControllerEvent(
         append(" captureC=").append(captureTimestampC)
         append(" ").append(edge)
         append(" key=").append(keyCode)
+        append(" button=").append(XboxKeyLabel.forAndroidKeyCode(keyCode))
         append(" scan=").append(scanCode)
         append(" repeat=").append(repeatCount)
         append(" device=").append(deviceId)
