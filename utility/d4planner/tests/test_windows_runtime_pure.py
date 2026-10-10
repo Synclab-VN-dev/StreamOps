@@ -407,3 +407,28 @@ def test_input_marker_probe_task_uses_interactive_principal(tmp_path, monkeypatc
     assert "scroll-lock" in script
     assert "--seconds 12" in script
     assert str(output) in script
+
+
+
+def test_supervisor_interactive_task_block_flag_preserves_session1_principal(
+    tmp_path, monkeypatch,
+):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
+    commands = []
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(runtime, "prepare_interactive_tasks", lambda: None)
+    monkeypatch.setattr(
+        runtime, "_powershell",
+        lambda script, **kw: (
+            commands.append(script) or subprocess.CompletedProcess([], 0, "", "")
+        ),
+    )
+    runtime.launch_supervisor_task(speech=False, isolated=False, block_marker=True)
+    assert len(commands) == 1
+    assert "-Argument '-m d4planner.daemon --block'" in commands[0]
+    assert "LogonType Interactive" in commands[0]
+    assert "Start-ScheduledTask" in commands[0]
+
+    commands.clear()
+    runtime.launch_supervisor_task(speech=False, isolated=False, block_marker=False)
+    assert "--block" not in commands[0]
