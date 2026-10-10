@@ -35,22 +35,59 @@ class WindowsGameProcess:
         steam_exe = self.steam.resolve_installation(required=False)
         if steam_exe is None:
             return None
-        # V1: primary Steam library only. Other libraries remain UNKNOWN.
-        manifest = steam_exe.parent / "steamapps" / f"appmanifest_{game.providerGameId}.acf"
-        if not manifest.is_file():
-            return None
+        steam_root = steam_exe.parent
+        roots = [steam_root]
+        # Read-only, tightly scoped Steam library lookup. Does NOT mark ownership.
+        libraries = steam_root / "steamapps" / "libraryfolders.vdf"
+        if libraries.is_file():
+            try:
+                vdf = libraries.read_text(encoding="utf-8-sig")
+                for raw in re.findall(r'"path"\\s+"([^"]+)"', vdf, re.IGNORECASE):
+                    library = Path(raw.replace("\\\\", "\\")).resolve()
+                    if library not in roots and (library / "steamapps").is_dir():
+                        roots.append(library)
+            except (OSError, UnicodeError, ValueError):
+                pass
+        for root in roots:
+            manifest = root / "steamapps" / f"appmanifest_{game.providerGameId}.acf"
+            if not manifest.is_file():
+                continue
+            try:
+                content = manifest.read_text(encoding="utf-8-sig")
+                match = re.search(r'"installdir"\\s+"([^"]+)"', content, re.IGNORECASE)
+                if not match:
+                    continue
+                name = match.group(1)
+                if name in (".", "..") or "/" in name or "\\" in name or ":" in name:
+                    continue
+                folder = (manifest.parent / "common" / name).resolve()
+                if folder.is_dir():
+                    return folder
+            except (OSError, UnicodeError, ValueError):
+                continue
+        return None
+
+    def capabilities(self, game: GameDefinition, observation: GameObservation):
+        state = observation.process.state
+        blocked = {"start":False,"stop":False,"restart":False}
+        if not game.enabled:
+            return blocked,"capability_disabled"
+        if observation.installed is not True:
+            return blocked,"game_not_installed"
+        if state == "UNKNOWN" or observation.process.stale:
+            return blocked,"game_status_unknown"
         try:
-            content = manifest.read_text(encoding="utf-8-sig")
-            match = re.search(r'"installdir"\s+"([^"]+)"', content, re.IGNORECASE)
-            if not match:
-                return None
-            name = match.group(1)
-            if name in (".", "..") or "/" in name or "\\" in name or ":" in name:
-                return None
-            folder = (manifest.parent / "common" / name).resolve()
-            return folder if folder.is_dir() else None
-        except OSError:
-            return None
+            self._require_interactive()
+            steam = self.steam.status()
+        except Exception:
+            return blocked,"wrong_desktop_session"
+        if not steam.running or not steam.interactive:
+            return blocked,"steam_unavailable"
+        verified_window = observation.window in ("BACKGROUND","FOREGROUND")
+        start = state == "STOPPED"
+        stop = state == "RUNNING" and verified_window
+        result = {"start":start,"stop":stop,"restart":stop}
+        return result, None if any(result.values()) else "capability_disabled"
 
     def _processes(self, game: GameDefinition):
         if os.name != "nt":
@@ -122,7 +159,8 @@ class WindowsGameProcess:
                 created_at=datetime.fromtimestamp(process.started_at_timestamp, timezone.utc).isoformat(),
                 stale=False,
             ),
-            window="BACKGROUND" if windows else "NOT_DETECTED",
+            window=("FOREGROUND" if windows and int(ctypes.windll.user32.GetForegroundWindow()) in windows
+                    else "BACKGROUND" if windows else "NOT_DETECTED"),
         )
 
     def _require_interactive(self) -> None:

@@ -43,6 +43,9 @@ class GameObserver:
                         "restart": bool(controllable and proc.state == "RUNNING" and has_window),
                     }
                     reason = None if any(caps.values()) else "not_verified_or_unsafe"
+                    capability_check = getattr(self.platform, "capabilities", None)
+                    if callable(capability_check):
+                        caps, reason = await asyncio.to_thread(capability_check, game, observed)
                 except GamePlatformError as exc:
                     observed = GameObservation(process=ProcessIdentity(state="UNKNOWN", stale=True, observed_at=utc_now()))
                     caps = {"start": False, "stop": False, "restart": False}
