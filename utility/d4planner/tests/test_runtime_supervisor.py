@@ -1,5 +1,7 @@
+import json
 from pathlib import Path
 
+from d4planner.runtime.input_marker import MarkerSample
 from d4planner.runtime.model import ProcessInfo, RuntimeState, TolkHealth
 from d4planner.runtime.pathing import MemoryPathBackend, UserPathManager
 from d4planner.runtime.store import RuntimePaths, read_json
@@ -375,10 +377,7 @@ def test_raw_capture_is_promoted_to_unified_monotonic_stream(tmp_path):
     )
 
     assert supervisor._read_new_capture() == 1
-    rows = [
-        json.loads(line)
-        for line in supervisor.store.session.events_path.read_text(encoding="utf-8").splitlines()
-    ]
+    rows = supervisor.store.read_after(0)
     speech = [row for row in rows if row["type"] == "speech.raw"]
     assert len(speech) == 1
     assert speech[0]["data"]["text"] == "850 Item Power"
@@ -478,3 +477,202 @@ def test_shutdown_state_write_failure_remains_fail_open(monkeypatch, tmp_path):
     assert supervisor.status.state == RuntimeState.STOPPED
     assert supervisor.status.capture_active is False
     assert "failed to disable capture during shutdown" in supervisor.status.last_error
+
+
+class ErrorMarkerCapture:
+    def __init__(self):
+        self.error = "synthetic marker backend failure"
+
+    def set_target_pid(self, _pid):
+        return None
+
+    def start(self):
+        return None
+
+    def stop(self, *, timeout=1.0):
+        return None
+
+    def consume_error(self):
+        value = self.error
+        self.error = None
+        return value
+
+    def drain(self):
+        return []
+
+
+def test_marker_capture_failure_is_fail_open_for_speech_ingress(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = FakeRuntime(
+        paths,
+        game=ProcessInfo("Diablo IV", 31, session_id=1),
+        steam=ProcessInfo("steam", 21, session_id=1),
+    )
+    supervisor = build_supervisor(tmp_path, runtime)
+    assert supervisor.bootstrap() == RuntimeState.RUNNING
+
+    supervisor.marker_capture = ErrorMarkerCapture()
+    supervisor._marker_started = True
+    raw = supervisor.store.session.raw_speech_path
+    raw.write_text(
+        json.dumps(
+            {
+                "sessionId": supervisor.store.session.session_id,
+                "sequence": 1,
+                "timestamp": "2026-10-09T03:30:00.100+07:00",
+                "process": "diablo iv",
+                "processId": 31,
+                "contextSource": "win32Foreground",
+                "windowTitle": "Diablo IV",
+                "text": "Hands",
+                "rawSpeech": ["Hands"],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert supervisor._flush_ingress() == 1
+    rows = supervisor.store.read_after(0)
+    assert any(row["type"] == "speech.raw" for row in rows)
+    assert "input marker capture failure" in supervisor.status.last_error
+    assert supervisor.status.state == RuntimeState.RUNNING
+
+
+
+class QueuedMarkerCapture:
+    def __init__(self, samples):
+        self.samples = list(samples)
+        self.drain_calls = 0
+
+    def set_target_pid(self, _pid):
+        return None
+
+    def start(self):
+        return None
+
+    def stop(self, *, timeout=1.0):
+        return None
+
+    def consume_error(self):
+        return None
+
+    def drain(self):
+        self.drain_calls += 1
+        values = list(self.samples)
+        self.samples.clear()
+        return values
+
+
+def test_sqlite_failure_retries_speech_without_advancing_raw_offset(monkeypatch, tmp_path):
+    import sqlite3
+
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = FakeRuntime(
+        paths,
+        game=ProcessInfo("Diablo IV", 31, session_id=1),
+        steam=ProcessInfo("steam", 21, session_id=1),
+    )
+    supervisor = build_supervisor(tmp_path, runtime)
+    assert supervisor.bootstrap() == RuntimeState.RUNNING
+
+    raw = supervisor.store.session.raw_speech_path
+    raw.write_text(
+        json.dumps(
+            {
+                "sessionId": supervisor.store.session.session_id,
+                "sequence": 1,
+                "timestamp": "2026-10-09T18:00:00.100+07:00",
+                "process": "diablo iv",
+                "processId": 31,
+                "contextSource": "win32Foreground",
+                "windowTitle": "Diablo IV",
+                "text": "retry speech",
+                "rawSpeech": ["retry speech"],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    real_append = supervisor.store.repository.append_batch
+    calls = {"count": 0}
+
+    def fail_once(events, *, ignore_duplicates=False):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise sqlite3.OperationalError("database is temporarily locked")
+        return real_append(events, ignore_duplicates=ignore_duplicates)
+
+    monkeypatch.setattr(supervisor.store.repository, "append_batch", fail_once)
+
+    assert supervisor._flush_ingress(include_marker=False) == 0
+    assert supervisor._raw_offset == 0
+    assert len(supervisor._pending_ingress) == 1
+
+    assert supervisor._flush_ingress(include_marker=False) == 1
+    assert supervisor._raw_offset == raw.stat().st_size
+    assert supervisor._pending_ingress == []
+
+    speech = [
+        row
+        for row in supervisor.store.read_after(0)
+        if row["type"] == "speech.raw" and row["data"].get("text") == "retry speech"
+    ]
+    assert len(speech) == 1
+
+
+def test_sqlite_failure_retries_marker_without_redraining_queue(monkeypatch, tmp_path):
+    import sqlite3
+
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = FakeRuntime(
+        paths,
+        game=ProcessInfo("Diablo IV", 31, session_id=1),
+        steam=ProcessInfo("steam", 21, session_id=1),
+    )
+    supervisor = build_supervisor(tmp_path, runtime)
+    assert supervisor.bootstrap() == RuntimeState.RUNNING
+
+    marker = QueuedMarkerCapture(
+        [
+            MarkerSample(
+                timestamp="2026-10-09T18:00:00.200+07:00",
+                key="f11",
+                virtual_key=122,
+                state="DOWN",
+                process_id=31,
+                window_title="Diablo IV",
+            )
+        ]
+    )
+    supervisor.marker_capture = marker
+    supervisor._marker_started = True
+
+    real_append = supervisor.store.repository.append_batch
+    calls = {"count": 0}
+
+    def fail_once(events, *, ignore_duplicates=False):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise sqlite3.OperationalError("database is temporarily locked")
+        return real_append(events, ignore_duplicates=ignore_duplicates)
+
+    monkeypatch.setattr(supervisor.store.repository, "append_batch", fail_once)
+
+    assert supervisor._flush_ingress() == 0
+    assert marker.drain_calls == 1
+    assert len(supervisor._pending_ingress) == 1
+
+    assert supervisor._flush_ingress() == 1
+    assert marker.drain_calls == 1
+    assert supervisor._pending_ingress == []
+
+    markers = [
+        row
+        for row in supervisor.store.read_after(0)
+        if row["type"] == "input.marker.raw"
+    ]
+    assert len(markers) == 1
+    assert markers[0]["data"]["key"] == "F11"
+    assert markers[0]["data"]["state"] == "down"

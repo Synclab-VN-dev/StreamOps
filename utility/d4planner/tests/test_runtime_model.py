@@ -30,3 +30,7 @@ def test_runtime_can_move_to_safe_terminal_states():
             RuntimeState.BLOCKED,
             RuntimeState.RESTART_REQUIRED,
         }
+
+
+def test_waiting_for_game_can_block_when_required_hook_fails():
+    assert can_transition(RuntimeState.WAITING_FOR_GAME, RuntimeState.BLOCKED)

@@ -17,6 +17,7 @@ from .character.equipment.projector import EquipmentProjector
 from .character.repository import EquipmentRepository
 from .character.service import CharacterService
 from .runtime.diagnostics import MemoryDiagnosticsSink
+from .runtime.events.repository import EventLogReader
 from .runtime.model import RuntimeState
 from .runtime.pathing import UserPathManager, WindowsRegistryPathBackend
 from .runtime.store import (
@@ -113,12 +114,12 @@ def _state(paths: RuntimePaths) -> dict[str, Any]:
     return state
 
 
-def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool) -> int:
+def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool, block_marker: bool = False) -> int:
     if os.name == "nt":
         previous = read_json(paths.runtime_state) or {}
         previous_pid = previous.get("supervisorPid")
         runtime = WindowsRuntime(paths)
-        runtime.launch_supervisor_task(speech=speech, isolated=isolated)
+        runtime.launch_supervisor_task(speech=speech, isolated=isolated, block_marker=block_marker)
         deadline = time.monotonic() + 15.0
         while time.monotonic() < deadline:
             current = read_json(paths.runtime_state) or {}
@@ -133,6 +134,8 @@ def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool) -> int:
         cmd.append("--speech")
     if isolated:
         cmd.append("--isolated")
+    if block_marker:
+        cmd.append("--block")
     kwargs: dict[str, Any] = {
         "stdin": subprocess.DEVNULL,
         "stdout": subprocess.DEVNULL,
@@ -147,7 +150,7 @@ def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool) -> int:
     return int(process.pid)
 
 
-def _wait_start(paths: RuntimePaths, pid: int, timeout: float = 120.0) -> dict[str, Any]:
+def _wait_start(paths: RuntimePaths, pid: int, timeout: float = 120.0, *, block_marker: bool = False) -> dict[str, Any]:
     deadline = time.monotonic() + timeout
     last_state = None
     while time.monotonic() < deadline:
@@ -165,6 +168,14 @@ def _wait_start(paths: RuntimePaths, pid: int, timeout: float = 120.0) -> dict[s
                 print(f"[{current}] {detail}".rstrip())
                 last_state = current
             if current in TERMINAL_STATES:
+                marker = (status.get("extras") or {}).get("inputMarker") or {}
+                if block_marker and current in {
+                    RuntimeState.RUNNING.value,
+                    RuntimeState.WAITING_FOR_GAME.value,
+                    RuntimeState.DEGRADED.value,
+                } and marker.get("state") != "ACTIVE":
+                    time.sleep(0.1)
+                    continue
                 return status
 
         if not _pid_alive(pid):
@@ -207,6 +218,38 @@ def _event_lines(path: Path, *, follow: bool, from_end: bool) -> Iterator[str]:
             time.sleep(0.15)
 
 
+
+def _sqlite_events(
+    path: Path,
+    *,
+    session_id: str,
+    follow: bool,
+    from_end: bool,
+) -> Iterator[dict[str, Any]]:
+    # Capture the initial cursor eagerly. If this were a generator function,
+    # its body would not run until first iteration and an event emitted between
+    # command creation and iteration could be incorrectly skipped by --from-end.
+    reader = EventLogReader(path)
+    after_seq = reader.max_sequence(session_id) if from_end else 0
+
+    def iterate() -> Iterator[dict[str, Any]]:
+        nonlocal after_seq
+        try:
+            while True:
+                rows = reader.read_after(session_id, after_seq, limit=1000)
+                if rows:
+                    for event in rows:
+                        after_seq = event.event_seq
+                        yield event.as_dict()
+                    continue
+                if not follow:
+                    return
+                time.sleep(0.15)
+        finally:
+            reader.close()
+
+    return iterate()
+
 def _last_json_object(path: Path) -> dict[str, Any] | None:
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
@@ -230,6 +273,13 @@ def _pretty_event(event: dict[str, Any]) -> str | None:
     if event_type == "speech.raw":
         text = str(data.get("text") or "").strip()
         return f"[{stamp}] {text}" if text else None
+    if event_type == "input.marker.raw":
+        key = str(data.get("key") or "").upper()
+        state = str(data.get("state") or "").upper()
+        suffix = " ".join(part for part in (key, state) if part)
+        if data.get("suppressed") is True:
+            suffix += " [BLOCKED]"
+        return f"[{stamp}] input.marker.raw {suffix}".rstrip()
     detail = str(data.get("detail") or "")
     return f"[{stamp}] {event_type} {detail}".rstrip()
 
@@ -262,22 +312,72 @@ def command_logs(
     component: str | None = None,
 ) -> int:
     status = _state(paths)
+    session_id = str(status.get("sessionId") or "")
     session_dir = status.get("sessionDir")
-    if not session_dir:
+
+    if component:
+        if not session_dir:
+            print("No active/recent D4Planner session.", file=sys.stderr)
+            return 2
+        path = Path(str(session_dir)) / "equipment-projector.jsonl"
+        try:
+            for line in _event_lines(path, follow=follow, from_end=from_end):
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if raw:
+                    print(
+                        json.dumps(event, ensure_ascii=False, separators=(",", ":")),
+                        flush=True,
+                    )
+                else:
+                    print(_pretty_diagnostic(event), flush=True)
+        except (KeyboardInterrupt, BrokenPipeError):
+            return 0
+        return 0
+
+    if not session_id:
         print("No active/recent D4Planner session.", file=sys.stderr)
         return 2
-    session = Path(str(session_dir))
-    path = session / ("equipment-projector.jsonl" if component == "equipment" else "events.jsonl")
+
     try:
-        for line in _event_lines(path, follow=follow, from_end=from_end):
+        if paths.events_db.exists():
+            events = _sqlite_events(
+                paths.events_db,
+                session_id=session_id,
+                follow=follow,
+                from_end=from_end,
+            )
+            for event in events:
+                if raw:
+                    print(
+                        json.dumps(event, ensure_ascii=False, separators=(",", ":")),
+                        flush=True,
+                    )
+                else:
+                    rendered = _pretty_event(event)
+                    if rendered:
+                        print(rendered, flush=True)
+            return 0
+
+        # Upgrade fallback before the first SQLite-backed runtime start.
+        if not session_dir:
+            print("No canonical event store found.", file=sys.stderr)
+            return 2
+        legacy_path = Path(str(session_dir)) / "events.jsonl"
+        for line in _event_lines(legacy_path, follow=follow, from_end=from_end):
             try:
                 event = json.loads(line)
             except json.JSONDecodeError:
                 continue
             if raw:
-                print(json.dumps(event, ensure_ascii=False, separators=(",", ":")), flush=True)
+                print(
+                    json.dumps(event, ensure_ascii=False, separators=(",", ":")),
+                    flush=True,
+                )
             else:
-                rendered = _pretty_diagnostic(event) if component else _pretty_event(event)
+                rendered = _pretty_event(event)
                 if rendered:
                     print(rendered, flush=True)
     except (KeyboardInterrupt, BrokenPipeError):
@@ -285,7 +385,6 @@ def command_logs(
         # capture state independently and must keep running.
         return 0
     return 0
-
 
 def command_status(paths: RuntimePaths, *, raw_json: bool) -> int:
     status = _state(paths)
@@ -299,8 +398,14 @@ def command_status(paths: RuntimePaths, *, raw_json: bool) -> int:
     nvda = status.get("nvda") or {}
     steam = status.get("steam") or {}
     game = status.get("game") or {}
+    marker = (status.get("extras") or {}).get("inputMarker") or {}
+    marker_info = (
+        f'{marker.get("key", "F11")} / {marker.get("mode", "OBSERVE")} / '
+        f'{marker.get("state", "UNKNOWN")}'
+    )
     rows = [
         ("Runtime", status.get("state")),
+        ("Input marker", marker_info),
         ("Detail", status.get("detail")),
         ("Supervisor PID", status.get("supervisorPid")),
         ("NVDA", f"PID {nvda.get('pid')} / Session {nvda.get('session_id') or nvda.get('sessionId')}" if nvda else "STOPPED"),
@@ -336,7 +441,10 @@ def _print_start_summary(status: dict[str, Any]) -> None:
     steam = status.get("steam") if isinstance(status.get("steam"), dict) else {}
     game = status.get("game") if isinstance(status.get("game"), dict) else {}
     tolk = status.get("tolk") if isinstance(status.get("tolk"), dict) else {}
+    marker = (status.get("extras") or {}).get("inputMarker") or {}
     checks = [
+        ("Input marker", marker.get("state") == "ACTIVE",
+         f'{marker.get("key", "F11")} / {marker.get("mode", "OBSERVE")} / {marker.get("state", "UNKNOWN")}'),
         ("Runtime", status.get("state") in {"RUNNING", "WAITING_FOR_GAME", "DEGRADED"}, status.get("state")),
         ("NVDA", bool(nvda), f"PID {nvda.get('pid')}" if nvda else "not running"),
         ("Tolk backend", str(tolk.get("reader") or "").casefold() == "nvda", tolk.get("reader") or "unknown"),
@@ -358,6 +466,7 @@ def command_start(
     isolated: bool,
     detached: bool,
     timeout: float,
+    block_marker: bool = False,
 ) -> int:
     paths.ensure()
     previous = _state(paths)
@@ -376,6 +485,18 @@ def command_start(
                     file=sys.stderr,
                 )
                 return 4
+            running_mode = (
+                ((previous.get("extras") or {}).get("inputMarker") or {})
+                .get("mode", "OBSERVE")
+            )
+            requested_mode = "BLOCK" if block_marker else "OBSERVE"
+            if running_mode != requested_mode:
+                print(
+                    f"D4Planner already running with F11 {running_mode}; "
+                    f"requested {requested_mode}. Run 'd4planner stop' before switching.",
+                    file=sys.stderr,
+                )
+                return 4
             print(f"D4Planner already running (PID {previous_pid}, state {state}).")
             if detached:
                 return 0
@@ -387,7 +508,9 @@ def command_start(
         pass
 
     try:
-        pid = _spawn_daemon(paths=paths, speech=speech, isolated=isolated)
+        pid = _spawn_daemon(
+            paths=paths, speech=speech, isolated=isolated, block_marker=block_marker
+        )
     except RuntimeBlocked as exc:
         write_capture_config(paths, enabled=False)
         atomic_write_json(
@@ -408,8 +531,14 @@ def command_start(
         print(f"Unable to start D4Planner supervisor: {exc}", file=sys.stderr)
         return 4
     print(f"D4Planner supervisor PID {pid}")
-    status = _wait_start(paths, pid, timeout=timeout)
+    status = _wait_start(paths, pid, timeout=timeout, block_marker=block_marker)
     state = str(status.get("state") or "")
+    if block_marker and state not in {RuntimeState.BLOCKED.value,
+                                     RuntimeState.RESTART_REQUIRED.value}:
+        marker = ((status.get("extras") or {}).get("inputMarker") or {})
+        if marker.get("state") != "ACTIVE":
+            print("F11 BLOCK hook is not active; start failed.", file=sys.stderr)
+            return 2
     if state == RuntimeState.BLOCKED.value:
         print(status.get("lastError") or status.get("detail"), file=sys.stderr)
         return 2
@@ -700,6 +829,155 @@ def command_character_equipment_replay(path: Path, *, trace: bool) -> int:
     return 1 if failures else 0
 
 
+
+INPUT_MARKER_PROBE_COMPLETE = "__D4PLANNER_INPUT_MARKER_PROBE_COMPLETE__"
+
+
+def _run_input_marker_probe_direct(
+    paths: RuntimePaths,
+    *,
+    key: str,
+    seconds: float,
+    output_path: Path | None,
+) -> int:
+    from .runtime.input_marker import AsyncKeyStateBackend, edge_transition, virtual_key_code
+
+    try:
+        virtual_key = virtual_key_code(key)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    runtime = WindowsRuntime(paths)
+    current_session = runtime.current_process_session_id()
+    active_session = runtime.active_console_session_id()
+
+    lines: list[str] = []
+
+    def emit(message: str, *, error: bool = False) -> None:
+        lines.append(message)
+        print(message, file=sys.stderr if error else sys.stdout, flush=True)
+
+    emit(f"Probe process session: {current_session}")
+    emit(f"Active console session: {active_session}")
+    emit(f"Marker key: {key} (VK=0x{virtual_key:02X})")
+
+    try:
+        backend = AsyncKeyStateBackend()
+    except OSError as exc:
+        emit(f"Unable to start input marker probe: {exc}", error=True)
+        if output_path is not None:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(
+                "\n".join([*lines, INPUT_MARKER_PROBE_COMPLETE, ""]),
+                encoding="utf-8",
+            )
+        return 2
+
+    previous_down = backend.is_down(virtual_key)
+    emit(
+        f"Watching {key} for {seconds:g}s. "
+        "Press the Steam Input dual-bound controller button."
+    )
+    started = time.monotonic()
+    try:
+        while time.monotonic() - started < seconds:
+            current_down = backend.is_down(virtual_key)
+            transition = edge_transition(previous_down, current_down)
+            if transition is not None:
+                emit(f"{key.upper().replace('-', '_')} {transition}")
+            previous_down = current_down
+            time.sleep(0.01)
+    except KeyboardInterrupt:
+        pass
+
+    emit("Input marker probe complete.")
+    if output_path is not None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            "\n".join([*lines, INPUT_MARKER_PROBE_COMPLETE, ""]),
+            encoding="utf-8",
+        )
+    return 0
+
+
+def command_input_marker_probe(
+    paths: RuntimePaths,
+    *,
+    key: str,
+    seconds: float,
+    output_path: Path | None = None,
+) -> int:
+    """Observe a Steam Input keyboard marker, relaying into the interactive session from SSH."""
+    if seconds <= 0:
+        print("--seconds must be greater than 0", file=sys.stderr)
+        return 2
+    if os.name != "nt":
+        print("input-marker-probe requires Windows.", file=sys.stderr)
+        return 2
+
+    from .runtime.input_marker import virtual_key_code
+
+    try:
+        virtual_key_code(key)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    runtime = WindowsRuntime(paths)
+    current_session = runtime.current_process_session_id()
+    active_session = runtime.active_console_session_id()
+
+    if (
+        output_path is None
+        and active_session is not None
+        and current_session != active_session
+    ):
+        paths.ensure()
+        result_path = paths.state / "input-marker-probe-interactive.log"
+        try:
+            result_path.unlink()
+        except FileNotFoundError:
+            pass
+
+        print(
+            f"Control session {current_session} != active console {active_session}; "
+            "relaying marker probe to interactive desktop..."
+        )
+        try:
+            runtime.launch_input_marker_probe_task(
+                key=key,
+                seconds=seconds,
+                output_path=result_path,
+            )
+        except (RuntimeBlocked, OSError) as exc:
+            print(f"Unable to launch interactive input marker probe: {exc}", file=sys.stderr)
+            return 2
+
+        deadline = time.monotonic() + seconds + 15.0
+        while time.monotonic() < deadline:
+            try:
+                content = result_path.read_text(encoding="utf-8")
+            except OSError:
+                content = ""
+            if INPUT_MARKER_PROBE_COMPLETE in content:
+                rendered = content.replace(INPUT_MARKER_PROBE_COMPLETE, "").strip()
+                if rendered:
+                    print(rendered)
+                return 0
+            time.sleep(0.2)
+
+        print("Interactive input marker probe timed out.", file=sys.stderr)
+        return 2
+
+    return _run_input_marker_probe_direct(
+        paths,
+        key=key,
+        seconds=seconds,
+        output_path=output_path,
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="d4planner")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -708,6 +986,8 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("-d", "--detach", action="store_true")
     start.add_argument("--speech", action="store_true")
     start.add_argument("--isolated", action="store_true")
+    start.add_argument("--block", action="store_true",
+                       help="capture F11 through hook and block keyboard F11 in Diablo IV")
     start.add_argument("--timeout", type=float, default=120.0)
 
     status = sub.add_parser("status")
@@ -729,6 +1009,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = sub.add_parser("doctor")
     doctor.add_argument("--json", action="store_true")
+
+    input_marker_probe = sub.add_parser("input-marker-probe")
+    input_marker_probe.add_argument("--key", default="scroll-lock")
+    input_marker_probe.add_argument("--seconds", type=float, default=30.0)
+    input_marker_probe.add_argument("--output", type=Path, help=argparse.SUPPRESS)
 
     character = sub.add_parser("character")
     character_sub = character.add_subparsers(dest="character_command", required=True)
@@ -767,6 +1052,7 @@ def main(argv: list[str] | None = None) -> int:
             isolated=args.isolated,
             detached=args.detach,
             timeout=args.timeout,
+            block_marker=args.block,
         )
     if args.command == "status":
         return command_status(paths, raw_json=args.json)
@@ -782,6 +1068,13 @@ def main(argv: list[str] | None = None) -> int:
         return command_stop(paths, timeout=args.timeout, stop_nvda=args.stop_nvda)
     if args.command == "doctor":
         return command_doctor(paths, raw_json=args.json)
+    if args.command == "input-marker-probe":
+        return command_input_marker_probe(
+            paths,
+            key=args.key,
+            seconds=args.seconds,
+            output_path=args.output,
+        )
     if args.command == "character" and args.character_command == "equipment":
         if getattr(args, "equipment_action", None) == "replay":
             return command_character_equipment_replay(args.path, trace=args.trace)

@@ -6,6 +6,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 import json
 import os
+import sqlite3
 from pathlib import Path
 import time
 from typing import Any, Protocol
@@ -13,10 +14,12 @@ from typing import Any, Protocol
 from ..character.equipment.projector import EquipmentProjector
 from ..character.repository import EquipmentRepository
 from .diagnostics import JsonlDiagnosticsSink
+from .events.model import EventDraft
+from .events.store import EventStore
+from .input_marker import HookInputMarkerCapture, InputMarkerCapture
 from .model import RuntimeState, RuntimeStatus, can_transition
 from .pathing import UserPathManager
 from .store import (
-    EventStore,
     RuntimePaths,
     atomic_write_json,
     iso_now,
@@ -54,11 +57,13 @@ class Supervisor:
         path_manager: UserPathManager,
         silent: bool = True,
         isolated: bool = False,
-        poll_interval: float = 0.10,
+        poll_interval: float = 0.05,
         health_poll_interval: float = 2.0,
         game_start_timeout: float = 90.0,
         tolk_ready_timeout: float = 15.0,
         tolk_retry_interval: float = 0.5,
+        marker_capture: InputMarkerCapture | HookInputMarkerCapture | None = None,
+        block_marker: bool = False,
     ):
         self.paths = paths
         self.runtime = runtime
@@ -78,7 +83,20 @@ class Supervisor:
             silent=silent,
         )
         self._raw_offset = 0
+        self._pending_ingress: list[EventDraft] = []
+        self._pending_raw_offset: int | None = None
         self._next_lease_refresh = 0.0
+        self.marker_capture = marker_capture
+        self.block_marker = bool(block_marker)
+        self._marker_started = False
+        self.status.extras["inputMarker"] = {
+            "key": "F11",
+            "mode": "BLOCK" if self.block_marker else "OBSERVE",
+            "state": "STARTING",
+            "captureMethod": "keyboardHook" if self.block_marker else "asyncKeyState",
+            "droppedCount": 0,
+            "overflow": False,
+        }
         self.equipment_projector = EquipmentProjector(EquipmentRepository(paths.character_db))
 
     @staticmethod
@@ -109,7 +127,7 @@ class Supervisor:
             return None
         try:
             return self.store.emit(event_type, data)
-        except (OSError, TypeError, ValueError) as exc:
+        except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
             self.status.last_error = f"event sink failure: {type(exc).__name__}: {exc}"
             try:
                 self._persist_status()
@@ -412,20 +430,22 @@ class Supervisor:
             except OSError:
                 pass
 
-    def _read_new_capture(self) -> int:
+    def _collect_speech_drafts(self) -> tuple[list[EventDraft], int]:
         if not self.store:
-            return 0
+            return [], self._raw_offset
         path = self.store.session.raw_speech_path
         if not path.exists():
-            return 0
-        count = 0
+            return [], self._raw_offset
+
+        drafts: list[EventDraft] = []
+        next_offset = self._raw_offset
         with path.open("r", encoding="utf-8") as handle:
             handle.seek(self._raw_offset)
             while True:
                 line = handle.readline()
                 if not line:
                     break
-                self._raw_offset = handle.tell()
+                next_offset = handle.tell()
                 if not line.strip():
                     continue
                 try:
@@ -434,28 +454,193 @@ class Supervisor:
                     continue
                 if not isinstance(event, dict):
                     continue
-                try:
-                    unified = self.store.ingest_capture(event)
-                except (OSError, TypeError, ValueError) as exc:
-                    self.status.last_error = (
-                        f"capture event sink failure: {type(exc).__name__}: {exc}"
+                drafts.append(EventStore.capture_draft(event))
+        return drafts, next_offset
+
+    def _collect_marker_drafts(self) -> list[EventDraft]:
+        capture = self.marker_capture
+        if capture is None:
+            return []
+
+        marker_status = self.status.extras["inputMarker"]
+        dropped_count = int(getattr(capture, "dropped_count", 0))
+        overflow = bool(getattr(capture, "overflowed", dropped_count > 0))
+        marker_status["droppedCount"] = dropped_count
+        marker_status["overflow"] = overflow
+
+        error = capture.consume_error()
+        if error:
+            self.status.last_error = f"input marker capture failure: {error}"
+            marker_status["state"] = "ERROR"
+            marker_status["error"] = error
+            if self.block_marker:
+                if overflow:
+                    self._safe_emit(
+                        "input.marker.overflow",
+                        {"droppedCount": dropped_count, "mode": "BLOCK"},
                     )
+                self.transition(
+                    RuntimeState.BLOCKED,
+                    "F11 blocking is no longer guaranteed",
+                    error=self.status.last_error,
+                    data={"droppedCount": dropped_count, "overflow": overflow},
+                )
+            else:
+                try:
                     self._persist_status()
-                    continue
-                self.status.last_event_at = str(unified["timestamp"])
-                # Projection is downstream of the durable append. A parser/state
-                # bug must never break NVDA capture or lose the raw evidence.
-                try:
-                    self.equipment_projector.consume(unified)
-                except Exception as exc:
-                    self.equipment_projector.record_error(unified, exc)
-                    self.status.last_error = (
-                        f"equipment projector failure: {type(exc).__name__}: {exc}"
-                    )
-                count += 1
-        if count:
+                except OSError:
+                    pass
+
+        try:
+            return [sample.as_draft() for sample in capture.drain()]
+        except Exception as exc:
+            self.status.last_error = (
+                f"input marker queue failure: {type(exc).__name__}: {exc}"
+            )
+            try:
+                self._persist_status()
+            except OSError:
+                pass
+            return []
+
+    def _prepare_ingress(self, *, include_marker: bool) -> list[EventDraft]:
+        # A failed canonical write keeps the exact same batch pending. Do not
+        # re-read speech or drain more marker edges until that batch commits.
+        if self._pending_ingress:
+            return self._pending_ingress
+
+        drafts, next_offset = self._collect_speech_drafts()
+        if include_marker:
+            drafts.extend(self._collect_marker_drafts())
+
+        if not drafts:
+            # Blank/malformed raw-speech lines have no canonical event to
+            # persist, so they can be acknowledged immediately.
+            self._raw_offset = next_offset
+            return []
+
+        # Both NVDA capture and marker capture timestamp their raw evidence on A.
+        # Sorting before sequence allocation preserves cross-source chronology.
+        drafts.sort(key=lambda draft: draft.timestamp or "")
+        self._pending_ingress = drafts
+        self._pending_raw_offset = next_offset
+        return self._pending_ingress
+
+    def _flush_ingress(self, *, include_marker: bool = True) -> int:
+        if not self.store:
+            return 0
+
+        drafts = self._prepare_ingress(include_marker=include_marker)
+        if not drafts:
+            return 0
+
+        try:
+            unified_events = self.store.emit_batch(drafts)
+        except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
+            # Keep the pending batch and raw offset untouched. The next runtime
+            # loop retries exactly the same evidence rather than losing it.
+            self.status.last_error = (
+                f"capture event sink failure: {type(exc).__name__}: {exc}"
+            )
             self._persist_status()
-        return count
+            return 0
+
+        committed_raw_offset = self._pending_raw_offset
+        self._pending_ingress = []
+        self._pending_raw_offset = None
+        if committed_raw_offset is not None:
+            self._raw_offset = committed_raw_offset
+
+        for unified in unified_events:
+            if unified.get("type") != "speech.raw":
+                continue
+            # Projection is downstream of the durable SQLite commit. A
+            # parser/state bug must never lose the raw evidence.
+            try:
+                self.equipment_projector.consume(unified)
+            except Exception as exc:
+                self.equipment_projector.record_error(unified, exc)
+                self.status.last_error = (
+                    f"equipment projector failure: {type(exc).__name__}: {exc}"
+                )
+
+        self.status.last_event_at = str(unified_events[-1]["timestamp"])
+        self._persist_status()
+        return len(unified_events)
+
+    def _read_new_capture(self) -> int:
+        """Compatibility helper used by focused tests: speech ingress only."""
+        return self._flush_ingress(include_marker=False)
+
+    def _sync_marker_target(self) -> None:
+        capture = self.marker_capture
+        if capture is None:
+            return
+        game = self.status.game
+        capture.set_target_pid(game.pid if game else None)
+
+    def _start_marker_capture(self) -> None:
+        if self.marker_capture is None:
+            if os.name != "nt":
+                if self.block_marker:
+                    self.status.last_error = "F11 blocking requires Windows"
+                    self.status.extras["inputMarker"]["state"] = "ERROR"
+                else:
+                    self.status.extras["inputMarker"]["state"] = "DISABLED"
+                self._persist_status()
+                return
+            self.marker_capture = (
+                HookInputMarkerCapture() if self.block_marker
+                else InputMarkerCapture(key="f11")
+            )
+        self._sync_marker_target()
+        try:
+            self.marker_capture.start()
+            self._marker_started = True
+            self.status.extras["inputMarker"]["state"] = "ACTIVE"
+            self.status.extras["inputMarker"]["error"] = None
+            self.status.extras["inputMarker"]["sessionId"] = (
+                self.runtime.active_console_session_id()
+            )
+            self._persist_status()
+        except Exception as exc:
+            if self._marker_started:
+                # Even if persisting ACTIVE failed, the hook may already be
+                # installed. Never abandon it without requesting unhook.
+                try:
+                    self.marker_capture.stop()
+                except Exception as stop_error:
+                    self.status.last_error = (
+                        f"input marker cleanup failure: {type(stop_error).__name__}: "
+                        f"{stop_error}"
+                    )
+            self._marker_started = False
+            self.status.last_error = self.status.last_error or (
+                f"input marker capture unavailable: {type(exc).__name__}: {exc}"
+            )
+            self.status.extras["inputMarker"]["state"] = "ERROR"
+            self.status.extras["inputMarker"]["error"] = str(exc)
+            try:
+                self._persist_status()
+            except OSError:
+                pass
+
+    def _stop_marker_capture(self) -> None:
+        capture = self.marker_capture
+        if capture is None or not self._marker_started:
+            return
+        try:
+            capture.stop()
+        except Exception as exc:
+            self.status.last_error = (
+                f"input marker stop failure: {type(exc).__name__}: {exc}"
+            )
+            self.status.extras["inputMarker"]["state"] = "ERROR"
+            self.status.extras["inputMarker"]["error"] = str(exc)
+        finally:
+            self._marker_started = False
+            if self.status.extras["inputMarker"]["state"] != "ERROR":
+                self.status.extras["inputMarker"]["state"] = "STOPPED"
 
     def _recover_nvda(self) -> None:
         current = self.runtime.nvda_process()
@@ -647,25 +832,55 @@ class Supervisor:
     def run(self) -> int:
         state = self.bootstrap()
         if state in {RuntimeState.BLOCKED, RuntimeState.RESTART_REQUIRED}:
+            if self.store:
+                self.store.close()
             return 2 if state == RuntimeState.BLOCKED else 3
 
+        exit_code = 0
         try:
+            self._start_marker_capture()
+            if self.block_marker and not self._marker_started:
+                self.transition(RuntimeState.BLOCKED,
+                                "F11 blocking hook failed to start",
+                                error=self.status.last_error)
+                return 2
             next_health_check = 0.0
             while not self.paths.stop_request.exists():
                 # Capture promotion is latency-sensitive. Process/session health
-                # checks are deliberately slower because the Windows adapter may
-                # use OS probes that are much more expensive than tailing JSONL.
+                # checks stay slower than ingestion; speech + marker writes are
+                # batched into one ordered SQLite transaction per loop.
                 self._renew_capture_lease()
-                self._read_new_capture()
+                self._flush_ingress()
+                if self.status.state == RuntimeState.BLOCKED:
+                    exit_code = 2
+                    break
                 now = time.monotonic()
                 if now >= next_health_check:
                     self._recover_nvda()
                     self._watch_game()
+                    self._sync_marker_target()
                     next_health_check = now + self.health_poll_interval
                 if self.status.state in {RuntimeState.BLOCKED, RuntimeState.RESTART_REQUIRED}:
+                    exit_code = 2 if self.status.state == RuntimeState.BLOCKED else 3
                     break
                 time.sleep(self.poll_interval)
         finally:
+            self._stop_marker_capture()
+            # Drain any marker/speech evidence queued immediately before stop.
+            # Retry briefly because a transient SQLite lock must not drop the
+            # already-captured pending batch during graceful shutdown.
+            drain_deadline = time.monotonic() + 0.5
+            while time.monotonic() < drain_deadline:
+                flushed = self._flush_ingress()
+                if self._pending_ingress:
+                    time.sleep(0.05)
+                    continue
+                if flushed:
+                    # One more pass picks up marker/speech queued behind a batch
+                    # that had been pending from an earlier failed write.
+                    continue
+                break
+
             shutdown_error = self.status.last_error
             try:
                 write_capture_config(self.paths, enabled=False)
@@ -694,4 +909,7 @@ class Supervisor:
                 self.paths.stop_request.unlink()
             except FileNotFoundError:
                 pass
-        return 0
+            if self.store:
+                self.store.close()
+        return exit_code
+

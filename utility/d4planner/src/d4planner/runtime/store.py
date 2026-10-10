@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import errno
 import json
 import os
 from pathlib import Path
-import threading
 import time
 from typing import Any, Callable
 from uuid import uuid4
@@ -87,6 +86,10 @@ class RuntimePaths:
         return self.state / "character.db"
 
     @property
+    def events_db(self) -> Path:
+        return self.state / "events.db"
+
+    @property
     def runtime_state(self) -> Path:
         return self.state / "runtime.json"
 
@@ -119,116 +122,8 @@ class SessionInfo:
     metadata_path: Path
     raw_speech_path: Path
     context_diagnostics_path: Path
-    events_path: Path
+    legacy_events_path: Path
     runtime_log_path: Path
-
-
-class EventStore:
-    """Single-writer unified event stream for one D4Planner session."""
-
-    def __init__(self, session: SessionInfo, *, clock: Clock = utc_now):
-        self.session = session
-        self._clock = clock
-        self._lock = threading.Lock()
-        self._next_seq = self._discover_next_sequence()
-
-    @classmethod
-    def create(
-        cls,
-        paths: RuntimePaths,
-        *,
-        silent: bool,
-        metadata: dict[str, Any] | None = None,
-        clock: Clock = utc_now,
-        session_id: str | None = None,
-    ) -> "EventStore":
-        paths.ensure()
-        sid = session_id or uuid4().hex
-        started = iso_now(clock)
-        stamp = clock().astimezone().strftime("%Y%m%d-%H%M%S")
-        directory = paths.sessions / f"{stamp}-{sid[:8]}"
-        suffix = 0
-        candidate = directory
-        while candidate.exists():
-            suffix += 1
-            candidate = paths.sessions / f"{stamp}-{sid[:8]}-{suffix}"
-        directory = candidate
-        directory.mkdir(parents=True)
-
-        info = SessionInfo(
-            session_id=sid,
-            started_at=started,
-            directory=directory,
-            metadata_path=directory / "metadata.json",
-            raw_speech_path=directory / "raw-speech.jsonl",
-            context_diagnostics_path=directory / "capture-context.jsonl",
-            events_path=directory / "events.jsonl",
-            runtime_log_path=directory / "runtime.log",
-        )
-        payload = {
-            "sessionId": sid,
-            "startedAt": started,
-            "game": "Diablo IV",
-            "captureBackend": "NVDA",
-            "silent": silent,
-            **(metadata or {}),
-        }
-        atomic_write_json(info.metadata_path, payload)
-        return cls(info, clock=clock)
-
-    def _discover_next_sequence(self) -> int:
-        path = self.session.events_path
-        if not path.exists():
-            return 1
-        last = 0
-        with path.open("r", encoding="utf-8") as handle:
-            for line in handle:
-                if not line.strip():
-                    continue
-                try:
-                    event = json.loads(line)
-                    seq = int(event.get("eventSeq") or 0)
-                except (json.JSONDecodeError, TypeError, ValueError):
-                    continue
-                last = max(last, seq)
-        return last + 1
-
-    def emit(self, event_type: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
-        with self._lock:
-            event = {
-                "eventSeq": self._next_seq,
-                "type": event_type,
-                "timestamp": iso_now(self._clock),
-                "sessionId": self.session.session_id,
-                "data": data or {},
-            }
-            self._next_seq += 1
-            self.session.events_path.parent.mkdir(parents=True, exist_ok=True)
-            with self.session.events_path.open("a", encoding="utf-8", newline="\n") as handle:
-                handle.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")))
-                handle.write("\n")
-                handle.flush()
-            if event_type.startswith("runtime."):
-                detail = str((data or {}).get("detail") or "")
-                with self.session.runtime_log_path.open("a", encoding="utf-8", newline="\n") as log:
-                    log.write(f"[{event['timestamp']}] {event_type} {detail}".rstrip() + "\n")
-                    log.flush()
-            return event
-
-    def ingest_capture(self, capture: dict[str, Any]) -> dict[str, Any]:
-        return self.emit(
-            "speech.raw",
-            {
-                "captureSessionId": capture.get("sessionId"),
-                "captureSequence": capture.get("sequence"),
-                "process": capture.get("process"),
-                "processId": capture.get("processId"),
-                "contextSource": capture.get("contextSource"),
-                "windowTitle": capture.get("windowTitle"),
-                "text": capture.get("text"),
-                "rawSpeech": capture.get("rawSpeech") or [],
-            },
-        )
 
 
 def write_capture_config(
