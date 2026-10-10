@@ -232,7 +232,7 @@ def test_games_observers_auto_push_without_rest(page: Page, games_ui_server):
     expect(page.locator("#steam-running-games")).to_contain_text("Diablo IV")
     expect(other.locator("#running-games")).to_contain_text("Diablo IV")
     fake.send_change("STOPPED")
-    expect(page.locator("#steam-running-games")).to_contain_text("No running games")
+    expect(page.locator("#steam-running-games")).to_contain_text("No games running")
     expect(other.locator("#running-games")).to_contain_text("No running games")
     assert not http_calls
     fake.set_steam(False)
@@ -246,11 +246,11 @@ def test_mobile_detail_and_disabled_actions(page: Page, games_ui_server):
     page.set_viewport_size({"width":390,"height":844})
     page.goto(base+"/games")
     page.locator("#game-library button").first.click()
-    expect(page.locator("#game-detail .gm-back")).to_be_visible()
+    expect(page.locator("#game-detail .gm-detail-back")).to_be_visible()
     expect(page.locator("#games-main")).to_be_hidden()
     expect(page.get_by_role("button",name="Start",exact=True)).to_be_disabled()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-    page.locator("#game-detail .gm-back").click()
+    page.locator("#game-detail .gm-detail-back").click()
     expect(page.locator("#games-main")).to_be_visible()
 
 
@@ -381,20 +381,20 @@ def test_games_responsive_geometry_and_detail_navigation(
     page.screenshot(path=str(tmp_path / ("games-" + str(width) + ".png")), full_page=True)
     page.locator("#game-library button").first.click()
     expect(page.locator("#game-detail")).to_contain_text("Windows session")
-    expect(page.locator("#game-detail")).to_contain_text("CONFIGURED_ONLY")
-    related = page.locator("#game-detail .gm-related")
+    expect(page.locator('#game-detail .gm-detail-section').first.locator('[data-code="CONFIGURED_ONLY"]')).to_have_count(1)
+    related = page.locator("#game-detail .gm-detail-advanced")
     assert not related.evaluate("(e) => e.open")
     related.locator("summary").click()
     assert related.evaluate("(e) => e.open")
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     if width <= 900:
         expect(page.locator("#games-main")).to_be_hidden()
-        expect(page.locator("#game-detail .gm-back")).to_be_visible()
-        page.locator("#game-detail .gm-back").click()
+        expect(page.locator("#game-detail .gm-detail-back")).to_be_visible()
+        page.locator("#game-detail .gm-detail-back").click()
         expect(page.locator("#games-main")).to_be_visible()
     else:
         expect(page.locator("#games-main")).to_be_visible()
-        expect(page.locator("#game-detail .gm-back")).to_be_hidden()
+        expect(page.locator("#game-detail .gm-detail-back")).to_be_visible()
 
 
 def test_disabled_session_capture_error_and_observation_safety(page: Page, games_ui_server):
@@ -408,8 +408,8 @@ def test_disabled_session_capture_error_and_observation_safety(page: Page, games
     record["capability_reason"] = "wrong_desktop_session"
     fake.set_library([record])
     page.locator("#game-library button").first.click()
-    expect(page.locator("#game-detail")).to_contain_text("ERROR")
-    expect(page.locator("#game-detail")).to_contain_text("UNKNOWN")
+    expect(page.locator('#game-detail [data-code="ERROR"]')).to_have_count(2)
+    expect(page.locator('#game-detail [data-code="UNKNOWN"]')).not_to_have_count(0)
     expect(page.get_by_role("button",name="Stop",exact=True)).to_be_disabled()
     expect(page.get_by_role("button",name="Stop",exact=True)).to_have_attribute(
         "title","wrong_desktop_session")
