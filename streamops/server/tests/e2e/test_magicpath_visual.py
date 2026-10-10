@@ -100,8 +100,19 @@ def _stage_production(page, fake, base, design, scenario):
         if scenario == "empty":
             fake.set_library([game("Registered " + str(i), "steam:" + str(200 + i), "STOPPED") for i in range(8)])
         elif scenario == "multi":
-            fake.set_library([game("Diablo IV", "steam:2344520"), game("Other", "steam:111"),
-                              game("Third", "steam:222")])
+            # The pinned MagicPath multi scenario contains FIVE running games
+            # and TWELVE registered games. Mirror that semantic input rather
+            # than lowering a mismatch threshold or mocking product rendering.
+            running = ["Diablo IV", "Hollow Knight: Silksong", "Minecraft",
+                       "Elden Ring", "Hades II"]
+            records = [
+                game(name, "steam:2344520" if i == 0 else "steam:" + str(300 + i), "RUNNING")
+                for i, name in enumerate(running)
+            ]
+            records.extend(game("Other registered " + str(i), "steam:" + str(400 + i), "STOPPED")
+                           for i in range(7))
+            fake.set_library(records)
+            expect(page.locator("#games-connection")).to_contain_text("5 running")
         elif scenario in ("offline", "error"):
             page.evaluate("() => { window.StreamOpsSteam.destroy(); window.StreamOpsGames.client.destroy(); }")
             expect(page.locator("#steam-state")).to_have_text("UNKNOWN")

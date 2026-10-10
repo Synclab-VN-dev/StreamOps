@@ -3,7 +3,7 @@
   const $=s=>document.querySelector(s), format=window.StreamOpsUI;
   const log=format.createActivityLog("#activity-log"), ws=window.StreamOpsSteam;
   const games=window.StreamOpsGames, components=window.StreamOpsGamesComponents, control=window.StreamOpsGameControl;
-  let current=null, connected=false, busy=false, previous="", lastGames="";
+  let current=null, connected=false, busy=false, previous="", lastGames="", showAll=false;
   function setError(message) {$("#error-message").textContent=message||"";$("#error-message").hidden=!message;}
   function render() {
     const fresh=connected && current && current.stale!==true;
@@ -51,7 +51,15 @@
     const visible=store.stale?[]:store.items().filter(g=>g.observation?.process?.state==="RUNNING" && !g.observation?.process?.stale);
     const list=$("#steam-running-games");
     if (visible.length) {
-      components.renderRows(list,visible,null,()=>location.assign("/games"));
+      components.renderRows(list,showAll?visible:visible.slice(0,3),null,()=>location.assign("/games"));
+      if(visible.length>3) {
+        const more=components.element("button","gm-show-more",
+          showAll?"Show fewer games":"+"+(visible.length-3)+" more games");
+        more.type="button";
+        more.setAttribute("aria-expanded",String(showAll));
+        more.addEventListener("click",()=>{showAll=!showAll;games.store.emit();});
+        list.append(more);
+      }
     } else {
       list.replaceChildren();
       const empty=components.element("div","gm-steam-empty");

@@ -236,3 +236,12 @@ body.gm-page { color-scheme:light; color:#18181b; background:#f5f6f8; font-famil
 .gm-steam-page #steam-running-games .gm-steam-empty {min-height:105px;}
 .gm-steam-page #steam-games-toggle {min-width:16px;width:16px;padding:0;height:22px;}
 .gm-steam-page .gm-steam-empty-icon{font-size:23px;}
+
+/* Responsive MagicPath 360px contract: heading and card descriptions wrap deliberately. */
+@media (max-width:375px){
+  .gm-steam-page .gm-steam-heading p:not(.eyebrow) {max-width:244px;}
+  .gm-steam-page #game-manager-card .gm-section-heading p {max-width:215px;white-space:normal;}
+  .gm-steam-page #steam-running-games {margin-top:18px;}
+}
+.gm-steam-page #steam-running-games .gm-show-more {display:block;border:0;background:transparent;text-align:center;width:100%;color:#52525b;font-size:11px;min-height:34px;cursor:pointer;}
+.gm-steam-page #steam-running-games .gm-show-more:focus-visible {outline:2px solid #93c5fd;outline-offset:-2px;}

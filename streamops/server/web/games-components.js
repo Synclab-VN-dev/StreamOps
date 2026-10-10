@@ -45,7 +45,13 @@
     }
     icon.append(svg);row.title=game.name;
     const text=element("span","gm-game-label");
-    text.append(element("strong","",game.name),element("small","",game.provider));
+    const seconds=game.observation?.process?.uptime_seconds;
+    const uptime=Number.isFinite(seconds)&&seconds>=0?
+      " · "+[Math.floor(seconds/3600),Math.floor(seconds%3600/60),Math.floor(seconds%60)]
+        .map(x=>String(x).padStart(2,"0")).join(":"):"";
+    const provider=String(game.provider||"Unknown");
+    text.append(element("strong","",game.name),
+      element("small","",provider.charAt(0).toUpperCase()+provider.slice(1)+uptime));
     row.append(icon,text,pill(game.observation?.process?.stale ? "UNKNOWN" : Model.gameState(game)));
     row.addEventListener("click",()=>action(game.id));
     return row;
