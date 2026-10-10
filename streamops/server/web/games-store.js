@@ -26,6 +26,11 @@
     snapshot(data) {
       if (!data || !Array.isArray(data.games) || !Number.isInteger(data.revision) || typeof data.epoch !== "string") return false;
       if (data.epoch === this.epoch && data.revision < this.revision) return false;
+      if (this.epoch && this.epoch !== data.epoch) {
+        for (const [id, op] of this.operations)
+          if (["PENDING","RUNNING"].includes(String(op.status).toUpperCase()))
+            this.operations.set(id, {...op, status:"UNKNOWN", phase:"RECOVERY_REQUIRED", code:"server_restarted"});
+      }
       this.epoch = data.epoch; this.revision = data.revision;
       this.games = new Map(data.games.filter(g => g && typeof g.id === "string").map(g => [g.id, g]));
       this.stale = !this.connected || data.stale === true; this.loading = false;
