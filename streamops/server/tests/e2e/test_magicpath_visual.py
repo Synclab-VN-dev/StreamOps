@@ -32,7 +32,9 @@ REQUIRED_SCENARIOS = (
     + [("games", "detail", 390, 844), ("games", "detail", 1440, 900)]
 )
 
-pytestmark = pytest.mark.only_browser("chromium")
+pytestmark = [pytest.mark.only_browser("chromium"),
+    pytest.mark.skipif(os.getenv("STREAMOPS_VISUAL_ENFORCE_APPROVAL") != "1",
+        reason="Runs in required dedicated FE-G5 after pinned reference renderer install")]
 
 
 @pytest.fixture(scope="module")
@@ -72,8 +74,8 @@ def _ready(page):
     page.wait_for_timeout(120)
 
 
-def _stage_production(page, fake, design, scenario):
-    page.goto(page._production_url + ("/steam" if design == "steam" else "/games"))
+def _stage_production(page, fake, base, design, scenario):
+    page.goto(base + ("/steam" if design == "steam" else "/games"))
     if design == "steam":
         expect(page.locator("#steam-state")).not_to_have_text("Checking")
         if scenario == "empty":
@@ -145,13 +147,12 @@ def test_pinned_magicpath_visual_parity(
     diff=path/"diff.png"
     expected_page=browser.new_page(viewport={"width":width,"height":height},device_scale_factor=1)
     actual_page=browser.new_page(viewport={"width":width,"height":height},device_scale_factor=1)
-    actual_page._production_url=base
     try:
         # Original reference and product are NEVER the same server or codebase.
         _stage_reference(expected_page, magicpath_reference_url, design, scenario)
         _ready(expected_page)
         expected_page.screenshot(path=str(expected), animations="disabled")
-        _stage_production(actual_page, fake, design, scenario)
+        _stage_production(actual_page, fake, base, design, scenario)
         _ready(actual_page)
         actual_page.screenshot(path=str(actual), animations="disabled")
         score=_visual_diff(expected,actual,diff)
