@@ -62,6 +62,7 @@ body.gm-page { color-scheme:light; color:#18181b; background:#f5f6f8; font-famil
 .gm-detail-cell strong {display:block;overflow-wrap:anywhere;font-size:12px;}
 .gm-action-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px;}
 .gm-action-grid>button {width:100%!important;}
+.gm-action-reason {padding:10px 12px;background:#fffbeb;color:#92400e;border-radius:12px;font-size:12px;overflow-wrap:anywhere;}
 .gm-related {margin-top:14px;border:1px solid #eee;border-radius:13px;padding:12px;}
 .gm-related summary,.gm-control-panel summary {cursor:pointer;font-size:12px;font-weight:650;}
 .gm-operation {border-radius:12px;padding:10px;background:#fffbeb;font-size:12px;}
