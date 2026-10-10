@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "intended_usage": "design-source reference renders vs production FE; previews retained for audit, not treated as multi-viewport screenshots",
+  "approved": false,
+  "approval": {
+    "approved_by": null,
+    "approved_at": null,
+    "reference": "Requires manual owner review of expected screenshots and diff artifacts"
+  },
+  "viewports": [
+    {
+      "width": 360,
+      "height": 800
+    },
+    {
+      "width": 390,
+      "height": 844
+    },
+    {
+      "width": 768,
+      "height": 1024
+    },
+    {
+      "width": 1440,
+      "height": 900
+    }
+  ],
+  "references": [
+    {
+      "name": "steam",
+      "component_id": "459507753589833728",
+      "revision_id": "459530030574370816",
+      "generated_name": "serene-winter-5786",
+      "source_path": "streamops/server/tests/visual_magicpath/reference_source/src/SteamManager.tsx",
+      "source_git_blob_sha1": "cb910c5ecd3ec8670361cef3ca6edda053605a65",
+      "preview_path": "streamops/server/tests/visual_magicpath/references/steam-459530030574370816.jpg",
+      "preview_git_blob_sha1": "4d2f7fded083cdad534e05167844e31776e7f032"
+    },
+    {
+      "name": "games",
+      "component_id": "459507767749795840",
+      "revision_id": "459530038539325440",
+      "generated_name": "sturdily-room-4179",
+      "source_path": "streamops/server/tests/visual_magicpath/reference_source/src/GameManager.tsx",
+      "source_git_blob_sha1": "f3148bf9503c0c0286d1da740ab00fe64ebf44e2",
+      "preview_path": "streamops/server/tests/visual_magicpath/references/games-459530038539325440.jpg",
+      "preview_git_blob_sha1": "c155e35b0e54485258c1889d30ca48ec1138279b"
+    }
+  ],
+  "css_path": "streamops/server/tests/visual_magicpath/reference_source/src/index.css",
+  "css_git_blob_sha1": "c8fc13b7718d153e3fbed19ee6ed9eb87f978557",
+  "scenarios": {
+    "steam": [
+      "normal",
+      "empty",
+      "multi",
+      "stopped",
+      "offline",
+      "loading",
+      "error"
+    ],
+    "games": [
+      "default",
+      "multi",
+      "empty",
+      "unregistered",
+      "offline",
+      "session",
+      "black",
+      "startFail",
+      "stopTimeout",
+      "restartFail",
+      "stale",
+      "externalExit",
+      "loading"
+    ]
+  }
+}
