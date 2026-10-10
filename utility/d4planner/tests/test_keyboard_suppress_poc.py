@@ -134,3 +134,34 @@ def test_default_policy_is_pass_through_even_targeted():
         n_code=0, message=WM_KEYDOWN, vk=VK_F11,
         foreground_pid=1444, game_pid=1444, block=False,
     ).suppress is False
+
+
+def test_diagnostic_event_identifies_off_target_without_suppression():
+    sample = F11Sample(
+        timestamp_ms=1_800_000_000_000,
+        message=WM_KEYUP,
+        state="up",
+        flags=0x10,
+        foreground_pid=4242,
+        suppressed=False,
+        target_match=False,
+    )
+    obj = sample.as_dict()
+    assert obj["foregroundPid"] == 4242
+    assert obj["targetMatch"] is False
+    assert obj["suppressed"] is False
+    assert obj["injected"] is True
+
+
+def test_diagnostic_event_allows_unknown_foreground():
+    obj = F11Sample(
+        timestamp_ms=1_800_000_000_000,
+        message=WM_SYSKEYDOWN,
+        state="down",
+        flags=0,
+        foreground_pid=None,
+        suppressed=False,
+        target_match=False,
+    ).as_dict()
+    assert obj["foregroundPid"] is None
+    assert obj["targetMatch"] is False
