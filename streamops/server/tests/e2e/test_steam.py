@@ -15,6 +15,7 @@ def test_steam_process_status_and_restart_ws(page: Page, games_ui_server):
     expect(page.locator("#steam-session")).to_have_text("1")
     expect(page.locator("#steam-interactive")).to_have_text("Yes")
     expect(page.get_by_role("button",name="Restart in Big Picture")).to_be_enabled()
+    page.locator(".gm-control-panel summary").click()
     page.locator("#steam-control-token").fill("a"*32)
     page.locator("#steam-apply-token").click()
     page.once("dialog",lambda dialog:dialog.accept())
