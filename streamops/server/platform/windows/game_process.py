@@ -42,7 +42,7 @@ class WindowsGameProcess:
         if libraries.is_file():
             try:
                 vdf = libraries.read_text(encoding="utf-8-sig")
-                for raw in re.findall(r'"path"\\s+"([^"]+)"', vdf, re.IGNORECASE):
+                for raw in re.findall(r'"path"\s+"([^"]+)"', vdf, re.IGNORECASE):
                     library = Path(raw.replace("\\\\", "\\")).resolve()
                     if library not in roots and (library / "steamapps").is_dir():
                         roots.append(library)
@@ -54,7 +54,7 @@ class WindowsGameProcess:
                 continue
             try:
                 content = manifest.read_text(encoding="utf-8-sig")
-                match = re.search(r'"installdir"\\s+"([^"]+)"', content, re.IGNORECASE)
+                match = re.search(r'"installdir"\s+"([^"]+)"', content, re.IGNORECASE)
                 if not match:
                     continue
                 name = match.group(1)
