@@ -36,7 +36,7 @@ def test_no_backend_or_demo_data_coupling():
 
 def test_steam_summary_in_correct_location():
     html=read("steam.html")
-    assert html.index('id="steam-status-panel"') < html.index('id="game-manager-card"') < html.index('class="panel activity-panel"')
+    assert html.index('id="steam-status-panel"') < html.index('id="game-manager-card"') < html.index('id="activity-title"')
     assert 'href="/games"' in html
     assert 'src="/assets/games-ws.js"' in html
     assert 'src="/assets/steam-ws.js"' in html
