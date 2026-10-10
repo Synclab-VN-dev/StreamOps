@@ -1,7 +1,7 @@
 """Standalone Windows diagnostic: observe and optionally suppress the F11 Steam Input marker.
 
-Run in the interactive console session. This module does not change production
-InputMarkerCapture or write to the canonical event store.
+Invocations from SSH automatically relay into the interactive game session.
+This module does not change production InputMarkerCapture or write to SQLite.
 
 Important: WH_KEYBOARD_LL cannot authenticate the source of F11. In --block
 mode *physical* F11 is also suppressed while the selected game owns foreground.
@@ -10,17 +10,13 @@ from __future__ import annotations
 
 import argparse
 from contextlib import redirect_stderr, redirect_stdout
-from collections import deque
-from dataclasses import asdict, dataclass
-from datetime import datetime
 import ctypes
 from ctypes import wintypes
 import json
 import os
 import re
 import subprocess
-from pathlib import Path, PureWindowsPath
-from typing import Callable
+from pathlib import Path
 import sys
 import time
 import uuid
