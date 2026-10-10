@@ -88,5 +88,15 @@
     }catch(e){setError(e.message);log("Steam restart failed: "+e.message,"error");}
     finally {busy=false;render();}
   });
+  // Report only real session events; no fabricated timestamps or counts.
+  const activityList=$("#activity-log");
+  function updateActivitySummary() {
+    const count=activityList.children.length;
+    const latest=activityList.lastElementChild?.querySelector("time")?.textContent?.slice(0,5)||"—";
+    const summary=$("#steam-activity-details .gm-activity-summary");
+    summary.textContent=count+" session event"+(count===1?"":"s")+" · latest "+latest;
+  }
+  new MutationObserver(updateActivitySummary).observe(activityList,{childList:true});
   log("Steam Manager opened");
+  updateActivitySummary();
 })();
