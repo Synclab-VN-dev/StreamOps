@@ -97,7 +97,8 @@ function renderPlugin(plugin) {
   header.type = 'button'; header.setAttribute('aria-expanded',String(expandedId === plugin.plugin_id));
   header.setAttribute('aria-controls','plugin-detail-' + plugin.plugin_id.replace(/[^a-zA-Z0-9_-]/g,'_'));
   const left = text('span','plugin-heading');
-  const icon = text('span','plugin-symbol','◉'); icon.setAttribute('aria-hidden','true');
+  const icon = text('span','plugin-symbol'); icon.setAttribute('aria-hidden','true');
+  icon.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="2"/><path d="M7.76 7.76a6 6 0 0 0 0 8.48m8.48-8.48a6 6 0 0 1 0 8.48M4.93 4.93a10 10 0 0 0 0 14.14m14.14-14.14a10 10 0 0 1 0 14.14M12 15v7"/></svg>';
   const heading = text('span','plugin-heading-text');
   heading.append(text('strong','',plugin.display_name),text('small','',plugin.plugin_id));
   left.append(icon,heading);

@@ -71,7 +71,8 @@ export class PluginStore {
       this.catalog = new Map(inventory.filter(p => catalog.entries.has(p.plugin_id))
         .map(p => [p.plugin_id, catalog.entries.get(p.plugin_id)]));
       this.catalogSourceState = catalog.sourceState;
-      this.unknownOutcome = false;
+      // P0: inventory alone cannot prove a timed-out transaction is no longer in flight.
+      // Keep unknownOutcome true until BE exposes a read-only in-flight reconciliation contract.
     } catch (error) {
       if (generation === this.generation) {
         this.error = 'Plugin inventory unavailable. The WebSocket list/catalog contract is still required from BE #47. ' +
