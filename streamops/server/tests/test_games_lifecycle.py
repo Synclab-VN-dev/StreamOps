@@ -187,3 +187,50 @@ def test_wrong_session_blocks_all_actions(tmp_path):
             await service.action(GAME,"start","wrong-session")
         assert platform.start_calls==0
     asyncio.run(scenario())
+
+def test_start_timeout_is_unknown_not_success(tmp_path):
+    class NoConvergence(FakeGamePlatform):
+        def start(self,game):
+            self.start_calls+=1
+    async def scenario():
+        service,platform=build_service(tmp_path,NoConvergence())
+        service.lifecycle.timeout=.04
+        result=await complete(service,"no-convergence","start")
+        assert result["status"]=="UNKNOWN"
+        assert result["code"]=="operation_timeout"
+        assert platform.start_calls==1
+        assert (await service.get(GAME))["observation"]["process"]["state"]=="STOPPED"
+        await service.lifecycle.close()
+    asyncio.run(scenario())
+
+def test_graceful_stop_error_never_restarts(tmp_path):
+    from streamops.server.platform.windows.game_process import GamePlatformError
+    class RejectedStop(FakeGamePlatform):
+        def __init__(self):
+            super().__init__(); self.running=True
+        def stop(self,game,expected):
+            self.stop_calls+=1
+            raise GamePlatformError("game_identity_ambiguous","PID reused")
+    async def scenario():
+        service,platform=build_service(tmp_path,RejectedStop())
+        result=await complete(service,"failed-restart","restart")
+        assert result["status"]=="FAILED"
+        assert result["code"]=="game_identity_ambiguous"
+        assert platform.start_calls==0 and platform.stop_calls==1
+        await service.lifecycle.close()
+    asyncio.run(scenario())
+
+def test_reconcile_read_only_on_observation_failure(tmp_path):
+    class Stale(FakeGamePlatform):
+        def inspect(self,game):
+            raise RuntimeError("process scan failed")
+    async def scenario():
+        service,platform=build_service(tmp_path,Stale())
+        with pytest.raises(GameServiceError):
+            await service.action(GAME,"start","not-known")
+        result=await service.reconcile(GAME)
+        assert result["observation"]["process"]["state"]=="UNKNOWN"
+        assert result["observation"]["process"]["stale"]
+        assert not any(result["capabilities"].values())
+        assert platform.start_calls==platform.stop_calls==0
+    asyncio.run(scenario())

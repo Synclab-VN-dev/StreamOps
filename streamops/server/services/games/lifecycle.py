@@ -20,11 +20,20 @@ class GameLifecycle:
         self._tasks = set()
 
     async def close(self):
-        for task in tuple(self._tasks): task.cancel()
-        if self._tasks:
-            await asyncio.gather(*self._tasks, return_exceptions=True)
-        for operation_id in tuple(self._inflight):
-            self._inflight.discard(operation_id)
+        # Cancellation does not stop a native to_thread call. Drain running
+        # mutations before closing; if the native call is unresponsive the
+        # persisted operation remains UNKNOWN and must be reconciled.
+        active = tuple(self._tasks)
+        if active:
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*active, return_exceptions=True),
+                    timeout=self.timeout + 5.0)
+            except TimeoutError:
+                for task in active:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*active, return_exceptions=True)
 
     async def submit(self, game_id: str, action: str, key: str):
         if action not in ("start", "stop", "restart"):
