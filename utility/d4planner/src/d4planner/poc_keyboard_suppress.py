@@ -17,6 +17,7 @@ from ctypes import wintypes
 import json
 import os
 from pathlib import PureWindowsPath
+from typing import Callable
 import sys
 import time
 
@@ -126,11 +127,14 @@ def capture_or_pass(
     return decision.suppress
 
 
-def safe_capture_or_pass(**kwargs: object) -> bool:
+def safe_capture_or_pass(*, on_error: Callable[[], None] | None = None,
+                         **kwargs: object) -> bool:
     """Do not swallow keystrokes if even diagnostic capture fails."""
     try:
         return capture_or_pass(**kwargs)
     except Exception:
+        if on_error is not None:
+            on_error()
         return False
 
 
@@ -193,6 +197,19 @@ class WindowsF11Hook:
             ctypes.c_ssize_t, ctypes.c_int, ctypes.c_size_t, ctypes.c_ssize_t
         )
         self._hookproc_type = hookproc_type
+        # Explicit 32/64-bit-safe MSG layout (WPARAM/LPARAM are pointer-sized).
+        class WinMessage(ctypes.Structure):
+            _fields_ = [
+                ("hwnd", wintypes.HWND),
+                ("message", wintypes.UINT),
+                ("wParam", ctypes.c_size_t),
+                ("lParam", ctypes.c_ssize_t),
+                ("time", wintypes.DWORD),
+                ("pt", wintypes.POINT),
+                ("lPrivate", wintypes.DWORD),
+            ]
+
+        self._msg_type = WinMessage
         self._set_hook = self._user32.SetWindowsHookExW
         self._set_hook.argtypes = [ctypes.c_int, hookproc_type, ctypes.c_void_p, wintypes.DWORD]
         self._set_hook.restype = ctypes.c_void_p
@@ -214,16 +231,19 @@ class WindowsF11Hook:
         self._foreground_pid.restype = wintypes.DWORD
         self._peek = self._user32.PeekMessageW
         self._peek.argtypes = [
-            ctypes.POINTER(wintypes.MSG), wintypes.HWND,
+            ctypes.POINTER(self._msg_type), wintypes.HWND,
             wintypes.UINT, wintypes.UINT, wintypes.UINT,
         ]
         self._peek.restype = wintypes.BOOL
         self._translate = self._user32.TranslateMessage
-        self._translate.argtypes = [ctypes.POINTER(wintypes.MSG)]
+        self._translate.argtypes = [ctypes.POINTER(self._msg_type)]
         self._translate.restype = wintypes.BOOL
         self._dispatch = self._user32.DispatchMessageW
-        self._dispatch.argtypes = [ctypes.POINTER(wintypes.MSG)]
+        self._dispatch.argtypes = [ctypes.POINTER(self._msg_type)]
         self._dispatch.restype = ctypes.c_ssize_t
+
+    def _count_error(self) -> None:
+        self.hook_errors += 1
 
     def start(self) -> None:
         if self._hook is not None:
@@ -241,6 +261,7 @@ class WindowsF11Hook:
                         if hwnd:
                             self._foreground_pid(hwnd, ctypes.byref(pid))
                         if safe_capture_or_pass(
+                            on_error=self._count_error,
                             n_code=n_code, message=message, vk=kb.vkCode,
                             flags=kb.flags, foreground_pid=int(pid.value) or None,
                             game_pid=self.game_pid, block=self.block,
@@ -253,14 +274,19 @@ class WindowsF11Hook:
             return int(self._call_next(self._hook, n_code, message, param))
 
         self._hook_proc = self._hookproc_type(callback)  # retain callback reference
-        handle = self._set_hook(WH_KEYBOARD_LL, self._hook_proc, None, 0)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        get_module = kernel32.GetModuleHandleW
+        get_module.argtypes = [wintypes.LPCWSTR]
+        get_module.restype = ctypes.c_void_p
+        module = get_module(None)
+        handle = self._set_hook(WH_KEYBOARD_LL, self._hook_proc, module, 0)
         if not handle:
             self._hook_proc = None
             raise OSError(ctypes.get_last_error(), "SetWindowsHookExW failed")
         self._hook = handle
 
     def pump(self) -> bool:
-        message = wintypes.MSG()
+        message = self._msg_type()
         while self._peek(ctypes.byref(message), None, 0, 0, PM_REMOVE):
             if message.message == WM_QUIT:
                 return False
