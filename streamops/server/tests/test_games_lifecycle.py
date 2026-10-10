@@ -49,7 +49,7 @@ def build_service(tmp_path: Path, platform=None, *, interval=.02):
 async def complete(service, key, action):
     op = await service.action(GAME,action,key)
     for _ in range(100):
-        status=service.operation(op["id"])
+        status=service.operation(op["operation_id"])
         if status["status"] in ("SUCCEEDED","FAILED","UNKNOWN"):
             return status
         await asyncio.sleep(.01)
@@ -63,7 +63,7 @@ def test_start_stop_restart_are_verified_and_idempotent(tmp_path):
             started=await complete(service,"start-1","start")
             assert started["status"]=="SUCCEEDED"
             repeated=await service.action(GAME,"start","start-1")
-            assert repeated["id"]==started["id"]
+            assert repeated["operation_id"]==started["operation_id"]
             assert platform.start_calls==1
             restarted=await complete(service,"restart-1","restart")
             assert restarted["status"]=="SUCCEEDED"
