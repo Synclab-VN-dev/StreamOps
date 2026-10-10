@@ -107,7 +107,8 @@ export function safeActions(plugin, release, obs, connected, busy = false) {
     actions.install = {enabled:false, reason:'Install is only available for absent or adopted legacy plugins.'};
   }
   mutating('update');
-  if (plugin?.state !== 'UPDATE_AVAILABLE' || !plugin.installed || !release?.installable || !release.available_version) {
+  if (plugin?.state !== 'UPDATE_AVAILABLE' || !plugin.installed || !release?.installable ||
+      release?.compatibility !== 'compatible' || !release.available_version) {
     actions.update = {enabled:false, reason:release?.reason || 'No approved update.'};
   }
   mutating('rollback');
