@@ -58,58 +58,123 @@
   }
   function details(root, game, store, onAction, onBack) {
     root.replaceChildren();
-    if (!game) {root.append(element("p","gm-empty","Select a game to see details.")); return;}
-    const head=element("div","gm-detail-heading");
-    const back=element("button","gm-button gm-secondary gm-back","← Back");
-    back.type="button";back.addEventListener("click",onBack);
-    const name=element("div","");name.append(element("h2","",game.name),element("p","gm-muted",game.provider+" · "+game.id));
-    head.append(back,name);root.append(head);
-    const obs=game.observation||{}, proc=obs.process||{};
-    const status=element("div","gm-detail-grid");
-    for (const [label,value] of [
-      ["Process",proc.stale || store.stale ? "UNKNOWN" : proc.state],
-      ["PID",proc.pid],["Windows session",proc.session_id],["Window",obs.window],
-      ["OBS capture",obs.obsCapture],["Stream selection",obs.selectedForStream],
-      ["Installed",obs.installed == null ? "UNKNOWN" : obs.installed ? "Yes" : "No"],
-      ["Owned",obs.owned == null ? "UNKNOWN" : obs.owned ? "Yes" : "No"]
-    ]) {
-      const cell=element("div","gm-detail-cell");
-      cell.append(element("small","",label));
-      if (["Process","Window","OBS capture","Stream selection"].includes(label)) cell.append(pill(value));
-      else cell.append(element("strong","",safeNumber(value)));
-      status.append(cell);
+    if (!game) {
+      root.append(element("p","gm-empty","Select a game to see details."));
+      return;
     }
-    root.append(status);
-    const actions=element("div","gm-action-grid");
-    for (const action of ["start","stop","restart"]) {
-      const btn=element("button","gm-button "+(action==="stop"?"gm-danger":""),action[0].toUpperCase()+action.slice(1));
-      btn.type="button";
-      const allowed=game.capabilities?.[action]===true && !store.stale && !store.loading
-        && !Array.from(store.operations.values()).some(o=>o.game_id===game.id&&["PENDING","RUNNING"].includes(String(o.status).toUpperCase()));
-      btn.disabled=!allowed;btn.title=allowed?"":game.capability_reason||"Unavailable or observation not verified";
+    const obs=game.observation||{}, proc=obs.process||{};
+    const running=proc.state==="RUNNING"&&!proc.stale&&!store.stale;
+    const state=proc.stale||store.stale?"UNKNOWN":proc.state||"UNKNOWN";
+    const pretty=value=>String(value??"UNKNOWN").replaceAll("_"," ").toLowerCase().replace(/^./,m=>m.toUpperCase());
+    const valueText=value=>value==null?"—":String(value);
+    const addHeading=(title,sub)=>{
+      const box=element("div","gm-detail-section-heading");
+      box.append(element("h3","",title));
+      if(sub) box.append(element("p","gm-muted",sub));
+      return box;
+    };
+    const row=(label,value,withPill=false)=>{
+      const box=element("div","gm-detail-observation");
+      box.append(element("span","gm-detail-observation-name",label));
+      if(withPill) {
+        const v=pill(pretty(value));v.dataset.code=String(value??"UNKNOWN");
+        box.append(v);
+      } else box.append(element("strong","",valueText(value)));
+      return box;
+    };
+    const head=element("div","gm-detail-topbar");
+    const back=element("button","gm-detail-back","← Back to games");
+    back.type="button";back.addEventListener("click",onBack);
+    const close=element("button","gm-detail-close","×");
+    close.type="button";close.setAttribute("aria-label","Close game details");close.addEventListener("click",onBack);
+    head.append(back,close);root.append(head);
+    const intro=element("section","gm-detail-intro");
+    const title=element("div","gm-detail-title");
+    const icon=element("span","gm-game-icon","🎮");icon.setAttribute("aria-hidden","true");
+    const titleText=element("div","gm-detail-title-text");
+    titleText.append(element("h2","",game.name),
+      element("p","gm-muted",[game.provider,game.genre].filter(Boolean).join(" · ")));
+    const statePill=pill(pretty(state));statePill.dataset.code=state;
+    titleText.append(statePill);title.append(icon,titleText);intro.append(title);
+    const stats=element("div","gm-detail-metrics");
+    const metric=(label,value)=>{
+      const item=element("div","gm-detail-metric");
+      item.append(element("small","",label),element("strong","",valueText(value)));
+      stats.append(item);
+    };
+    const formatSeconds=s=>{
+      if(!Number.isFinite(s))return "—";
+      const n=Math.max(0,Math.floor(s));
+      return [Math.floor(n/3600),Math.floor(n%3600/60),n%60].map(x=>String(x).padStart(2,"0")).join(":");
+    };
+    metric("PID",running?proc.pid:null);
+    metric("Uptime",running?formatSeconds(proc.uptime_seconds):"—");
+    metric("Windows session",store.stale?null:proc.session_id);
+    metric("Interactive",proc.interactive==null?"Unknown":proc.interactive?"Yes":"No");
+    intro.append(stats);root.append(intro);
+    const observed=element("section","gm-detail-section");
+    observed.append(addHeading("Independent status","Process, window, OBS and streaming are verified separately."));
+    const rows=element("div","gm-detail-observations");
+    const win=store.stale?"UNKNOWN":obs.window;
+    const capture=store.stale?"UNKNOWN":obs.obsCapture;
+    const selected=store.stale?"UNKNOWN":obs.selectedForStream;
+    rows.append(row("Window",win,true),row("OBS capture",capture,true),row("Selected for stream",selected,true));
+    observed.append(rows);
+    if(running&&capture==="CONFIGURED_ONLY") {
+      const warning=element("p","gm-detail-warning","OBS capture is configured, but valid frames have not been verified.");
+      warning.setAttribute("role","status");observed.append(warning);
+    } else if(running&&capture==="ERROR") {
+      const warning=element("p","gm-detail-warning gm-detail-danger","OBS cannot verify valid frames; the game process may still be healthy.");
+      warning.setAttribute("role","alert");observed.append(warning);
+    }
+    root.append(observed);
+    const controls=element("section","gm-detail-section");
+    controls.append(addHeading("Game controls","Actions require verified capability and your confirmation."));
+    const actions=element("div","gm-detail-action-row");
+    for(const action of ["start","stop","restart"]) {
+      const btn=element("button","gm-button gm-detail-action gm-detail-"+action,action[0].toUpperCase()+action.slice(1));
+      btn.type="button";btn.dataset.action=action;
+      const busy=Array.from(store.operations.values()).some(o=>
+        o.game_id===game.id&&["PENDING","RUNNING"].includes(String(o.status).toUpperCase()));
+      const allowed=game.capabilities?.[action]===true&&!store.stale&&!store.loading&&!busy;
+      btn.disabled=!allowed;
+      btn.title=allowed?"":game.capability_reason||"Unavailable or observation not verified";
       btn.addEventListener("click",()=>onAction(action,game));
       actions.append(btn);
     }
-    const force=element("button","gm-button gm-secondary","Force Stop (disabled)");
-    force.type="button";force.disabled=true;force.title="Disabled for safety in V1";actions.append(force);
-    const refresh=element("button","gm-button gm-secondary","Refresh observation");
-    refresh.type="button";refresh.disabled=store.stale;refresh.addEventListener("click",()=>onAction("reconcile",game));actions.append(refresh);
-    root.append(actions);
-    if (!game.capabilities?.start && !game.capabilities?.stop && !game.capabilities?.restart) {
-      const reason=store.stale?"WebSocket disconnected / stale":
-        game.capability_reason||"Control disabled pending verification";
-      const warning=element("p","gm-action-reason","Actions unavailable: "+reason);
-      warning.setAttribute("role","status");root.append(warning);
-    }
-    const related=element("details","gm-related");
-    related.append(element("summary","","Related services and advanced"));
-    related.append(element("p","gm-muted","Steam, OBS and optional D4Planner are independent; unavailable services do not mean this game failed."));
-    root.append(related);
+    controls.append(actions);
     const recent=Array.from(store.operations.values()).filter(o=>o.game_id===game.id).slice(-1)[0];
-    if (recent) {
-      const info=element("p","gm-operation","Operation "+recent.action+": "+recent.status+" / "+recent.phase+(recent.code?" ("+recent.code+")":""));
-      info.setAttribute("role","status");root.append(info);
+    if(recent) {
+      const info=element("p","gm-operation","Operation "+(recent.action||"")+
+        ": "+String(recent.status)+" / "+String(recent.phase||"UNKNOWN")+(recent.code?" ("+recent.code+")":""));
+      info.setAttribute("role","status");controls.append(info);
     }
+    if((recent&&String(recent.status)==="UNKNOWN")||state==="UNKNOWN"){
+      const msg=element("p","gm-detail-warning",
+        "Operation outcome unknown. A timeout does not prove the game stopped. Reconcile the observed state.");
+      msg.setAttribute("role","alert");controls.append(msg);
+    }
+    const refresh=element("button","gm-button gm-secondary gm-detail-refresh","↻ Refresh / reconcile process");
+    refresh.type="button";refresh.disabled=store.stale;
+    refresh.addEventListener("click",()=>onAction("reconcile",game));controls.append(refresh);
+    if(!game.capabilities?.start&&!game.capabilities?.stop&&!game.capabilities?.restart) {
+      const warning=element("p","gm-action-reason","Actions unavailable: "+
+        (store.stale?"WebSocket disconnected / stale":game.capability_reason||"Capability unverified"));
+      warning.setAttribute("role","status");controls.append(warning);
+    }
+    root.append(controls);
+    const related=element("section","gm-detail-section");
+    related.append(addHeading("Related services"));
+    const sub=element("div","gm-detail-observations");
+    sub.append(row(game.provider==="steam"?"Steam client":game.provider+" launcher",
+        obs.launcherState||"UNKNOWN",true),row("OBS capture",capture,true));
+    related.append(sub);root.append(related);
+    const advanced=element("details","gm-detail-advanced");
+    advanced.append(element("summary","","Advanced & recovery"));
+    const unsafe=element("button","gm-button gm-secondary","Force Stop (disabled)");
+    unsafe.type="button";unsafe.disabled=true;unsafe.title="Disabled for safety in V1";
+    advanced.append(unsafe,element("p","gm-muted","Force stop is disabled in V1; unsaved progress could be lost."));
+    root.append(advanced);
   }
   window.StreamOpsGamesComponents={element,pill,renderSummary,renderRows,details};
 })();
