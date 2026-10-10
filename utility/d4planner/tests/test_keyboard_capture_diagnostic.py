@@ -201,10 +201,10 @@ def test_scheduled_task_nonblocking_does_not_enable_suppression():
 
 
 def test_interactive_worker_rejects_wrong_session_without_hook(tmp_path, monkeypatch):
-    monkeypatch.setattr(poc, "process_session_id",
+    monkeypatch.setattr(diag, "process_session_id",
                         lambda pid: 1 if pid == 14872 else 0)
-    monkeypatch.setattr(poc, "active_console_session_id", lambda: 1)
-    monkeypatch.setattr(poc, "run_diagnostic",
+    monkeypatch.setattr(diag, "active_console_session_id", lambda: 1)
+    monkeypatch.setattr(diag, "run_diagnostic",
                         lambda **kwargs: pytest.fail("hook should not be called"))
     output = tmp_path / "worker.log"
     rc = diag._run_interactive_worker(
@@ -219,9 +219,9 @@ def test_interactive_worker_rejects_wrong_session_without_hook(tmp_path, monkeyp
 
 
 def test_interactive_worker_writes_terminal_marker_after_poc(tmp_path, monkeypatch):
-    monkeypatch.setattr(poc, "process_session_id", lambda pid: 1)
-    monkeypatch.setattr(poc, "active_console_session_id", lambda: 1)
-    monkeypatch.setattr(poc, "run_diagnostic",
+    monkeypatch.setattr(diag, "process_session_id", lambda pid: 1)
+    monkeypatch.setattr(diag, "active_console_session_id", lambda: 1)
+    monkeypatch.setattr(diag, "run_diagnostic",
                         lambda **kwargs: print("F11 DOWN") or 0)
     output = tmp_path / "worker.log"
     assert diag._run_interactive_worker(
@@ -234,11 +234,11 @@ def test_interactive_worker_writes_terminal_marker_after_poc(tmp_path, monkeypat
 
 
 def test_remote_ssh_relay_echoes_worker_and_cleans_up(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(poc, "process_session_id",
+    monkeypatch.setattr(diag, "process_session_id",
                         lambda pid: 1 if pid == 14872 else 0)
-    monkeypatch.setattr(poc, "active_console_session_id", lambda: 1)
+    monkeypatch.setattr(diag, "active_console_session_id", lambda: 1)
     monkeypatch.setattr(
-        poc, "remote_log_path",
+        diag, "remote_log_path",
         lambda request_id: tmp_path / f"{request_id}.log",
     )
     executed = []
@@ -261,7 +261,7 @@ def test_remote_ssh_relay_echoes_worker_and_cleans_up(tmp_path, monkeypatch, cap
                     encoding="utf-8",
                 )
 
-    monkeypatch.setattr(poc, "_run_powershell", fake_powershell)
+    monkeypatch.setattr(diag, "_run_powershell", fake_powershell)
     result = diag._relay_ssh_to_interactive(
         pid=14872, seconds=30, block=False, jsonl=False, diagnose=True,
     )
@@ -276,10 +276,10 @@ def test_remote_ssh_relay_echoes_worker_and_cleans_up(tmp_path, monkeypatch, cap
 
 
 def test_remote_relay_rejects_inactive_game_session_before_registering(monkeypatch):
-    monkeypatch.setattr(poc, "process_session_id",
+    monkeypatch.setattr(diag, "process_session_id",
                         lambda pid: 1 if pid == 14872 else 0)
-    monkeypatch.setattr(poc, "active_console_session_id", lambda: 3)
-    monkeypatch.setattr(poc, "_run_powershell",
+    monkeypatch.setattr(diag, "active_console_session_id", lambda: 3)
+    monkeypatch.setattr(diag, "_run_powershell",
                         lambda *a, **kw: pytest.fail("cannot start task"))
     with pytest.raises(RuntimeError, match="not active"):
         diag._relay_ssh_to_interactive(
@@ -288,11 +288,11 @@ def test_remote_relay_rejects_inactive_game_session_before_registering(monkeypat
 
 
 def test_remote_ssh_main_auto_relays_instead_of_hooking_session_zero(monkeypatch):
-    monkeypatch.setattr(poc, "require_game_pid", lambda pid: None)
-    monkeypatch.setattr(poc, "process_session_id",
+    monkeypatch.setattr(diag, "require_game_pid", lambda pid: None)
+    monkeypatch.setattr(diag, "process_session_id",
                         lambda pid: 1 if pid == 14872 else 0)
-    monkeypatch.setattr(poc, "_relay_ssh_to_interactive",
+    monkeypatch.setattr(diag, "_relay_ssh_to_interactive",
                         lambda **kwargs: 0 if kwargs["block"] else 1)
-    monkeypatch.setattr(poc, "run_diagnostic",
+    monkeypatch.setattr(diag, "run_diagnostic",
                         lambda **kwargs: pytest.fail("do not hook session 0"))
     assert diag.main(["--pid", "14872", "--seconds", "30", "--block"]) == 0
