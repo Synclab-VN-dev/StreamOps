@@ -360,3 +360,50 @@ def test_state_model_null_epoch_gap_recovery(page: Page, games_ui_server):
       return {initial:counts1.running===1 && counts1.verified===0,gap,reset,offline};
     }""")
     assert report == {"initial": True, "gap": True, "reset": True, "offline": True}
+
+
+@pytest.mark.parametrize("width,height",[(360,800),(390,844),(768,1024),(1440,900)])
+def test_games_responsive_geometry_and_detail_navigation(
+    page: Page, games_ui_server, width: int, height: int, tmp_path: Path
+):
+    base, _fake = games_ui_server
+    page.set_viewport_size({"width":width,"height":height})
+    page.goto(base + "/games")
+    expect(page.locator("#game-library button")).to_have_count(1)
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    page.screenshot(path=str(tmp_path / ("games-" + str(width) + ".png")), full_page=True)
+    page.locator("#game-library button").first.click()
+    expect(page.locator("#game-detail")).to_contain_text("Windows session")
+    expect(page.locator("#game-detail")).to_contain_text("CONFIGURED_ONLY")
+    related = page.locator("#game-detail .gm-related")
+    expect(related).not_to_have_attribute("open")
+    related.locator("summary").click()
+    expect(related).to_have_attribute("open")
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    if width <= 900:
+        expect(page.locator("#games-main")).to_be_hidden()
+        expect(page.locator("#game-detail .gm-back")).to_be_visible()
+        page.locator("#game-detail .gm-back").click()
+        expect(page.locator("#games-main")).to_be_visible()
+    else:
+        expect(page.locator("#games-main")).to_be_visible()
+        expect(page.locator("#game-detail .gm-back")).to_be_hidden()
+
+
+def test_disabled_session_capture_error_and_observation_safety(page: Page, games_ui_server):
+    base, fake = games_ui_server
+    page.goto(base + "/games")
+    record = game()
+    record["observation"]["obsCapture"] = "ERROR"
+    record["observation"]["window"] = "UNKNOWN"
+    record["observation"]["process"]["stale"] = True
+    record["capabilities"] = {"start":False,"stop":False,"restart":False,"force_stop":False}
+    record["capability_reason"] = "wrong_desktop_session"
+    fake.set_library([record])
+    page.locator("#game-library button").first.click()
+    expect(page.locator("#game-detail")).to_contain_text("ERROR")
+    expect(page.locator("#game-detail")).to_contain_text("UNKNOWN")
+    expect(page.get_by_role("button",name="Stop",exact=True)).to_be_disabled()
+    expect(page.get_by_role("button",name="Stop",exact=True)).to_have_attribute(
+        "title","wrong_desktop_session")
+    assert not [op for op, _ in fake.received if op.startswith("games.lifecycle.")]
