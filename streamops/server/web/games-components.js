@@ -32,8 +32,18 @@
     const row = element("button","gm-game-row");
     row.type="button";row.dataset.gameId=game.id;
     row.setAttribute("aria-pressed",String(selected));
-    const icon=element("span","gm-game-icon","▣");
+    const icon=element("span","gm-game-icon");
     icon.setAttribute("aria-hidden","true");
+    const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
+    svg.setAttribute("viewBox","0 0 24 24");svg.setAttribute("width","20");svg.setAttribute("height","20");
+    svg.setAttribute("fill","none");svg.setAttribute("stroke","currentColor");
+    svg.setAttribute("stroke-width","2");svg.setAttribute("stroke-linecap","round");
+    svg.setAttribute("stroke-linejoin","round");
+    for (const d of ["M6.6 12h4.8","M9 9.6v4.8","M15.5 11.9h.01","M18.5 10.9h.01",
+      "M17 6H7a4 4 0 0 0-3.9 3.1l-1.6 8A2.4 2.4 0 0 0 3.9 20a2.4 2.4 0 0 0 1.7-.7L8 17h8l2.4 2.3a2.4 2.4 0 0 0 1.7.7 2.4 2.4 0 0 0 2.4-2.9l-1.6-8A4 4 0 0 0 17 6Z"]) {
+      const p=document.createElementNS("http://www.w3.org/2000/svg","path");p.setAttribute("d",d);svg.append(p);
+    }
+    icon.append(svg);row.title=game.name;
     const text=element("span","gm-game-label");
     text.append(element("strong","",game.name),element("small","",game.provider));
     row.append(icon,text,pill(game.observation?.process?.stale ? "UNKNOWN" : Model.gameState(game)));
