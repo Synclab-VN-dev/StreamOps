@@ -1,0 +1,247 @@
+/* Scoped V1 light theme based on approved #84 MagicPath, not global app overrides. */
+body.gm-page { color-scheme:light; color:#18181b; background:#f5f6f8; font-family:Inter,ui-sans-serif,system-ui,sans-serif; }
+.gm-page .topbar { background:#fff;border-bottom:1px solid #e4e4e7; }
+.gm-page .brand { color:#18181b; }
+.gm-page .topbar nav a { color:#52525b; }
+.gm-top-status { font-size:12px; color:#71717a; }
+.gm-page .eyebrow { color:#71717a; }
+.gm-page main { max-width:1080px; }
+.gm-page main.gm-shell { max-width:860px; }
+.gm-page main.gm-shell:has(.gm-workspace.gm-has-detail) { max-width:1024px; }
+.gm-page .narrow-shell {max-width:500px;}
+.gm-shell { min-width:0; }
+.gm-page-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0 20px; }
+.gm-page-heading h1 { font-size:clamp(24px,4vw,34px); margin:0 0 7px;letter-spacing:-.03em; }
+.gm-page-heading p:not(.eyebrow) { margin:0;color:#71717a;font-size:13px; }
+.gm-page h2 {font-size:16px;letter-spacing:-.02em;margin:0;}
+.gm-card { background:#fff; border:1px solid #ececf0; box-shadow:0 2px 12px rgb(0 0 0 / 3%);border-radius:22px;padding:18px;margin-bottom:16px;min-width:0; }
+.gm-page .panel { background:#fff;border:1px solid #ececf0;border-radius:22px;box-shadow:0 2px 12px rgb(0 0 0 / 3%); }
+.gm-page .panel-heading {border-bottom:1px solid #eee;color:#18181b;}
+.gm-page .status-list>div {border-bottom:1px solid #eee;}
+.gm-page .status-list dt,.gm-page .muted,.gm-muted {color:#71717a;font-size:12px;}
+.gm-page .status-list dd {color:#18181b;}
+.gm-page .activity-entry {color:#3f3f46;border-bottom:1px solid #eee;}
+.gm-page .activity-entry time {color:#71717a;}
+.gm-page .activity-entry.success span {color:#047857;}
+.gm-page .activity-entry.error span {color:#b91c1c;}
+.gm-stats {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px;}
+.gm-stat {min-width:0;padding:14px 10px;background:#fafafa;border:1px solid #f4f4f5;border-radius:15px;}
+.gm-stat span {display:block;color:#71717a;font-size:11px;}
+.gm-stat strong {display:block;font-size:24px;margin-top:6px;}
+.gm-workspace {display:block;min-width:0;}
+.gm-workspace.gm-has-detail {display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:16px;}
+.gm-section-heading {display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;}
+.gm-section-heading small {font-size:11px;color:#71717a;}
+.gm-filters {display:grid;grid-template-columns:minmax(0,1fr) 126px;gap:10px;margin:12px 0;}
+.gm-search-label {display:flex;flex-direction:column;gap:5px;font-size:11px;font-weight:600;color:#52525b;min-width:0;}
+.gm-search-label input,.gm-search-label select,.gm-control-panel input {width:100%;min-width:0;min-height:40px;border:1px solid #e4e4e7;border-radius:12px;padding:9px 11px;background:#fafafa;color:#18181b;font:inherit;}
+.gm-rows {display:grid;gap:8px;}
+.gm-page button.gm-game-row { display:flex;align-items:center;text-align:left;width:100%;min-width:0;min-height:66px;padding:10px;border:1px solid #ececf0;border-radius:15px;background:#fafafa;color:#18181b;gap:10px;font:inherit;cursor:pointer;}
+.gm-page button.gm-game-row[aria-pressed=true] {border-color:#71717a;background:#f4f4f5;}
+.gm-page button.gm-game-row:hover {background:#f4f4f5;}
+.gm-game-icon {width:36px; height:36px; flex:0 0 36px;display:grid;place-items:center;border-radius:11px;background:#eef2ff;color:#4f46e5;font-size:20px;}
+.gm-game-label {display:flex;flex-direction:column;gap:3px;min-width:0;flex:1;}
+.gm-game-label strong {font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.gm-game-label small {font-size:11px;color:#71717a;}
+.gm-pill {display:inline-flex;align-items:center;max-width:100%;border-radius:999px;padding:5px 8px;font-size:10px;font-weight:700;background:#f4f4f5;color:#52525b;white-space:nowrap;}
+.gm-pill[data-tone=ok] {background:#d1fae5;color:#047857;}
+.gm-pill[data-tone=warn] {background:#fef3c7;color:#92400e;}
+.gm-pill[data-tone=bad] {background:#fee2e2;color:#b91c1c;}
+.gm-page button.gm-button,.gm-page a.gm-button {display:inline-flex;justify-content:center;align-items:center;min-width:0;min-height:40px;width:auto;padding:9px 14px;border:1px solid #18181b;border-radius:12px;background:#18181b;color:white;text-decoration:none;font-weight:650;font-size:12px;cursor:pointer;}
+.gm-page button.gm-button:hover:not(:disabled),.gm-page a.gm-button:hover {background:#3f3f46;}
+.gm-page button.gm-secondary,.gm-page a.gm-secondary {background:#f4f4f5;color:#18181b;border-color:#e4e4e7;}
+.gm-page button.gm-danger {background:#b91c1c;border-color:#b91c1c;}
+.gm-page button.gm-button:disabled {opacity:.45;cursor:not-allowed;}
+.gm-page button:focus-visible,.gm-page input:focus-visible,.gm-page select:focus-visible,.gm-page a:focus-visible {outline:3px solid #93c5fd;outline-offset:2px;}
+.gm-empty {font-size:13px;color:#71717a;padding:14px 3px;margin:0;}
+.gm-detail {display:none;position:sticky;top:14px;align-self:start;min-width:0;}
+.gm-has-detail .gm-detail {display:block;}
+.gm-detail-heading {display:flex;align-items:center;gap:12px;margin-bottom:15px;}
+.gm-detail-heading h2 {overflow-wrap:anywhere;}
+.gm-detail-heading p {margin:5px 0 0;}
+.gm-back {display:none!important;}
+.gm-detail-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.gm-detail-cell {border:1px solid #eee;border-radius:13px;padding:10px;min-width:0;}
+.gm-detail-cell small {display:block;color:#71717a;font-size:10px;margin-bottom:6px;}
+.gm-detail-cell strong {display:block;overflow-wrap:anywhere;font-size:12px;}
+.gm-action-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px;}
+.gm-action-grid>button {width:100%!important;}
+.gm-action-reason {padding:10px 12px;background:#fffbeb;color:#92400e;border-radius:12px;font-size:12px;overflow-wrap:anywhere;}
+.gm-related {margin-top:14px;border:1px solid #eee;border-radius:13px;padding:12px;}
+.gm-related summary,.gm-control-panel summary {cursor:pointer;font-size:12px;font-weight:650;}
+.gm-operation {border-radius:12px;padding:10px;background:#fffbeb;font-size:12px;}
+.gm-error {font-size:12px;color:#b91c1c;margin:10px 0;}
+.gm-control-panel input {margin:10px 0;}
+.gm-control-panel label {display:block;margin-top:10px;font-size:12px;}
+.gm-control-panel .gm-button {margin-right:9px;}
+.gm-control-panel #token-status {font-size:11px;}
+.gm-page .panel .action-row>button {width:auto;}
+@media(max-width:900px) {
+ .gm-workspace,.gm-workspace.gm-has-detail {display:block;}
+ .gm-detail {position:static;}
+ .gm-workspace.gm-has-detail #games-main {display:none;}
+ .gm-back {display:inline-flex!important;}
+}
+@media(max-width:640px) {
+ .gm-page main {padding:14px;}
+ .gm-card {padding:15px;border-radius:21px;}
+ .gm-page-heading {align-items:flex-start;}
+ .gm-stats {gap:6px;}
+ .gm-stat {padding:10px 6px;}
+ .gm-stat strong {font-size:20px;}
+ .gm-page .topbar nav {display:flex;}
+ .gm-page .topbar {padding:0 12px;}
+ .gm-page .brand {font-size:13px;}
+ .gm-top-status {max-width:100px;overflow:hidden;text-overflow:ellipsis;}
+ .gm-page .panel .action-row>button {width:100%;}
+}
+@media(prefers-reduced-motion:reduce) {.gm-page * {scroll-behavior:auto!important;transition:none!important;animation:none!important;}}
+
+/* Steam Manager parity: compact MagicPath mobile-first three-card hierarchy. */
+.gm-steam-page > .topbar {display:none;}
+.gm-steam-page main.narrow-shell {max-width:480px;padding-top:18px;}
+.gm-steam-back {display:inline-flex;align-items:center;margin:0 0 17px;color:#71717a;font-size:12px;text-decoration:none;}
+.gm-steam-back:hover {color:#18181b;}
+.gm-steam-heading {display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:16px;}
+.gm-steam-heading h1 {font-size:25px;line-height:1.2;letter-spacing:-.035em;margin:0 0 7px;}
+.gm-steam-heading .eyebrow {margin:0 0 5px;color:#71717a;letter-spacing:.16em;}
+.gm-steam-heading p:not(.eyebrow){margin:0;color:#71717a;font-size:12px;line-height:1.5;}
+.gm-steam-heading .gm-pill {margin-top:0;flex-shrink:0;}
+.gm-steam-page .gm-card {border-radius:24px;padding:17px;margin-bottom:12px;}
+.gm-steam-page .gm-section-heading {align-items:flex-start;margin-bottom:16px;}
+.gm-steam-page .gm-section-heading p{margin:5px 0 0;}
+.gm-steam-page .gm-section-heading .gm-pill{margin-top:1px;}
+.gm-page .gm-pill[data-tone=ok] {background:#d1fae5;color:#047857;}
+.gm-page .gm-pill[data-tone=bad] {background:#fee2e2;color:#b91c1c;}
+.gm-page .gm-pill[data-tone=warn] {background:#fef3c7;color:#92400e;}
+.gm-steam-page .gm-collapsible-head {display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;position:relative;gap:8px;cursor:pointer;list-style:none;}
+.gm-steam-page .gm-collapsible-head::-webkit-details-marker{display:none;}
+.gm-steam-page .gm-collapsible-title{display:flex;flex:1;flex-direction:column;gap:4px;min-width:0;}
+.gm-steam-page .gm-collapsible-title strong{font-size:15px;}
+.gm-steam-page .gm-collapsible-title small{font-size:12px;font-weight:400;color:#71717a;line-height:1.5;}
+.gm-steam-page .gm-chevron{color:#a1a1aa;font-size:16px;margin-left:3px;}
+.gm-steam-page details[open] .gm-chevron{transform:rotate(180deg);}
+.gm-steam-page #steam-state-badge{margin-left:auto;display:flex;align-items:center;gap:4px;}
+.gm-steam-page #steam-state-badge #steam-status-dot{width:5px;height:5px;flex:0 0 5px;box-shadow:none;}
+.gm-steam-mini-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;width:100%;margin:10px 0 0;}
+.gm-steam-mini-stats > span{display:flex;flex-direction:column;gap:4px;}
+.gm-steam-mini-stats small{font-size:11px;color:#71717a;}
+.gm-steam-mini-stats b{font-size:14px;overflow-wrap:anywhere;}
+.gm-runtime-expanded{border-top:1px solid #f4f4f5;margin-top:15px;padding-top:12px;}
+.gm-steam-page .status-list>div{min-height:40px;grid-template-columns:1fr 1fr;gap:10px;}
+.gm-steam-page .gm-runtime-expanded .action-row{padding-top:13px;}
+.gm-steam-page .gm-runtime-expanded #restart-button{width:100%;min-height:44px;}
+.gm-steam-page #steam-games-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:14px;}
+.gm-steam-stat{display:flex;flex-direction:column;gap:5px;min-width:0;}
+.gm-steam-stat small{font-size:11px;color:#71717a;}
+.gm-steam-stat strong{font-size:15px;}
+.gm-steam-page #steam-running-games{padding:8px;background:#fafafa;border-radius:16px;margin-bottom:12px;}
+.gm-steam-page #steam-running-games .gm-game-row{border:0;border-bottom:1px solid #f4f4f5;background:transparent;border-radius:0;}
+.gm-steam-page #game-manager-card .gm-nav{display:flex;width:100%;min-height:44px;border-radius:14px;font-size:13px;background:#09090b;color:#fff;border-color:#09090b;}
+.gm-steam-page .gm-activity-summary{display:block;width:100%;font-size:11px;color:#71717a;margin-top:7px;}
+.gm-steam-page #steam-activity-details[open] #activity-log{margin-top:12px;border-top:1px solid #f4f4f5;}
+.gm-steam-page .activity-log{max-height:260px;overflow:auto;}
+.gm-steam-page .activity-entry {grid-template-columns:58px minmax(0,1fr);gap:8px;font-size:11px;}
+@media(max-width:640px){
+ .gm-steam-page main.narrow-shell {padding:16px;}
+ .gm-steam-page .gm-card{padding:16px;}
+ .gm-steam-page .status-list>div{grid-template-columns:1fr 1fr;}
+}
+
+.gm-steam-page .gm-alert {padding:13px;margin-bottom:12px;border:1px solid #fecaca;border-radius:14px;background:#fef2f2;color:#b91c1c;}
+.gm-steam-page .gm-alert strong {font-size:12px;}
+.gm-steam-page .gm-alert p {margin:6px 0 0;font-size:12px;line-height:1.5;}
+
+/* #86: polished MagicPath parity without changing UI behavior or data truth. */
+.gm-steam-page main.narrow-shell {padding-top:12px;}
+.gm-steam-page .gm-steam-back {margin-bottom:12px;}
+.gm-steam-page .gm-steam-heading {margin-bottom:12px;}
+.gm-steam-page .gm-section-heading {gap:6px;align-items:flex-start;}
+.gm-steam-page .gm-section-heading .gm-pill {white-space:nowrap;}
+.gm-steam-page .gm-card-toggle {background:transparent;border:0;color:#a1a1aa;min-width:24px;height:26px;font-size:16px;cursor:pointer;}
+.gm-steam-page .gm-card-toggle[aria-expanded=false] {transform:rotate(180deg);}
+.gm-steam-page #steam-games-body[hidden] {display:none!important;}
+.gm-steam-page .gm-steam-empty {min-height:112px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:5px;}
+.gm-steam-page .gm-steam-empty-icon {font-size:24px;line-height:1;color:#a1a1aa;margin-bottom:5px;}
+.gm-steam-page .gm-steam-empty strong {font-size:12px;color:#18181b;}
+.gm-steam-page .gm-steam-empty p {font-size:11px;color:#71717a;margin:0;line-height:1.5;}
+.gm-steam-page .gm-game-row .gm-game-label small {font-size:11px;}
+.gm-steam-page .gm-activity-summary {line-height:1.5;}
+.gm-steam-page .gm-pill {font-weight:600;}
+.gm-steam-page .gm-game-icon {background:#eef2ff;}
+@media(max-width:640px){.gm-steam-page main.narrow-shell {padding-top:12px;}}
+
+/* #86 Detail parity: a single readable status column, not a dense settings grid. */
+.gm-page .gm-detail {padding:0;overflow:hidden;border-radius:24px;}
+.gm-detail-topbar {display:flex;align-items:center;justify-content:space-between;min-height:60px;padding:14px 16px;border-bottom:1px solid #f4f4f5;}
+.gm-page .gm-detail-back,.gm-page .gm-detail-close {border:0;background:transparent;color:#71717a;font-size:12px;cursor:pointer;padding:8px 3px;}
+.gm-page .gm-detail-close {font-size:20px;line-height:20px;}
+.gm-detail-intro {padding:16px;}
+.gm-detail-title {display:flex;align-items:flex-start;gap:12px;}
+.gm-detail-title-text {min-width:0;flex:1;}
+.gm-detail-title-text h2 {font-size:18px;line-height:1.35;}
+.gm-detail-title-text p {font-size:12px;margin:4px 0 8px;}
+.gm-detail-title-text .gm-pill {margin:0 0 0;min-height:24px;}
+.gm-detail-title .gm-game-icon {width:40px;height:40px;flex-basis:40px;}
+.gm-detail-metrics {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px;background:#fafafa;border-radius:17px;padding:13px;margin-top:18px;}
+.gm-detail-metric {display:flex;flex-direction:column;gap:6px;min-width:0;}
+.gm-detail-metric small {font-size:11px;color:#71717a;}
+.gm-detail-metric strong {font-size:12px;color:#18181b;overflow-wrap:anywhere;}
+.gm-detail-section {padding:16px;border-top:1px solid #f4f4f5;}
+.gm-detail-section-heading h3 {margin:0;font-size:14px;font-weight:700;}
+.gm-detail-section-heading p {margin:4px 0 0;font-size:11px;line-height:1.5;}
+.gm-detail-observations {padding:0 12px;margin-top:12px;border-radius:16px;background:#fafafa;}
+.gm-detail-observation {display:flex;min-height:48px;gap:8px;align-items:center;justify-content:space-between;font-size:12px;border-bottom:1px solid #f4f4f5;}
+.gm-detail-observation:last-child{border-bottom:0;}
+.gm-detail-observation-name {color:#52525b;}
+.gm-detail-observation .gm-pill {font-size:10px;font-weight:600;max-width:55%;text-align:center;}
+.gm-detail-warning {padding:12px;background:#fffbeb;border-radius:14px;color:#92400e;font-size:11px;line-height:1.6;margin:12px 0 0;}
+.gm-detail-danger {background:#fef2f2;color:#b91c1c;}
+.gm-detail-action-row {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px;}
+.gm-page button.gm-detail-action {min-width:0;min-height:45px;border-radius:15px;padding:8px 2px;font-size:12px;}
+.gm-page button.gm-detail-stop {border-color:#f4f4f5;background:#f4f4f5;color:#18181b;}
+.gm-page button.gm-detail-restart {border-color:#e4e4e7;background:#fff;color:#18181b;}
+.gm-page button.gm-detail-refresh {min-height:42px;width:100%;border-radius:12px;margin-top:12px;border-color:#e4e4e7;background:#fff;color:#18181b;}
+.gm-page .gm-detail-advanced {border-top:1px solid #f4f4f5;padding:16px;}
+.gm-detail-advanced summary {font-size:13px;font-weight:700;cursor:pointer;}
+.gm-detail-advanced button {margin-top:10px;}
+.gm-detail-advanced p {margin-top:6px;}
+.gm-detail .gm-operation {margin:10px 0 0;overflow-wrap:anywhere;}
+.gm-detail .gm-action-reason {margin-top:8px;font-size:11px;color:#92400e;}
+@media(max-width:900px){
+  body.gm-page:not(.gm-steam-page):has(.gm-workspace.gm-has-detail) .topbar,
+  body.gm-page:not(.gm-steam-page):has(.gm-workspace.gm-has-detail) .gm-page-heading,
+  body.gm-page:not(.gm-steam-page):has(.gm-workspace.gm-has-detail) #games-overview,
+  body.gm-page:not(.gm-steam-page):has(.gm-workspace.gm-has-detail) .gm-control-panel,
+  body.gm-page:not(.gm-steam-page):has(.gm-workspace.gm-has-detail) #games-error {display:none!important;}
+  body.gm-page:not(.gm-steam-page):has(.gm-workspace.gm-has-detail) main.gm-shell {padding:0!important;margin:0!important;max-width:none;}
+  body.gm-page:not(.gm-steam-page):has(.gm-workspace.gm-has-detail) #games-workspace {padding:16px;}
+  body.gm-page:not(.gm-steam-page):has(.gm-workspace.gm-has-detail) .gm-detail {display:block;width:100%;margin:0;position:static;}
+}
+
+/* Steam summary: keep icon/toggle out of the title width; preserve MagicPath card geometry. */
+.gm-steam-page #game-manager-card>.gm-section-heading {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto 16px;
+  gap:8px;
+  align-items:start;
+  margin-bottom:10px;
+}
+.gm-steam-page #game-manager-card>.gm-section-heading>div {min-width:0;}
+.gm-steam-page #game-manager-card h2 {white-space:nowrap;font-size:15px;}
+.gm-steam-page #game-manager-card .gm-section-heading p {white-space:nowrap;font-size:11px;}
+.gm-steam-page #steam-games-summary {margin:8px 0 10px;}
+.gm-steam-page #steam-running-games {margin:12px 0;padding:3px 8px;min-height:62px;}
+.gm-steam-page #steam-running-games .gm-game-row {min-height:58px;padding:7px 3px;}
+.gm-steam-page #steam-running-games .gm-steam-empty {min-height:105px;}
+.gm-steam-page #steam-games-toggle {min-width:16px;width:16px;padding:0;height:22px;}
+.gm-steam-page .gm-steam-empty-icon{font-size:23px;}
+
+/* Responsive MagicPath 360px contract: heading and card descriptions wrap deliberately. */
+@media (max-width:375px){
+  .gm-steam-page .gm-steam-heading p:not(.eyebrow) {max-width:232px;}
+  .gm-steam-page #game-manager-card .gm-section-heading p {max-width:180px;white-space:normal;}
+  .gm-steam-page #steam-running-games {margin-top:26px;}
+}
+.gm-steam-page #steam-running-games .gm-show-more {display:block;border:0;background:transparent;text-align:center;width:100%;color:#52525b;font-size:11px;min-height:34px;cursor:pointer;}
+.gm-steam-page #steam-running-games .gm-show-more:focus-visible {outline:2px solid #93c5fd;outline-offset:-2px;}

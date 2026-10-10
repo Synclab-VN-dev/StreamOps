@@ -55,7 +55,9 @@
       text.textContent = message;
       item.append(time, text);
       list.append(item);
-      if (item.offsetParent !== null) item.scrollIntoView({ block: "nearest" });
+      // Scroll the activity list only; scrollIntoView also scrolled the entire
+      // Steam/Games page on every WebSocket update, hiding the page heading.
+      if (item.offsetParent !== null) list.scrollTop = list.scrollHeight;
     };
   }
 

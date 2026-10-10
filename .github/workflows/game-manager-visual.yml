@@ -1,0 +1,51 @@
+name: Game Manager Golden Visual (FE-G5)
+
+on:
+  pull_request:
+    paths:
+      - 'streamops/server/web/games*'
+      - 'streamops/server/web/steam*'
+      - 'streamops/server/tests/visual_magicpath/**'
+      - 'streamops/server/tests/e2e/test_magicpath_visual.py'
+      - 'streamops/server/tests/test_magicpath_visual_contract.py'
+      - '.github/workflows/game-manager-visual.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fe-g5-magicpath-visual:
+    name: FE-G5 / Original MagicPath visual parity & owner approval
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install browser and integration test dependencies
+        run: python -m pip install '.[server,dev]'
+      - name: Install Playwright Chromium
+        run: python -m playwright install chromium
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated pinned-reference renderer
+        working-directory: streamops/server/tests/visual_magicpath/reference_source
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Verify original MagicPath source revision and immutable preview hashes
+        run: python -m pytest -q streamops/server/tests/test_magicpath_visual_contract.py
+      - name: FE-G5 — Render and compare at 360, 390, 768, 1440 + states
+        env:
+          STREAMOPS_VISUAL_ENFORCE_APPROVAL: '1'
+          STREAMOPS_VISUAL_ARTIFACTS: ${{ runner.temp }}/game-manager-visual
+        run: python -m pytest -q streamops/server/tests/e2e/test_magicpath_visual.py
+      - name: Upload original source render / FE screenshot / diff
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: magicpath-visual-${{ github.sha }}
+          path: ${{ runner.temp }}/game-manager-visual
+          if-no-files-found: warn
+          retention-days: 30

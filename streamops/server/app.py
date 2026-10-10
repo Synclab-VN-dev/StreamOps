@@ -302,6 +302,10 @@ def create_app(
     async def steam_page() -> FileResponse:
         return FileResponse(WEB_ROOT / "steam.html", headers={"Cache-Control": "no-store"})
 
+    @app.get("/games", include_in_schema=False)
+    async def games_page() -> FileResponse:
+        return FileResponse(WEB_ROOT / "games.html", headers={"Cache-Control": "no-store"})
+
     @app.get("/obs", include_in_schema=False)
     async def obs_page() -> FileResponse:
         return FileResponse(WEB_ROOT / "obs.html", headers={"Cache-Control": "no-store"})

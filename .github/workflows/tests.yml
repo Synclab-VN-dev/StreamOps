@@ -24,6 +24,7 @@ jobs:
           if ("${{ github.event_name }}" -eq "push") {
             "d4planner=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
             "server=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "gameui=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
             exit 0
           }
 
@@ -62,6 +63,20 @@ jobs:
             Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "server=$($server.ToString().ToLowerInvariant())" |
             Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+          $gameui = @(
+            $realFiles | Where-Object {
+              $_ -like "streamops/server/web/games*" -or
+              $_ -like "streamops/server/web/steam*" -or
+              $_ -like "streamops/server/tests/visual_magicpath/*" -or
+              $_ -eq "streamops/server/tests/test_magicpath_visual_contract.py" -or
+              $_ -eq "streamops/server/tests/e2e/test_magicpath_visual.py" -or
+              $_ -eq ".github/workflows/tests.yml"
+            }
+          ).Count -gt 0
+          "gameui=$($gameui.ToString().ToLowerInvariant())" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Game Manager visual gates required: $gameui"
 
           Write-Host "Changed files:"
           $files | ForEach-Object { Write-Host "  $_" }
@@ -107,3 +122,27 @@ jobs:
       - name: Test StreamOps
         if: steps.changes.outputs.server == 'true'
         run: python -m pytest -q
+
+      # FE gates MUST run when games/steam UI or pinned MagicPath references change.
+      # Do not mark a visual gate as PASS unless owner-approved references and
+      # real comparison both pass; artifacts are preserved on every failure.
+      - name: FE-G1 — WS contract, reducer and pinned source integrity
+        if: steps.changes.outputs.gameui == 'true'
+        run: python -m pytest -q streamops/server/tests/test_games_ui_contract.py streamops/server/tests/test_magicpath_visual_contract.py
+      - name: FE-G2 — Steam browser WebSocket regression
+        if: steps.changes.outputs.gameui == 'true'
+        run: python -m pytest -q streamops/server/tests/e2e/test_steam.py
+      - name: FE-G3 — Games UI browser states and observer fanout
+        if: steps.changes.outputs.gameui == 'true'
+        run: python -m pytest -q streamops/server/tests/e2e/test_games_ui.py
+      - name: FE-G4 — Lifecycle and reconnect recovery
+        if: steps.changes.outputs.gameui == 'true'
+        run: python -m pytest -q streamops/server/tests/e2e/test_games_ui.py -k 'lifecycle or reconnect or state_model'
+      - name: FE-G6 — Installed wheel FE pages and asset smoke
+        if: steps.changes.outputs.gameui == 'true'
+        shell: pwsh
+        run: |
+          $env:STREAMOPS_TEST_WHEEL = (Get-ChildItem dist\*.whl | Select-Object -First 1).FullName
+          python -m pytest -q streamops/server/tests/test_wheel_acceptance.py
+      # FE-G5 is a parallel, non-skippable visual check in game-manager-visual.yml.
+      # It requires owner-approved goldens and uploads expected/actual/diff images.

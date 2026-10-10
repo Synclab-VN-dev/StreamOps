@@ -30,7 +30,7 @@ def test_dashboard_cards_activity_and_navigation(
 
     page.get_by_role("link", name="Manage Steam").click()
     expect(page).to_have_url(f"{live_server.base_url}/steam")
-    expect(page.get_by_role("heading", name="Steam", exact=True)).to_be_visible()
+    expect(page.get_by_role("heading", name="Steam Manager", exact=True)).to_be_visible()
     page.get_by_role("link", name="Dashboard").click()
     expect(page).to_have_url(f"{live_server.base_url}/")
 

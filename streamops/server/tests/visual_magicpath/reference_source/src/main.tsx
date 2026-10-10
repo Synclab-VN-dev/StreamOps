@@ -1,0 +1,10 @@
+import React from "react";
+import {createRoot} from "react-dom/client";
+import {StreamOpsSteamManager} from "./SteamManager";
+import {StreamOpsGameManager} from "./GameManager";
+import "./index.css";
+const design = new URLSearchParams(window.location.search).get("design");
+const target = document.getElementById("root");
+if (!target) throw new Error("Missing design root");
+if (!["steam","games"].includes(design || "")) throw new Error("Specify design=steam or design=games");
+createRoot(target).render(design==="steam" ? <StreamOpsSteamManager/> : <StreamOpsGameManager/>);
