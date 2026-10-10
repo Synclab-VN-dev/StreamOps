@@ -339,8 +339,8 @@ def test_vendor_probe_requires_registered_handler_and_sanitizes_error():
 
     for good in (True, False):
         client = VendorClient(
-            {"vendorResponseData": {"targets": [], "count": 0}} if good
-            else {"vendorResponseData": {}},
+            {"responseData": {"targets": [], "count": 0}} if good
+            else {"responseData": {}},
             None if good else RuntimeError("stream_key=must-never-leak"),
         )
         manager = FakeManager()
@@ -510,7 +510,7 @@ def test_failed_vendor_probe_sets_verify_failed_until_subsequent_success():
         def request(self, request_type, payload):
             if not self.healthy:
                 raise RuntimeError("Vendor missing")
-            return {"vendorResponseData": {"targets": [], "count": 0}}
+            return {"responseData": {"targets": [], "count": 0}}
         def close(self):
             pass
 
