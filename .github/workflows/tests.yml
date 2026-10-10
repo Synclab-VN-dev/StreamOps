@@ -16,7 +16,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - name: Detect changed components
         id: changes
         shell: pwsh
@@ -98,6 +97,18 @@ jobs:
       - name: Build StreamOps wheel
         if: steps.changes.outputs.server == 'true'
         run: python -m pip wheel . --no-deps -w dist
+      - name: Build hash-pinned Windows deployment bundle
+        if: steps.changes.outputs.server == 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .streamops/node-deployment/wheelhouse | Out-Null
+          Copy-Item dist/*.whl .streamops/node-deployment/wheelhouse/
+          python -m pip download --only-binary=:all: --dest .streamops/node-deployment/wheelhouse `
+            fastapi pillow uvicorn websockets PyYAML 'dxcam[winrt]'
+          python scripts/release/streamops_node_bundle.py pack `
+            --root .streamops/node-deployment --source-commit "${{ github.event.pull_request.head.sha || github.sha }}"
+          python scripts/release/streamops_node_bundle.py verify `
+            --root .streamops/node-deployment --source-commit "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Test installed wheel outside source checkout
         if: steps.changes.outputs.server == 'true'
         shell: pwsh
@@ -107,3 +118,9 @@ jobs:
       - name: Test StreamOps
         if: steps.changes.outputs.server == 'true'
         run: python -m pytest -q
+      - uses: actions/upload-artifact@v4
+        if: steps.changes.outputs.server == 'true'
+        with:
+          name: streamops-node-deployment-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .streamops/node-deployment/**
+          if-no-files-found: error

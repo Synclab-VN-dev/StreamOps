@@ -18,6 +18,7 @@ from .api.multistream_ws import router as multistream_ws_router
 from .api.obs import router as obs_router
 from .api.obs_process import router as obs_process_router
 from .api.obs_plugins import router as obs_plugins_router
+from .api.obs_plugin_ws import router as obs_plugin_ws_router
 from .api.obs_ws import router as obs_ws_router
 from .api.screen import router as screen_router
 from .api.steam import router as steam_router
@@ -93,7 +94,13 @@ def create_app(
     )
     steam = steam_service or SteamService(WindowsSteamBackend())
     obs = obs_manager or ObsManager()
-    obs_plugins = obs_plugin_service or ObsPluginService(obs, WindowsObsMultiRtmpHost(config.data_dir))
+    obs_plugins = obs_plugin_service or ObsPluginService(
+        obs,
+        WindowsObsMultiRtmpHost(
+            config.data_dir, obs_executable=getattr(obs, "expected_executable", None),
+        ),
+        defer_restart=True,
+    )
     obs_scenes = obs_scene_service or ObsSceneService(data_dir=config.data_dir / "scene-profiles")
     status_hub = obs_status_hub or ObsStatusHub(obs, obs_scenes, service)
     live = live_service or LiveService(
@@ -146,6 +153,7 @@ def create_app(
     app.include_router(obs_router)
     app.include_router(obs_process_router)
     app.include_router(obs_plugins_router)
+    app.include_router(obs_plugin_ws_router)
     app.include_router(obs_ws_router)
     app.include_router(screen_router)
     app.include_router(steam_router)

@@ -12,7 +12,11 @@ param(
     [ValidateRange(0.01, 30)]
     [double]$CaptureTimeout = 3,
     [ValidateSet("critical", "error", "warning", "info", "debug", "trace")]
-    [string]$LogLevel = "info"
+    [string]$LogLevel = "info",
+    [ValidateSet("", "github-release", "directory")]
+    [string]$ObsPluginSourceProvider = "",
+    [string]$ObsPluginSourceLocation = "",
+    [string]$ObsPluginGitHubTokenEnv = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -53,6 +57,20 @@ $arguments = @(
     "--capture-timeout", $CaptureTimeout.ToString([Globalization.CultureInfo]::InvariantCulture),
     "--log-level", $LogLevel
 )
+
+if (-not [string]::IsNullOrWhiteSpace($ObsPluginSourceProvider)) {
+    if ([string]::IsNullOrWhiteSpace($ObsPluginSourceLocation)) {
+        throw "ObsPluginSourceLocation is required when a provider is configured."
+    }
+    $env:STREAMOPS_OBS_PLUGIN_SOURCE_PROVIDER = $ObsPluginSourceProvider
+    $env:STREAMOPS_OBS_PLUGIN_SOURCE_LOCATION = $ObsPluginSourceLocation
+    if (-not [string]::IsNullOrWhiteSpace($ObsPluginGitHubTokenEnv)) {
+        if ($ObsPluginGitHubTokenEnv -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') {
+            throw "ObsPluginGitHubTokenEnv must be an environment variable name."
+        }
+        $env:STREAMOPS_OBS_PLUGIN_GITHUB_TOKEN_ENV = $ObsPluginGitHubTokenEnv
+    }
+}
 
 Push-Location $DataDir
 try {

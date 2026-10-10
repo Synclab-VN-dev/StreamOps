@@ -14,6 +14,9 @@ import re
 import shutil
 import tempfile
 from typing import Any, BinaryIO, Callable
+
+from ....errors import ObsPluginError
+from ....services.obs_plugin_release_source import ManagedPluginReleaseSource
 from urllib.request import Request, urlopen
 import uuid
 import zipfile
@@ -31,6 +34,8 @@ ZIP_TO_INSTALL = {
     "obs-plugins/64bit/obs-multi-rtmp.pdb": "bin/64bit/obs-multi-rtmp.pdb",
 }
 LOCALE_PREFIX = "data/obs-plugins/obs-multi-rtmp/locale/"
+ACTIVE_TRANSACTION_STATES = {"preparing", "backup_verified", "mutation_pending", "rollback_pending", "recovery_required"}
+APPROVED_TRANSACTION_STATES = {"installed", "approved_release_installed"}
 
 
 class PluginInstallerFailure(RuntimeError):
@@ -45,6 +50,9 @@ class InstallerStatus:
     compatible: bool
     loaded: bool
     loaded_version: str | None = None
+    installed_version: str | None = None
+    available_version: str | None = None
+    restart_required: bool = False
 
 
 @dataclass(frozen=True)
@@ -109,11 +117,17 @@ class WindowsObsMultiRtmpInstaller:
         process_probe: Callable[[], list[ProcessEvidence]] | None = None,
         version_probe: Callable[[Path], str | None] | None = None,
         appdata: Path | None = None,
+        release_source: ManagedPluginReleaseSource | None = None,
     ) -> None:
         self.data_dir = Path(data_dir).resolve()
         self.plugin_root = Path(plugin_root)
         self.obs_executable = Path(obs_executable)
-        self.manifest = manifest or _load_manifest()
+        self.manifest = manifest if manifest is not None else _load_manifest()
+        self.release_source = release_source
+        self._approved_release = None
+        # Explicit manifests are supported for isolated package fixture tests only.
+        # Production cannot install from the bundled upstream URL.
+        self._fixture_manifest = manifest is not None
         self.state_root = self.data_dir / "obs-plugins" / "obs-multi-rtmp"
         self.transactions_root = self.state_root / "transactions"
         self.pointer = self.state_root / "current-transaction.json"
@@ -131,16 +145,41 @@ class WindowsObsMultiRtmpInstaller:
     def status(self) -> InstallerStatus:
         version = self.version_probe(self.obs_executable)
         records = _file_records(self.plugin_root)
-        if not records:
+        installed_version = None
+        if self._pending_transactions():
+            installation = "recovery_required"
+        elif self.pointer.exists():
+            try:
+                _, journal = self._read_current_transaction()
+            except PluginInstallerFailure:
+                installation = "recovery_required"
+            else:
+                matches = self._record_map(records) == self._record_map(journal.get("expected_files", []))
+                if not matches:
+                    installation = "conflict"
+                elif journal.get("state") == "legacy_adopted":
+                    installation = "legacy_adopted"
+                elif journal.get("state") in APPROVED_TRANSACTION_STATES:
+                    installation = "exact"
+                    installed_version = journal.get("installed_version")
+                else:
+                    installation = "conflict"
+        elif not records:
             installation = "absent"
-        elif self._is_exact(records):
-            installation = "exact"
         else:
-            installation = "conflict"
+            installation = "unmanaged"
+        available_version = self.manifest["package_version"] if self._fixture_manifest else None
+        if self.release_source is not None:
+            try:
+                available_version = self.release_source.latest("obs-multi-rtmp").version
+            except ObsPluginError:
+                available_version = None
         loaded_version = None
         processes = self._matching_obs_processes()
         if len(processes) == 1:
-            loaded_version, module_loaded = self._load_evidence(processes[0])
+            loaded_version, module_loaded = self._load_evidence(
+                processes[0], installed_version
+            )
         else:
             module_loaded = False
         return InstallerStatus(
@@ -148,58 +187,238 @@ class WindowsObsMultiRtmpInstaller:
             compatible=version == self.manifest["expected_obs_version"],
             loaded=module_loaded,
             loaded_version=loaded_version,
+            installed_version=installed_version,
+            available_version=available_version,
         )
 
-    def install(self) -> InstallerResult:
-        self._assert_compatible()
+    def rollback_readiness(self) -> dict[str, Any]:
+        """Read-only eligibility derived from a verified committed journal.
+
+        Do not promise the UI that rollback is available from a version alone.
+        Final operation still rechecks hashes, config and OBS output guards.
+        """
+        try:
+            if self._pending_transactions():
+                return {"available": False, "target_version": None, "reason": "recovery_required"}
+            if not self.pointer.is_file():
+                return {"available": False, "target_version": None, "reason": "no_transaction"}
+            root, journal = self._read_current_transaction()
+            if journal.get("state") not in APPROVED_TRANSACTION_STATES:
+                return {"available": False, "target_version": None, "reason": "no_approved_transaction"}
+            if self._record_map(_file_records(self.plugin_root)) != self._record_map(journal.get("expected_files", [])):
+                return {"available": False, "target_version": None, "reason": "plugin_files_changed"}
+            self._validate_restore_prerequisites(root, journal)
+            previous_id = journal.get("previous_transaction_id")
+            previous_version = None
+            if previous_id:
+                previous_root = self.transactions_root / str(previous_id)
+                prior = json.loads((previous_root / "transaction.json").read_text(encoding="utf-8"))
+                if (prior.get("transaction_id") != previous_id or
+                        prior.get("state") not in APPROVED_TRANSACTION_STATES | {"legacy_adopted"}):
+                    return {"available": False, "target_version": None, "reason": "baseline_invalid"}
+                previous_version = prior.get("installed_version")
+            return {"available": True, "target_version": previous_version, "reason": None}
+        except (PluginInstallerFailure, OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+            return {"available": False, "target_version": None, "reason": "baseline_invalid"}
+
+    def adopt(self) -> InstallerResult:
+        """Snapshot an existing unmanaged tree without assigning release provenance."""
+        self._assert_obs_stopped()
+        pending = self._pending_transactions()
+        if pending:
+            raise PluginInstallerFailure("recovery_required", "An unfinished plugin transaction must be recovered first.")
         records = _file_records(self.plugin_root)
-        if records and self._is_exact(records):
-            return InstallerResult("already_installed")
+        if not records:
+            raise PluginInstallerFailure("plugin_state_conflict", "No existing plugin files are available to adopt.")
+        current = None
+        if self.pointer.exists():
+            try:
+                _, current = self._read_current_transaction()
+            except PluginInstallerFailure as exc:
+                raise PluginInstallerFailure("recovery_required", "Managed transaction pointer is invalid.") from exc
+        if current is not None:
+            if (current.get("state") == "legacy_adopted" and
+                    self._record_map(records) == self._record_map(current.get("expected_files", []))):
+                return InstallerResult("already_adopted")
+            raise PluginInstallerFailure("plugin_state_conflict", "The plugin already has managed transaction state.")
+
+        transaction_root, transaction = self._begin_transaction(
+            kind="legacy_adoption", baseline_records=records, expected_files=records,
+            previous_transaction_id=None, installed_version=None,
+        )
+        try:
+            self._snapshot_and_verify(transaction_root, transaction, records)
+            if self._record_map(_file_records(self.plugin_root)) != self._record_map(records):
+                raise PluginInstallerFailure("plugin_state_conflict", "Plugin files changed during adoption.")
+            if self._plugin_configs() != transaction["baseline_plugin_configs"]:
+                raise PluginInstallerFailure("config_conflict", "Plugin configuration changed during adoption.")
+            transaction["state"] = "legacy_adopted"
+            transaction["adopted_at"] = datetime.now(timezone.utc).isoformat()
+            # Publish the pointer while the transaction is still recoverable.
+            # A crash in this window is detected as pending; recovery restores
+            # the previous pointer (or removes it for the first adoption).
+            self._write_json(self.pointer, {"transaction_id": transaction["transaction_id"]})
+            self._write_json(transaction_root / "transaction.json", transaction)
+            return InstallerResult("adopted")
+        except Exception:
+            if transaction.get("state") != "legacy_adopted":
+                transaction["state"] = "failed_no_mutation"
+                self._write_json(transaction_root / "transaction.json", transaction)
+            raise
+
+    def _require_managed_release(self) -> None:
+        if self.release_source is None and not self._fixture_manifest:
+            raise PluginInstallerFailure(
+                "release_unavailable", "No approved managed distribution source is configured."
+            )
+
+    def _prepare_release(self) -> None:
+        self._require_managed_release()
+        if self.release_source is None:
+            return
+        try:
+            release = self.release_source.latest("obs-multi-rtmp")
+        except ObsPluginError as exc:
+            raise PluginInstallerFailure("release_unavailable", "Approved managed release is unavailable.") from exc
+        self._approved_release = release
+        metadata = release.metadata
+        if not (
+            isinstance(metadata.get("file_count"), int)
+            and isinstance(metadata.get("relative_paths"), list)
+            and isinstance(metadata.get("tree_sha256"), str)
+            and re.fullmatch(r"[a-fA-F0-9]{64}", metadata["tree_sha256"])
+        ):
+            raise PluginInstallerFailure("artifact_manifest_mismatch", "Approved release lacks an exact file manifest.")
+        self.manifest = {
+            "plugin_id": release.plugin_id,
+            "package_version": release.version,
+            "expected_obs_version": release.obs_version,
+            "artifact_name": release.artifact_name,
+            "artifact_sha256": release.artifact_sha256,
+            "file_count": metadata["file_count"],
+            "relative_paths": metadata["relative_paths"],
+            "tree_sha256": metadata["tree_sha256"],
+        }
+
+    def install(self) -> InstallerResult:
+        self._prepare_release()
+        self._assert_compatible()
+        if self._pending_transactions():
+            raise PluginInstallerFailure("recovery_required", "An unfinished plugin transaction must be recovered first.")
+        records = _file_records(self.plugin_root)
+        previous = None
+        if self.pointer.exists() and not records:
+            raise PluginInstallerFailure("recovery_required", "Managed transaction state has no plugin files.")
         if records:
-            raise PluginInstallerFailure("plugin_state_conflict", "Managed plugin directory has conflicting files.")
+            if not self.pointer.exists():
+                raise PluginInstallerFailure(
+                    "adoption_required", "Existing plugin files must be explicitly adopted before installation."
+                )
+            try:
+                _, previous = self._read_current_transaction()
+            except PluginInstallerFailure as exc:
+                raise PluginInstallerFailure("recovery_required", "Managed transaction pointer is invalid.") from exc
+            if self._record_map(records) != self._record_map(previous.get("expected_files", [])):
+                raise PluginInstallerFailure("plugin_state_conflict", "Current plugin differs from its managed baseline.")
+            if previous.get("state") in APPROVED_TRANSACTION_STATES:
+                if previous.get("installed_version") == self.manifest["package_version"] and self._is_exact(records):
+                    return InstallerResult("already_installed")
+                raise PluginInstallerFailure("plugin_state_conflict", "Use update for an existing approved release.")
+            if previous.get("state") != "legacy_adopted":
+                raise PluginInstallerFailure("plugin_state_conflict", "Existing plugin state cannot be installed safely.")
         self._assert_obs_stopped()
         staged = Path(tempfile.mkdtemp(prefix="streamops-obs-multi-rtmp-"))
         try:
             expected_records = self._stage_artifact(staged)
-            self.state_root.mkdir(parents=True, exist_ok=True)
-            transaction_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8]
-            transaction_root = self.transactions_root / transaction_id
-            backup_root = transaction_root / "backup" / "obs-multi-rtmp"
-            transaction_root.mkdir(parents=True)
-            existing_root = self.plugin_root.is_dir()
-            if existing_root:
-                backup_root.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copytree(self.plugin_root, backup_root)
-            baseline_configs = self._plugin_configs()
-            transaction = {
-                "state": "pending",
-                "transaction_id": transaction_id,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "plugin_root_existed": existing_root,
-                "backup_relative": backup_root.relative_to(transaction_root).as_posix() if existing_root else None,
-                "baseline_plugin_configs": baseline_configs,
-                "expected_files": expected_records,
-            }
-            self._write_json(transaction_root / "transaction.json", transaction)
-            self._write_json(self.pointer, {"transaction_id": transaction_id})
-            # TODO(tech-debt): Reconcile unfinished transactions after process crash/power loss.
-            # In-process exceptions restore the backup, but a hard termination between this journal
-            # write and the final installed state can leave partial files that need manual recovery.
-            self.plugin_root.mkdir(parents=True, exist_ok=True)
+            transaction_root, transaction = self._begin_transaction(
+                kind="approved_release_install", baseline_records=records,
+                expected_files=expected_records,
+                previous_transaction_id=previous.get("transaction_id") if previous else None,
+                installed_version=self.manifest["package_version"],
+            )
+            self._add_release_identity(transaction)
             try:
-                self._copy_contents(staged, self.plugin_root)
+                self._snapshot_and_verify(transaction_root, transaction, records)
+                transaction["state"] = "mutation_pending"
+                transaction["mutation_started"] = False
+                self._write_json(transaction_root / "transaction.json", transaction)
+                # Exact legacy bytes are promoted only after the approved artifact
+                # has been downloaded and verified; no unnecessary rewrite occurs.
+                if self._record_map(records) != self._record_map(expected_records):
+                    transaction["mutation_started"] = True
+                    self._write_json(transaction_root / "transaction.json", transaction)
+                    self._clear_contents(self.plugin_root)
+                    self._copy_contents(staged, self.plugin_root)
                 installed = _file_records(self.plugin_root)
                 if not self._is_exact(installed):
                     raise PluginInstallerFailure("install_failed", "Installed plugin failed exact manifest verification.")
-                transaction["state"] = "installed"
+                if self._plugin_configs() != transaction["baseline_plugin_configs"]:
+                    raise PluginInstallerFailure("config_conflict", "Plugin configuration changed during install.")
+                self._write_json(self.pointer, {"transaction_id": transaction["transaction_id"]})
+                transaction["state"] = "approved_release_installed"
                 transaction["installed_at"] = datetime.now(timezone.utc).isoformat()
                 self._write_json(transaction_root / "transaction.json", transaction)
             except Exception:
-                self._restore_backup(transaction_root, transaction)
+                self._restore_or_mark_failed(transaction_root, transaction)
                 raise
             return InstallerResult("installed")
         except PermissionError as exc:
             raise PluginInstallerFailure("permission_denied", "Permission denied for the managed plugin directory.") from exc
+        finally:
+            shutil.rmtree(staged, ignore_errors=True)
+
+    def update(self) -> InstallerResult:
+        """Replace v1 with a verified v2 package in a separate rollback journal."""
+        self._prepare_release()
+        self._assert_compatible()
+        self._assert_obs_stopped()
+        if self._pending_transactions():
+            raise PluginInstallerFailure("recovery_required", "An unfinished plugin transaction must be recovered first.")
+        current = _file_records(self.plugin_root)
+        if not current:
+            raise PluginInstallerFailure("plugin_state_conflict", "Plugin is not installed.")
+        try:
+            _, previous = self._read_current_transaction()
+        except PluginInstallerFailure as exc:
+            raise PluginInstallerFailure("transaction_missing", "Cannot update without a verified baseline.") from exc
+        if (previous.get("state") not in APPROVED_TRANSACTION_STATES or
+                self._record_map(current) != self._record_map(previous.get("expected_files", []))):
+            raise PluginInstallerFailure("plugin_state_conflict", "Current plugin differs from verified baseline.")
+        previous_version = previous.get("installed_version")
+        new_version = self.manifest["package_version"]
+        if previous_version is not None:
+            def parts(value: str) -> tuple[int, ...]:
+                return tuple(int(piece) for piece in value.split("."))
+            if parts(new_version) <= parts(previous_version):
+                raise PluginInstallerFailure("update_not_available", "No newer approved version exists.")
+        staged = Path(tempfile.mkdtemp(prefix="streamops-obs-multi-rtmp-update-"))
+        try:
+            expected = self._stage_artifact(staged)
+            transaction_root, transaction = self._begin_transaction(
+                kind="approved_release_update", baseline_records=current,
+                expected_files=expected, previous_transaction_id=previous["transaction_id"],
+                installed_version=new_version,
+            )
+            transaction["previous_version"] = previous_version
+            self._add_release_identity(transaction)
+            try:
+                self._snapshot_and_verify(transaction_root, transaction, current)
+                transaction["state"] = "mutation_pending"
+                transaction["mutation_started"] = True
+                self._write_json(transaction_root / "transaction.json", transaction)
+                self._clear_contents(self.plugin_root)
+                self._copy_contents(staged, self.plugin_root)
+                if self._record_map(_file_records(self.plugin_root)) != self._record_map(expected):
+                    raise PluginInstallerFailure("update_failed", "Updated files failed verification.")
+                if self._plugin_configs() != transaction["baseline_plugin_configs"]:
+                    raise PluginInstallerFailure("config_conflict", "OBS config changed during update.")
+                self._write_json(self.pointer, {"transaction_id": transaction["transaction_id"]})
+                transaction["state"] = "approved_release_installed"
+                self._write_json(transaction_root / "transaction.json", transaction)
+            except Exception:
+                self._restore_or_mark_failed(transaction_root, transaction)
+                raise
+            return InstallerResult("updated")
         finally:
             shutil.rmtree(staged, ignore_errors=True)
 
@@ -211,33 +430,72 @@ class WindowsObsMultiRtmpInstaller:
         processes = self._matching_obs_processes()
         if len(processes) != 1:
             raise PluginInstallerFailure("obs_not_running", "OBS is not running from the expected executable.")
-        if not status.loaded or status.loaded_version != self.manifest["package_version"]:
+        if not status.loaded or status.loaded_version != status.installed_version:
             raise PluginInstallerFailure("module_not_loaded", "Current OBS process has no matching plugin load evidence.")
         return status
 
     def rollback(self) -> InstallerResult:
         self._assert_obs_stopped()
+        pending = self._pending_transactions()
+        if pending:
+            if len(pending) != 1:
+                raise PluginInstallerFailure("recovery_required", "Multiple unfinished transactions require manual review.")
+            transaction_root, transaction = pending[0]
+            baseline = transaction.get("baseline_files", [])
+            current = _file_records(self.plugin_root)
+            if transaction.get("state") in {"preparing", "backup_verified"} and not transaction.get("mutation_started"):
+                if self._record_map(current) != self._record_map(baseline):
+                    raise PluginInstallerFailure("recovery_required", "Plugin changed during an unfinished transaction.")
+                if self._plugin_configs() != transaction.get("baseline_plugin_configs", []):
+                    raise PluginInstallerFailure("recovery_required", "Configuration changed during an unfinished transaction.")
+                self._restore_previous_pointer(transaction)
+                transaction["state"] = "failed_no_mutation"
+                transaction["recovered_at"] = datetime.now(timezone.utc).isoformat()
+                self._write_json(transaction_root / "transaction.json", transaction)
+                return InstallerResult("recovered_no_mutation")
+            if (transaction.get("state") in {"mutation_pending", "rollback_pending", "recovery_required"} and
+                    transaction.get("backup_verified") is True and transaction.get("mutation_started") is True):
+                if transaction.get("state") == "rollback_pending":
+                    # A crash after switching the pointer but before committing the
+                    # journal is valid. Never recover an unrelated transaction.
+                    previous_id = transaction.get("previous_transaction_id")
+                    if self.pointer.exists():
+                        try:
+                            pointed_id = json.loads(self.pointer.read_text(encoding="utf-8"))["transaction_id"]
+                        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                            raise PluginInstallerFailure("recovery_required", "Invalid rollback pointer.") from exc
+                        if pointed_id not in {transaction["transaction_id"], previous_id}:
+                            raise PluginInstallerFailure("recovery_required", "Rollback pointer changed unexpectedly.")
+                    elif previous_id is not None:
+                        raise PluginInstallerFailure("recovery_required", "Rollback pointer disappeared unexpectedly.")
+                self._restore_backup_verified(transaction_root, transaction)
+                self._restore_previous_pointer(transaction)
+                transaction["state"] = "recovered_rolled_back"
+                transaction["recovered_at"] = datetime.now(timezone.utc).isoformat()
+                self._write_json(transaction_root / "transaction.json", transaction)
+                return InstallerResult("recovered_rolled_back")
+            raise PluginInstallerFailure("recovery_required", "The unfinished transaction has no verified recovery path.")
+
         transaction_root, transaction = self._read_current_transaction()
+        if transaction.get("state") == "legacy_adopted":
+            raise PluginInstallerFailure("plugin_state_conflict", "No approved release is available to roll back.")
+        if transaction.get("state") not in APPROVED_TRANSACTION_STATES:
+            raise PluginInstallerFailure("recovery_required", "Current transaction is not safely committed.")
         current = _file_records(self.plugin_root)
         expected = transaction.get("expected_files", [])
         if self._record_map(current) != self._record_map(expected):
             raise PluginInstallerFailure("rollback_conflict", "Plugin files are missing, modified, or unmanaged.")
-        baseline_paths = {item["path"] for item in transaction.get("baseline_plugin_configs", [])}
-        new_empty_configs = []
-        for item in self._plugin_configs():
-            if item["path"] not in baseline_paths:
-                if not self._is_empty_plugin_config(Path(item["path"])):
-                    raise PluginInstallerFailure("config_conflict", "A new plugin configuration contains settings.")
-                new_empty_configs.append(Path(item["path"]))
-        self._clear_contents(self.plugin_root)
-        if transaction.get("plugin_root_existed"):
-            relative = _safe_relative(str(transaction.get("backup_relative") or ""))
-            backup = transaction_root.joinpath(*relative.parts)
-            if not backup.is_dir():
-                raise PluginInstallerFailure("transaction_missing", "The plugin backup is missing.")
-            self._copy_contents(backup, self.plugin_root)
-        for config in new_empty_configs:
-            config.unlink(missing_ok=True)
+        # Validate every backup and config SHA before recording mutation intent.
+        # A manual rollback must never overwrite changed user RTMP targets/keys.
+        self._validate_restore_prerequisites(transaction_root, transaction)
+        transaction["state"] = "rollback_pending"
+        transaction["mutation_started"] = True
+        transaction["rollback_started_at"] = datetime.now(timezone.utc).isoformat()
+        self._write_json(transaction_root / "transaction.json", transaction)
+        # A crash anywhere below leaves rollback_pending, including after the
+        # previous pointer is switched; rollback() can safely finish the work.
+        self._restore_backup_verified(transaction_root, transaction)
+        self._restore_previous_pointer(transaction)
         transaction["state"] = "rolled_back"
         transaction["rolled_back_at"] = datetime.now(timezone.utc).isoformat()
         self._write_json(transaction_root / "transaction.json", transaction)
@@ -247,7 +505,7 @@ class WindowsObsMultiRtmpInstaller:
         artifact_path = destination / str(self.manifest["artifact_name"])
         digest = hashlib.sha256()
         try:
-            with self.downloader(str(self.manifest["artifact_url"])) as source, artifact_path.open("wb") as target:
+            with (self.release_source.open_artifact(self._approved_release) if self.release_source is not None else self.downloader(str(self.manifest["artifact_url"]))) as source, artifact_path.open("wb") as target:
                 for block in iter(lambda: source.read(1024 * 1024), b""):
                     target.write(block)
                     digest.update(block)
@@ -326,7 +584,7 @@ class WindowsObsMultiRtmpInstaller:
         expected = os.path.normcase(str(self.obs_executable.resolve(strict=False)))
         return [p for p in self.process_probe() if os.path.normcase(str(p.executable.resolve(strict=False))) == expected]
 
-    def _load_evidence(self, process: ProcessEvidence) -> tuple[str | None, bool]:
+    def _load_evidence(self, process: ProcessEvidence, expected_version: str | None) -> tuple[str | None, bool]:
         # TODO(tech-debt): Prefer direct module enumeration or a plugin/vendor health signal when
         # available. Parsing OBS logs couples verification to log format and a startup time window.
         if self.appdata is None:
@@ -345,7 +603,7 @@ class WindowsObsMultiRtmpInstaller:
         versions = re.findall(r"\[obs-multi-rtmp\]\s+version:\s*([0-9.]+)", content, re.IGNORECASE)
         version = versions[-1] if versions else None
         module_loaded = re.search(r"obs-multi-rtmp\.dll\s*$", content, re.IGNORECASE | re.MULTILINE) is not None
-        return version, module_loaded and version == self.manifest["package_version"]
+        return version, module_loaded and expected_version is not None and version == expected_version
 
     def _plugin_configs(self) -> list[dict[str, Any]]:
         if self.appdata is None:
@@ -355,6 +613,8 @@ class WindowsObsMultiRtmpInstaller:
             return []
         results = []
         for path in sorted(root.rglob(PLUGIN_CONFIG_NAME)):
+            if path.is_symlink():
+                raise PluginInstallerFailure("config_conflict", "Plugin configuration contains a link.")
             if path.is_file():
                 results.append({"path": str(path), "length": path.stat().st_size, "sha256": _sha256_file(path)})
         return results
@@ -381,19 +641,225 @@ class WindowsObsMultiRtmpInstaller:
             transaction = json.loads((root / "transaction.json").read_text(encoding="utf-8"))
             if transaction.get("transaction_id") != transaction_id:
                 raise ValueError("transaction mismatch")
+            if transaction.get("state") not in APPROVED_TRANSACTION_STATES | {"legacy_adopted"}:
+                raise ValueError("transaction is not committed")
             return root, transaction
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise PluginInstallerFailure("transaction_missing", "Managed rollback transaction is unavailable.") from exc
 
-    def _restore_backup(self, transaction_root: Path, transaction: dict[str, Any]) -> None:
-        self._clear_contents(self.plugin_root)
+    def _pending_transactions(self) -> list[tuple[Path, dict[str, Any]]]:
+        if not self.transactions_root.is_dir():
+            return []
+        pending = []
+        for root in sorted(self.transactions_root.iterdir()):
+            if not root.is_dir():
+                continue
+            try:
+                transaction = json.loads((root / "transaction.json").read_text(encoding="utf-8"))
+            except (OSError, TypeError, json.JSONDecodeError):
+                pending.append((root, {"state": "recovery_required", "transaction_id": root.name}))
+                continue
+            if transaction.get("state") in ACTIVE_TRANSACTION_STATES:
+                pending.append((root, transaction))
+        return pending
+
+    def _begin_transaction(
+        self, *, kind: str, baseline_records: list[dict[str, Any]],
+        expected_files: list[dict[str, Any]], previous_transaction_id: str | None,
+        installed_version: str | None,
+    ) -> tuple[Path, dict[str, Any]]:
+        self.state_root.mkdir(parents=True, exist_ok=True)
+        transaction_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8]
+        transaction_root = self.transactions_root / transaction_id
+        transaction_root.mkdir(parents=True)
+        transaction = {
+            "schema_version": 2,
+            "kind": kind,
+            "state": "preparing",
+            "transaction_id": transaction_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "plugin_root_existed": self.plugin_root.is_dir(),
+            "backup_relative": "backup/obs-multi-rtmp" if self.plugin_root.is_dir() else None,
+            "backup_verified": False,
+            "mutation_started": False,
+            "baseline_files": baseline_records,
+            "baseline_plugin_configs": self._plugin_configs(),
+            "expected_files": expected_files,
+            "installed_version": installed_version,
+            "previous_transaction_id": previous_transaction_id,
+        }
+        self._write_json(transaction_root / "transaction.json", transaction)
+        return transaction_root, transaction
+
+    def _snapshot_and_verify(
+        self, transaction_root: Path, transaction: dict[str, Any], baseline_records: list[dict[str, Any]],
+    ) -> None:
+        if self._record_map(_file_records(self.plugin_root)) != self._record_map(baseline_records):
+            raise PluginInstallerFailure("plugin_state_conflict", "Plugin files changed before backup.")
+        backup_relative = transaction.get("backup_relative")
+        if backup_relative:
+            relative = _safe_relative(str(backup_relative))
+            backup = transaction_root.joinpath(*relative.parts)
+            backup.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(self.plugin_root, backup)
+            self._sync_tree(backup)
+            if self._record_map(_file_records(backup)) != self._record_map(baseline_records):
+                raise PluginInstallerFailure("backup_invalid", "Plugin backup failed byte-for-byte verification.")
+        elif baseline_records:
+            raise PluginInstallerFailure("backup_invalid", "Existing plugin files have no backup path.")
+        if self._record_map(_file_records(self.plugin_root)) != self._record_map(baseline_records):
+            raise PluginInstallerFailure("plugin_state_conflict", "Plugin files changed during backup.")
+        if self._plugin_configs() != transaction["baseline_plugin_configs"]:
+            raise PluginInstallerFailure("config_conflict", "Plugin configuration changed during backup.")
+        config_backup_root = transaction_root / "backup" / "configs"
+        for index, item in enumerate(transaction["baseline_plugin_configs"]):
+            source = self._safe_config_path(str(item["path"]))
+            target = config_backup_root / f"{index:04d}.bin"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+            self._sync_file(target)
+            if target.stat().st_size != item["length"] or _sha256_file(target) != item["sha256"]:
+                raise PluginInstallerFailure("backup_invalid", "Plugin configuration backup failed verification.")
+        if self._plugin_configs() != transaction["baseline_plugin_configs"]:
+            raise PluginInstallerFailure("config_conflict", "Plugin configuration changed during backup.")
+        transaction["backup_verified"] = True
+        transaction["state"] = "backup_verified"
+        self._write_json(transaction_root / "transaction.json", transaction)
+
+    def _add_release_identity(self, transaction: dict[str, Any]) -> None:
+        release = self._approved_release
+        transaction["source_commit"] = getattr(release, "source_commit", None)
+        transaction["release_ref"] = (
+            f"obs-multi-rtmp/v{self.manifest['package_version']}" if release is not None else None
+        )
+
+    def _validate_restore_prerequisites(
+        self, transaction_root: Path, transaction: dict[str, Any], *,
+        restore_configs: bool = True,
+    ) -> list[tuple[Path, Path, dict[str, Any]]]:
+        """Preflight all backups and detect config drift BEFORE touching plugin DLLs."""
+        if transaction.get("backup_verified") is not True:
+            raise PluginInstallerFailure("backup_invalid", "Transaction backup was not verified.")
+        baseline = transaction.get("baseline_files", [])
         if transaction.get("plugin_root_existed"):
             relative = _safe_relative(str(transaction.get("backup_relative") or ""))
             backup = transaction_root.joinpath(*relative.parts)
-            if backup.is_dir():
-                self._copy_contents(backup, self.plugin_root)
+            if not backup.is_dir() or self._record_map(_file_records(backup)) != self._record_map(baseline):
+                raise PluginInstallerFailure("backup_invalid", "Transaction backup is missing or corrupt.")
+        elif baseline:
+            raise PluginInstallerFailure("backup_invalid", "Transaction baseline has no backup.")
+
+        config_backups: list[tuple[Path, Path, dict[str, Any]]] = []
+        if not restore_configs:
+            return config_backups
+        baseline_configs = transaction.get("baseline_plugin_configs", [])
+        if not isinstance(baseline_configs, list):
+            raise PluginInstallerFailure("backup_invalid", "Invalid configuration snapshot.")
+        current_configs = {item["path"]: item for item in self._plugin_configs()}
+        baseline_paths = {str(item["path"]) for item in baseline_configs}
+        for item in self._plugin_configs():
+            if item["path"] not in baseline_paths and not self._is_empty_plugin_config(Path(item["path"])):
+                raise PluginInstallerFailure("config_conflict", "A new plugin configuration contains settings.")
+        for index, item in enumerate(baseline_configs):
+            destination = self._safe_config_path(str(item["path"]))
+            # An existing profile modified after install/adopt belongs to the user.
+            # Never restore old targets or secrets over a newer config.
+            if current_configs.get(str(item["path"])) != item:
+                raise PluginInstallerFailure("config_conflict", "Plugin configuration changed since its baseline.")
+            source = transaction_root / "backup" / "configs" / f"{index:04d}.bin"
+            if (not source.is_file() or source.stat().st_size != item["length"] or
+                    _sha256_file(source) != item["sha256"]):
+                raise PluginInstallerFailure("backup_invalid", "Plugin configuration backup is missing or corrupt.")
+            config_backups.append((source, destination, item))
+        return config_backups
+
+    def _restore_backup_verified(
+        self, transaction_root: Path, transaction: dict[str, Any], *, restore_configs: bool = True,
+    ) -> None:
+        # Repeat preflight immediately before filesystem mutation, including
+        # crash-recovery paths invoked from a fresh process.
+        config_backups = self._validate_restore_prerequisites(
+            transaction_root, transaction, restore_configs=restore_configs,
+        )
+        baseline = transaction.get("baseline_files", [])
+        if transaction.get("plugin_root_existed"):
+            relative = _safe_relative(str(transaction.get("backup_relative") or ""))
+            backup = transaction_root.joinpath(*relative.parts)
+            self._clear_contents(self.plugin_root)
+            self._copy_contents(backup, self.plugin_root)
+        else:
+            self._clear_contents(self.plugin_root)
+        if self._record_map(_file_records(self.plugin_root)) != self._record_map(baseline):
+            raise PluginInstallerFailure("backup_invalid", "Restored plugin differs from its baseline.")
+        if restore_configs:
+            # Configs already equal their snapshot. Do not rewrite them;
+            # only remove genuinely empty new configs left by the plugin.
+            baseline_paths = {str(item["path"]) for _, _, item in config_backups}
+            for item in self._plugin_configs():
+                if item["path"] not in baseline_paths:
+                    extra = Path(item["path"])
+                    if not self._is_empty_plugin_config(extra):
+                        raise PluginInstallerFailure("config_conflict", "A new plugin configuration changed during recovery.")
+                    extra.unlink(missing_ok=True)
+            if self._plugin_configs() != transaction.get("baseline_plugin_configs", []):
+                raise PluginInstallerFailure("config_conflict", "Plugin configuration differs from the rollback baseline.")
+
+    def _safe_config_path(self, value: str) -> Path:
+        if self.appdata is None:
+            raise PluginInstallerFailure("config_conflict", "Plugin configuration root is unavailable.")
+        root = (self.appdata / "obs-studio" / "basic" / "profiles").resolve(strict=False)
+        path = Path(value).resolve(strict=False)
+        if not path.is_relative_to(root) or path.name != PLUGIN_CONFIG_NAME:
+            raise PluginInstallerFailure("config_conflict", "Plugin configuration path is outside the managed profile root.")
+        return path
+
+    def _restore_or_mark_failed(self, transaction_root: Path, transaction: dict[str, Any]) -> None:
+        if not transaction.get("mutation_started"):
+            self._restore_previous_pointer(transaction)
+            transaction["state"] = "failed_no_mutation"
+            self._write_json(transaction_root / "transaction.json", transaction)
+            return
+        try:
+            self._restore_backup_verified(transaction_root, transaction)
+        except Exception:
+            transaction["state"] = "recovery_required"
+            self._write_json(transaction_root / "transaction.json", transaction)
+            raise
+        self._restore_previous_pointer(transaction)
         transaction["state"] = "failed_restored"
+        transaction["restored_at"] = datetime.now(timezone.utc).isoformat()
         self._write_json(transaction_root / "transaction.json", transaction)
+
+    def _restore_previous_pointer(self, transaction: dict[str, Any]) -> None:
+        previous_id = transaction.get("previous_transaction_id")
+        if previous_id:
+            if not re.fullmatch(r"\d{8}-\d{6}-[a-f0-9]{8}", str(previous_id)):
+                raise PluginInstallerFailure("transaction_missing", "Previous transaction identity is invalid.")
+            previous_root = self.transactions_root / str(previous_id)
+            try:
+                previous = json.loads((previous_root / "transaction.json").read_text(encoding="utf-8"))
+            except (OSError, TypeError, json.JSONDecodeError) as exc:
+                raise PluginInstallerFailure("transaction_missing", "Previous transaction is unavailable.") from exc
+            if (previous.get("transaction_id") != previous_id or
+                    previous.get("state") not in APPROVED_TRANSACTION_STATES | {"legacy_adopted"}):
+                raise PluginInstallerFailure("transaction_missing", "Previous transaction is not committed.")
+            self._write_json(self.pointer, {"transaction_id": previous_id})
+        else:
+            self.pointer.unlink(missing_ok=True)
+
+    @staticmethod
+    def _sync_file(path: Path) -> None:
+        # Windows rejects fsync on a read-only descriptor (Errno 9). Backups
+        # are owned by this transaction, so open writable without changing
+        # bytes before flushing them to disk.
+        with path.open("r+b") as handle:
+            os.fsync(handle.fileno())
+
+    @classmethod
+    def _sync_tree(cls, root: Path) -> None:
+        for path in root.rglob("*"):
+            if path.is_file():
+                cls._sync_file(path)
 
     @staticmethod
     def _clear_contents(path: Path) -> None:

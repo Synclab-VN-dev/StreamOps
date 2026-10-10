@@ -89,7 +89,11 @@ def test_installed_wheel_runs_outside_source_checkout():
                 payload = json.loads(response.read())
             assert payload["plugin_id"] == "obs-multi-rtmp"
             assert payload["expected_version"] == "0.7.4.0"
-            assert set(payload) == {"plugin_id", "expected_version", "state", "installed", "loaded", "compatible"}
+            assert {"plugin_id", "expected_version", "state", "installed", "loaded", "compatible",
+                "display_name", "installed_version", "available_version", "restart_required",
+                "last_verification"} <= set(payload)
+            assert isinstance(payload["display_name"], str)
+            assert isinstance(payload["restart_required"], bool)
         finally:
             process.terminate()
             try:

@@ -12,7 +12,11 @@ param(
     [ValidateRange(0.01, 30)]
     [double]$CaptureTimeout = 3,
     [ValidateSet("critical", "error", "warning", "info", "debug", "trace")]
-    [string]$LogLevel = "info"
+    [string]$LogLevel = "info",
+    [ValidateSet("", "github-release", "directory")]
+    [string]$ObsPluginSourceProvider = "",
+    [string]$ObsPluginSourceLocation = "",
+    [string]$ObsPluginGitHubTokenEnv = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -86,6 +90,7 @@ if ([string]::IsNullOrWhiteSpace($interactiveUser)) {
 $runtimePath = Join-Path $DataDir "runtime.json"
 $existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 $taskUsesPythonPath = $false
+$taskUsesPluginSource = $false
 $taskUsesNormalPriority = $false
 if ($null -ne $existingTask) {
     $taskUsesNormalPriority = [int]$existingTask.Settings.Priority -eq 4
@@ -94,6 +99,18 @@ if ($null -ne $existingTask) {
         $taskArgumentsText = [string]$taskAction.Arguments
         $taskUsesPythonPath = $taskArgumentsText.Contains("-PythonPath") -and
             $taskArgumentsText.IndexOf($PythonPath, [StringComparison]::OrdinalIgnoreCase) -ge 0
+        if ([string]::IsNullOrWhiteSpace($ObsPluginSourceProvider)) {
+            $taskUsesPluginSource = -not $taskArgumentsText.Contains("-ObsPluginSourceProvider")
+        }
+        else {
+            $taskUsesPluginSource = $taskArgumentsText.Contains("-ObsPluginSourceProvider") -and
+                $taskArgumentsText.IndexOf($ObsPluginSourceProvider, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+                $taskArgumentsText.IndexOf($ObsPluginSourceLocation, [StringComparison]::OrdinalIgnoreCase) -ge 0
+            if (-not [string]::IsNullOrWhiteSpace($ObsPluginGitHubTokenEnv)) {
+                $taskUsesPluginSource = $taskUsesPluginSource -and
+                    $taskArgumentsText.IndexOf($ObsPluginGitHubTokenEnv, [StringComparison]::OrdinalIgnoreCase) -ge 0
+            }
+        }
     }
 }
 if (Test-Path -LiteralPath $runtimePath) {
@@ -101,7 +118,7 @@ if (Test-Path -LiteralPath $runtimePath) {
         $runtime = Get-Content -LiteralPath $runtimePath -Raw | ConvertFrom-Json
         $probeHost = Get-ProbeHost $runtime.host
         $health = Invoke-RestMethod -Uri "http://${probeHost}:$($runtime.port)/api/v1/health" -TimeoutSec 2
-        $matchesDesiredConfig = $taskUsesPythonPath -and $taskUsesNormalPriority -and
+        $matchesDesiredConfig = $taskUsesPythonPath -and $taskUsesPluginSource -and $taskUsesNormalPriority -and
             $runtime.host -eq $BindHost -and
             [int]$runtime.port -eq $Port -and
             [int]$runtime.output_index -eq $OutputIndex -and
@@ -136,6 +153,17 @@ $actionArguments = @(
     "-CaptureTimeout", $CaptureTimeout.ToString([Globalization.CultureInfo]::InvariantCulture),
     "-LogLevel", $LogLevel
 ) -join " "
+
+if (-not [string]::IsNullOrWhiteSpace($ObsPluginSourceProvider)) {
+    if ([string]::IsNullOrWhiteSpace($ObsPluginSourceLocation)) {
+        throw "ObsPluginSourceLocation is required when a provider is configured."
+    }
+    $actionArguments += " -ObsPluginSourceProvider " + (ConvertTo-TaskArgument $ObsPluginSourceProvider)
+    $actionArguments += " -ObsPluginSourceLocation " + (ConvertTo-TaskArgument $ObsPluginSourceLocation)
+    if (-not [string]::IsNullOrWhiteSpace($ObsPluginGitHubTokenEnv)) {
+        $actionArguments += " -ObsPluginGitHubTokenEnv " + (ConvertTo-TaskArgument $ObsPluginGitHubTokenEnv)
+    }
+}
 
 $action = New-ScheduledTaskAction -Execute $pwsh -Argument $actionArguments -WorkingDirectory $repoRoot
 $principal = New-ScheduledTaskPrincipal -UserId $interactiveUser -LogonType Interactive -RunLevel Limited
