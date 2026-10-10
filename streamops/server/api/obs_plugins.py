@@ -42,6 +42,13 @@ async def available_plugins(request: Request, response: Response) -> dict[str, o
     return await _service(request).available()
 
 
+@router.get("/{plugin_id}/operation")
+async def plugin_operation_status(plugin_id: str, request: Request, response: Response) -> dict[str, object]:
+    await _reject_input(request)
+    response.headers["Cache-Control"] = "no-store"
+    return await _service(request).operation_status(plugin_id)
+
+
 @router.get("/{plugin_id}")
 async def plugin_status(plugin_id: str, request: Request, response: Response) -> dict[str, object]:
     await _reject_input(request)

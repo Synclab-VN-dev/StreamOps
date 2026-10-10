@@ -25,6 +25,13 @@ class WindowsObsMultiRtmpHost:
         except Exception as exc:
             raise ObsPluginError("plugin_status_failed", "OBS plugin status could not be inspected.", 503) from exc
 
+    def rollback_readiness(self) -> dict[str, object]:
+        try:
+            return self.installer.rollback_readiness()
+        except Exception:
+            # Never leak backup paths or user profile contents in public status.
+            return {"available": False, "target_version": None, "reason": "baseline_unavailable"}
+
     def install(self) -> InstallerResult:
         return self._invoke("install")
 

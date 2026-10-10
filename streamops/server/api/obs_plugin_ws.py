@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import asyncio
+from contextlib import suppress
 import logging
 from typing import Any
 
@@ -17,6 +19,10 @@ logger = logging.getLogger(__name__)
 
 _OPERATIONS = {
     "obs_plugin.status": "status",
+    "obs_plugin.inventory": "inventory",
+    "obs_plugin.available": "available",
+    "obs_plugin.operation_status": "operation_status",
+    "obs_plugin.subscribe": "subscribe",
     "obs_plugin.adopt": "adopt",
     "obs_plugin.install": "install",
     "obs_plugin.update": "update",
@@ -25,7 +31,7 @@ _OPERATIONS = {
 }
 
 
-def _parse_request(raw: str) -> tuple[str, str, str]:
+def _parse_request(raw: str) -> tuple[str, str, str | None]:
     try:
         message = json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -46,6 +52,10 @@ def _parse_request(raw: str) -> tuple[str, str, str]:
     payload = message.get("payload", {})
     if not isinstance(payload, dict):
         raise WsOperationError("invalid_request", "payload must be an object.")
+    if operation in {"obs_plugin.inventory", "obs_plugin.available"}:
+        if payload:
+            raise WsOperationError("invalid_request", "This operation requires an empty payload.")
+        return request_id, operation, None
     if set(payload) != {"plugin_id"}:
         raise WsOperationError("invalid_request", "payload must contain only plugin_id.")
     plugin_id = payload.get("plugin_id")
@@ -54,14 +64,25 @@ def _parse_request(raw: str) -> tuple[str, str, str]:
     return request_id, operation, plugin_id
 
 
+async def _changed_sender(websocket: WebSocket, queue: asyncio.Queue, send_lock: asyncio.Lock) -> None:
+    while True:
+        event = await queue.get()
+        async with send_lock:
+            await websocket.send_json(event)
+
+
 @router.websocket("/api/v1/obs/plugins/ws")
 async def obs_plugin_websocket(websocket: WebSocket, _access: None = Depends(require_access)) -> None:
     await websocket.accept()
     service = websocket.app.state.obs_plugin_service
+    send_lock = asyncio.Lock()
+    subscriber: asyncio.Queue | None = None
+    sender_task: asyncio.Task | None = None
     try:
         while True:
             raw = await websocket.receive_text()
             request_id: str | None = None
+            start_sender = False
             try:
                 try:
                     candidate: Any = json.loads(raw)
@@ -70,25 +91,41 @@ async def obs_plugin_websocket(websocket: WebSocket, _access: None = Depends(req
                 except json.JSONDecodeError:
                     pass
                 request_id, operation, plugin_id = _parse_request(raw)
-                result = await getattr(service, _OPERATIONS[operation])(plugin_id)
-                response = {
-                    "type": "response",
-                    "request_id": request_id,
-                    "ok": True,
-                    "data": result.api_payload(),
-                }
+                if operation == "obs_plugin.subscribe":
+                    if plugin_id != "obs-multi-rtmp":
+                        raise WsOperationError("plugin_not_supported", "The requested OBS plugin is not supported.")
+                    if subscriber is None:
+                        subscriber, revision = service.subscribe_changes()
+                        start_sender = True
+                    else:
+                        revision = service._operation_snapshot()["revision"]
+                    data = {"plugin_id": plugin_id, "subscribed": True, "revision": revision}
+                elif plugin_id is None:
+                    data = await getattr(service, _OPERATIONS[operation])()
+                    if operation == "obs_plugin.inventory":
+                        data = {"plugins": [item.api_payload() for item in data]}
+                else:
+                    result = await getattr(service, _OPERATIONS[operation])(plugin_id)
+                    data = result if operation == "obs_plugin.operation_status" else result.api_payload()
+                response = {"type": "response", "request_id": request_id, "ok": True, "data": data}
             except Exception as exc:
                 code, message = public_ws_error(exc)
                 if code == "internal_error":
-                    # Never log exception details/tracebacks: providers and OBS drivers
-                    # can embed secrets, paths and stream keys in raw exceptions.
                     logger.error("Unhandled OBS Plugin Manager WebSocket operation error")
                 response = {
-                    "type": "response",
-                    "request_id": request_id,
-                    "ok": False,
+                    "type": "response", "request_id": request_id, "ok": False,
                     "error": {"code": code, "message": message},
                 }
-            await websocket.send_json(response)
+            async with send_lock:
+                await websocket.send_json(response)
+            if start_sender and subscriber is not None:
+                sender_task = asyncio.create_task(_changed_sender(websocket, subscriber, send_lock))
     except WebSocketDisconnect:
         pass
+    finally:
+        if subscriber is not None:
+            service.unsubscribe_changes(subscriber)
+        if sender_task is not None:
+            sender_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await sender_task

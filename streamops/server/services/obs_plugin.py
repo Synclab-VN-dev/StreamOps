@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import uuid
 import re
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, replace, field
 from datetime import datetime, timezone
 import threading
 from typing import Any, Literal, Protocol
@@ -68,6 +70,11 @@ class ObsPluginStatus:
     adoptable: bool = False
     display_name: str = "OBS Multi RTMP"
     last_verification: str | None = None
+    rollback: dict[str, object] = field(default_factory=lambda: {
+        "available": False, "target_version": None, "reason": "baseline_unavailable",
+    })
+    revision: int = 0
+    operation: dict[str, object] = field(default_factory=lambda: {"state": "IDLE", "operation_id": None})
 
     def api_payload(self) -> dict[str, object]:
         return asdict(self)
@@ -104,10 +111,115 @@ class ObsPluginService:
         self._verified_at: str | None = None
         self._verification_failed = False
         self._operation_lock = threading.Lock()
+        self._change_lock = threading.Lock()
+        self._revision = 0
+        self._subscribers: dict[asyncio.Queue, asyncio.AbstractEventLoop] = {}
+        self._active_operation: dict[str, object] | None = None
+        self._last_operation: dict[str, object] | None = None
+        self._observed: dict[str, str] = {}
+
+    def subscribe_changes(self) -> tuple[asyncio.Queue, int]:
+        """Opt-in notifications; old WebSocket consumers remain response-only."""
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue = asyncio.Queue(maxsize=32)
+        with self._change_lock:
+            self._subscribers[queue] = loop
+            return queue, self._revision
+
+    def unsubscribe_changes(self, queue: asyncio.Queue) -> None:
+        with self._change_lock:
+            self._subscribers.pop(queue, None)
+
+    @staticmethod
+    def _enqueue_changed(queue: asyncio.Queue, event: dict[str, object]) -> None:
+        if queue.full():
+            try:
+                queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+        queue.put_nowait(event)
+
+    def _changed(self, resource: str) -> None:
+        with self._change_lock:
+            self._revision += 1
+            event: dict[str, object] = {
+                "type": "event", "event": "obs_plugin.changed",
+                "plugin_id": PLUGIN_ID, "revision": self._revision,
+                "resources": [resource],
+            }
+            subscribers = tuple(self._subscribers.items())
+        for queue, loop in subscribers:
+            try:
+                loop.call_soon_threadsafe(self._enqueue_changed, queue, event)
+            except RuntimeError:
+                # Client loop is already closing; disconnect cleanup removes it.
+                pass
+
+    def _observe(self, resource: str, value: object) -> None:
+        fingerprint = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+        with self._change_lock:
+            prior = self._observed.get(resource)
+            self._observed[resource] = fingerprint
+        if prior is not None and prior != fingerprint:
+            self._changed(resource)
+
+    def _operation_snapshot(self) -> dict[str, object]:
+        with self._change_lock:
+            active = self._active_operation
+            last = self._last_operation
+            revision = self._revision
+            value = dict(active or last or {"state": "IDLE", "operation_id": None})
+        value["revision"] = revision
+        return value
+
+    async def operation_status(self, plugin_id: str) -> dict[str, object]:
+        self._require_supported(plugin_id)
+        operation = self._operation_snapshot()
+        # The durable journal is authoritative after a process restart. A
+        # disconnected caller must reconcile both the operation and plugin state.
+        status = await self.status(plugin_id)
+        return {
+            "plugin_id": plugin_id,
+            "revision": max(int(operation["revision"]), status.revision),
+            "operation": operation,
+            "plugin_state": status.state,
+            "recovery_required": status.state == "RECOVERY_REQUIRED",
+            "rollback": status.rollback,
+        }
+
+    def _rollback_readiness(self, status: ObsPluginStatus, runtime: Any) -> dict[str, object]:
+        unavailable = lambda reason: {"available": False, "target_version": None, "reason": reason}
+        if status.state == "RECOVERY_REQUIRED":
+            return unavailable("recovery_required")
+        if status.state in {"UNMANAGED", "LEGACY_ADOPTED", "NOT_INSTALLED", "FAILED", "INCOMPATIBLE"}:
+            return unavailable("no_approved_transaction")
+        if runtime.output.get("streaming") is True:
+            return unavailable("obs_busy_streaming")
+        if runtime.output.get("recording") is True:
+            return unavailable("obs_busy_recording")
+        if self._operation_lock.locked():
+            return unavailable("operation_in_progress")
+        getter = getattr(self.host, "rollback_readiness", None)
+        if not callable(getter):
+            return unavailable("baseline_unavailable")
+        try:
+            result = getter()
+            if (isinstance(result, dict) and isinstance(result.get("available"), bool)
+                    and (result.get("reason") is None or isinstance(result.get("reason"), str))
+                    and (result.get("target_version") is None or isinstance(result.get("target_version"), str))):
+                return {k: result.get(k) for k in ("available", "target_version", "reason")}
+        except Exception:
+            pass
+        return unavailable("baseline_unavailable")
 
     async def status(self, plugin_id: str) -> ObsPluginStatus:
         self._require_supported(plugin_id)
-        return await asyncio.to_thread(self._status_sync)
+        status = await asyncio.to_thread(self._status_sync)
+        observed = status.api_payload()
+        observed.pop("revision", None)
+        observed.pop("operation", None)
+        self._observe("status", observed)
+        return replace(status, revision=self._operation_snapshot()["revision"])
 
     async def inventory(self) -> list[ObsPluginStatus]:
         """Return only registry-approved plugin statuses for Plugin Manager."""
@@ -116,7 +228,9 @@ class ObsPluginService:
 
     async def available(self) -> dict[str, object]:
         """Server-approved published plugin catalog (not the registry inventory)."""
-        return await asyncio.to_thread(self._available_sync)
+        result = await asyncio.to_thread(self._available_sync)
+        self._observe("catalog", result)
+        return result
 
     def _available_sync(self) -> dict[str, object]:
         if self.release_source is None:
@@ -214,8 +328,36 @@ class ObsPluginService:
             raise ObsPluginError(
                 "plugin_state_conflict", "Another OBS plugin operation is already running.", 409
             )
+        operation_id = uuid.uuid4().hex
+        with self._change_lock:
+            self._active_operation = {
+                "state": "RUNNING", "operation": operation,
+                "operation_id": operation_id,
+                "started_at": datetime.now(timezone.utc).isoformat(),
+            }
+        self._changed("operation")
         try:
-            return callback()
+            result = callback()
+        except BaseException as exc:
+            # Store a stable code, never raw exceptions (which can contain keys).
+            with self._change_lock:
+                self._last_operation = {
+                    **self._active_operation, "state": "FAILED",
+                    "error_code": exc.code if isinstance(exc, ObsPluginError) else "internal_error",
+                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                }
+                self._active_operation = None
+            self._changed("operation")
+            raise
+        else:
+            with self._change_lock:
+                self._last_operation = {
+                    **self._active_operation, "state": "SUCCEEDED",
+                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                }
+                self._active_operation = None
+            self._changed("operation")
+            return result
         finally:
             self._operation_lock.release()
 
@@ -229,7 +371,12 @@ class ObsPluginService:
             raise ObsPluginError(
                 "plugin_status_failed", "OBS plugin status could not be inspected.", 503
             ) from exc
-        return self._combine(host, runtime)
+        status = self._combine(host, runtime)
+        return replace(
+            status, rollback=self._rollback_readiness(status, runtime),
+            revision=int(self._operation_snapshot()["revision"]),
+            operation=self._operation_snapshot(),
+        )
 
     def _combine(self, host: PluginHostStatus, runtime: Any) -> ObsPluginStatus:
         runtime_version = runtime.websocket.get("obs_version") if runtime.websocket else None

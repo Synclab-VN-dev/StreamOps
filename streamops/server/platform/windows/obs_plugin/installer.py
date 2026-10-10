@@ -191,6 +191,36 @@ class WindowsObsMultiRtmpInstaller:
             available_version=available_version,
         )
 
+    def rollback_readiness(self) -> dict[str, Any]:
+        """Read-only eligibility derived from a verified committed journal.
+
+        Do not promise the UI that rollback is available from a version alone.
+        Final operation still rechecks hashes, config and OBS output guards.
+        """
+        try:
+            if self._pending_transactions():
+                return {"available": False, "target_version": None, "reason": "recovery_required"}
+            if not self.pointer.is_file():
+                return {"available": False, "target_version": None, "reason": "no_transaction"}
+            root, journal = self._read_current_transaction()
+            if journal.get("state") not in APPROVED_TRANSACTION_STATES:
+                return {"available": False, "target_version": None, "reason": "no_approved_transaction"}
+            if self._record_map(_file_records(self.plugin_root)) != self._record_map(journal.get("expected_files", [])):
+                return {"available": False, "target_version": None, "reason": "plugin_files_changed"}
+            self._validate_restore_prerequisites(root, journal)
+            previous_id = journal.get("previous_transaction_id")
+            previous_version = None
+            if previous_id:
+                previous_root = self.transactions_root / str(previous_id)
+                prior = json.loads((previous_root / "transaction.json").read_text(encoding="utf-8"))
+                if (prior.get("transaction_id") != previous_id or
+                        prior.get("state") not in APPROVED_TRANSACTION_STATES | {"legacy_adopted"}):
+                    return {"available": False, "target_version": None, "reason": "baseline_invalid"}
+                previous_version = prior.get("installed_version")
+            return {"available": True, "target_version": previous_version, "reason": None}
+        except (PluginInstallerFailure, OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+            return {"available": False, "target_version": None, "reason": "baseline_invalid"}
+
     def adopt(self) -> InstallerResult:
         """Snapshot an existing unmanaged tree without assigning release provenance."""
         self._assert_obs_stopped()
