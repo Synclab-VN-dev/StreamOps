@@ -10,9 +10,12 @@ from .installer import InstallerResult, InstallerStatus, PluginInstallerFailure,
 
 
 class WindowsObsMultiRtmpHost:
-    def __init__(self, data_dir: Path) -> None:
+    def __init__(self, data_dir: Path, *, obs_executable: Path | None = None) -> None:
         self.release_source = configured_plugin_release_source()
-        self.installer = WindowsObsMultiRtmpInstaller(data_dir, release_source=self.release_source)
+        kwargs = {"release_source": self.release_source}
+        if obs_executable is not None:
+            kwargs["obs_executable"] = Path(obs_executable)
+        self.installer = WindowsObsMultiRtmpInstaller(data_dir, **kwargs)
 
     def status(self) -> InstallerStatus:
         try:

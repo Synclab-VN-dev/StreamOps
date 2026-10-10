@@ -699,3 +699,26 @@ def test_cr12_recovery_preserves_config_and_pointer_snapshot(tmp_path, monkeypat
     assert config.read_bytes() == baseline_config
     assert reopened.status().installation == "legacy_adopted"
     assert not reopened._pending_transactions()
+
+def test_p1_host_uses_shared_obs_executable_identity(tmp_path, monkeypatch):
+    from streamops.server.platform.windows.obs_plugin.host import WindowsObsMultiRtmpHost
+
+    monkeypatch.setattr(
+        "streamops.server.platform.windows.obs_plugin.host.configured_plugin_release_source",
+        lambda: None,
+    )
+    custom_exe = tmp_path / "custom-obs" / "obs64.exe"
+    custom_exe.parent.mkdir()
+    custom_exe.touch()
+    host = WindowsObsMultiRtmpHost(tmp_path / "state", obs_executable=custom_exe)
+    assert host.installer.obs_executable == custom_exe
+    legacy = {**APPROVED_FILES, "bin/64bit/obs-multi-rtmp.dll": b"legacy"}
+    _write_tree(tmp_path / "isolated", legacy)
+    host.installer.plugin_root = tmp_path / "isolated"
+    host.installer.process_probe = lambda: [
+        ProcessEvidence(123, custom_exe, datetime.now(timezone.utc)),
+    ]
+    with pytest.raises(PluginInstallerFailure) as error:
+        host.installer.adopt()
+    assert error.value.code == "obs_running"
+

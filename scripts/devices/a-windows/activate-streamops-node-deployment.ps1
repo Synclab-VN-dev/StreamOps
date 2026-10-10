@@ -33,6 +33,12 @@ Export-ScheduledTask -TaskName $TaskName | Set-Content -LiteralPath (Join-Path $
     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $backupRoot 'output-idle.json') -Encoding UTF8
 @{ rollback_deployment = (Resolve-Path $RollbackDeploymentRoot).Path; task_name = $TaskName } |
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $backupRoot 'rollback.json') -Encoding UTF8
+# Recheck immediately before switching the server; the initial preflight
+# alone is stale if an OBS output started while we saved rollback evidence.
+$statusBeforeStop = Invoke-RestMethod 'http://127.0.0.1:8765/api/v1/obs/process/status' -TimeoutSec 10
+if ($statusBeforeStop.output.streaming -or $statusBeforeStop.output.recording) {
+    throw 'OBS output became active after deployment preflight; aborting without switching server.'
+}
 & (Join-Path $PSScriptRoot 'stop-streamops-node.ps1') -DataDir $DataDir -TaskName $TaskName
 try {
     & (Join-Path $PSScriptRoot 'start-streamops-node.ps1') -TaskName $TaskName -DataDir $DataDir `
