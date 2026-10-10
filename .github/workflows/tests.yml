@@ -148,7 +148,7 @@ jobs:
           python -m pytest -q streamops/server/tests/test_wheel_acceptance.py
       - name: Test OBS Plugin Manager FE model (Node built-in test runner)
         if: steps.changes.outputs.server == 'true'
-        run: node --test streamops/server/tests/issue75_core.test.mjs streamops/server/tests/issue75_store.test.mjs
+        run: node --test streamops/server/tests/issue75_core.test.mjs streamops/server/tests/issue75_store.test.mjs streamops/server/tests/issue75_extended_core.test.mjs
       - name: Test StreamOps
         if: steps.changes.outputs.server == 'true'
         run: python -m pytest -q

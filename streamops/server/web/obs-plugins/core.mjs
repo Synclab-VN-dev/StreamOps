@@ -114,13 +114,14 @@ export function safeActions(plugin, release, obs, connected, busy = false) {
   if (plugin?.rollback_available !== true || plugin?.state === 'UNKNOWN') {
     actions.rollback = {enabled:false, reason:plugin?.rollback_reason || 'Backend has not confirmed a valid rollback baseline.'};
   }
+  const serverBusy = plugin?.operation?.state === 'RUNNING';
   actions.verify = {
-    enabled: Boolean(connected && !busy && plugin?.installed && obs?.state === 'READY' && obs.websocket
+    enabled: Boolean(connected && !busy && !serverBusy && plugin?.installed && obs?.state === 'READY' && obs.websocket
       && ['INSTALLED','LOADED','VERIFIED','UPDATE_AVAILABLE','RESTART_REQUIRED','VERIFY_FAILED'].includes(plugin.state)),
     reason:'Verification requires an approved installed plugin and OBS READY with WebSocket.'
   };
   actions.restart = {
-    enabled: Boolean(connected && !busy && plugin?.restart_required && obs?.state === 'READY'
+    enabled: Boolean(connected && !busy && !serverBusy && plugin?.restart_required && obs?.state === 'READY'
       && obs.streaming === false && obs.recording === false),
     reason:'Restart requires OBS READY, idle outputs and a backend restart requirement.'
   };
@@ -132,7 +133,8 @@ export function typedError(error) {
   return {code, message, outcomeUnknown: code === 'unknown_outcome' || code === 'plugin_operation_timeout'};
 }
 export function shouldOfferInstall(plugin, release) {
-  return ['NOT_INSTALLED','LEGACY_ADOPTED'].includes(plugin?.state) && release?.installable === true;
+  return ['NOT_INSTALLED','LEGACY_ADOPTED'].includes(plugin?.state) &&
+    release?.installable === true && release?.compatibility === 'compatible';
 }
 export function stateLabel(state) {
   return ({
