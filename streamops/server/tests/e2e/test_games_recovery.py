@@ -105,3 +105,90 @@ def test_real_synthetic_child_drives_two_ws_observers_without_client_polling(
             child.kill()
             child.wait(timeout=3)
     assert child is not None and child.poll() is not None
+
+def test_foreground_session_loss_stale_and_recovery_push_to_two_ws_clients(
+        server_config,capture_service,tmp_path):
+    from streamops.server.app import create_app
+    from streamops.server.tests.test_games_lifecycle import FakeGamePlatform,build_service
+    from streamops.server.platform.windows.game_process import GamePlatformError
+    class ChangingPlatform(FakeGamePlatform):
+        def __init__(self):
+            super().__init__()
+            self.running=True
+            self.window="BACKGROUND"
+            self.session=1
+        def inspect(self,game):
+            if self.session != 1:
+                raise GamePlatformError("wrong_desktop_session","synthetic session drift")
+            observation=super().inspect(game)
+            return observation.model_copy(update={"window":self.window})
+    platform=ChangingPlatform()
+    service,_=build_service(tmp_path,platform)
+    client=TestClient(create_app(server_config,capture_service=capture_service,
+                                 game_service=service,manage_runtime=False))
+    with client:
+        with client.websocket_connect("/api/v1/games/ws") as first:
+            with client.websocket_connect("/api/v1/games/ws") as second:
+                for ws in (first,second):
+                    initial=_snapshot(ws)
+                    assert initial["games"][0]["observation"]["window"]=="BACKGROUND"
+                for change,value,expected,stale in [
+                    ("window","FOREGROUND","RUNNING",False),
+                    ("session",2,"UNKNOWN",True),
+                    ("session",1,"RUNNING",False),
+                ]:
+                    setattr(platform,change,value)
+                    service.hub.trigger_refresh()
+                    for ws in (first,second):
+                        event=ws.receive_json()
+                        assert event["event"]=="games.changed"
+                        record=event["data"]["game"]["observation"]
+                        assert record["process"]["state"]==expected
+                        assert record["process"]["stale"] is stale
+                        if expected=="RUNNING":
+                            assert record["window"]=="FOREGROUND"
+        with client.websocket_connect("/api/v1/games/ws") as reconnect:
+            snapshot=_snapshot(reconnect)
+            assert snapshot["stale"] is False
+            assert snapshot["games"][0]["observation"]["process"]["state"]=="RUNNING"
+            assert snapshot["games"][0]["observation"]["window"]=="FOREGROUND"
+
+def test_unknown_timeout_operation_recovered_after_ws_and_node_restart(
+        monkeypatch,server_config,capture_service,tmp_path):
+    from streamops.server.app import create_app
+    from streamops.server.tests.test_games_lifecycle import FakeGamePlatform,build_service
+    monkeypatch.setenv("STREAMOPS_GAME_CONTROL_TOKEN",TOKEN)
+    class NonConvergent(FakeGamePlatform):
+        def start(self,game): self.start_calls+=1
+    first_service,platform=build_service(tmp_path,NonConvergent())
+    first_service.lifecycle.timeout=.05
+    first=TestClient(create_app(server_config,capture_service=capture_service,
+                                game_service=first_service,manage_runtime=False))
+    with first:
+        with first.websocket_connect("/api/v1/games/ws",
+                subprotocols=["streamops-games-v1",f"streamops-game-control.{TOKEN}"]) as ws:
+            _snapshot(ws)
+            sent=request(ws,"unknown","games.lifecycle.start",{"game_id":GAME,"idempotency_key":"crash-replay"})
+            assert sent["ok"]
+            op_id=sent["data"]["operation_id"]
+        deadline=time.monotonic()+2
+        while time.monotonic()<deadline:
+            state=first.get(f"/api/v1/game-operations/{op_id}").json()
+            if state["status"] in ("SUCCEEDED","FAILED","UNKNOWN"):
+                break
+            time.sleep(.01)
+        assert state["status"]=="UNKNOWN"
+        assert state["code"]=="operation_timeout"
+    # A second application instance recreates both WS and SQLite handles.
+    second_service,_=build_service(tmp_path,NonConvergent())
+    second=TestClient(create_app(server_config,capture_service=capture_service,
+                                 game_service=second_service,manage_runtime=False))
+    with second, second.websocket_connect("/api/v1/games/ws") as ws:
+        snap=_snapshot(ws)
+        assert snap["games"][0]["observation"]["process"]["state"]=="STOPPED"
+        recovered=request(ws,"recovered","games.operations.get",{"operation_id":op_id})
+        assert recovered["ok"] and recovered["data"]["status"]=="UNKNOWN"
+        assert recovered["data"]["code"]=="operation_timeout"
+        reconciled=request(ws,"readonly","games.reconcile",{"game_id":GAME})
+        assert reconciled["ok"] and reconciled["data"]["observation"]["process"]["state"]=="STOPPED"
+    assert platform.start_calls==1
