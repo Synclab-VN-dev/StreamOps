@@ -69,7 +69,7 @@ def test_manual_reviewed_manifest_provenance_and_roundtrip_integrity():
     assert "--require-approved" in publish
     assert "--expected-commit" in publish
     assert "cmp -s" in publish
-    assert 'file | wc -l' in publish
+    assert '-type f | wc -l' in publish
     assert 'gh release view "$tag"' in publish
 
 
