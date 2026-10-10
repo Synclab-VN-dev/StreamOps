@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Activity, ArrowLeft, ArrowRight, ChevronDown, CircleAlert, Gamepad2, Info, Power, RefreshCw, RotateCcw, X } from "lucide-react";
 type Tone = "ok" | "warn" | "bad" | "neutral" | "blue";
-type Scenario = "normal" | "empty" | "multi" | "stopped" | "offline";
+type Scenario = "normal" | "empty" | "multi" | "stopped" | "offline" | "loading" | "error";
 type Game = {
   id: string;
   name: string;
@@ -52,6 +52,12 @@ const scenarios: {
 }, {
   id: "offline",
   label: "Host A disconnected"
+}, {
+  id: "loading",
+  label: "Loading game inventory"
+}, {
+  id: "error",
+  label: "Inventory request error"
 }];
 const gamesLink = "https://designs.magicpath.ai/v1/sturdily-room-4179";
 function Pill({
@@ -120,6 +126,7 @@ export const StreamOpsSteamManager = () => {
   const addActivity = (message: string) => setActivities(v => ["10:08 · " + message, ...v].slice(0, 12));
   const games = scenario === "multi" ? sampleGames : scenario === "normal" ? sampleGames.slice(0, 1) : scenario === "stopped" ? [sampleGames[2]] : [];
   const offline = scenario === "offline";
+  const unknown = offline || scenario === "loading" || scenario === "error";
   const steamRunning = scenario === "normal" || scenario === "empty" || scenario === "multi";
   const registered = scenario === "multi" ? 12 : 8;
   const changeScenario = (next: Scenario) => {
@@ -145,25 +152,25 @@ export const StreamOpsSteamManager = () => {
      <a href="https://designs.magicpath.ai/v1/smart-cliff-3265" className="mb-3 inline-flex items-center gap-1 text-xs font-semibold text-zinc-500 hover:text-zinc-900"><ArrowLeft className="h-3.5 w-3.5" />Dashboard</a>
      <div className="flex items-start justify-between gap-3">
        <div><p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">StreamOps</p><h1 className="text-2xl font-semibold tracking-tight">Steam Manager</h1><p className="mt-1 text-xs text-zinc-500">Steam client and running games on host A</p></div>
-       <Pill tone={offline ? "bad" : steamRunning ? "ok" : "warn"}>{offline ? "Node offline" : steamRunning ? "Steam running" : "Steam stopped"}</Pill>
+       <Pill tone={unknown ? "bad" : steamRunning ? "ok" : "warn"}>{unknown ? "Node offline" : steamRunning ? "Steam running" : "Steam stopped"}</Pill>
      </div>
     </header>
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-zinc-200 bg-white px-3 py-2.5">
      <span className="flex items-center gap-1.5 text-xs text-zinc-500"><Info className="h-3.5 w-3.5" /> Design preview · mock data</span>
      <label className="flex items-center gap-2 text-xs font-medium"><span className="sr-only">Scenario</span><select aria-label="Design scenario" value={scenario} onChange={e => changeScenario(e.target.value as Scenario)} className="max-w-40 rounded-xl border border-zinc-200 bg-white px-2 py-1.5 text-xs text-zinc-700 outline-offset-2">{scenarios.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></label>
     </div>
-    {offline && <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-700"><p className="font-semibold">Host A is unavailable</p><p className="mt-1">Steam and game status are unknown, not stopped. Reconnect to verify the current state.</p></div>}
+    {(offline || scenario === "error") && <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-700"><p className="font-semibold">Steam / game inventory unavailable</p><p className="mt-1">Unknown status must not be treated as stopped. Retry after reconnecting or recovering the inventory service.</p></div>}
     {notice && <div role="status" className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs font-medium text-blue-700">{notice}</div>}
     <div className="space-y-3">
-     <Card title="Steam Process Status" subtitle="Client lifecycle, Windows session and installation" open={runtimeOpen} onToggle={() => setRuntimeOpen(v => !v)} status={<Pill tone={offline ? "bad" : steamRunning ? "ok" : "neutral"}>{offline ? "UNKNOWN" : steamRunning ? "RUNNING" : "STOPPED"}</Pill>} summary={<div className="grid grid-cols-3 gap-2"><Stat label="PID" value={offline || !steamRunning ? "—" : "6432"} /><Stat label="Uptime" value={offline || !steamRunning ? "—" : "03:42:15"} /><Stat label="Session" value={offline || !steamRunning ? "—" : "1"} /></div>}>
+     <Card title="Steam Process Status" subtitle="Client lifecycle, Windows session and installation" open={runtimeOpen} onToggle={() => setRuntimeOpen(v => !v)} status={<Pill tone={unknown ? "bad" : steamRunning ? "ok" : "neutral"}>{unknown ? "UNKNOWN" : steamRunning ? "RUNNING" : "STOPPED"}</Pill>} summary={<div className="grid grid-cols-3 gap-2"><Stat label="PID" value={unknown || !steamRunning ? "—" : "6432"} /><Stat label="Uptime" value={unknown || !steamRunning ? "—" : "03:42:15"} /><Stat label="Session" value={unknown || !steamRunning ? "—" : "1"} /></div>}>
        <div className="mb-3 rounded-2xl bg-zinc-50 px-3">
-        {[["Started", steamRunning ? "Today · 06:26" : "—"], ["Windows session", steamRunning ? "1 · Active console" : "—"], ["Interactive", steamRunning ? "Yes" : "—"], ["Installation", offline ? "Unknown" : "Detected"]].map(([key, value]) => <div className="flex items-center justify-between gap-3 border-b border-zinc-100 py-3 last:border-0" key={key}><span className="text-xs text-zinc-500">{key}</span><span className="text-xs font-semibold">{value}</span></div>)}
+        {[["Started", steamRunning ? "Today · 06:26" : "—"], ["Windows session", steamRunning ? "1 · Active console" : "—"], ["Interactive", steamRunning ? "Yes" : "—"], ["Installation", unknown ? "Unknown" : "Detected"]].map(([key, value]) => <div className="flex items-center justify-between gap-3 border-b border-zinc-100 py-3 last:border-0" key={key}><span className="text-xs text-zinc-500">{key}</span><span className="text-xs font-semibold">{value}</span></div>)}
        </div>
-       <button type="button" disabled={offline || restarting} onClick={() => setConfirmRestart(true)} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-zinc-950 px-3 py-3 text-sm font-semibold text-white disabled:opacity-40"><RotateCcw className="h-4 w-4" />{restarting ? "Restarting…" : "Restart in Big Picture"}</button>
+       <button type="button" disabled={unknown || restarting} onClick={() => setConfirmRestart(true)} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-zinc-950 px-3 py-3 text-sm font-semibold text-white disabled:opacity-40"><RotateCcw className="h-4 w-4" />{restarting ? "Restarting…" : "Restart in Big Picture"}</button>
        <p className="mt-2 text-[11px] leading-4 text-zinc-500">Restarts may interrupt active games and downloads.</p>
      </Card>
-     <Card title="Game Manager" subtitle="Registered games and observed sessions" open={gamesOpen} onToggle={() => setGamesOpen(v => !v)} status={<Pill tone={offline ? "neutral" : games.length ? "ok" : "neutral"}>{offline ? "UNKNOWN" : games.length + " running"}</Pill>} summary={<div className="grid grid-cols-2 gap-2"><Stat label="Running" value={offline ? "—" : String(games.length)} /><Stat label="Registered" value={offline ? "—" : String(registered)} /></div>}>
-       {offline ? <div className="rounded-2xl bg-zinc-50 p-4 text-center"><CircleAlert className="mx-auto mb-2 h-5 w-5 text-zinc-400" /><p className="text-sm font-semibold">Status unavailable</p><p className="mt-1 text-xs text-zinc-500">Cannot confirm running sessions.</p></div> : games.length === 0 ? <div className="rounded-2xl bg-zinc-50 p-5 text-center"><Gamepad2 className="mx-auto mb-2 h-6 w-6 text-zinc-400" /><p className="text-sm font-semibold">No games running</p><p className="mt-1 text-xs text-zinc-500">Manage registered games in your library.</p></div> : <div className="rounded-2xl bg-zinc-50 px-3">
+     <Card title="Game Manager" subtitle="Registered games and observed sessions" open={gamesOpen} onToggle={() => setGamesOpen(v => !v)} status={<Pill tone={unknown ? "neutral" : games.length ? "ok" : "neutral"}>{unknown ? "UNKNOWN" : games.length + " running"}</Pill>} summary={<div className="grid grid-cols-2 gap-2"><Stat label="Running" value={unknown ? "—" : String(games.length)} /><Stat label="Registered" value={unknown ? "—" : String(registered)} /></div>}>
+       {scenario === "loading" ? <div className="rounded-2xl bg-zinc-50 p-4 text-center"><p role="status" className="text-sm font-semibold">Loading game inventory…</p><p className="mt-1 text-xs text-zinc-500">Running count is unknown until loading completes.</p></div> : unknown ? <div className="rounded-2xl bg-zinc-50 p-4 text-center"><CircleAlert className="mx-auto mb-2 h-5 w-5 text-zinc-400" /><p className="text-sm font-semibold">Status unavailable</p><p className="mt-1 text-xs text-zinc-500">Cannot confirm running sessions.</p></div> : games.length === 0 ? <div className="rounded-2xl bg-zinc-50 p-5 text-center"><Gamepad2 className="mx-auto mb-2 h-6 w-6 text-zinc-400" /><p className="text-sm font-semibold">No games running</p><p className="mt-1 text-xs text-zinc-500">Manage registered games in your library.</p></div> : <div className="rounded-2xl bg-zinc-50 px-3">
         {games.slice(0, showAll ? games.length : 3).map(g => <div key={g.id} className="flex items-center gap-3 border-b border-zinc-100 py-3 last:border-0">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><Gamepad2 className="h-4 w-4" /></span>
           <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{g.name}</p><p className="mt-0.5 truncate text-[11px] text-zinc-500">{g.launcher} · {g.uptime}</p></div>

@@ -20,6 +20,7 @@ Show `UNKNOWN`, not `STOPPED`, for disconnected or stale observations. Timeouts 
 | Offline | Select Host disconnected | UNKNOWN counts, cannot control games |
 | Session mismatch | Select Session mismatch → Detail | Warning / actions disabled |
 | Invalid capture | Select OBS black frames → Detail | Game still running, capture ERROR |
+| Restart failure | Select Restart failed → selected D4 → Restart + Confirm | STOPPING → FAILED; reconcile before another mutation |
 | Start failure | Select Start failed → selected D4 → Start + Confirm | STARTING → FAILED, retry/check message |
 | Stop timeout | Select Stop timed out → selected D4 → Stop + Confirm | STOPPING → UNKNOWN, NOT claimed stopped |
 | Reconcile | From UNKNOWN press Refresh / reconcile process | Demo refreshed RUNNING, activity entry added; no lifecycle mutation |
@@ -28,6 +29,7 @@ Show `UNKNOWN`, not `STOPPED`, for disconnected or stale observations. Timeouts 
 | Loading | Select Loading game inventory | Unknown counters / loading placeholder, no control actions |
 | Advanced safety | Running game detail → Advanced → Force stop | Warning on save loss; confirm/cancel; demo only |
 | Search and filters | Search by game/provider; change All / Running / Stopped | Correct local fixture filter |
+| Steam loading / error | Steam preview selector → Loading inventory / Inventory request error | No fictitious 0 running state; UNKNOWN counts and explanatory placeholder |
 | Steam without game | Steam preview selector → no games | No games running + library CTA |
 | Steam stopped with external game | Steam preview selector → Steam stopped | Running external game remains visible |
 

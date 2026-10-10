@@ -4,7 +4,7 @@ type Proc = "RUNNING" | "STOPPED" | "STARTING" | "STOPPING" | "FAILED" | "UNKNOW
 type Win = "FOREGROUND" | "BACKGROUND" | "NOT_DETECTED" | "UNKNOWN";
 type Obs = "VERIFIED_ACTIVE" | "CONFIGURED_ONLY" | "INACTIVE" | "ERROR" | "UNKNOWN";
 type StreamState = "SELECTED" | "NOT_SELECTED" | "UNKNOWN";
-type Scenario = "default" | "multi" | "empty" | "unregistered" | "offline" | "session" | "black" | "startFail" | "stopTimeout" | "stale" | "externalExit" | "loading";
+type Scenario = "default" | "multi" | "empty" | "unregistered" | "offline" | "session" | "black" | "startFail" | "stopTimeout" | "restartFail" | "stale" | "externalExit" | "loading";
 type Game = {
   id: string;
   title: string;
@@ -182,6 +182,9 @@ const scenarios: {
   id: "stopTimeout",
   title: "Stop timed out · reconcile"
 }, {
+  id: "restartFail",
+  title: "Restart failed · reconcile"
+}, {
   id: "stale",
   title: "Stale data · refresh"
 }, {
@@ -326,7 +329,7 @@ function GameDetail({
      <button disabled={blocked || !running} onClick={() => onAction("restart")} className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-zinc-200 px-2 py-3 text-xs font-semibold disabled:opacity-40"><RotateCcw className="h-3.5 w-3.5" />Restart</button>
     </div>
     {busy && <p role="status" className="mt-2 text-xs text-blue-700">Operation pending — duplicate actions disabled.</p>}
-    {proc === "FAILED" && <p role="alert" className="mt-2 rounded-xl bg-red-50 p-3 text-xs leading-5 text-red-700">Start failed. Check launcher/readiness and retry after refreshing process state.</p>}
+    {proc === "FAILED" && <p role="alert" className="mt-2 rounded-xl bg-red-50 p-3 text-xs leading-5 text-red-700">Lifecycle operation failed. Check readiness and reconcile before retrying.</p>}
     {proc === "UNKNOWN" && <p role="alert" className="mt-2 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-800">Operation outcome unknown. Timeout is not proof the game stopped. Refresh the observed process state before any further action.</p>}
     <button onClick={onReconcile} disabled={scenario === "offline" || scenario === "session" || scenario === "loading" || busy} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-xs font-semibold disabled:opacity-40"><RefreshCw className="h-3.5 w-3.5" />Refresh / reconcile process</button>
   </div>
@@ -378,7 +381,7 @@ export const StreamOpsGameManager = () => {
     setScenario(next);
     setOverrides({});
     setReconciled(false);
-    setSelectedId(["startFail", "stopTimeout", "stale", "externalExit"].includes(next) ? "d4" : null);
+    setSelectedId(["startFail", "stopTimeout", "restartFail", "stale", "externalExit"].includes(next) ? "d4" : null);
     setFilter("all");
     setQuery("");
     addLog("Design preview: " + scenarios.find(s => s.id === next)?.title);
@@ -403,7 +406,7 @@ export const StreamOpsGameManager = () => {
     }));
     addLog((g?.title || id) + " · demo " + kind + " requested");
     window.setTimeout(() => {
-      const outcome: Proc = scenario === "startFail" && kind === "start" ? "FAILED" : scenario === "stopTimeout" && kind === "stop" ? "UNKNOWN" : kind === "stop" || kind === "force" ? "STOPPED" : "RUNNING";
+      const outcome: Proc = scenario === "startFail" && kind === "start" ? "FAILED" : scenario === "stopTimeout" && kind === "stop" ? "UNKNOWN" : scenario === "restartFail" && kind === "restart" ? "FAILED" : kind === "stop" || kind === "force" ? "STOPPED" : "RUNNING";
       setOverrides(v => ({
         ...v,
         [id]: outcome
@@ -437,7 +440,7 @@ export const StreamOpsGameManager = () => {
     <span className="inline-flex items-center gap-1.5 text-xs text-zinc-500"><Info className="h-3.5 w-3.5" />Design preview · mock data</span>
     <select aria-label="Design scenario" value={scenario} onChange={e => switchScenario(e.target.value as Scenario)} className="max-w-44 rounded-xl border border-zinc-200 bg-white px-2 py-1.5 text-xs text-zinc-700">{scenarios.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}</select>
    </div>
-   {(scenario === "offline" || scenario === "session" || scenario === "black" || scenario === "stale" || scenario === "startFail" || scenario === "stopTimeout" || scenario === "externalExit" || scenario === "loading") && <section className={"mb-3 rounded-3xl border p-4 " + (scenario === "black" ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50")}><div className="flex items-start gap-2"><AlertTriangle className={"mt-0.5 h-4 w-4 shrink-0 " + (scenario === "black" ? "text-red-600" : "text-amber-700")} /><div><p className="text-sm font-semibold">{scenario === "offline" ? "Host A disconnected" : scenario === "session" ? "Interactive Windows session mismatch" : scenario === "startFail" ? "Start failure preview" : scenario === "stopTimeout" ? "Stop timeout preview" : scenario === "stale" ? "Stale process observation" : scenario === "externalExit" ? "Game exited outside StreamOps" : scenario === "loading" ? "Loading game inventory" : "OBS video verification failed"}</p><p className="mt-1 text-xs leading-5">{scenario === "offline" ? "All process states are UNKNOWN until a new host observation." : scenario === "session" ? "Controls are unavailable until the interactive session can be reconciled." : scenario === "startFail" ? "Select Diablo IV and simulate Start to see FAILED, then refresh/reconcile." : scenario === "stopTimeout" ? "Select Diablo IV and simulate Stop to see UNKNOWN. Refresh/reconcile before retry." : scenario === "stale" ? "Last cached data is not trusted; refresh before operating." : scenario === "externalExit" ? "Observed STOPPED after an exit outside StreamOps. No automatic relaunch." : scenario === "loading" ? "Loading state is a fixture; do not treat unknown as stopped." : "Game is running, but its OBS source has no verified valid frames."}</p></div></div></section>}
+   {(scenario === "offline" || scenario === "session" || scenario === "black" || scenario === "stale" || scenario === "startFail" || scenario === "stopTimeout" || scenario === "restartFail" || scenario === "externalExit" || scenario === "loading") && <section className={"mb-3 rounded-3xl border p-4 " + (scenario === "black" ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50")}><div className="flex items-start gap-2"><AlertTriangle className={"mt-0.5 h-4 w-4 shrink-0 " + (scenario === "black" ? "text-red-600" : "text-amber-700")} /><div><p className="text-sm font-semibold">{scenario === "offline" ? "Host A disconnected" : scenario === "session" ? "Interactive Windows session mismatch" : scenario === "startFail" ? "Start failure preview" : scenario === "stopTimeout" ? "Stop timeout preview" : scenario === "restartFail" ? "Restart failure preview" : scenario === "stale" ? "Stale process observation" : scenario === "externalExit" ? "Game exited outside StreamOps" : scenario === "loading" ? "Loading game inventory" : "OBS video verification failed"}</p><p className="mt-1 text-xs leading-5">{scenario === "offline" ? "All process states are UNKNOWN until a new host observation." : scenario === "session" ? "Controls are unavailable until the interactive session can be reconciled." : scenario === "startFail" ? "Select Diablo IV and simulate Start to see FAILED, then refresh/reconcile." : scenario === "stopTimeout" ? "Select Diablo IV and simulate Stop to see UNKNOWN. Refresh/reconcile before retry." : scenario === "restartFail" ? "Select Diablo IV and simulate Restart to see FAILED. Reconcile before further mutations." : scenario === "stale" ? "Last cached data is not trusted; refresh before operating." : scenario === "externalExit" ? "Observed STOPPED after an exit outside StreamOps. No automatic relaunch." : scenario === "loading" ? "Loading state is a fixture; do not treat unknown as stopped." : "Game is running, but its OBS source has no verified valid frames."}</p></div></div></section>}
    <div className={"grid items-start gap-4 " + (selected ? "lg:grid-cols-[minmax(0,1fr)_360px]" : "")}>
     <div className="min-w-0 space-y-4">
       <section className="rounded-3xl border border-black/5 bg-white p-4 shadow-sm sm:p-5">

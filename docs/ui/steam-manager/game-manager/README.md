@@ -6,8 +6,8 @@
 
 | Surface | Canonical MagicPath URL | Revision |
 |---|---|---|
-| Steam Manager | https://designs.magicpath.ai/v1/serene-winter-5786 | `459522945476345856` |
-| Game Manager | https://designs.magicpath.ai/v1/sturdily-room-4179 | `459529007709450240` |
+| Steam Manager | https://designs.magicpath.ai/v1/serene-winter-5786 | `459530030574370816` |
+| Game Manager | https://designs.magicpath.ai/v1/sturdily-room-4179 | `459530038539325440` |
 
 ## Approved visual foundation
 Use the existing OBS Plugin Manager / Stream Manager design system: `#f5f6f8` page, `text-zinc-950`, `max-w-md` mobile Steam page, `bg-white rounded-3xl border-black/5 shadow-sm` cards, `bg-zinc-50 rounded-2xl` inner sections, `bg-zinc-950 text-white` primary actions, pastel emerald/amber/red status pills, and Lucide icons. **Light theme supersedes the original dark-theme wording in #84** following operator approval. No separate global dark navigation bar, ornamental gradients or independent CSS palettes.
