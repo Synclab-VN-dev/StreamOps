@@ -571,7 +571,8 @@ def test_issue75_vendor_unavailable_verify_failure_is_not_pass(page:Page,live_se
     act(page,"Verify")
     confirm(page)
     expect(page.locator(".plugin-card")).to_contain_text("Verify failed")
-    expect(page.locator("#plugin-notice")).to_contain_text("Vendor")
+    expect(page.locator("#plugin-notice")).to_contain_text("plugin_verify_failed")
+    expect(page.locator("#plugin-notice")).to_contain_text("vendor")
     assert len(fake.mutations("obs_plugin.verify"))==1
 
 
