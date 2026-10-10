@@ -1,4 +1,4 @@
-"""Production hook backend gates: POC behavior, queue, lifecycle, no polling."""
+"""Production hook backend gates: behavior, queue, lifecycle, no polling."""
 from __future__ import annotations
 
 from collections import deque
@@ -54,7 +54,7 @@ def wait_until(predicate, timeout=2):
     return False
 
 
-def test_hook_capture_uses_same_poc_core_and_preserves_contract():
+def test_hook_capture_uses_shared_core_and_preserves_contract():
     fake = FakeHook(game_pid=0, block=True)
     capture = HookInputMarkerCapture(
         poll_interval=.001, backend_factory=lambda **kw: fake,
