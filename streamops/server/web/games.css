@@ -6,6 +6,8 @@ body.gm-page { color-scheme:light; color:#18181b; background:#f5f6f8; font-famil
 .gm-top-status { font-size:12px; color:#71717a; }
 .gm-page .eyebrow { color:#71717a; }
 .gm-page main { max-width:1080px; }
+.gm-page main.gm-shell { max-width:860px; }
+.gm-page main.gm-shell:has(.gm-workspace.gm-has-detail) { max-width:1024px; }
 .gm-page .narrow-shell {max-width:500px;}
 .gm-shell { min-width:0; }
 .gm-page-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0 20px; }
@@ -26,7 +28,8 @@ body.gm-page { color-scheme:light; color:#18181b; background:#f5f6f8; font-famil
 .gm-stat {min-width:0;padding:14px 10px;background:#fafafa;border:1px solid #f4f4f5;border-radius:15px;}
 .gm-stat span {display:block;color:#71717a;font-size:11px;}
 .gm-stat strong {display:block;font-size:24px;margin-top:6px;}
-.gm-workspace {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.9fr);gap:16px;}
+.gm-workspace {display:block;min-width:0;}
+.gm-workspace.gm-has-detail {display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:16px;}
 .gm-section-heading {display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;}
 .gm-section-heading small {font-size:11px;color:#71717a;}
 .gm-filters {display:grid;grid-template-columns:minmax(0,1fr) 126px;gap:10px;margin:12px 0;}
@@ -51,7 +54,8 @@ body.gm-page { color-scheme:light; color:#18181b; background:#f5f6f8; font-famil
 .gm-page button.gm-button:disabled {opacity:.45;cursor:not-allowed;}
 .gm-page button:focus-visible,.gm-page input:focus-visible,.gm-page select:focus-visible,.gm-page a:focus-visible {outline:3px solid #93c5fd;outline-offset:2px;}
 .gm-empty {font-size:13px;color:#71717a;padding:14px 3px;margin:0;}
-.gm-detail {position:sticky;top:14px;align-self:start;min-width:0;}
+.gm-detail {display:none;position:sticky;top:14px;align-self:start;min-width:0;}
+.gm-has-detail .gm-detail {display:block;}
 .gm-detail-heading {display:flex;align-items:center;gap:12px;margin-bottom:15px;}
 .gm-detail-heading h2 {overflow-wrap:anywhere;}
 .gm-detail-heading p {margin:5px 0 0;}
@@ -73,7 +77,7 @@ body.gm-page { color-scheme:light; color:#18181b; background:#f5f6f8; font-famil
 .gm-control-panel #token-status {font-size:11px;}
 .gm-page .panel .action-row>button {width:auto;}
 @media(max-width:900px) {
- .gm-workspace {display:block;}
+ .gm-workspace,.gm-workspace.gm-has-detail {display:block;}
  .gm-detail {position:static;}
  .gm-workspace.gm-has-detail #games-main {display:none;}
  .gm-back {display:inline-flex!important;}
