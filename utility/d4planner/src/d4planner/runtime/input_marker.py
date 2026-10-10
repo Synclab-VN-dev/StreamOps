@@ -237,7 +237,7 @@ __all__ = [
 
 
 class HookInputMarkerCapture:
-    """Production F11 capture+suppression using exactly the POC Win32 core.
+    """Production F11 capture and suppression using the shared Win32 hook core.
 
     In block mode the polling backend MUST NOT be started: suppressed keyboard
     events may never become visible to GetAsyncKeyState. The hook lives on a
