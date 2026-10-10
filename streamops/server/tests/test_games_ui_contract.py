@@ -19,7 +19,8 @@ def test_game_manager_transport_is_ws_only():
     assert "games.operations.get" in read("games-ws.js")
     assert "games.reconcile" in games
     assert "games.lifecycle.force_stop" not in games
-    assert "force.disabled=true" in read("games-components.js")
+    assert "unsafe.disabled=true" in read("games-components.js")
+    assert "Force Stop (disabled)" in read("games-components.js")
 
 def test_no_backend_or_demo_data_coupling():
     for name in ["games.js","games-store.js","games-ws.js","steam.js","games-components.js"]:
