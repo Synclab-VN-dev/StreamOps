@@ -587,13 +587,26 @@ class Supervisor:
             )
             self._persist_status()
         except Exception as exc:
+            if self._marker_started:
+                # Even if persisting ACTIVE failed, the hook may already be
+                # installed. Never abandon it without requesting unhook.
+                try:
+                    self.marker_capture.stop()
+                except Exception as stop_error:
+                    self.status.last_error = (
+                        f"input marker cleanup failure: {type(stop_error).__name__}: "
+                        f"{stop_error}"
+                    )
             self._marker_started = False
-            self.status.last_error = (
+            self.status.last_error = self.status.last_error or (
                 f"input marker capture unavailable: {type(exc).__name__}: {exc}"
             )
             self.status.extras["inputMarker"]["state"] = "ERROR"
             self.status.extras["inputMarker"]["error"] = str(exc)
-            self._persist_status()
+            try:
+                self._persist_status()
+            except OSError:
+                pass
 
     def _stop_marker_capture(self) -> None:
         capture = self.marker_capture
@@ -605,6 +618,8 @@ class Supervisor:
             self.status.last_error = (
                 f"input marker stop failure: {type(exc).__name__}: {exc}"
             )
+            self.status.extras["inputMarker"]["state"] = "ERROR"
+            self.status.extras["inputMarker"]["error"] = str(exc)
         finally:
             self._marker_started = False
             if self.status.extras["inputMarker"]["state"] != "ERROR":
