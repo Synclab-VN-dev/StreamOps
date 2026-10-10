@@ -700,3 +700,111 @@ def test_block_runtime_hook_start_failure_must_fail_closed(tmp_path):
     assert saved["state"] == "STOPPED"
     assert saved["extras"]["inputMarker"]["state"] == "ERROR"
     assert "Windows hook refused registration" in (saved["lastError"] or "")
+
+
+class RuntimeFailMarker:
+    def __init__(self, *, error="synthetic hook runtime failure", dropped_count=0):
+        self.error = error
+        self.dropped_count = dropped_count
+        self.overflowed = dropped_count > 0
+        self.started = False
+        self.stopped = False
+
+    def set_target_pid(self, pid):
+        self.target_pid = pid
+
+    def start(self):
+        self.started = True
+
+    def stop(self, **kwargs):
+        self.stopped = True
+
+    def drain(self):
+        return []
+
+    def consume_error(self):
+        error, self.error = self.error, None
+        return error
+
+
+def _block_supervisor(paths, runtime, marker):
+    return Supervisor(
+        paths=paths,
+        runtime=runtime,
+        path_manager=UserPathManager(
+            paths, MemoryPathBackend(user_path="", machine_path="MACHINE")
+        ),
+        marker_capture=marker,
+        block_marker=True,
+        silent=True,
+        poll_interval=0.001,
+        health_poll_interval=0.01,
+        game_start_timeout=0.001,
+    )
+
+
+def test_e2e_block_hook_failure_after_start_returns_nonzero_and_keeps_diagnostics(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    marker = RuntimeFailMarker()
+    supervisor = _block_supervisor(paths, E2ERuntime(paths), marker)
+
+    assert supervisor.run() == 2
+    saved = read_json(paths.runtime_state)
+    assert saved["state"] == "STOPPED"
+    assert saved["extras"]["inputMarker"]["state"] == "ERROR"
+    assert "synthetic hook runtime failure" in saved["lastError"]
+    assert marker.started and marker.stopped
+
+    reader = EventLogReader(paths.events_db)
+    try:
+        types = [row.type for row in reader.read_after(saved["sessionId"], 0)]
+    finally:
+        reader.close()
+    assert "runtime.blocked" in types
+    assert "runtime.stop" in types
+
+
+def test_e2e_block_hook_failure_while_waiting_for_game_is_controlled(tmp_path):
+    class WaitingRuntime(E2ERuntime):
+        def __init__(self, paths):
+            super().__init__(paths)
+            self._game = None
+            self._steam = None
+
+        def wait_for_game(self, *, timeout=90.0):
+            return None
+
+    paths = RuntimePaths(tmp_path / "home")
+    marker = RuntimeFailMarker(error="hook failed while game absent")
+    supervisor = _block_supervisor(paths, WaitingRuntime(paths), marker)
+
+    assert supervisor.run() == 2
+    saved = read_json(paths.runtime_state)
+    assert saved["state"] == "STOPPED"
+    assert "hook failed while game absent" in saved["lastError"]
+    assert "invalid D4Planner transition" not in saved["lastError"]
+
+
+def test_e2e_block_queue_overflow_propagates_status_and_log(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    marker = RuntimeFailMarker(
+        error="Windows keyboard hook queue overflow: droppedCount=3",
+        dropped_count=3,
+    )
+    supervisor = _block_supervisor(paths, E2ERuntime(paths), marker)
+
+    assert supervisor.run() == 2
+    saved = read_json(paths.runtime_state)
+    marker_status = saved["extras"]["inputMarker"]
+    assert marker_status["state"] == "ERROR"
+    assert marker_status["droppedCount"] == 3
+    assert marker_status["overflow"] is True
+
+    reader = EventLogReader(paths.events_db)
+    try:
+        rows = reader.read_after(saved["sessionId"], 0)
+    finally:
+        reader.close()
+    overflow = [row for row in rows if row.type == "input.marker.overflow"]
+    assert len(overflow) == 1
+    assert overflow[0].data["droppedCount"] == 3

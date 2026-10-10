@@ -145,6 +145,50 @@ def test_hook_runtime_failure_is_reported_after_start():
     capture.stop()
 
 
+def test_hook_queue_overflow_is_reported_and_stops_blocking_backend():
+    fake = FakeHook(game_pid=14872, block=True)
+    fake.samples = BoundedSamples(capacity=2)
+    capture = HookInputMarkerCapture(
+        poll_interval=.001, backend_factory=lambda **kw: fake,
+    )
+    capture.set_target_pid(14872)
+    capture.start()
+    fake.requests.extend([
+        (14872, WM_KEYDOWN), (14872, WM_KEYUP), (14872, WM_KEYDOWN),
+    ])
+    assert wait_until(lambda: not capture._running)
+    assert capture.dropped_count == 1
+    assert capture.overflowed is True
+    assert "queue overflow" in (capture.consume_error() or "")
+    assert [sample.state for sample in capture.drain()] == ["down", "up"]
+    assert fake.closed
+    capture.stop()
+
+
+def test_hook_unhooks_before_final_tail_drain():
+    class TailOnUnhook(FakeHook):
+        def __exit__(self, *_):
+            self.closed = True
+            self.samples.append(F11Sample(
+                timestamp_ms=1_800_000_000_001,
+                message=WM_KEYUP, state="up", flags=0,
+                foreground_pid=self.game_pid, suppressed=True,
+                target_match=True,
+            ))
+
+    fake = TailOnUnhook(game_pid=14872, block=True)
+    capture = HookInputMarkerCapture(
+        poll_interval=.001, backend_factory=lambda **kw: fake,
+    )
+    capture.set_target_pid(14872)
+    capture.start()
+    capture.stop()
+    assert fake.closed
+    tail = capture.drain()
+    assert [sample.state for sample in tail] == ["up"]
+    assert capture.consume_error() is None
+
+
 def test_marker_sample_legacy_payload_unchanged_without_block():
     legacy = MarkerSample(
         timestamp="2026-10-10T08:30:00+07:00", key="f11",

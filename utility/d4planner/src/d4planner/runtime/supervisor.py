@@ -94,6 +94,8 @@ class Supervisor:
             "mode": "BLOCK" if self.block_marker else "OBSERVE",
             "state": "STARTING",
             "captureMethod": "keyboardHook" if self.block_marker else "asyncKeyState",
+            "droppedCount": 0,
+            "overflow": False,
         }
         self.equipment_projector = EquipmentProjector(EquipmentRepository(paths.character_db))
 
@@ -460,14 +462,29 @@ class Supervisor:
         if capture is None:
             return []
 
+        marker_status = self.status.extras["inputMarker"]
+        dropped_count = int(getattr(capture, "dropped_count", 0))
+        overflow = bool(getattr(capture, "overflowed", dropped_count > 0))
+        marker_status["droppedCount"] = dropped_count
+        marker_status["overflow"] = overflow
+
         error = capture.consume_error()
         if error:
             self.status.last_error = f"input marker capture failure: {error}"
-            self.status.extras["inputMarker"]["state"] = "ERROR"
-            self.status.extras["inputMarker"]["error"] = error
+            marker_status["state"] = "ERROR"
+            marker_status["error"] = error
             if self.block_marker:
-                self.transition(RuntimeState.BLOCKED,
-                                "F11 blocking is no longer guaranteed", error=self.status.last_error)
+                if overflow:
+                    self._safe_emit(
+                        "input.marker.overflow",
+                        {"droppedCount": dropped_count, "mode": "BLOCK"},
+                    )
+                self.transition(
+                    RuntimeState.BLOCKED,
+                    "F11 blocking is no longer guaranteed",
+                    error=self.status.last_error,
+                    data={"droppedCount": dropped_count, "overflow": overflow},
+                )
             else:
                 try:
                     self._persist_status()
@@ -819,6 +836,7 @@ class Supervisor:
                 self.store.close()
             return 2 if state == RuntimeState.BLOCKED else 3
 
+        exit_code = 0
         try:
             self._start_marker_capture()
             if self.block_marker and not self._marker_started:
@@ -834,6 +852,7 @@ class Supervisor:
                 self._renew_capture_lease()
                 self._flush_ingress()
                 if self.status.state == RuntimeState.BLOCKED:
+                    exit_code = 2
                     break
                 now = time.monotonic()
                 if now >= next_health_check:
@@ -842,6 +861,7 @@ class Supervisor:
                     self._sync_marker_target()
                     next_health_check = now + self.health_poll_interval
                 if self.status.state in {RuntimeState.BLOCKED, RuntimeState.RESTART_REQUIRED}:
+                    exit_code = 2 if self.status.state == RuntimeState.BLOCKED else 3
                     break
                 time.sleep(self.poll_interval)
         finally:
@@ -891,5 +911,5 @@ class Supervisor:
                 pass
             if self.store:
                 self.store.close()
-        return 0
+        return exit_code
 

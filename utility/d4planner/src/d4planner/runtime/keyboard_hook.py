@@ -86,15 +86,23 @@ class BoundedSamples:
     def __init__(self, capacity: int = 2048) -> None:
         if capacity <= 0:
             raise ValueError("capacity must be positive")
-        self._items: deque[F11Sample] = deque(maxlen=capacity)
+        self._items: deque[F11Sample] = deque()
+        self._capacity = capacity
         self._lock = threading.Lock()
         self.dropped = 0
 
-    def append(self, sample: F11Sample) -> None:
+    def append(self, sample: F11Sample) -> bool:
+        """Queue a sample without evicting older evidence.
+
+        False means the caller must fail open: suppressing an event that cannot
+        be recorded would make the marker disappear without evidence.
+        """
         with self._lock:
-            if len(self._items) == self._items.maxlen:
+            if len(self._items) >= self._capacity:
                 self.dropped += 1
+                return False
             self._items.append(sample)
+            return True
 
     def drain(self) -> list[F11Sample]:
         with self._lock:
@@ -115,7 +123,7 @@ def capture_or_pass(
     )
     if not decision.capture:
         return False
-    samples.append(F11Sample(
+    queued = samples.append(F11Sample(
         timestamp_ms=timestamp_ms,
         message=message,
         state=decision.state or "",
@@ -123,7 +131,7 @@ def capture_or_pass(
         foreground_pid=int(foreground_pid),
         suppressed=decision.suppress,
     ))
-    return decision.suppress
+    return decision.suppress and queued
 
 
 def safe_capture_or_pass(*, on_error: Callable[[], None] | None = None,

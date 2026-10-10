@@ -256,6 +256,7 @@ class HookInputMarkerCapture:
         self._last_error: str | None = None
         self._hook = None
         self._running = False
+        self._dropped_count = 0
 
     def set_target_pid(self, pid: int | None) -> None:
         self._target_pid = int(pid) if pid and int(pid) > 0 else None
@@ -277,9 +278,28 @@ class HookInputMarkerCapture:
         )
 
     def _drain_hook(self, hook) -> None:
-        for sample in hook.samples.drain():
+        samples = getattr(hook, "samples", None)
+        if samples is None:
+            return
+        for sample in samples.drain():
             if sample.target_match and sample.suppressed and sample.foreground_pid:
                 self._samples.put(self._convert_sample(sample))
+
+    def _update_overflow(self, hook) -> None:
+        dropped = int(getattr(getattr(hook, "samples", None), "dropped", 0))
+        if dropped > self._dropped_count:
+            self._dropped_count = dropped
+
+    @property
+    def dropped_count(self) -> int:
+        hook = self._hook
+        if hook is not None:
+            self._update_overflow(hook)
+        return self._dropped_count
+
+    @property
+    def overflowed(self) -> bool:
+        return self.dropped_count > 0
 
     def _run(self) -> None:
         from .keyboard_hook import WindowsF11Hook
@@ -288,21 +308,31 @@ class HookInputMarkerCapture:
         try:
             factory = self._backend_factory or WindowsF11Hook
             hook = factory(game_pid=self._target_pid or 0, block=True)
-            with hook:
-                self._hook = hook
-                self._running = True
-                self._ready.set()
-                while not self._stop.is_set():
-                    hook.set_target_pid(self._target_pid)
-                    if not hook.pump():
-                        raise RuntimeError("Windows keyboard hook message loop quit")
-                    self._drain_hook(hook)
-                    if hook.hook_errors:
-                        raise RuntimeError(
-                            f"Windows keyboard hook callback errors={hook.hook_errors}"
-                        )
-                    self._stop.wait(self.poll_interval)
-                # Unhook on the owning thread; capture residual edges first.
+            try:
+                with hook:
+                    self._hook = hook
+                    self._running = True
+                    self._ready.set()
+                    while not self._stop.is_set():
+                        hook.set_target_pid(self._target_pid)
+                        if not hook.pump():
+                            raise RuntimeError("Windows keyboard hook message loop quit")
+                        self._drain_hook(hook)
+                        self._update_overflow(hook)
+                        if self._dropped_count:
+                            raise RuntimeError(
+                                "Windows keyboard hook queue overflow: "
+                                f"droppedCount={self._dropped_count}"
+                            )
+                        if hook.hook_errors:
+                            raise RuntimeError(
+                                f"Windows keyboard hook callback errors={hook.hook_errors}"
+                            )
+                        self._stop.wait(self.poll_interval)
+            finally:
+                # The context manager has unhooked before this final drain, so
+                # no callback can enqueue a tail event behind the drain.
+                self._update_overflow(hook)
                 self._drain_hook(hook)
         except Exception as exc:
             self._last_error = f"{type(exc).__name__}: {exc}"
@@ -315,6 +345,7 @@ class HookInputMarkerCapture:
         if self._thread and self._thread.is_alive():
             return
         self._last_error = None
+        self._dropped_count = 0
         self._stop.clear()
         self._ready.clear()
         self._thread = threading.Thread(

@@ -108,13 +108,17 @@ def test_other_foreground_and_other_keyboard_vk_not_recorded_even_block_mode():
 def test_bounded_fifo_queue_counts_drops_on_burst():
     q = BoundedSamples(capacity=2)
     sample = F11Sample(1_800_000_000_000, WM_KEYDOWN, "down", 0, 1444, True)
-    q.append(sample)
-    q.append(replace(sample, timestamp_ms=1_800_000_000_001))
-    q.append(replace(sample, timestamp_ms=1_800_000_000_002))
+    assert q.append(sample) is True
+    assert q.append(replace(
+        sample, timestamp_ms=1_800_000_000_001, message=WM_KEYUP, state="up"
+    )) is True
+    assert q.append(replace(sample, timestamp_ms=1_800_000_000_002)) is False
     assert q.dropped == 1
-    assert [s.timestamp_ms for s in q.drain()] == [
-        1_800_000_000_001, 1_800_000_000_002,
+    queued = q.drain()
+    assert [s.timestamp_ms for s in queued] == [
+        1_800_000_000_000, 1_800_000_000_001,
     ]
+    assert [s.state for s in queued] == ["down", "up"]
     with pytest.raises(ValueError):
         BoundedSamples(capacity=0)
 
@@ -129,6 +133,19 @@ def test_failure_to_queue_is_fail_open():
         flags=0, foreground_pid=1444, game_pid=1444, block=True,
         samples=FailingSink(), timestamp_ms=1234,
     ) is False
+
+
+def test_capacity_overflow_is_fail_open_instead_of_suppressing_unrecorded_f11():
+    samples = BoundedSamples(capacity=1)
+    common = dict(
+        n_code=HC_ACTION, vk=VK_F11, flags=0,
+        foreground_pid=1444, game_pid=1444, block=True,
+        samples=samples, timestamp_ms=1234,
+    )
+    assert capture_or_pass(message=WM_KEYDOWN, **common) is True
+    assert capture_or_pass(message=WM_KEYUP, **common) is False
+    assert samples.dropped == 1
+    assert [sample.state for sample in samples.drain()] == ["down"]
 
 
 def test_default_policy_is_pass_through_even_targeted():
