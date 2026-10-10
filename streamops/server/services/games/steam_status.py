@@ -28,7 +28,16 @@ class SteamStatusHub:
     def trigger_refresh(self): self._refresh.set()
 
     async def snapshot(self):
-        current=(await self.steam.status()).api_payload()
+        try:
+            current=(await self.steam.status()).api_payload()
+            current["stale"]=False
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            current={"state":"unknown","running":None,"pid":None,"started_at":None,
+                     "uptime_seconds":None,"session_id":None,"interactive":None,
+                     "installation_detected":None,"stale":True,
+                     "error_code":"steam_status_failed"}
         signature=tuple((k,v) for k,v in current.items() if k != "uptime_seconds")
         if self._last != signature:
             self._last=signature
@@ -40,6 +49,9 @@ class SteamStatusHub:
         self._subscribers.add(q)
         try:
             value=await self.snapshot()
+            # A newly subscribed client first receives a complete snapshot.
+            while not q.empty():
+                q.get_nowait()
             q.put_nowait({"type":"event","event":"steam.snapshot","data":value})
         except BaseException:
             self._subscribers.discard(q)
