@@ -114,12 +114,12 @@ def _state(paths: RuntimePaths) -> dict[str, Any]:
     return state
 
 
-def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool) -> int:
+def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool, block_marker: bool = False) -> int:
     if os.name == "nt":
         previous = read_json(paths.runtime_state) or {}
         previous_pid = previous.get("supervisorPid")
         runtime = WindowsRuntime(paths)
-        runtime.launch_supervisor_task(speech=speech, isolated=isolated)
+        runtime.launch_supervisor_task(speech=speech, isolated=isolated, block_marker=block_marker)
         deadline = time.monotonic() + 15.0
         while time.monotonic() < deadline:
             current = read_json(paths.runtime_state) or {}
@@ -134,6 +134,8 @@ def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool) -> int:
         cmd.append("--speech")
     if isolated:
         cmd.append("--isolated")
+    if block_marker:
+        cmd.append("--block")
     kwargs: dict[str, Any] = {
         "stdin": subprocess.DEVNULL,
         "stdout": subprocess.DEVNULL,
@@ -148,7 +150,7 @@ def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool) -> int:
     return int(process.pid)
 
 
-def _wait_start(paths: RuntimePaths, pid: int, timeout: float = 120.0) -> dict[str, Any]:
+def _wait_start(paths: RuntimePaths, pid: int, timeout: float = 120.0, *, block_marker: bool = False) -> dict[str, Any]:
     deadline = time.monotonic() + timeout
     last_state = None
     while time.monotonic() < deadline:
@@ -166,6 +168,14 @@ def _wait_start(paths: RuntimePaths, pid: int, timeout: float = 120.0) -> dict[s
                 print(f"[{current}] {detail}".rstrip())
                 last_state = current
             if current in TERMINAL_STATES:
+                marker = (status.get("extras") or {}).get("inputMarker") or {}
+                if block_marker and current in {
+                    RuntimeState.RUNNING.value,
+                    RuntimeState.WAITING_FOR_GAME.value,
+                    RuntimeState.DEGRADED.value,
+                } and marker.get("state") != "ACTIVE":
+                    time.sleep(0.1)
+                    continue
                 return status
 
         if not _pid_alive(pid):
@@ -267,6 +277,8 @@ def _pretty_event(event: dict[str, Any]) -> str | None:
         key = str(data.get("key") or "").upper()
         state = str(data.get("state") or "").upper()
         suffix = " ".join(part for part in (key, state) if part)
+        if data.get("suppressed") is True:
+            suffix += " [BLOCKED]"
         return f"[{stamp}] input.marker.raw {suffix}".rstrip()
     detail = str(data.get("detail") or "")
     return f"[{stamp}] {event_type} {detail}".rstrip()
@@ -386,8 +398,14 @@ def command_status(paths: RuntimePaths, *, raw_json: bool) -> int:
     nvda = status.get("nvda") or {}
     steam = status.get("steam") or {}
     game = status.get("game") or {}
+    marker = (status.get("extras") or {}).get("inputMarker") or {}
+    marker_info = (
+        f'{marker.get("key", "F11")} / {marker.get("mode", "OBSERVE")} / '
+        f'{marker.get("state", "UNKNOWN")}'
+    )
     rows = [
         ("Runtime", status.get("state")),
+        ("Input marker", marker_info),
         ("Detail", status.get("detail")),
         ("Supervisor PID", status.get("supervisorPid")),
         ("NVDA", f"PID {nvda.get('pid')} / Session {nvda.get('session_id') or nvda.get('sessionId')}" if nvda else "STOPPED"),
@@ -423,7 +441,10 @@ def _print_start_summary(status: dict[str, Any]) -> None:
     steam = status.get("steam") if isinstance(status.get("steam"), dict) else {}
     game = status.get("game") if isinstance(status.get("game"), dict) else {}
     tolk = status.get("tolk") if isinstance(status.get("tolk"), dict) else {}
+    marker = (status.get("extras") or {}).get("inputMarker") or {}
     checks = [
+        ("Input marker", marker.get("state") == "ACTIVE",
+         f'{marker.get("key", "F11")} / {marker.get("mode", "OBSERVE")} / {marker.get("state", "UNKNOWN")}'),
         ("Runtime", status.get("state") in {"RUNNING", "WAITING_FOR_GAME", "DEGRADED"}, status.get("state")),
         ("NVDA", bool(nvda), f"PID {nvda.get('pid')}" if nvda else "not running"),
         ("Tolk backend", str(tolk.get("reader") or "").casefold() == "nvda", tolk.get("reader") or "unknown"),
@@ -445,6 +466,7 @@ def command_start(
     isolated: bool,
     detached: bool,
     timeout: float,
+    block_marker: bool = False,
 ) -> int:
     paths.ensure()
     previous = _state(paths)
@@ -463,6 +485,18 @@ def command_start(
                     file=sys.stderr,
                 )
                 return 4
+            running_mode = (
+                ((previous.get("extras") or {}).get("inputMarker") or {})
+                .get("mode", "OBSERVE")
+            )
+            requested_mode = "BLOCK" if block_marker else "OBSERVE"
+            if running_mode != requested_mode:
+                print(
+                    f"D4Planner already running with F11 {running_mode}; "
+                    f"requested {requested_mode}. Run 'd4planner stop' before switching.",
+                    file=sys.stderr,
+                )
+                return 4
             print(f"D4Planner already running (PID {previous_pid}, state {state}).")
             if detached:
                 return 0
@@ -474,7 +508,9 @@ def command_start(
         pass
 
     try:
-        pid = _spawn_daemon(paths=paths, speech=speech, isolated=isolated)
+        pid = _spawn_daemon(
+            paths=paths, speech=speech, isolated=isolated, block_marker=block_marker
+        )
     except RuntimeBlocked as exc:
         write_capture_config(paths, enabled=False)
         atomic_write_json(
@@ -495,8 +531,14 @@ def command_start(
         print(f"Unable to start D4Planner supervisor: {exc}", file=sys.stderr)
         return 4
     print(f"D4Planner supervisor PID {pid}")
-    status = _wait_start(paths, pid, timeout=timeout)
+    status = _wait_start(paths, pid, timeout=timeout, block_marker=block_marker)
     state = str(status.get("state") or "")
+    if block_marker and state not in {RuntimeState.BLOCKED.value,
+                                     RuntimeState.RESTART_REQUIRED.value}:
+        marker = ((status.get("extras") or {}).get("inputMarker") or {})
+        if marker.get("state") != "ACTIVE":
+            print("F11 BLOCK hook is not active; start failed.", file=sys.stderr)
+            return 2
     if state == RuntimeState.BLOCKED.value:
         print(status.get("lastError") or status.get("detail"), file=sys.stderr)
         return 2
@@ -944,6 +986,8 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("-d", "--detach", action="store_true")
     start.add_argument("--speech", action="store_true")
     start.add_argument("--isolated", action="store_true")
+    start.add_argument("--block", action="store_true",
+                       help="capture F11 through hook and block keyboard F11 in Diablo IV")
     start.add_argument("--timeout", type=float, default=120.0)
 
     status = sub.add_parser("status")
@@ -1008,6 +1052,7 @@ def main(argv: list[str] | None = None) -> int:
             isolated=args.isolated,
             detached=args.detach,
             timeout=args.timeout,
+            block_marker=args.block,
         )
     if args.command == "status":
         return command_status(paths, raw_json=args.json)

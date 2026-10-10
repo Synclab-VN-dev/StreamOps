@@ -16,7 +16,7 @@ from ..character.repository import EquipmentRepository
 from .diagnostics import JsonlDiagnosticsSink
 from .events.model import EventDraft
 from .events.store import EventStore
-from .input_marker import InputMarkerCapture
+from .input_marker import HookInputMarkerCapture, InputMarkerCapture
 from .model import RuntimeState, RuntimeStatus, can_transition
 from .pathing import UserPathManager
 from .store import (
@@ -62,7 +62,8 @@ class Supervisor:
         game_start_timeout: float = 90.0,
         tolk_ready_timeout: float = 15.0,
         tolk_retry_interval: float = 0.5,
-        marker_capture: InputMarkerCapture | None = None,
+        marker_capture: InputMarkerCapture | HookInputMarkerCapture | None = None,
+        block_marker: bool = False,
     ):
         self.paths = paths
         self.runtime = runtime
@@ -86,7 +87,16 @@ class Supervisor:
         self._pending_raw_offset: int | None = None
         self._next_lease_refresh = 0.0
         self.marker_capture = marker_capture
+        self.block_marker = bool(block_marker)
         self._marker_started = False
+        self.status.extras["inputMarker"] = {
+            "key": "F11",
+            "mode": "BLOCK" if self.block_marker else "OBSERVE",
+            "state": "STARTING",
+            "captureMethod": "keyboardHook" if self.block_marker else "asyncKeyState",
+            "droppedCount": 0,
+            "overflow": False,
+        }
         self.equipment_projector = EquipmentProjector(EquipmentRepository(paths.character_db))
 
     @staticmethod
@@ -452,13 +462,34 @@ class Supervisor:
         if capture is None:
             return []
 
+        marker_status = self.status.extras["inputMarker"]
+        dropped_count = int(getattr(capture, "dropped_count", 0))
+        overflow = bool(getattr(capture, "overflowed", dropped_count > 0))
+        marker_status["droppedCount"] = dropped_count
+        marker_status["overflow"] = overflow
+
         error = capture.consume_error()
         if error:
             self.status.last_error = f"input marker capture failure: {error}"
-            try:
-                self._persist_status()
-            except OSError:
-                pass
+            marker_status["state"] = "ERROR"
+            marker_status["error"] = error
+            if self.block_marker:
+                if overflow:
+                    self._safe_emit(
+                        "input.marker.overflow",
+                        {"droppedCount": dropped_count, "mode": "BLOCK"},
+                    )
+                self.transition(
+                    RuntimeState.BLOCKED,
+                    "F11 blocking is no longer guaranteed",
+                    error=self.status.last_error,
+                    data={"droppedCount": dropped_count, "overflow": overflow},
+                )
+            else:
+                try:
+                    self._persist_status()
+                except OSError:
+                    pass
 
         try:
             return [sample.as_draft() for sample in capture.drain()]
@@ -551,17 +582,44 @@ class Supervisor:
     def _start_marker_capture(self) -> None:
         if self.marker_capture is None:
             if os.name != "nt":
+                if self.block_marker:
+                    self.status.last_error = "F11 blocking requires Windows"
+                    self.status.extras["inputMarker"]["state"] = "ERROR"
+                else:
+                    self.status.extras["inputMarker"]["state"] = "DISABLED"
+                self._persist_status()
                 return
-            self.marker_capture = InputMarkerCapture(key="f11")
+            self.marker_capture = (
+                HookInputMarkerCapture() if self.block_marker
+                else InputMarkerCapture(key="f11")
+            )
         self._sync_marker_target()
         try:
             self.marker_capture.start()
             self._marker_started = True
+            self.status.extras["inputMarker"]["state"] = "ACTIVE"
+            self.status.extras["inputMarker"]["error"] = None
+            self.status.extras["inputMarker"]["sessionId"] = (
+                self.runtime.active_console_session_id()
+            )
+            self._persist_status()
         except Exception as exc:
+            if self._marker_started:
+                # Even if persisting ACTIVE failed, the hook may already be
+                # installed. Never abandon it without requesting unhook.
+                try:
+                    self.marker_capture.stop()
+                except Exception as stop_error:
+                    self.status.last_error = (
+                        f"input marker cleanup failure: {type(stop_error).__name__}: "
+                        f"{stop_error}"
+                    )
             self._marker_started = False
-            self.status.last_error = (
+            self.status.last_error = self.status.last_error or (
                 f"input marker capture unavailable: {type(exc).__name__}: {exc}"
             )
+            self.status.extras["inputMarker"]["state"] = "ERROR"
+            self.status.extras["inputMarker"]["error"] = str(exc)
             try:
                 self._persist_status()
             except OSError:
@@ -577,8 +635,12 @@ class Supervisor:
             self.status.last_error = (
                 f"input marker stop failure: {type(exc).__name__}: {exc}"
             )
+            self.status.extras["inputMarker"]["state"] = "ERROR"
+            self.status.extras["inputMarker"]["error"] = str(exc)
         finally:
             self._marker_started = False
+            if self.status.extras["inputMarker"]["state"] != "ERROR":
+                self.status.extras["inputMarker"]["state"] = "STOPPED"
 
     def _recover_nvda(self) -> None:
         current = self.runtime.nvda_process()
@@ -774,8 +836,14 @@ class Supervisor:
                 self.store.close()
             return 2 if state == RuntimeState.BLOCKED else 3
 
-        self._start_marker_capture()
+        exit_code = 0
         try:
+            self._start_marker_capture()
+            if self.block_marker and not self._marker_started:
+                self.transition(RuntimeState.BLOCKED,
+                                "F11 blocking hook failed to start",
+                                error=self.status.last_error)
+                return 2
             next_health_check = 0.0
             while not self.paths.stop_request.exists():
                 # Capture promotion is latency-sensitive. Process/session health
@@ -783,6 +851,9 @@ class Supervisor:
                 # batched into one ordered SQLite transaction per loop.
                 self._renew_capture_lease()
                 self._flush_ingress()
+                if self.status.state == RuntimeState.BLOCKED:
+                    exit_code = 2
+                    break
                 now = time.monotonic()
                 if now >= next_health_check:
                     self._recover_nvda()
@@ -790,6 +861,7 @@ class Supervisor:
                     self._sync_marker_target()
                     next_health_check = now + self.health_poll_interval
                 if self.status.state in {RuntimeState.BLOCKED, RuntimeState.RESTART_REQUIRED}:
+                    exit_code = 2 if self.status.state == RuntimeState.BLOCKED else 3
                     break
                 time.sleep(self.poll_interval)
         finally:
@@ -839,5 +911,5 @@ class Supervisor:
                 pass
             if self.store:
                 self.store.close()
-        return 0
+        return exit_code
 

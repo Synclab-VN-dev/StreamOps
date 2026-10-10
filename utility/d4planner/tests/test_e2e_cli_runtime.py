@@ -557,3 +557,254 @@ def test_e2e_sqlite_speech_ingress_still_materializes_equipment(tmp_path):
     paths.stop_request.write_text("stop\n", encoding="utf-8")
     thread.join(timeout=2.0)
     assert not thread.is_alive()
+
+
+
+def test_e2e_block_hook_speech_and_suppressed_marker_share_sqlite_without_equipment_mutation(
+    tmp_path,
+):
+    from d4planner.runtime.input_marker import HookInputMarkerCapture
+    from d4planner.runtime.keyboard_hook import BoundedSamples, F11Sample, WM_KEYDOWN, WM_KEYUP
+
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = E2ERuntime(paths)
+    manager = UserPathManager(
+        paths, MemoryPathBackend(user_path="", machine_path="MACHINE"),
+    )
+
+    class ControlledHook:
+        def __init__(self, *, game_pid, block):
+            assert block is True
+            self.game_pid = game_pid
+            self.samples = BoundedSamples()
+            self.hook_errors = 0
+            self.started = False
+            self.stopped = False
+
+        def __enter__(self):
+            self.started = True
+            return self
+
+        def __exit__(self, *_):
+            self.stopped = True
+
+        def set_target_pid(self, pid):
+            self.game_pid = int(pid or 0)
+
+        def pump(self):
+            return True
+
+        def send(self, msg):
+            self.samples.append(F11Sample(
+                timestamp_ms=int(__import__("datetime").datetime.fromisoformat(
+                    "2026-10-09T03:00:00.200+07:00"
+                ).timestamp() * 1000),
+                message=msg, state="down" if msg == WM_KEYDOWN else "up",
+                flags=0x10, foreground_pid=self.game_pid,
+                suppressed=True, target_match=True,
+            ))
+
+    fake = ControlledHook(game_pid=0, block=True)
+    marker = HookInputMarkerCapture(
+        poll_interval=0.001, backend_factory=lambda **kw: fake,
+    )
+    supervisor = Supervisor(
+        paths=paths, runtime=runtime, path_manager=manager,
+        silent=True, block_marker=True, marker_capture=marker,
+        poll_interval=0.01, health_poll_interval=0.05,
+        game_start_timeout=0.01,
+    )
+
+    thread = threading.Thread(target=supervisor.run, daemon=True)
+    thread.start()
+    assert wait_until(
+        lambda: (read_json(paths.runtime_state) or {})
+        .get("extras", {}).get("inputMarker", {}).get("state") == "ACTIVE"
+    )
+    assert fake.game_pid == 300
+    session_id = supervisor.status.session_id
+    raw = supervisor.store.session.raw_speech_path
+    raw.write_text(json.dumps({
+        "sessionId": session_id, "sequence": 1,
+        "timestamp": "2026-10-09T03:00:00.100+07:00",
+        "process": "diablo iv", "processId": 300,
+        "windowTitle": "Diablo IV", "text": "900 Item Power",
+        "rawSpeech": ["900 Item Power"],
+    }) + "\n", encoding="utf-8")
+    fake.send(WM_KEYDOWN)
+    fake.send(WM_KEYUP)
+
+    def arrived():
+        reader = EventLogReader(paths.events_db)
+        try:
+            events = reader.read_after(session_id, 0)
+            return len([x for x in events if x.type == "input.marker.raw"]) == 2
+        finally:
+            reader.close()
+
+    assert wait_until(arrived)
+    reader = EventLogReader(paths.events_db)
+    try:
+        records = [
+            e for e in reader.read_after(session_id, 0)
+            if e.type in {"input.marker.raw", "speech.raw"}
+        ]
+    finally:
+        reader.close()
+    assert [e.data["state"] for e in records if e.type == "input.marker.raw"] == ["down", "up"]
+    assert all(
+        e.data["suppressed"] is True and e.data["captureMethod"] == "keyboardHook"
+        for e in records if e.type == "input.marker.raw"
+    )
+    assert any(e.type == "speech.raw" for e in records)
+    assert [e.event_seq for e in records] == sorted(e.event_seq for e in records)
+    assert {e.session_id for e in records} == {session_id}
+    assert EquipmentRepository(paths.character_db).list_equipment() == []
+    paths.stop_request.write_text("stop\n", encoding="utf-8")
+    thread.join(timeout=2)
+    assert not thread.is_alive()
+    assert fake.stopped
+    assert (read_json(paths.runtime_state) or {})["state"] == "STOPPED"
+
+
+def test_block_runtime_hook_start_failure_must_fail_closed(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = E2ERuntime(paths)
+    manager = UserPathManager(
+        paths, MemoryPathBackend(user_path="", machine_path="MACHINE"),
+    )
+
+    class NoHook:
+        def set_target_pid(self, pid):
+            pass
+
+        def start(self):
+            raise RuntimeError("Windows hook refused registration")
+
+        def stop(self, **kwargs):
+            pass
+
+        def drain(self):
+            return []
+
+        def consume_error(self):
+            return None
+
+    supervisor = Supervisor(
+        paths=paths, runtime=runtime, path_manager=manager,
+        marker_capture=NoHook(), block_marker=True, silent=True,
+        game_start_timeout=0.01,
+    )
+    assert supervisor.run() == 2
+    saved = read_json(paths.runtime_state)
+    assert saved["state"] == "STOPPED"
+    assert saved["extras"]["inputMarker"]["state"] == "ERROR"
+    assert "Windows hook refused registration" in (saved["lastError"] or "")
+
+
+class RuntimeFailMarker:
+    def __init__(self, *, error="synthetic hook runtime failure", dropped_count=0):
+        self.error = error
+        self.dropped_count = dropped_count
+        self.overflowed = dropped_count > 0
+        self.started = False
+        self.stopped = False
+
+    def set_target_pid(self, pid):
+        self.target_pid = pid
+
+    def start(self):
+        self.started = True
+
+    def stop(self, **kwargs):
+        self.stopped = True
+
+    def drain(self):
+        return []
+
+    def consume_error(self):
+        error, self.error = self.error, None
+        return error
+
+
+def _block_supervisor(paths, runtime, marker):
+    return Supervisor(
+        paths=paths,
+        runtime=runtime,
+        path_manager=UserPathManager(
+            paths, MemoryPathBackend(user_path="", machine_path="MACHINE")
+        ),
+        marker_capture=marker,
+        block_marker=True,
+        silent=True,
+        poll_interval=0.001,
+        health_poll_interval=0.01,
+        game_start_timeout=0.001,
+    )
+
+
+def test_e2e_block_hook_failure_after_start_returns_nonzero_and_keeps_diagnostics(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    marker = RuntimeFailMarker()
+    supervisor = _block_supervisor(paths, E2ERuntime(paths), marker)
+
+    assert supervisor.run() == 2
+    saved = read_json(paths.runtime_state)
+    assert saved["state"] == "STOPPED"
+    assert saved["extras"]["inputMarker"]["state"] == "ERROR"
+    assert "synthetic hook runtime failure" in saved["lastError"]
+    assert marker.started and marker.stopped
+
+    reader = EventLogReader(paths.events_db)
+    try:
+        types = [row.type for row in reader.read_after(saved["sessionId"], 0)]
+    finally:
+        reader.close()
+    assert "runtime.blocked" in types
+    assert "runtime.stop" in types
+
+
+def test_e2e_block_hook_failure_while_waiting_for_game_is_controlled(tmp_path):
+    class WaitingRuntime(E2ERuntime):
+        def __init__(self, paths):
+            super().__init__(paths)
+            self._game = None
+            self._steam = None
+
+        def wait_for_game(self, *, timeout=90.0):
+            return None
+
+    paths = RuntimePaths(tmp_path / "home")
+    marker = RuntimeFailMarker(error="hook failed while game absent")
+    supervisor = _block_supervisor(paths, WaitingRuntime(paths), marker)
+
+    assert supervisor.run() == 2
+    saved = read_json(paths.runtime_state)
+    assert saved["state"] == "STOPPED"
+    assert "hook failed while game absent" in saved["lastError"]
+    assert "invalid D4Planner transition" not in saved["lastError"]
+
+
+def test_e2e_block_queue_overflow_propagates_status_and_log(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    marker = RuntimeFailMarker(
+        error="Windows keyboard hook queue overflow: droppedCount=3",
+        dropped_count=3,
+    )
+    supervisor = _block_supervisor(paths, E2ERuntime(paths), marker)
+
+    assert supervisor.run() == 2
+    saved = read_json(paths.runtime_state)
+    marker_status = saved["extras"]["inputMarker"]
+    assert marker_status["state"] == "ERROR"
+    assert marker_status["droppedCount"] == 3
+    assert marker_status["overflow"] is True
+
+    reader = EventLogReader(paths.events_db)
+    try:
+        rows = reader.read_after(saved["sessionId"], 0)
+    finally:
+        reader.close()
+    overflow = [row for row in rows if row.type == "input.marker.overflow"]
+    assert len(overflow) == 1
+    assert overflow[0].data["droppedCount"] == 3

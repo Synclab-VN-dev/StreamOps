@@ -103,23 +103,26 @@ class MarkerSample:
     state: str
     process_id: int
     window_title: str
+    suppressed: bool | None = None
+    capture_method: str | None = None
 
     def as_draft(self) -> EventDraft:
-        return EventDraft(
-            "input.marker.raw",
-            {
-                "source": "steamInput",
-                "device": "keyboard",
-                "key": self.key.upper(),
-                "virtualKey": self.virtual_key,
-                "state": self.state.casefold(),
-                "process": "diablo iv",
-                "processId": self.process_id,
-                "contextSource": "win32Foreground",
-                "windowTitle": self.window_title,
-            },
-            timestamp=self.timestamp,
-        )
+        data = {
+            "source": "steamInput",
+            "device": "keyboard",
+            "key": self.key.upper(),
+            "virtualKey": self.virtual_key,
+            "state": self.state.casefold(),
+            "process": "diablo iv",
+            "processId": self.process_id,
+            "contextSource": "win32Foreground",
+            "windowTitle": self.window_title,
+        }
+        if self.suppressed is not None:
+            data["suppressed"] = self.suppressed
+        if self.capture_method is not None:
+            data["captureMethod"] = self.capture_method
+        return EventDraft("input.marker.raw", data, timestamp=self.timestamp)
 
 
 class InputMarkerCapture:
@@ -230,3 +233,150 @@ __all__ = [
     "edge_transition",
     "virtual_key_code",
 ]
+
+
+
+class HookInputMarkerCapture:
+    """Production F11 capture and suppression using the shared Win32 hook core.
+
+    In block mode the polling backend MUST NOT be started: suppressed keyboard
+    events may never become visible to GetAsyncKeyState. The hook lives on a
+    dedicated message-pumping thread, while Supervisor remains the only
+    SQLite writer. No keyboard event is generated or sent to the game.
+    """
+
+    def __init__(self, *, poll_interval: float = 0.01, backend_factory=None) -> None:
+        self.poll_interval = max(0.001, float(poll_interval))
+        self._backend_factory = backend_factory
+        self._target_pid: int | None = None
+        self._samples: queue.SimpleQueue[MarkerSample] = queue.SimpleQueue()
+        self._stop = threading.Event()
+        self._ready = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._last_error: str | None = None
+        self._hook = None
+        self._running = False
+        self._dropped_count = 0
+
+    def set_target_pid(self, pid: int | None) -> None:
+        self._target_pid = int(pid) if pid and int(pid) > 0 else None
+
+    @staticmethod
+    def _convert_sample(sample) -> MarkerSample:
+        from datetime import datetime
+
+        return MarkerSample(
+            timestamp=datetime.fromtimestamp(sample.timestamp_ms / 1000)
+            .astimezone().isoformat(timespec="milliseconds"),
+            key="f11",
+            virtual_key=0x7A,
+            state=sample.state,
+            process_id=sample.foreground_pid,
+            window_title="Diablo IV",
+            suppressed=True,
+            capture_method="keyboardHook",
+        )
+
+    def _drain_hook(self, hook) -> None:
+        samples = getattr(hook, "samples", None)
+        if samples is None:
+            return
+        for sample in samples.drain():
+            if sample.target_match and sample.suppressed and sample.foreground_pid:
+                self._samples.put(self._convert_sample(sample))
+
+    def _update_overflow(self, hook) -> None:
+        dropped = int(getattr(getattr(hook, "samples", None), "dropped", 0))
+        if dropped > self._dropped_count:
+            self._dropped_count = dropped
+
+    @property
+    def dropped_count(self) -> int:
+        hook = self._hook
+        if hook is not None:
+            self._update_overflow(hook)
+        return self._dropped_count
+
+    @property
+    def overflowed(self) -> bool:
+        return self.dropped_count > 0
+
+    def _run(self) -> None:
+        from .keyboard_hook import WindowsF11Hook
+
+        hook = None
+        try:
+            factory = self._backend_factory or WindowsF11Hook
+            hook = factory(game_pid=self._target_pid or 0, block=True)
+            try:
+                with hook:
+                    self._hook = hook
+                    self._running = True
+                    self._ready.set()
+                    while not self._stop.is_set():
+                        hook.set_target_pid(self._target_pid)
+                        if not hook.pump():
+                            raise RuntimeError("Windows keyboard hook message loop quit")
+                        self._drain_hook(hook)
+                        self._update_overflow(hook)
+                        if self._dropped_count:
+                            raise RuntimeError(
+                                "Windows keyboard hook queue overflow: "
+                                f"droppedCount={self._dropped_count}"
+                            )
+                        if hook.hook_errors:
+                            raise RuntimeError(
+                                f"Windows keyboard hook callback errors={hook.hook_errors}"
+                            )
+                        self._stop.wait(self.poll_interval)
+            finally:
+                # The context manager has unhooked before this final drain, so
+                # no callback can enqueue a tail event behind the drain.
+                self._update_overflow(hook)
+                self._drain_hook(hook)
+        except Exception as exc:
+            self._last_error = f"{type(exc).__name__}: {exc}"
+        finally:
+            self._running = False
+            self._hook = None
+            self._ready.set()
+
+    def start(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        self._last_error = None
+        self._dropped_count = 0
+        self._stop.clear()
+        self._ready.clear()
+        self._thread = threading.Thread(
+            target=self._run, daemon=True, name="d4planner-f11-keyboard-hook"
+        )
+        self._thread.start()
+        if not self._ready.wait(timeout=5.0):
+            self._stop.set()
+            raise RuntimeError("F11 keyboard hook did not become ready in 5 seconds")
+        if self._last_error or not self._running:
+            raise RuntimeError(self._last_error or "F11 keyboard hook exited on startup")
+
+    def stop(self, *, timeout: float = 5.0) -> None:
+        self._stop.set()
+        thread = self._thread
+        if thread and thread.is_alive():
+            thread.join(timeout=max(0.0, timeout))
+        if thread and thread.is_alive():
+            raise RuntimeError("F11 hook thread failed to unhook on shutdown")
+
+    def drain(self) -> list[MarkerSample]:
+        values: list[MarkerSample] = []
+        while True:
+            try:
+                values.append(self._samples.get_nowait())
+            except queue.Empty:
+                return values
+
+    def consume_error(self) -> str | None:
+        error = self._last_error
+        self._last_error = None
+        if not error and self._thread and not self._thread.is_alive() and not self._stop.is_set():
+            error = "F11 keyboard hook thread unexpectedly exited"
+        return error
