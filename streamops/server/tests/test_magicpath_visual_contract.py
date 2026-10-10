@@ -38,12 +38,16 @@ def test_pinned_magicpath_originals_and_revisions() -> None:
             # ROOT is streamops/server/tests/visual_magicpath, so use repository root.
             assert path.exists(), path
             payload = path.read_bytes()
+            # Windows Git checkout may convert LF to CRLF. Hash the exact Git
+            # blob canonical LF bytes for text only; JPEG binary stays byte exact.
+            if suffix == "source":
+                payload = payload.replace(b"\r\n", b"\n")
             assert git_blob_sha1(payload) == ref[f"{suffix}_git_blob_sha1"]
             assert len(payload) > (10000 if suffix == "preview" else 5000)
         assert "Diablo IV" in (ROOT.parents[3] / ref["source_path"]).read_text(encoding="utf-8")
 
     css = ROOT.parents[3] / manifest["css_path"]
-    assert git_blob_sha1(css.read_bytes()) == manifest["css_git_blob_sha1"]
+    assert git_blob_sha1(css.read_bytes().replace(b"\r\n", b"\n")) == manifest["css_git_blob_sha1"]
 
 
 def test_design_reference_is_not_generated_from_production_ui() -> None:
