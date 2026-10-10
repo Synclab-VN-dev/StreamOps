@@ -181,12 +181,22 @@ def games_ui_server():
     listener = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
     listener.bind(("127.0.0.1",0)); listener.listen(128)
     port=listener.getsockname()[1]
-    server=uvicorn.Server(uvicorn.Config(app,log_level="warning",lifespan="on"))
+    server=uvicorn.Server(uvicorn.Config(app,log_level="warning",lifespan="on",timeout_graceful_shutdown=3))
     thread=threading.Thread(target=server.run,kwargs={"sockets":[listener]},daemon=True)
     thread.start()
     wait_until(lambda:server.started)
     try: yield f"http://127.0.0.1:{port}",fake
     finally:
+        # Close live WS consumers before uvicorn lifespan shutdown; do not leave
+        # a fixture waiting on a browser that is still open in pytest teardown.
+        if fake.loop:
+            async def close_peers():
+                for ws in tuple(fake.peers | fake.steam_peers):
+                    try:
+                        await ws.close(code=1001)
+                    except Exception:
+                        pass
+            asyncio.run_coroutine_threadsafe(close_peers(),fake.loop).result(timeout=5)
         server.should_exit=True;thread.join(timeout=10)
         if thread.is_alive(): raise RuntimeError("Fake WS server could not stop")
 
@@ -196,7 +206,7 @@ def test_games_catalog_filter_and_detail(page: Page, games_ui_server):
     page.goto(base+"/games")
     expect(page.locator("#game-summary")).to_contain_text("1")
     expect(page.locator("#game-library button")).to_have_count(1)
-    page.get_by_role("button",name="Diablo IV steam RUNNING").last.click()
+    page.locator("#game-library button").first.click()
     expect(page.locator("#game-detail")).to_contain_text("CONFIGURED_ONLY")
     expect(page.locator("#game-detail")).not_to_contain_text("VERIFIED_ACTIVE")
     expect(page.get_by_role("button",name="Force Stop (disabled)")).to_be_disabled()
@@ -247,9 +257,8 @@ def test_steam_ui_ws_only_and_card_order(page: Page, games_ui_server):
     page.goto(base+"/steam")
     expect(page.locator("#steam-pid")).to_have_text("7777")
     expect(page.locator("#game-manager-card")).to_contain_text("Manage Games")
-    ids=page.locator("main > section").evaluate_all("(els)=>els.map(x=>x.id)")
-    assert ids.index("steam-status-panel") < ids.index("game-manager-card")
-    assert ids.index("game-manager-card") < ids.index("activity-log") if "activity-log" in ids else True
+    ids=page.locator("main > section").evaluate_all("(els)=>els.map(x=>x.id || (x.classList.contains(\"activity-panel\") ? \"activity-panel\" : \"\"))")
+    assert ids.index("steam-status-panel") < ids.index("game-manager-card") < ids.index("activity-panel")
     page.get_by_role("link",name="Manage Games").click()
     expect(page).to_have_url(base+"/games")
     expect(page.get_by_role("heading",name="Game Manager")).to_be_visible()
