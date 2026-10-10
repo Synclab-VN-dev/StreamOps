@@ -98,7 +98,7 @@ def _stage_production(page, fake, base, design, scenario):
     if design == "steam":
         expect(page.locator("#steam-state")).not_to_have_text("Checking")
         if scenario == "empty":
-            fake.set_library([])
+            fake.set_library([game("Registered " + str(i), "steam:" + str(200 + i), "STOPPED") for i in range(8)])
         elif scenario == "multi":
             fake.set_library([game("Diablo IV", "steam:2344520"), game("Other", "steam:111"),
                               game("Third", "steam:222")])
@@ -127,7 +127,7 @@ def _stage_production(page, fake, base, design, scenario):
                  action:'stop',status:'UNKNOWN',phase:'TIMEOUT',code:'timeout'});
             }""")
         elif scenario == "detail":
-            page.locator("#game-library button").first.click()
+            page.locator('#game-library button[data-game-id="steam:2344520"]').click()
             expect(page.locator("#game-detail")).to_contain_text("Diablo IV")
 
 

@@ -147,3 +147,7 @@ body.gm-page { color-scheme:light; color:#18181b; background:#f5f6f8; font-famil
  .gm-steam-page .gm-card{padding:16px;}
  .gm-steam-page .status-list>div{grid-template-columns:1fr 1fr;}
 }
+
+.gm-steam-page .gm-alert {padding:13px;margin-bottom:12px;border:1px solid #fecaca;border-radius:14px;background:#fef2f2;color:#b91c1c;}
+.gm-steam-page .gm-alert strong {font-size:12px;}
+.gm-steam-page .gm-alert p {margin:6px 0 0;font-size:12px;line-height:1.5;}

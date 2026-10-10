@@ -8,6 +8,7 @@
   function render() {
     const fresh=connected && current && current.stale!==true;
     const state=fresh?(current.running===true?"Running":current.running===false?"Stopped":"UNKNOWN"):"UNKNOWN";
+    $("#steam-notice").hidden = state !== "UNKNOWN";
     $("#steam-state").textContent=busy?"Restarting":state;
     $("#steam-state-badge").dataset.tone=state==="Running"?"ok":state==="Stopped"?"warn":"bad";
     $("#steam-heading-status").textContent=state==="Running"?"Steam running":state==="Stopped"?"Steam stopped":"Steam unavailable";
