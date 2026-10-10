@@ -165,5 +165,5 @@ jobs:
         with:
           name: magicpath-visual-${{ github.sha }}
           path: ${{ runner.temp }}/game-manager-visual
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
