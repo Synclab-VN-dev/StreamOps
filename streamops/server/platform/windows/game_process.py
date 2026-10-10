@@ -151,6 +151,8 @@ class WindowsGameProcess:
         if process.session_id != active_session:
             raise GamePlatformError("wrong_desktop_session", "Game is outside active console session.")
         windows = self._windows(process.pid)
+        ctypes.windll.user32.GetForegroundWindow.restype = wintypes.HWND
+        foreground = ctypes.windll.user32.GetForegroundWindow()
         return GameObservation(
             installed=True,
             process=ProcessIdentity(
@@ -159,7 +161,7 @@ class WindowsGameProcess:
                 created_at=datetime.fromtimestamp(process.started_at_timestamp, timezone.utc).isoformat(),
                 stale=False,
             ),
-            window=("FOREGROUND" if windows and int(ctypes.windll.user32.GetForegroundWindow()) in windows
+            window=("FOREGROUND" if windows and foreground in windows
                     else "BACKGROUND" if windows else "NOT_DETECTED"),
         )
 
@@ -190,5 +192,8 @@ class WindowsGameProcess:
         if len(windows) != 1:
             raise GamePlatformError("capability_disabled", "Exactly one verified game window is required for safe Stop.")
         WM_CLOSE = 0x0010
-        if not ctypes.windll.user32.PostMessageW(windows[0], WM_CLOSE, 0, 0):
+        post = ctypes.windll.user32.PostMessageW
+        post.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+        post.restype = wintypes.BOOL
+        if not post(windows[0], WM_CLOSE, 0, 0):
             raise GamePlatformError("capability_disabled", "Failed to request a graceful window close.")
