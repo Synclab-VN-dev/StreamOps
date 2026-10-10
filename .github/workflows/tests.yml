@@ -144,26 +144,5 @@ jobs:
         run: |
           $env:STREAMOPS_TEST_WHEEL = (Get-ChildItem dist\*.whl | Select-Object -First 1).FullName
           python -m pytest -q streamops/server/tests/test_wheel_acceptance.py
-      - name: Setup Node 24 for frozen MagicPath renderer
-        if: steps.changes.outputs.gameui == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - name: Install isolated MagicPath visual reference dependencies
-        if: steps.changes.outputs.gameui == 'true'
-        working-directory: streamops/server/tests/visual_magicpath/reference_source
-        run: npm install --ignore-scripts --no-audit --no-fund
-      - name: FE-G5 — MagicPath revision-locked visual comparisons (owner approval required)
-        if: steps.changes.outputs.gameui == 'true'
-        env:
-          STREAMOPS_VISUAL_ENFORCE_APPROVAL: '1'
-          STREAMOPS_VISUAL_ARTIFACTS: ${{ runner.temp }}/game-manager-visual
-        run: python -m pytest -q streamops/server/tests/e2e/test_magicpath_visual.py
-      - name: Publish MagicPath expected, actual and diff artifacts
-        uses: actions/upload-artifact@v4
-        if: always() && steps.changes.outputs.gameui == 'true'
-        with:
-          name: magicpath-visual-${{ github.sha }}
-          path: ${{ runner.temp }}/game-manager-visual
-          if-no-files-found: warn
-          retention-days: 30
+      # FE-G5 is a parallel, non-skippable visual check in game-manager-visual.yml.
+      # It requires owner-approved goldens and uploads expected/actual/diff images.
