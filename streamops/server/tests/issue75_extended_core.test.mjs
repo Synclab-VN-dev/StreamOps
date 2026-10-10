@@ -74,7 +74,7 @@ test('UNIT matrix: incompatible and unavailable release fail closed for install 
     {...catalog,available_version:null,installable:false}]) {
     assert.equal(enabled(plugin('NOT_INSTALLED'),release).install.enabled,false);
     assert.equal(enabled(plugin('UPDATE_AVAILABLE'),release).update.enabled,
-      release?.installable===true && Boolean(release.available_version));
+      release?.installable===true && release?.compatibility==='compatible' && Boolean(release.available_version));
   }
   assert.equal(shouldOfferInstall(plugin('NOT_INSTALLED'),{...catalog,compatibility:'incompatible'}),false);
 });
