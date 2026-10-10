@@ -15,4 +15,5 @@ function render() {
   document.getElementById('plugin-dashboard-attention').textContent = store.loading ? '—' : String(counts.attention);
 }
 window.addEventListener('pagehide',() => store.destroy(),{once:true});
+window.addEventListener('pageshow',event => {if (event.persisted) location.reload();});
 render();

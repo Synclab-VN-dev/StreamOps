@@ -7,6 +7,19 @@ export const PROPOSED_READ_OPERATIONS = Object.freeze({
   inventory:'obs_plugin.inventory', available:'obs_plugin.available'
 });
 const MUTATIONS = new Set(['adopt','install','update','verify','rollback']);
+const PENDING_SESSION_KEY = 'streamops:obs-plugin-operation-pending';
+// Preserve uncertain mutation state across page refresh within this tab.
+function pendingInSession() {
+  try {return typeof sessionStorage !== 'undefined' && sessionStorage.getItem(PENDING_SESSION_KEY) === '1';}
+  catch {return false;}
+}
+function markPendingInSession(pending) {
+  try {
+    if (typeof sessionStorage === 'undefined') return;
+    if (pending) sessionStorage.setItem(PENDING_SESSION_KEY,'1');
+    else sessionStorage.removeItem(PENDING_SESSION_KEY);
+  } catch { /* storage may be unavailable; backend remains the final mutation guard */ }
+}
 export class PluginStore {
   constructor({client, obsClient, onChange}) {
     this.client = client;
@@ -20,7 +33,7 @@ export class PluginStore {
     this.loading = true;
     this.error = null;
     this.busy = false;
-    this.unknownOutcome = false;
+    this.unknownOutcome = pendingInSession();
     this.activity = [];
     this.generation = 0;
     this.refreshInFlight = false;
@@ -96,7 +109,7 @@ export class PluginStore {
     if (!plugin) throw new Error('Plugin not in managed registry.');
     const eligibility = safeActions(plugin,this.catalog.get(pluginId),this.runtime,this.connected,this.busy || this.unknownOutcome);
     if (!eligibility[operation]?.enabled) throw new Error(eligibility[operation]?.reason || 'Backend state does not permit this action.');
-    this.busy = true; this.publish();
+    this.busy = true; markPendingInSession(true); this.publish();
     let requestId = null;
     const previous = this.inventory.find(p => p.plugin_id === pluginId)?.state || null;
     try {
@@ -104,12 +117,15 @@ export class PluginStore {
       requestId = pending.requestId || null;
       this.log({plugin_id:pluginId, operation, request_id:requestId, result:'requested', previous_state:previous});
       const data = await pending;
+      markPendingInSession(false);
+      this.unknownOutcome = false;
       this.log({plugin_id:pluginId, operation, request_id:requestId, result:data.result || 'completed',
         previous_state:previous, resulting_state:data.state || null});
       return data;
     } catch (error) {
       const uncertain = !error?.code || error.code === 'plugin_operation_timeout';
       this.unknownOutcome = uncertain;
+      if (!uncertain) markPendingInSession(false);
       this.log({plugin_id:pluginId, operation, request_id:requestId,
         result:uncertain?'unknown':'failed', previous_state:previous, error_code:error.code || 'unknown_outcome'});
       throw error;
@@ -120,14 +136,17 @@ export class PluginStore {
   }
   async restart() {
     if (this.busy || this.unknownOutcome || !this.obsClient.connected) throw new Error('Restart blocked.');
-    this.busy = true; this.publish();
+    this.busy = true; markPendingInSession(true); this.publish();
     try {
       this.log({operation:'obs.lifecycle.restart', result:'requested'});
       const response = await this.obsClient.request('obs.lifecycle.restart', {}, 150000);
+      markPendingInSession(false);
+      this.unknownOutcome = false;
       this.log({operation:'obs.lifecycle.restart', result:'completed'});
       return response;
     } catch (error) {
       this.unknownOutcome = !error.code;
+      if (!this.unknownOutcome) markPendingInSession(false);
       this.log({operation:'obs.lifecycle.restart', result:'unknown', error_code:error.code || 'unknown_outcome'});
       throw error;
     } finally {
