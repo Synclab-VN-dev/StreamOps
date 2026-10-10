@@ -218,7 +218,7 @@ def test_interactive_worker_rejects_wrong_session_without_hook(tmp_path, monkeyp
     assert "F11_DIAGNOSTIC_COMPLETE status=2" in content
 
 
-def test_interactive_worker_writes_terminal_marker_after_poc(tmp_path, monkeypatch):
+def test_interactive_worker_writes_terminal_marker_after_diagnostic(tmp_path, monkeypatch):
     monkeypatch.setattr(diag, "process_session_id", lambda pid: 1)
     monkeypatch.setattr(diag, "active_console_session_id", lambda: 1)
     monkeypatch.setattr(diag, "run_diagnostic",
