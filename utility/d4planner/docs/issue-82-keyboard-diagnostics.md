@@ -150,7 +150,7 @@ Diablo IV and all other keys. On the updated PR #83 branch, run:
 ~~~powershell
 $session = (Get-Process -Id $PID).SessionId
 $gameSession = (Get-Process -Id $gamePid).SessionId
-"POC session=$session; D4 session=$gameSession"
+"Diagnostic session=$session; D4 session=$gameSession"
 & $py -m d4planner.keyboard_capture_diagnostic --pid $gamePid --seconds 60 --diagnose
 ~~~
 
@@ -168,7 +168,7 @@ with targetMatch=False and add SUMMARY counters:
 - f11_seen>0, f11_target=0: F11 does arrive but was filtered because another
   foreground process owns the window. Compare printed foregroundPid and
   game PID; make D4 foreground, don't weaken the game PID guard.
-- f11_target>0: POC captured F11 when D4 had foreground. Next test
+- f11_target>0: Diagnostic captured F11 when D4 had foreground. Next test
   --block and observe whether D4 prompts still blink. Do **not** claim blink
   fixed without watching actual game behavior.
 
