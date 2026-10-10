@@ -661,3 +661,27 @@ def test_issue75_legacy_adopt_empty_catalog_then_approved_release_enables_instal
     expect(page.get_by_role("button",name="Install plugin")).to_be_enabled()
     assert len(fake.mutations("obs_plugin.adopt"))==1
     assert fake.mutations("obs_plugin.install")==[]
+
+
+def test_issue75_adopt_recording_guard_blocks_even_when_obs_state_claims_stopped(
+    page:Page,live_server:BrowserTestServer
+):
+    fake=ScenarioWS(page,plugin_state="UNMANAGED",catalog=False,
+                    obs_state="STOPPED",recording=True)
+    launch(page,live_server,fake)
+    expect(page.get_by_role("button",name="Adopt existing")).to_be_disabled()
+    assert fake.mutations()==[]
+
+
+def test_issue75_adopt_backend_409_race_reconciles_without_stopping_obs(
+    page:Page,live_server:BrowserTestServer
+):
+    fake=ScenarioWS(page,plugin_state="UNMANAGED",catalog=False)
+    fake.fail_operation="plugin_state_conflict"
+    launch(page,live_server,fake)
+    act(page,"Adopt existing")
+    confirm(page)
+    expect(page.locator("#plugin-notice")).to_contain_text("plugin_state_conflict")
+    expect(page.locator(".plugin-card")).to_contain_text("Existing")
+    assert len(fake.mutations("obs_plugin.adopt"))==1
+    assert fake.mutations("obs.lifecycle.stop")==[]
