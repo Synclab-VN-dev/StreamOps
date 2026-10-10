@@ -281,6 +281,21 @@
           </div>
         </details>
 
+        <section id="plugin-manager-dashboard-card" class="operational-card" aria-labelledby="plugin-dashboard-title">
+          <div class="operational-card-summary">
+            <div class="card-title-row">
+              <div><h2 id="plugin-dashboard-title">Plugin Manager</h2><p>Approved OBS plugins, adoption and verification</p></div>
+              <span id="plugin-dashboard-state" class="state-pill" data-tone="neutral">Connecting</span>
+            </div>
+            <div class="summary-grid summary-grid-3">
+              <div><span>Managed</span><strong id="plugin-dashboard-managed">—</strong></div>
+              <div><span>Installed</span><strong id="plugin-dashboard-installed">—</strong></div>
+              <div><span>Attention</span><strong id="plugin-dashboard-attention">—</strong></div>
+            </div>
+            <a href="/obs/plugins" class="plugin-dashboard-link">Open Plugin Manager →</a>
+          </div>
+        </section>
+
         <details id="activity-card" class="operational-card activity-panel">
           <summary class="operational-card-summary">
             <div class="card-title-row">
@@ -302,6 +317,7 @@
       </div>
     </main>
 
+    <link rel="stylesheet" href="/assets/obs-plugins/plugin-manager.css">
     <script src="/assets/common.js" defer></script>
     <script src="/assets/ws-client.js" defer></script>
     <script src="/assets/streaming-state.js" defer></script>
@@ -310,5 +326,6 @@
     <script src="/assets/obs-process.js" defer></script>
     <script src="/assets/streaming-summary.js" defer></script>
     <script src="/assets/obs.js" defer></script>
+    <script type="module" src="/assets/obs-plugins/dashboard.mjs"></script>
   </body>
 </html>
