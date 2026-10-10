@@ -104,3 +104,34 @@ test('UNIT WS envelope: interrupted pending request rejects; reconnect allocates
   assert.equal((await second).plugins.length,0);
   client.destroy();
 });
+
+
+test('UNIT WS long-operation: 121s idle must not disconnect a legitimate 120s backend job',()=>{
+  Socket.created.length=0;
+  let now=0;
+  const intervals=[];
+  class ClockDate extends Date {static now(){return now;}}
+  const w={addEventListener:()=>{},dispatchEvent:()=>{}};
+  const context={
+    window:w,document:{addEventListener:()=>{},visibilityState:'visible'},
+    location:{protocol:'http:',host:'localhost:8765'},WebSocket:Socket,
+    Date:ClockDate,JSON,queueMicrotask,
+    setTimeout,clearTimeout,
+    setInterval:(callback)=>{intervals.push(callback);return 1;},
+    clearInterval:()=>{}
+  };
+  vm.runInNewContext(script,context,{filename:'ws-client.js'});
+  const client=new w.StreamOpsWebSocketClient({
+    path:'/api/v1/obs/plugins/ws',label:'long running plugin operation',
+    idleTimeoutMs:180000
+  }).start();
+  const socket=Socket.created.at(-1);
+  socket.open();
+  now=121000;
+  for(const watchdog of intervals)watchdog();
+  assert.equal(socket.readyState,Socket.OPEN,'120s backend operation must be allowed');
+  now=181000;
+  for(const watchdog of intervals)watchdog();
+  assert.equal(socket.readyState,Socket.CLOSED,'truly silent socket is recycled');
+  client.destroy();
+});
