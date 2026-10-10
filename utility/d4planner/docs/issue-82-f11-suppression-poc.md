@@ -91,3 +91,39 @@ queue and fail-open. They do not replace interactive Real-A tests.
 - POC child PR: poc/82-f11-suppress-hook, base must remain parent.
 - Keep PR **draft** and ticket #82 **open** until Dev F and Manual acceptance
   pass. If PR #70 merges, retarget the child PR as appropriate.
+
+
+## Diagnose: hook starts but prints no F11 events
+
+A clean "queue_dropped=0 hook_errors=0" **does not imply keyboard events
+were observed**: normal mode filters all F11 whose foreground PID is not
+Diablo IV and all other keys. On the updated POC branch, run:
+
+~~~powershell
+$session = (Get-Process -Id $PID).SessionId
+$gameSession = (Get-Process -Id $gamePid).SessionId
+"POC session=$session; D4 session=$gameSession"
+& $py -m d4planner.poc_keyboard_suppress --pid $gamePid --seconds 60 --diagnose
+~~~
+
+While the command runs, **first press a physical keyboard key** (e.g. Space)
+in the PowerShell window, then press physical F11, then focus Diablo IV and
+press controller C button A multiple times. The POC will print off-target F11
+with targetMatch=False and add SUMMARY counters:
+
+- keyboard_seen=0: keyboard hook received no keyboard messages at all.
+  Verify the process is in the *interactive* Windows desktop/session (not
+  SSH/session 0); try physical keyboard; check privilege/desktop differences.
+- keyboard_seen>0, f11_seen=0: hook receives other keyboard keys but no F11.
+  Steam Input dual-bind may not be active, or F11 may not traverse this Win32
+  hook. First check whether **physical F11** increments f11_seen.
+- f11_seen>0, f11_target=0: F11 does arrive but was filtered because another
+  foreground process owns the window. Compare printed foregroundPid and
+  game PID; make D4 foreground, don't weaken the game PID guard.
+- f11_target>0: POC captured F11 when D4 had foreground. Next test
+  --block and observe whether D4 prompts still blink. Do **not** claim blink
+  fixed without watching actual game behavior.
+
+The --diagnose option never broadens the suppression guard. Off-target
+F11 is **only logged**, never blocked. This mode reports minimal aggregate
+counts of other keyboard events; it does not log key content for other keys.
