@@ -73,6 +73,7 @@ def _ready(page):
     page.add_style_tag(content="*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important;}")
     page.evaluate("() => document.fonts.ready")
     page.wait_for_timeout(120)
+    page.evaluate("() => window.scrollTo(0,0)")
 
 
 def _stage_production(page, fake, base, design, scenario):

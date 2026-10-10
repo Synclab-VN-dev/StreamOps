@@ -9,6 +9,9 @@
     const fresh=connected && current && current.stale!==true;
     const state=fresh?(current.running===true?"Running":current.running===false?"Stopped":"UNKNOWN"):"UNKNOWN";
     $("#steam-state").textContent=busy?"Restarting":state;
+    $("#steam-state-badge").dataset.tone=state==="Running"?"ok":state==="Stopped"?"warn":"bad";
+    $("#steam-heading-status").textContent=state==="Running"?"Steam running":state==="Stopped"?"Steam stopped":"Steam unavailable";
+    $("#steam-heading-status").dataset.tone=state==="Running"?"ok":state==="Stopped"?"warn":"bad";
     $("#steam-status-dot").className="status-dot "+(state==="Running"?"online":state==="Stopped"?"warning":"offline");
     $("#steam-pid").textContent=fresh?current.pid??"--":"--";
     $("#steam-started").textContent=fresh?format.formatDateTime(current.started_at):"--";
@@ -35,8 +38,15 @@
   ws.on("steam.snapshot",data=>{current=data;render();});
   games.store.on(store=>{
     const summary=store.summary();
-    components.renderSummary($("#steam-games-summary"),store);
-    $("#games-connection").textContent=store.stale?"UNKNOWN":"LIVE";
+    const stats=$("#steam-games-summary");stats.replaceChildren();
+    for (const [label,key] of [["Running","running"],["Registered","registered"]]) {
+      const cell=components.element("span","gm-steam-stat");
+      cell.append(components.element("small","",label),
+        components.element("strong","",summary[key]===null?"Unknown":summary[key]));
+      stats.append(cell);
+    }
+    $("#games-connection").textContent=store.stale?"UNKNOWN":summary.running==null?"UNKNOWN":summary.running+" running";
+    $("#games-connection").dataset.tone=store.stale?"bad":summary.running?"ok":"neutral";
     const visible=store.stale?[]:store.items().filter(g=>g.observation?.process?.state==="RUNNING" && !g.observation?.process?.stale);
     components.renderRows($("#steam-running-games"),visible,null,()=>location.assign("/games"),store.stale?"Game status unavailable":"No running games");
     const sig=store.epoch+":"+store.revision+":"+store.stale;

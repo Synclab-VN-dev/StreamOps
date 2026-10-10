@@ -96,3 +96,54 @@ body.gm-page { color-scheme:light; color:#18181b; background:#f5f6f8; font-famil
  .gm-page .panel .action-row>button {width:100%;}
 }
 @media(prefers-reduced-motion:reduce) {.gm-page * {scroll-behavior:auto!important;transition:none!important;animation:none!important;}}
+
+/* Steam Manager parity: compact MagicPath mobile-first three-card hierarchy. */
+.gm-steam-page > .topbar {display:none;}
+.gm-steam-page main.narrow-shell {max-width:480px;padding-top:18px;}
+.gm-steam-back {display:inline-flex;align-items:center;margin:0 0 17px;color:#71717a;font-size:12px;text-decoration:none;}
+.gm-steam-back:hover {color:#18181b;}
+.gm-steam-heading {display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:16px;}
+.gm-steam-heading h1 {font-size:25px;line-height:1.2;letter-spacing:-.035em;margin:0 0 7px;}
+.gm-steam-heading .eyebrow {margin:0 0 5px;color:#71717a;letter-spacing:.16em;}
+.gm-steam-heading p:not(.eyebrow){margin:0;color:#71717a;font-size:12px;line-height:1.5;}
+.gm-steam-heading .gm-pill {margin-top:20px;flex-shrink:0;}
+.gm-steam-page .gm-card {border-radius:24px;padding:17px;margin-bottom:12px;}
+.gm-steam-page .gm-section-heading {align-items:flex-start;margin-bottom:16px;}
+.gm-steam-page .gm-section-heading p{margin:5px 0 0;}
+.gm-steam-page .gm-section-heading .gm-pill{margin-top:1px;}
+.gm-page .gm-pill[data-tone=ok] {background:#d1fae5;color:#047857;}
+.gm-page .gm-pill[data-tone=bad] {background:#fee2e2;color:#b91c1c;}
+.gm-page .gm-pill[data-tone=warn] {background:#fef3c7;color:#92400e;}
+.gm-steam-page .gm-collapsible-head {display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;position:relative;gap:8px;cursor:pointer;list-style:none;}
+.gm-steam-page .gm-collapsible-head::-webkit-details-marker{display:none;}
+.gm-steam-page .gm-collapsible-title{display:flex;flex:1;flex-direction:column;gap:4px;min-width:0;}
+.gm-steam-page .gm-collapsible-title strong{font-size:15px;}
+.gm-steam-page .gm-collapsible-title small{font-size:12px;font-weight:400;color:#71717a;line-height:1.5;}
+.gm-steam-page .gm-chevron{color:#a1a1aa;font-size:16px;margin-left:3px;}
+.gm-steam-page details[open] .gm-chevron{transform:rotate(180deg);}
+.gm-steam-page #steam-state-badge{margin-left:auto;display:flex;align-items:center;gap:4px;}
+.gm-steam-page #steam-state-badge #steam-status-dot{width:5px;height:5px;flex:0 0 5px;box-shadow:none;}
+.gm-steam-mini-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;width:100%;margin:10px 0 0;}
+.gm-steam-mini-stats > span{display:flex;flex-direction:column;gap:4px;}
+.gm-steam-mini-stats small{font-size:11px;color:#71717a;}
+.gm-steam-mini-stats b{font-size:14px;overflow-wrap:anywhere;}
+.gm-runtime-expanded{border-top:1px solid #f4f4f5;margin-top:15px;padding-top:12px;}
+.gm-steam-page .status-list>div{min-height:40px;grid-template-columns:1fr 1fr;gap:10px;}
+.gm-steam-page .gm-runtime-expanded .action-row{padding-top:13px;}
+.gm-steam-page .gm-runtime-expanded #restart-button{width:100%;min-height:44px;}
+.gm-steam-page #steam-games-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:14px;}
+.gm-steam-stat{display:flex;flex-direction:column;gap:5px;min-width:0;}
+.gm-steam-stat small{font-size:11px;color:#71717a;}
+.gm-steam-stat strong{font-size:15px;}
+.gm-steam-page #steam-running-games{padding:8px;background:#fafafa;border-radius:16px;margin-bottom:12px;}
+.gm-steam-page #steam-running-games .gm-game-row{border:0;border-bottom:1px solid #f4f4f5;background:transparent;border-radius:0;}
+.gm-steam-page #game-manager-card .gm-nav{display:flex;width:100%;min-height:44px;border-radius:14px;font-size:13px;background:#09090b;color:#fff;border-color:#09090b;}
+.gm-steam-page .gm-activity-summary{display:block;width:100%;font-size:11px;color:#71717a;margin-top:7px;}
+.gm-steam-page #steam-activity-details[open] #activity-log{margin-top:12px;border-top:1px solid #f4f4f5;}
+.gm-steam-page .activity-log{max-height:260px;overflow:auto;}
+.gm-steam-page .activity-entry {grid-template-columns:58px minmax(0,1fr);gap:8px;font-size:11px;}
+@media(max-width:640px){
+ .gm-steam-page main.narrow-shell {padding:16px;}
+ .gm-steam-page .gm-card{padding:16px;}
+ .gm-steam-page .status-list>div{grid-template-columns:1fr 1fr;}
+}
