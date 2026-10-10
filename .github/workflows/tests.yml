@@ -92,9 +92,51 @@ jobs:
       - name: Install Playwright Chromium
         if: steps.changes.outputs.server == 'true'
         run: python -m playwright install chromium
-      - name: Install ffmpeg
+      - name: Install verified FFmpeg binaries (required for media E2E)
         if: steps.changes.outputs.server == 'true'
-        run: choco install ffmpeg --no-progress -y
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Chocolatey may report exit 0 on HTTP 503/package resolution failure.
+          # Never let E2E media tests silently skip because ffmpeg is missing.
+          choco install ffmpeg --no-progress -y | Out-Host
+
+          $ffmpeg = Get-Command ffmpeg -ErrorAction SilentlyContinue
+          $ffprobe = Get-Command ffprobe -ErrorAction SilentlyContinue
+          if (-not $ffmpeg -or -not $ffprobe) {
+            Write-Host 'Chocolatey binaries unavailable; using verified Windows essentials build.'
+            $origin = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
+            $archive = Join-Path $env:RUNNER_TEMP 'streamops-ffmpeg-essentials.zip'
+            $destination = Join-Path $env:RUNNER_TEMP 'streamops-ffmpeg'
+            $hashUrl = "$origin.sha256"
+            $shaText = (Invoke-WebRequest -Uri $hashUrl -UseBasicParsing).Content
+            $expectedHash = [regex]::Match([string]$shaText, '[a-fA-F0-9]{64}').Value
+            if (-not $expectedHash) {
+              throw "FFmpeg SHA-256 manifest unavailable: $hashUrl"
+            }
+            Invoke-WebRequest -Uri $origin -OutFile $archive -UseBasicParsing
+            $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+            if ($actualHash -ne $expectedHash) {
+              throw "FFmpeg SHA-256 mismatch; refusing to extract executable."
+            }
+            Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force
+            $exe = Get-ChildItem -Path $destination -Filter ffmpeg.exe -File -Recurse |
+              Select-Object -First 1
+            if (-not $exe) { throw 'FFmpeg Windows executable not found in verified archive.' }
+            $bin = Split-Path -Parent $exe.FullName
+            if (-not (Test-Path (Join-Path $bin 'ffprobe.exe'))) {
+              throw 'ffprobe.exe missing from verified FFmpeg archive.'
+            }
+            $bin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+            $env:PATH = "$bin;$env:PATH"
+          }
+
+          if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue) -or
+              -not (Get-Command ffprobe -ErrorAction SilentlyContinue)) {
+            throw 'FFmpeg and ffprobe are mandatory for StreamOps media E2E.'
+          }
+          & ffmpeg -hide_banner -version | Select-Object -First 1
+          & ffprobe -hide_banner -version | Select-Object -First 1
       - name: Build StreamOps wheel
         if: steps.changes.outputs.server == 'true'
         run: python -m pip wheel . --no-deps -w dist
