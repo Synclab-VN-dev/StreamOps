@@ -5,7 +5,9 @@
   "approval": {
     "approved_by": null,
     "approved_at": null,
-    "reference": "Requires manual owner review of expected screenshots and diff artifacts"
+    "reference": "Requires manual owner review of expected screenshots and diff artifacts",
+    "expected_sha256": {},
+    "review_url": null
   },
   "viewports": [
     {
