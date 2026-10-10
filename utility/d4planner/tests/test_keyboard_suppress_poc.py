@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
+
+import d4planner.poc_keyboard_suppress as poc
 
 import pytest
 
@@ -165,3 +168,131 @@ def test_diagnostic_event_allows_unknown_foreground():
     ).as_dict()
     assert obj["foregroundPid"] is None
     assert obj["targetMatch"] is False
+
+
+def test_scheduled_task_command_contains_interactive_user_and_reliable_worker():
+    script = poc.scheduled_task_script(
+        task_name="D4Planner-F11-POC-abcd",
+        python_exe=r"C:\Program Files\Python312\python.exe",
+        script_path=r"C:\Users\Bob's PC\StreamOps-82\poc_keyboard_suppress.py",
+        game_pid=14872, seconds=60.0, block=True,
+        jsonl=True, diagnose=True,
+        log_path=Path(r"C:\Users\Bob's PC\AppData\Local\d4planner\poc82\log.txt"),
+    )
+    assert "New-ScheduledTaskPrincipal -UserId $u -LogonType Interactive" in script
+    assert "Start-ScheduledTask" in script
+    assert "Register-ScheduledTask" in script
+    assert "--interactive-worker" in script
+    assert "--block" in script
+    assert "--diagnose" in script
+    assert "Bob''s PC" in script  # correctly escaped in PowerShell string
+    assert "D4Planner-F11-POC-abcd" in script
+
+
+def test_scheduled_task_nonblocking_does_not_enable_suppression():
+    script = poc.scheduled_task_script(
+        task_name="POC", python_exe="python.exe", script_path="probe.py",
+        game_pid=14872, seconds=10, block=False, jsonl=False,
+        diagnose=False, log_path=Path("poc.log"),
+    )
+    assert "--block" not in script
+    assert "--diagnose" not in script
+    assert "--interactive-worker" in script
+
+
+def test_interactive_worker_rejects_wrong_session_without_hook(tmp_path, monkeypatch):
+    monkeypatch.setattr(poc, "process_session_id",
+                        lambda pid: 1 if pid == 14872 else 0)
+    monkeypatch.setattr(poc, "active_console_session_id", lambda: 1)
+    monkeypatch.setattr(poc, "run_poc",
+                        lambda **kwargs: pytest.fail("hook should not be called"))
+    output = tmp_path / "worker.log"
+    rc = poc._run_interactive_worker(
+        pid=14872, seconds=5, block=True, jsonl=False,
+        diagnose=False, output=output,
+    )
+    assert rc == 2
+    content = output.read_text(encoding="utf-8")
+    assert "POC_SESSION worker=0 game=1 active=1" in content
+    assert "POC BLOCKED:" in content
+    assert "POC82_REMOTE_COMPLETE status=2" in content
+
+
+def test_interactive_worker_writes_terminal_marker_after_poc(tmp_path, monkeypatch):
+    monkeypatch.setattr(poc, "process_session_id", lambda pid: 1)
+    monkeypatch.setattr(poc, "active_console_session_id", lambda: 1)
+    monkeypatch.setattr(poc, "run_poc",
+                        lambda **kwargs: print("F11 DOWN") or 0)
+    output = tmp_path / "worker.log"
+    assert poc._run_interactive_worker(
+        pid=14872, seconds=5, block=False, jsonl=False,
+        diagnose=False, output=output,
+    ) == 0
+    lines = output.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "POC_SESSION worker=1 game=1 active=1"
+    assert lines[-2:] == ["F11 DOWN", "POC82_REMOTE_COMPLETE status=0"]
+
+
+def test_remote_ssh_relay_echoes_worker_and_cleans_up(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(poc, "process_session_id",
+                        lambda pid: 1 if pid == 14872 else 0)
+    monkeypatch.setattr(poc, "active_console_session_id", lambda: 1)
+    monkeypatch.setattr(
+        poc, "remote_log_path",
+        lambda request_id: tmp_path / f"{request_id}.log",
+    )
+    executed = []
+
+    def fake_powershell(code, **kwargs):
+        executed.append(code)
+        if "Register-ScheduledTask" in code:
+            files = list(tmp_path.glob("*.log"))
+            if not files:
+                # Build the path from the assigned task name (request UUID).
+                import re
+                request_id = re.search(
+                    r"D4Planner-F11-POC-([a-f0-9]{16})", code
+                ).group(1)
+                path = tmp_path / f"{request_id}.log"
+                path.write_text(
+                    "POC_SESSION worker=1 game=1 active=1\n"
+                    "F11 DOWN suppressed=False\n"
+                    "POC82_REMOTE_COMPLETE status=0\n",
+                    encoding="utf-8",
+                )
+
+    monkeypatch.setattr(poc, "_run_powershell", fake_powershell)
+    result = poc._relay_ssh_to_interactive(
+        pid=14872, seconds=30, block=False, jsonl=False, diagnose=True,
+    )
+    assert result == 0
+    out = capsys.readouterr().out
+    assert "control_session=0 game_session=1" in out
+    assert "F11 DOWN suppressed=False" in out
+    assert "LOG_PATH:" in out
+    assert len(executed) == 2
+    assert "Stop-ScheduledTask" in executed[1]
+    assert "Unregister-ScheduledTask" in executed[1]
+
+
+def test_remote_relay_rejects_inactive_game_session_before_registering(monkeypatch):
+    monkeypatch.setattr(poc, "process_session_id",
+                        lambda pid: 1 if pid == 14872 else 0)
+    monkeypatch.setattr(poc, "active_console_session_id", lambda: 3)
+    monkeypatch.setattr(poc, "_run_powershell",
+                        lambda *a, **kw: pytest.fail("cannot start task"))
+    with pytest.raises(RuntimeError, match="not active"):
+        poc._relay_ssh_to_interactive(
+            pid=14872, seconds=30, block=True, jsonl=False, diagnose=False,
+        )
+
+
+def test_remote_ssh_main_auto_relays_instead_of_hooking_session_zero(monkeypatch):
+    monkeypatch.setattr(poc, "require_game_pid", lambda pid: None)
+    monkeypatch.setattr(poc, "process_session_id",
+                        lambda pid: 1 if pid == 14872 else 0)
+    monkeypatch.setattr(poc, "_relay_ssh_to_interactive",
+                        lambda **kwargs: 0 if kwargs["block"] else 1)
+    monkeypatch.setattr(poc, "run_poc",
+                        lambda **kwargs: pytest.fail("do not hook session 0"))
+    assert poc.main(["--pid", "14872", "--seconds", "30", "--block"]) == 0
