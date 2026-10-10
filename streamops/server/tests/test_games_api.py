@@ -66,3 +66,22 @@ def test_games_ws_authenticated_lifecycle_and_operation_lookup(monkeypatch,serve
         result=_response(ws,"r3")
         assert result["ok"] and result["data"]["operation_id"].startswith("op-")
         assert result["data"]["game_id"]==GAME
+
+
+def test_two_ws_observers_receive_external_process_transition(server_config,capture_service,tmp_path):
+    client,platform=_client(server_config,capture_service,tmp_path)
+    with client:
+        with client.websocket_connect("/api/v1/games/ws") as first:
+            _snapshot(first)
+            with client.websocket_connect("/api/v1/games/ws") as second:
+                _snapshot(second)
+                platform.running=True  # external process change; no API reconcile/poll
+                for ws in (first,second):
+                    for _ in range(6):
+                        event=ws.receive_json()
+                        if event.get("event")=="games.changed":
+                            assert event["data"]["game_id"]==GAME
+                            assert event["data"]["game"]["observation"]["process"]["state"]=="RUNNING"
+                            break
+                    else:
+                        raise AssertionError("GameObserver did not notify both clients")

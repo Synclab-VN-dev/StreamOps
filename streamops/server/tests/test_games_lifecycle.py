@@ -121,3 +121,21 @@ def test_hub_pushes_change_and_deduplicates_timestamps(tmp_path):
             hub.unsubscribe(q1);hub.unsubscribe(q2)
             await service.lifecycle.close();await hub.close()
     asyncio.run(scenario())
+
+def test_slow_subscriber_gets_explicit_resync_marker(tmp_path):
+    async def scenario():
+        service,_=build_service(tmp_path)
+        hub=service.hub
+        q=await hub.subscribe()
+        try:
+            while not q.empty(): q.get_nowait()
+            for i in range(170):
+                hub.broadcast("games.operation", {"operation_id":f"op-{i}","game_id":GAME,"action":"start","status":"RUNNING","phase":"STARTING"})
+            markers=[]
+            while not q.empty():
+                markers.append(q.get_nowait())
+            assert any(m["event"]=="games.snapshot" and m["data"]["resync_required"] for m in markers)
+            assert hub.revision >= 170
+        finally:
+            hub.unsubscribe(q)
+    asyncio.run(scenario())
