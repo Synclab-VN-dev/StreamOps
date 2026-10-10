@@ -6,6 +6,7 @@ body.gm-page { color-scheme:light; color:#18181b; background:#f5f6f8; font-famil
 .gm-top-status { font-size:12px; color:#71717a; }
 .gm-page .eyebrow { color:#71717a; }
 .gm-page main { max-width:1080px; }
+.gm-page .narrow-shell {max-width:500px;}
 .gm-shell { min-width:0; }
 .gm-page-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0 20px; }
 .gm-page-heading h1 { font-size:clamp(24px,4vw,34px); margin:0 0 7px;letter-spacing:-.03em; }
@@ -35,7 +36,7 @@ body.gm-page { color-scheme:light; color:#18181b; background:#f5f6f8; font-famil
 .gm-page button.gm-game-row { display:flex;align-items:center;text-align:left;width:100%;min-width:0;min-height:66px;padding:10px;border:1px solid #ececf0;border-radius:15px;background:#fafafa;color:#18181b;gap:10px;font:inherit;cursor:pointer;}
 .gm-page button.gm-game-row[aria-pressed=true] {border-color:#71717a;background:#f4f4f5;}
 .gm-page button.gm-game-row:hover {background:#f4f4f5;}
-.gm-game-icon {width:36px; height:36px; flex:0 0 36px;display:grid;place-items:center;border-radius:11px;background:#e4e4e7;font-size:20px;}
+.gm-game-icon {width:36px; height:36px; flex:0 0 36px;display:grid;place-items:center;border-radius:11px;background:#eef2ff;color:#4f46e5;font-size:20px;}
 .gm-game-label {display:flex;flex-direction:column;gap:3px;min-width:0;flex:1;}
 .gm-game-label strong {font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .gm-game-label small {font-size:11px;color:#71717a;}
