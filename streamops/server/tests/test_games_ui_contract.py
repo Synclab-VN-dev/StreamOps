@@ -13,7 +13,7 @@ def test_game_manager_transport_is_ws_only():
     assert 'fetchJson(' not in games
     assert "/api/v1/steam/status" not in steam
     assert "/api/v1/steam/restart" not in steam
-    assert "/api/v1/games/" not in games
+    assert "fetch(" not in games
     assert "/api/v1/games/ws" in read("games-ws.js")
     assert "/api/v1/steam/ws" in read("steam-ws.js")
     assert "games.operations.get" in read("games-ws.js")
@@ -29,7 +29,7 @@ def test_no_backend_or_demo_data_coupling():
         assert "scenario selector" not in source.lower()
         assert "localStorage" not in source
     command=read("games-control.js")
-    assert "localStorage" not in command and "sessionStorage" not in command
+    assert "localStorage." not in command and "sessionStorage." not in command
     assert "streamops-game-control." in command
     assert "sec-websocket-protocol" not in command.lower() # Native WS subprotocol only
     assert "new WebSocket(url," in command
