@@ -376,9 +376,9 @@ def test_games_responsive_geometry_and_detail_navigation(
     expect(page.locator("#game-detail")).to_contain_text("Windows session")
     expect(page.locator("#game-detail")).to_contain_text("CONFIGURED_ONLY")
     related = page.locator("#game-detail .gm-related")
-    expect(related).not_to_have_attribute("open")
+    assert not related.evaluate("(e) => e.open")
     related.locator("summary").click()
-    expect(related).to_have_attribute("open")
+    assert related.evaluate("(e) => e.open")
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     if width <= 900:
         expect(page.locator("#games-main")).to_be_hidden()
