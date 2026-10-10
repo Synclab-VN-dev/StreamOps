@@ -2,7 +2,7 @@
 // P0 BE GAP: 'obs_plugin.inventory' and 'obs_plugin.available' are proposed operation
 // bindings, NOT implemented in PR #52. No fallback to REST or hard-coded inventory.
 // P0 BE GAP: 'obs_plugin.changed' push notification/revision are not yet implemented.
-import {parseInventory, parseCatalog, runtimeFromSnapshot} from './core.mjs';
+import {parseInventory, parseCatalog, runtimeFromSnapshot, safeActions} from './core.mjs';
 export const PROPOSED_READ_OPERATIONS = Object.freeze({
   inventory:'obs_plugin.inventory', available:'obs_plugin.available'
 });
@@ -24,6 +24,7 @@ export class PluginStore {
     this.activity = [];
     this.generation = 0;
     this.refreshInFlight = false;
+    this.refreshQueued = false;
     this.unsubscribers = [];
     this.knownOperations = new Set();
   }
@@ -53,7 +54,8 @@ export class PluginStore {
     this.client.start();
   }
   async refresh() {
-    if (!this.connected || this.refreshInFlight) return;
+    if (!this.connected) return;
+    if (this.refreshInFlight) {this.refreshQueued = true; return;}
     this.refreshInFlight = true;
     const generation = ++this.generation;
     this.loading = this.inventory.length === 0;
@@ -81,12 +83,19 @@ export class PluginStore {
     } finally {
       this.refreshInFlight = false;
       this.loading = false; this.publish();
+      if (this.refreshQueued && this.connected) {
+        this.refreshQueued = false;
+        void this.refresh();
+      }
     }
   }
   async execute(operation, pluginId) {
     if (!MUTATIONS.has(operation)) throw new Error('Unsupported plugin operation.');
     if (this.busy || this.unknownOutcome || !this.connected) throw new Error('Operation blocked; refresh to reconcile.');
-    if (!this.inventory.some(p => p.plugin_id === pluginId)) throw new Error('Plugin not in managed registry.');
+    const plugin = this.inventory.find(p => p.plugin_id === pluginId);
+    if (!plugin) throw new Error('Plugin not in managed registry.');
+    const eligibility = safeActions(plugin,this.catalog.get(pluginId),this.runtime,this.connected,this.busy || this.unknownOutcome);
+    if (!eligibility[operation]?.enabled) throw new Error(eligibility[operation]?.reason || 'Backend state does not permit this action.');
     this.busy = true; this.publish();
     let requestId = null;
     const previous = this.inventory.find(p => p.plugin_id === pluginId)?.state || null;

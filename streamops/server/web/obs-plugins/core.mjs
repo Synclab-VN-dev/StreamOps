@@ -108,12 +108,12 @@ export function safeActions(plugin, release, obs, connected, busy = false) {
     actions.update = {enabled:false, reason:release?.reason || 'No approved update.'};
   }
   mutating('rollback');
-  if (plugin?.rollback_available !== true) {
+  if (plugin?.rollback_available !== true || plugin?.state === 'UNKNOWN') {
     actions.rollback = {enabled:false, reason:plugin?.rollback_reason || 'Backend has not confirmed a valid rollback baseline.'};
   }
   actions.verify = {
     enabled: Boolean(connected && !busy && plugin?.installed && obs?.state === 'READY' && obs.websocket
-      && !['UNMANAGED','LEGACY_ADOPTED','RECOVERY_REQUIRED'].includes(plugin.state)),
+      && ['INSTALLED','LOADED','VERIFIED','UPDATE_AVAILABLE','RESTART_REQUIRED','VERIFY_FAILED'].includes(plugin.state)),
     reason:'Verification requires an approved installed plugin and OBS READY with WebSocket.'
   };
   actions.restart = {
