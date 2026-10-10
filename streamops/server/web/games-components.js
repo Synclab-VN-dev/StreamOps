@@ -78,6 +78,10 @@
       box.append(element("span","gm-detail-observation-name",label));
       if(withPill) {
         const v=pill(pretty(value));v.dataset.code=String(value??"UNKNOWN");
+        const raw=String(value??"UNKNOWN");
+        v.dataset.tone=["FOREGROUND","VERIFIED_ACTIVE","SELECTED"].includes(raw)?"ok":
+          ["CONFIGURED_ONLY","STARTING","STOPPING"].includes(raw)?"warn":
+          ["ERROR","FAILED","UNKNOWN"].includes(raw)?"bad":"neutral";
         box.append(v);
       } else box.append(element("strong","",valueText(value)));
       return box;
@@ -95,6 +99,8 @@
     titleText.append(element("h2","",game.name),
       element("p","gm-muted",[game.provider,game.genre].filter(Boolean).join(" · ")));
     const statePill=pill(pretty(state));statePill.dataset.code=state;
+    statePill.dataset.tone=state==="RUNNING"?"ok":
+      state==="FAILED"||state==="UNKNOWN"?"bad":"neutral";
     titleText.append(statePill);title.append(icon,titleText);intro.append(title);
     const stats=element("div","gm-detail-metrics");
     const metric=(label,value)=>{
