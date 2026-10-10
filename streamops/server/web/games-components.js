@@ -95,6 +95,12 @@
     const refresh=element("button","gm-button gm-secondary","Refresh observation");
     refresh.type="button";refresh.disabled=store.stale;refresh.addEventListener("click",()=>onAction("reconcile",game));actions.append(refresh);
     root.append(actions);
+    if (!game.capabilities?.start && !game.capabilities?.stop && !game.capabilities?.restart) {
+      const reason=store.stale?"WebSocket disconnected / stale":
+        game.capability_reason||"Control disabled pending verification";
+      const warning=element("p","gm-action-reason","Actions unavailable: "+reason);
+      warning.setAttribute("role","status");root.append(warning);
+    }
     const related=element("details","gm-related");
     related.append(element("summary","","Related services and advanced"));
     related.append(element("p","gm-muted","Steam, OBS and optional D4Planner are independent; unavailable services do not mean this game failed."));
