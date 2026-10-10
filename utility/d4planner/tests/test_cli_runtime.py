@@ -168,7 +168,7 @@ def test_start_detach_does_not_follow_logs(monkeypatch, tmp_path):
     monkeypatch.setattr(
         cli,
         "_wait_start",
-        lambda _paths, _pid, timeout: {"state": "RUNNING", "captureActive": True},
+        lambda _paths, _pid, timeout, **kw: {"state": "RUNNING", "captureActive": True},
     )
 
     assert cli.command_start(
@@ -761,3 +761,96 @@ def test_sqlite_follow_from_end_skips_history_and_yields_new_event(tmp_path):
 
     assert event["eventSeq"] == 2
     assert event["type"] == "input.marker.raw"
+
+
+
+def test_block_flag_cli_parser_and_daemon_cli(monkeypatch):
+    assert cli.build_parser().parse_args(["start", "-d", "--block"]).block is True
+    assert cli.build_parser().parse_args(["start", "-d"]).block is False
+
+
+def test_marker_logs_show_suppression_only_when_true():
+    event = {
+        "type": "input.marker.raw",
+        "timestamp": "2026-10-10T08:15:21.347+07:00",
+        "data": {"key": "F11", "state": "down", "suppressed": True},
+    }
+    assert "[BLOCKED]" in cli._pretty_event(event)
+    event["data"]["suppressed"] = False
+    assert "[BLOCKED]" not in cli._pretty_event(event)
+
+
+def test_block_start_refuses_live_observe_supervisor(monkeypatch, tmp_path, capsys):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    atomic_write_json(paths.runtime_state, {
+        "state": "RUNNING", "supervisorPid": 77, "silent": True,
+        "extras": {"inputMarker": {"key": "F11", "mode": "OBSERVE", "state": "ACTIVE"}},
+    })
+    monkeypatch.setattr(cli, "_pid_alive", lambda pid: True)
+    monkeypatch.setattr(
+        cli, "_spawn_daemon",
+        lambda **kw: (_ for _ in ()).throw(AssertionError("must not restart")),
+    )
+    assert cli.command_start(
+        paths, speech=False, isolated=False, detached=True,
+        timeout=1, block_marker=True,
+    ) == 4
+    assert "Run 'd4planner stop'" in capsys.readouterr().err
+
+
+def test_observe_start_refuses_live_block_supervisor(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    atomic_write_json(paths.runtime_state, {
+        "state": "RUNNING", "supervisorPid": 77, "silent": True,
+        "extras": {"inputMarker": {"key": "F11", "mode": "BLOCK", "state": "ACTIVE"}},
+    })
+    monkeypatch.setattr(cli, "_pid_alive", lambda pid: True)
+    assert cli.command_start(
+        paths, speech=False, isolated=False, detached=True,
+        timeout=1, block_marker=False,
+    ) == 4
+
+
+def test_block_start_waits_for_active_hook_and_does_not_claim_success_without_it(
+    monkeypatch, tmp_path, capsys,
+):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    monkeypatch.setattr(cli, "_spawn_daemon", lambda **kwargs: 42)
+    monkeypatch.setattr(
+        cli, "_wait_start",
+        lambda *args, **kw: {
+            "state": "RUNNING", "captureActive": True,
+            "extras": {"inputMarker": {"mode": "BLOCK", "state": "ERROR"}},
+        },
+    )
+    assert cli.command_start(
+        paths, speech=False, isolated=False, detached=True,
+        timeout=1, block_marker=True,
+    ) == 2
+    assert "hook is not active" in capsys.readouterr().err
+
+
+def test_block_start_accepts_ready_hook_status(monkeypatch, tmp_path, capsys):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    arguments = []
+    monkeypatch.setattr(
+        cli, "_spawn_daemon",
+        lambda **kwargs: arguments.append(kwargs) or 42,
+    )
+    monkeypatch.setattr(
+        cli, "_wait_start",
+        lambda *args, **kw: {
+            "state": "RUNNING", "captureActive": True,
+            "extras": {"inputMarker": {"key": "F11", "mode": "BLOCK", "state": "ACTIVE"}},
+        },
+    )
+    assert cli.command_start(
+        paths, speech=False, isolated=False, detached=True,
+        timeout=1, block_marker=True,
+    ) == 0
+    assert arguments[0]["block_marker"] is True
+    assert "F11 / BLOCK / ACTIVE" in capsys.readouterr().out
