@@ -16,6 +16,8 @@ from ..errors import (
     ObsOperationInProgressError,
     ObsPluginError,
     ObsProcessError,
+    ObsWebSocketConnectionError,
+    ObsWebSocketRequestError,
     WrongDesktopSessionError,
 )
 
@@ -627,30 +629,69 @@ class ObsPluginService:
         self._verify_vendor()
         return status
 
+    @staticmethod
+    def _vendor_probe_failure(reason: str) -> ObsPluginError:
+        """Expose only a fixed diagnostic reason; never propagate vendor payloads.
+
+        OBS may include RTMP URLs or stream keys in request errors and target
+        objects. Do not log exceptions or serialize the vendor response.
+        The existing plugin_verify_failed code preserves the FE/API contract.
+        """
+        allowed = {
+            "connection_failed", "request_rejected", "request_failed",
+            "response_invalid", "vendor_response_missing", "vendor_error",
+            "targets_invalid",
+        }
+        safe_reason = reason if reason in allowed else "request_failed"
+        return ObsPluginError(
+            "plugin_verify_failed",
+            f"OBS multi-RTMP vendor readiness probe failed ({safe_reason}).",
+            409,
+        )
+
     def _verify_vendor(self) -> None:
-        """Require the real OBS vendor handler to respond, not merely a loaded DLL."""
+        """Probe OBS vendor readiness without logging targets, URLs or keys."""
         factory = getattr(self.obs_manager, "client_factory", None)
         if factory is None:
             # Test doubles have no OBS socket; real ObsManager always exposes one.
             return
+        client = None
+        phase = "connect"
         try:
             client = factory()
-            try:
-                client.connect()
-                reply = client.request("CallVendorRequest", {
-                    "vendorName": "sorayuki.multi_rtmp",
-                    "requestType": "list_targets",
-                    "requestData": {},
-                })
-                vendor = reply.get("vendorResponseData")
-                if not isinstance(vendor, dict) or not isinstance(vendor.get("targets"), list):
-                    raise ValueError("Invalid vendor response")
-            finally:
-                client.close()
-        except Exception as exc:
-            raise ObsPluginError(
-                "plugin_verify_failed", "OBS multi-RTMP vendor readiness probe failed.", 409
-            ) from exc
+            client.connect()
+            phase = "request"
+            reply = client.request("CallVendorRequest", {
+                "vendorName": "sorayuki.multi_rtmp",
+                "requestType": "list_targets",
+                "requestData": {},
+            })
+        except ObsWebSocketConnectionError:
+            raise self._vendor_probe_failure("connection_failed") from None
+        except ObsWebSocketRequestError:
+            raise self._vendor_probe_failure("request_rejected") from None
+        except Exception:
+            reason = "connection_failed" if phase == "connect" else "request_failed"
+            raise self._vendor_probe_failure(reason) from None
+        finally:
+            if client is not None:
+                try:
+                    client.close()
+                except Exception:
+                    # Closing a diagnostic connection cannot invalidate a valid
+                    # vendor response or leak arbitrary OBS exception text.
+                    pass
+
+        if not isinstance(reply, dict):
+            raise self._vendor_probe_failure("response_invalid")
+        vendor = reply.get("vendorResponseData")
+        if not isinstance(vendor, dict):
+            raise self._vendor_probe_failure("vendor_response_missing")
+        if vendor.get("error"):
+            # Never include the free-form plugin error in the public response.
+            raise self._vendor_probe_failure("vendor_error")
+        if not isinstance(vendor.get("targets"), list):
+            raise self._vendor_probe_failure("targets_invalid")
 
     def _rollback_sync(self) -> ObsPluginOperationResult:
         runtime = self._runtime_for_mutation()
