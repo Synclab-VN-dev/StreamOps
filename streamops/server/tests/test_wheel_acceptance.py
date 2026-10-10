@@ -90,6 +90,18 @@ def test_installed_wheel_runs_outside_source_checkout():
             assert payload["plugin_id"] == "obs-multi-rtmp"
             assert payload["expected_version"] == "0.7.4.0"
             assert set(payload) == {"plugin_id", "expected_version", "state", "installed", "loaded", "compatible"}
+            # FE assets and route must survive a wheel install outside checkout.
+            for path, marker in (
+                ("/steam", b"Game Manager"),
+                ("/games", b"Game Manager"),
+                ("/assets/games.js", b"StreamOpsGames"),
+                ("/assets/games-store.js", b"GameStore"),
+                ("/assets/games-control.js", b"streamops-game-control."),
+                ("/assets/games.css", b"gm-page"),
+            ):
+                with urllib.request.urlopen(base + path, timeout=10) as response:
+                    assert response.status == 200, path
+                    assert marker in response.read(), path
         finally:
             process.terminate()
             try:

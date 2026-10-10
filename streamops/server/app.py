@@ -338,6 +338,10 @@ def create_app(
     async def screen_page() -> FileResponse:
         return FileResponse(WEB_ROOT / "screen.html", headers={"Cache-Control": "no-store"})
 
+    @app.get("/games", include_in_schema=False)
+    async def games_page() -> FileResponse:
+        return FileResponse(WEB_ROOT / "games.html", headers={"Cache-Control": "no-store"})
+
     @app.get("/steam", include_in_schema=False)
     async def steam_page() -> FileResponse:
         return FileResponse(WEB_ROOT / "steam.html", headers={"Cache-Control": "no-store"})
