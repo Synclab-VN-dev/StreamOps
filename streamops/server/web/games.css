@@ -170,3 +170,51 @@ body.gm-page { color-scheme:light; color:#18181b; background:#f5f6f8; font-famil
 .gm-steam-page .gm-pill {font-weight:600;}
 .gm-steam-page .gm-game-icon {background:#eef2ff;}
 @media(max-width:640px){.gm-steam-page main.narrow-shell {padding-top:12px;}}
+
+/* #86 Detail parity: a single readable status column, not a dense settings grid. */
+.gm-page .gm-detail {padding:0;overflow:hidden;border-radius:24px;}
+.gm-detail-topbar {display:flex;align-items:center;justify-content:space-between;min-height:60px;padding:14px 16px;border-bottom:1px solid #f4f4f5;}
+.gm-page .gm-detail-back,.gm-page .gm-detail-close {border:0;background:transparent;color:#71717a;font-size:12px;cursor:pointer;padding:8px 3px;}
+.gm-page .gm-detail-close {font-size:20px;line-height:20px;}
+.gm-detail-intro {padding:16px;}
+.gm-detail-title {display:flex;align-items:flex-start;gap:12px;}
+.gm-detail-title-text {min-width:0;flex:1;}
+.gm-detail-title-text h2 {font-size:18px;line-height:1.35;}
+.gm-detail-title-text p {font-size:12px;margin:4px 0 8px;}
+.gm-detail-title-text .gm-pill {margin:0 0 0;min-height:24px;}
+.gm-detail-title .gm-game-icon {width:40px;height:40px;flex-basis:40px;}
+.gm-detail-metrics {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px;background:#fafafa;border-radius:17px;padding:13px;margin-top:18px;}
+.gm-detail-metric {display:flex;flex-direction:column;gap:6px;min-width:0;}
+.gm-detail-metric small {font-size:11px;color:#71717a;}
+.gm-detail-metric strong {font-size:12px;color:#18181b;overflow-wrap:anywhere;}
+.gm-detail-section {padding:16px;border-top:1px solid #f4f4f5;}
+.gm-detail-section-heading h3 {margin:0;font-size:14px;font-weight:700;}
+.gm-detail-section-heading p {margin:4px 0 0;font-size:11px;line-height:1.5;}
+.gm-detail-observations {padding:0 12px;margin-top:12px;border-radius:16px;background:#fafafa;}
+.gm-detail-observation {display:flex;min-height:48px;gap:8px;align-items:center;justify-content:space-between;font-size:12px;border-bottom:1px solid #f4f4f5;}
+.gm-detail-observation:last-child{border-bottom:0;}
+.gm-detail-observation-name {color:#52525b;}
+.gm-detail-observation .gm-pill {font-size:10px;font-weight:600;max-width:55%;text-align:center;}
+.gm-detail-warning {padding:12px;background:#fffbeb;border-radius:14px;color:#92400e;font-size:11px;line-height:1.6;margin:12px 0 0;}
+.gm-detail-danger {background:#fef2f2;color:#b91c1c;}
+.gm-detail-action-row {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px;}
+.gm-page button.gm-detail-action {min-width:0;min-height:45px;border-radius:15px;padding:8px 2px;font-size:12px;}
+.gm-page button.gm-detail-stop {border-color:#f4f4f5;background:#f4f4f5;color:#18181b;}
+.gm-page button.gm-detail-restart {border-color:#e4e4e7;background:#fff;color:#18181b;}
+.gm-page button.gm-detail-refresh {min-height:42px;width:100%;border-radius:12px;margin-top:12px;border-color:#e4e4e7;background:#fff;color:#18181b;}
+.gm-page .gm-detail-advanced {border-top:1px solid #f4f4f5;padding:16px;}
+.gm-detail-advanced summary {font-size:13px;font-weight:700;cursor:pointer;}
+.gm-detail-advanced button {margin-top:10px;}
+.gm-detail-advanced p {margin-top:6px;}
+.gm-detail .gm-operation {margin:10px 0 0;overflow-wrap:anywhere;}
+.gm-detail .gm-action-reason {margin-top:8px;font-size:11px;color:#92400e;}
+@media(max-width:900px){
+  body.gm-page:not(.gm-steam-page):has(.gm-workspace.gm-has-detail) .topbar,
+  body.gm-page:not(.gm-steam-page):has(.gm-workspace.gm-has-detail) .gm-page-heading,
+  body.gm-page:not(.gm-steam-page):has(.gm-workspace.gm-has-detail) #games-overview,
+  body.gm-page:not(.gm-steam-page):has(.gm-workspace.gm-has-detail) .gm-control-panel,
+  body.gm-page:not(.gm-steam-page):has(.gm-workspace.gm-has-detail) #games-error {display:none!important;}
+  body.gm-page:not(.gm-steam-page):has(.gm-workspace.gm-has-detail) main.gm-shell {padding:0!important;margin:0!important;max-width:none;}
+  body.gm-page:not(.gm-steam-page):has(.gm-workspace.gm-has-detail) #games-workspace {padding:16px;}
+  body.gm-page:not(.gm-steam-page):has(.gm-workspace.gm-has-detail) .gm-detail {display:block;width:100%;margin:0;position:static;}
+}
