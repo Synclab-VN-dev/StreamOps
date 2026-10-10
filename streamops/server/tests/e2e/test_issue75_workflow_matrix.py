@@ -26,6 +26,8 @@ class ScenarioWS(MockPluginWebSocket):
         self.read_error_once=False
         self.fail_operation=None
         self.status_operation={"state":"IDLE","operation_id":None}
+        self.obs_sockets=[]
+        self.install_requires_restart=False
         super().__init__(page, plugin_state=plugin_state, obs_state=obs_state)
 
     def status(self):
@@ -90,7 +92,7 @@ class ScenarioWS(MockPluginWebSocket):
                 if operation == "adopt":
                     self.plugin_state="LEGACY_ADOPTED"
                 elif operation in {"install","update"}:
-                    self.plugin_state="INSTALLED"
+                    self.plugin_state="RESTART_REQUIRED" if self.install_requires_restart else "INSTALLED"
                     self.installed_version=self.release_version
                 elif operation == "verify":
                     self.plugin_state="VERIFIED"
@@ -115,6 +117,7 @@ class ScenarioWS(MockPluginWebSocket):
         ws.on_message(handle)
 
     def obs_socket(self,ws):
+        self.obs_sockets.append(ws)
         def snapshot():
             ws.send(json.dumps({"type":"event","event":"obs.snapshot","data":{
                 "runtime":{"state":self.obs_state,
@@ -127,10 +130,23 @@ class ScenarioWS(MockPluginWebSocket):
             if req["operation"] != "obs.lifecycle.restart":
                 raise AssertionError("No background OBS mutation is permitted")
             self.obs_state="READY"
+            if self.plugin_state=="RESTART_REQUIRED":
+                self.plugin_state="INSTALLED"
+                self.revision+=1
             ws.send(json.dumps({"type":"response","request_id":req["request_id"],
                                 "ok":True,"data":{"state":"READY"}}))
             snapshot()
+            self.push_changed()
         ws.on_message(handle)
+
+    def operator_starts_obs(self):
+        """Model a *separate* operator action; FE must never auto-start OBS."""
+        self.obs_state="READY"
+        for ws in self.obs_sockets:
+            ws.send(json.dumps({"type":"event","event":"obs.snapshot","data":{
+                "runtime":{"state":"READY",
+                  "output":{"streaming":False,"recording":False},
+                  "websocket":{"connected":True}}}}))
 
     def push_changed(self):
         for ws in self.sockets:
@@ -456,3 +472,51 @@ def test_issue75_activity_request_id_matches_actual_ws_request(page:Page,live_se
     expect(page.locator("#plugin-activity")).to_contain_text(request["request_id"])
     expect(page.locator("#plugin-activity")).to_contain_text("adopted")
     assert len(fake.mutations("obs_plugin.adopt"))==1
+
+
+def test_issue75_install_restart_verify_happy_path_keeps_ops_separate(
+    page:Page,live_server:BrowserTestServer
+):
+    fake=ScenarioWS(page,plugin_state="NOT_INSTALLED",obs_state="STOPPED")
+    fake.install_requires_restart=True
+    launch(page,live_server,fake)
+    act(page,"Install plugin")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("Restart required")
+    expect(page.get_by_role("button",name="Restart OBS")).to_be_disabled()
+    assert fake.mutations("obs.lifecycle.restart")==[]
+    # OBS is started by a separate operator, not by Adopt/Install.
+    fake.operator_starts_obs()
+    expect(page.get_by_role("button",name="Restart OBS")).to_be_enabled()
+    act(page,"Restart OBS")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("Installed")
+    expect(page.get_by_role("button",name="Verify",exact=True)).to_be_enabled()
+    act(page,"Verify")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("Verified")
+    operations=[r["operation"] for r in fake.mutations()]
+    assert operations==["obs_plugin.install","obs.lifecycle.restart","obs_plugin.verify"]
+    assert len(fake.mutations("obs_plugin.install"))==1
+    assert len(fake.mutations("obs_plugin.verify"))==1
+
+
+def test_issue75_update_then_separate_verify_passes_with_new_version(
+    page:Page,live_server:BrowserTestServer
+):
+    fake=ScenarioWS(page,plugin_state="UPDATE_AVAILABLE",obs_state="STOPPED",
+                    installed_version="1.0")
+    launch(page,live_server,fake)
+    act(page,"Update plugin")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("Installed")
+    expect(page.locator(".plugin-card")).to_contain_text("2.0")
+    assert fake.mutations("obs_plugin.verify")==[]
+    fake.operator_starts_obs()
+    expect(page.get_by_role("button",name="Verify",exact=True)).to_be_enabled()
+    act(page,"Verify")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("Verified")
+    assert [r["operation"] for r in fake.mutations()]==[
+        "obs_plugin.update","obs_plugin.verify"
+    ]
