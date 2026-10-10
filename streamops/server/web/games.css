@@ -106,7 +106,7 @@ body.gm-page { color-scheme:light; color:#18181b; background:#f5f6f8; font-famil
 .gm-steam-heading h1 {font-size:25px;line-height:1.2;letter-spacing:-.035em;margin:0 0 7px;}
 .gm-steam-heading .eyebrow {margin:0 0 5px;color:#71717a;letter-spacing:.16em;}
 .gm-steam-heading p:not(.eyebrow){margin:0;color:#71717a;font-size:12px;line-height:1.5;}
-.gm-steam-heading .gm-pill {margin-top:20px;flex-shrink:0;}
+.gm-steam-heading .gm-pill {margin-top:0;flex-shrink:0;}
 .gm-steam-page .gm-card {border-radius:24px;padding:17px;margin-bottom:12px;}
 .gm-steam-page .gm-section-heading {align-items:flex-start;margin-bottom:16px;}
 .gm-steam-page .gm-section-heading p{margin:5px 0 0;}
