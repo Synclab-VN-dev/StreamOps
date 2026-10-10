@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import os
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -124,7 +125,7 @@ def create_app(
     )
 
     if game_service is None:
-        game_catalog = GameCatalogService()
+        game_catalog = GameCatalogService(mode=os.environ.get("STREAMOPS_GAME_PROVIDER_MODE", "static"))
         game_catalog.refresh()
         game_observer = GameObserver(game_catalog, WindowsGameProcess())
         games_hub = game_status_hub or GameStatusHub(game_observer, game_catalog)

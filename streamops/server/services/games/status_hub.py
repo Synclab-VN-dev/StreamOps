@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 import json
+import uuid
 from .models import GameRecord
 
 def _now():
@@ -19,6 +20,7 @@ class GameStatusHub:
         self.observer, self.catalog = observer, catalog
         self.reconcile_interval, self.heartbeat_interval = reconcile_interval, heartbeat_interval
         self._revision = 0
+        self.epoch = uuid.uuid4().hex  # clients reset revision on node restart
         self._signatures: dict[str,str] = {}
         self._records: dict[str,GameRecord] = {}
         self._subscribers: set[asyncio.Queue] = set()
@@ -32,7 +34,7 @@ class GameStatusHub:
         return self._revision
 
     def snapshot(self, *, resync_required=False):
-        return {"revision": self._revision, "observed_at": _now(), "stale": False,
+        return {"revision": self._revision, "epoch": self.epoch, "observed_at": _now(), "stale": False,
             "resync_required": resync_required,
             "total": len(self._records),
             "games": [r.model_dump() for r in self._records.values()],
@@ -82,6 +84,11 @@ class GameStatusHub:
             q.put_nowait(event)
 
     def broadcast(self, event, data):
+        data = dict(data)
+        if event in ("games.operation", "games.catalog.changed"):
+            self._revision += 1
+            data["revision"] = self._revision
+        data["epoch"] = self.epoch
         message = {"type":"event","event":event,"data":data}
         for q in tuple(self._subscribers):
             self._enqueue(q, message)

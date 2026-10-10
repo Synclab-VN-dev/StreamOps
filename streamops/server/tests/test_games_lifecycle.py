@@ -116,6 +116,7 @@ def test_hub_pushes_change_and_deduplicates_timestamps(tmp_path):
             b=await asyncio.wait_for(q2.get(),1.0)
             assert a["event"]==b["event"]=="games.changed"
             assert a["data"]["revision"]==b["data"]["revision"]>initial
+            assert a["data"]["epoch"]==hub.epoch
         finally:
             hub.unsubscribe(q1);hub.unsubscribe(q2)
             await service.lifecycle.close();await hub.close()

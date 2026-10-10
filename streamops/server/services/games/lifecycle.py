@@ -43,12 +43,12 @@ class GameLifecycle:
             if not fresh:
                 return op
             if game_id in self._inflight:
-                self.store.update(op["id"],"FAILED","REJECTED","operation_in_progress")
+                self._notify(self.store.update(op["id"],"FAILED","REJECTED","operation_in_progress"))
                 raise GameServiceError("operation_in_progress", "Another operation is running.")
             observed = await self.observer.get(game_id)
             if observed is None or not observed.capabilities.get(action, False):
-                self.store.update(op["id"],"FAILED","REJECTED",
-                    observed.capability_reason if observed else "game_not_found")
+                self._notify(self.store.update(op["id"],"FAILED","REJECTED",
+                    observed.capability_reason if observed else "game_not_found"))
                 raise GameServiceError("capability_disabled", "Operation not verified safe on this host.")
             self._inflight.add(game_id)
             task = asyncio.create_task(self._run(op, definition), name=f"game-{action}-{game_id}")

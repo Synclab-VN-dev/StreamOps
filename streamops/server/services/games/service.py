@@ -16,7 +16,7 @@ class GameService:
         games = [r.model_dump() for r in await self.observer.list()
                  if provider is None or r.provider == provider]
         return {"games":games,"total":len(games),"revision":self.hub.revision,
-                "catalog_version":self.catalog.version}
+                "catalog_version":self.catalog.version,"epoch":self.hub.epoch}
 
     async def get(self, game_id: str):
         value = await self.observer.get(game_id)
