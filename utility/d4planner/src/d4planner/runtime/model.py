@@ -70,6 +70,7 @@ ALLOWED_TRANSITIONS: dict[RuntimeState, set[RuntimeState]] = {
     RuntimeState.RUNNING: {
         RuntimeState.WAITING_FOR_GAME,
         RuntimeState.DEGRADED,
+        RuntimeState.BLOCKED,
         RuntimeState.RESTART_REQUIRED,
         RuntimeState.STOPPED,
     },
