@@ -43,15 +43,34 @@
     for (const [label,key] of [["Running","running"],["Registered","registered"]]) {
       const cell=components.element("span","gm-steam-stat");
       cell.append(components.element("small","",label),
-        components.element("strong","",summary[key]===null?"Unknown":summary[key]));
+        components.element("strong","",summary[key]===null?"—":summary[key]));
       stats.append(cell);
     }
     $("#games-connection").textContent=store.stale?"UNKNOWN":summary.running==null?"UNKNOWN":summary.running+" running";
     $("#games-connection").dataset.tone=store.stale?"bad":summary.running?"ok":"neutral";
     const visible=store.stale?[]:store.items().filter(g=>g.observation?.process?.state==="RUNNING" && !g.observation?.process?.stale);
-    components.renderRows($("#steam-running-games"),visible,null,()=>location.assign("/games"),store.stale?"Game status unavailable":"No running games");
+    const list=$("#steam-running-games");
+    if (visible.length) {
+      components.renderRows(list,visible,null,()=>location.assign("/games"));
+    } else {
+      list.replaceChildren();
+      const empty=components.element("div","gm-steam-empty");
+      const ico=components.element("span","gm-steam-empty-icon",store.stale?"!":"♧");
+      ico.setAttribute("aria-hidden","true");
+      const heading=components.element("strong","",store.stale?"Status unavailable":"No games running");
+      const explanation=components.element("p","",store.stale?
+        "Cannot confirm running sessions.":"Manage registered games in your library.");
+      empty.append(ico,heading,explanation);
+      list.append(empty);
+    }
     const sig=store.epoch+":"+store.revision+":"+store.stale;
     if(sig!==lastGames && !store.loading && !store.stale){lastGames=sig; log("Games: "+(summary.running??"Unknown")+" running");}
+  });
+  const gameToggle=$("#steam-games-toggle"),gameBody=$("#steam-games-body");
+  gameToggle.addEventListener("click",()=>{
+    const expanded=gameToggle.getAttribute("aria-expanded")==="true";
+    gameToggle.setAttribute("aria-expanded",String(!expanded));
+    gameBody.hidden=expanded;
   });
   $("#steam-apply-token").addEventListener("click",()=>{
     control.setCredential($("#steam-control-token").value);

@@ -151,3 +151,22 @@ body.gm-page { color-scheme:light; color:#18181b; background:#f5f6f8; font-famil
 .gm-steam-page .gm-alert {padding:13px;margin-bottom:12px;border:1px solid #fecaca;border-radius:14px;background:#fef2f2;color:#b91c1c;}
 .gm-steam-page .gm-alert strong {font-size:12px;}
 .gm-steam-page .gm-alert p {margin:6px 0 0;font-size:12px;line-height:1.5;}
+
+/* #86: polished MagicPath parity without changing UI behavior or data truth. */
+.gm-steam-page main.narrow-shell {padding-top:12px;}
+.gm-steam-page .gm-steam-back {margin-bottom:12px;}
+.gm-steam-page .gm-steam-heading {margin-bottom:12px;}
+.gm-steam-page .gm-section-heading {gap:6px;align-items:flex-start;}
+.gm-steam-page .gm-section-heading .gm-pill {white-space:nowrap;}
+.gm-steam-page .gm-card-toggle {background:transparent;border:0;color:#a1a1aa;min-width:24px;height:26px;font-size:16px;cursor:pointer;}
+.gm-steam-page .gm-card-toggle[aria-expanded=false] {transform:rotate(180deg);}
+.gm-steam-page #steam-games-body[hidden] {display:none!important;}
+.gm-steam-page .gm-steam-empty {min-height:112px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:5px;}
+.gm-steam-page .gm-steam-empty-icon {font-size:24px;line-height:1;color:#a1a1aa;margin-bottom:5px;}
+.gm-steam-page .gm-steam-empty strong {font-size:12px;color:#18181b;}
+.gm-steam-page .gm-steam-empty p {font-size:11px;color:#71717a;margin:0;line-height:1.5;}
+.gm-steam-page .gm-game-row .gm-game-label small {font-size:11px;}
+.gm-steam-page .gm-activity-summary {line-height:1.5;}
+.gm-steam-page .gm-pill {font-weight:600;}
+.gm-steam-page .gm-game-icon {background:#eef2ff;}
+@media(max-width:640px){.gm-steam-page main.narrow-shell {padding-top:12px;}}

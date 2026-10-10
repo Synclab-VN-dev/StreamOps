@@ -47,10 +47,13 @@
     <div class="gm-section-heading">
       <div><h2 id="games-summary-title">Game Manager</h2><p class="gm-muted">Registered games and observed sessions</p></div>
       <span id="games-connection" class="gm-pill">Connecting</span>
+      <button id="steam-games-toggle" class="gm-card-toggle" type="button" aria-expanded="true" aria-controls="steam-games-body" aria-label="Expand or collapse Game Manager">⌃</button>
     </div>
+    <div id="steam-games-body">
     <div id="steam-games-summary" aria-live="polite"></div>
     <div id="steam-running-games" class="gm-rows"></div>
     <a class="gm-button gm-nav" href="/games">Manage Games →</a>
+    </div>
   </section>
 
   <section class="gm-card activity-panel" aria-labelledby="activity-title">
