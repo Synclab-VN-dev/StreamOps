@@ -104,6 +104,24 @@ jobs:
         run: |
           $env:STREAMOPS_TEST_WHEEL = (Get-ChildItem dist\*.whl | Select-Object -First 1).FullName
           python -m pytest -q streamops/server/tests/test_wheel_acceptance.py
+      - name: Game G1 — Schema and seed
+        if: steps.changes.outputs.server == 'true'
+        run: python -m pytest -q streamops/server/tests/test_games_catalog.py -k seed
+      - name: Game G2 — Provider contract
+        if: steps.changes.outputs.server == 'true'
+        run: python -m pytest -q streamops/server/tests/test_games_catalog.py -k provider
+      - name: Game G3 — Static migration
+        if: steps.changes.outputs.server == 'true'
+        run: python -m pytest -q streamops/server/tests/test_games_catalog.py streamops/server/tests/test_games_installation.py -k 'shadow or library or malicious'
+      - name: Game G4 — WebSocket REST and observer notify
+        if: steps.changes.outputs.server == 'true'
+        run: python -m pytest -q streamops/server/tests/test_games_api.py streamops/server/tests/test_games_lifecycle.py streamops/server/tests/test_games_steam_ws.py -k 'ws or rest or hub'
+      - name: Game G5 — Lifecycle safety and idempotency
+        if: steps.changes.outputs.server == 'true'
+        run: python -m pytest -q streamops/server/tests/test_games_lifecycle.py -k 'start or capability or pending or concurrent or session'
+      - name: Game G6 — Package and wheel seed
+        if: steps.changes.outputs.server == 'true'
+        run: python -m pytest -q streamops/server/tests/test_games_package.py
       - name: Test StreamOps
         if: steps.changes.outputs.server == 'true'
         run: python -m pytest -q
