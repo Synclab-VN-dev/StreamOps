@@ -29,7 +29,7 @@ def test_installed_wheel_runs_outside_source_checkout():
         python = environment / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         subprocess.run([str(python), "-m", "pip", "install", f"{wheel}[server]"], check=True, capture_output=True, text=True)
         probe = subprocess.run(
-            [str(python), "-c", "import importlib.resources, streamops.server.platform.windows.obs_plugin as p; print(p.__file__); print(importlib.resources.files(p).joinpath('manifest.json').is_file())"],
+            [str(python), "-c", "import importlib.resources, streamops.server.platform.windows.obs_plugin as p; print(p.__file__); print(importlib.resources.files(p).joinpath('manifest.json').is_file()); print(importlib.resources.files('streamops.server').joinpath('data/games.seed.json').is_file())"],
             cwd=workdir,
             check=True,
             capture_output=True,
@@ -37,6 +37,7 @@ def test_installed_wheel_runs_outside_source_checkout():
         ).stdout.splitlines()
         assert str(root).casefold() in probe[0].casefold()
         assert probe[1] == "True"
+        assert probe[2] == "True"  # packaged game seed in installed wheel
 
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))
@@ -90,6 +91,36 @@ def test_installed_wheel_runs_outside_source_checkout():
             assert payload["plugin_id"] == "obs-multi-rtmp"
             assert payload["expected_version"] == "0.7.4.0"
             assert set(payload) == {"plugin_id", "expected_version", "state", "installed", "loaded", "compatible"}
+            # G6: GameService is discoverable from the installed wheel,
+            # not an editable repository checkout.
+            with urllib.request.urlopen(base + "/api/v1/games", timeout=10) as response:
+                games = json.loads(response.read())
+            assert games["total"] == 1
+            assert games["games"][0]["id"] == "steam:2344520"
+            ws_probe = (
+                "import json,sys\n"
+                "from websockets.sync.client import connect\n"
+                "port=sys.argv[1]\n"
+                "with connect('ws://127.0.0.1:'+port+'/api/v1/games/ws',open_timeout=8) as ws:\n"
+                "    snapshot=json.loads(ws.recv(timeout=8))\n"
+                "    assert snapshot['event']=='games.snapshot'\n"
+                "    assert snapshot['data']['games'][0]['id']=='steam:2344520'\n"
+                "    ws.send(json.dumps({'type':'request','request_id':'wheel','operation':'games.list','payload':{}}))\n"
+                "    for _ in range(12):\n"
+                "        message=json.loads(ws.recv(timeout=8))\n"
+                "        if message.get('request_id')=='wheel':\n"
+                "            assert message['ok'] and message['data']['total']==1\n"
+                "            break\n"
+                "    else: raise AssertionError('no WS response from installed wheel')\n"
+            )
+            # Test the WS server as a separate process using the installed
+            # wheel's venv, never site-packages from this CI checkout.
+            ws_result = subprocess.run([str(python), "-c", ws_probe, str(port)], cwd=workdir,
+                                       timeout=30, capture_output=True, text=True)
+            assert ws_result.returncode == 0, (
+                "Installed-wheel WebSocket smoke failed:\\n"
+                + ws_result.stdout + "\\n" + ws_result.stderr
+            )
         finally:
             process.terminate()
             try:
