@@ -492,7 +492,7 @@ def test_e2e_v1_to_v2_update_through_service_then_vendor_verify_preserves_config
                 "requestType": "list_targets",
                 "requestData": {},
             }
-            return {"vendorResponseData": {"targets": [], "count": 0}}
+            return {"responseData": {"targets": [], "count": 0}}
 
         def close(self):
             pass
