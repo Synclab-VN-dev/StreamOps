@@ -277,3 +277,86 @@ def test_store_epoch_reorder_and_counts(page: Page, games_ui_server):
       return {oldRejected,epoch:s.epoch,registered:s.summary().registered,verified:s.summary().verified};
     }""")
     assert result=={"oldRejected":True,"epoch":"two","registered":0,"verified":0}
+
+
+def test_generic_inventory_ten_unicode_unknown_and_sort(page: Page, games_ui_server):
+    base, fake = games_ui_server
+    page.goto(base + "/games")
+    records = [
+        game("Game " + str(i), "steam:" + str(i + 100), "STOPPED")
+        for i in range(10)
+    ]
+    records[0]["name"] = "Tiếng Việt – trò chơi thử nghiệm tên cực kỳ dài " * 3
+    records[1]["provider"] = "epic"
+    records[2]["observation"]["process"]["state"] = "UNKNOWN"
+    records[2]["observation"]["process"]["stale"] = True
+    fake.set_library(records)
+    expect(page.locator("#game-library button")).to_have_count(10)
+    expect(page.locator("#game-summary")).to_contain_text("Unknown")
+    page.locator("#game-search").fill("Tiếng Việt")
+    expect(page.locator("#game-library button")).to_have_count(1)
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    page.locator("#game-search").fill("")
+    page.locator("#game-filter").select_option("running")
+    expect(page.locator("#game-library")).to_contain_text("No matching games")
+
+
+def test_lifecycle_ack_pending_not_success_and_no_repeat(page: Page, games_ui_server):
+    base, fake = games_ui_server
+    page.goto(base + "/games")
+    page.locator("#game-library button").first.click()
+    page.locator(".gm-control-panel summary").click()
+    page.locator("#game-control-token").fill("a" * 32)
+    page.locator("#apply-token").click()
+    expect(page.locator("#token-status")).to_contain_text("Credential ready")
+    page.once("dialog", lambda dialog: dialog.dismiss())
+    page.get_by_role("button", name="Stop", exact=True).click()
+    assert not [op for op, _ in fake.received if op == "games.lifecycle.stop"]
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.get_by_role("button", name="Stop", exact=True).click()
+    expect(page.locator("#game-detail")).to_contain_text("PENDING / QUEUED")
+    assert len([op for op, _ in fake.received if op == "games.lifecycle.stop"]) == 1
+    assert "SUCCEEDED" not in page.locator("#game-detail").inner_text()
+    expect(page.get_by_role("button", name="Force Stop (disabled)")).to_be_disabled()
+
+
+def test_reconnect_resync_without_mutation_replay(page: Page, games_ui_server):
+    base, fake = games_ui_server
+    page.goto(base + "/games")
+    expect(page.locator("#status-text")).to_contain_text("connected")
+    page.evaluate("""() => {
+      const s = window.StreamOpsGames.store;
+      s.operation({operation_id: 'pending-test',game_id:'steam:2344520',
+        action:'stop',status:'PENDING',phase:'STOPPING'});
+    }""")
+    assert not [x for x in fake.received if x[0].startswith("games.lifecycle.")]
+    page.evaluate("window.StreamOpsGames.client.socket.close()")
+    expect(page.locator("#status-text")).to_contain_text("offline")
+    expect(page.locator("#status-text")).to_contain_text("connected", timeout=10000)
+    expect(page.locator("#game-library")).to_contain_text("Diablo IV")
+    assert not [x for x in fake.received if x[0].startswith("games.lifecycle.")]
+    assert [op for op, _ in fake.received if op == "games.operations.get"]
+
+
+def test_state_model_null_epoch_gap_recovery(page: Page, games_ui_server):
+    base, _fake = games_ui_server
+    page.goto(base + "/games")
+    report = page.evaluate("""() => {
+      const s = new window.StreamOpsGamesStore.GameStore();
+      s.connection('connected');
+      s.snapshot({epoch:'e1',revision:3,games:[
+        {id:'steam:1',name:'A',observation:{process:{state:'RUNNING',stale:false},
+          owned:null,installed:false,obsCapture:'CONFIGURED_ONLY'}}
+      ],stale:false});
+      const counts1 = s.summary();
+      s.changed({epoch:'e1',revision:5,game_id:'steam:1',game:{
+        id:'steam:1',name:'A',observation:{process:{state:'STOPPED',stale:false}}}});
+      const gap = s.needsResync;
+      s.operation({operation_id:'op1',status:'PENDING',phase:'QUEUED'});
+      s.snapshot({epoch:'e2',revision:1,games:[],stale:false});
+      const reset = s.epoch === 'e2' && s.operations.get('op1').status === 'UNKNOWN';
+      s.connection('disconnected');
+      const offline = s.summary().registered === null;
+      return {initial:counts1.running===1 && counts1.verified===0,gap,reset,offline};
+    }""")
+    assert report == {"initial": True, "gap": True, "reset": True, "offline": True}
