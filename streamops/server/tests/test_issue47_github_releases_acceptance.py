@@ -141,7 +141,7 @@ class Vendor:
                            "requestType": "list_targets", "requestData": {}}
         if self.fail:
             raise ConnectionError("vendor missing")
-        return {"vendorResponseData": {"targets": []}}
+        return {"responseData": {"targets": []}}
     def close(self): pass
 
 
