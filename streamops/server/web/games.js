@@ -45,6 +45,7 @@
     } catch(e){error(e.message);log(name+" failed: "+e.message,"error");}
     finally {activeOperation=false;render();}
   }
+  document.addEventListener("keydown",event=>{if(event.key==="Escape" && selected){event.preventDefault();closeDetail();}});
   $("#game-search").addEventListener("input",render);
   $("#game-filter").addEventListener("change",render);
   $("#refresh-catalog").addEventListener("click",async()=>{
