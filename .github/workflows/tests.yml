@@ -156,7 +156,7 @@ jobs:
           $env:CI_EVENT_NAME = 'push'
           $env:GAME_SCOPE = 'true'
           $names = @('GAME_G1','GAME_G2','GAME_G3','GAME_G4','GAME_G5','GAME_G6',
-                     'GAME_WHEEL','GAME_RACE','GAME_REGRESSION')
+                     'GAME_WHEEL','GAME_RACE','GAME_REGRESSION','GAME_AUDIT_SELFTEST')
           foreach ($name in $names) {
             [Environment]::SetEnvironmentVariable($name, 'success', 'Process')
           }
