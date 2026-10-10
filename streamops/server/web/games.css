@@ -218,3 +218,21 @@ body.gm-page { color-scheme:light; color:#18181b; background:#f5f6f8; font-famil
   body.gm-page:not(.gm-steam-page):has(.gm-workspace.gm-has-detail) #games-workspace {padding:16px;}
   body.gm-page:not(.gm-steam-page):has(.gm-workspace.gm-has-detail) .gm-detail {display:block;width:100%;margin:0;position:static;}
 }
+
+/* Steam summary: keep icon/toggle out of the title width; preserve MagicPath card geometry. */
+.gm-steam-page #game-manager-card>.gm-section-heading {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto 16px;
+  gap:8px;
+  align-items:start;
+  margin-bottom:10px;
+}
+.gm-steam-page #game-manager-card>.gm-section-heading>div {min-width:0;}
+.gm-steam-page #game-manager-card h2 {white-space:nowrap;font-size:15px;}
+.gm-steam-page #game-manager-card .gm-section-heading p {white-space:nowrap;font-size:11px;}
+.gm-steam-page #steam-games-summary {margin:8px 0 10px;}
+.gm-steam-page #steam-running-games {margin:12px 0;padding:3px 8px;min-height:62px;}
+.gm-steam-page #steam-running-games .gm-game-row {min-height:58px;padding:7px 3px;}
+.gm-steam-page #steam-running-games .gm-steam-empty {min-height:105px;}
+.gm-steam-page #steam-games-toggle {min-width:16px;width:16px;padding:0;height:22px;}
+.gm-steam-page .gm-steam-empty-icon{font-size:23px;}
