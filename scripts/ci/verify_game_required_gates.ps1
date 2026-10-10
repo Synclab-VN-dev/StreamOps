@@ -45,6 +45,7 @@ if ($gameScope -eq 'true') {
         Wheel = $env:GAME_WHEEL
         RaceThreeRuns = $env:GAME_RACE
         FullRegression = $env:GAME_REGRESSION
+        GuardNegativeSelfTest = $env:GAME_AUDIT_SELFTEST
     }
     $failures = @()
     foreach ($entry in $gates.GetEnumerator()) {

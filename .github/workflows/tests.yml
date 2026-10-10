@@ -148,6 +148,28 @@ jobs:
         id: server_regression
         if: steps.changes.outputs.server == 'true'
         run: python -m pytest -q
+      - name: Game E2E-01 — fail-closed negative tests
+        id: game_guard_selftest
+        if: steps.changes.outputs.server == 'true'
+        shell: pwsh
+        run: |
+          $env:CI_EVENT_NAME = 'push'
+          $env:GAME_SCOPE = 'true'
+          $names = @('GAME_G1','GAME_G2','GAME_G3','GAME_G4','GAME_G5','GAME_G6',
+                     'GAME_WHEEL','GAME_RACE','GAME_REGRESSION')
+          foreach ($name in $names) {
+            [Environment]::SetEnvironmentVariable($name, 'success', 'Process')
+          }
+          $env:GAME_G4 = 'skipped'
+          & pwsh -NoProfile -File ./scripts/ci/verify_game_required_gates.ps1 *> $null
+          if ($LASTEXITCODE -eq 0) { throw 'Audit accepted SKIPPED G4 — false green' }
+          $env:GAME_G4 = 'success'
+          $env:GAME_SCOPE = 'false'
+          & pwsh -NoProfile -File ./scripts/ci/verify_game_required_gates.ps1 *> $null
+          if ($LASTEXITCODE -eq 0) { throw 'Audit accepted missing required game scope' }
+          $env:GAME_SCOPE = 'true'
+          & pwsh -NoProfile -File ./scripts/ci/verify_game_required_gates.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Audit rejected valid all-successful gates' }
       - name: Game E2E-01 — required gate audit
         # This step is always evaluated, even when a prior test/install fails.
         # GitHub branch Ruleset must ALSO require the "windows" status check.
@@ -164,6 +186,7 @@ jobs:
           GAME_WHEEL: ${{ steps.game_wheel.outcome }}
           GAME_RACE: ${{ steps.game_race.outcome }}
           GAME_REGRESSION: ${{ steps.server_regression.outcome }}
+          GAME_AUDIT_SELFTEST: ${{ steps.game_guard_selftest.outcome }}
           CI_EVENT_NAME: ${{ github.event_name }}
           CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           CI_HEAD_SHA: ${{ github.event.pull_request.head.sha }}

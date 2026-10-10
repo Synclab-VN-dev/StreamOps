@@ -21,7 +21,7 @@ def test_game_gate_ids_and_audit_are_mandatory():
     assert audit["run"] == "./scripts/ci/verify_game_required_gates.ps1"
     assert len({checks[g]["name"] for g in ("game_g1","game_g2","game_g3","game_g4","game_g5","game_g6")})==6
     for field in ("GAME_G1","GAME_G2","GAME_G3","GAME_G4","GAME_G5","GAME_G6",
-                  "GAME_WHEEL","GAME_RACE","GAME_REGRESSION"):
+                  "GAME_WHEEL","GAME_RACE","GAME_REGRESSION","GAME_AUDIT_SELFTEST"):
         assert field in audit["env"],field
         assert field in AUDIT.read_text(encoding="utf-8"),field
 
@@ -48,3 +48,11 @@ def test_master_ruleset_tool_is_safe_and_requires_explicit_apply():
     assert "conditions = $current.conditions" in script
     assert "bypass_actors = @($current.bypass_actors)" in script
     assert "--method PUT" in script
+
+def test_negative_guard_scenarios_are_wired_to_ci():
+    source=WORKFLOW.read_text(encoding="utf-8")
+    assert "Game E2E-01 — fail-closed negative tests" in source
+    assert "'skipped'" in source
+    assert "'false'" in source
+    assert "GAME_AUDIT_SELFTEST:" in source
+    assert "GuardNegativeSelfTest" in AUDIT.read_text(encoding="utf-8")
