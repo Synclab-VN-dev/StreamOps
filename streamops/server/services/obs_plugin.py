@@ -74,6 +74,9 @@ class ObsPluginStatus:
         "available": False, "target_version": None, "reason": "baseline_unavailable",
     })
     revision: int = 0
+    # Flat aliases keep the current #75 FE adapter backward compatible.
+    rollback_available: bool = False
+    rollback_reason: str | None = "baseline_unavailable"
     operation: dict[str, object] = field(default_factory=lambda: {"state": "IDLE", "operation_id": None})
 
     def api_payload(self) -> dict[str, object]:
@@ -144,8 +147,10 @@ class ObsPluginService:
             self._revision += 1
             event: dict[str, object] = {
                 "type": "event", "event": "obs_plugin.changed",
-                "plugin_id": PLUGIN_ID, "revision": self._revision,
-                "resources": [resource],
+                "data": {
+                    "plugin_id": PLUGIN_ID, "revision": self._revision,
+                    "resources": [resource],
+                },
             }
             subscribers = tuple(self._subscribers.items())
         for queue, loop in subscribers:
@@ -372,8 +377,11 @@ class ObsPluginService:
                 "plugin_status_failed", "OBS plugin status could not be inspected.", 503
             ) from exc
         status = self._combine(host, runtime)
+        rollback = self._rollback_readiness(status, runtime)
         return replace(
-            status, rollback=self._rollback_readiness(status, runtime),
+            status, rollback=rollback,
+            rollback_available=bool(rollback["available"]),
+            rollback_reason=rollback["reason"],
             revision=int(self._operation_snapshot()["revision"]),
             operation=self._operation_snapshot(),
         )

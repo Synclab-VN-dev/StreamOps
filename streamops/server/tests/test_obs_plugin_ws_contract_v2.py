@@ -114,6 +114,9 @@ def test_status_exposes_verified_rollback_and_operation_reconcile(server_config,
         status = api.get("/api/v1/obs/plugins/" + PLUGIN).json()
         assert status["rollback"]["available"] is False
         assert status["rollback"]["reason"] == "config_conflict"
+        # Existing FE #75 model consumes these server-authoritative flat fields.
+        assert status["rollback_available"] is False
+        assert status["rollback_reason"] == "config_conflict"
         with api.websocket_connect(WS) as ws:
             before = _send(ws, "obs_plugin.operation_status", "op0", {"plugin_id": PLUGIN})
             assert before["data"]["operation"]["state"] == "IDLE"
@@ -154,9 +157,9 @@ def test_opt_in_push_change_and_no_secret_payload(server_config, capture_service
             assert response is not None and response["ok"] is True
             assert event is not None
             assert event["event"] == "obs_plugin.changed"
-            assert event["plugin_id"] == PLUGIN
-            assert event["revision"] > subscribed["data"]["revision"]
-            assert set(event) == {"type", "event", "plugin_id", "revision", "resources"}
+            assert event["data"]["plugin_id"] == PLUGIN
+            assert event["data"]["revision"] > subscribed["data"]["revision"]
+            assert set(event) == {"type", "event", "data"}
 
 
 def test_failed_operation_safe_terminal_reconciliation():

@@ -722,3 +722,26 @@ def test_p1_host_uses_shared_obs_executable_identity(tmp_path, monkeypatch):
         host.installer.adopt()
     assert error.value.code == "obs_running"
 
+
+
+
+def test_rb_readiness_is_journal_and_backup_authoritative(tmp_path):
+    legacy = {**APPROVED_FILES, "bin/64bit/obs-multi-rtmp.dll": b"legacy"}
+    installer, config, _ = _installer(tmp_path, legacy=legacy)
+    assert installer.rollback_readiness()["available"] is False
+    installer.adopt()
+    assert installer.rollback_readiness()["available"] is False
+    installer.install()
+    baseline = installer.rollback_readiness()
+    assert baseline == {"available": True, "target_version": None, "reason": None}
+    before = _file_records(installer.plugin_root)
+    config.write_bytes(b'{"targets":[{"stream_key":"user-updated-secret"}]}')
+    refused = installer.rollback_readiness()
+    assert refused["available"] is False
+    assert refused["reason"] == "baseline_invalid"
+    assert _file_records(installer.plugin_root) == before
+    config.write_bytes(b'{"targets":[{"stream_key":"fixture-secret"}]}')
+    root, _ = installer._read_current_transaction()
+    (root / "backup/configs/0000.bin").unlink()
+    assert installer.rollback_readiness()["available"] is False
+    assert _file_records(installer.plugin_root) == before

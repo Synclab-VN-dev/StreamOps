@@ -26,7 +26,7 @@ All single-plugin operations reject unknown IDs and extra fields.
 ## Opt-in observer events
 
 After a successful `obs_plugin.subscribe`, a client additionally receives
-`{"type":"event","event":"obs_plugin.changed","plugin_id":"obs-multi-rtmp","revision":N,"resources":["operation"]}`.
+`{"type":"event","event":"obs_plugin.changed","data":{"plugin_id":"obs-multi-rtmp","revision":N,"resources":["operation"]}}`.
 Resources currently include `operation`, `status`, and `catalog`.
 These are *invalidation hints*, not authoritative snapshots. Re-fetch inventory,
 catalog, plugin status and operation status after connecting/subscribing or on
@@ -43,8 +43,9 @@ unsolicited messages until they subscribe.
 ## Rollback and in-flight safety
 
 Plugin status includes:
-`rollback: {"available":boolean,"target_version":string|null,"reason":string|null}`
-and `revision` plus an `operation` snapshot. Rollback availability is fail-closed:
+`rollback: {"available":boolean,"target_version":string|null,"reason":string|null}`,
+compatibility aliases `rollback_available` / `rollback_reason` for the current
+FE #75 domain model, and `revision` plus an `operation` snapshot. Rollback availability is fail-closed:
 the Windows installer checks committed transaction journal, exact installed
 files and verified plugin/config backups including config drift. Merely being
 installed, having a version, or having `LEGACY_ADOPTED` is insufficient.
@@ -62,3 +63,13 @@ contents or raw exceptions may appear in operation snapshots or events.
 
 The FE must not enable Rollback if `rollback.available` is missing or false,
 and must not infer success from a disconnected WebSocket or an OBS restart.
+
+
+## FE #75 integration follow-up (PR #90)
+
+The current FE WebSocket client routes event payloads from `message.data`.
+The FE must call `obs_plugin.subscribe` after every connect/reconnect, then
+reconcile inventory/catalog/operation status (do not rely on push delivery alone).
+It must query `obs_plugin.operation_status` for each plugin before clearing an
+`unknownOutcome` state. This follow-up belongs to the independent FE PR #90;
+it is **not** evidence of production UI integration in BE PR #52.
