@@ -56,10 +56,11 @@ jobs:
                 $_ -like "streamops/*" -or
                 $_ -like "scripts/e2e/issue85*" -or
                 $_ -like "scripts/devices/a-windows/issue85*" -or
-                $_ -eq "pyproject.toml" -or
-                $_ -eq ".github/workflows/tests.yml"
+                $_ -like "scripts/ci/*game*" -or
+                $_ -eq "pyproject.toml"
               }
-            ).Count -gt 0)
+            ).Count -gt 0) -or
+            (".github/workflows/tests.yml" -in $files)
           }
 
           "d4planner=$($d4planner.ToString().ToLowerInvariant())" |
@@ -103,30 +104,38 @@ jobs:
         if: steps.changes.outputs.server == 'true'
         run: python -m pip wheel . --no-deps -w dist
       - name: Test installed wheel outside source checkout
+        id: game_wheel
         if: steps.changes.outputs.server == 'true'
         shell: pwsh
         run: |
           $env:STREAMOPS_TEST_WHEEL = (Get-ChildItem dist\*.whl | Select-Object -First 1).FullName
           python -m pytest -q streamops/server/tests/test_wheel_acceptance.py
       - name: Game G1 — Schema and seed
+        id: game_g1
         if: steps.changes.outputs.server == 'true'
         run: python -m pytest -q streamops/server/tests/test_games_catalog.py streamops/server/tests/test_games_package.py
       - name: Game G2 — Provider contract
+        id: game_g2
         if: steps.changes.outputs.server == 'true'
         run: python -m pytest -q streamops/server/tests/test_games_provider_contract.py
       - name: Game G3 — Static migration
+        id: game_g3
         if: steps.changes.outputs.server == 'true'
         run: python -m pytest -q streamops/server/tests/test_games_catalog.py streamops/server/tests/test_games_installation.py
       - name: Game G4 — WebSocket REST and observer notify
+        id: game_g4
         if: steps.changes.outputs.server == 'true'
         run: python -m pytest -q streamops/server/tests/test_games_api.py streamops/server/tests/test_games_steam_ws.py streamops/server/tests/test_games_status_hub.py streamops/server/tests/e2e/test_games_ws_contract.py streamops/server/tests/e2e/test_games_recovery.py
       - name: Game G5 — Lifecycle safety and idempotency
+        id: game_g5
         if: steps.changes.outputs.server == 'true'
         run: python -m pytest -q streamops/server/tests/test_games_lifecycle.py streamops/server/tests/test_games_process_identity.py
       - name: Game G6 — Package and wheel seed
+        id: game_g6
         if: steps.changes.outputs.server == 'true'
         run: python -m pytest -q streamops/server/tests/test_games_package.py streamops/server/tests/test_games_installation.py
       - name: Game observer/lifecycle race regression — 3 runs
+        id: game_race
         if: steps.changes.outputs.server == 'true'
         shell: pwsh
         run: |
@@ -136,5 +145,26 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Race regression iteration $_ failed" }
           }
       - name: Test StreamOps
+        id: server_regression
         if: steps.changes.outputs.server == 'true'
         run: python -m pytest -q
+      - name: Game E2E-01 — required gate audit
+        # This step is always evaluated, even when a prior test/install fails.
+        # GitHub branch Ruleset must ALSO require the "windows" status check.
+        if: always()
+        shell: pwsh
+        env:
+          GAME_SCOPE: ${{ steps.changes.outputs.server }}
+          GAME_G1: ${{ steps.game_g1.outcome }}
+          GAME_G2: ${{ steps.game_g2.outcome }}
+          GAME_G3: ${{ steps.game_g3.outcome }}
+          GAME_G4: ${{ steps.game_g4.outcome }}
+          GAME_G5: ${{ steps.game_g5.outcome }}
+          GAME_G6: ${{ steps.game_g6.outcome }}
+          GAME_WHEEL: ${{ steps.game_wheel.outcome }}
+          GAME_RACE: ${{ steps.game_race.outcome }}
+          GAME_REGRESSION: ${{ steps.server_regression.outcome }}
+          CI_EVENT_NAME: ${{ github.event_name }}
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CI_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: ./scripts/ci/verify_game_required_gates.ps1
