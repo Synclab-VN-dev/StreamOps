@@ -5,6 +5,7 @@ test_magicpath_visual_contract. The generated reference screenshots are NOT
 silently accepted as user-approved goldens. Approval is an explicit CI gate.
 """
 from __future__ import annotations
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -152,10 +153,18 @@ def test_pinned_magicpath_visual_parity(
         _stage_reference(expected_page, magicpath_reference_url, design, scenario)
         _ready(expected_page)
         expected_page.screenshot(path=str(expected), animations="disabled")
+        if MANIFEST["approved"]:
+            approved = ROOT / "goldens" / (label + ".png")
+            assert approved.is_file(), "Missing owner-approved Golden " + str(approved)
+            expected_hash = MANIFEST["approval"]["expected_sha256"].get(label)
+            assert expected_hash and hashlib.sha256(approved.read_bytes()).hexdigest() == expected_hash, "Golden hash mismatch"
+            drift=_visual_diff(approved,expected,path/"reference-drift.png")
+            assert drift <= .015, f"Pinned design renderer drift against approved Golden: {label}: {drift}"
         _stage_production(actual_page, fake, base, design, scenario)
         _ready(actual_page)
         actual_page.screenshot(path=str(actual), animations="disabled")
-        score=_visual_diff(expected,actual,diff)
+        verified_reference=ROOT / "goldens" / (label + ".png") if MANIFEST["approved"] else expected
+        score=_visual_diff(verified_reference,actual,diff)
         (path/"result.json").write_text(json.dumps({
             "design":design, "scenario":scenario, "viewport":[width,height],
             "revision_id":next(r["revision_id"] for r in MANIFEST["references"] if r["name"]==design),
@@ -175,3 +184,5 @@ def test_owner_approval_is_required_for_visual_golden():
         assert MANIFEST["approved"] is True, "Golden not yet approved by project owner. Review CI expected/actual/diff artifacts."
         assert MANIFEST["approval"]["approved_by"]
         assert MANIFEST["approval"]["approved_at"]
+        assert MANIFEST["approval"]["review_url"]
+        assert len(MANIFEST["approval"]["expected_sha256"]) == len(REQUIRED_SCENARIOS)
