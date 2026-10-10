@@ -406,3 +406,29 @@ def test_issue75_timeout_remains_fail_closed_after_page_reload(page:Page,live_se
     expect(page.get_by_role("button",name="Adopt existing")).to_be_disabled()
     assert len(fake.mutations("obs_plugin.adopt"))==1
     assert any(r["operation"]=="obs_plugin.operation_status" for r in fake.calls)
+
+
+def test_issue75_timeout_with_late_terminal_success_reconciles_readonly_once(
+    page:Page,live_server:BrowserTestServer
+):
+    fake=ScenarioWS(page,plugin_state="UNMANAGED",catalog=False)
+    fake.fail_operation="plugin_operation_timeout"
+    launch(page,live_server,fake)
+    act(page,"Adopt existing")
+    confirm(page)
+    expect(page.locator("#plugin-connection-warning")).to_contain_text("unknown")
+    assert len(fake.mutations("obs_plugin.adopt"))==1
+
+    # BE operation journal reports an authoritative post-baseline terminal
+    # outcome. A read-only refresh may clear uncertainty; no replay of Adopt.
+    fake.plugin_state="LEGACY_ADOPTED"
+    fake.revision=11
+    fake.status_operation={"state":"SUCCEEDED","operation":"adopt",
+                           "operation_id":"be-operation-confirmed-11"}
+    page.locator("#plugin-refresh").click()
+    expect(page.locator("#plugin-connection-warning")).to_be_hidden()
+    expect(page.locator(".plugin-card")).to_contain_text("Legacy baseline adopted")
+    page.locator(".plugin-activity-details").evaluate("el=>el.open=true")
+    expect(page.locator("#plugin-activity")).to_contain_text("reconciled-succeeded")
+    assert len(fake.mutations("obs_plugin.adopt"))==1
+    assert any(r["operation"]=="obs_plugin.operation_status" for r in fake.calls)
