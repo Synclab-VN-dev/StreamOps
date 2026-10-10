@@ -304,3 +304,86 @@ def test_issue75_keyboard_focus_mobile_and_expand_collapse(page:Page,live_server
     page.keyboard.press("Escape")
     assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
     assert fake.mutations()==[]
+
+
+def test_issue75_timeout_unknown_outcome_disables_repeat_mutation(page:Page,live_server:BrowserTestServer):
+    fake=ScenarioWS(page,plugin_state="UNMANAGED",catalog=False)
+    fake.fail_operation="plugin_operation_timeout"
+    launch(page,live_server,fake)
+    act(page,"Adopt existing")
+    confirm(page)
+    expect(page.locator("#plugin-connection-warning")).to_contain_text("unknown")
+    expect(page.get_by_role("button",name="Adopt existing")).to_be_disabled()
+    assert len(fake.mutations("obs_plugin.adopt"))==1
+    # A read-only refresh is permitted, but it cannot prove that a timed-out
+    # mutation stopped. No blind second request is ever sent.
+    page.locator("#plugin-refresh").click()
+    expect(page.locator("#plugin-connection-warning")).to_contain_text("unknown")
+    assert len(fake.mutations("obs_plugin.adopt"))==1
+
+
+def test_issue75_confirm_double_activation_submits_one_mutation(page:Page,live_server:BrowserTestServer):
+    fake=ScenarioWS(page,plugin_state="UNMANAGED",catalog=False)
+    launch(page,live_server,fake)
+    act(page,"Adopt existing")
+    page.evaluate("""() => {
+        const submit=document.getElementById('plugin-confirm-submit');
+        submit.click();
+        submit.click();
+    }""")
+    expect(page.locator(".plugin-card")).to_contain_text("Legacy baseline adopted")
+    assert len(fake.mutations("obs_plugin.adopt"))==1
+
+
+def test_issue75_adopt_with_empty_catalog_does_not_auto_install(page:Page,live_server:BrowserTestServer):
+    fake=ScenarioWS(page,plugin_state="UNMANAGED",catalog=False)
+    launch(page,live_server,fake)
+    expect(page.locator("#plugin-release-source")).to_contain_text("EMPTY")
+    act(page,"Adopt existing")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("Legacy baseline adopted")
+    assert len(fake.mutations("obs_plugin.adopt"))==1
+    assert fake.mutations("obs_plugin.install")==[]
+
+
+def test_issue75_changed_event_refetches_authoritative_status(page:Page,live_server:BrowserTestServer):
+    fake=ScenarioWS(page,plugin_state="INSTALLED",installed_version="1.0")
+    launch(page,live_server,fake)
+    baseline=len([r for r in fake.calls if r["operation"]=="obs_plugin.inventory"])
+    fake.plugin_state="UPDATE_AVAILABLE"
+    fake.revision+=1
+    fake.push_changed()
+    expect(page.locator(".plugin-card")).to_contain_text("Update available")
+    assert len([r for r in fake.calls if r["operation"]=="obs_plugin.inventory"])>baseline
+    calls=len([r for r in fake.calls if r["operation"]=="obs_plugin.inventory"])
+    # Replayed/lower revision notifications are invalidation hints, not a
+    # second authoritative mutation or an opportunity to roll state backwards.
+    fake.revision-=1
+    fake.push_changed()
+    assert len([r for r in fake.calls if r["operation"]=="obs_plugin.inventory"])==calls
+    assert fake.mutations()==[]
+
+
+def test_issue75_restarting_obs_does_not_mark_release_verified(page:Page,live_server:BrowserTestServer):
+    fake=ScenarioWS(page,plugin_state="RESTART_REQUIRED",installed_version="2.0",obs_state="READY")
+    launch(page,live_server,fake)
+    act(page,"Restart OBS")
+    confirm(page)
+    expect(page.locator("#plugin-activity")).to_contain_text("obs.lifecycle.restart")
+    assert len(fake.mutations("obs.lifecycle.restart"))==1
+    assert fake.mutations("obs_plugin.verify")==[]
+    expect(page.locator(".plugin-card")).not_to_contain_text("Verified")
+
+
+def test_issue75_ready_guard_for_verify(page:Page,live_server:BrowserTestServer):
+    fake=ScenarioWS(page,plugin_state="INSTALLED",installed_version="2.0",obs_state="STOPPED")
+    launch(page,live_server,fake)
+    expect(page.get_by_role("button",name="Verify",exact=True)).to_be_disabled()
+    assert fake.mutations()==[]
+
+
+def test_issue75_readonly_catalog_cannot_override_inventory_allowlist(page:Page,live_server:BrowserTestServer):
+    fake=ScenarioWS(page,registry=False,catalog=True)
+    launch(page,live_server,fake)
+    expect(page.locator(".plugin-card")).to_have_count(0)
+    assert fake.mutations()==[]
