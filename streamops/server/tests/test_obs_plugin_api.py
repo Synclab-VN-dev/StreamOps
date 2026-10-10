@@ -354,7 +354,7 @@ def test_e2e_real_service_install_process_api_restart_verify_and_inventory(serve
         def request(self, request_type, payload):
             assert request_type == "CallVendorRequest"
             assert payload["vendorName"] == "sorayuki.multi_rtmp"
-            return {"vendorResponseData": {"targets": [], "count": 0}}
+            return {"responseData": {"targets": [], "count": 0}}
         def close(self):
             pass
 
