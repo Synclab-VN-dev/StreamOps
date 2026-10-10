@@ -107,8 +107,7 @@ function renderPlugin(plugin) {
   pill.dataset.tone = statusTone(plugin.state);
   right.append(pill,text('span','plugin-chevron',expandedId === plugin.plugin_id ? '⌃' : '⌄'));
   header.append(left,right);
-  header.addEventListener('click',() => {expandedId = expandedId === plugin.plugin_id ? null : plugin.plugin_id; render();
-store.start();});
+  header.addEventListener('click',() => {expandedId = expandedId === plugin.plugin_id ? null : plugin.plugin_id; render();});
   card.append(header);
   const mini = text('div','plugin-mini-details');
   mini.append(
@@ -194,3 +193,4 @@ function render() {
 window.addEventListener('pagehide',() => store.destroy(),{once:true});
 window.addEventListener('pageshow',event => {if (event.persisted) location.reload();});
 render();
+store.start();
