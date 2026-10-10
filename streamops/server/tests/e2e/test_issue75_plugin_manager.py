@@ -46,6 +46,18 @@ class MockPluginWebSocket:
                 data = {"plugins": [self.status()]}
             elif operation == "obs_plugin.available":
                 data = {"plugins": [], "source_state": "EMPTY"}
+            elif operation == "obs_plugin.subscribe":
+                data = {"plugin_id": request["payload"]["plugin_id"],
+                        "subscribed": True, "revision": 1}
+            elif operation == "obs_plugin.operation_status":
+                data = {
+                    "plugin_id": request["payload"]["plugin_id"],
+                    "revision": 2,
+                    "operation": {"state": "IDLE", "operation_id": None},
+                    "plugin_state": self.plugin_state,
+                    "recovery_required": False,
+                    "rollback": {"available": False, "reason": "baseline_unavailable"},
+                }
             elif operation == "obs_plugin.adopt":
                 if self.obs_state != "STOPPED":
                     ws.send(json.dumps({

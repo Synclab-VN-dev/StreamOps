@@ -42,8 +42,10 @@ export function parseInventory(data) {
       restart_required: raw.restart_required === true,
       last_verification: raw.last_verification ?? null,
       // Optional future BE eligibility: absence deliberately means no Rollback.
-      rollback_available: raw.rollback_available === true,
-      rollback_reason: raw.rollback_reason ?? null
+      rollback_available: raw.rollback?.available === true || raw.rollback_available === true,
+      rollback_reason: raw.rollback?.reason ?? raw.rollback_reason ?? null,
+      revision: Number.isSafeInteger(raw.revision) ? raw.revision : null,
+      operation: asObject(raw.operation)
     });
   });
 }
@@ -82,7 +84,8 @@ export function runtimeFromSnapshot(snapshot) {
 }
 export function safeActions(plugin, release, obs, connected, busy = false) {
   const actions = {};
-  const mutationBlock = !connected ? 'Plugin WebSocket disconnected.'
+  const mutationBlock = !connected ? 'Plugin WebSocket disconnected or not subscribed.' 
+    : plugin?.operation?.state === 'RUNNING' ? 'A plugin operation is in progress on the server.'
     : busy ? 'Another operation is in progress.'
     : !obs || obs.streaming !== false || obs.recording !== false ? 'OBS output state is unknown or active.'
     : obs.state !== 'STOPPED' && obs.state !== 'READY' ? 'OBS must be READY or STOPPED.' : null;

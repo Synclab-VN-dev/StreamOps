@@ -31,6 +31,14 @@ class FakeWs {
     else if (operation === 'obs_plugin.available') promise = Promise.resolve({
       plugins:[],source_state:'EMPTY'
     });
+    else if (operation === 'obs_plugin.subscribe') promise = Promise.resolve({
+      plugin_id:payload.plugin_id,subscribed:true,revision:1
+    });
+    else if (operation === 'obs_plugin.operation_status') promise = Promise.resolve({
+      plugin_id:payload.plugin_id,revision:4,
+      operation:{state:'RUNNING',operation:'adopt',operation_id:'op-1'},
+      plugin_state:this.status,recovery_required:false
+    });
     else if (operation === 'obs_plugin.adopt' && this.failMutation) {
       promise = Promise.reject(new Error('Connection lost while applying adoption.'));
     } else if (operation === 'obs_plugin.adopt') {
@@ -66,7 +74,8 @@ test('independent mock WS inventory/catalog renders only registry and adoption o
   assert.equal(calls.length,1);
   assert.deepEqual(calls[0].payload,{plugin_id:'obs-multi-rtmp'});
   assert.equal(store.inventory[0].state,'LEGACY_ADOPTED');
-  assert.equal(store.activity[0].request_id,calls.length ? 'mock-request-3' : null);
+  assert.equal(store.activity[0].request_id,
+    'mock-request-' + (client.calls.findIndex(call=>call.operation==='obs_plugin.adopt')+1));
   assert.equal(store.activity[1].result,'adopted');
   assert.equal(client.calls.filter(call => call.operation === 'obs.lifecycle.stop').length,0);
   store.destroy();

@@ -8,8 +8,8 @@ The existing StreamOps UI is HTML/CSS/JavaScript. The approved MagicPath TSX is 
 ## Verified PR #52 operations
 | Business operation | REST (reference) | WS (production) | Status |
 | --- | --- | --- | --- |
-| inventory | GET /api/v1/obs/plugins | obs_plugin.inventory | **P0 missing in BE; proposed operation, not a released contract** |
-| approved catalog | GET /api/v1/obs/plugins/available | obs_plugin.available | **P0 missing in BE; proposed operation, not a released contract** |
+| inventory | GET /api/v1/obs/plugins | obs_plugin.inventory | **BE v2 implemented in PR #52** |
+| approved catalog | GET /api/v1/obs/plugins/available | obs_plugin.available | **BE v2 implemented in PR #52** |
 | status | GET /api/v1/obs/plugins/{plugin_id} | obs_plugin.status | implemented |
 | adopt | POST /api/v1/obs/plugins/{plugin_id}/adopt | obs_plugin.adopt | implemented |
 | install | POST /api/v1/obs/plugins/{plugin_id}/install | obs_plugin.install | implemented |
@@ -18,7 +18,7 @@ The existing StreamOps UI is HTML/CSS/JavaScript. The approved MagicPath TSX is 
 | rollback | POST /api/v1/obs/plugins/{plugin_id}/rollback | obs_plugin.rollback | implemented |
 | OBS restart | POST /api/v1/obs/process/restart | obs.lifecycle.restart on /api/v1/obs/ws | implemented |
 
-Plugin WS requests use {"type":"request","request_id":"...","operation":"obs_plugin.adopt","payload":{"plugin_id":"..."}}. Response success has same normalized service data as REST, error {"type":"response","request_id":"...","ok":false,"error":{"code":"...","message":"..."}}. No URL/path/source/binary/release fields allowed. Inventory and catalog do not yet have BE WS operations; current UI intentionally shows an unavailable state against PR #52 rather than fall back silently to REST or invent inventory.
+Plugin WS requests use {"type":"request","request_id":"...","operation":"obs_plugin.adopt","payload":{"plugin_id":"..."}}. Response success has same normalized service data as REST, error {"type":"response","request_id":"...","ok":false,"error":{"code":"...","message":"..."}}. No URL/path/source/binary/release fields allowed. Inventory and catalog now have BE v2 WS operations in PR #52. The FE continues to fail closed when the backend running on the target machine has not deployed that contract; there is no REST fallback.
 
 ## Outstanding P0 BE contracts
 1. Final operation names and payload/response for WS inventory and catalog.

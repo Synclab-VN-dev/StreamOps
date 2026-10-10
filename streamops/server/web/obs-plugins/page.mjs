@@ -19,7 +19,7 @@ function notify(message, error = false) {
 }
 function confirmAction(action, plugin) {
   const actions = safeActions(plugin, store.catalog.get(plugin.plugin_id), store.runtime,
-    store.connected, store.busy || store.unknownOutcome);
+    store.connected && store.observerReady, store.busy || store.unknownOutcome);
   if (!actions[action]?.enabled) {
     notify(actions[action]?.reason || 'Operation blocked by current backend state.', true);
     return;
@@ -52,7 +52,7 @@ byId('plugin-confirm-submit').addEventListener('click', async () => {
   const plugin = store.inventory.find(p => p.plugin_id === requested.id);
   if (!plugin) {closeDialog(); notify('Plugin is no longer in the registry.',true); return;}
   const current = safeActions(plugin,store.catalog.get(plugin.plugin_id),store.runtime,
-    store.connected,store.busy || store.unknownOutcome);
+    store.connected && store.observerReady,store.busy || store.unknownOutcome);
   if (!current[requested.action]?.enabled) {
     closeDialog(); notify(current[requested.action]?.reason || 'State changed. Refresh first.',true); return;
   }
@@ -89,7 +89,7 @@ function actionButton(plugin, action, label, eligibility) {
 }
 function renderPlugin(plugin) {
   const release = store.catalog.get(plugin.plugin_id);
-  const eligible = safeActions(plugin,release,store.runtime,store.connected,
+  const eligible = safeActions(plugin,release,store.runtime,store.connected && store.observerReady,
     store.busy || store.unknownOutcome);
   const card = text('article','plugin-card');
   card.dataset.pluginId = plugin.plugin_id;
