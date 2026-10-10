@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$DeploymentRoot,
-    [Parameter(Mandatory)][string]$RollbackDeploymentRoot,
+    [string]$RollbackDeploymentRoot,
     [Parameter(Mandatory)][switch]$MaintenanceApproved,
     [switch]$ExpectEmptyCatalog,
     [string]$TaskName = 'StreamOps Node (repo-local)',
@@ -13,7 +13,12 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 if (-not $MaintenanceApproved) { throw 'Explicit -MaintenanceApproved is required.' }
-foreach ($root in @($DeploymentRoot, $RollbackDeploymentRoot)) {
+# For the first migration, the original scheduled task XML is the rollback source.
+$rootsToCheck = @($DeploymentRoot)
+if (-not [string]::IsNullOrWhiteSpace($RollbackDeploymentRoot)) {
+    $rootsToCheck += $RollbackDeploymentRoot
+}
+foreach ($root in $rootsToCheck) {
     $resolved = (Resolve-Path $root).Path
     if (-not (Test-Path -LiteralPath (Join-Path $resolved 'deployment.json') -PathType Leaf)) {
         throw "Validated deployment metadata missing: $resolved"
@@ -31,7 +36,12 @@ New-Item -ItemType Directory -Path $backupRoot | Out-Null
 Export-ScheduledTask -TaskName $TaskName | Set-Content -LiteralPath (Join-Path $backupRoot 'task.xml') -Encoding Unicode
 @{ collected_at_utc = (Get-Date).ToUniversalTime().ToString('o'); output = $status.output } |
     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $backupRoot 'output-idle.json') -Encoding UTF8
-@{ rollback_deployment = (Resolve-Path $RollbackDeploymentRoot).Path; task_name = $TaskName } |
+$previousDeployment = if ([string]::IsNullOrWhiteSpace($RollbackDeploymentRoot)) {
+    $null
+} else {
+    (Resolve-Path $RollbackDeploymentRoot).Path
+}
+@{ rollback_deployment = $previousDeployment; task_name = $TaskName; task_xml_authoritative = $true } |
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $backupRoot 'rollback.json') -Encoding UTF8
 # Recheck immediately before switching the server; the initial preflight
 # alone is stale if an OBS output started while we saved rollback evidence.

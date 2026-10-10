@@ -511,7 +511,7 @@ def test_rb05_empty_new_config_is_removable(tmp_path):
     installer, config, _, legacy_records = _installed_legacy_for_rollback(tmp_path)
     empty_config = config.parents[1] / "SecondProfile" / config.name
     empty_config.parent.mkdir(parents=True)
-    empty_config.write_bytes(b'{"targets":[]}')
+    empty_config.write_bytes(b'{"audio_configs":[],"targets":[],"video_configs":[]}')
     assert installer.rollback().result == "rolled_back"
     assert not empty_config.exists()
     assert _file_records(installer.plugin_root) == legacy_records
