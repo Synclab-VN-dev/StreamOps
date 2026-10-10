@@ -36,9 +36,12 @@ def test_rest_games_contract(server_config,capture_service,tmp_path):
         assert client.get(f"/api/v1/games/{GAME}").json()["id"]==GAME
         assert client.post(f"/api/v1/games/{GAME}/reconcile").json()["id"]==GAME
         assert client.post("/api/v1/game-catalog/refresh").status_code==200
-        assert client.get("/api/v1/game-operations/not-found").status_code==404
-        assert client.post(f"/api/v1/games/{GAME}/actions",json={"action":"start"},
-                           headers={"Idempotency-Key":"test"}).status_code==403
+        missing = client.get("/api/v1/game-operations/not-found")
+        assert missing.status_code==404 and missing.json()["error"]["code"]=="operation_not_found"
+        unauthorized=client.post(f"/api/v1/games/{GAME}/actions",json={"action":"start"},
+                           headers={"Idempotency-Key":"test"})
+        assert unauthorized.status_code==403
+        assert unauthorized.json()["error"]["code"]=="capability_disabled"
         assert platform.start_calls==0
 
 def test_games_ws_envelope_unauthorized_and_static_state(server_config,capture_service,tmp_path):
