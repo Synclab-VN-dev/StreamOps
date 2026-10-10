@@ -1,4 +1,4 @@
-"""Shared Win32 F11 low-level hook for POC #82 and production D4Planner.
+"""Production Win32 F11 low-level keyboard hook with optional diagnostic reuse.
 
 No game injection. Never does SQLite writes inside a hook callback.
 """
@@ -68,7 +68,7 @@ class F11Sample:
         stamp = datetime.fromtimestamp(self.timestamp_ms / 1000).astimezone()
         return {
             "timestamp": stamp.isoformat(timespec="milliseconds"),
-            "event": "poc.f11",
+            "event": "diagnostic.f11",
             "key": "F11",
             "state": self.state,
             "message": hex(self.message),
@@ -140,7 +140,7 @@ def safe_capture_or_pass(*, on_error: Callable[[], None] | None = None,
 def require_game_pid(pid: int) -> None:
     """Verify the opted-in PID is a real Diablo IV executable, before hook."""
     if os.name != "nt":
-        raise OSError("This POC requires Windows")
+        raise OSError("F11 keyboard hook requires Windows")
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
     kernel32.OpenProcess.restype = ctypes.c_void_p
