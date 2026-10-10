@@ -28,6 +28,7 @@ class ScenarioWS(MockPluginWebSocket):
         self.status_operation={"state":"IDLE","operation_id":None}
         self.obs_sockets=[]
         self.install_requires_restart=False
+        self.already_adopted=False
         super().__init__(page, plugin_state=plugin_state, obs_state=obs_state)
 
     def status(self):
@@ -107,7 +108,8 @@ class ScenarioWS(MockPluginWebSocket):
                 self.status_operation={"state":"SUCCEEDED","operation":operation,
                                        "operation_id":"scenario-"+str(self.revision)}
                 data={**self.status(),"operation":operation,
-                      "result":"adopted" if operation=="adopt" else "completed",
+                      "result":("already_adopted" if self.already_adopted else "adopted")
+                          if operation=="adopt" else "completed",
                       "previous_version":old_version}
             else:
                 raise AssertionError("Unexpected FE request "+op)
@@ -607,3 +609,55 @@ def test_issue75_failed_rollback_requires_recovery_not_false_ready(page:Page,liv
     expect(page.locator("#plugin-notice")).to_contain_text("Rollback failed")
     expect(page.get_by_role("button",name="Rollback")).to_be_disabled()
     assert len(fake.mutations("obs_plugin.rollback"))==1
+
+
+def test_issue75_stale_open_adopt_dialog_refuses_newly_invalid_mutation(
+    page:Page,live_server:BrowserTestServer
+):
+    fake=ScenarioWS(page,plugin_state="UNMANAGED",catalog=False)
+    launch(page,live_server,fake)
+    act(page,"Adopt existing")
+    # While confirmation is open a second operator adopted the plugin.
+    # The browser must revalidate current state rather than submit stale intent.
+    fake.plugin_state="LEGACY_ADOPTED"
+    fake.revision+=1
+    fake.push_changed()
+    expect(page.locator(".plugin-card")).to_contain_text("Legacy baseline adopted")
+    page.get_by_role("button",name="Confirm",exact=True).click()
+    expect(page.locator("#plugin-notice")).to_contain_text("not adoptable")
+    assert fake.mutations("obs_plugin.adopt")==[]
+
+
+def test_issue75_already_adopted_is_idempotent_but_not_approved_or_verified(
+    page:Page,live_server:BrowserTestServer
+):
+    fake=ScenarioWS(page,plugin_state="UNMANAGED",catalog=False)
+    fake.already_adopted=True
+    launch(page,live_server,fake)
+    act(page,"Adopt existing")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("Legacy baseline adopted")
+    expect(page.locator(".plugin-card")).not_to_contain_text("Verified")
+    page.locator(".plugin-activity-details").evaluate("el=>el.open=true")
+    expect(page.locator("#plugin-activity")).to_contain_text("already_adopted")
+    assert len(fake.mutations("obs_plugin.adopt"))==1
+    assert fake.mutations("obs_plugin.install")==[]
+
+
+def test_issue75_legacy_adopt_empty_catalog_then_approved_release_enables_install(
+    page:Page,live_server:BrowserTestServer
+):
+    fake=ScenarioWS(page,plugin_state="UNMANAGED",catalog=False)
+    launch(page,live_server,fake)
+    act(page,"Adopt existing")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("Legacy baseline adopted")
+    expect(page.get_by_role("button",name="Install plugin")).to_be_disabled()
+    assert fake.mutations("obs_plugin.install")==[]
+    # Release approval becomes available later; only a fresh BE catalog read
+    # can enable Install. Adoption itself never downloads an artifact.
+    fake.has_catalog=True
+    page.locator("#plugin-refresh").click()
+    expect(page.get_by_role("button",name="Install plugin")).to_be_enabled()
+    assert len(fake.mutations("obs_plugin.adopt"))==1
+    assert fake.mutations("obs_plugin.install")==[]
