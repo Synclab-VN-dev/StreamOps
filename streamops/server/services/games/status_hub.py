@@ -34,7 +34,8 @@ class GameStatusHub:
         return self._revision
 
     def snapshot(self, *, resync_required=False):
-        return {"revision": self._revision, "epoch": self.epoch, "observed_at": _now(), "stale": False,
+        return {"revision": self._revision, "epoch": self.epoch, "observed_at": _now(),
+            "stale": any(item.observation.process.stale for item in self._records.values()),
             "resync_required": resync_required,
             "total": len(self._records),
             "games": [r.model_dump() for r in self._records.values()],
