@@ -11,7 +11,7 @@ even if SSH entered Windows in Session 0.
 # Default: capture F11 with existing GetAsyncKeyState polling, NO blocking
 d4planner start -d
 
-# Opt-in: capture F11 by the POC-proven WH_KEYBOARD_LL hook, and block F11
+# Opt-in: capture F11 by the previously validated WH_KEYBOARD_LL hook, and block F11
 # only while Diablo IV owns the foreground. Gamepad A passes normally.
 d4planner start -d --block
 
@@ -60,12 +60,12 @@ C gamepad A -> Steam Link on A -> gamepad A -> Diablo IV
                                + speech.raw from NVDA
 ~~~
 
-The hook core is shared between POC and production:
-- runtime/keyboard_hook.py: POC-proven Win32 hook, bounded FIFO, PID filter,
+The hook core is shared between production and the standalone diagnostic:
+- runtime/keyboard_hook.py: previously validated Win32 hook, bounded FIFO, PID filter,
   KEY DOWN/UP policy and message pump.
-- poc_keyboard_suppress.py: CLI/SSH one-off POC which now imports same core.
+- keyboard_capture_diagnostic.py: CLI/SSH diagnostic which now imports shared core.
 - runtime/input_marker.py: HookInputMarkerCapture adapter with its own
-  short-interval Windows message-loop thread and POC-sample conversion to
+  short-interval Windows message-loop thread and hook-sample conversion to
   EventDraft. It never writes SQLite or mutates character.db.
 - runtime/supervisor.py: chooses exclusive backend, runs lifecycle/status/
   flush/shutdown and synchronizes game PID changes.
@@ -92,7 +92,7 @@ The hook core is shared between POC and production:
 - Raw event evidence does NOT mean Equip. No semantic equipment transition,
   automatic inventory mutation or second event database is added.
 
-## Acceptance gates — no second user manual if POC baseline holds
+## Acceptance gates — retain previously verified manual baseline
 
 1. Unit: policy scopes F11+foreground, intercepts DOWN/UP, physically
    preserves other keys, conversion preserves timestamp/sequence metadata,
@@ -107,9 +107,9 @@ The hook core is shared between POC and production:
    keyboard/gamepad prompts, event stream, stop/start, and PID restart.
    Save command logs/status/video. Report test gap instead of assuming
    real controller coverage from generated Win32 keyboard test input.
-5. POC Manual UAT was completed by the user for the original hook behavior
+5. Manual UAT was completed by the user for the original hook behavior
    and is accepted as the human baseline only if production uses that
-   same core and Dev F's real integration evidence is equivalent.
+   shared core and Dev F's real integration evidence is equivalent.
 
 **Do not mark Real-A production acceptance PASS from CI alone.**
 PR remains draft until integration evidence is attached and reviewed.
