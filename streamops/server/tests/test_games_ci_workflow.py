@@ -35,3 +35,16 @@ def test_scope_catches_changes_to_critical_files():
         assert pattern in audit
     assert 'if ($mustRun -and $gameScope -ne' in audit
     assert "if ($entry.Value -ne 'success')" in audit
+
+def test_master_ruleset_tool_is_safe_and_requires_explicit_apply():
+    root = Path(__file__).resolve().parents[3]
+    script = (root / "scripts" / "ci" / "ensure_game_required_ruleset.ps1").read_text(encoding="utf-8")
+    assert "24454446" in script
+    assert "required_status_checks" in script
+    assert "RequiredContext = 'windows'" in script
+    assert "[switch]$Apply" in script
+    assert "if (!$Apply)" in script
+    assert "name = $current.name" in script
+    assert "conditions = $current.conditions" in script
+    assert "bypass_actors = @($current.bypass_actors)" in script
+    assert "--method PUT" in script
