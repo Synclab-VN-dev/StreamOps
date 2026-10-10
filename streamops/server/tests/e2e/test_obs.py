@@ -7,6 +7,57 @@ from playwright.sync_api import expect
 
 pytestmark = pytest.mark.only_browser('chromium')
 
+
+@pytest.fixture(autouse=True)
+def approved_plugin_ws_contract_for_independent_fe(page):
+    """Support the third, registry-managed WS domain in FE-only E2E.
+
+    #75 explicitly requires Dashboard inventory/summary on load. The BE #52
+    plugin WS route is intentionally absent on FE's independent master base,
+    so this fixture models its documented read-only WS v2 contract. This does
+    not patch production behavior and does not permit file/OBS mutations.
+    """
+    def handle_socket(ws):
+        def on_message(message):
+            request = json.loads(message)
+            op = request.get('operation')
+            if op == 'obs_plugin.inventory':
+                data = {"plugins": [{
+                    "plugin_id": "obs-multi-rtmp", "display_name": "OBS Multi RTMP",
+                    "state": "NOT_INSTALLED", "installed": False, "managed": False,
+                    "adoptable": False, "compatible": True, "loaded": False,
+                    "installed_version": None, "available_version": None,
+                    "restart_required": False, "revision": 1,
+                    "rollback": {"available": False, "target_version": None,
+                                 "reason": "baseline_unavailable"},
+                    "operation": {"state": "IDLE", "operation_id": None},
+                }]}
+            elif op == 'obs_plugin.available':
+                data = {"plugins": [], "source_state": "EMPTY"}
+            elif op == 'obs_plugin.subscribe':
+                assert request.get('payload') == {'plugin_id': 'obs-multi-rtmp'}
+                data = {"plugin_id": "obs-multi-rtmp", "subscribed": True, "revision": 1}
+            elif op == 'obs_plugin.operation_status':
+                data = {"plugin_id": "obs-multi-rtmp", "revision": 1,
+                        "operation": {"state": "IDLE", "operation_id": None},
+                        "plugin_state": "NOT_INSTALLED", "recovery_required": False,
+                        "rollback": {"available": False, "target_version": None,
+                                     "reason": "baseline_unavailable"}}
+            else:
+                ws.send(json.dumps({
+                    "type": "response", "request_id": request['request_id'], "ok": False,
+                    "error": {"code": "unsupported_test_operation",
+                              "message": "No plugin mutations allowed in OBS page fixture."},
+                }))
+                return
+            ws.send(json.dumps({
+                "type": "response", "request_id": request["request_id"],
+                "ok": True, "data": data,
+            }))
+        ws.on_message(on_message)
+    page.route_web_socket('**/api/v1/obs/plugins/ws', handle_socket)
+
+
 MOBILE_VIEWPORTS = [
     {'width': 360, 'height': 800},
     {'width': 390, 'height': 844},
@@ -309,9 +360,15 @@ def test_dashboard_uses_one_socket_per_domain_and_no_business_rest(page, live_se
     page.locator('#verify-button').click()
     expect(page.locator('#obs-result')).not_to_have_text('--')
 
-    assert len(sockets) == 2
-    assert sum('/api/v1/obs/ws' in socket.url for socket in sockets) == 1
-    assert sum('/api/v1/live/ws' in socket.url for socket in sockets) == 1
+    # One connection for each actual backend domain (OBS, Live, Plugin).
+    # A hard-coded total of 2 would be obsolete now that #75 introduces Plugin.
+    domains = ['/api/v1/obs/ws', '/api/v1/live/ws', '/api/v1/obs/plugins/ws']
+    assert len(sockets) == len(domains)
+    for path in domains:
+        assert sum(path in socket.url for socket in sockets) == 1, path
+    # Do not disable product summary to make socket counts pass.
+    expect(page.locator('#plugin-dashboard-managed')).to_have_text('1')
+    expect(page.locator('#plugin-dashboard-installed')).to_have_text('0')
     business_http = [
         url for url in requests
         if '/api/v1/' in url

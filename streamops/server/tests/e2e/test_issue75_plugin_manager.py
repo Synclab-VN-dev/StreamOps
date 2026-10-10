@@ -170,28 +170,20 @@ def test_issue75_mobile_has_no_horizontal_overflow(page: Page, live_server: Brow
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
 
 
-def test_issue75_dashboard_lazy_plugin_socket_keeps_obs_default_socket_contract(
+def test_issue75_dashboard_autoloads_server_inventory_with_dedicated_plugin_ws(
     page: Page, live_server: BrowserTestServer
 ):
-    """A new domain must not silently open a third WS on the existing OBS dashboard."""
+    """Summary is populated on load, with one plugin WS and no business REST calls."""
     fake = MockPluginWebSocket(page)
-    plugin_sockets = []
-    page.on("websocket", lambda ws: plugin_sockets.append(ws.url) if "/obs/plugins/ws" in ws.url else None)
+    sockets, http_requests = [], []
+    page.on("websocket", lambda ws: sockets.append(ws.url))
+    page.on("request", lambda req: http_requests.append(req.url))
     page.goto(live_server.base_url + "/obs")
-    expect(page.locator("#plugin-dashboard-state")).to_have_text("On request")
-    assert plugin_sockets == []
-    assert not fake.calls
-    expect(page.locator("#plugin-dashboard-managed")).to_have_text("—")
-
-    page.get_by_role("button", name="Load summary").click()
     expect(page.locator("#plugin-dashboard-managed")).to_have_text("1")
     expect(page.locator("#plugin-dashboard-installed")).to_have_text("1")
     expect(page.locator("#plugin-dashboard-state")).to_have_text("No alerts")
-    assert len(plugin_sockets) == 1
+    assert sum("/api/v1/obs/plugins/ws" in url for url in sockets) == 1
     assert any(req["operation"] == "obs_plugin.inventory" for req in fake.calls)
     assert any(req["operation"] == "obs_plugin.subscribe" for req in fake.calls)
-    assert not any(req["operation"].startswith("obs_plugin.adopt") for req in fake.calls)
-
-    page.get_by_role("button", name="Refresh summary").click()
-    expect(page.locator("#plugin-dashboard-managed")).to_have_text("1")
-    assert len(plugin_sockets) == 1, "Refresh must reuse the same plugin WS"
+    assert not any(req["operation"] == "obs_plugin.adopt" for req in fake.calls)
+    assert not any("/api/v1/obs/plugins" in url for url in http_requests)
