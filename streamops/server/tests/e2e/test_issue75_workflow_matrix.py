@@ -387,3 +387,22 @@ def test_issue75_readonly_catalog_cannot_override_inventory_allowlist(page:Page,
     launch(page,live_server,fake)
     expect(page.locator(".plugin-card")).to_have_count(0)
     assert fake.mutations()==[]
+
+
+def test_issue75_timeout_remains_fail_closed_after_page_reload(page:Page,live_server:BrowserTestServer):
+    fake=ScenarioWS(page,plugin_state="UNMANAGED",catalog=False)
+    fake.fail_operation="plugin_operation_timeout"
+    launch(page,live_server,fake)
+    act(page,"Adopt existing")
+    confirm(page)
+    expect(page.locator("#plugin-connection-warning")).to_contain_text("unknown")
+    assert len(fake.mutations("obs_plugin.adopt"))==1
+    # Browser reload must not turn a timed-out server mutation into permission
+    # to repeat it. Backend operation_status reports IDLE, which is inconclusive.
+    page.reload()
+    expect(page.locator("#plugin-managed-count")).to_have_text("1")
+    expect(page.locator("#plugin-connection-warning")).to_contain_text("unknown")
+    page.locator(".plugin-card-header").click()
+    expect(page.get_by_role("button",name="Adopt existing")).to_be_disabled()
+    assert len(fake.mutations("obs_plugin.adopt"))==1
+    assert any(r["operation"]=="obs_plugin.operation_status" for r in fake.calls)
