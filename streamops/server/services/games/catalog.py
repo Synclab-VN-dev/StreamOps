@@ -22,26 +22,41 @@ class GameCatalogService:
         self.conflicts: dict[str, str] = {}
 
     def refresh(self) -> list[GameDefinition]:
-        base = self.static.discover()
+        # Static policy is the single authoritative allowlist. Parse every
+        # provider result before any merge; never use a provider-supplied policy.
+        base = [GameDefinition.model_validate(g) for g in self.static.discover()]
+        if len({g.id for g in base}) != len(base):
+            raise ValueError("static provider returned duplicate canonical IDs")
         registry = {game.id: game for game in base}
         self.conflicts = {}
         if self.discovery is not None and self.mode != "static":
             try:
-                external = self.discovery.discover()
+                raw = self.discovery.discover()
+                if not isinstance(raw, (list, tuple)):
+                    raise ValueError("discovery must return a sequence")
+                external = [GameDefinition.model_validate(item) for item in raw]
                 if len({item.id for item in external}) != len(external):
                     raise ValueError("duplicate provider identity")
                 for discovered in external:
                     current = registry.get(discovered.id)
                     if current is None:
-                        # A supplemental provider cannot add trusted lifecycle policies.
+                        # New external-only entries have no reviewed static policy.
                         continue
-                    if discovered.provider != current.provider or discovered.providerGameId != current.providerGameId:
-                        self.conflicts[current.id] = "provider_identity_conflict"
-                    elif self.mode == "shadow" and discovered.name != current.name:
+                    if (discovered.provider != current.provider or
+                            discovered.providerGameId != current.providerGameId or
+                            discovered.launch != current.launch or
+                            discovered.detection != current.detection or
+                            discovered.stop != current.stop):
+                        # Ignore external policies and disable affected game until
+                        # the provider conflict is resolved.
+                        if self.mode == "merged":
+                            self.conflicts[current.id] = "provider_identity_conflict"
+                        continue
+                    if self.mode == "shadow" and discovered.name != current.name:
                         logger.info("game shadow metadata differs: %s", current.id)
                     elif self.mode == "merged":
-                        # Keep security policy, enabled flag, launch/detection/stop and canonical id from static.
-                        registry[current.id] = current.model_copy(update={"name": discovered.name, "metadataSource": "steam_local"})
+                        registry[current.id] = current.model_copy(
+                            update={"name": discovered.name, "metadataSource": "steam_local"})
             except Exception:
                 logger.exception("optional discovery failed; reverting to static catalog")
                 if self.mode == "merged":
