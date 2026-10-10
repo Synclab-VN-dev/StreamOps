@@ -207,8 +207,10 @@ def test_games_catalog_filter_and_detail(page: Page, games_ui_server):
     expect(page.locator("#game-summary")).to_contain_text("1")
     expect(page.locator("#game-library button")).to_have_count(1)
     page.locator("#game-library button").first.click()
-    expect(page.locator("#game-detail")).to_contain_text("CONFIGURED_ONLY")
-    expect(page.locator("#game-detail")).not_to_contain_text("VERIFIED_ACTIVE")
+    # Display is user-friendly, but its canonical state remains machine-readable.
+    expect(page.locator('#game-detail [data-code="CONFIGURED_ONLY"]')).to_have_count(1)
+    expect(page.locator('#game-detail [data-code="VERIFIED_ACTIVE"]')).to_have_count(0)
+    page.locator("#game-detail .gm-detail-advanced summary").click()
     expect(page.get_by_role("button",name="Force Stop (disabled)")).to_be_disabled()
     fake.set_library([game("First","steam:1"),game("Second","steam:2",state="STOPPED"),
                       game("Third","steam:3")])
@@ -314,9 +316,14 @@ def test_lifecycle_ack_pending_not_success_and_no_repeat(page: Page, games_ui_se
     assert not [op for op, _ in fake.received if op == "games.lifecycle.stop"]
     page.once("dialog", lambda dialog: dialog.accept())
     page.get_by_role("button", name="Stop", exact=True).click()
+    # Verify the actual mutation reached WS before checking asynchronous UI state.
+    # A missing request is a product/transport bug, never treated as a PASS.
+    wait_until(lambda: len([op for op, _ in fake.received if op == "games.lifecycle.stop"]) == 1)
+    expect(page.locator("#games-error")).to_be_hidden()
     expect(page.locator("#game-detail")).to_contain_text("PENDING / QUEUED")
     assert len([op for op, _ in fake.received if op == "games.lifecycle.stop"]) == 1
     assert "SUCCEEDED" not in page.locator("#game-detail").inner_text()
+    page.locator("#game-detail .gm-detail-advanced summary").click()
     expect(page.get_by_role("button", name="Force Stop (disabled)")).to_be_disabled()
 
 
