@@ -21,7 +21,12 @@ const ERROR_HINTS = Object.freeze({
   plugin_operation_timeout: 'The result is unknown. Refresh and reconcile before any further change.',
   plugin_verify_failed: 'Verification failed. OBS, WebSocket and plugin vendor require inspection.',
   plugin_release_unavailable: 'No approved compatible release is currently available.',
-  plugin_incompatible: 'This release is incompatible with the current OBS runtime.'
+  plugin_incompatible: 'This release is incompatible with the current OBS runtime.',
+  plugin_adopt_failed: 'Adopt failed. Preserve the existing plugin files and backup; inspect server status.',
+  plugin_install_failed: 'Install failed. Inspect the backend transaction and avoid repeating file changes.',
+  plugin_update_failed: 'Update failed. Inspect rollback status and preserve the previous version.',
+  plugin_rollback_failed: 'Rollback failed. Preserve backups and check whether recovery is required.',
+  obs_restart_failed: 'OBS restart failed. Check process state; do not assume plugin verification passed.'
 });
 const asObject = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 export function parseInventory(data) {

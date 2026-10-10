@@ -83,6 +83,9 @@ class ScenarioWS(MockPluginWebSocket):
                     if code == "plugin_verify_failed":
                         self.plugin_state="VERIFY_FAILED"
                         self.revision+=1
+                    elif code in {"plugin_recovery_required","plugin_rollback_failed"}:
+                        self.plugin_state="RECOVERY_REQUIRED"
+                        self.revision+=1
                     ws.send(json.dumps({"type":"response","request_id":request["request_id"],
                        "ok":False,"error":{"code":code,"message":"Backend rejected operation"}}))
                     self.push_changed()
@@ -520,3 +523,86 @@ def test_issue75_update_then_separate_verify_passes_with_new_version(
     assert [r["operation"] for r in fake.mutations()]==[
         "obs_plugin.update","obs_plugin.verify"
     ]
+
+
+def test_issue75_dashboard_card_navigates_to_real_plugin_page(page:Page,live_server:BrowserTestServer):
+    fake=ScenarioWS(page,plugin_state="UNMANAGED")
+    page.goto(live_server.base_url+"/obs")
+    expect(page.locator("#plugin-dashboard-managed")).to_have_text("1")
+    page.locator('a[href="/obs/plugins"]').click()
+    expect(page).to_have_url(live_server.base_url+"/obs/plugins")
+    expect(page.get_by_role("heading",name="OBS Plugin Manager")).to_be_visible()
+    expect(page.locator(".plugin-card")).to_have_count(1)
+    assert fake.mutations()==[]
+
+
+def test_issue75_install_backend_conflict_preserves_not_installed(page:Page,live_server:BrowserTestServer):
+    fake=ScenarioWS(page,plugin_state="NOT_INSTALLED")
+    fake.fail_operation="plugin_state_conflict"
+    launch(page,live_server,fake)
+    act(page,"Install plugin")
+    confirm(page)
+    expect(page.locator("#plugin-notice")).to_contain_text("plugin_state_conflict")
+    expect(page.locator(".plugin-card")).to_contain_text("Not installed")
+    assert len(fake.mutations("obs_plugin.install"))==1
+
+
+def test_issue75_manual_rollback_then_verify_restored_baseline(page:Page,live_server:BrowserTestServer):
+    fake=ScenarioWS(page,plugin_state="VERIFIED",rollback=True,installed_version="2.0")
+    launch(page,live_server,fake)
+    act(page,"Rollback")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("1.0")
+    fake.operator_starts_obs()
+    expect(page.get_by_role("button",name="Verify",exact=True)).to_be_enabled()
+    act(page,"Verify")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("Verified")
+    expect(page.locator(".plugin-card")).to_contain_text("1.0")
+    assert [r["operation"] for r in fake.mutations()]==[
+        "obs_plugin.rollback","obs_plugin.verify"
+    ]
+
+
+def test_issue75_vendor_unavailable_verify_failure_is_not_pass(page:Page,live_server:BrowserTestServer):
+    fake=ScenarioWS(page,plugin_state="INSTALLED",installed_version="2.0",obs_state="READY")
+    fake.fail_operation="plugin_verify_failed"
+    launch(page,live_server,fake)
+    act(page,"Verify")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("Verify failed")
+    expect(page.locator("#plugin-notice")).to_contain_text("Vendor")
+    assert len(fake.mutations("obs_plugin.verify"))==1
+
+
+def test_issue75_adopt_streaming_and_recording_block_without_auto_stop(
+    page:Page,live_server:BrowserTestServer
+):
+    fake=ScenarioWS(page,plugin_state="UNMANAGED",streaming=True,obs_state="READY")
+    launch(page,live_server,fake)
+    expect(page.get_by_role("button",name="Adopt existing")).to_be_disabled()
+    assert fake.mutations()==[]
+
+
+def test_issue75_backend_adoption_required_does_not_fake_install(page:Page,live_server:BrowserTestServer):
+    fake=ScenarioWS(page,plugin_state="LEGACY_ADOPTED",installed_version=None)
+    fake.fail_operation="plugin_adoption_required"
+    launch(page,live_server,fake)
+    act(page,"Install plugin")
+    confirm(page)
+    expect(page.locator("#plugin-notice")).to_contain_text("plugin_adoption_required")
+    expect(page.locator(".plugin-card")).to_contain_text("Legacy baseline adopted")
+    assert len(fake.mutations("obs_plugin.install"))==1
+    assert fake.mutations("obs_plugin.adopt")==[]
+
+
+def test_issue75_failed_rollback_requires_recovery_not_false_ready(page:Page,live_server:BrowserTestServer):
+    fake=ScenarioWS(page,plugin_state="VERIFIED",rollback=True,installed_version="2.0")
+    fake.fail_operation="plugin_rollback_failed"
+    launch(page,live_server,fake)
+    act(page,"Rollback")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("Recovery required")
+    expect(page.locator("#plugin-notice")).to_contain_text("Rollback failed")
+    expect(page.get_by_role("button",name="Rollback")).to_be_disabled()
+    assert len(fake.mutations("obs_plugin.rollback"))==1

@@ -146,3 +146,18 @@ test('UNIT matrix: OBS output status is unknown when telemetry is absent',()=>{
   });
   assert.equal(enabled(plugin('UNMANAGED'),null,runtimeFromSnapshot({runtime:{state:'STOPPED'}})).adopt.enabled,false);
 });
+
+
+test('UNIT error matrix: all BE lifecycle errors show safe operator guidance without secret reflection',()=>{
+  const codes=['plugin_adopt_failed','plugin_install_failed','plugin_update_failed',
+    'plugin_rollback_failed','plugin_recovery_required','plugin_adoption_required',
+    'plugin_verify_failed','plugin_operation_timeout','obs_restart_failed',
+    'obs_busy_streaming','obs_busy_recording','plugin_state_conflict'];
+  for(const code of codes){
+    const result=typedError({code,message:'STREAM_KEY=private-secret'});
+    assert.equal(result.code,code);
+    assert.equal(result.message.includes('private-secret'),false);
+    assert.ok(result.message.length>12);
+  }
+  assert.match(typedError({code:'plugin_rollback_failed'}).message,/Rollback failed/);
+});
