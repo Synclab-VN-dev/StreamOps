@@ -414,3 +414,24 @@ def test_disabled_session_capture_error_and_observation_safety(page: Page, games
     expect(page.get_by_role("button",name="Stop",exact=True)).to_have_attribute(
         "title","wrong_desktop_session")
     assert not [op for op, _ in fake.received if op.startswith("games.lifecycle.")]
+
+
+def test_steam_summary_limits_multiple_observed_games_and_expands(page: Page, games_ui_server):
+    """Observed 5 running / 12 registered remain truthful, and pagination is interactive."""
+    base, fake = games_ui_server
+    page.goto(base + "/steam")
+    running = [game(f"Observed game {i}", f"steam:{500+i}", "RUNNING") for i in range(5)]
+    library = [game(f"Registered game {i}", f"steam:{600+i}", "STOPPED") for i in range(7)]
+    fake.set_library(running + library)
+    expect(page.locator("#steam-running-games .gm-game-row")).to_have_count(3)
+    expect(page.locator("#steam-games-summary")).to_contain_text("12")
+    expect(page.locator("#steam-games-summary")).to_contain_text("5")
+    expand = page.get_by_role("button", name="+2 more games")
+    expect(expand).to_have_attribute("aria-expanded", "false")
+    expand.click()
+    expect(page.locator("#steam-running-games .gm-game-row")).to_have_count(5)
+    collapse = page.get_by_role("button", name="Show fewer games")
+    expect(collapse).to_have_attribute("aria-expanded", "true")
+    collapse.click()
+    expect(page.locator("#steam-running-games .gm-game-row")).to_have_count(3)
+    assert not any(op.startswith("games.lifecycle") for op, _ in fake.received)
