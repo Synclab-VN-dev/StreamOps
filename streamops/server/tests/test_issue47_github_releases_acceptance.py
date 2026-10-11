@@ -621,8 +621,13 @@ def test_u19_bad_manifest_and_duplicate_asset_fail_closed(bad):
     assert caught.value.code == "plugin_release_invalid"
 
 
-@pytest.mark.parametrize("http_status", [401, 403, 404, 429])
-def test_u21_http_failure_is_exactly_typed(http_status):
+@pytest.mark.parametrize(("http_status", "expected_code"), [
+    (401, "plugin_github_auth_failed"),
+    (403, "plugin_github_auth_failed"),
+    (404, "plugin_release_source_error"),
+    (429, "plugin_release_source_error"),
+])
+def test_u21_http_failure_is_exactly_typed(http_status, expected_code):
     from urllib.error import HTTPError
 
     fixture = GitHubFixture()
@@ -630,7 +635,9 @@ def test_u21_http_failure_is_exactly_typed(http_status):
     fixture.failure = HTTPError(API + "/releases", http_status, "HTTP failure", {}, None)
     with pytest.raises(ObsPluginError) as caught:
         managed(fixture).latest(PLUGIN)
-    assert caught.value.code == "plugin_release_source_error"
+    # Authentication failures are actionable and must differ from generic
+    # transport errors; never leak raw GitHub errors or credentials.
+    assert caught.value.code == expected_code
     assert caught.value.status_code == 503
     assert str(http_status) not in str(caught.value)
     assert all(url.startswith(API + "/") for url, _, _ in fixture.calls)

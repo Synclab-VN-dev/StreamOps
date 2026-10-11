@@ -14,9 +14,11 @@ param(
     [ValidateSet("critical", "error", "warning", "info", "debug", "trace")]
     [string]$LogLevel = "info",
     [ValidateSet("", "github-release", "directory")]
-    [string]$ObsPluginSourceProvider = "",
-    [string]$ObsPluginSourceLocation = "",
-    [string]$ObsPluginGitHubTokenEnv = ""
+    [string]$ObsPluginSourceProvider = "github-release",
+    [string]$ObsPluginSourceLocation = "Synclab-VN-dev/StreamOps-OBS-Plugins",
+    [string]$ObsPluginGitHubTokenEnv = "STREAMOPS_OBS_PLUGIN_GITHUB_TOKEN",
+    [switch]$NoGitHubTokenPrompt,
+    [switch]$GitHubTokenFromClipboard
 )
 
 $ErrorActionPreference = "Stop"
@@ -42,6 +44,38 @@ if (-not $PythonPath.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCa
 
 function ConvertTo-TaskArgument([string]$Value) {
     return '"' + $Value.Replace('"', '\"') + '"'
+}
+
+function Read-GitHubTokenFromClipboard {
+    $secure = $null
+    $clipboardText = $null
+    $clipboardLines = $null
+    try {
+        $clipboardLines = @(Get-Clipboard -ErrorAction Stop)
+        if ($clipboardLines.Count -ne 1) {
+            throw "Clipboard must contain exactly one token line."
+        }
+        $clipboardText = [string]$clipboardLines[0]
+        if ([string]::IsNullOrWhiteSpace($clipboardText) -or
+            $clipboardText -match '[\s\x00-\x1f\x7f]') {
+            throw "Clipboard token is empty or contains whitespace/control characters."
+        }
+        $secure = ConvertTo-SecureString -String $clipboardText -AsPlainText -Force
+    }
+    finally {
+        $clipboardText = $null
+        $clipboardLines = $null
+        # Clear the active clipboard after the read, including invalid content.
+        # Clipboard History/cloud sync cannot be cleared by this operation.
+        try {
+            Set-Clipboard -Value " " -ErrorAction Stop
+        }
+        catch {
+            if ($null -ne $secure) { $secure.Dispose() }
+            throw "Could not clear Windows clipboard after reading token."
+        }
+    }
+    return $secure
 }
 
 function Get-ProbeHost([string]$HostName) {
@@ -136,6 +170,52 @@ if (Test-Path -LiteralPath $runtimePath) {
     & (Join-Path $PSScriptRoot "stop-streamops-node.ps1") -DataDir $DataDir -TaskName $TaskName
 }
 
+# Prompt only when actually starting/restarting the node. Scheduled Tasks do
+# not inherit the SSH terminal environment. A one-use DPAPI handoff is readable
+# only by the same Windows user and never appears in task arguments or logs.
+if ($GitHubTokenFromClipboard -and ($NoGitHubTokenPrompt -or $ObsPluginSourceProvider -ne "github-release")) {
+    throw "GitHubTokenFromClipboard requires github-release and cannot be combined with NoGitHubTokenPrompt."
+}
+$tokenHandoff = $null
+if ($ObsPluginSourceProvider -eq "github-release" -and -not $NoGitHubTokenPrompt) {
+    $secureToken = $null
+    if ($GitHubTokenFromClipboard) {
+        $secureToken = Read-GitHubTokenFromClipboard
+        Write-Host "GitHub token taken from clipboard (value hidden; active clipboard cleared)."
+    }
+    else {
+        $redirected = $true
+        try { $redirected = [Console]::IsInputRedirected } catch { }
+        if (-not $redirected) {
+            $secureToken = Read-Host "GitHub read-only token for managed OBS plugins (Enter to skip)" -AsSecureString
+        }
+    }
+    try {
+        if ($null -ne $secureToken -and $secureToken.Length -gt 0) {
+            $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+            if (-not [string]::Equals($currentUser, $interactiveUser, [StringComparison]::OrdinalIgnoreCase)) {
+                throw "Token handoff requires the startup shell to run as the logged-in desktop user: $interactiveUser"
+            }
+            $secretDir = Join-Path $DataDir ".secrets"
+            New-Item -ItemType Directory -Path $secretDir -Force | Out-Null
+            # Restrict only the directory DACL. No SeSecurityPrivilege or
+            # Administrator rights are needed by the interactive desktop user.
+            # The helper checks the resulting owner-only ACL before token I/O.
+            & (Join-Path $PSScriptRoot "protect-obs-plugin-token-dir.ps1") -Directory $secretDir
+            $tokenHandoff = Join-Path $secretDir ("github-token-" + [Guid]::NewGuid().ToString("N") + ".dpapi")
+            # ConvertFrom-SecureString uses Windows CurrentUser DPAPI (no key).
+            [IO.File]::WriteAllText($tokenHandoff, (ConvertFrom-SecureString $secureToken))
+            Write-Host "GitHub token captured securely for this server start (value hidden)."
+        }
+    }
+    finally {
+        if ($null -ne $secureToken) { $secureToken.Dispose() }
+    }
+    if (-not $tokenHandoff) {
+        Write-Warning "GitHub token missing; OBS Plugin Manager catalog will report plugin_github_token_missing until the node is restarted with a token."
+    }
+}
+
 $existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($null -ne $existingTask -and $existingTask.State -eq "Running") {
     Stop-ScheduledTask -TaskName $TaskName
@@ -163,6 +243,9 @@ if (-not [string]::IsNullOrWhiteSpace($ObsPluginSourceProvider)) {
     if (-not [string]::IsNullOrWhiteSpace($ObsPluginGitHubTokenEnv)) {
         $actionArguments += " -ObsPluginGitHubTokenEnv " + (ConvertTo-TaskArgument $ObsPluginGitHubTokenEnv)
     }
+    if ($tokenHandoff) {
+        $actionArguments += " -ObsPluginCredentialFile " + (ConvertTo-TaskArgument $tokenHandoff)
+    }
 }
 
 $action = New-ScheduledTaskAction -Execute $pwsh -Argument $actionArguments -WorkingDirectory $repoRoot
@@ -189,6 +272,7 @@ for ($attempt = 0; $attempt -lt 60; $attempt++) {
         $health = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 1
         if ($health.status -eq "ok" -and $health.capture_ready -and
             $health.session_id -eq $health.active_console_session_id) {
+            if ($tokenHandoff) { Remove-Item -LiteralPath $tokenHandoff -Force -ErrorAction SilentlyContinue }
             $runtime = Get-Content -LiteralPath $runtimePath -Raw | ConvertFrom-Json
             Write-Host "streamops-node is running (PID $($runtime.pid), session $($health.session_id), capture $($health.capture_backend)): $healthUrl"
             Write-Host "Task: $TaskName"
@@ -211,6 +295,7 @@ for ($attempt = 0; $attempt -lt 60; $attempt++) {
 }
 
 $taskInfo = Get-ScheduledTaskInfo -TaskName $TaskName -ErrorAction SilentlyContinue
+if ($tokenHandoff) { Remove-Item -LiteralPath $tokenHandoff -Force -ErrorAction SilentlyContinue }
 & (Join-Path $PSScriptRoot "stop-streamops-node.ps1") -DataDir $DataDir -TaskName $TaskName
 $result = if ($null -eq $taskInfo) { "unknown" } else { $taskInfo.LastTaskResult }
 throw "streamops-node did not become capture-ready in the interactive session. Task result: $result"
