@@ -68,6 +68,36 @@ def magicpath_reference_url():
             process.wait(timeout=5)
 
 
+@pytest.fixture(scope="module")
+def magicpath_updated_reference_url():
+    """Render ONLY new owner-approved *design edits*; visual Goldens remain unapproved."""
+    source = ROOT / "reference_source_v2"
+    process = subprocess.Popen(
+        ["npm.cmd" if os.name == "nt" else "npm", "run", "start"],
+        cwd=source, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
+        env={**os.environ, "CI": "1"},
+    )
+    url = "http://127.0.0.1:5179"
+    try:
+        for _ in range(150):
+            if process.poll() is not None:
+                raise RuntimeError("Updated independent MagicPath reference renderer exited early")
+            try:
+                with urllib.request.urlopen(url + "/?design=steam", timeout=1) as response:
+                    if response.status == 200: break
+            except OSError:
+                time.sleep(.2)
+        else:
+            raise TimeoutError("Updated MagicPath reference renderer not ready")
+        yield url
+    finally:
+        process.terminate()
+        try: process.wait(timeout=8)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+
+
 def _ready(page):
     # Disable motion only, preserve original design geometry.
     page.add_style_tag(content="*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important;}")
@@ -235,19 +265,21 @@ def test_owner_approval_is_required_for_visual_golden():
 
 
 def test_collect_extra_owner_review_candidates_not_approved_goldens(
-    browser: Browser, games_ui_server, magicpath_reference_url
+    browser: Browser, games_ui_server, magicpath_updated_reference_url
 ):
-    """Prepare actual-only visual evidence for owner review, not a Golden comparison.
+    """Prepare updated MagicPath v2 candidates, not owner-approved Golden comparisons.
 
     New UI states lack owner-approved MagicPath reference screenshots. Never
     promote this output into the approved Golden directory automatically.
     """
     base, fake = games_ui_server
-    target = OUT / "_owner-review-candidates-NOT-GOLDENS"
+    target = OUT / "_owner-review-v2-design-updated-NOT-GOLDENS"
     target.mkdir(parents=True, exist_ok=True)
     images = []
-    detail_revision = next(r["revision_id"] for r in MANIFEST["references"] if r["name"] == "games")
-    steam_revision = next(r["revision_id"] for r in MANIFEST["references"] if r["name"] == "steam")
+    updated = json.loads((ROOT / "review_manifest_v2.json").read_text(encoding="utf-8"))
+    assert updated["approved"] is False, "Do not silently promote new MagicPath design to Goldens"
+    detail_revision = next(r["revision_id"] for r in updated["source"] if r["name"] == "games")
+    steam_revision = next(r["revision_id"] for r in updated["source"] if r["name"] == "steam")
 
     def shot(page, name, kind, **notes):
         path = target / (name + ".png")
@@ -271,7 +303,7 @@ def test_collect_extra_owner_review_candidates_not_approved_goldens(
         ref_path = target / (name + "-expected-magicpath-CANDIDATE.png")
         diff_path = target / (name + "-diff-REVIEW.png")
         try:
-            _stage_reference(ref, magicpath_reference_url, kind, source_scenario)
+            _stage_reference(ref, magicpath_updated_reference_url, kind, source_scenario)
             _ready(ref)
             # Remove design-tool fixtures from reference rendering only.
             ref.evaluate("""() => {
@@ -432,6 +464,9 @@ def test_collect_extra_owner_review_candidates_not_approved_goldens(
       "status":"AWAITING_OWNER_REVIEW_AND_MAGICPATH_REFERENCE",
       "reference_required":True, "do_not_promote_automatically":True,
       "approved_19_goldens_untouched":True,
+      "design_reference":"review_manifest_v2.json",
+      "design_change_owner_approved":True,
+      "golden_owner_approved":False,
       "known_limitation":"New candidates have not been promoted to owner-approved MagicPath goldens.",
       "items":images,
     },indent=2),encoding="utf-8")
