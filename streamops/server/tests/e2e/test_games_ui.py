@@ -869,8 +869,13 @@ def test_game_detail_back_close_advanced_and_controls_touch_target_geometry(page
     assert all(item["width"]>=44 and item["height"]>=44 for item in audit), audit
     assert page.evaluate("document.documentElement.scrollWidth<=innerWidth")
     close=page.locator("#game-detail .gm-detail-close")
-    close.focus()
-    assert close.evaluate("(e)=>e.matches(':focus-visible')")
+    back=page.locator("#game-detail .gm-detail-back")
+    # CSS :focus-visible is for keyboard navigation; calling JS focus()
+    # alone does not select the keyboard modality in Chromium.
+    back.focus()
+    page.keyboard.press("Tab")
+    assert close.evaluate("(e)=>document.activeElement===e"), "Back → Close Tab order broken"
+    assert close.evaluate("(e)=>e.matches(':focus-visible')"), "Keyboard focus ring must be visible"
     page.keyboard.press("Enter")
     assert page.evaluate('document.activeElement?.dataset?.gameId==="steam:2344520"')
     assert not any(op.startswith("games.lifecycle.") for op,_ in fake.received)
