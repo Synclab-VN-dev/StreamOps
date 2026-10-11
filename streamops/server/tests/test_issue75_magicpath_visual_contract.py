@@ -30,6 +30,15 @@ def validate_source(manifest):
             assert candidate.is_file(),str(candidate)
             assert blob_sha(read_bytes(candidate))==file["git_blob_sha1"],str(candidate)
     assert read_bytes(ROOT/"originals/plugin/src/index.css")==read_bytes(ROOT/"originals/dashboard/src/index.css")
+    # The isolated renderer must use byte-identical MagicPath component source.
+    for ref in manifest["references"]:
+        component=next(f for f in ref["files"] if "/components/generated/" in f["path"])
+        relative=component["path"].split("/src/",1)[1]
+        original=ROOT/component["path"]
+        rendered=ROOT/"reference_source"/"src"/relative
+        assert read_bytes(original)==read_bytes(rendered),"Renderer source modified: "+relative
+    assert read_bytes(ROOT/"originals/plugin/src/index.css")==read_bytes(
+        ROOT/"reference_source/src/index.css"),"Renderer styles differ from original"
     main=(ROOT/"reference_source/src/main.tsx").read_text(encoding="utf-8")
     assert "StreamOpsOBSPluginManager" in main and "StreamOpsMobileDashboard" in main
     assert "server/web" not in main
@@ -63,8 +72,8 @@ def test_original_magicpath_source_and_preview_hashes():
     validate_source(load())
 
 def test_missing_approval_or_goldens_cannot_pass(tmp_path):
-    m=load()
-    assert m["approved"] is False
+    m=copy.deepcopy(load())
+    m["approved"]=False
     with pytest.raises(AssertionError,match="Missing explicit owner-approved"):
         validate_approval(m)
     impostor=copy.deepcopy(m)
