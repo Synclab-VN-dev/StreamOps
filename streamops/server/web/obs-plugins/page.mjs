@@ -220,6 +220,30 @@ function render() {
   byId('plugin-installed-count').textContent = store.loading ? '—' : String(counts.installed);
   byId('plugin-attention-count').textContent = store.loading ? '—' : String(counts.attention);
   const obs = store.runtime;
+  const plugin = store.inventory[0];
+  const kind = store.loading ? 'loading'
+    : !store.connected || obs?.state === 'OFFLINE' ? 'offline'
+    : !plugin && !store.error ? 'empty'
+    : plugin?.state === 'RECOVERY_REQUIRED' && plugin?.operation?.error_code === 'plugin_rollback_failed' ? 'rollback-failed'
+    : plugin?.state === 'RECOVERY_REQUIRED' ? 'recovery-required'
+    : plugin?.state === 'VERIFY_FAILED' ? 'verify-failed'
+    : plugin?.state === 'LEGACY_ADOPTED' ? 'legacy-adopted' : null;
+  const previews = {
+    loading:['Loading','Loading inventory and plugin status…'],
+    empty:['Empty','No managed plugins in the registry.'],
+    offline:['OBS offline','OBS / WebSocket unavailable. Reconnect and refresh status; do not assume the operation succeeded.'],
+    'verify-failed':['Verify failed','Plugin verification failed. Inspect the checks and retry after fixing the cause.'],
+    'rollback-failed':['Rollback failed','Rollback failed. Recovery is required. The previous version cannot be claimed restored; preserve evidence and confirm backup integrity before any retry.'],
+    'recovery-required':['Recovery required','Recovery required after an interrupted plugin operation. Install, Update, Adopt and Rollback are blocked until the backend validates a preserved baseline.'],
+    'legacy-adopted':['Legacy adopted','Legacy baseline adopted and preserved. Not verified as an approved release. A separate approved-source Install and OBS restart are still required.']
+  };
+  const scenario = byId('plugin-state-scenario-banner');
+  scenario.hidden = !kind;
+  if (kind) {
+    byId('plugin-state-scenario-heading').textContent = previews[kind][0];
+    byId('plugin-state-scenario-description').textContent = previews[kind][1];
+    scenario.dataset.tone = ['verify-failed','rollback-failed','recovery-required'].includes(kind) ? 'bad' : 'warn';
+  }
   // The pinned MagicPath design exposes a distinct safety state while outputs
   // are active. This is read-only UI: no OBS stop or plugin mutation.
   byId('plugin-output-safety-banner').hidden = !(obs?.streaming === true || obs?.recording === true);
