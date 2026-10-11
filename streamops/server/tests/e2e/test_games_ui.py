@@ -141,10 +141,8 @@ def games_ui_server():
                     result = fake.operations.get(data["operation_id"])
                     if result is None: error = "operation_not_found"
                 elif op.startswith("games.lifecycle."):
-                    token_ok = any(s.startswith("streamops-game-control.") and len(s) >= 24
-                                   for s in ws.scope.get("subprotocols", []))
-                    if not token_ok: error = "control_token_required"
-                    elif op.endswith("force_stop"): error = "capability_disabled"
+                    assert "streamops-game-control." not in ",".join(ws.scope.get("subprotocols", []))
+                    if op.endswith("force_stop"): error = "capability_disabled"
                     else:
                         result = {"operation_id":"test-operation","game_id":data["game_id"],
                                   "action":op.split(".")[-1],"status":"PENDING","phase":"QUEUED"}
@@ -313,10 +311,6 @@ def test_lifecycle_ack_pending_not_success_and_no_repeat(page: Page, games_ui_se
     base, fake = games_ui_server
     page.goto(base + "/games")
     page.locator("#game-library button").first.click()
-    page.locator(".gm-control-panel summary").click()
-    page.locator("#game-control-token").fill("a" * 32)
-    page.locator("#apply-token").click()
-    expect(page.locator("#token-status")).to_contain_text("Credential ready")
     page.once("dialog", lambda dialog: dialog.dismiss())
     page.get_by_role("button", name="Stop", exact=True).click()
     assert not [op for op, _ in fake.received if op == "games.lifecycle.stop"]
@@ -581,10 +575,6 @@ def test_games_lifecycle_progress_terminal_events_and_safety(page: Page, games_u
     page.goto(base + "/games")
     fake.set_library([game("Lifecycle", "steam:2344520", state)])
     page.locator('#game-library button[data-game-id="steam:2344520"]').click()
-    page.locator(".gm-control-panel summary").click()
-    page.locator("#game-control-token").fill("x"*32)
-    page.locator("#apply-token").click()
-    expect(page.locator("#token-status")).to_contain_text("Credential ready")
     target=page.locator('#game-detail button[data-action="'+action+'"]')
     expect(target).to_be_enabled()
     page.once("dialog", lambda dlg: dlg.dismiss())
@@ -803,7 +793,6 @@ def test_game_status_announcements_use_accessible_text_not_only_color(page: Page
     for target in ["#status-text","#game-summary","#running-games","#game-library"]:
         expect(page.locator(target)).to_have_attribute("aria-live","polite")
     expect(page.locator("#games-error")).to_have_attribute("role","alert")
-    expect(page.locator("#token-status")).to_have_attribute("role","status")
     page.locator('#game-library .gm-game-row[data-game-id="steam:2344520"]').click()
     expect(page.locator("#game-detail")).to_contain_text("Running")
     assert page.locator("#game-detail [data-code='CONFIGURED_ONLY']").count()>0
@@ -879,3 +868,29 @@ def test_game_detail_back_close_advanced_and_controls_touch_target_geometry(page
     page.keyboard.press("Enter")
     assert page.evaluate('document.activeElement?.dataset?.gameId==="steam:2344520"')
     assert not any(op.startswith("games.lifecycle.") for op,_ in fake.received)
+
+
+
+def test_tokenless_steam_and_games_ws_contract_does_not_request_credentials(page: Page, games_ui_server):
+    """The current #85 trusted-LAN backend accepts lifecycle WS without app tokens."""
+    base, fake = games_ui_server
+    page.goto(base + "/games")
+    expect(page.locator("#game-library .gm-game-row")).to_have_count(1)
+    assert page.locator("#game-control-token").count() == 0
+    assert page.locator("#token-status").count() == 0
+    assert page.evaluate("!('setCredential' in window.StreamOpsGameControl)")
+    page.locator('#game-library button[data-game-id="steam:2344520"]').click()
+    page.once("dialog", lambda d: d.accept())
+    page.locator('#game-detail button[data-action="stop"]').click()
+    wait_until(lambda: len([op for op,_ in fake.received if op=="games.lifecycle.stop"]) == 1)
+    expect(page.locator("#game-detail .gm-operation")).to_contain_text("PENDING")
+    assert not any(op == "games.lifecycle.force_stop" for op,_ in fake.received)
+    page.goto(base + "/steam")
+    expect(page.locator("#steam-state")).to_have_text("Running")
+    assert page.locator("#steam-control-token").count() == 0
+    assert page.locator("#steam-token-status").count() == 0
+    page.locator("#steam-runtime-details summary").click()
+    page.once("dialog", lambda d: d.accept())
+    page.locator("#restart-button").click()
+    wait_until(lambda: any(op == "steam.lifecycle.restart" for op,_ in fake.received))
+    expect(page.locator("#steam-state")).to_have_text("Running")
