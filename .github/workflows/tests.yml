@@ -93,7 +93,7 @@ jobs:
           Write-Host "D4Planner tests: $d4planner"
           Write-Host "Server tests: $server"
 
-      - name: Issue #86 PR89 read-only UAT runner classification + safety smoke
+      - name: 'Issue #86 PR89 read-only UAT runner classification + safety smoke'
         if: github.event_name == 'pull_request' && github.event.pull_request.number == 89
         shell: pwsh
         run: |
@@ -124,12 +124,21 @@ jobs:
               $preflight[0].lifecycle_actions_performed -ne 0 -or $preflight[0].summary.FAIL -ne 0) {
             throw 'UAT Preflight case classification is unsafe/inaccurate'
           }
+          # Build the exact one-shot handoff package from the tested PR worktree.
+          # Prove the downloaded script works outside source using -WorktreeRoot.
+          $package = Join-Path $root 'package'
+          New-Item -ItemType Directory -Force -Path $package | Out-Null
+          Copy-Item ./scripts/acceptance/issue86-pr89-uat.ps1 (Join-Path $package 'issue86-pr89-uat.ps1')
+          Copy-Item ./scripts/acceptance/issue86-pr89-uat.README.md (Join-Path $package 'README.md')
+          & pwsh -NoProfile -File (Join-Path $package 'issue86-pr89-uat.ps1') `
+            -Mode SelfTest -WorktreeRoot $env:GITHUB_WORKSPACE -OutputRoot $root
+          if ($LASTEXITCODE -ne 0) { throw 'Downloaded one-shot UAT package failed SelfTest' }
           # GitHub's pwsh wrapper propagates LASTEXITCODE even after checking it.
           # Reset only CI's expected negative-test exit, not the UAT report.
           $global:LASTEXITCODE = 0
           exit 0
 
-      - name: Upload #86 UAT harness SelfTest + negative Preflight reports
+      - name: 'Upload #86 UAT runner, instructions and CI evidence'
         if: always() && github.event_name == 'pull_request' && github.event.pull_request.number == 89
         uses: actions/upload-artifact@v4
         with:
