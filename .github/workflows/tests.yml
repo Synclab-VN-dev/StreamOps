@@ -93,6 +93,33 @@ jobs:
           Write-Host "D4Planner tests: $d4planner"
           Write-Host "Server tests: $server"
 
+      - name: Issue #86 PR89 read-only UAT runner classification + safety smoke
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 89
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'issue86-uat-runner'
+          & pwsh -NoProfile -File ./scripts/acceptance/issue86-pr89-uat.ps1 -Mode SelfTest -OutputRoot $root
+          if ($LASTEXITCODE -ne 0) { throw 'Issue86 runner SelfTest failed' }
+          $selftest = Get-ChildItem -LiteralPath $root -Recurse -Filter report.json |
+            Where-Object { (Get-Content $_.FullName -Raw | ConvertFrom-Json).metadata.mode -eq 'SelfTest' } |
+            Select-Object -First 1
+          if (-not $selftest) { throw 'Missing UAT SelfTest report' }
+          $p = Get-Content $selftest.FullName -Raw | ConvertFrom-Json
+          if ($p.outcome -ne 'PASS' -or $p.summary.PASS -ne 1 -or $p.lifecycle_actions_performed -ne 0) {
+            throw 'UAT SelfTest report incorrect'
+          }
+          # GitHub runner has no isolated Host A task/runtime: fail CLOSED as BLOCKED,
+          # never test/live-control production or install anything on host A.
+          & pwsh -NoProfile -File ./scripts/acceptance/issue86-pr89-uat.ps1 -Mode Preflight -OutputRoot $root
+          if ($LASTEXITCODE -ne 2) { throw 'UAT preflight did not fail closed without A' }
+          $reports = @(Get-ChildItem -LiteralPath $root -Recurse -Filter report.json |
+            ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json })
+          $preflight = @($reports | Where-Object { $_.metadata.mode -eq 'Preflight' })
+          if ($preflight.Count -ne 1 -or $preflight[0].outcome -ne 'BLOCKED' -or
+              $preflight[0].lifecycle_actions_performed -ne 0 -or $preflight[0].summary.FAIL -ne 0) {
+            throw 'UAT Preflight case classification is unsafe/inaccurate'
+          }
+
       - name: Install D4Planner dev dependencies
         if: steps.changes.outputs.d4planner == 'true'
         run: python -m pip install -e 'utility/d4planner[dev]'
