@@ -18,6 +18,7 @@ from .character.repository import EquipmentRepository
 from .character.service import CharacterService
 from .runtime.diagnostics import MemoryDiagnosticsSink
 from .runtime.events.repository import EventLogReader
+from .controller import available_profiles, load_profile, ProfileValidationError
 from .runtime.model import RuntimeState
 from .runtime.pathing import UserPathManager, WindowsRegistryPathBackend
 from .runtime.store import (
@@ -114,12 +115,17 @@ def _state(paths: RuntimePaths) -> dict[str, Any]:
     return state
 
 
-def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool, block_marker: bool = False) -> int:
+def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool,
+                  block_marker: bool = False,
+                  controller_profile: str | None = None) -> int:
     if os.name == "nt":
         previous = read_json(paths.runtime_state) or {}
         previous_pid = previous.get("supervisorPid")
         runtime = WindowsRuntime(paths)
-        runtime.launch_supervisor_task(speech=speech, isolated=isolated, block_marker=block_marker)
+        kwargs = {"speech": speech, "isolated": isolated, "block_marker": block_marker}
+        if controller_profile:
+            kwargs["controller_profile"] = controller_profile
+        runtime.launch_supervisor_task(**kwargs)
         deadline = time.monotonic() + 15.0
         while time.monotonic() < deadline:
             current = read_json(paths.runtime_state) or {}
@@ -136,6 +142,8 @@ def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool, block_ma
         cmd.append("--isolated")
     if block_marker:
         cmd.append("--block")
+    if controller_profile:
+        cmd.extend(["--controller-profile", controller_profile])
     kwargs: dict[str, Any] = {
         "stdin": subprocess.DEVNULL,
         "stdout": subprocess.DEVNULL,
@@ -276,7 +284,10 @@ def _pretty_event(event: dict[str, Any]) -> str | None:
     if event_type == "input.marker.raw":
         key = str(data.get("key") or "").upper()
         state = str(data.get("state") or "").upper()
-        suffix = " ".join(part for part in (key, state) if part)
+        control = str(data.get("controlId") or "").strip()
+        suffix = " ".join(part for part in (
+            f"{control} ({key})" if control else key, state
+        ) if part)
         if data.get("suppressed") is True:
             suffix += " [BLOCKED]"
         return f"[{stamp}] input.marker.raw {suffix}".rstrip()
@@ -310,7 +321,11 @@ def command_logs(
     raw: bool,
     from_end: bool = False,
     component: str | None = None,
+    input_only: bool = False,
 ) -> int:
+    if component and input_only:
+        print("--input cannot be combined with --component", file=sys.stderr)
+        return 2
     status = _state(paths)
     session_id = str(status.get("sessionId") or "")
     session_dir = status.get("sessionDir")
@@ -350,6 +365,8 @@ def command_logs(
                 from_end=from_end,
             )
             for event in events:
+                if input_only and event.get("type") != "input.marker.raw":
+                    continue
                 if raw:
                     print(
                         json.dumps(event, ensure_ascii=False, separators=(",", ":")),
@@ -370,6 +387,8 @@ def command_logs(
             try:
                 event = json.loads(line)
             except json.JSONDecodeError:
+                continue
+            if input_only and event.get("type") != "input.marker.raw":
                 continue
             if raw:
                 print(
@@ -400,12 +419,18 @@ def command_status(paths: RuntimePaths, *, raw_json: bool) -> int:
     game = status.get("game") or {}
     marker = (status.get("extras") or {}).get("inputMarker") or {}
     marker_info = (
-        f'{marker.get("key", "F11")} / {marker.get("mode", "OBSERVE")} / '
+        f'{marker.get("layoutId") or marker.get("key", "F11")} / '
+        f'{marker.get("mode", "OBSERVE")} / '
         f'{marker.get("state", "UNKNOWN")}'
     )
     rows = [
         ("Runtime", status.get("state")),
         ("Input marker", marker_info),
+        ("Input configured", f'{marker.get("configuredDigitalCount", 1)} digital / '
+                             f'{marker.get("analogDisabledCount", 0)} analog disabled'),
+        ("Input backend", marker.get("backend") or marker.get("captureMethod") or "-"),
+        ("Input dropped", marker.get("droppedCount", 0)),
+        ("Last input", marker.get("lastInputAt") or "-"),
         ("Detail", status.get("detail")),
         ("Supervisor PID", status.get("supervisorPid")),
         ("NVDA", f"PID {nvda.get('pid')} / Session {nvda.get('session_id') or nvda.get('sessionId')}" if nvda else "STOPPED"),
@@ -467,7 +492,13 @@ def command_start(
     detached: bool,
     timeout: float,
     block_marker: bool = False,
+    controller_profile: str | None = None,
 ) -> int:
+    try:
+        profile = load_profile(controller_profile) if controller_profile else None
+    except ProfileValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 4
     paths.ensure()
     previous = _state(paths)
     previous_pid = previous.get("supervisorPid")
@@ -490,10 +521,16 @@ def command_start(
                 .get("mode", "OBSERVE")
             )
             requested_mode = "BLOCK" if block_marker else "OBSERVE"
-            if running_mode != requested_mode:
+            running_layout = (
+                ((previous.get("extras") or {}).get("inputMarker") or {})
+                .get("layoutId")
+            )
+            requested_layout = profile.layout_id if profile else None
+            if running_mode != requested_mode or running_layout != requested_layout:
                 print(
-                    f"D4Planner already running with F11 {running_mode}; "
-                    f"requested {requested_mode}. Run 'd4planner stop' before switching.",
+                    f"D4Planner already running with {running_layout or 'legacy F11'} "
+                    f"{running_mode}; requested {requested_layout or 'legacy F11'} "
+                    f"{requested_mode}. Run 'd4planner stop' before switching.",
                     file=sys.stderr,
                 )
                 return 4
@@ -508,9 +545,11 @@ def command_start(
         pass
 
     try:
-        pid = _spawn_daemon(
-            paths=paths, speech=speech, isolated=isolated, block_marker=block_marker
-        )
+        kwargs = dict(paths=paths, speech=speech, isolated=isolated,
+                      block_marker=block_marker)
+        if profile is not None:
+            kwargs["controller_profile"] = profile.alias
+        pid = _spawn_daemon(**kwargs)
     except RuntimeBlocked as exc:
         write_capture_config(paths, enabled=False)
         atomic_write_json(
@@ -531,13 +570,14 @@ def command_start(
         print(f"Unable to start D4Planner supervisor: {exc}", file=sys.stderr)
         return 4
     print(f"D4Planner supervisor PID {pid}")
-    status = _wait_start(paths, pid, timeout=timeout, block_marker=block_marker)
+    status = _wait_start(paths, pid, timeout=timeout,
+                         block_marker=block_marker or (profile is not None))
     state = str(status.get("state") or "")
-    if block_marker and state not in {RuntimeState.BLOCKED.value,
+    if (block_marker or profile is not None) and state not in {RuntimeState.BLOCKED.value,
                                      RuntimeState.RESTART_REQUIRED.value}:
         marker = ((status.get("extras") or {}).get("inputMarker") or {})
         if marker.get("state") != "ACTIVE":
-            print("F11 BLOCK hook is not active; start failed.", file=sys.stderr)
+            print("Controller keyboard hook is not active; start failed.", file=sys.stderr)
             return 2
     if state == RuntimeState.BLOCKED.value:
         print(status.get("lastError") or status.get("detail"), file=sys.stderr)
@@ -987,7 +1027,8 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--speech", action="store_true")
     start.add_argument("--isolated", action="store_true")
     start.add_argument("--block", action="store_true",
-                       help="capture F11 through hook and block keyboard F11 in Diablo IV")
+                       help="block configured keyboard markers while Diablo IV has focus")
+    start.add_argument("--controller-profile", help="controller mapping alias, e.g. xbox16")
     start.add_argument("--timeout", type=float, default=120.0)
 
     status = sub.add_parser("status")
@@ -997,7 +1038,14 @@ def build_parser() -> argparse.ArgumentParser:
     logs.add_argument("-f", "--follow", action="store_true")
     logs.add_argument("--raw", action="store_true")
     logs.add_argument("--from-end", action="store_true")
+    logs.add_argument("--input", action="store_true", help="display only input.marker.raw")
     logs.add_argument("--component", choices=("equipment",))
+
+    controller = sub.add_parser("controller")
+    controller_sub = controller.add_subparsers(dest="controller_command", required=True)
+    controller_sub.add_parser("profiles")
+    validate = controller_sub.add_parser("validate")
+    validate.add_argument("profile")
 
     stop = sub.add_parser("stop")
     stop.add_argument("--timeout", type=float, default=10.0)
@@ -1053,7 +1101,23 @@ def main(argv: list[str] | None = None) -> int:
             detached=args.detach,
             timeout=args.timeout,
             block_marker=args.block,
+            controller_profile=args.controller_profile,
         )
+    if args.command == "controller":
+        if args.controller_command == "profiles":
+            print("\\n".join(available_profiles()))
+            return 0
+        try:
+            profile = load_profile(args.profile)
+        except ProfileValidationError as exc:
+            print(str(exc), file=sys.stderr)
+            return 4
+        print(f"PASS: {profile.layout_id} alias={profile.alias} "
+              f"digital={profile.configured_count} analogDisabled={profile.analog_disabled_count} "
+              f"sha256={profile.sha256}")
+        print("Warning: configured VKs do not prove Steam provenance; "
+              "check non-US keyboard layout and F10/F11 overlay collisions on A.")
+        return 0
     if args.command == "status":
         return command_status(paths, raw_json=args.json)
     if args.command == "logs":
@@ -1063,6 +1127,7 @@ def main(argv: list[str] | None = None) -> int:
             raw=args.raw,
             from_end=args.from_end,
             component=args.component,
+            input_only=args.input,
         )
     if args.command == "stop":
         return command_stop(paths, timeout=args.timeout, stop_nvda=args.stop_nvda)

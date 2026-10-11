@@ -780,7 +780,9 @@ class WindowsRuntime:
         if result.returncode != 0:
             raise RuntimeBlocked(f"failed to start task {name}: {result.stderr.strip()[:300]}")
 
-    def launch_supervisor_task(self, *, speech: bool, isolated: bool, block_marker: bool = False) -> None:
+    def launch_supervisor_task(self, *, speech: bool, isolated: bool,
+                               block_marker: bool = False,
+                               controller_profile: str | None = None) -> None:
         """Launch the long-lived supervisor outside the caller's SSH job."""
         self.require_windows()
         self.prepare_interactive_tasks()
@@ -792,6 +794,10 @@ class WindowsRuntime:
             arguments.append("--isolated")
         if block_marker:
             arguments.append("--block")
+        if controller_profile:
+            from ..controller import load_profile
+            validated = load_profile(controller_profile)
+            arguments.extend(["--controller-profile", validated.alias])
         argument_text = " ".join(arguments).replace("'", "''")
         ps = (
             f"$a=New-ScheduledTaskAction -Execute '{executable}' "

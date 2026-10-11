@@ -9,6 +9,7 @@ from pathlib import Path
 from .runtime.pathing import UserPathManager, WindowsRegistryPathBackend
 from .runtime.store import RuntimePaths
 from .runtime.supervisor import Supervisor
+from .controller import load_profile, ProfileValidationError
 from .runtime.windows import WindowsRuntime
 
 
@@ -74,9 +75,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="d4planner-daemon")
     parser.add_argument("--speech", action="store_true", help="Pass D4 speech through NVDA")
     parser.add_argument("--isolated", action="store_true", help="Use process-scoped controller discovery")
-    parser.add_argument("--block", action="store_true", help="Use F11 keyboard hook capture and suppression")
+    parser.add_argument("--block", action="store_true", help="Use keyboard hook capture and suppression")
+    parser.add_argument("--controller-profile", default=None)
     parser.add_argument("--game-start-timeout", type=float, default=90.0)
     args = parser.parse_args(argv)
+    try:
+        profile = load_profile(args.controller_profile) if args.controller_profile else None
+    except ProfileValidationError as exc:
+        parser.error(str(exc))
 
     home = os.environ.get("D4PLANNER_HOME")
     paths = RuntimePaths(Path(home)) if home else RuntimePaths.default()
@@ -94,6 +100,7 @@ def main(argv: list[str] | None = None) -> int:
             silent=not args.speech,
             isolated=args.isolated,
             block_marker=args.block,
+            controller_profile=profile,
             game_start_timeout=args.game_start_timeout,
         )
         return supervisor.run()

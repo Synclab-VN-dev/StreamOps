@@ -13,6 +13,7 @@ from typing import Any, Protocol
 
 from ..character.equipment.projector import EquipmentProjector
 from ..character.repository import EquipmentRepository
+from ..controller import ControllerProfile
 from .diagnostics import JsonlDiagnosticsSink
 from .events.model import EventDraft
 from .events.store import EventStore
@@ -64,6 +65,7 @@ class Supervisor:
         tolk_retry_interval: float = 0.5,
         marker_capture: InputMarkerCapture | HookInputMarkerCapture | None = None,
         block_marker: bool = False,
+        controller_profile: ControllerProfile | None = None,
     ):
         self.paths = paths
         self.runtime = runtime
@@ -88,12 +90,22 @@ class Supervisor:
         self._next_lease_refresh = 0.0
         self.marker_capture = marker_capture
         self.block_marker = bool(block_marker)
+        self.controller_profile = controller_profile
         self._marker_started = False
         self.status.extras["inputMarker"] = {
             "key": "F11",
             "mode": "BLOCK" if self.block_marker else "OBSERVE",
             "state": "STARTING",
-            "captureMethod": "keyboardHook" if self.block_marker else "asyncKeyState",
+            "captureMethod": "keyboardHook" if (self.block_marker or controller_profile)
+                else "asyncKeyState",
+            "layoutId": controller_profile.layout_id if controller_profile else None,
+            "mappingHash": controller_profile.sha256 if controller_profile else None,
+            "mappingSource": controller_profile.mapping_source if controller_profile else None,
+            "configuredDigitalCount": controller_profile.configured_count if controller_profile else 1,
+            "analogDisabledCount": controller_profile.analog_disabled_count if controller_profile else 0,
+            "backend": "keyboardHook" if (self.block_marker or controller_profile) else "asyncKeyState",
+            "physicallyVerifiedCount": None,
+            "lastInputAt": None,
             "droppedCount": 0,
             "overflow": False,
         }
@@ -481,7 +493,7 @@ class Supervisor:
                     )
                 self.transition(
                     RuntimeState.BLOCKED,
-                    "F11 blocking is no longer guaranteed",
+                    "Controller keyboard blocking is no longer guaranteed",
                     error=self.status.last_error,
                     data={"droppedCount": dropped_count, "overflow": overflow},
                 )
@@ -492,7 +504,10 @@ class Supervisor:
                     pass
 
         try:
-            return [sample.as_draft() for sample in capture.drain()]
+            samples = capture.drain()
+            if samples:
+                marker_status["lastInputAt"] = samples[-1].timestamp
+            return [sample.as_draft() for sample in samples]
         except Exception as exc:
             self.status.last_error = (
                 f"input marker queue failure: {type(exc).__name__}: {exc}"
@@ -582,16 +597,19 @@ class Supervisor:
     def _start_marker_capture(self) -> None:
         if self.marker_capture is None:
             if os.name != "nt":
-                if self.block_marker:
-                    self.status.last_error = "F11 blocking requires Windows"
+                if self.block_marker or self.controller_profile is not None:
+                    self.status.last_error = "Controller keyboard hook requires Windows"
                     self.status.extras["inputMarker"]["state"] = "ERROR"
                 else:
                     self.status.extras["inputMarker"]["state"] = "DISABLED"
                 self._persist_status()
                 return
             self.marker_capture = (
-                HookInputMarkerCapture() if self.block_marker
-                else InputMarkerCapture(key="f11")
+                HookInputMarkerCapture(profile=self.controller_profile,
+                                       block=self.block_marker)
+                if self.controller_profile is not None
+                else (HookInputMarkerCapture() if self.block_marker
+                      else InputMarkerCapture(key="f11"))
             )
         self._sync_marker_target()
         try:
@@ -839,9 +857,9 @@ class Supervisor:
         exit_code = 0
         try:
             self._start_marker_capture()
-            if self.block_marker and not self._marker_started:
+            if (self.block_marker or self.controller_profile is not None) and not self._marker_started:
                 self.transition(RuntimeState.BLOCKED,
-                                "F11 blocking hook failed to start",
+                                "Controller keyboard hook failed to start",
                                 error=self.status.last_error)
                 return 2
             next_health_check = 0.0
