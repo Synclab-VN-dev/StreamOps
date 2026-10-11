@@ -231,7 +231,7 @@ class GitHubReleaseSource:
     publication and redistribution, and carry exact filesystem file records.
     """
 
-    def __init__(self, repository: str, *, token: str | None = None, transport=None) -> None:
+    def __init__(self, repository: str, *, token: str | None = None, transport=None, require_token: bool = False) -> None:
         if not isinstance(repository, str) or not re.fullmatch(
             r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository
         ):
@@ -239,6 +239,7 @@ class GitHubReleaseSource:
         self.repository = repository
         self._api = f"https://api.github.com/repos/{repository}"
         self._token = token
+        self._require_token = require_token
         self._transport = transport or self._request
         self._pinned: dict[tuple[str, str, str, str], tuple[int, int]] = {}
 
@@ -264,11 +265,37 @@ class GitHubReleaseSource:
     def _fetch(self, url: str, *, accept: str, max_bytes: int) -> bytes:
         if not url.startswith(self._api + "/"):
             raise ObsPluginError("plugin_release_invalid", "Unapproved release API origin.", 409)
+        # Production requires explicit credentials. Never silently spend the
+        # shared anonymous GitHub API quota when start-server input was omitted.
+        if self._require_token and not self._token:
+            raise ObsPluginError(
+                "plugin_github_token_missing",
+                "GitHub token was not provided at StreamOps startup. Restart with a GitHub token to use the approved plugin catalog.",
+                503,
+            )
         try:
             body = self._transport(url, accept=accept, token=self._token, max_bytes=max_bytes)
         except ObsPluginError:
             raise
-        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        except HTTPError as exc:
+            # Stable, secret-free typed errors for the WebUI and activity log.
+            remaining = exc.headers.get("X-RateLimit-Remaining") if exc.headers else None
+            if exc.code == 403 and remaining == "0":
+                raise ObsPluginError(
+                    "plugin_github_rate_limited",
+                    "GitHub API rate limit reached; retry after the GitHub rate-limit reset.",
+                    503,
+                ) from exc
+            if exc.code in (401, 403):
+                raise ObsPluginError(
+                    "plugin_github_auth_failed",
+                    "GitHub rejected the configured token or its repository access.",
+                    503,
+                ) from exc
+            raise ObsPluginError(
+                "plugin_release_source_error", "Managed GitHub release source unavailable.", 503
+            ) from exc
+        except (URLError, TimeoutError, OSError) as exc:
             raise ObsPluginError(
                 "plugin_release_source_error",
                 "Managed GitHub release source unavailable.",
@@ -409,6 +436,9 @@ def configured_plugin_release_source() -> ManagedPluginReleaseSource | None:
         if token_env and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", token_env):
             raise ValueError("Invalid configured credential environment variable.")
         return ManagedPluginReleaseSource(
-            GitHubReleaseSource(repo, token=os.environ.get(token_env) if token_env else None)
+            GitHubReleaseSource(
+                repo, token=os.environ.get(token_env) if token_env else None,
+                require_token=True,
+            )
         )
     raise ValueError("Unknown or incomplete managed OBS plugin release provider configuration.")
