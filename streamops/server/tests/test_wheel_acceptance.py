@@ -128,6 +128,7 @@ def test_installed_wheel_runs_outside_source_checkout():
                 ("/assets/games.js", b"StreamOpsGames"),
                 ("/assets/games-store.js", b"GameStore"),
                 ("/assets/games-control.js", b'new WebSocket(url, "streamops-games-v1")'),
+                ("/assets/ui-confirm.js", b"gm-confirm-dialog"),
                 ("/assets/node-health.js", b"/api/v1/obs/ws"),
                 ("/assets/games.css", b"gm-page"),
             ):
