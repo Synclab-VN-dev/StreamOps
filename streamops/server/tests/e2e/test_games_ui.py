@@ -334,11 +334,13 @@ def test_lifecycle_ack_pending_not_success_and_no_repeat(page: Page, games_ui_se
     base, fake = games_ui_server
     page.goto(base + "/games")
     page.locator("#game-library button").first.click()
-    page.once("dialog", lambda dialog: dialog.dismiss())
     page.get_by_role("button", name="Stop", exact=True).click()
+    expect(page.get_by_role("dialog")).to_be_visible()
+    page.locator(".gm-confirm-cancel").click()
     assert not [op for op, _ in fake.received if op == "games.lifecycle.stop"]
-    page.once("dialog", lambda dialog: dialog.accept())
     page.get_by_role("button", name="Stop", exact=True).click()
+    expect(page.get_by_role("dialog")).to_be_visible()
+    page.locator(".gm-confirm-accept").click()
     # Verify the actual mutation reached WS before checking asynchronous UI state.
     # A missing request is a product/transport bug, never treated as a PASS.
     wait_until(lambda: len([op for op, _ in fake.received if op == "games.lifecycle.stop"]) == 1)
@@ -600,11 +602,16 @@ def test_games_lifecycle_progress_terminal_events_and_safety(page: Page, games_u
     page.locator('#game-library button[data-game-id="steam:2344520"]').click()
     target=page.locator('#game-detail button[data-action="'+action+'"]')
     expect(target).to_be_enabled()
-    page.once("dialog", lambda dlg: dlg.dismiss())
     target.click()
+    modal=page.get_by_role("dialog")
+    expect(modal).to_be_visible()
+    expect(modal).to_contain_text("Lifecycle")
+    page.locator(".gm-confirm-cancel").click()
+    expect(modal).to_have_count(0)
     assert not any(op == "games.lifecycle."+action for op,_ in fake.received)
-    page.once("dialog", lambda dlg: dlg.accept())
     target.click()
+    expect(modal).to_be_visible()
+    page.locator(".gm-confirm-accept").click()
     wait_until(lambda: len([data for op,data in fake.received if op=="games.lifecycle."+action])==1)
     requests=[data for op,data in fake.received if op=="games.lifecycle."+action]
     assert requests[0]["game_id"]=="steam:2344520"
@@ -903,8 +910,9 @@ def test_tokenless_steam_and_games_ws_contract_does_not_request_credentials(page
     assert page.locator("#token-status").count() == 0
     assert page.evaluate("!('setCredential' in window.StreamOpsGameControl)")
     page.locator('#game-library button[data-game-id="steam:2344520"]').click()
-    page.once("dialog", lambda d: d.accept())
     page.locator('#game-detail button[data-action="stop"]').click()
+    expect(page.get_by_role("dialog")).to_be_visible()
+    page.locator(".gm-confirm-accept").click()
     wait_until(lambda: len([op for op,_ in fake.received if op=="games.lifecycle.stop"]) == 1)
     expect(page.locator("#game-detail .gm-operation")).to_contain_text("PENDING")
     assert not any(op == "games.lifecycle.force_stop" for op,_ in fake.received)
@@ -913,8 +921,9 @@ def test_tokenless_steam_and_games_ws_contract_does_not_request_credentials(page
     assert page.locator("#steam-control-token").count() == 0
     assert page.locator("#steam-token-status").count() == 0
     page.locator("#steam-runtime-details summary").click()
-    page.once("dialog", lambda d: d.accept())
     page.locator("#restart-button").click()
+    expect(page.get_by_role("dialog")).to_be_visible()
+    page.locator(".gm-confirm-accept").click()
     wait_until(lambda: any(op == "steam.lifecycle.restart" for op,_ in fake.received))
     expect(page.locator("#steam-state")).to_have_text("Running")
 
