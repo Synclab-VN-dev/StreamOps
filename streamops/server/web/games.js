@@ -72,11 +72,6 @@
     try { await service.client.request("games.catalog.refresh");await service.resync();log("Catalog refreshed"); }
     catch(e){error(e.message);}
   });
-  $("#apply-token").addEventListener("click",()=>{
-    control.setCredential($("#game-control-token").value);
-    $("#game-control-token").value="";
-    $("#token-status").textContent=control.hasCredential()?"Credential ready for this tab":"Token invalid (minimum 24 characters)";
-  });
   service.store.on(render);
   log("Game Manager opened");
 })();
