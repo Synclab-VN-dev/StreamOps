@@ -74,6 +74,32 @@ if (-not [string]::IsNullOrWhiteSpace($ObsPluginSourceProvider)) {
             "STREAMOPS_OBS_PLUGIN_GITHUB_TOKEN"
         }
         if ($credentialEnv -notmatch '^[A-Za-z_][A-Za-z0-9_]*
+            throw "ObsPluginGitHubTokenEnv must be an environment variable name."
+        }
+        $env:STREAMOPS_OBS_PLUGIN_GITHUB_TOKEN_ENV = $credentialEnv
+        if ($ObsPluginCredentialFile) {
+            # Always delete the encrypted handoff, even if decryption fails.
+            try {
+                if (-not (Test-Path -LiteralPath $ObsPluginCredentialFile -PathType Leaf)) {
+                    throw "Token handoff file was not found."
+                }
+                $encrypted = Get-Content -LiteralPath $ObsPluginCredentialFile -Raw
+                $secret = ConvertTo-SecureString ($encrypted.Trim())
+                $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secret)
+                try {
+                    $plaintext = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
+                    [Environment]::SetEnvironmentVariable($credentialEnv, $plaintext, "Process")
+                }
+                finally {
+                    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
+                    $plaintext = $null
+                }
+            }
+            finally {
+                Remove-Item -LiteralPath $ObsPluginCredentialFile -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
 }
 
 Push-Location $DataDir
