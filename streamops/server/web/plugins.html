@@ -13,6 +13,10 @@
     <div><a class="plugin-back" href="/obs">← OBS Management</a><p class="plugin-eyebrow">STREAMOPS</p><h1>OBS Plugin Manager</h1><p>Install, update and verify managed OBS plugins.</p></div>
     <span id="plugin-obs-state" class="plugin-pill" data-tone="neutral">Connecting</span>
   </header>
+  <section id="plugin-output-safety-banner" class="plugin-output-safety-banner" role="status" aria-label="Live output safety" hidden>
+    <div class="plugin-output-safety-header"><h2>Live / blocked</h2><span>Active output</span></div>
+    <p>OBS is streaming or recording. Install, Update and Rollback are disabled; running outputs will not be stopped.</p>
+  </section>
   <section class="plugin-panel" aria-labelledby="plugin-overview-title">
     <div class="plugin-section-heading"><div><h2 id="plugin-overview-title">Manager overview</h2><p class="plugin-overview-subtitle">Inventory from the StreamOps node</p></div><button id="plugin-refresh" class="plugin-action" type="button" disabled>Refresh</button></div>
     <div class="plugin-overview-grid">
