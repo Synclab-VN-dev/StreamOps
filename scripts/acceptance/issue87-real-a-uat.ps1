@@ -105,8 +105,18 @@ function Stop-OwnedTask {
   $created=$false
 }
 try {
-  $head=(& git -C $root rev-parse HEAD).Trim()
-  $branchName=(& git -C $root branch --show-current).Trim()
+  $headOutput = & git -C $root rev-parse HEAD
+  if ($LASTEXITCODE -ne 0 -or -not $headOutput) {
+    throw 'Cannot determine checked-out Git HEAD'
+  }
+  $head = ([string]$headOutput).Trim()
+  # A SHA-pinned PR95 worktree uses detached HEAD by design. Git prints no
+  # branch name in that case (PowerShell returns $null, not an empty string).
+  $branchOutput = & git -C $root branch --show-current
+  if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect checked-out Git branch' }
+  $branchName = if ($null -eq $branchOutput) { '' } else {
+    ([string]$branchOutput).Trim()
+  }
   $branchOK = $branchName -eq 'feat/87-xbox16-multikey-capture'
   # Owner can safely review a detached, immutable worktree pinned by SHA.
   if(!$branchOK -and $branchName -eq '' -and $ExpectedHead -eq $head) {
