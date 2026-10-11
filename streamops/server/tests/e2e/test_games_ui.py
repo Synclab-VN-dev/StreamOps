@@ -1022,6 +1022,10 @@ def test_magicpath_steam_confirmation_modal_does_not_restart_on_escape(page: Pag
     expect(modal).to_be_visible()
     expect(modal).to_contain_text("Restart Steam in Big Picture?")
     expect(modal.locator(".gm-confirm-accept")).to_have_text("Restart")
+    # V2 source keeps the modal headline on one line at 390px.
+    assert modal.locator("#gm-confirm-title").evaluate(
+        "(el) => el.getBoundingClientRect().height <= 27"
+    ), "Restart confirmation title must not wrap on 390px mobile"
     page.keyboard.press("Escape")
     expect(modal).to_have_count(0)
     assert not any(op=="steam.lifecycle.restart" for op,_ in fake.received)
