@@ -2,7 +2,13 @@ name: OBS Plugin Manager MagicPath Visual (FE-G5)
 on:
   pull_request:
     paths:
-      - 'streamops/server/web/obs*'
+      - 'streamops/server/web/obs-plugins/**'
+      - 'streamops/server/web/obs.html'
+      - 'streamops/server/web/obs.js'
+      - 'streamops/server/web/obs-ws.js'
+      - 'streamops/server/web/ws-client.js'
+      - 'streamops/server/web/app.css'
+      - 'streamops/server/app.py'
       - 'streamops/server/web/plugins.html'
       - 'streamops/server/tests/visual_obs_plugins/**'
       - 'streamops/server/tests/e2e/test_issue75_magicpath_visual.py'
