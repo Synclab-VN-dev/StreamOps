@@ -78,6 +78,24 @@ test('UNIT matrix: incompatible and unavailable release fail closed for install 
   }
   assert.equal(shouldOfferInstall(plugin('NOT_INSTALLED'),{...catalog,compatibility:'incompatible'}),false);
 });
+test('UNIT rollback authority: the detailed BE eligibility must never be bypassed by an alias',()=>{
+  const cases=[
+    [{rollback_available:true},false],
+    [{rollback:null,rollback_available:true},false],
+    [{rollback:{available:false,reason:'backup drift'},rollback_available:true},false],
+    [{rollback:{reason:'missing backup'},rollback_available:true},false],
+    [{rollback:[],rollback_available:true},false],
+    [{rollback:{available:true,target_version:'1.0'},rollback_available:false},true]
+  ];
+  for(const [fields,expected] of cases){
+    const parsed=plugin('VERIFIED',fields);
+    assert.equal(parsed.rollback_available,expected,JSON.stringify(fields));
+    assert.equal(enabled(parsed,catalog,obs('READY')).rollback.enabled,expected);
+  }
+  assert.equal(enabled(plugin('RECOVERY_REQUIRED',{
+    rollback:{available:true,target_version:'legacy'},rollback_available:true
+  }),catalog,obs('READY')).rollback.enabled,false);
+});
 test('UNIT matrix: server rollback permission required, recovery blocks even when incorrectly advertised',()=>{
   for(const state of ['VERIFIED','INSTALLED','LEGACY_ADOPTED']) {
     assert.equal(enabled(plugin(state)).rollback.enabled,false,state);
