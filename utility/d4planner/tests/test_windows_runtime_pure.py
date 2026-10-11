@@ -432,3 +432,39 @@ def test_supervisor_interactive_task_block_flag_preserves_session1_principal(
     commands.clear()
     runtime.launch_supervisor_task(speech=False, isolated=False, block_marker=False)
     assert "--block" not in commands[0]
+
+
+
+def test_supervisor_interactive_task_forwards_xbox16_profile_without_autoconfig(
+    tmp_path, monkeypatch,
+):
+    """Session 0 must forward profile to Session 1, without writing Steam VDF."""
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
+    commands = []
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(runtime, "prepare_interactive_tasks", lambda: None)
+    monkeypatch.setattr(
+        runtime, "_powershell",
+        lambda script, **kw: (
+            commands.append(script) or subprocess.CompletedProcess([], 0, "", "")
+        ),
+    )
+    runtime.launch_supervisor_task(
+        speech=False, isolated=False, block_marker=True,
+        controller_profile="xbox16",
+    )
+    assert len(commands) == 1
+    script = commands[0]
+    assert "--controller-profile xbox16" in script
+    assert "-Argument '-m d4planner.daemon --block --controller-profile xbox16'" in script
+    assert "LogonType Interactive" in script
+    assert "-Priority 4" in script
+
+    commands.clear()
+    from d4planner.controller import ProfileValidationError
+    import pytest
+    with pytest.raises(ProfileValidationError):
+        runtime.launch_supervisor_task(
+            speech=False, isolated=False, controller_profile="unknown"
+        )
+    assert commands == []
