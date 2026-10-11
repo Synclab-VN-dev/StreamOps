@@ -20,13 +20,22 @@ The existing StreamOps UI is HTML/CSS/JavaScript. The approved MagicPath TSX is 
 
 Plugin WS requests use {"type":"request","request_id":"...","operation":"obs_plugin.adopt","payload":{"plugin_id":"..."}}. Response success has same normalized service data as REST, error {"type":"response","request_id":"...","ok":false,"error":{"code":"...","message":"..."}}. No URL/path/source/binary/release fields allowed. Inventory and catalog now have BE v2 WS operations in PR #52. The FE continues to fail closed when the backend running on the target machine has not deployed that contract; there is no REST fallback.
 
-## Outstanding P0 BE contracts
-1. Final operation names and payload/response for WS inventory and catalog.
-2. Change notification (proposed obs_plugin.changed) with monotonic revision, or another race-safe observer model.
-3. Explicit backend rollback eligibility and reason (including adopted baseline).
-4. Read-only in-flight/recovery status and reconnect/unknown-outcome reconciliation across tabs/processes.
+## BE v2 contract status — implemented, pending combined integration
 
-Absent fields fail closed: Rollback disabled; unknown outcome blocks mutation until a successful inventory/catalog refresh; unknown active-output state blocks mutation. Progress is intentionally indeterminate without genuine backend steps.
+The four former P0 backend gaps have been implemented in independent Draft
+PR #52, though FE+BE exact-HEAD integration and Real-A evidence remain pending:
+
+1. `obs_plugin.inventory` / `obs_plugin.available`: WS read parity, empty payload.
+2. `obs_plugin.subscribe` plus opt-in `obs_plugin.changed` invalidation.
+   Re-subscribe on reconnect; revisions are process-local, not durable.
+3. Canonical `rollback.available` and its backend-proven reason/target;
+   legacy compatibility fields alone do not authorize destructive Rollback.
+4. Read-only `obs_plugin.operation_status` for RUNNING/terminal/recovery
+   reconciliation. Refreshing inventory alone cannot resolve unknown mutations.
+
+Authoritative schema: `streamops/docs/issue-47-plugin-ws-contract-v2.md` on
+PR #52. No FE REST fallback, invented progress, or assumption that the backend
+has been merged/deployed. Combined tests and Windows A manual approval are separate.
 
 ## Adopt Existing safety
 - Eligibility: registry-listed plugin state UNMANAGED, installed and adoptable, OBS STOPPED, idle output, plugin WS connected, no conflicting operation.
