@@ -142,6 +142,10 @@ function renderPlugin(plugin) {
     installPreview.append(install);
     installPreview.append(text('p','plugin-supporting',
       'Install only the backend-selected approved release. Server validates integrity, compatibility and OBS output safety.'));
+    if (install.disabled) {
+      installPreview.append(text('small','plugin-disabled-reason',
+        eligible.install?.reason || 'Installation is blocked by the current backend state.'));
+    }
     card.append(installPreview);
   }
   if (expandedId !== plugin.plugin_id) return card;
@@ -155,6 +159,8 @@ function renderPlugin(plugin) {
       'Source: backend-approved managed distribution. Integrity and platform compatibility are checked before installation; arbitrary external URLs are not accepted.'));
     details.append(text('p','plugin-supporting',
       'Not installed. Use Install above to open the confirmation step.'));
+    if (release?.reason) details.append(text('p','plugin-reason',
+      'Approved release: ' + release.reason));
     card.append(details);
     return card;
   }
