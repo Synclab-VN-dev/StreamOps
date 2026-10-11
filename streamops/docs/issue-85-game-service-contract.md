@@ -65,10 +65,7 @@ Token-free operator CLI example from Windows A:
 ```powershell
 $base = "http://127.0.0.1:18788"
 Invoke-RestMethod "$base/api/v1/games"
-Invoke-RestMethod -Method Post -Uri "$base/api/v1/games/steam:2344520/actions" \
-    -ContentType "application/json" \
-    -Headers @{ "Idempotency-Key" = [guid]::NewGuid().ToString() } \
-    -Body '{"action":"start"}'
+Invoke-RestMethod -Method Post -Uri "$base/api/v1/games/steam:2344520/actions" -ContentType "application/json" -Headers @{ "Idempotency-Key" = [guid]::NewGuid().ToString() } -Body '{"action":"start"}'
 ```
 Every accepted lifecycle request is asynchronous. HTTP 202 and operation ID
 do not mean success: check the operation terminal result and observed game
