@@ -2,7 +2,7 @@
   const service=window.StreamOpsGames, store=service.store, ui=window.StreamOpsGamesComponents;
   const control=window.StreamOpsGameControl, log=window.StreamOpsUI.createActivityLog("#activity-log");
   const $=s=>document.querySelector(s);
-  let selected=null, activeOperation=null, lastSignature="";
+  let selected=null, activeOperation=null, lastSignature="", returnFocus=null;
   function error(message) { const e=$("#games-error");e.textContent=message||"";e.hidden=!message; }
   function render() {
     const games=store.items(), summary=store.summary();
@@ -22,8 +22,21 @@
     const signature=store.epoch+":"+store.revision+":"+store.stale;
     if (signature!==lastSignature) { lastSignature=signature; if (!store.loading && !store.stale) log("Games updated (revision "+store.revision+")"); }
   }
-  function select(id) { selected=id;render();$("#game-detail").focus(); }
-  function closeDetail() { selected=null;render();$("#library-title").scrollIntoView({block:"nearest"});$("#game-search").focus(); }
+  function select(id) {
+    // Rerender replaces the row; retain its stable game_id + list for return focus.
+    const trigger=document.activeElement;
+    const container=trigger?.closest?.("#game-library, #running-games");
+    returnFocus=container && trigger?.dataset?.gameId===id
+      ? {id, list:container.id} : {id, list:"game-library"};
+    selected=id;render();$("#game-detail").focus();
+  }
+  function closeDetail() {
+    const target=returnFocus;selected=null;returnFocus=null;render();
+    const row=target && Array.from(document.querySelectorAll("#"+target.list+" .gm-game-row"))
+      .find(item=>item.dataset.gameId===target.id);
+    // If filters/catalog changed, the old game may be gone; use search as fallback.
+    (row||$("#game-search")).focus({preventScroll:true});
+  }
   async function action(name,game) {
     error("");
     if (name==="reconcile") {
