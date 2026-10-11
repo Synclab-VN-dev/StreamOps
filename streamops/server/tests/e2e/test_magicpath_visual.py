@@ -365,8 +365,18 @@ def test_collect_extra_owner_review_candidates_not_approved_goldens(
 
     p=browser.new_page(viewport={"width":390,"height":844},device_scale_factor=1)
     try:
-        fake.set_library([game("Diablo IV","steam:2344520","RUNNING")] +
-              [game("Running "+str(i),"steam:"+str(200+i),"RUNNING") for i in range(4)])
+        # Align the SOURCE scenario's five running/12 registered fixture;
+        # never inflate visual diffs by comparing unrelated mock inventories.
+        running=["Diablo IV","Hollow Knight: Silksong","Minecraft",
+                 "Hades II","Path of Exile 2"]
+        fake.set_library([
+            game(name,"steam:2344520" if i==0 else "steam:"+str(200+i),"RUNNING")
+            for i,name in enumerate(running)
+        ] + [
+            game("Other registered "+str(i),"steam:"+str(300+i),"STOPPED")
+            for i in range(7)
+        ])
+        fake.steam.update(pid=6432,uptime_seconds=13335)
         p.goto(base+"/steam")
         expect(p.locator("#steam-running-games .gm-show-more")).to_be_visible()
         p.locator("#steam-running-games .gm-show-more").click()
@@ -396,6 +406,11 @@ def test_collect_extra_owner_review_candidates_not_approved_goldens(
 
     p=browser.new_page(viewport={"width":390,"height":844},device_scale_factor=1)
     try:
+        fake.set_library([game("Diablo IV","steam:2344520","RUNNING")] + [
+            game("Other registered "+str(i),"steam:"+str(300+i),"STOPPED")
+            for i in range(7)
+        ])
+        fake.steam.update(pid=6432,uptime_seconds=13335)
         p.goto(base+"/steam")
         expect(p.locator("#steam-state")).to_have_text("Running")
         p.locator("#steam-runtime-details summary").click()
