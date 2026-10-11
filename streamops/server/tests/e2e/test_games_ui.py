@@ -65,7 +65,12 @@ class FakeContract:
     async def dispatch(self, peers, name, data):
         msg = {"type": "event", "event": name, "data": deepcopy(data)}
         for ws in tuple(peers):
-            await ws.send_json(msg)
+            try:
+                await ws.send_json(msg)
+            except WebSocketDisconnect:
+                # A browser may close between snapshot fan-out and unsubscribe.
+                # Drop only the disconnected peer, retaining all live observers.
+                peers.discard(ws)
 
     def send_change(self, state):
         async def update():
