@@ -124,6 +124,10 @@ jobs:
               $preflight[0].lifecycle_actions_performed -ne 0 -or $preflight[0].summary.FAIL -ne 0) {
             throw 'UAT Preflight case classification is unsafe/inaccurate'
           }
+          # GitHub's pwsh wrapper propagates LASTEXITCODE even after checking it.
+          # Reset only CI's expected negative-test exit, not the UAT report.
+          $global:LASTEXITCODE = 0
+          exit 0
 
       - name: Install D4Planner dev dependencies
         if: steps.changes.outputs.d4planner == 'true'
