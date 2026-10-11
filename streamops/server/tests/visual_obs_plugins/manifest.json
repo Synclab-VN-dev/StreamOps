@@ -13,7 +13,7 @@
     {
       "kind": "plugin",
       "component_id": "458351046272638976",
-      "revision_id": "458975004185468928",
+      "revision_id": "459906255415296000",
       "files": [
         {
           "path": "originals/plugin/src/App.tsx",
@@ -21,7 +21,7 @@
         },
         {
           "path": "originals/plugin/src/components/generated/StreamOpsOBSPluginManager.tsx",
-          "git_blob_sha1": "ccb07d8cdc4647bd8d50aec2db5f059c4c254ad5"
+          "git_blob_sha1": "3a01b444409b9adf2aa5646765aa58445511f591"
         },
         {
           "path": "originals/plugin/src/index.css",
@@ -29,8 +29,8 @@
         }
       ],
       "preview": {
-        "path": "references/plugin-458975004185468928.jpg",
-        "git_blob_sha1": "f92f5349d474338064281474951c049c80feadae"
+        "path": "references/plugin-459906255415296000.jpg",
+        "git_blob_sha1": "ee5ff0f49f964ab552c0f9a7977da96cf39c82eb"
       }
     },
     {
@@ -149,5 +149,5 @@
     "recovery-required",
     "legacy-adopted"
   ],
-  "note": "MagicPath original has scenario state without external selector. Missing source-renderable states require owner-approved design extension; test cannot invent references."
+  "note": "MagicPath revision 459906255415296000 removes the extra fake OpenStream OBS Plugin sample and reflects 1 registry plugin. Inline confirm and other design behaviors remain UNCHANGED and unapproved; uncovered states still block approval."
 }

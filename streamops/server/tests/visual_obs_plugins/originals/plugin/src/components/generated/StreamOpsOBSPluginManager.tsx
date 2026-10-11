@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { Puzzle, SlidersHorizontal, RadioTower, Camera, ChevronDown } from "lucide-react";
+import { Puzzle, SlidersHorizontal, RadioTower, ChevronDown } from "lucide-react";
 type Tone = "ok" | "warn" | "bad" | "neutral" | "blue";
-type PluginState = "installed" | "update" | "not-installed";
 function Pill({
   children,
   tone = "neutral"
@@ -33,7 +32,6 @@ export const StreamOpsOBSPluginManager = () => {
   const [restartRequired, setRestartRequired] = useState(true);
   const [openPlugin, setOpenPlugin] = useState<string | null>("multi");
   const [multiInstalled, setMultiInstalled] = useState(false);
-  const [demoState, setDemoState] = useState<PluginState>("update");
   const [activityOpen, setActivityOpen] = useState(false);
   const [scenario, setScenario] = useState("normal");
   const [confirmAction, setConfirmAction] = useState<string | null>(null);
@@ -45,10 +43,6 @@ export const StreamOpsOBSPluginManager = () => {
     setTimeout(() => {
       setBusy(null);
       if (label === "Restart OBS") setRestartRequired(false);
-      if (label === "Update") {
-        setDemoState("installed");
-        setRestartRequired(true);
-      }
       if (label === "Install") {
         setMultiInstalled(true);
         setRestartRequired(true);
@@ -57,8 +51,6 @@ export const StreamOpsOBSPluginManager = () => {
       setTimeout(() => setNotice(null), 1400);
     }, 700);
   };
-  const stateLabel = demoState === "update" ? "Update available" : demoState === "not-installed" ? "Not installed" : restartRequired ? "Restart required" : "Verified";
-  const stateTone: Tone = demoState === "update" || restartRequired ? "warn" : demoState === "not-installed" ? "neutral" : "ok";
   return <main className="min-h-screen bg-[#f5f6f8] text-zinc-950">
     <div className="mx-auto w-full max-w-md px-4 pb-10 pt-4">
       <header className="mb-4">
@@ -83,38 +75,17 @@ export const StreamOpsOBSPluginManager = () => {
           <button onClick={() => action("Refresh inventory")} disabled={!!busy} className="rounded-xl border border-zinc-200 px-3 py-2 text-xs font-semibold disabled:opacity-40">Refresh</button>
         </div>
         <div className="mt-4 grid grid-cols-3 gap-2">
-          <Stat label="Managed" value="2" /><Stat label="Installed" value={multiInstalled ? "2" : "1"} /><Stat label="Attention" value={multiInstalled ? restartRequired ? "1" : "0" : "1"} />
+          <Stat label="Managed" value="1" /><Stat label="Installed" value={multiInstalled ? "1" : "0"} /><Stat label="Attention" value={multiInstalled && restartRequired ? "1" : "0"} />
         </div>
       </section>
 
-      {restartRequired && demoState === "installed" && <section className="mb-3 rounded-3xl border border-amber-200 bg-amber-50 p-4">
+      {restartRequired && multiInstalled && <section className="mb-3 rounded-3xl border border-amber-200 bg-amber-50 p-4">
         <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-amber-900">OBS restart required</p><p className="mt-1 text-xs leading-5 text-amber-800">Plugin files changed. Restart OBS before verification.</p></div><Pill tone="warn">Pending</Pill></div>
         <button onClick={() => action("Restart OBS")} disabled={!!busy} className="mt-3 w-full rounded-2xl bg-zinc-950 px-3 py-3 text-sm font-semibold text-white disabled:opacity-40">{busy === "Restart OBS" ? "Restarting…" : "Restart OBS"}</button>
       </section>}
 
       <div className="mb-3 flex items-center gap-2 px-1"><Puzzle className="h-4 w-4 text-zinc-600" aria-hidden="true" /><h2 className="text-sm font-semibold">Managed plugins</h2><div className="h-px flex-1 bg-zinc-200" /></div>
       <div className="space-y-3">
-        <section className="overflow-hidden rounded-3xl border border-black/5 bg-white shadow-sm">
-          <button onClick={() => setOpenPlugin(openPlugin === "openstream" ? null : "openstream")} className="w-full p-4 text-left">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-50"><Camera className="h-5 w-5 text-indigo-600" aria-hidden="true" /></span><h2 className="text-[15px] font-semibold">OpenStream OBS Plugin</h2><Pill tone="neutral">Design fixture</Pill><Pill tone={stateTone}>{stateLabel}</Pill></div><p className="mt-1 text-xs text-zinc-500">StreamOps camera rotation and OBS integration</p></div>
-              <span className="text-zinc-400">{openPlugin === "openstream" ? "⌃" : "⌄"}</span>
-            </div>
-            <div className="mt-4 grid grid-cols-3 gap-2"><Stat label="Installed" value={demoState === "not-installed" ? "—" : demoState === "update" ? "1.0.1" : "1.0.2"} /><Stat label="Available" value="1.0.2" /><Stat label="OBS" value="32.2.1" /></div>
-          </button>
-          {openPlugin === "openstream" && <div className="border-t border-zinc-100 px-4 pb-4 pt-3">
-            <div className="rounded-2xl bg-zinc-50 px-3 py-1">
-              {[["Package", "openstream-obs-plugin"], ["Source", "StreamOps managed release"], ["Compatibility", "OBS 32.x · Windows x64"], ["Last verification", restartRequired ? "Pending restart" : "PASS · plugin loaded"]].map(([l, v]) => <div key={l} className="flex gap-3 border-b border-zinc-100 py-2.5 last:border-0"><span className="w-28 shrink-0 text-xs text-zinc-500">{l}</span><span className="min-w-0 flex-1 break-words text-xs font-medium">{v}</span></div>)}
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {demoState === "update" && <button onClick={() => setConfirmAction("Update")} disabled={!!busy || scenario === "blocked"} className="rounded-2xl bg-zinc-950 px-3 py-3 text-sm font-semibold text-white disabled:opacity-40">{busy === "Update" ? "Updating…" : "Update"}</button>}
-              {demoState === "not-installed" && <button onClick={() => setConfirmAction("Install")} disabled={!!busy} className="rounded-2xl bg-zinc-950 px-3 py-3 text-sm font-semibold text-white disabled:opacity-40">Install</button>}
-              {demoState === "installed" && !restartRequired && <button onClick={() => action("Verify")} disabled={!!busy} className="rounded-2xl bg-zinc-950 px-3 py-3 text-sm font-semibold text-white disabled:opacity-40">Verify</button>}
-              <button onClick={() => setConfirmAction("Rollback")} disabled={!!busy || demoState === "not-installed" || scenario === "blocked"} className="rounded-2xl border border-zinc-200 px-3 py-3 text-sm font-semibold disabled:opacity-40">Rollback</button>
-            </div>
-          </div>}
-        </section>
-
         <section className="overflow-hidden rounded-3xl border border-black/5 bg-white shadow-sm">
           <button onClick={() => setOpenPlugin(openPlugin === "multi" ? null : "multi")} className="w-full p-4 text-left">
             <div className="flex items-start justify-between gap-3"><div><div className="flex items-center gap-2"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50"><RadioTower className="h-5 w-5 text-blue-600" aria-hidden="true" /></span><h2 className="text-[15px] font-semibold">Multiple RTMP Outputs</h2><Pill tone={multiInstalled ? restartRequired ? "warn" : "ok" : "neutral"}>{multiInstalled ? restartRequired ? "Restart required" : "Verified" : "Not installed"}</Pill></div><p className="mt-1 text-xs text-zinc-500">Multi-destination streaming plugin</p></div><span className="text-zinc-400">{openPlugin === "multi" ? "⌃" : "⌄"}</span></div>
@@ -139,7 +110,7 @@ export const StreamOpsOBSPluginManager = () => {
           </button>
           {activityOpen && <div className="border-t border-zinc-100 px-4 pb-4 pt-3">
             <ol className="space-y-2">
-              {[["23:31:18", "plugin.verify", "OpenStream OBS Plugin", "PASS", "ok"], ["23:31:12", "obs.restart", "OBS Runtime", "READY", "ok"], ["23:30:58", "plugin.update", "OpenStream OBS Plugin · 1.0.1 → 1.0.2", "SUCCESS", "ok"], ["23:30:42", "plugin.inventory", "2 managed plugins detected", "SUCCESS", "ok"], ["23:30:40", "plugin.manager", "Plugin Manager loaded", "SUCCESS", "ok"]].map(([time, op, detail, result, tone]) => <li key={time + op} className="rounded-2xl bg-zinc-50 px-3 py-3">
+              {[["23:31:18", "plugin.verify", "Multiple RTMP Outputs", "PASS", "ok"], ["23:31:12", "obs.restart", "OBS Runtime", "READY", "ok"], ["23:30:58", "plugin.update", "Multiple RTMP Outputs", "SUCCESS", "ok"], ["23:30:42", "plugin.inventory", "1 managed plugin detected", "SUCCESS", "ok"], ["23:30:40", "plugin.manager", "Plugin Manager loaded", "SUCCESS", "ok"]].map(([time, op, detail, result, tone]) => <li key={time + op} className="rounded-2xl bg-zinc-50 px-3 py-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0"><p className="text-xs font-semibold">{op}</p><p className="mt-1 break-words text-[11px] leading-4 text-zinc-500">{time} · {detail}</p></div>
                   <Pill tone={tone as Tone}>{result}</Pill>

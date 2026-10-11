@@ -14,7 +14,7 @@ REQUIRED_DESIGN_STATES={
     "loading","empty","offline","blocked","verify-failed",
     "rollback-failed","recovery-required","legacy-adopted",
 }
-IDS={"plugin":("458351046272638976","458975004185468928"),
+IDS={"plugin":("458351046272638976","459906255415296000"),
      "dashboard":("456064390102405120","458892152907374592")}
 
 def blob_sha(b):
@@ -113,3 +113,12 @@ def test_visual_comparator_detects_large_theme_and_geometry_regression():
     ImageDraw.Draw(altered).rectangle((0,0,390,650),fill="magenta")
     diff=ImageChops.difference(original,altered)
     assert sum(ImageStat.Stat(diff).mean)/(255*3)>.08
+
+
+def test_magicpath_plugin_reference_contains_only_registry_backed_plugin_demo():
+    original=(ROOT/"originals/plugin/src/components/generated/StreamOpsOBSPluginManager.tsx").read_text(encoding="utf-8")
+    assert "OpenStream OBS Plugin" not in original
+    assert "openstream-obs-plugin" not in original
+    assert original.count(">Multiple RTMP Outputs</h2>")==1
+    assert '<Stat label="Managed" value="1" />' in original
+    assert "{confirmAction && <section" in original, "Do not change confirmation UX without owner approval"
