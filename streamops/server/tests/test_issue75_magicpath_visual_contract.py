@@ -7,6 +7,13 @@ from pathlib import Path
 import pytest
 
 ROOT=Path(__file__).resolve().parent/"visual_obs_plugins"
+# Required UI states cannot be removed from the review manifest to bypass
+# visual parity. If the pinned design cannot render them, keep them blocked.
+REQUIRED_DESIGN_STATES={
+    "normal","expanded","confirm","plugin-card",
+    "loading","empty","offline","blocked","verify-failed",
+    "rollback-failed","recovery-required","legacy-adopted",
+}
 IDS={"plugin":("458351046272638976","458975004185468928"),
      "dashboard":("456064390102405120","458892152907374592")}
 
@@ -46,7 +53,13 @@ def validate_source(manifest):
     assert len(cases)>=9
     assert len({c["label"] for c in cases})==len(cases)
     assert {(c["width"],c["height"]) for c in cases}=={(360,800),(390,844),(768,1024),(1440,900)}
-    assert {c["state"] for c in cases}>={"normal","expanded","confirm","plugin-card"}
+    covered={c["state"] for c in cases}
+    uncovered=set(manifest["uncovered_design_states"])
+    assert covered.isdisjoint(uncovered),"A state cannot be both covered and blocked"
+    assert REQUIRED_DESIGN_STATES <= covered | uncovered,(
+        "Required MagicPath states were silently removed from the coverage gate"
+    )
+    assert covered>={"normal","expanded","confirm","plugin-card"}
     assert all(c["label"]==f'{c["design"]}-{c["state"]}-{c["width"]}x{c["height"]}' for c in cases)
     assert manifest["rendering"]["mean_rgb_limit"]==.08
     assert manifest["rendering"]["reference_drift_limit"]==.015
@@ -67,6 +80,9 @@ def validate_approval(manifest,root=ROOT):
         assert data.startswith(b"\x89PNG\r\n\x1a\n"),label
         assert hashlib.sha256(data).hexdigest()==digest,label
     assert not manifest["uncovered_design_states"],"MagicPath design state references missing"
+    assert REQUIRED_DESIGN_STATES <= {c["state"] for c in manifest["required_cases"]},(
+        "Every required design state must have its own owner-approved visual case"
+    )
 
 def test_original_magicpath_source_and_preview_hashes():
     validate_source(load())
@@ -81,6 +97,13 @@ def test_missing_approval_or_goldens_cannot_pass(tmp_path):
     impostor["approval"].update(approved_by="fake",approved_at="2026",review_url="https://github.com")
     with pytest.raises(AssertionError,match="Incomplete Golden"):
         validate_approval(impostor,tmp_path)
+
+def test_coverage_manifest_cannot_silently_drop_unrenderable_design_states():
+    manifest=copy.deepcopy(load())
+    manifest["uncovered_design_states"]=[]
+    with pytest.raises(AssertionError,match="silently removed"):
+        validate_source(manifest)
+
 
 def test_visual_comparator_detects_large_theme_and_geometry_regression():
     from PIL import Image,ImageDraw,ImageChops,ImageStat
