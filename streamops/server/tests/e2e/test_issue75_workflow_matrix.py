@@ -622,7 +622,7 @@ def test_issue75_backend_adoption_required_does_not_fake_install(page:Page,live_
     fake=ScenarioWS(page,plugin_state="LEGACY_ADOPTED",installed_version=None)
     fake.fail_operation="plugin_adoption_required"
     launch(page,live_server,fake)
-    act(page,"Install plugin")
+    act(page,"Install approved release")
     confirm(page)
     expect(page.locator("#plugin-notice")).to_contain_text("plugin_adoption_required")
     expect(page.locator(".plugin-card")).to_contain_text("Legacy baseline adopted")
