@@ -1,0 +1,80 @@
+name: Issue75 FE-BE Exact-HEAD Integration
+on:
+  pull_request:
+    paths:
+      - 'streamops/server/**'
+      - 'pyproject.toml'
+      - '.github/workflows/issue75-fe-be-contract-integration.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  combined-contract:
+    name: Issue75 / FE+BE isolated contract E2E
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      # Canonical PR #52 BE v2 HEAD, deliberately fixed for reproducibility.
+      ISSUE75_BE_SHA: '70acbb4037405763e1fc07fa07cd7fd09817257b'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Assemble disposable exact-HEAD integration worktree
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $fe = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify FE HEAD' }
+          Write-Host "FE HEAD: $fe"
+          Write-Host "BE HEAD: $env:ISSUE75_BE_SHA"
+          $dir = Join-Path $env:RUNNER_TEMP 'issue75-combined'
+          git fetch origin $env:ISSUE75_BE_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot fetch fixed BE HEAD' }
+          git worktree add --detach $dir $fe
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot create isolated worktree' }
+          Set-Location $dir
+          # This merge is local to a disposable unpushed CI worktree ONLY.
+          # A conflict is a real integration failure, never auto-resolved.
+          git merge --no-commit --no-ff $env:ISSUE75_BE_SHA
+          if ($LASTEXITCODE -ne 0) {
+            git status --short
+            throw 'FE+BE exact-HEAD merge conflict; do not update either branch automatically'
+          }
+          $combined=(git status --porcelain | Measure-Object).Count
+          Write-Host "Temporary uncommitted integration tree, changed entries: $combined"
+          "ISSUE75_COMBINED=$dir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated combined dependencies
+        shell: pwsh
+        run: |
+          Set-Location $env:ISSUE75_COMBINED
+          python -m pip install '.[server,dev]'
+          if ($LASTEXITCODE -ne 0) { throw 'Combined dependencies failed' }
+          python -m playwright install chromium
+          if ($LASTEXITCODE -ne 0) { throw 'Combined Chromium failed' }
+      - name: FE model, envelopes and fail-closed Unit tests
+        shell: pwsh
+        run: |
+          Set-Location $env:ISSUE75_COMBINED
+          node --test streamops/server/tests/issue75_core.test.mjs streamops/server/tests/issue75_store.test.mjs streamops/server/tests/issue75_extended_core.test.mjs streamops/server/tests/issue75_extended_store.test.mjs streamops/server/tests/issue75_wsclient.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'FE models fail on exact FE+BE tree' }
+      - name: BE canonical REST-WS parity + FE real browser E2E
+        shell: pwsh
+        run: |
+          Set-Location $env:ISSUE75_COMBINED
+          python -m pytest -q --junitxml=$env:RUNNER_TEMP/issue75-combined-junit.xml streamops/server/tests/test_obs_plugin_ws_contract_v2.py streamops/server/tests/test_obs_plugin_api.py streamops/server/tests/test_issue75_plugin_ui.py streamops/server/tests/e2e/test_issue75_plugin_manager.py streamops/server/tests/e2e/test_issue75_workflow_matrix.py streamops/server/tests/e2e/test_issue75_recovery_followup.py
+          if ($LASTEXITCODE -ne 0) { throw 'Combined contract or FE E2E failed' }
+      - name: Preserve integration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue75-combined-${{ github.sha }}
+          path: ${{ runner.temp }}/issue75-combined-junit.xml
+          if-no-files-found: warn
+          retention-days: 30
