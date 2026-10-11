@@ -90,7 +90,7 @@ try {
     & $Python -m d4planner.cli controller profiles *> $profilesLog
     $profilesExit = $LASTEXITCODE
     $profilesFound = $profilesExit -eq 0 -and (
-        (Get-Content -LiteralPath $profilesLog -Raw) -match '\\bxbox16\\b'
+        (Get-Content -LiteralPath $profilesLog -Raw) -match 'xbox16'
     )
     Add-Check 'PF-03A' 'controller profiles includes xbox16' @{
         exitCode=$profilesExit; log=$profilesLog
