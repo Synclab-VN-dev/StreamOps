@@ -92,6 +92,10 @@ def test_windows_launcher_has_no_plaintext_token_cli_contract():
         encoding="utf-8"
     )
     assert "Read-Host" in start and "-AsSecureString" in start
+    assert "[switch]$GitHubTokenFromClipboard" in start
+    assert "Read-GitHubTokenFromClipboard" in start
+    assert "Set-Clipboard -Value" in start
+    assert "Get-Clipboard -ErrorAction Stop" in start
     assert "ConvertFrom-SecureString" in start
     assert "protect-obs-plugin-token-dir.ps1" in start
     assert "Set-Acl -LiteralPath $secretDir" not in start
@@ -178,3 +182,104 @@ def test_powershell_token_directory_acl_without_admin():
         canary = secret_dir / "handoff.canary"
         canary.write_text("not a real token", encoding="utf-8")
         assert canary.read_text(encoding="utf-8") == "not a real token"
+
+
+@pytest.mark.parametrize(
+    ("case", "success"),
+    [
+        ("valid", True),
+        ("empty", False),
+        ("spaces", False),
+        ("multiline", False),
+        ("clearfail", False),
+    ],
+)
+def test_windows_clipboard_reader_uses_secure_string_and_clears_clipboard(
+    tmp_path, case, success,
+):
+    """Execute the EXACT production PowerShell clipboard function with fake input.
+
+    Avoid reading the CI runner's real clipboard and never use real credentials.
+    """
+    import shutil
+    import subprocess
+    import sys
+
+    if sys.platform != "win32":
+        pytest.skip("Windows clipboard acceptance gate")
+    exe = shutil.which("pwsh") or shutil.which("powershell")
+    assert exe, "Windows CI must provide PowerShell"
+    root = Path(__file__).resolve().parents[3]
+    source = root / "scripts/devices/a-windows/start-streamops-node.ps1"
+    harness = tmp_path / "clipboard-test.ps1"
+    harness.write_text(r'''
+param([string]$Source, [string]$Scenario)
+$ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
+$tokens = $null
+$parseErrors = $null
+$ast = [Management.Automation.Language.Parser]::ParseFile(
+    $Source, [ref]$tokens, [ref]$parseErrors
+)
+if ($parseErrors.Count -ne 0) { throw "Production script has parse errors" }
+$functionAst = $ast.Find({
+    param($node)
+    ($node -is [Management.Automation.Language.FunctionDefinitionAst]) -and
+    ($node.Name -eq "Read-GitHubTokenFromClipboard")
+}, $true)
+if ($null -eq $functionAst) { throw "No production clipboard reader" }
+. ([scriptblock]::Create($functionAst.Extent.Text))
+
+$script:values = switch ($Scenario) {
+    "valid" { @("TEST-12345") }
+    "empty" { @("") }
+    "spaces" { @("TEST 12345") }
+    "multiline" { @("TEST-123", "ANOTHER") }
+    "clearfail" { @("TEST-12345") }
+    default { throw "Unknown test case" }
+}
+$script:clears = 0
+$script:clearedValue = $null
+function Get-Clipboard {
+    foreach ($entry in $script:values) { Write-Output $entry }
+}
+function Set-Clipboard {
+    param([string]$Value)
+    $script:clears++
+    if ($Scenario -eq "clearfail") {
+        throw "synthetic clipboard denied"
+    }
+    $script:clearedValue = $Value
+}
+$accepted = $false
+$token = $null
+try {
+    $token = Read-GitHubTokenFromClipboard
+    if ($null -eq $token -or $token.GetType().Name -ne "SecureString" -or
+        $token.Length -ne 10) {
+        throw "Reader returned an incorrect SecureString"
+    }
+    $accepted = $true
+}
+catch {
+    if ($Scenario -eq "valid") { throw }
+}
+finally {
+    if ($null -ne $token) { $token.Dispose() }
+}
+if ($Scenario -eq "valid" -and -not $accepted) { throw "Rejected good input" }
+if ($Scenario -ne "valid" -and $accepted) { throw "Accepted bad input" }
+if ($script:clears -ne 1) { throw "Must clear clipboard on both success and failure" }
+if ($Scenario -ne "clearfail" -and $script:clearedValue -ne " ") {
+    throw "Active clipboard was not cleared"
+}
+Write-Output "CLIPBOARD_CASE_PASS"
+''', encoding="utf-8")
+    proc = subprocess.run(
+        [exe, "-NoProfile", "-NonInteractive", "-File", str(harness),
+         "-Source", str(source), "-Scenario", case],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    assert "CLIPBOARD_CASE_PASS" in proc.stdout
+    assert "TEST-12345" not in proc.stdout + proc.stderr
