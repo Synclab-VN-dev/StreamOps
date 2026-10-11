@@ -179,3 +179,20 @@ test('UNIT error matrix: all BE lifecycle errors show safe operator guidance wit
   }
   assert.match(typedError({code:'plugin_rollback_failed'}).message,/Rollback failed/);
 });
+
+test('UNIT exhaustive state matrix: output and connection guards',()=>{
+  const cases=['NOT_INSTALLED','UNMANAGED','LEGACY_ADOPTED','RECOVERY_REQUIRED','INSTALLED','LOADED','INCOMPATIBLE','ERROR','VERIFIED','UPDATE_AVAILABLE','RESTART_REQUIRED','VERIFY_FAILED','FAILED','FUTURE_STATE'];
+  for(const state of cases){
+    const p=plugin(state,{rollback:{available:true}});
+    for(const [runtime,connected,busy] of [
+      [obs('STOPPED'),false,false],[obs('STOPPED'),true,true],
+      [obs('READY',true),true,false],[obs('READY',false,true),true,false],
+      [null,true,false]
+    ]){
+      const actions=enabled(p,catalog,runtime,connected,busy);
+      for(const op of ['adopt','install','update','rollback']){
+        assert.equal(actions[op].enabled,false,state+' / '+op);
+      }
+    }
+  }
+});
