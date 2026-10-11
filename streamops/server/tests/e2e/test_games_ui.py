@@ -727,6 +727,7 @@ def test_heartbeat_is_read_only_deduplicated_and_resyncs_epoch_gap(page: Page, g
     count=page.locator("#activity-log li").count()
     before=len([op for op,_ in fake.received if op=="games.list"])
     fake.emit("games.heartbeat",{"epoch":fake.epoch})
+    page.wait_for_function("window.StreamOpsGames.client.cachedEvents.get('games.heartbeat')?.epoch === 'test-server-epoch'")
     expect(page.locator("#activity-log li")).to_have_count(count)
     assert len([op for op,_ in fake.received if op=="games.list"]) == before
     fake.emit("games.heartbeat",{"epoch":"node-restarted-unknown"})
