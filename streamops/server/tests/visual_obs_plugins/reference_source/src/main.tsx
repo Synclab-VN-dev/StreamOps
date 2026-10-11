@@ -1,0 +1,10 @@
+import React from "react";
+import {createRoot} from "react-dom/client";
+import {StreamOpsOBSPluginManager} from "./components/generated/StreamOpsOBSPluginManager";
+import {StreamOpsMobileDashboard} from "./components/generated/StreamOpsMobileDashboard";
+import "./index.css";
+const design=new URLSearchParams(location.search).get("design");
+if(!["plugin","dashboard"].includes(design||"")) throw new Error("Invalid pinned design");
+const root=document.getElementById("root");
+if(!root)throw new Error("Missing root");
+createRoot(root).render(design==="plugin"?<StreamOpsOBSPluginManager/>:<StreamOpsMobileDashboard/>);
