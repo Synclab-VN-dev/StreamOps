@@ -76,6 +76,7 @@ jobs:
               $_ -like "streamops/server/web/steam*" -or
               $_ -like "streamops/server/web/ws-client*" -or
               $_ -like "streamops/server/tests/e2e/test_games_ui.py" -or
+              $_ -eq "streamops/server/tests/e2e/test_games_fe_be_integration.py" -or
               $_ -like "streamops/server/tests/visual_magicpath/*" -or
               $_ -eq "streamops/server/tests/test_magicpath_visual_contract.py" -or
               $_ -eq "streamops/server/tests/e2e/test_magicpath_visual.py" -or
@@ -221,7 +222,7 @@ jobs:
         run: python -m pytest -q streamops/server/tests/e2e/test_steam.py
       - name: FE-G3 — Games UI browser states and observer fanout
         if: steps.changes.outputs.gameui == 'true'
-        run: python -m pytest -q streamops/server/tests/e2e/test_games_ui.py
+        run: python -m pytest -q streamops/server/tests/e2e/test_games_ui.py streamops/server/tests/e2e/test_games_fe_be_integration.py
       - name: FE-G4 — Lifecycle and reconnect recovery
         if: steps.changes.outputs.gameui == 'true'
         run: python -m pytest -q streamops/server/tests/e2e/test_games_ui.py -k 'lifecycle or reconnect or state_model'
