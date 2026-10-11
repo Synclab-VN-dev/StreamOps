@@ -648,6 +648,40 @@ Or manage it from the repository through an on-demand Scheduled Task:
 .\scripts\devices\a-windows\stop-streamops-node.ps1
 ```
 
+### GitHub token at Windows node startup (OBS Plugin Manager #47)
+
+The managed OBS Plugin Manager defaults to `Synclab-VN-dev/StreamOps-OBS-Plugins`.
+When starting or replacing a node using `start-streamops-node.ps1`, PowerShell prompts
+for a **GitHub read-only token** using `Read-Host -AsSecureString` (no plaintext CLI flag).
+
+```powershell
+.\scripts\devices\a-windows\start-streamops-node.ps1 -Port 8766 -TaskName "StreamOps-I47-UAT" -DataDir .streamops\issue47-uat
+# Paste a read-only token into the masked prompt; no token appears in task args.
+```
+
+The token travels to the interactive desktop Scheduled Task via a **one-use,
+DPAPI CurrentUser-encrypted handoff**, not through command-line arguments.
+The invoking shell must run under the **same Windows account** as the
+interactive desktop task. It is immediately removed from disk after handoff,
+and is held only in the server process environment during this process's life.
+Starting a new process needs a new prompt. For SSH input use an interactive TTY.
+
+Press Enter to skip token entry; or use `-NoGitHubTokenPrompt` for a
+noninteractive diagnostics-only startup. The node continues running, but the
+managed catalog safely fails closed with HTTP 503 `plugin_github_token_missing`
+and logs a warning in `.streamops\node\logs\node-*.stderr.log` (or the
+configured DataDir's `logs`). Never paste the token into the ticket, process
+arguments, commands, plaintext files or logs. Existing environment-based
+`-ObsPluginGitHubTokenEnv` remains supported for managed deployment.
+
+The REST catalog `GET /api/v1/obs/plugins/available` and equivalent
+WebSocket operation `obs_plugin.available` carry typed, secret-free errors
+(`plugin_github_token_missing`, `plugin_github_auth_failed`,
+`plugin_github_rate_limited`) for clients to show to operators.
+This does not resolve independent `plugin_status_failed` issues in local
+OBS plugin file/journal/process inspection.
+
+
 Real-OBS acceptance uses a separate node on port `8785` with the isolated data
 directory `.streamops\pr19-node`. The acceptance harness can recover an OBS process
 that becomes unresponsive to WebSocket requests immediately after a proven-idle
