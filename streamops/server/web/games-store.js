@@ -20,6 +20,11 @@
     emit() { for (const callback of this.listeners) callback(this); }
     connection(state) {
       this.connected = state === "connected";
+      // An interrupted operation cannot be called successful (or safely
+      // retried) until its operation_id is independently reconciled.
+      if (!this.connected) for (const [id, op] of this.operations)
+        if (["PENDING","RUNNING"].includes(String(op.status).toUpperCase()))
+          this.operations.set(id, {...op, status:"UNKNOWN", phase:"RECOVERY_REQUIRED", code:"ws_disconnected"});
       this.stale = true; this.loading = this.connected; this.error = this.connected ? "" : "WebSocket offline";
       this.emit();
     }
@@ -54,7 +59,13 @@
     operation(data) {
       if (!data || typeof (data.operation_id || data.id) !== "string") return;
       const key = data.operation_id || data.id;
-      this.operations.set(key, Object.assign({}, data, {operation_id:key}));
+      const previous = this.operations.get(key);
+      if (previous && Number.isInteger(previous.revision) && Number.isInteger(data.revision)
+          && data.revision < previous.revision) return;
+      // Out-of-order websocket/cached events must not undo a terminal result.
+      if (previous && ["SUCCEEDED","FAILED"].includes(String(previous.status).toUpperCase())
+          && ["PENDING","RUNNING"].includes(String(data.status).toUpperCase())) return;
+      this.operations.set(key, Object.assign({}, previous || {}, data, {operation_id:key}));
       if (data.epoch && this.epoch && data.epoch !== this.epoch) this.needsResync = true;
       if (data.epoch === this.epoch && Number.isInteger(data.revision) && data.revision > this.revision)
         this.revision = data.revision;
