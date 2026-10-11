@@ -190,13 +190,41 @@ class Supervisor:
             self._safe_emit(f"runtime.{target.value.casefold()}", event_data)
 
     def _create_session(self) -> None:
+        metadata = {
+            "nvdaVersion": self.runtime.nvda_version(),
+            "isolated": self.isolated,
+        }
+        if self.controller_profile is not None:
+            profile = self.controller_profile
+            # Capture the complete contract and checksum at session creation.
+            # Later package changes must never rewrite historical metadata.
+            metadata["controllerProfile"] = {
+                "layoutId": profile.layout_id,
+                "alias": profile.alias,
+                "mappingSource": profile.mapping_source,
+                "sha256": profile.sha256,
+                "digital": [
+                    {
+                        "controlId": entry.control_id,
+                        "key": entry.key,
+                        "virtualKey": entry.virtual_key,
+                        "captureEnabled": entry.capture_enabled,
+                    }
+                    for entry in profile.digital
+                ],
+                "analog": [
+                    {
+                        "controlId": entry.control_id,
+                        "axes": list(entry.axes),
+                        "captureEnabled": entry.capture_enabled,
+                    }
+                    for entry in profile.analog
+                ],
+            }
         self.store = EventStore.create(
             self.paths,
             silent=self.silent,
-            metadata={
-                "nvdaVersion": self.runtime.nvda_version(),
-                "isolated": self.isolated,
-            },
+            metadata=metadata,
         )
         self.status.session_id = self.store.session.session_id
         self.status.session_dir = str(self.store.session.directory)
