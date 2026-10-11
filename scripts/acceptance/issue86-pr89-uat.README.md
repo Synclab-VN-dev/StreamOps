@@ -60,3 +60,15 @@ GitHub `Tests / windows` includes a dedicated step running `SelfTest` and the **
 When changing this runner, add a short issue/PR revision comparison with: previous root cause, code changed, proven improvement, still unverified, tests run, expected next owner output. Do not send Owner a new script on the basis of static checks alone.
 
 **Safety / scope:** No merge, release, GitHub Ruleset changes, deployment or real lifecycle action is authorized by this harness. PR #89 remains Draft until separate owner decisions.
+
+## Preflight incident — 2026-10-11, Windows A report
+
+Earlier runner output: `PRE-HEAD BLOCKED git HEAD unavailable`, `PRE-DATADIR / PRE-TASK / PRE-PORT BLOCKED`; summary `PASS=2 FAIL=0 BLOCKED=15`. This is an **environment-not-prepared** result, not a product failure. The path `C:\Workspace\StreamOps-PR89-UAT` was an **example**, not a preconfirmed checkout on Host A.
+
+**Runner revision improvement (v3):**
+- Previous limitation: catch-all Git HEAD error did not distinguish missing worktree, an existing non-Git folder, unavailable Git, bad branch or mismatched commit.
+- Revised: classify exact input path before Git commands; shallow, **read-only** discovery of existing PR89 checkouts in `C:\Workspace` and `%USERPROFILE%\codex-work`; list candidates in `report.json` and a `PRE-WORKTREE-CANDIDATES` result. **No automatic branch checkout or runtime startup.** Added missing-directory/non-Git negative-path SelfTests.
+- Evidence: [#89 Windows CI](https://github.com/Synclab-VN-dev/StreamOps/pull/89/checks) must PASS the new packaged runner SelfTest and negative Preflight on the **new HEAD** before this revision is given to the owner.
+- Unverified: the owner-specific actual path, creation of PR89 worktree, Windows task/DataDir/runtime setup, live HTTP/WS on A, Android B interactions. None may be inferred from CI.
+- Targeted next run: `-Mode Preflight` **only**; no need to repeat previously successful CI product/visual tests. If a candidate is found, use that path only after matching branch and exact HEAD; if none is found, the isolated PR89 worktree must be separately prepared. Any occupied port stays protected.
+
