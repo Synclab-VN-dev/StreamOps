@@ -257,3 +257,7 @@ body.plugin-manager-page {background:#f5f6f8;color:#18181b;min-height:100vh;font
 .plugin-state-scenario-banner[data-tone=bad]{background:#fef2f2;border-color:#fecaca}
 .plugin-state-scenario-banner h2{margin:0;font-size:14px;font-weight:600}
 .plugin-state-scenario-banner p{margin:0;font-size:12px;line-height:1.65;color:#27272a}
+
+.plugin-legacy-details{gap:10px}
+.plugin-legacy-note{border:1px solid #e4e4e7;border-radius:14px;background:#fafafa;padding:12px;font-size:12px;line-height:1.7}
+.plugin-legacy-details>.plugin-action{width:100%;background:#18181b;color:white;text-align:center;padding:12px}
