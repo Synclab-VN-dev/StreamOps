@@ -151,3 +151,9 @@ body.plugin-manager-page {background:#f5f6f8;color:#18181b;min-height:100vh;font
 @media(max-width:560px) {
  .plugin-manager-page .plugin-detail-grid {grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+/* Not-installed has no verification/baseline to display: use the compact
+   explanatory panel from pinned MagicPath, never a fabricated vendor status. */
+.plugin-manager-page .plugin-install-details {gap:8px}
+.plugin-manager-page .plugin-install-source-note {padding:12px;border-radius:14px;background:#f4f4f5;color:#52525b;font-size:11px;line-height:1.5}
+.plugin-manager-page .plugin-install-details .plugin-supporting {margin:0}

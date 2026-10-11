@@ -135,6 +135,17 @@ function renderPlugin(plugin) {
   if (expandedId !== plugin.plugin_id) return card;
   const details = text('div','plugin-detail');
   details.id = header.getAttribute('aria-controls');
+  if (plugin.state === 'NOT_INSTALLED') {
+    // There is no installed release to inspect yet: mirror MagicPath's small
+    // explanatory source card rather than implying a verified baseline.
+    details.classList.add('plugin-install-details');
+    details.append(text('div','plugin-install-source-note',
+      'Source: backend-approved managed distribution. Integrity and platform compatibility are checked before installation; arbitrary external URLs are not accepted.'));
+    details.append(text('p','plugin-supporting',
+      'Not installed. Use Install above to open the confirmation step.'));
+    card.append(details);
+    return card;
+  }
   const grid = text('div','plugin-detail-grid');
   stat(grid,'Compatibility',release?.compatibility || (plugin.compatible ? 'Compatible' : 'Unknown'));
   stat(grid,'Managed baseline',plugin.managed ? 'Yes' : 'No');
