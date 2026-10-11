@@ -261,3 +261,5 @@ body.plugin-manager-page {background:#f5f6f8;color:#18181b;min-height:100vh;font
 .plugin-legacy-details{gap:10px}
 .plugin-legacy-note{border:1px solid #e4e4e7;border-radius:14px;background:#fafafa;padding:12px;font-size:12px;line-height:1.7}
 .plugin-legacy-details>.plugin-action{width:100%;background:#18181b;color:white;text-align:center;padding:12px}
+
+.plugin-card[data-plugin-id="obs-multi-rtmp"] .plugin-card-meta .plugin-pill{line-height:1.3}
