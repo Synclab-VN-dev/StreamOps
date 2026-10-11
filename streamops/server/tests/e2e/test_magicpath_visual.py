@@ -408,7 +408,8 @@ def test_collect_extra_owner_review_candidates_not_approved_goldens(
             game("Other registered "+str(i),"steam:"+str(300+i),"STOPPED")
             for i in range(7)
         ])
-        fake.steam.update(pid=6432,uptime_seconds=13335)
+        fake.steam.update(pid=6432,uptime_seconds=13335,active_console_session_id=1)
+        fake.node["capture_backend"]="design fixture"
         p.goto(base+"/steam")
         expect(p.locator("#steam-running-games .gm-show-more")).to_be_visible()
         p.locator("#steam-running-games .gm-show-more").click()
@@ -442,7 +443,8 @@ def test_collect_extra_owner_review_candidates_not_approved_goldens(
             game("Other registered "+str(i),"steam:"+str(300+i),"STOPPED")
             for i in range(7)
         ])
-        fake.steam.update(pid=6432,uptime_seconds=13335)
+        fake.steam.update(pid=6432,uptime_seconds=13335,active_console_session_id=1)
+        fake.node["capture_backend"]="design fixture"
         p.goto(base+"/steam")
         expect(p.locator("#steam-state")).to_have_text("Running")
         p.locator("#steam-runtime-details summary").click()
