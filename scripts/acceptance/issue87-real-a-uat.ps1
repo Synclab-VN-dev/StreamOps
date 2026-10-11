@@ -89,7 +89,7 @@ function Ensure-PR-Python {
   if($LASTEXITCODE -ne 0 -or $purelib.Count -ne 1 -or ![string]$purelib[0]){
     throw 'Cannot find PR95 venv site-packages'
   }
-  $pth=Join-Path ([string]$purelib[0]).Trim() 'streamops-pr95-source.pth'
+  $pth=Join-Path -Path (([string]$purelib[0]).Trim()) -ChildPath 'streamops-pr95-source.pth'
   if(Test-Path -LiteralPath $pth){
     $oldPath=(Get-Content -LiteralPath $pth -Raw).Trim()
     if($oldPath -ine $sourceRoot){throw "PR95 venv points to another checkout: $oldPath"}
@@ -228,7 +228,6 @@ try {
     python=(& $Python --version 2>&1|Out-String).Trim()
     sourceScope=$sourceRoot
     effectivePython=$probePython
-    originalPythonPath=$originalPythonPath
     gitHead=$head;branch=$branchName
   }
   Set-Result 'DF-01' 'Exact PR SHA, host, session, process and language snapshot' $baseline 'PASS'
