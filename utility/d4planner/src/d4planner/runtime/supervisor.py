@@ -229,7 +229,13 @@ class Supervisor:
         write_capture_config(self.paths, enabled=False)
         return self.status.state
 
-    def bootstrap(self) -> RuntimeState:
+    def bootstrap(self, *, start_marker: bool = False) -> RuntimeState:
+        """Bootstrap can be inspected in isolation without starting the hook.
+
+        run() opts in to marker startup before publishing RUNNING or WAITING.
+        This guarantees a client never observes a ready runtime with a
+        not-yet-started keyboard backend.
+        """
         self.paths.ensure()
         try:
             self.paths.stop_request.unlink()
@@ -372,6 +378,12 @@ class Supervisor:
                 self.runtime.launch_game()
                 game = self.runtime.wait_for_game(timeout=self.game_start_timeout)
                 if not game:
+                    if start_marker:
+                        self._start_marker_capture()
+                        if (self.block_marker or self.controller_profile is not None) and not self._marker_started:
+                            raise RuntimeBlocked(
+                                "Controller keyboard hook failed to start"
+                            )
                     self.transition(
                         RuntimeState.WAITING_FOR_GAME,
                         "Diablo IV has not appeared yet; supervisor remains active",
@@ -408,6 +420,10 @@ class Supervisor:
             )
             self.status.capture_active = True
             self.transition(RuntimeState.CAPTURE_READY, "NVDA add-on capture enabled")
+            if start_marker:
+                self._start_marker_capture()
+                if (self.block_marker or self.controller_profile is not None) and not self._marker_started:
+                    raise RuntimeBlocked("Controller keyboard hook failed to start")
             self.transition(RuntimeState.RUNNING, "D4Planner runtime ready")
             return self.status.state
         except RuntimeBlocked as exc:
@@ -848,20 +864,15 @@ class Supervisor:
             )
 
     def run(self) -> int:
-        state = self.bootstrap()
+        state = self.bootstrap(start_marker=True)
         if state in {RuntimeState.BLOCKED, RuntimeState.RESTART_REQUIRED}:
+            self._stop_marker_capture()
             if self.store:
                 self.store.close()
             return 2 if state == RuntimeState.BLOCKED else 3
 
         exit_code = 0
         try:
-            self._start_marker_capture()
-            if (self.block_marker or self.controller_profile is not None) and not self._marker_started:
-                self.transition(RuntimeState.BLOCKED,
-                                "Controller keyboard hook failed to start",
-                                error=self.status.last_error)
-                return 2
             next_health_check = 0.0
             while not self.paths.stop_request.exists():
                 # Capture promotion is latency-sensitive. Process/session health
