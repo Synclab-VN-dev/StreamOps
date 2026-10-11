@@ -77,6 +77,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--isolated", action="store_true", help="Use process-scoped controller discovery")
     parser.add_argument("--block", action="store_true", help="Use keyboard hook capture and suppression")
     parser.add_argument("--controller-profile", default=None)
+    # Explicit run-scoped home for Task Scheduler: it does not inherit the SSH
+    # caller's D4PLANNER_HOME. Required for PR95 isolated Real-A acceptance.
+    parser.add_argument("--home", type=Path, default=None)
     parser.add_argument("--game-start-timeout", type=float, default=90.0)
     args = parser.parse_args(argv)
     try:
@@ -84,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
     except ProfileValidationError as exc:
         parser.error(str(exc))
 
-    home = os.environ.get("D4PLANNER_HOME")
+    home = args.home or os.environ.get("D4PLANNER_HOME")
     paths = RuntimePaths(Path(home)) if home else RuntimePaths.default()
     lock = _acquire_singleton(paths)
     if lock is None:
