@@ -816,3 +816,31 @@ def test_issue75_rollback_missing_canonical_proof_remains_disabled(
     assert fake.mutations()==[], "A legacy boolean cannot authorize Rollback"
 
 
+
+
+def test_issue75_two_tabs_reconcile_adopt_without_duplicate_mutation(
+    page:Page,live_server:BrowserTestServer
+):
+    """E2E-19/36: both WS observers share backend state; stale modal is safe."""
+    fake=ScenarioWS(page,plugin_state="UNMANAGED",catalog=False)
+    second=page.context.new_page()
+    second.route_web_socket("**/api/v1/obs/plugins/ws",fake.plugin_socket)
+    second.route_web_socket("**/api/v1/obs/ws",fake.obs_socket)
+    try:
+        launch(page,live_server,fake)
+        launch(second,live_server,fake)
+        assert len([r for r in fake.calls if r["operation"]=="obs_plugin.subscribe"])>=2
+        # Open the second tab's confirmation before the first tab changes state.
+        act(second,"Adopt existing")
+        act(page,"Adopt existing")
+        confirm(page)
+        expect(page.locator(".plugin-card")).to_contain_text("Legacy baseline adopted")
+        expect(second.locator(".plugin-card")).to_contain_text("Legacy baseline adopted")
+        # The second tab MUST recheck fresh backend state on Confirm; it may
+        # not dispatch a stale second Adopt even though its modal stayed open.
+        confirm(second)
+        expect(second.locator("#plugin-notice")).to_contain_text("Only an existing unmanaged")
+        assert len(fake.mutations("obs_plugin.adopt"))==1
+        assert fake.mutations("obs_plugin.install")==[]
+    finally:
+        second.close()
