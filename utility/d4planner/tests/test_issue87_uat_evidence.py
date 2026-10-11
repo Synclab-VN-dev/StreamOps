@@ -57,7 +57,7 @@ def test_reporter_maps_all_16_without_claiming_owner_physical_pass():
     assert output["status"] == "PENDING_OWNER_REVIEW"
     assert output["physicallyVerified"] == 0
     assert output["summary"] == {
-        "PASS":20, "FAIL":0, "BLOCKED":2, "SKIP":0,
+        "PASS":21, "FAIL":0, "BLOCKED":2, "SKIP":0,
     }
     assert all(entry["result"] == "PASS" for entry in output["matrix"])
     assert all(entry["physicalVerified"] is False for entry in output["matrix"])
