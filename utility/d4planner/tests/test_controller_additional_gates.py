@@ -170,3 +170,55 @@ def test_vk_punctuation_scan_code_diagnostics_not_claimed_steam_origin():
         assert draft.data["virtualKey"] == vk
         assert draft.data["mappingSource"] == "configuredLayout"
         assert draft.data.get("physicalSteamVerified") is None
+
+
+
+def test_capture_restart_is_fresh_and_never_replays_prior_key_edges():
+    profile = load_profile("xbox16")
+    a_vk = profile.digital[0].virtual_key
+    hooks = []
+
+    class OneShot:
+        hook_errors = 0
+
+        def __init__(self, **kw):
+            self.samples = BoundedSamples(capacity=8)
+            self.closed = False
+            self.sent = threading.Event()
+            self.target_pid = kw["game_pid"]
+            hooks.append(self)
+
+        def set_target_pid(self, pid):
+            self.target_pid = pid
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            self.closed = True
+
+        def pump(self):
+            if not self.sent.is_set():
+                for msg, direction in ((WM_KEYDOWN, "down"), (WM_KEYUP, "up")):
+                    self.samples.append(F11Sample(
+                        timestamp_ms=1800000000000, message=msg,
+                        state=direction, flags=0, foreground_pid=self.target_pid,
+                        suppressed=True, virtual_key=a_vk,
+                    ))
+                self.sent.set()
+            return True
+
+    capture = HookInputMarkerCapture(
+        profile=profile, block=True, poll_interval=0.002,
+        backend_factory=lambda **kwargs: OneShot(**kwargs),
+    )
+    capture.set_target_pid(9001)
+    for index in range(2):
+        capture.start()
+        assert hooks[-1].sent.wait(1.0)
+        capture.stop()
+        assert hooks[-1].closed
+        assert len(hooks) == index + 1
+        assert [row.state for row in capture.drain()] == ["down", "up"]
+        assert capture.drain() == []
+    assert capture.dropped_count == 0
