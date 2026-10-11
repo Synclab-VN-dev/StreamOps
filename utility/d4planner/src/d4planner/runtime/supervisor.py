@@ -507,11 +507,11 @@ class Supervisor:
                 if overflow:
                     self._safe_emit(
                         "input.marker.overflow",
-                        {"droppedCount": dropped_count, "mode": "BLOCK"},
+                        {"droppedCount": dropped_count, "mode": marker_status["mode"]},
                     )
                 self.transition(
                     RuntimeState.BLOCKED,
-                    "Controller keyboard blocking is no longer guaranteed",
+                    "Controller keyboard hook is no longer reliable",
                     error=self.status.last_error,
                     data={"droppedCount": dropped_count, "overflow": overflow},
                 )
