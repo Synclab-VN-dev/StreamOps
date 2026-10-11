@@ -107,7 +107,12 @@ function Stop-OwnedTask {
 try {
   $head=(& git -C $root rev-parse HEAD).Trim()
   $branchName=(& git -C $root branch --show-current).Trim()
-  if($branchName -ne 'feat/87-xbox16-multikey-capture' -or ($ExpectedHead -and $head -ne $ExpectedHead)){
+  $branchOK = $branchName -eq 'feat/87-xbox16-multikey-capture'
+  # Owner can safely review a detached, immutable worktree pinned by SHA.
+  if(!$branchOK -and $branchName -eq '' -and $ExpectedHead -eq $head) {
+    $branchOK=$true
+  }
+  if(!$branchOK -or ($ExpectedHead -and $head -ne $ExpectedHead)){
     throw "Wrong PR worktree or HEAD: $branchName / $head"
   }
   if(!(Test-Path $reporter)){throw "Missing reporter: $reporter"}
