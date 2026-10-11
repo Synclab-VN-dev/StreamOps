@@ -2,7 +2,7 @@
   const service=window.StreamOpsGames, store=service.store, ui=window.StreamOpsGamesComponents;
   const control=window.StreamOpsGameControl, log=window.StreamOpsUI.createActivityLog("#activity-log");
   const $=s=>document.querySelector(s);
-  let selected=null, activeOperation=null, lastSignature="", returnFocus=null;
+  let selected=null, activeOperation=null, lastSignature="", returnFocus=null, returnScrollY=null;
   function error(message) { const e=$("#games-error");e.textContent=message||"";e.hidden=!message; }
   function render() {
     const games=store.items(), summary=store.summary();
@@ -28,13 +28,20 @@
     const container=trigger?.closest?.("#game-library, #running-games");
     returnFocus=container && trigger?.dataset?.gameId===id
       ? {id, list:container.id} : {id, list:"game-library"};
-    selected=id;render();$("#game-detail").focus();
+    returnScrollY=window.scrollY;
+    selected=id;render();
+    // Mobile detail takes over the workspace; always show its heading rather
+    // than inheriting the long library's scroll offset.
+    if (window.matchMedia("(max-width: 900px)").matches) window.scrollTo(0,0);
+    $("#game-detail").focus({preventScroll:true});
   }
   function closeDetail() {
-    const target=returnFocus;selected=null;returnFocus=null;render();
+    const target=returnFocus, y=returnScrollY;
+    selected=null;returnFocus=null;returnScrollY=null;render();
     const row=target && Array.from(document.querySelectorAll("#"+target.list+" .gm-game-row"))
       .find(item=>item.dataset.gameId===target.id);
-    // If filters/catalog changed, the old game may be gone; use search as fallback.
+    // Restore viewport and focus independently even when the list was rebuilt.
+    if (y!==null) window.scrollTo({top:y,behavior:"instant"});
     (row||$("#game-search")).focus({preventScroll:true});
   }
   async function action(name,game) {
