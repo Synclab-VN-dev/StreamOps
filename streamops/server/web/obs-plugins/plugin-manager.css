@@ -250,3 +250,10 @@ body.plugin-manager-page {background:#f5f6f8;color:#18181b;min-height:100vh;font
 .plugin-output-safety-header h2{font-size:13px;font-weight:600;margin:0}
 .plugin-output-safety-header span{font-size:11px;color:#b45309}
 .plugin-output-safety-banner p{margin:0;font-size:12px;line-height:1.75;color:#27272a}
+
+/* The seven MagicPath states use the same light banner hierarchy. */
+.plugin-state-scenario-banner{display:grid;gap:8px;background:#fffbeb;border:1px solid #fcd34d;border-radius:24px;padding:16px;min-width:0}
+.plugin-state-scenario-banner[hidden]{display:none}
+.plugin-state-scenario-banner[data-tone=bad]{background:#fef2f2;border-color:#fecaca}
+.plugin-state-scenario-banner h2{margin:0;font-size:14px;font-weight:600}
+.plugin-state-scenario-banner p{margin:0;font-size:12px;line-height:1.65;color:#27272a}
