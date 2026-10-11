@@ -103,6 +103,15 @@ jobs:
       - name: Test D4Planner runtime
         if: steps.changes.outputs.d4planner == 'true'
         run: python -m pytest -q utility/d4planner/tests
+      - name: Issue87 UT-04 and E2E-03/11 required gates (synthetic CI)
+        if: steps.changes.outputs.d4planner == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pytest -q utility/d4planner/tests/test_controller_additional_gates.py -k 'test_ut04_vk_mapping_is_keylayout_independent'
+          if ($LASTEXITCODE -ne 0) { throw 'Issue87 UT-04 failed' }
+          python -m pytest -q utility/d4planner/tests/test_e2e_cli_runtime.py -k 'test_e2e03_xbox16_session1_one_hook_end_to_end_to_sqlite or test_e2e11_stop_unhooks_then_mode_switch_without_stale_capture'
+          if ($LASTEXITCODE -ne 0) { throw 'Issue87 E2E-03/11 failed' }
       - name: Compile D4Planner runtime
         if: steps.changes.outputs.d4planner == 'true'
         run: python -m compileall -q utility/d4planner
