@@ -263,3 +263,6 @@ body.plugin-manager-page {background:#f5f6f8;color:#18181b;min-height:100vh;font
 .plugin-legacy-details>.plugin-action{width:100%;background:#18181b;color:white;text-align:center;padding:12px}
 
 .plugin-card-meta .plugin-legacy-pill{max-width:98px;white-space:normal;text-align:center;line-height:1.3}
+
+.plugin-legacy-note strong{display:block;font-size:12px;font-weight:600}
+.plugin-legacy-note p{margin:6px 0 0}
