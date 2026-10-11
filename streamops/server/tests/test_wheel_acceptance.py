@@ -103,6 +103,18 @@ def test_installed_wheel_runs_outside_source_checkout():
                 assert isinstance(payload["rollback"].get("available"), bool)
                 assert isinstance(payload.get("revision"), int)
                 assert isinstance(payload.get("operation"), dict)
+            # E2E-25: the actual installed wheel must serve FE routes and
+            # JS assets. An editable checkout passing tests is insufficient.
+            with urllib.request.urlopen(base + "/obs/plugins", timeout=10) as response:
+                assert response.status == 200
+                page_markup = response.read().decode("utf-8")
+            assert 'id="plugin-managed-count"' in page_markup
+            assert '/assets/obs-plugins/page.mjs' in page_markup
+            with urllib.request.urlopen(base + "/assets/obs-plugins/page.mjs", timeout=10) as response:
+                assert response.status == 200
+                page_module = response.read().decode("utf-8")
+            assert "createPluginStore" in page_module
+            assert "plugin-confirm-dialog" in page_module
             # G6: GameService is discoverable from the installed wheel,
             # not an editable repository checkout.
             with urllib.request.urlopen(base + "/api/v1/games", timeout=10) as response:
