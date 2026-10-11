@@ -87,6 +87,12 @@ class FakeContract:
             await self.dispatch(self.peers, "games.snapshot", self.snapshot())
         asyncio.run_coroutine_threadsafe(update(), self.loop).result(timeout=5)
 
+    def emit(self, event, data, *, steam=False):
+        """Push a real JSON WS event to each subscribed observer."""
+        async def dispatch_event():
+            await self.dispatch(self.steam_peers if steam else self.peers, event, data)
+        asyncio.run_coroutine_threadsafe(dispatch_event(), self.loop).result(timeout=5)
+
     def set_steam(self, running):
         async def update():
             self.steam.update(running=running, state="running" if running else "stopped",
@@ -529,3 +535,152 @@ def test_generic_game_list_sorting_is_deterministic(page: Page, games_ui_server)
     page.locator("#game-search").fill("other")
     expect(names).to_have_count(2)
     assert not any(op.startswith("games.lifecycle") for op,_ in fake.received)
+
+
+def test_ws_cached_snapshots_cannot_replay_across_generation_and_cleanup(page: Page, games_ui_server):
+    """UNIT-03: old snapshots are not fresh; detach listeners and pagehide cleanup."""
+    base, fake = games_ui_server
+    page.goto(base + "/games")
+    expect(page.locator("#status-text")).to_contain_text("connected")
+    page.wait_for_function("window.StreamOpsGames.client.cachedEvents.has('games.snapshot')")
+    before = page.evaluate("""async () => {
+      const c=window.StreamOpsGames.client;
+      const old=c.cachedEvents.get('games.snapshot');
+      let duplicate=0;
+      const callback=()=>duplicate++;
+      const off=c.on('games.snapshot',callback,{replay:true});
+      off();
+      await Promise.resolve();await Promise.resolve();
+      return {duplicate,revision:old.revision,generation:c.generation};
+    }""")
+    assert before["duplicate"] == 0, "Unsubscribed replay callback must not execute"
+    page.evaluate("window.StreamOpsGames.client.socket.close()")
+    expect(page.locator("#status-text")).to_contain_text("offline")
+    assert page.evaluate("window.StreamOpsGames.client.cachedEvents.size") == 0
+    expect(page.locator("#status-text")).to_contain_text("connected", timeout=15000)
+    page.wait_for_function("window.StreamOpsGames.client.cachedEvents.has('games.snapshot')")
+    assert page.evaluate("!window.StreamOpsGames.store.stale")
+    assert page.evaluate("window.StreamOpsGames.client.generation") > before["generation"]
+    assert not any(name.startswith("games.lifecycle.") for name, _ in fake.received)
+    page.evaluate("window.dispatchEvent(new Event('pagehide'))")
+    assert page.evaluate("""() => {
+      const c=window.StreamOpsGames.client;
+      return c.destroyed && !c.connected && c.cachedEvents.size===0 &&
+             c.pending.size===0 && c.watchdogTimer===null;
+    }""")
+    page.evaluate("window.dispatchEvent(new Event('pageshow'))")
+    expect(page.locator("#status-text")).to_contain_text("connected", timeout=15000)
+
+
+@pytest.mark.parametrize("action,state",[
+    ("start","STOPPED"),("stop","RUNNING"),("restart","RUNNING")
+])
+def test_games_lifecycle_progress_terminal_events_and_safety(page: Page, games_ui_server, action, state):
+    """UNIT-04/E2E-07: real control WS, confirmation, idempotency, operation progress."""
+    base, fake = games_ui_server
+    page.goto(base + "/games")
+    fake.set_library([game("Lifecycle", "steam:2344520", state)])
+    page.locator('#game-library button[data-game-id="steam:2344520"]').click()
+    page.locator(".gm-control-panel summary").click()
+    page.locator("#game-control-token").fill("x"*32)
+    page.locator("#apply-token").click()
+    expect(page.locator("#token-status")).to_contain_text("Credential ready")
+    target=page.locator('#game-detail button[data-action="'+action+'"]')
+    expect(target).to_be_enabled()
+    page.once("dialog", lambda dlg: dlg.dismiss())
+    target.click()
+    assert not any(op == "games.lifecycle."+action for op,_ in fake.received)
+    page.once("dialog", lambda dlg: dlg.accept())
+    target.click()
+    wait_until(lambda: len([data for op,data in fake.received if op=="games.lifecycle."+action])==1)
+    requests=[data for op,data in fake.received if op=="games.lifecycle."+action]
+    assert requests[0]["game_id"]=="steam:2344520"
+    assert requests[0]["idempotency_key"].startswith("game-")
+    expect(page.locator("#game-detail .gm-operation")).to_contain_text("PENDING / QUEUED")
+    expect(target).to_be_disabled()
+    assert not any("succeeded" in text.lower() for text in page.locator("#activity-log li").all_text_contents())
+    fake.emit("games.operation",{
+        "operation_id":"test-operation","game_id":"steam:2344520",
+        "action":action,"status":"RUNNING","phase":"VERIFYING",
+    })
+    expect(page.locator("#game-detail .gm-operation")).to_contain_text("RUNNING / VERIFYING")
+    fake.emit("games.operation",{
+        "operation_id":"test-operation","game_id":"steam:2344520",
+        "action":action,"status":"SUCCEEDED","phase":"VERIFIED",
+    })
+    expect(page.locator("#game-detail .gm-operation")).to_contain_text("SUCCEEDED / VERIFIED")
+    assert len([op for op,_ in fake.received if op=="games.lifecycle."+action])==1
+    # Delayed ACK/event from an earlier state cannot undo terminal completion.
+    fake.emit("games.operation",{
+        "operation_id":"test-operation","game_id":"steam:2344520",
+        "action":action,"status":"PENDING","phase":"QUEUED",
+    })
+    expect(page.locator("#game-detail .gm-operation")).to_contain_text("SUCCEEDED / VERIFIED")
+
+
+@pytest.mark.parametrize("terminal,phase",[
+    ("FAILED","WRONG_SESSION"),("UNKNOWN","TIMEOUT"),
+])
+def test_games_operation_failure_never_claims_success(page: Page, games_ui_server, terminal, phase):
+    """E2E-07/08: failure or uncertain outcome must not turn into SUCCEEDED."""
+    base, fake = games_ui_server
+    page.goto(base+"/games")
+    page.locator('#game-library button[data-game-id="steam:2344520"]').click()
+    fake.emit("games.operation",{
+      "operation_id":"op-failure","game_id":"steam:2344520",
+      "action":"stop","status":terminal,"phase":phase,"code":"test_"+phase.lower(),
+    })
+    expect(page.locator("#game-detail .gm-operation")).to_contain_text(terminal+" / "+phase)
+    if terminal=="UNKNOWN":
+        expect(page.locator("#game-detail")).to_contain_text("outcome unknown")
+    assert "SUCCEEDED" not in page.locator("#game-detail").inner_text()
+    assert not any(op.startswith("games.lifecycle.") for op,_ in fake.received)
+
+
+def test_game_process_external_exit_and_disabled_session_with_obs_error(page: Page, games_ui_server):
+    """UNIT-06/E2E-03: loss of running process is observed, not synthesized as success."""
+    base, fake = games_ui_server
+    page.goto(base+"/games")
+    page.locator('#game-library button[data-game-id="steam:2344520"]').click()
+    expect(page.locator('#game-detail [data-code="RUNNING"]')).to_have_count(1)
+    fake.send_change("STOPPED")
+    expect(page.locator('#game-detail [data-code="STOPPED"]')).to_have_count(1)
+    assert "2100" not in page.locator("#game-detail .gm-detail-metrics").inner_text()
+    record=game(state="RUNNING")
+    record["capabilities"].update(start=False, stop=False, restart=False)
+    record["capability_reason"]="wrong_desktop_session"
+    record["observation"]["process"]["stale"]=True
+    record["observation"]["obsCapture"]="ERROR"
+    record["observation"]["window"]="UNKNOWN"
+    fake.set_library([record])
+    expect(page.locator('#game-detail [data-code="ERROR"]')).to_have_count(2)
+    expect(page.locator("#game-detail button[data-action='stop']")).to_be_disabled()
+    expect(page.locator("#game-detail button[data-action='stop']")).to_have_attribute("title","wrong_desktop_session")
+    assert not any(op.startswith("games.lifecycle.") for op,_ in fake.received)
+
+
+def test_lifecycle_disconnect_marks_unknown_and_reconciles_without_replay(page: Page, games_ui_server):
+    """E2E-08: recover by operation ID, never resend a start/stop/restart."""
+    base, fake = games_ui_server
+    page.goto(base+"/games")
+    page.locator('#game-library button[data-game-id="steam:2344520"]').click()
+    page.evaluate("""() => {
+      window.StreamOpsGames.store.operation({
+        operation_id:'recover-op',game_id:'steam:2344520',
+        action:'stop',status:'PENDING',phase:'QUEUED'
+      })
+    }""")
+    page.evaluate("window.StreamOpsGames.client.socket.close()")
+    expect(page.locator("#status-text")).to_contain_text("offline")
+    expect(page.locator("#game-detail .gm-operation")).to_contain_text("UNKNOWN / RECOVERY_REQUIRED")
+    expect(page.locator("#game-detail button[data-action='stop']")).to_be_disabled()
+    expect(page.locator("#status-text")).to_contain_text("connected",timeout=15000)
+    # Fake backend has no record of this operation. Failed read-only lookup must
+    # not replay the original mutating command.
+    wait_until(lambda: any(name=="games.operations.get" and p.get("operation_id")=="recover-op"
+                           for name,p in fake.received))
+    expect(page.locator("#game-detail .gm-operation")).to_contain_text("UNKNOWN / RECOVERY_REQUIRED")
+    assert not any(op.startswith("games.lifecycle.") for op,_ in fake.received)
+    page.get_by_role("button",name="Refresh / reconcile process").click()
+    wait_until(lambda: any(op=="games.reconcile" for op,_ in fake.received))
+    assert not any(op.startswith("games.lifecycle.") for op,_ in fake.received)
