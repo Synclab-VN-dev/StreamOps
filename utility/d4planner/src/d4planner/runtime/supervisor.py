@@ -501,7 +501,9 @@ class Supervisor:
             self.status.last_error = f"input marker capture failure: {error}"
             marker_status["state"] = "ERROR"
             marker_status["error"] = error
-            if self.block_marker:
+            if self.block_marker or self.controller_profile is not None:
+                # An explicitly selected profile must not silently remain
+                # RUNNING after hook loss, even in non-blocking OBSERVE mode.
                 if overflow:
                     self._safe_emit(
                         "input.marker.overflow",
