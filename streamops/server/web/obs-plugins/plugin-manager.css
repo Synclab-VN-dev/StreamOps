@@ -79,3 +79,63 @@ body.plugin-manager-page {background:#f5f6f8;color:#18181b;min-height:100vh;font
 
 .plugin-section-icon svg,.plugin-symbol svg {width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
+
+/* #75 FE-G5 design-alignment pass. Values track pinned MagicPath mobile
+   hierarchy. Keep the production registry/WS and modal confirmation intact. */
+.plugin-manager-page {color-scheme:light;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.plugin-manager-page .plugin-shell {width:min(calc(100% - 32px),448px);padding:16px 0 40px;gap:12px}
+.plugin-manager-page .plugin-page-heading {align-items:flex-start;gap:12px}
+.plugin-manager-page .plugin-back {font-size:12px;font-weight:650;margin-bottom:12px}
+.plugin-manager-page .plugin-page-heading h1 {font-size:24px;line-height:1.2;letter-spacing:-.027em;margin:2px 0 5px}
+.plugin-manager-page .plugin-page-heading .plugin-eyebrow {text-transform:uppercase;font-size:12px;font-weight:650;letter-spacing:.18em}
+.plugin-manager-page .plugin-panel {border:1px solid rgba(0,0,0,.055);border-radius:24px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.035)}
+.plugin-manager-page .plugin-section-heading {margin-bottom:14px;align-items:center}
+.plugin-manager-page .plugin-section-heading>div {display:flex;align-items:flex-start;flex-direction:column;gap:2px}
+.plugin-manager-page .plugin-section-heading h2 {font-size:15px;line-height:1.3}
+.plugin-manager-page .plugin-overview-subtitle {color:#71717a;font-size:12px;margin:0}
+.plugin-manager-page .plugin-overview-grid {gap:8px;margin-top:16px}
+.plugin-manager-page .plugin-overview-grid>div {padding:0;border:0;background:transparent;gap:1px;align-content:start}
+.plugin-manager-page .plugin-overview-grid strong {font-size:14px;line-height:1.35;letter-spacing:normal}
+.plugin-manager-page .plugin-panel[aria-labelledby="plugin-managed-title"],
+.plugin-manager-page .plugin-panel[aria-labelledby="plugin-tools-title"] {
+  background:transparent;border:0;box-shadow:none;border-radius:0;padding:0;
+}
+.plugin-manager-page .plugin-panel[aria-labelledby="plugin-managed-title"]>.plugin-section-heading,
+.plugin-manager-page .plugin-panel[aria-labelledby="plugin-tools-title"]>.plugin-section-heading {padding:0 4px;margin-bottom:10px}
+.plugin-manager-page .plugin-panel[aria-labelledby="plugin-managed-title"]>.plugin-section-heading>div,
+.plugin-manager-page .plugin-panel[aria-labelledby="plugin-tools-title"]>.plugin-section-heading>div {flex-direction:row;align-items:center;gap:8px}
+.plugin-manager-page .plugin-section-icon {background:transparent;width:17px;height:20px;border-radius:0}
+.plugin-manager-page .plugin-section-icon svg {width:16px;height:16px}
+.plugin-manager-page .plugin-list {gap:12px}
+.plugin-manager-page .plugin-card {border-color:rgba(0,0,0,.055);border-radius:24px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.plugin-manager-page .plugin-card-header {padding:16px}
+.plugin-manager-page .plugin-heading {gap:9px;align-items:center}
+.plugin-manager-page .plugin-heading-text strong {font-size:14px}
+.plugin-manager-page .plugin-symbol {width:36px;height:36px}
+.plugin-manager-page .plugin-mini-details {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 16px 16px}
+.plugin-manager-page .plugin-mini-stat {display:flex;flex-direction:column;min-width:0;gap:2px}
+.plugin-manager-page .plugin-mini-stat>span {color:#71717a;font-size:11px}
+.plugin-manager-page .plugin-mini-stat>strong {font-size:12px;font-weight:650;color:#27272a;overflow-wrap:anywhere}
+.plugin-manager-page .plugin-detail {padding:14px 16px 16px}
+.plugin-manager-page .plugin-detail-grid {grid-template-columns:1fr;gap:8px}
+.plugin-manager-page .plugin-stat {border-color:#f4f4f5;background:#fafafa;border-radius:13px;padding:10px}
+.plugin-manager-page .plugin-action {min-width:0;min-height:0;width:auto;border:1px solid #d4d4d8;border-radius:12px;padding:10px 12px;font-size:12px}
+.plugin-manager-page .plugin-action-row .plugin-primary {flex:1}
+.plugin-manager-page .plugin-activity-details {
+  border:1px solid rgba(0,0,0,.055);border-radius:24px;background:#fff;
+  padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.04)
+}
+.plugin-manager-page .plugin-activity-details summary {font-size:15px;font-weight:700;display:flex;align-items:flex-start;flex-direction:column;gap:1px;list-style:none}
+.plugin-manager-page .plugin-activity-details summary::-webkit-details-marker {display:none}
+.plugin-manager-page .plugin-activity-summary {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:16px}
+.plugin-manager-page .plugin-activity-summary>div {display:flex;flex-direction:column;gap:2px;min-width:0}
+.plugin-manager-page .plugin-activity-summary span {font-size:11px;color:#71717a}
+.plugin-manager-page .plugin-activity-summary strong {font-size:12px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plugin-manager-page .plugin-activity {margin-top:12px}
+@media(max-width:560px) {
+  .plugin-manager-page .plugin-shell {width:calc(100% - 32px);padding-top:16px;gap:12px}
+  .plugin-manager-page .plugin-panel {padding:16px;border-radius:24px}
+  .plugin-manager-page .plugin-page-heading h1 {font-size:24px}
+  .plugin-manager-page .plugin-detail-grid {grid-template-columns:1fr}
+  .plugin-manager-page .plugin-action {width:auto}
+}

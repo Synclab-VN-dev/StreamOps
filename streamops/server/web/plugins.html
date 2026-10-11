@@ -8,14 +8,13 @@
   <link rel="stylesheet" href="/assets/obs-plugins/plugin-manager.css">
 </head>
 <body class="plugin-manager-page">
-<header class="topbar"><a class="brand" href="/">StreamOps Node</a><nav><a href="/obs">OBS Management</a></nav><span class="plugin-top-pill">Plugin Manager</span></header>
 <main class="plugin-shell">
   <header class="plugin-page-heading">
-    <div><a class="plugin-back" href="/obs">← OBS Management</a><p class="plugin-eyebrow">STREAMOPS / OBS</p><h1>OBS Plugin Manager</h1><p>Install, adopt and verify server-approved OBS plugins.</p></div>
+    <div><a class="plugin-back" href="/obs">← OBS Management</a><p class="plugin-eyebrow">STREAMOPS</p><h1>OBS Plugin Manager</h1><p>Install, update and verify managed OBS plugins.</p></div>
     <span id="plugin-obs-state" class="plugin-pill" data-tone="neutral">Connecting</span>
   </header>
   <section class="plugin-panel" aria-labelledby="plugin-overview-title">
-    <div class="plugin-section-heading"><div><span class="plugin-section-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3a2 2 0 1 1 4 0h3v3a2 2 0 1 1 0 4v3h-3a2 2 0 1 1-4 0H4z"/></svg></span><h2 id="plugin-overview-title">Manager overview</h2></div><button id="plugin-refresh" class="plugin-action" type="button" disabled>Refresh</button></div>
+    <div class="plugin-section-heading"><div><h2 id="plugin-overview-title">Manager overview</h2><p class="plugin-overview-subtitle">Inventory from the StreamOps node</p></div><button id="plugin-refresh" class="plugin-action" type="button" disabled>Refresh</button></div>
     <div class="plugin-overview-grid">
       <div><span>Managed</span><strong id="plugin-managed-count">—</strong></div>
       <div><span>Installed</span><strong id="plugin-installed-count">—</strong></div>
@@ -30,7 +29,12 @@
   </section>
   <section class="plugin-panel" aria-labelledby="plugin-tools-title">
     <div class="plugin-section-heading"><div><span class="plugin-section-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></span><h2 id="plugin-tools-title">Manager tools</h2></div></div>
-    <details class="plugin-activity-details"><summary>Activity Log <span class="plugin-muted">Current browser session only</span></summary>
+    <details class="plugin-activity-details"><summary>Activity Log <span class="plugin-muted">Plugin operations in this browser session</span></summary>
+      <div class="plugin-activity-summary" aria-label="Activity summary">
+        <div><span>Last event</span><strong id="plugin-last-event">—</strong></div>
+        <div><span>Operations</span><strong id="plugin-operation-count">0</strong></div>
+        <div><span>Errors</span><strong id="plugin-error-count">0</strong></div>
+      </div>
       <ol id="plugin-activity" class="plugin-activity" aria-live="polite"></ol>
     </details>
   </section>

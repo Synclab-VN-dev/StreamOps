@@ -110,9 +110,15 @@ function renderPlugin(plugin) {
   header.addEventListener('click',() => {expandedId = expandedId === plugin.plugin_id ? null : plugin.plugin_id; render();});
   card.append(header);
   const mini = text('div','plugin-mini-details');
+  const field = (label, value) => {
+    const container = text('span','plugin-mini-stat');
+    container.append(text('span','',label), text('strong','',value));
+    return container;
+  };
   mini.append(
-    text('span','', 'Installed: ' + (plugin.installed_version || (plugin.installed ? 'version unknown' : '—'))),
-    text('span','', 'Available: ' + (release?.available_version || '—'))
+    field('Installed', plugin.installed_version || (plugin.installed ? 'version unknown' : '—')),
+    field('Available', release?.available_version || '—'),
+    field('Compatibility', release?.compatibility || (plugin.compatible ? 'Compatible' : 'Unknown'))
   );
   card.append(mini);
   if (expandedId !== plugin.plugin_id) return card;
@@ -177,6 +183,11 @@ function render() {
     for (const plugin of store.inventory) list.append(renderPlugin(plugin));
   }
   byId('plugin-release-source').textContent = 'Release catalog: ' + store.catalogSourceState;
+  const activities = store.activity || [];
+  const lastEvent = activities.length ? activities[activities.length - 1].operation : '—';
+  byId('plugin-last-event').textContent = lastEvent;
+  byId('plugin-operation-count').textContent = String(activities.length);
+  byId('plugin-error-count').textContent = String(activities.filter(e => e.result === 'failed' || e.error_code).length);
   const activity = byId('plugin-activity');
   activity.replaceChildren();
   if (!store.activity.length) activity.append(text('li','plugin-empty','No operations in this browser session.'));
