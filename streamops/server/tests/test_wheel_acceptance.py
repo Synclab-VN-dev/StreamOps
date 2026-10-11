@@ -128,6 +128,7 @@ def test_installed_wheel_runs_outside_source_checkout():
                 ("/assets/games.js", b"StreamOpsGames"),
                 ("/assets/games-store.js", b"GameStore"),
                 ("/assets/games-control.js", b'new WebSocket(url, "streamops-games-v1")'),
+                ("/assets/node-health.js", b"/api/v1/obs/ws"),
                 ("/assets/games.css", b"gm-page"),
             ):
                 with urllib.request.urlopen(base + path, timeout=10) as response:
