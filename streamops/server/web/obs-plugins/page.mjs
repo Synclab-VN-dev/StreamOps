@@ -220,6 +220,9 @@ function render() {
   byId('plugin-installed-count').textContent = store.loading ? '—' : String(counts.installed);
   byId('plugin-attention-count').textContent = store.loading ? '—' : String(counts.attention);
   const obs = store.runtime;
+  // The pinned MagicPath design exposes a distinct safety state while outputs
+  // are active. This is read-only UI: no OBS stop or plugin mutation.
+  byId('plugin-output-safety-banner').hidden = !(obs?.streaming === true || obs?.recording === true);
   const obsState = byId('plugin-obs-state');
   obsState.textContent = obs?.state || 'OBS unavailable';
   obsState.dataset.tone = obs?.state === 'READY' ? 'ok' : 'warn';
