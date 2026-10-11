@@ -127,6 +127,39 @@ def stage_product(page,server,case):
     assert fake.mutations()==[],"Visual comparison must not mutate OBS/plugins"
     return fake
 
+def capture_geometry(page,reference):
+    # Diagnostic-only geometry evidence, paired with every screenshot; never
+    # used to excuse pixel mismatches or approve unreviewed Golden captures.
+    return page.evaluate("""(reference) => {
+      const all = Array.from(document.querySelectorAll('section'));
+      const labeled = (title) => all.find(s =>
+        Array.from(s.querySelectorAll('h2')).some(h => h.textContent.trim() === title)
+      );
+      const rect = (node) => {
+        if (!node) return null;
+        const r = node.getBoundingClientRect();
+        return {x: Math.round(r.x*100)/100, y: Math.round(r.y*100)/100,
+          width: Math.round(r.width*100)/100, height: Math.round(r.height*100)/100};
+      };
+      const card = reference
+        ? all.find(s => s.querySelector('h2')?.textContent.trim() === 'Multiple RTMP Outputs')
+        : document.querySelector('.plugin-card');
+      const activity = reference ? labeled('Activity Log')
+        : document.querySelector('.plugin-activity-frame');
+      return {
+        viewport: {width: innerWidth, height: innerHeight},
+        page: {scrollY, scrollHeight: document.documentElement.scrollHeight,
+          clientHeight: document.documentElement.clientHeight},
+        title: rect(document.querySelector('h1')),
+        overview: rect(reference ? labeled('Manager overview') :
+          document.querySelector('[aria-labelledby="plugin-overview-title"]')),
+        pluginCard: rect(card),
+        activityCard: rect(activity),
+        releaseStatus: rect(document.querySelector('#plugin-release-source'))
+      };
+    }""",reference)
+
+
 def pixel_difference(expected,actual,out):
     with Image.open(expected) as e,Image.open(actual) as a:
         exp=e.convert("RGB")
@@ -171,6 +204,10 @@ def test_original_magicpath_to_live_fe_visual(
             "capture_scroll_y":{
                 "reference":ref_page.evaluate("window.scrollY"),
                 "actual":fe_page.evaluate("window.scrollY")},
+            "geometry":{
+                "reference":capture_geometry(ref_page,True),
+                "actual":capture_geometry(fe_page,False)
+            },
             "artifacts":[expected.name,actual.name,difference.name],
         }
         (folder/"result.json").write_text(json.dumps(report,indent=2),encoding="utf-8")

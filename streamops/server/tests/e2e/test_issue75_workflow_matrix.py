@@ -720,6 +720,7 @@ def test_issue75_design_aligned_cards_keep_live_ws_counts_and_logical_activity(
     expect(page.locator("#plugin-operation-count")).to_have_text("0")
     expect(page.locator(".plugin-activity-summary")).to_be_visible()
     expect(page.locator("#plugin-error-count")).to_be_visible()
+    expect(page.locator("#plugin-error-pill")).to_have_text("0 errors")
     assert fake.mutations()==[]
     act(page,"Adopt existing")
     confirm(page)
@@ -745,4 +746,24 @@ def test_issue75_not_installed_card_matches_design_without_invented_baseline(
     assert fake.mutations()==[]
     act(page,"Install plugin")
     page.get_by_role("button",name="Cancel",exact=True).click()
+    assert fake.mutations()==[]
+
+
+def test_issue75_plugin_purpose_and_catalog_status_preserve_backend_identity(
+    page:Page,live_server:BrowserTestServer
+):
+    fake=ScenarioWS(page,plugin_state="NOT_INSTALLED",installed_version=None)
+    page.set_viewport_size({"width":360,"height":800})
+    launch(page,live_server,fake)
+    expect(page.locator(".plugin-heading-text small")).to_have_text(
+        "Multi-destination streaming plugin")
+    expect(page.locator(".plugin-heading-text")).to_have_attribute(
+        "title","obs-multi-rtmp")
+    expect(page.locator("#plugin-release-source")).to_contain_text("READY")
+    expect(page.locator("#plugin-release-source")).to_be_visible()
+    heading=page.locator('[aria-labelledby="plugin-managed-title"]>.plugin-section-heading')
+    catalog=page.locator("#plugin-release-source")
+    assert catalog.evaluate("(el)=>el.getBoundingClientRect().bottom") <= (
+        heading.evaluate("(el)=>el.getBoundingClientRect().bottom")+1
+    ),"Release catalog metadata must not add an extra row above the card"
     assert fake.mutations()==[]

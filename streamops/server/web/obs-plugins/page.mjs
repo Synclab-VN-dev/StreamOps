@@ -100,7 +100,14 @@ function renderPlugin(plugin) {
   const icon = text('span','plugin-symbol'); icon.setAttribute('aria-hidden','true');
   icon.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="2"/><path d="M7.76 7.76a6 6 0 0 0 0 8.48m8.48-8.48a6 6 0 0 1 0 8.48M4.93 4.93a10 10 0 0 0 0 14.14m14.14-14.14a10 10 0 0 1 0 14.14M12 15v7"/></svg>';
   const heading = text('span','plugin-heading-text');
-  heading.append(text('strong','',plugin.display_name),text('small','',plugin.plugin_id));
+  // Display the actual plugin's purpose at the same location as MagicPath,
+  // not its machine identifier. Keep the canonical identifier available via
+  // the title and the confirmation modal; no registry entry is fabricated.
+  const purpose = typeof plugin.description === 'string' && plugin.description.trim()
+    ? plugin.description
+    : plugin.plugin_id === 'obs-multi-rtmp' ? 'Multi-destination streaming plugin' : plugin.plugin_id;
+  heading.title = plugin.plugin_id;
+  heading.append(text('strong','',plugin.display_name),text('small','',purpose));
   left.append(icon,heading);
   const right = text('span','plugin-card-meta');
   const pill = text('span','plugin-pill',stateLabel(plugin.state));
@@ -141,7 +148,7 @@ function renderPlugin(plugin) {
     install.classList.add('plugin-primary');
     installPreview.append(install);
     installPreview.append(text('p','plugin-supporting',
-      'Install only the backend-selected approved release. Server validates integrity, compatibility and OBS output safety.'));
+      'Availability comes only from the backend-managed registry and approved distribution. StreamOps validates integrity, platform compatibility and OBS output safety before changes.'));
     if (install.disabled) {
       installPreview.append(text('small','plugin-disabled-reason',
         eligible.install?.reason || 'Installation is blocked by the current backend state.'));
@@ -156,9 +163,9 @@ function renderPlugin(plugin) {
     // explanatory source card rather than implying a verified baseline.
     details.classList.add('plugin-install-details');
     details.append(text('div','plugin-install-source-note',
-      'Source: backend-approved managed distribution. Integrity and platform compatibility are checked before installation; arbitrary external URLs are not accepted.'));
+      'Source: StreamOps managed distribution · Server allowlist · Package SHA-256 and platform compatibility are verified before installation. No arbitrary external release URL.'));
     details.append(text('p','plugin-supporting',
-      'Not installed. Use Install above to open the confirmation step.'));
+      'Not installed. Use Install above to start the confirmation flow.'));
     if (release?.reason) details.append(text('p','plugin-reason',
       'Approved release: ' + release.reason));
     card.append(details);
@@ -237,7 +244,10 @@ function render() {
   byId('plugin-operation-count').textContent = String(
     activities.filter(entry => entry.result === 'requested').length
   );
-  byId('plugin-error-count').textContent = String(activities.filter(e => e.result === 'failed' || e.error_code).length);
+  const errorCount = activities.filter(e => e.result === 'failed' || e.error_code).length;
+  byId('plugin-error-count').textContent = String(errorCount);
+  // Match the pinned Activity Log header, but only with real session events.
+  byId('plugin-error-pill').textContent = String(errorCount) + (errorCount === 1 ? ' error' : ' errors');
   const activity = byId('plugin-activity');
   activity.replaceChildren();
   if (!store.activity.length) activity.append(text('li','plugin-empty','No operations in this browser session.'));

@@ -172,3 +172,27 @@ body.plugin-manager-page {background:#f5f6f8;color:#18181b;min-height:100vh;font
   content:"⌄";position:absolute;top:0;right:0;color:#a1a1aa;font-size:16px
 }
 .plugin-manager-page .plugin-activity-details[open] summary::after {content:"⌃"}
+
+/* #75 MagicPath geometry pass: real data, original FE safety and status kept. */
+.plugin-manager-page .plugin-panel[aria-labelledby="plugin-managed-title"]>.plugin-section-heading{
+  display:flex;align-items:center;justify-content:space-between;gap:8px
+}
+.plugin-manager-page #plugin-release-source{
+  margin:0;flex:0 1 auto;text-align:right;font-size:10px;line-height:1.3;
+  color:#71717a;white-space:nowrap
+}
+.plugin-manager-page .plugin-heading-text small{
+  line-height:1.45;font-size:11px;color:#71717a
+}
+.plugin-manager-page .plugin-card-header{align-items:flex-start}
+.plugin-manager-page .plugin-heading{align-items:flex-start}
+.plugin-manager-page .plugin-mini-details{padding-bottom:16px}
+.plugin-manager-page .plugin-install-preview .plugin-supporting{line-height:1.5}
+.plugin-manager-page .plugin-install-details{padding:16px 16px 18px;gap:12px}
+.plugin-manager-page .plugin-install-source-note{padding:12px;line-height:1.55}
+.plugin-manager-page .plugin-activity-title{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
+.plugin-manager-page .plugin-activity-title .plugin-pill{padding:4px 9px;font-size:10px}
+@media(max-width:560px){
+ .plugin-manager-page #plugin-release-source{font-size:9px;max-width:135px}
+ .plugin-manager-page .plugin-card-meta{align-self:flex-start}
+}
