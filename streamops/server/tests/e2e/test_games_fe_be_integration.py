@@ -131,11 +131,14 @@ def test_real_steam_ws_push_and_restart_confirmation_without_rest(
         page.goto(base + "/steam")
         expect(page.locator("#steam-state")).to_have_text("Running")
         expect(page.locator("#status-text")).to_have_text("Steam WS connected")
+        page.locator("#steam-runtime-details summary").click()
+        expect(page.locator("#node-health-status")).to_contain_text(
+            "Node health: online · Capture READY", timeout=15000,
+        )
         steam.status_result = STOPPED
         expect(page.locator("#steam-state")).to_have_text("Stopped", timeout=15000)
         steam.status_result = RUNNING
         expect(page.locator("#steam-state")).to_have_text("Running", timeout=15000)
-        page.locator("#steam-runtime-details summary").click()
         button = page.locator("#restart-button")
         expect(button).to_be_enabled()
         page.once("dialog", lambda d: d.dismiss())
