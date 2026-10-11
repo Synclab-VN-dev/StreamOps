@@ -86,12 +86,35 @@ try {
         port=18795; listenerCount=$listeners.Count; pids=$pids
     } 'PASS'
 
+    $profilesLog = Join-Path $EvidenceDir 'controller-profiles.log'
+    & $Python -m d4planner.cli controller profiles *> $profilesLog
+    $profilesExit = $LASTEXITCODE
+    $profilesFound = $profilesExit -eq 0 -and (
+        (Get-Content -LiteralPath $profilesLog -Raw) -match '\\bxbox16\\b'
+    )
+    Add-Check 'PF-03A' 'controller profiles includes xbox16' @{
+        exitCode=$profilesExit; log=$profilesLog
+    } $(if ($profilesFound) { 'PASS' } else { 'FAIL' })
+
     $validationLog = Join-Path $EvidenceDir 'controller-validate.log'
     & $Python -m d4planner.cli controller validate xbox16 *> $validationLog
     $validated = $LASTEXITCODE -eq 0
-    Add-Check 'PF-03' 'controller validate xbox16 exit=0' @{
+    Add-Check 'PF-03B' 'controller validate xbox16 exit=0' @{
         exitCode=$LASTEXITCODE; log=$validationLog
     } $(if ($validated) { 'PASS' } else { 'FAIL' })
+
+    $savedPlannerHome = $env:D4PLANNER_HOME
+    try {
+        $env:D4PLANNER_HOME = $dataPath
+        $statusLog = Join-Path $EvidenceDir 'status.json'
+        & $Python -m d4planner.cli status --json *> $statusLog
+        $statusExit = $LASTEXITCODE
+        Add-Check 'PF-03C' 'CLI status --json available with isolated D4PLANNER_HOME' @{
+            exitCode=$statusExit; log=$statusLog
+        } $(if ($statusExit -eq 0) { 'PASS' } else { 'BLOCKED' })
+    } finally {
+        $env:D4PLANNER_HOME = $savedPlannerHome
+    }
 
     $snapshot = Join-Path $EvidenceDir 'start.json'
     $snapshotLog = Join-Path $EvidenceDir 'snapshot.log'
