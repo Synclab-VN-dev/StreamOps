@@ -109,6 +109,7 @@ class MarkerSample:
     control_id: str | None = None
     layout_id: str | None = None
     mapping_source: str | None = None
+    scan_code: int | None = None
 
     def as_draft(self) -> EventDraft:
         data = {
@@ -132,6 +133,8 @@ class MarkerSample:
             data["layoutId"] = self.layout_id
         if self.mapping_source is not None:
             data["mappingSource"] = self.mapping_source
+        if self.scan_code is not None:
+            data["scanCode"] = self.scan_code
         return EventDraft("input.marker.raw", data, timestamp=self.timestamp)
 
 
@@ -300,6 +303,7 @@ class HookInputMarkerCapture:
             control_id=binding.control_id if binding else None,
             layout_id=profile.layout_id if profile else None,
             mapping_source=profile.mapping_source if profile else None,
+            scan_code=int(getattr(sample, "scan_code", 0)) if profile else None,
         )
 
     def _drain_hook(self, hook) -> None:
