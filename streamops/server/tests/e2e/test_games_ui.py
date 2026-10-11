@@ -716,3 +716,20 @@ def test_games_keyboard_focus_live_status_and_touch_geometry(page: Page, games_u
     assert page.evaluate('document.activeElement?.dataset?.gameId==="steam:2344520"')
     assert page.evaluate("document.documentElement.scrollWidth<=window.innerWidth")
     assert not any(name.startswith("games.lifecycle.") for name,_ in fake.received)
+
+
+def test_heartbeat_is_read_only_deduplicated_and_resyncs_epoch_gap(page: Page, games_ui_server):
+    """UNIT-03: normal heartbeat must not log duplicates; epoch mismatch refetches."""
+    base, fake = games_ui_server
+    page.goto(base+"/games")
+    expect(page.locator("#game-library .gm-game-row")).to_have_count(1)
+    page.wait_for_function("!window.StreamOpsGames.store.loading")
+    count=page.locator("#activity-log li").count()
+    before=len([op for op,_ in fake.received if op=="games.list"])
+    fake.emit("games.heartbeat",{"epoch":fake.epoch})
+    expect(page.locator("#activity-log li")).to_have_count(count)
+    assert len([op for op,_ in fake.received if op=="games.list"]) == before
+    fake.emit("games.heartbeat",{"epoch":"node-restarted-unknown"})
+    wait_until(lambda: len([op for op,_ in fake.received if op=="games.list"]) > before)
+    expect(page.locator("#game-library")).to_contain_text("Diablo IV")
+    assert not any(op.startswith("games.lifecycle.") for op,_ in fake.received)
