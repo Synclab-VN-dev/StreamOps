@@ -51,9 +51,12 @@ class ScenarioWS(MockPluginWebSocket):
         return current
 
     def approved_release(self):
-        return {"plugin_id":"obs-multi-rtmp","available_version":self.release_version,
-                "installable":True,"compatibility":"compatible",
-                "release_ref":"v"+self.release_version}
+        return {"plugin_id":"obs-multi-rtmp","display_name":"Multiple RTMP Outputs",
+                "available_version":self.release_version,
+                "installed_version":self.installed_version,
+                "installable":True,"compatibility":"compatible","reason":None,
+                "source_commit":"a"*40,
+                "release_ref":"obs-multi-rtmp/v"+self.release_version}
 
     def plugin_socket(self,ws):
         self.sockets.append(ws)
