@@ -135,7 +135,22 @@ def test_daemon_explicit_home_overrides_parent_environment_without_side_effects(
     home = tmp_path / "pr95-isolated"
     assert daemon.main([
         "--home", str(home), "--controller-profile", "xbox16",
-        "--block", "--isolated",
+        "--block", "--isolated", "--uat-attach-only",
     ]) == 5  # deliberate singleton-denied; never starts NVDA/Steam.
     assert seen == [home]
     assert not (tmp_path / "default-production").exists()
+
+
+def test_daemon_uat_attach_only_rejects_mutating_modes(tmp_path):
+    from d4planner import daemon
+    import pytest
+    invalid = [
+        ["--uat-attach-only"],
+        ["--uat-attach-only","--isolated","--block","--controller-profile","xbox16"],
+        ["--uat-attach-only","--home",str(tmp_path),"--block","--controller-profile","xbox16"],
+        ["--uat-attach-only","--home",str(tmp_path),"--isolated","--controller-profile","xbox16"],
+    ]
+    for args in invalid:
+        with pytest.raises(SystemExit) as failure:
+            daemon.main(args)
+        assert failure.value.code == 2
