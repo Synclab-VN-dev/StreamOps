@@ -113,6 +113,11 @@ def test_missing_approval_or_goldens_cannot_pass(tmp_path):
 def test_coverage_manifest_cannot_silently_drop_unrenderable_design_states():
     manifest=copy.deepcopy(load())
     manifest["uncovered_design_states"]=[]
+    # All states now have Golden cases. Removing one must still fail closed.
+    manifest["required_cases"]=[
+        case for case in manifest["required_cases"]
+        if case["state"]!="recovery-required"
+    ]
     with pytest.raises(AssertionError,match="silently removed"):
         validate_source(manifest)
 
@@ -132,7 +137,8 @@ def test_magicpath_plugin_reference_contains_only_registry_backed_plugin_demo():
     assert "OpenStream OBS Plugin" not in original
     assert "openstream-obs-plugin" not in original
     assert original.count(">Multiple RTMP Outputs</h2>")==1
-    assert '<Stat label="Managed" value="1" />' in original
+    assert '<Stat label="Managed" value={isLoading || isOffline' in original
+    assert 'isEmpty ? "0" : "1"' in original
     assert "{confirmAction && <section" not in original, "Inline Confirm must not shift the header"
     assert "const confirmDialogRef = useRef<HTMLDialogElement>(null)" in original
     assert "modal.showModal()" in original, "Confirm must use browser top-layer modal"
