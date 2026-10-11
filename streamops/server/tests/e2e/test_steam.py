@@ -20,8 +20,9 @@ def test_steam_process_status_and_restart_ws(page: Page, games_ui_server):
     # application tokens. The product must not block Restart on token input.
     expect(page.locator("#steam-control-token")).to_have_count(0)
     expect(page.locator(".gm-control-panel")).to_have_count(0)
-    page.once("dialog",lambda dialog:dialog.accept())
     page.get_by_role("button",name="Restart in Big Picture").click()
+    expect(page.get_by_role("dialog")).to_be_visible()
+    page.locator(".gm-confirm-accept").click()
     expect(page.locator("#activity-log")).to_contain_text("Steam restart completed")
     assert sum(1 for op,_ in fake.received if op=="steam.lifecycle.restart")==1
 
