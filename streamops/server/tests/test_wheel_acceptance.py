@@ -90,7 +90,19 @@ def test_installed_wheel_runs_outside_source_checkout():
                 payload = json.loads(response.read())
             assert payload["plugin_id"] == "obs-multi-rtmp"
             assert payload["expected_version"] == "0.7.4.0"
-            assert set(payload) == {"plugin_id", "expected_version", "state", "installed", "loaded", "compatible"}
+            # Base status fields remain mandatory, but the agreed #47 BE v2
+            # adds typed operation/rollback/revision fields. A strict six-key
+            # equality would reject this backwards-compatible API extension.
+            required = {"plugin_id", "expected_version", "state", "installed", "loaded", "compatible"}
+            assert required <= set(payload)
+            assert isinstance(payload["installed"], bool)
+            assert isinstance(payload["loaded"], bool)
+            assert isinstance(payload["compatible"], bool)
+            if "rollback" in payload:
+                assert isinstance(payload["rollback"], dict)
+                assert isinstance(payload["rollback"].get("available"), bool)
+                assert isinstance(payload.get("revision"), int)
+                assert isinstance(payload.get("operation"), dict)
             # G6: GameService is discoverable from the installed wheel,
             # not an editable repository checkout.
             with urllib.request.urlopen(base + "/api/v1/games", timeout=10) as response:
