@@ -15,7 +15,11 @@
     $("#steam-heading-status").dataset.tone=state==="Running"?"ok":state==="Stopped"?"warn":"bad";
     $("#steam-status-dot").className="status-dot "+(state==="Running"?"online":state==="Stopped"?"warning":"offline");
     $("#steam-pid").textContent=fresh?current.pid??"--":"--";
-    $("#steam-started").textContent=fresh?format.formatDateTime(current.started_at):"--";
+    // Shorten the observed timestamp for narrow Steam cards; never invent "Today".
+    const started=fresh&&current.started_at?new Date(current.started_at):null;
+    $("#steam-started").textContent=started&&!Number.isNaN(started.getTime())
+      ? new Intl.DateTimeFormat("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}).format(started)
+      : "--";
     $("#steam-uptime").textContent=fresh?format.formatDuration(current.uptime_seconds):"--";
     $("#steam-session").textContent=fresh?current.session_id??"--":"--";
     $("#steam-session-expanded").textContent=fresh&&current.session_id!=null
