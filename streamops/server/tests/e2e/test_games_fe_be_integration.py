@@ -120,9 +120,12 @@ def test_real_game_service_confirmed_start_and_reconcile_over_ws(
 
 
 def test_real_steam_ws_push_and_restart_confirmation_without_rest(
-        browser: Browser, integrated_game_ui_server):
-    """E2E-06: real merged Steam WS pushes status, restart is opt-in, zero REST polling."""
+        browser: Browser, integrated_game_ui_server, capture_service):
+    """E2E-06: real Steam/Node WS pushes truthfully, including unready capture."""
     base, platform, steam = integrated_game_ui_server
+    # manage_runtime=False intentionally leaves the fake capture backend
+    # stopped. WS must not misreport READY just because its Node is online.
+    assert capture_service.ready is False
     page = browser.new_page()
     requests = []
     page.on("request", lambda req: requests.append(req.url)
@@ -133,7 +136,7 @@ def test_real_steam_ws_push_and_restart_confirmation_without_rest(
         expect(page.locator("#status-text")).to_have_text("Steam WS connected")
         page.locator("#steam-runtime-details summary").click()
         expect(page.locator("#node-health-status")).to_contain_text(
-            "Node health: online · Capture READY", timeout=15000,
+            "Node health: online · Capture NOT READY", timeout=15000,
         )
         steam.status_result = STOPPED
         expect(page.locator("#steam-state")).to_have_text("Stopped", timeout=15000)
