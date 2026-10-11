@@ -151,6 +151,14 @@ def test_powershell_token_directory_acl_without_admin():
     with tempfile.TemporaryDirectory() as tmpdir:
         secret_dir = Path(tmpdir) / ".secrets"
         secret_dir.mkdir()
+        # Simulate the real Windows case where an explicit non-user ACE
+        # survives /inheritance:r (not merely an inherited permission).
+        preseed = subprocess.run(
+            ["icacls.exe", str(secret_dir), "/grant",
+             "*S-1-5-32-545:(OI)(CI)R"],
+            capture_output=True, text=True, timeout=20,
+        )
+        assert preseed.returncode == 0, preseed.stderr + preseed.stdout
         result = subprocess.run(
             [executable, "-NoProfile", "-NonInteractive", "-File",
              str(helper), "-Directory", str(secret_dir)],
