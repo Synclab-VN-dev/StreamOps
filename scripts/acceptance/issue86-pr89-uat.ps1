@@ -7,6 +7,7 @@ param(
     [ValidateSet("SelfTest", "Preflight", "ReadOnly")]
     [string]$Mode = "Preflight",
     [string]$ExpectedHead = "",
+    [string]$WorktreeRoot = "",
     [string]$OutputRoot = "",
     [ValidateRange(1, 30)][int]$WsTimeoutSeconds = 6
 )
@@ -14,7 +15,13 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $ExpectedPort = 18789
 $ExpectedTask = "StreamOps-PR89-Manual"
-$RepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../.."))
+# Supports a separately downloaded CI artifact script while still validating
+# the exact local PR #89 worktree before contacting any listener.
+$RepoRoot = if ($WorktreeRoot) {
+    [IO.Path]::GetFullPath($WorktreeRoot)
+} else {
+    [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../.."))
+}
 $ExpectedDataDir = [IO.Path]::GetFullPath((Join-Path $RepoRoot ".streamops/pr89/node"))
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $OutputRoot = Join-Path ([IO.Path]::GetTempPath()) "StreamOps-I86-UAT"
