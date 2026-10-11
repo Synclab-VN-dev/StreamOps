@@ -186,13 +186,70 @@ def read_evidence(paths: RuntimePaths, session: str, after: int, max_seq: int) -
         reader.close()
 
 
+def regrade_saved_capture(capture: Path, output: Path) -> dict:
+    """Recompute marker assertions from immutable prior UAT events, offline.
+
+    Never mark physical/owner assertions PASS and never overwrite originals.
+    """
+    raw = capture.with_name(capture.stem + "-events.jsonl")
+    if output.resolve() in (capture.resolve(), raw.resolve()):
+        raise ValueError("regrade output must differ from original evidence files")
+    old = json.loads(capture.read_text(encoding="utf-8-sig"))
+    env = next(
+        (check for check in old.get("checks", []) if check.get("id") == "ENV-01"),
+        None,
+    )
+    if env is None:
+        raise ValueError("prior capture lacks ENV-01 live start/end snapshots")
+    start = env["actual"]["start"]
+    end = env["actual"]["end"]
+    db = next(
+        (check for check in old.get("checks", []) if check.get("id") == "DB-01"),
+        None,
+    )
+    if db is None:
+        raise ValueError("prior capture lacks DB-01 integrity evidence")
+    events = [
+        json.loads(line)
+        for line in raw.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    regraded = analyze(
+        events=events, start=start, end=end,
+        quick_check=str(db["actual"]),
+    )
+    regraded["regradedFrom"] = str(capture)
+    regraded["eventsFile"] = str(raw)
+    regraded["regradeNote"] = (
+        "Read-only offline regrade of prior UAT keyboard events; "
+        "owner answers in earlier reports are NOT accepted as approval, "
+        "and physical controller provenance remains unverified."
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(regraded, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return regraded
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--home", type=Path, required=True)
-    parser.add_argument("--mode", choices=("snapshot", "analyze"), required=True)
+    parser.add_argument("--mode", choices=("snapshot", "analyze", "regrade"), required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--start", type=Path)
+    parser.add_argument("--capture", type=Path, help="earlier capture.json for offline read-only regrade")
     args = parser.parse_args(argv)
+    if args.mode == "regrade":
+        try:
+            regraded = regrade_saved_capture(args.capture, args.out)
+            print(json.dumps({
+                "status": regraded["status"], "output": str(args.out),
+                "summary": regraded["summary"],
+                "markerPass": sum(x["result"] == "PASS" for x in regraded["matrix"]),
+            }, ensure_ascii=False))
+            return 2 if regraded["status"] in ("BLOCKED", "FAIL") else 0
+        except (OSError, ValueError, KeyError, TypeError, sqlite3.Error) as exc:
+            print(f"ISSUE87_REGRADING_ERROR: {type(exc).__name__}: {exc}")
+            return 2
     paths = RuntimePaths(args.home)
     try:
         end = snapshot(paths)
