@@ -64,3 +64,28 @@ def test_unknown_key_never_attributed_to_controller():
     capture = HookInputMarkerCapture(profile=load_profile("xbox16"))
     sample = F11Sample(0, WM_KEYDOWN, "down", 0, 1, True, virtual_key=0x41)
     assert capture._convert_sample(sample) is None
+
+
+
+def test_supervisor_ingress_queue_overflow_never_silent():
+    profile = load_profile("xbox16")
+    backend = FakeMultiHook(
+        0, True, frozenset(x.virtual_key for x in profile.digital)
+    )
+    capture = HookInputMarkerCapture(
+        profile=profile, block=True, poll_interval=.001,
+        sample_capacity=2, backend_factory=lambda **kw: backend,
+    )
+    capture.set_target_pid(5555)
+    capture.start()
+    backend.pending.extend((d.virtual_key, "down") for d in profile.digital[:3])
+    deadline = time.monotonic() + 2
+    while capture._running and time.monotonic() < deadline:
+        time.sleep(.002)
+    assert not capture._running
+    assert capture.dropped_count >= 1
+    assert capture.overflowed
+    assert "adapter queue overflow" in (capture.consume_error() or "")
+    assert len(capture.drain()) == 2
+    assert backend.closed
+    capture.stop()
