@@ -47,7 +47,8 @@ export function parseInventory(data) {
       restart_required: raw.restart_required === true,
       last_verification: raw.last_verification ?? null,
       // Optional future BE eligibility: absence deliberately means no Rollback.
-      rollback_available: raw.rollback?.available === true || raw.rollback_available === true,
+      rollback_available: raw.rollback && typeof raw.rollback === 'object' && !Array.isArray(raw.rollback)
+        ? raw.rollback.available === true : false,
       rollback_reason: raw.rollback?.reason ?? raw.rollback_reason ?? null,
       revision: Number.isSafeInteger(raw.revision) ? raw.revision : null,
       operation: asObject(raw.operation)
