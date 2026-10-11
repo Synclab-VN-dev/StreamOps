@@ -113,14 +113,15 @@ def test_powershell_launchers_parse_on_windows():
     root = Path(__file__).resolve().parents[3]
     for name in ("start-streamops-node.ps1", "run-streamops-node.ps1"):
         path = root / "scripts/devices/a-windows" / name
+        quoted_path = str(path).replace("'", "''")
         command = (
             "$tokens=$null; $errors=$null; "
             "[System.Management.Automation.Language.Parser]::ParseFile("
-            "$args[0],[ref]$tokens,[ref]$errors) | Out-Null; "
+            f"'{quoted_path}',[ref]$tokens,[ref]$errors) | Out-Null; "
             "if($errors.Count -gt 0){ $errors | Format-List; exit 1 }"
         )
         result = subprocess.run(
-            [executable, "-NoProfile", "-NonInteractive", "-Command", command, str(path)],
+            [executable, "-NoProfile", "-NonInteractive", "-Command", command],
             capture_output=True, text=True, timeout=20,
         )
         assert result.returncode == 0, f"{name} parse failed: {result.stderr} {result.stdout}"
