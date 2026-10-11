@@ -429,8 +429,11 @@ def command_status(paths: RuntimePaths, *, raw_json: bool) -> int:
         ("Input configured", f'{marker.get("configuredDigitalCount", 1)} digital / '
                              f'{marker.get("analogDisabledCount", 0)} analog disabled'),
         ("Input backend", marker.get("backend") or marker.get("captureMethod") or "-"),
+        ("Input hook session", marker.get("sessionId") or "-"),
         ("Input dropped", marker.get("droppedCount", 0)),
+        ("Input overflow", marker.get("overflow", False)),
         ("Last input", marker.get("lastInputAt") or "-"),
+        ("Input last error", marker.get("error") or status.get("lastError") or "-"),
         ("Detail", status.get("detail")),
         ("Supervisor PID", status.get("supervisorPid")),
         ("NVDA", f"PID {nvda.get('pid')} / Session {nvda.get('session_id') or nvda.get('sessionId')}" if nvda else "STOPPED"),
