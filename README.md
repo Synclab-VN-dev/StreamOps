@@ -655,9 +655,26 @@ When starting or replacing a node using `start-streamops-node.ps1`, PowerShell p
 for a **GitHub read-only token** using `Read-Host -AsSecureString` (no plaintext CLI flag).
 
 ```powershell
-.\scripts\devices\a-windows\start-streamops-node.ps1 -Port 8766 -TaskName "StreamOps-I47-UAT" -DataDir .streamops\issue47-uat
-# Paste a read-only token into the masked prompt; no token appears in task args.
+# For manual validation of PR #93, first check port 18793 is free.
+Get-NetTCPConnection -State Listen -LocalPort 18793 -ErrorAction SilentlyContinue
+.\scripts\devices\a-windows\start-streamops-node.ps1 -Port 18793 -BindHost 127.0.0.1 -TaskName "StreamOps-PR93-Manual" -DataDir ".streamops\pr93\node"
+# Enter a read-only token into the masked prompt, or choose clipboard input below.
 ```
+
+Alternatively, copy the token on Windows A and immediately start with the
+clipboard flag (no token on the command line):
+
+```powershell
+.\scripts\devices\a-windows\start-streamops-node.ps1 -Port 18793 -BindHost 127.0.0.1 -TaskName "StreamOps-PR93-Manual" -DataDir ".streamops\pr93\node" -GitHubTokenFromClipboard
+```
+
+The clipboard mode requires one non-empty token line without whitespace and
+overwrites the **active clipboard** after reading (including invalid input).
+The clipboard still temporarily contains a plaintext credential, which might
+persist in Windows Clipboard History, cloud sync or clipboard-monitoring tools.
+For higher-security environments use the masked prompt instead. The two flags
+`-GitHubTokenFromClipboard` and `-NoGitHubTokenPrompt` are mutually exclusive.
+A running healthy node will not re-read clipboard when start is called again.
 
 The token travels to the interactive desktop Scheduled Task via a **one-use,
 DPAPI CurrentUser-encrypted handoff**, not through command-line arguments.
