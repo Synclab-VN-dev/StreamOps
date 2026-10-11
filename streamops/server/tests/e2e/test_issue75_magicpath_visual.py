@@ -172,6 +172,13 @@ def test_original_magicpath_to_live_fe_visual(
             assert product_score<=MANIFEST["rendering"]["mean_rgb_limit"],(
                 f'Visual UI drift: {case["label"]}={product_score}; see diff artifact'
             )
+        # Candidate renders also MUST reject an actual FE/design mismatch.
+        # Otherwise the CI might report nine green visual tests while real UI
+        # exceeds the fixed pixel threshold and only owner approval is red.
+        assert score<=MANIFEST["rendering"]["mean_rgb_limit"],(
+            f'Pinned MagicPath vs FE visual diff: {case["label"]}={score}; '
+            'see expected/actual/diff in CI artifact. Fix FE or get revised design.'
+        )
     finally:
         ref_page.close()
         fe_page.close()
