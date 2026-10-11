@@ -128,7 +128,7 @@ def stage_product(page,server,case):
         installed_version="0.7.2" if state in props else None,
         registry=state!="empty",
         catalog=state!="empty",
-        obs_state="READY" if state in {"blocked","verify-failed","rollback-failed","recovery-required"} else "STOPPED",
+        obs_state="OFFLINE" if state=="offline" else "READY" if state in {"blocked","verify-failed","rollback-failed","recovery-required"} else "STOPPED",
         streaming=state=="blocked")
     if state in {"rollback-failed","recovery-required"}:
         fake.status_operation={"state":"FAILED","operation":"rollback" if state=="rollback-failed" else "update",
