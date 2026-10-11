@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "project_id": "456063904129388544",
+  "source": "Original MagicPath component revision source and compressed preview, never StreamOps production",
+  "approved": false,
+  "approval": {
+    "approved_by": null,
+    "approved_at": null,
+    "review_url": null,
+    "expected_sha256": {}
+  },
+  "references": [
+    {
+      "kind": "plugin",
+      "component_id": "458351046272638976",
+      "revision_id": "458975004185468928",
+      "files": [
+        {
+          "path": "originals/plugin/src/App.tsx",
+          "git_blob_sha1": "9839392fe0e7738771dedb712b04c1969b1d1807"
+        },
+        {
+          "path": "originals/plugin/src/components/generated/StreamOpsOBSPluginManager.tsx",
+          "git_blob_sha1": "ccb07d8cdc4647bd8d50aec2db5f059c4c254ad5"
+        },
+        {
+          "path": "originals/plugin/src/index.css",
+          "git_blob_sha1": "c8fc13b7718d153e3fbed19ee6ed9eb87f978557"
+        }
+      ],
+      "preview": {
+        "path": "references/plugin-458975004185468928.jpg",
+        "git_blob_sha1": "f92f5349d474338064281474951c049c80feadae"
+      }
+    },
+    {
+      "kind": "dashboard",
+      "component_id": "456064390102405120",
+      "revision_id": "458892152907374592",
+      "files": [
+        {
+          "path": "originals/dashboard/src/App.tsx",
+          "git_blob_sha1": "1c437a87e029c54fe8cff7833ff475e61e585f58"
+        },
+        {
+          "path": "originals/dashboard/src/components/generated/StreamOpsMobileDashboard.tsx",
+          "git_blob_sha1": "54d52ad4a6ac00a58ba9e3d13dc94210b465a108"
+        },
+        {
+          "path": "originals/dashboard/src/index.css",
+          "git_blob_sha1": "c8fc13b7718d153e3fbed19ee6ed9eb87f978557"
+        }
+      ],
+      "preview": {
+        "path": "references/dashboard-458892152907374592.jpg",
+        "git_blob_sha1": "8068370dc4bf1cd09592de72eea290ffb3fe578e"
+      }
+    }
+  ],
+  "rendering": {
+    "browser": "Chromium on Windows GitHub Actions",
+    "device_scale_factor": 1,
+    "animation": "disabled",
+    "mean_rgb_limit": 0.08,
+    "reference_drift_limit": 0.015,
+    "automatic_golden_update": false
+  },
+  "required_cases": [
+    {
+      "design": "plugin",
+      "state": "normal",
+      "width": 360,
+      "height": 800,
+      "capture": "top",
+      "label": "plugin-normal-360x800"
+    },
+    {
+      "design": "plugin",
+      "state": "normal",
+      "width": 390,
+      "height": 844,
+      "capture": "top",
+      "label": "plugin-normal-390x844"
+    },
+    {
+      "design": "plugin",
+      "state": "normal",
+      "width": 768,
+      "height": 1024,
+      "capture": "top",
+      "label": "plugin-normal-768x1024"
+    },
+    {
+      "design": "plugin",
+      "state": "normal",
+      "width": 1440,
+      "height": 900,
+      "capture": "top",
+      "label": "plugin-normal-1440x900"
+    },
+    {
+      "design": "plugin",
+      "state": "expanded",
+      "width": 390,
+      "height": 844,
+      "capture": "scroll",
+      "label": "plugin-expanded-390x844"
+    },
+    {
+      "design": "plugin",
+      "state": "expanded",
+      "width": 1440,
+      "height": 900,
+      "capture": "scroll",
+      "label": "plugin-expanded-1440x900"
+    },
+    {
+      "design": "plugin",
+      "state": "confirm",
+      "width": 390,
+      "height": 844,
+      "capture": "top",
+      "label": "plugin-confirm-390x844"
+    },
+    {
+      "design": "dashboard",
+      "state": "plugin-card",
+      "width": 390,
+      "height": 844,
+      "capture": "card",
+      "label": "dashboard-plugin-card-390x844"
+    },
+    {
+      "design": "dashboard",
+      "state": "plugin-card",
+      "width": 1440,
+      "height": 900,
+      "capture": "card",
+      "label": "dashboard-plugin-card-1440x900"
+    }
+  ],
+  "uncovered_design_states": [
+    "loading",
+    "empty",
+    "offline",
+    "blocked",
+    "verify-failed",
+    "rollback-failed",
+    "recovery-required",
+    "legacy-adopted"
+  ],
+  "note": "MagicPath original has scenario state without external selector. Missing source-renderable states require owner-approved design extension; test cannot invent references."
+}
