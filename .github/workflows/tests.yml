@@ -269,6 +269,78 @@ jobs:
           }
           Write-Host 'Issue87 WinRT-marshalling simulated failure regression PASS'
           $global:LASTEXITCODE = 0
+      - name: Issue87 UAT preflight with foreign editable Python installation
+        if: steps.changes.outputs.d4planner == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $head = (& git rev-parse HEAD).Trim()
+          $foreign = Join-Path $env:RUNNER_TEMP 'issue87-old-worktree82/src'
+          New-Item -ItemType Directory -Force (Join-Path $foreign 'd4planner') | Out-Null
+          Set-Content (Join-Path $foreign 'd4planner/__init__.py') `
+            'raise RuntimeError("IMPORTED_FOREIGN_WORKTREE82")' -Encoding utf8
+          $prior = $env:PYTHONPATH
+          $env:PYTHONPATH = $foreign
+          $evidence = Join-Path $env:RUNNER_TEMP 'issue87-foreign-python-preflight'
+          try {
+            & pwsh -NoProfile -File ./scripts/acceptance/issue87-real-a-uat.ps1 `
+              -Mode Preflight -ExpectedHead $head -EvidenceDir $evidence
+            $code = $LASTEXITCODE
+            $global:LASTEXITCODE = 0
+            if ($code -ne 0) {
+              Get-Content (Join-Path $evidence 'report.json') -Raw | Write-Host
+              throw "Foreign-worktree preflight unexpectedly BLOCKED: exit=$code"
+            }
+            $report = Get-Content (Join-Path $evidence 'report.json') -Raw | ConvertFrom-Json
+            $mapped = @{}
+            foreach ($item in $report.checks) { $mapped[$item.id] = $item.result }
+            if ($mapped['DF-01'] -ne 'PASS' -or $mapped['DF-03'] -ne 'PASS') {
+              throw "Wrong PR95 module or controller contract was used"
+            }
+            $log = Get-Content (Join-Path $evidence 'module-path.log') -Raw
+            if ($log -notlike '*utility*d4planner*src*d4planner*__init__.py*') {
+              throw "Module path was not pinned to PR95: $log"
+            }
+            if ($report.taskCreatedByScript -or $report.taskStartedByScript) {
+              throw 'Read-only Preflight must not create any scheduled task'
+            }
+          } finally {
+            $env:PYTHONPATH = $prior
+            $global:LASTEXITCODE = 0
+          }
+          Write-Host 'Issue87 foreign Python source override PASS'
+      - name: Issue87 isolated PR95 Python venv local CI smoke
+        if: steps.changes.outputs.d4planner == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $head = (& git rev-parse HEAD).Trim()
+          $evidence = Join-Path $env:RUNNER_TEMP 'issue87-venv-local-ci'
+          & pwsh -NoProfile -File ./scripts/acceptance/issue87-real-a-uat.ps1 `
+            -Mode Preflight -RunLocalCI -ExpectedHead $head -EvidenceDir $evidence
+          $code = $LASTEXITCODE
+          $global:LASTEXITCODE = 0
+          if ($code -ne 0) {
+            Get-Content (Join-Path $evidence 'report.json') -Raw | Write-Host
+            throw "Isolated PR95 local CI smoke failed: $code"
+          }
+          $r = Get-Content (Join-Path $evidence 'report.json') -Raw | ConvertFrom-Json
+          $byId = @{}
+          foreach($entry in $r.checks) { $byId[$entry.id] = $entry.result }
+          if ($byId['DF-02'] -ne 'PASS' -or $byId['DF-03'] -ne 'PASS') {
+            throw 'Isolated local pytest/compile/profile acceptance incomplete'
+          }
+          $venv = Join-Path $pwd '.streamops/pr95/python-venv/Scripts/python.exe'
+          if (!(Test-Path $venv)) { throw 'PR95 virtualenv python missing' }
+          & $venv -I -c 'import d4planner;print(d4planner.__file__)'
+          if ($LASTEXITCODE -ne 0) { throw 'PR95 source unavailable with isolated Python -I' }
+          if ($r.taskCreatedByScript -or $r.taskStartedByScript) {
+            throw 'Preflight -RunLocalCI must not create a scheduled task'
+          }
+          Write-Host 'Issue87 isolated venv local CI smoke PASS'
+          $global:LASTEXITCODE = 0
       - name: Build D4Planner NVDA add-on
         if: steps.changes.outputs.d4planner == 'true'
         run: python utility/d4planner/tools/build_nvda_addon.py
