@@ -435,3 +435,97 @@ def test_steam_summary_limits_multiple_observed_games_and_expands(page: Page, ga
     collapse.click()
     expect(page.locator("#steam-running-games .gm-game-row")).to_have_count(3)
     assert not any(op.startswith("games.lifecycle") for op, _ in fake.received)
+
+
+def test_games_summary_selectors_zero_unknown_false_and_independent_steam(page: Page, games_ui_server):
+    """UNIT-02: show unknown as unknown, not a fabricated zero; keep launchers distinct."""
+    base, fake = games_ui_server
+    page.goto(base + "/steam")
+    expect(page.locator("#steam-state")).to_have_text("Running")
+    fake.set_library([])
+    expect(page.locator("#steam-games-summary")).to_contain_text("0")
+    records = [
+        game("Alpha", "steam:1000", "RUNNING"),
+        game("Bravo", "other:1001", "STOPPED"),
+        game("Charlie", "other:1002", "RUNNING"),
+    ]
+    records[0]["observation"]["owned"] = False
+    records[0]["observation"]["installed"] = True
+    records[0]["observation"]["obsCapture"] = "VERIFIED_ACTIVE"
+    records[1]["provider"] = "other"
+    records[1]["observation"]["owned"] = None
+    records[1]["observation"]["installed"] = False
+    fake.set_library(records)
+    expect(page.locator("#steam-games-summary")).to_contain_text("3")
+    expect(page.locator("#steam-games-summary")).to_contain_text("2")
+    fake.set_steam(False)
+    expect(page.locator("#steam-state")).to_have_text("Stopped")
+    # Stopping the launcher does NOT mark a verified independent game STOPPED.
+    expect(page.locator("#steam-games-summary")).to_contain_text("2")
+    records[2]["observation"]["process"]["state"] = "UNKNOWN"
+    records[2]["observation"]["process"]["stale"] = True
+    fake.set_library(records)
+    expect(page.locator("#steam-games-summary")).to_contain_text("—")
+    assert page.evaluate("""() => {
+      const m=window.StreamOpsGamesStore;
+      const s=new m.GameStore();s.connection('connected');
+      s.snapshot({epoch:'owned-false',revision:1,stale:false,games:[
+       {id:'other:1',name:'other',observation:{owned:false,installed:true,
+         obsCapture:'VERIFIED_ACTIVE',process:{state:'RUNNING',stale:false}}},
+       {id:'other:2',name:'other2',observation:{owned:null,installed:false,
+         obsCapture:'CONFIGURED_ONLY',process:{state:'STOPPED',stale:false}}}
+      ]});
+      const c=s.summary();
+      return c.registered===2 && c.running===1 && c.verified===1 &&
+       s.games.get('other:1').observation.owned===false &&
+       s.games.get('other:2').observation.owned===null;
+    }""")
+
+
+def test_back_close_escape_focus_and_navigation(page: Page, games_ui_server):
+    """UNIT-07/E2E-02/04: navigation, keyboard dismissal and focus restoration."""
+    base, _fake = games_ui_server
+    page.set_viewport_size({"width":390,"height":844})
+    page.goto(base + "/steam")
+    page.get_by_role("link",name="Manage Games").click()
+    expect(page).to_have_url(base + "/games")
+    opener=page.locator('#game-library .gm-game-row[data-game-id="steam:2344520"]')
+    opener.focus()
+    opener.press("Enter")
+    expect(page.locator("#game-detail")).to_contain_text("Diablo IV")
+    expect(page.locator("#games-main")).to_be_hidden()
+    page.keyboard.press("Escape")
+    expect(page.locator("#games-main")).to_be_visible()
+    assert page.evaluate(
+        'document.activeElement?.dataset?.gameId === "steam:2344520"'
+    ), "Escape must return focus to the game which opened the panel"
+    opener.click()
+    page.get_by_role("button",name="Close game details").click()
+    assert page.evaluate(
+        'document.activeElement?.dataset?.gameId === "steam:2344520"'
+    ), "Close button must return focus to original game row"
+    opener.click()
+    page.get_by_role("button",name="Back to games").click()
+    expect(page.locator("#games-main")).to_be_visible()
+    page.get_by_role("link",name="← Steam").click()
+    expect(page).to_have_url(base + "/steam")
+
+
+def test_generic_game_list_sorting_is_deterministic(page: Page, games_ui_server):
+    """UNIT-06: generic provider metadata is sorted by name and search is read only."""
+    base, fake = games_ui_server
+    page.goto(base + "/games")
+    records=[
+      game("Zulu", "other:1", "STOPPED"),
+      game("Alpha", "steam:2", "RUNNING"),
+      game("Mango", "other:3", "STOPPED"),
+    ]
+    records[0]["provider"]="other"
+    records[2]["provider"]="other"
+    fake.set_library(records)
+    names=page.locator("#game-library .gm-game-label strong")
+    expect(names).to_have_count(3)
+    assert names.all_text_contents()==["Alpha","Mango","Zulu"]
+    page.locator("#game-search").fill("other")
+    expect(names).to_have_count(2)
+    assert not any(op.startswith("games.lifecycle") for op,_ in fake.received)
