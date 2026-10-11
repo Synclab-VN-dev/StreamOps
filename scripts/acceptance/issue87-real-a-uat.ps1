@@ -378,12 +378,11 @@ try {
     Set-Result 'DF-14' 'Report/evidence uploaded to PR and ticket' $reportFile 'BLOCKED'
     if($taskStarted -and $ready){
       Prompt-Owner 'MAN-07' 'SAU khi script dung PR95: anh da test keyboard hoat dong lai va Steam, Diablo IV, NVDA van dang chay?'
-      if($goodMarkers -eq 16 -and $dbState -eq 'PASS' -and $manual['MAN-03'] -eq 'Y' -and $manual['MAN-06'] -eq 'Y'){
-        Prompt-Owner 'MAN-08' 'QUYET DINH RIENG (GO/NO-GO): Anh co DUYET V1 16 nut so, LT/RT threshold va 2 analog duoc de nguyen; da xem matrix/log? Y=GO; N=NO-GO; S=chua duyet'
-      }else{
-        Set-Result 'MAN-08' 'Owner GO/NO-GO after verified marker and speech evidence' 'BLOCKED: con marker hoac speech/manual chua xac minh; KHONG xin duyet V1' 'BLOCKED'
-        Write-Host 'MAN-08 van BLOCKED: con thieu bang chung, khong tu dong coi Y la GO.'
-      }
+      # GO/NO-GO is an explicit OWNER decision only AFTER all DF rounds.
+      # This runner intentionally leaves DF-02/10/11 and physical-origin
+      # approval pending; never solicit a premature one-key Y sign-off.
+      Set-Result 'MAN-08' 'Owner separately approves V1 GO/NO-GO after all DF evidence' 'BLOCKED: chi xin GO/NO-GO sau khi DF-02, DF-10, DF-11 va physical review hoan tat' 'BLOCKED'
+      Write-Host 'MAN-08 la quyet dinh duyet RIENG sau khi tat ca test du bang chung; hien giu BLOCKED.'
     }
     if($stopped -and $manual['MAN-07'] -eq 'Y'){
       Set-Result 'DF-12' 'Stop restored physical mapped keyboard keys' 'Owner confirmed' 'PASS'
