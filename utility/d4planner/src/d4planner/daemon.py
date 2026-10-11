@@ -74,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="d4planner-daemon")
     parser.add_argument("--speech", action="store_true", help="Pass D4 speech through NVDA")
     parser.add_argument("--isolated", action="store_true", help="Use process-scoped controller discovery")
+    parser.add_argument("--block", action="store_true", help="Use F11 keyboard hook capture and suppression")
     parser.add_argument("--game-start-timeout", type=float, default=90.0)
     args = parser.parse_args(argv)
 
@@ -92,6 +93,7 @@ def main(argv: list[str] | None = None) -> int:
             path_manager=path_manager,
             silent=not args.speech,
             isolated=args.isolated,
+            block_marker=args.block,
             game_start_timeout=args.game_start_timeout,
         )
         return supervisor.run()

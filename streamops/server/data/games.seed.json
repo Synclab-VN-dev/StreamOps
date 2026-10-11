@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "games": [
+    {
+      "id": "steam:2344520",
+      "provider": "steam",
+      "providerGameId": "2344520",
+      "name": "Diablo IV",
+      "enabled": true,
+      "metadataSource": "static",
+      "launch": {
+        "strategy": "steam_app",
+        "appId": "2344520"
+      },
+      "detection": {
+        "processNames": [
+          "Diablo IV.exe"
+        ]
+      },
+      "stop": {
+        "strategy": "graceful",
+        "forceAllowed": false
+      }
+    }
+  ]
+}
