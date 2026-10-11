@@ -156,7 +156,7 @@ if ($ObsPluginSourceProvider -eq "github-release" -and -not $NoGitHubTokenPrompt
             # Lock the directory BEFORE writing the encrypted handoff.
             $security = New-Object System.Security.AccessControl.DirectorySecurity
             $security.SetAccessRuleProtection($true, $false)
-            $permission = New-Object System.Security.AccessControl.FileSystemAccessRule(
+            $permission = [System.Security.AccessControl.FileSystemAccessRule]::new(
                 $currentUser, "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow"
             )
             $security.AddAccessRule($permission)
