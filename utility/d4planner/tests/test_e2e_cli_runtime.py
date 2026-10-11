@@ -884,3 +884,33 @@ def test_profile_observe_hook_runtime_loss_is_not_false_running(tmp_path):
     assert status["extras"]["inputMarker"]["mode"] == "OBSERVE"
     assert "synthetic observe hook lost" in status["lastError"]
     assert marker.started and marker.stopped
+
+
+
+def test_session_records_immutable_xbox16_contract_snapshot(tmp_path):
+    from d4planner.controller import load_profile
+    from pathlib import Path
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = E2ERuntime(paths)
+    profile = load_profile("xbox16")
+    manager = UserPathManager(
+        paths, MemoryPathBackend(user_path="", machine_path="MACHINE")
+    )
+    supervisor = Supervisor(
+        paths=paths, runtime=runtime, path_manager=manager,
+        controller_profile=profile, marker_capture=FakeMarkerCapture(),
+    )
+    assert supervisor.bootstrap() == RuntimeState.RUNNING
+    metadata_path = Path(supervisor.status.session_dir) / "metadata.json"
+    metadata = read_json(metadata_path)
+    snapshot = metadata["controllerProfile"]
+    assert snapshot["layoutId"] == "xbox-steaminput-18-v1"
+    assert snapshot["sha256"] == profile.sha256
+    assert snapshot["mappingSource"] == "configuredLayout"
+    assert len(snapshot["digital"]) == 16
+    assert len(snapshot["analog"]) == 2
+    assert {entry["controlId"] for entry in snapshot["digital"]} == {
+        entry.control_id for entry in profile.digital
+    }
+    assert all(not entry["captureEnabled"] for entry in snapshot["analog"])
+    supervisor.store.close()
