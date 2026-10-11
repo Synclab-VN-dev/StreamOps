@@ -4,7 +4,6 @@ import asyncio
 import json
 from fastapi import APIRouter,Depends,WebSocket,WebSocketDisconnect
 from ..auth import require_access
-from ..services.games.access import GameAccessDenied, require_mutation
 from ..services.games.lifecycle import GameServiceError
 
 router=APIRouter()
@@ -38,14 +37,13 @@ async def steam_ws(websocket: WebSocket, _access: None = Depends(require_access)
                 if op=="steam.status":
                     result=(await service.status()).api_payload()
                 elif op=="steam.lifecycle.restart":
-                    require_mutation(websocket.headers)
                     result=(await service.restart()).api_payload()
                     hub.trigger_refresh()
                     await hub.snapshot()
                 else:
                     raise GameServiceError("unknown_operation","Unsupported Steam operation.")
                 await send({"type":"response","request_id":rid,"ok":True,"data":result})
-            except (GameServiceError,GameAccessDenied) as exc:
+            except GameServiceError as exc:
                 await send({"type":"response","request_id":rid,"ok":False,"error":{"code":exc.code,"message":str(exc)}})
             except Exception:
                 await send({"type":"response","request_id":rid,"ok":False,"error":{"code":"steam_operation_failed","message":"Steam operation failed."}})
