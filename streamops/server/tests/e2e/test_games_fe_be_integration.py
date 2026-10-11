@@ -100,11 +100,13 @@ def test_real_game_service_confirmed_start_and_reconcile_over_ws(
         page.locator(f'#game-library .gm-game-row[data-game-id="{GAME}"]').click()
         start = page.locator('#game-detail button[data-action="start"]')
         expect(start).to_be_enabled()
-        page.once("dialog", lambda dialog: dialog.dismiss())
         start.click()
+        expect(page.get_by_role("dialog")).to_be_visible()
+        page.locator(".gm-confirm-cancel").click()
         assert platform.start_calls == 0, "Canceled confirmation MUST NOT mutate process"
-        page.once("dialog", lambda dialog: dialog.accept())
         start.click()
+        expect(page.get_by_role("dialog")).to_be_visible()
+        page.locator(".gm-confirm-accept").click()
         expect(page.locator("#game-detail")).to_contain_text("Running", timeout=15000)
         expect(page.locator("#game-detail .gm-operation")).to_contain_text(
             "SUCCEEDED", timeout=15000,
@@ -144,11 +146,13 @@ def test_real_steam_ws_push_and_restart_confirmation_without_rest(
         expect(page.locator("#steam-state")).to_have_text("Running", timeout=15000)
         button = page.locator("#restart-button")
         expect(button).to_be_enabled()
-        page.once("dialog", lambda d: d.dismiss())
         button.click()
+        expect(page.get_by_role("dialog")).to_be_visible()
+        page.locator(".gm-confirm-cancel").click()
         assert steam.restart_calls == 0, "Canceled restart must not call real SteamService"
-        page.once("dialog", lambda d: d.accept())
         button.click()
+        expect(page.get_by_role("dialog")).to_be_visible()
+        page.locator(".gm-confirm-accept").click()
         expect(page.locator("#activity-log")).to_contain_text(
             "Steam restart completed", timeout=15000,
         )
