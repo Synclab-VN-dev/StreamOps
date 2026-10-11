@@ -4,19 +4,18 @@ import subprocess
 import sys
 import time
 from fastapi.testclient import TestClient
-from streamops.server.tests.test_games_api import _client,_snapshot,_response,TOKEN
+from streamops.server.tests.test_games_api import _client,_snapshot,_response
 from streamops.server.tests.test_games_lifecycle import GAME
 
 def request(ws,rid,op,data=None):
     ws.send_json({"type":"request","request_id":rid,"operation":op,"payload":data or {}})
     return _response(ws,rid)
 
-def test_reconnect_recovers_terminal_operation_after_event_loss(monkeypatch,server_config,capture_service,tmp_path):
-    monkeypatch.setenv("STREAMOPS_GAME_CONTROL_TOKEN",TOKEN)
+def test_reconnect_recovers_terminal_operation_after_event_loss(server_config,capture_service,tmp_path):
     client,platform=_client(server_config,capture_service,tmp_path)
     with client:
         with client.websocket_connect("/api/v1/games/ws",
-                subprotocols=["streamops-games-v1",f"streamops-game-control.{TOKEN}"]) as ws:
+                subprotocols=["streamops-games-v1"]) as ws:
             original=_snapshot(ws)
             response=request(ws,"start","games.lifecycle.start",{"game_id":GAME,"idempotency_key":"connect-reconnect"})
             assert response["ok"]
@@ -154,10 +153,9 @@ def test_foreground_session_loss_stale_and_recovery_push_to_two_ws_clients(
             assert snapshot["games"][0]["observation"]["window"]=="FOREGROUND"
 
 def test_unknown_timeout_operation_recovered_after_ws_and_node_restart(
-        monkeypatch,server_config,capture_service,tmp_path):
+        server_config,capture_service,tmp_path):
     from streamops.server.app import create_app
     from streamops.server.tests.test_games_lifecycle import FakeGamePlatform,build_service
-    monkeypatch.setenv("STREAMOPS_GAME_CONTROL_TOKEN",TOKEN)
     class NonConvergent(FakeGamePlatform):
         def start(self,game): self.start_calls+=1
     first_service,platform=build_service(tmp_path,NonConvergent())
@@ -166,7 +164,7 @@ def test_unknown_timeout_operation_recovered_after_ws_and_node_restart(
                                 game_service=first_service,manage_runtime=False))
     with first:
         with first.websocket_connect("/api/v1/games/ws",
-                subprotocols=["streamops-games-v1",f"streamops-game-control.{TOKEN}"]) as ws:
+                subprotocols=["streamops-games-v1"]) as ws:
             _snapshot(ws)
             sent=request(ws,"unknown","games.lifecycle.start",{"game_id":GAME,"idempotency_key":"crash-replay"})
             assert sent["ok"]
