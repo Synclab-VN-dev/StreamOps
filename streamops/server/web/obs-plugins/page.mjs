@@ -110,7 +110,7 @@ function renderPlugin(plugin) {
   heading.append(text('strong','',plugin.display_name));
   left.append(icon,heading);
   const right = text('span','plugin-card-meta');
-  const pill = text('span','plugin-pill',stateLabel(plugin.state));
+  const pill = text('span','plugin-pill',plugin.state === 'LEGACY_ADOPTED' ? 'Legacy adopted' : stateLabel(plugin.state));
   pill.dataset.tone = statusTone(plugin.state);
   right.append(pill,text('span','plugin-chevron',expandedId === plugin.plugin_id ? '⌃' : '⌄'));
   // MagicPath puts the purpose on its own full-width row below
