@@ -283,3 +283,6 @@ body.gm-page { color-scheme:light; color:#18181b; background:#f5f6f8; font-famil
 .gm-page .gm-confirm-head{position:relative;min-height:24px;}
 .gm-page .gm-confirm-head h2{min-width:0;padding-right:20px;}
 .gm-page .gm-confirm-close{position:absolute;right:-10px;top:-10px;width:44px;height:44px;}
+
+/* #86: MagicPath V2 explicit restart warning; expanded Steam details only. */
+.gm-steam-page .gm-steam-restart-warning{font-size:11px;line-height:16px;color:#71717a;margin:8px 0 0;}
