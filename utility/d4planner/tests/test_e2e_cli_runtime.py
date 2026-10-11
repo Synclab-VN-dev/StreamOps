@@ -1060,10 +1060,15 @@ def test_e2e03_xbox16_session1_one_hook_end_to_end_to_sqlite(monkeypatch, tmp_pa
         assert len(created) == 1 and not polled
         assert created[0].registered
         assert created[0].vks == frozenset(x.virtual_key for x in profile.digital)
-        assert wait_until(lambda: (
-            EventLogReader(paths.events_db).max_sequence(sup.status.session_id)
-            >= 35
-        ))
+        def has_all_16_buttons():
+            reader = EventLogReader(paths.events_db)
+            try:
+                rows = reader.read_after(sup.status.session_id, 0)
+                return sum(row.type == "input.marker.raw" for row in rows) == 32
+            finally:
+                reader.close()
+
+        assert wait_until(has_all_16_buttons)
         reader = EventLogReader(paths.events_db)
         try:
             events = reader.read_after(sup.status.session_id, 0)
