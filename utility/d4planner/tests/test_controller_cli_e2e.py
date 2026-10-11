@@ -55,7 +55,10 @@ def test_mode_and_profile_conflict_is_nonzero(monkeypatch, tmp_path):
                              controller_profile="xbox16") == 4
 
 
-def test_raw_input_logs_filter_but_speech_remains_in_sqlite(tmp_path, capsys):
+def test_raw_input_logs_filter_but_speech_remains_in_sqlite(tmp_path, capsys, monkeypatch):
+    # Synthetic E2E owns no real supervisor process; make process ownership
+    # explicit rather than exercising the stale-runtime protection by accident.
+    monkeypatch.setattr(cli, "_pid_alive", lambda pid: int(pid) == 77777)
     paths = RuntimePaths(tmp_path / "home")
     store = EventStore.create(paths, silent=True, session_id="capture-87")
     store.emit("speech.raw", {"text": "900 Item Power", "process":"diablo iv"})
@@ -70,7 +73,7 @@ def test_raw_input_logs_filter_but_speech_remains_in_sqlite(tmp_path, capsys):
                 layout_id=profile.layout_id, mapping_source="configuredLayout",
             ).as_draft()])
     atomic_write_json(paths.runtime_state, {
-        "state":"RUNNING", "sessionId":store.session.session_id,
+        "state":"RUNNING", "supervisorPid":77777, "sessionId":store.session.session_id,
         "sessionDir":str(store.session.directory), "captureActive":True,
         "extras":{"inputMarker":{
             "layoutId":profile.layout_id, "mode":"BLOCK", "state":"ACTIVE",
