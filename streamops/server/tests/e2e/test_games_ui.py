@@ -812,3 +812,65 @@ def test_game_status_announcements_use_accessible_text_not_only_color(page: Page
     expect(page.locator("#game-detail [data-code='STOPPED']")).to_have_count(1)
     assert page.evaluate("document.documentElement.scrollWidth<=innerWidth")
     assert not any(op.startswith("games.lifecycle.") for op,_ in fake.received)
+
+
+@pytest.mark.parametrize("width,height",[(360,800),(390,844),(768,1024),(1440,900)])
+def test_steam_manager_all_controls_have_mobile_touch_targets(page: Page, games_ui_server, width, height):
+    """E2E-11: verify actual interactive hit boxes, not decorative icon dimensions."""
+    base, fake = games_ui_server
+    page.set_viewport_size({"width":width,"height":height})
+    page.goto(base+"/steam")
+    expect(page.locator("#steam-state")).to_have_text("Running")
+    fake.set_library([game("Running "+str(i),"steam:"+str(100+i),"RUNNING") for i in range(5)])
+    expect(page.locator("#steam-running-games .gm-game-row")).to_have_count(3)
+    expect(page.locator("#steam-running-games .gm-show-more")).to_be_visible()
+    targets=[
+      ".gm-steam-back","#steam-games-toggle",
+      "#steam-running-games .gm-show-more","#game-manager-card .gm-nav",
+      "#steam-runtime-details summary","#steam-activity-details summary",
+    ]
+    audit=page.locator(",".join(targets)).evaluate_all("""items => items
+      .filter(n => n.getClientRects().length>0)
+      .map(n=>({name:n.id||n.className, width:n.getBoundingClientRect().width,
+                height:n.getBoundingClientRect().height,
+                focusable:n.tabIndex>=0 && !n.hasAttribute('disabled')}))""")
+    assert len(audit)==len(targets), audit
+    assert all(item["width"]>=44 and item["height"]>=44 for item in audit), audit
+    assert all(item["focusable"] for item in audit), audit
+    page.locator("#steam-games-toggle").focus()
+    assert page.locator("#steam-games-toggle").evaluate("(e)=>e.matches(':focus-visible')")
+    page.keyboard.press("Enter")
+    expect(page.locator("#steam-games-toggle")).to_have_attribute("aria-expanded","false")
+    page.keyboard.press("Enter")
+    expect(page.locator("#steam-games-toggle")).to_have_attribute("aria-expanded","true")
+    assert page.evaluate("document.documentElement.scrollWidth<=innerWidth")
+    assert not any(op.startswith("games.lifecycle.") for op,_ in fake.received)
+
+
+@pytest.mark.parametrize("width,height",[(360,800),(390,844),(768,1024),(1440,900)])
+def test_game_detail_back_close_advanced_and_controls_touch_target_geometry(page: Page, games_ui_server, width, height):
+    """E2E-11: disabled control stays visible and non-visual focus feedback survives."""
+    base, fake = games_ui_server
+    page.set_viewport_size({"width":width,"height":height})
+    page.goto(base+"/games")
+    opener=page.locator('#game-library .gm-game-row[data-game-id="steam:2344520"]')
+    opener.click()
+    targets=[
+      "#game-detail .gm-detail-back","#game-detail .gm-detail-close",
+      "#game-detail .gm-detail-action-row button",
+      "#game-detail .gm-detail-refresh",
+      "#game-detail .gm-detail-advanced summary",
+    ]
+    audit=page.locator(",".join(targets)).evaluate_all("""items => items
+      .filter(n => n.getClientRects().length>0)
+      .map(n=>({name:n.getAttribute('aria-label')||n.textContent.trim(),
+                width:n.getBoundingClientRect().width,height:n.getBoundingClientRect().height}))""")
+    assert len(audit)>=7, audit
+    assert all(item["width"]>=44 and item["height"]>=44 for item in audit), audit
+    assert page.evaluate("document.documentElement.scrollWidth<=innerWidth")
+    close=page.locator("#game-detail .gm-detail-close")
+    close.focus()
+    assert close.evaluate("(e)=>e.matches(':focus-visible')")
+    page.keyboard.press("Enter")
+    assert page.evaluate('document.activeElement?.dataset?.gameId==="steam:2344520"')
+    assert not any(op.startswith("games.lifecycle.") for op,_ in fake.received)
