@@ -31,9 +31,12 @@ def test_no_backend_or_demo_data_coupling():
         assert "localStorage" not in source
     command=read("games-control.js")
     assert "localStorage.setItem(" not in command and "localStorage.getItem(" not in command and "sessionStorage.setItem(" not in command
-    assert "streamops-game-control." in command
-    assert "sec-websocket-protocol" not in command.lower() # Native WS subprotocol only
-    assert "new WebSocket(url," in command
+    assert "streamops-game-control." not in command
+    assert "setCredential" not in command and "hasCredential" not in command
+    assert 'new WebSocket(url, "streamops-games-v1")' in command
+    assert "control_token_required" not in command
+    assert "game-control-token" not in read("games.html")
+    assert "steam-control-token" not in read("steam.html")
 
 def test_steam_summary_in_correct_location():
     html=read("steam.html")
