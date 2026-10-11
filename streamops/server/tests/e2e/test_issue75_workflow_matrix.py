@@ -755,7 +755,7 @@ def test_issue75_plugin_purpose_and_catalog_status_preserve_backend_identity(
     fake=ScenarioWS(page,plugin_state="NOT_INSTALLED",installed_version=None)
     page.set_viewport_size({"width":360,"height":800})
     launch(page,live_server,fake)
-    expect(page.locator(".plugin-heading-text small")).to_have_text(
+    expect(page.locator(".plugin-purpose-line")).to_have_text(
         "Multi-destination streaming plugin")
     expect(page.locator(".plugin-heading-text")).to_have_attribute(
         "title","obs-multi-rtmp")
@@ -766,4 +766,20 @@ def test_issue75_plugin_purpose_and_catalog_status_preserve_backend_identity(
     assert catalog.evaluate("(el)=>el.getBoundingClientRect().bottom") <= (
         heading.evaluate("(el)=>el.getBoundingClientRect().bottom")+1
     ),"Release catalog metadata must not add an extra row above the card"
+    assert fake.mutations()==[]
+
+
+def test_issue75_mobile_purpose_uses_full_card_width_under_heading(
+    page:Page,live_server:BrowserTestServer
+):
+    fake=ScenarioWS(page,plugin_state="NOT_INSTALLED")
+    page.set_viewport_size({"width":390,"height":844})
+    launch(page,live_server,fake)
+    heading=page.locator(".plugin-card-header")
+    purpose=page.locator(".plugin-purpose-line")
+    assert purpose.evaluate("el => getComputedStyle(el).gridColumnEnd") in {"-1","-1"}
+    assert purpose.evaluate("(el)=>el.getBoundingClientRect().width") >= (
+        heading.evaluate("(el)=>el.getBoundingClientRect().width")-36
+    )
+    assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
     assert fake.mutations()==[]

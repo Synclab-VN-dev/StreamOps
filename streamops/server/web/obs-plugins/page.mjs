@@ -107,13 +107,15 @@ function renderPlugin(plugin) {
     ? plugin.description
     : plugin.plugin_id === 'obs-multi-rtmp' ? 'Multi-destination streaming plugin' : plugin.plugin_id;
   heading.title = plugin.plugin_id;
-  heading.append(text('strong','',plugin.display_name),text('small','',purpose));
+  heading.append(text('strong','',plugin.display_name));
   left.append(icon,heading);
   const right = text('span','plugin-card-meta');
   const pill = text('span','plugin-pill',stateLabel(plugin.state));
   pill.dataset.tone = statusTone(plugin.state);
   right.append(pill,text('span','plugin-chevron',expandedId === plugin.plugin_id ? '⌃' : '⌄'));
-  header.append(left,right);
+  // MagicPath puts the purpose on its own full-width row below
+  // title/status, not squeezed into the narrow title/status columns.
+  header.append(left,right,text('small','plugin-purpose-line',purpose));
   header.addEventListener('click',() => {
     // Rendering rebuilds the card's DOM. Keep keyboard focus on the new
     // header so Enter/Space can close and reopen it without a mouse.

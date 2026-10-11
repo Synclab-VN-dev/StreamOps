@@ -210,3 +210,22 @@ body.plugin-manager-page {background:#f5f6f8;color:#18181b;min-height:100vh;font
 .plugin-manager-page .plugin-section-heading h2,
 .plugin-manager-page .plugin-heading-text strong,
 .plugin-manager-page .plugin-activity-details summary{font-weight:600}
+
+/* #75 pinned MagicPath: full-width plugin purpose beneath the icon/title
+   and badge row; pill only wraps at narrow 360px mobile, like design. */
+.plugin-manager-page .plugin-card-header{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;
+  align-items:start;column-gap:9px;row-gap:6px
+}
+.plugin-manager-page .plugin-heading{min-width:0}
+.plugin-manager-page .plugin-heading-text strong{font-size:15px;line-height:1.5}
+.plugin-manager-page .plugin-card-meta{justify-self:end}
+.plugin-manager-page .plugin-purpose-line{
+  grid-column:1 / -1;font-size:11px;line-height:1.5;
+  color:#71717a;display:block;margin:0
+}
+@media(min-width:375px){
+  .plugin-manager-page .plugin-card-meta .plugin-pill{
+    white-space:nowrap;max-width:none
+  }
+}
