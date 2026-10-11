@@ -228,6 +228,47 @@ jobs:
           }
           Write-Host 'Issue87 detached worktree preflight PASS (no task/runtime created)'
           $global:LASTEXITCODE = 0
+      - name: Issue87 Real-A locale marshalling regression
+        if: steps.changes.outputs.d4planner == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $head = (& git rev-parse HEAD).Trim()
+          $branch = & git branch --show-current
+          if ($branch) { throw 'Expected detached HEAD from prior UAT test' }
+          $env:ISSUE87_EXPECTED_HEAD = $head
+          $env:ISSUE87_EVIDENCE = Join-Path $env:RUNNER_TEMP 'issue87-winrt-interop-smoke'
+          # Simulate the PowerShell/Windows A WinRT failure even if the runner's
+          # OS supports this API. Calling Get-WinUserLanguageList must NOT be
+          # required for read-only UAT baseline or crash the Preflight.
+          & pwsh -NoProfile -Command @'
+          function global:Get-WinUserLanguageList {
+            throw "Cannot marshal 'parameter #2': Invalid managed/unmanaged type combination."
+          }
+          & ./scripts/acceptance/issue87-real-a-uat.ps1 -Mode Preflight `
+            -ExpectedHead $env:ISSUE87_EXPECTED_HEAD -EvidenceDir $env:ISSUE87_EVIDENCE
+          '@
+          $smokeExit = $LASTEXITCODE
+          $global:LASTEXITCODE = 0
+          if ($smokeExit -ne 0) {
+            if (Test-Path (Join-Path $env:ISSUE87_EVIDENCE 'report.json')) {
+              Get-Content (Join-Path $env:ISSUE87_EVIDENCE 'report.json') -Raw | Write-Host
+            }
+            throw "Issue87 simulated locale-marshalling Preflight failed: $smokeExit"
+          }
+          $report = Get-Content (Join-Path $env:ISSUE87_EVIDENCE 'report.json') -Raw | ConvertFrom-Json
+          $df = $report.checks | Where-Object { $_.id -eq 'DF-01' } | Select-Object -First 1
+          if ($null -eq $df -or $df.result -ne 'PASS' -or
+              $null -eq $df.actual.userCulture -or
+              $null -eq $df.actual.keyboardLayoutPreload) {
+            throw 'Missing read-only culture/keyboard-layout evidence in DF-01'
+          }
+          if ($report.taskCreatedByScript -or $report.taskStartedByScript) {
+            throw 'Preflight must not start or create any interactive task'
+          }
+          Write-Host 'Issue87 WinRT-marshalling simulated failure regression PASS'
+          $global:LASTEXITCODE = 0
       - name: Build D4Planner NVDA add-on
         if: steps.changes.outputs.d4planner == 'true'
         run: python utility/d4planner/tools/build_nvda_addon.py
