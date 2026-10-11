@@ -110,8 +110,13 @@ jobs:
           }
           # GitHub runner has no isolated Host A task/runtime: fail CLOSED as BLOCKED,
           # never test/live-control production or install anything on host A.
+          # Deliberate BLOCKED=exit 2 is not a product/CI failure here.
+          # GitHub Actions enables native-command errors by default in pwsh.
+          $PSNativeCommandUseErrorActionPreference = $false
           & pwsh -NoProfile -File ./scripts/acceptance/issue86-pr89-uat.ps1 -Mode Preflight -OutputRoot $root
-          if ($LASTEXITCODE -ne 2) { throw 'UAT preflight did not fail closed without A' }
+          $blockedExit = $LASTEXITCODE
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($blockedExit -ne 2) { throw "UAT preflight did not fail closed without A: $blockedExit" }
           $reports = @(Get-ChildItem -LiteralPath $root -Recurse -Filter report.json |
             ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json })
           $preflight = @($reports | Where-Object { $_.metadata.mode -eq 'Preflight' })
