@@ -266,5 +266,9 @@ try {
 # A complete physical/owner acceptance requires the submitted JSON evidence,
 # not simply exit code zero from a script.
 if($failures.Count -gt 0){exit 2}
-if($Mode -eq 'Review' -and $manual['MAN-08'] -ne 'Y'){exit 3}
+if($Mode -eq 'Review' -and @($items.Values | Where-Object { $_.result -ne 'PASS' }).Count -gt 0){
+  # Review intentionally leaves DF-11/DF-14 or unanswered owner checkpoints
+  # BLOCKED; a generated report is NOT equivalent to final acceptance PASS.
+  exit 3
+}
 exit 0
