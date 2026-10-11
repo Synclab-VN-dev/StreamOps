@@ -47,6 +47,8 @@ class FakeContract:
         self.revision = 1
         self.peers = set()
         self.steam_peers = set()
+        self.node_peers = set()
+        self.node = {"status":"ok","capture_ready":True,"capture_backend":"fake-test"}
         self.operations = {}
         self.received = []
         self.loop = None
@@ -97,6 +99,12 @@ class FakeContract:
         async def dispatch_event():
             await self.dispatch(self.steam_peers if steam else self.peers, event, data)
         asyncio.run_coroutine_threadsafe(dispatch_event(), self.loop).result(timeout=5)
+
+    def set_node(self, ready):
+        async def update():
+            self.node["capture_ready"] = ready
+            await self.dispatch(self.node_peers, "obs.snapshot", {"node":self.node})
+        asyncio.run_coroutine_threadsafe(update(), self.loop).result(timeout=5)
 
     def set_steam(self, running):
         async def update():
@@ -186,6 +194,16 @@ def games_ui_server():
                                      "ok":True,"data":result})
         except WebSocketDisconnect: pass
         finally: fake.steam_peers.discard(ws)
+
+    @app.websocket("/api/v1/obs/ws")
+    async def obs_socket(ws: WebSocket):
+        await ws.accept()
+        fake.node_peers.add(ws)
+        await ws.send_json({"type":"event","event":"obs.snapshot","data":{"node":fake.node}})
+        try:
+            while True: await ws.receive_text()
+        except WebSocketDisconnect: pass
+        finally: fake.node_peers.discard(ws)
 
     listener = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
     listener.bind(("127.0.0.1",0)); listener.listen(128)
@@ -928,3 +946,26 @@ def test_steam_ws_push_offline_and_session_safety_without_rest(page: Page, games
     expect(page.locator("#restart-button")).to_be_disabled()
     assert not api_reads, "Steam WebUI must never use REST reads or status polling"
     assert not any(op=="steam.lifecycle.restart" for op,_ in fake.received)
+
+
+
+def test_node_health_is_read_only_obs_ws_not_steam_or_rest(page: Page, games_ui_server):
+    """E2E-06: Node status is separate from Steam, observed from real OBS WS push."""
+    base, fake = games_ui_server
+    api_reads = []
+    page.on("request",lambda req: api_reads.append(req.url)
+            if "/api/v1/" in req.url and req.resource_type != "websocket" else None)
+    page.goto(base+"/steam")
+    page.locator("#steam-runtime-details summary").click()
+    status=page.locator("#node-health-status")
+    expect(status).to_have_text("Node health: online · Capture READY · fake-test")
+    expect(page.locator("#steam-state")).to_have_text("Running")
+    fake.set_node(False)
+    expect(status).to_have_text("Node health: online · Capture NOT READY · fake-test")
+    expect(page.locator("#steam-state")).to_have_text("Running")
+    page.evaluate("window.StreamOpsNodeHealth.client.socket.close()")
+    expect(status).to_contain_text("UNKNOWN (WS unavailable)")
+    expect(status).to_have_text("Node health: online · Capture NOT READY · fake-test",timeout=15000)
+    assert not api_reads, f"Node/Steam status may not fall back to REST: {api_reads}"
+    assert not any(op.startswith("games.lifecycle.") or op=="steam.lifecycle.restart"
+                   for op,_ in fake.received)
