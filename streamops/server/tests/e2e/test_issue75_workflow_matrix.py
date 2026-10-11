@@ -741,7 +741,8 @@ def test_issue75_not_installed_card_matches_design_without_invented_baseline(
     launch(page,live_server,fake)
     expect(page.locator(".plugin-card-header")).to_have_attribute("aria-expanded","true")
     expect(page.locator(".plugin-install-preview .plugin-action")).to_have_text("Install plugin")
-    expect(page.locator(".plugin-install-source-note")).to_contain_text("backend-approved")
+    expect(page.locator(".plugin-install-source-note")).to_contain_text("StreamOps managed distribution")
+    expect(page.locator(".plugin-install-source-note")).to_contain_text("No arbitrary external release URL")
     expect(page.locator(".plugin-card")).not_to_contain_text("Managed baseline")
     assert fake.mutations()==[]
     act(page,"Install plugin")
