@@ -34,6 +34,14 @@ Only when isolated preflight requirements have been met, execute read-only probe
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\acceptance\issue86-pr89-uat.ps1 -Mode ReadOnly
 ```
 
+If using the **downloadable CI UAT artifact**, extract its `package/` folder anywhere on A. The script accepts `-WorktreeRoot` to identify the actual isolated PR89 worktree even when the script is in Downloads:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\package\issue86-pr89-uat.ps1 -Mode Preflight -WorktreeRoot "C:\Workspace\StreamOps-PR89-UAT" -ExpectedHead "<PR-HEAD-SHA>"
+```
+
+Replace the sample worktree path with the **actual** PR #89 checkout and the placeholder with the current CI-verified 40-character HEAD. The runner refuses an unrelated branch/head and does not check out branches automatically. After preflight confirms that a separately approved isolated task is running, replace `Preflight` with `ReadOnly` for the read-only transport smoke.
+
 Pass `-ExpectedHead <40-character SHA>` to require the exact tested HEAD. **Always obtain the SHA from the current PR before running.** Runner outputs in the temp directory under `StreamOps-I86-UAT/<timestamp>-pr89/`: `report.json`, `summary.txt`, `runner.log`. Exit code: 0 = all executed checks PASS with no BLOCKED; 1 = FAIL; **2 = BLOCKED** (e.g. real-host checks not yet authorized). The intentional BLOCKED exit is not proof of a product failure. Do not paste credentials, session keys or unredacted private material into GitHub.
 
 ## What remains manual and therefore BLOCKED
