@@ -159,7 +159,7 @@ try {
     $exe=(Get-Command $Python -ErrorAction Stop).Source
     if(!(Test-Path -LiteralPath $exe -PathType Leaf)){throw 'Python must resolve to a real exe'}
     New-Item -ItemType Directory -Force -Path $homeDir|Out-Null
-    $argsText='-m d4planner.daemon --isolated --block --controller-profile xbox16 --home "'+$homeDir+'"'
+    $argsText='-m d4planner.daemon --isolated --block --controller-profile xbox16 --uat-attach-only --home "'+$homeDir+'"'
     $action=New-ScheduledTaskAction -Execute $exe -Argument $argsText
     $user=[Security.Principal.WindowsIdentity]::GetCurrent().Name
     $principal=New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
@@ -236,8 +236,10 @@ try {
     Set-Result 'DF-11' 'Legacy Real-A observe and block rounds' 'Additional approved round required' 'BLOCKED'
     Set-Result 'DF-12' 'No hook after stop, physical keyboard restored' @{stopped=$stopped} 'BLOCKED'
     Set-Result 'DF-14' 'Report/evidence uploaded to PR and ticket' $reportFile 'BLOCKED'
-    Prompt-Owner 'MAN-07' 'After stop, keyboard restored and Steam/Diablo IV still running?'
-    Prompt-Owner 'MAN-08' 'Approve V1 16 digital, LT/RT threshold, two analog reserved (GO/NO-GO)?'
+    if($taskStarted){
+      Prompt-Owner 'MAN-07' 'After stop, keyboard restored and Steam/Diablo IV still running?'
+      Prompt-Owner 'MAN-08' 'Approve V1 16 digital, LT/RT threshold, two analog reserved (GO/NO-GO)?'
+    }
     if($stopped -and $manual['MAN-07'] -eq 'Y'){
       Set-Result 'DF-12' 'Stop restored physical mapped keyboard keys' 'Owner confirmed' 'PASS'
     }
