@@ -968,3 +968,224 @@ def test_supervisor_selects_exactly_one_marker_backend_for_each_mode(
             assert instances[-1].kwargs["block"] == block
         sup._stop_marker_capture()
         assert instances[-1].stopped
+
+
+def test_e2e03_xbox16_session1_one_hook_end_to_end_to_sqlite(monkeypatch, tmp_path):
+    """CI E2E: full Supervisor/adapter/SQLite lifecycle with fake Win32 events.
+
+    Windows foreground PID and console session are modelled via E2ERuntime.
+    Physical hook installation / Steam Input are DF-04/DF-06, not CI claims.
+    """
+    from d4planner.controller import load_profile
+    from d4planner.runtime.input_marker import HookInputMarkerCapture
+    from d4planner.runtime.keyboard_hook import (
+        BoundedSamples, WM_KEYDOWN, WM_KEYUP, capture_or_pass,
+    )
+    from d4planner.runtime import supervisor as supervisor_module
+
+    paths = RuntimePaths(tmp_path / "session1")
+    profile = load_profile("xbox16")
+    entered, release = threading.Event(), threading.Event()
+    created = []
+    polled = []
+
+    class SyntheticWindowsHook:
+        hook_errors = 0
+        def __init__(self, *, game_pid, block, virtual_keys=None):
+            self.pid, self.block = game_pid, block
+            self.vks = virtual_keys or frozenset({0x7A})
+            self.samples = BoundedSamples(capacity=128)
+            self.registered = False
+            self.unhooked = False
+            self.sent = False
+            created.append(self)
+        def __enter__(self):
+            entered.set()
+            assert release.wait(2.0)
+            self.registered = True
+            return self
+        def __exit__(self, *_):
+            self.registered = False
+            self.unhooked = True
+        def set_target_pid(self, pid):
+            self.pid = int(pid or 0)
+        def pump(self):
+            if not self.sent:
+                self.sent = True
+                for binding in profile.digital:
+                    for msg in (WM_KEYDOWN, WM_KEYUP):
+                        assert capture_or_pass(
+                            n_code=0, message=msg, vk=binding.virtual_key,
+                            flags=0, foreground_pid=300, game_pid=self.pid,
+                            block=self.block, samples=self.samples,
+                            timestamp_ms=1800000000000 + len(self.samples._items),
+                            virtual_keys=self.vks,
+                        )
+            return True
+
+    def hook_factory(**kwargs):
+        return HookInputMarkerCapture(
+            backend_factory=SyntheticWindowsHook, poll_interval=.002, **kwargs
+        )
+    def forbidden_poll(**kwargs):
+        polled.append(kwargs)
+        raise AssertionError("xbox16 must not create any F11 polling backend")
+    monkeypatch.setattr(supervisor_module, "HookInputMarkerCapture", hook_factory)
+    monkeypatch.setattr(supervisor_module, "InputMarkerCapture", forbidden_poll)
+    sup = Supervisor(
+        paths=paths, runtime=E2ERuntime(paths),
+        path_manager=UserPathManager(
+            paths, MemoryPathBackend(user_path="", machine_path="MACHINE")
+        ), controller_profile=profile, block_marker=True,
+        silent=True, poll_interval=.005, health_poll_interval=.02,
+    )
+    runner = threading.Thread(target=sup.run, daemon=True)
+    runner.start()
+    try:
+        assert entered.wait(2.0)
+        early = read_json(paths.runtime_state)
+        assert early["state"] != "RUNNING"
+        assert early["extras"]["inputMarker"]["state"] != "ACTIVE"
+        release.set()
+        assert wait_until(lambda: (
+            (read_json(paths.runtime_state) or {}).get("state") == "RUNNING"
+        ))
+        ready = read_json(paths.runtime_state)
+        marker = ready["extras"]["inputMarker"]
+        assert marker["state"] == "ACTIVE" and marker["mode"] == "BLOCK"
+        assert marker["sessionId"] == 1
+        assert marker["configuredDigitalCount"] == 16
+        assert marker["analogDisabledCount"] == 2
+        assert marker["backend"] == "keyboardHook"
+        assert len(created) == 1 and not polled
+        assert created[0].registered
+        assert created[0].vks == frozenset(x.virtual_key for x in profile.digital)
+        assert wait_until(lambda: (
+            EventLogReader(paths.events_db).max_sequence(sup.status.session_id)
+            >= 35
+        ))
+        reader = EventLogReader(paths.events_db)
+        try:
+            events = reader.read_after(sup.status.session_id, 0)
+        finally:
+            reader.close()
+        rows = [e for e in events if e.type == "input.marker.raw"]
+        assert len(rows) == 32
+        assert [(row.data["controlId"], row.data["state"]) for row in rows] == [
+            (b.control_id, edge) for b in profile.digital for edge in ("down", "up")
+        ]
+        assert all(row.data["suppressed"] is True for row in rows)
+        assert all(row.data["layoutId"] == profile.layout_id for row in rows)
+    finally:
+        release.set()
+        paths.stop_request.parent.mkdir(parents=True, exist_ok=True)
+        paths.stop_request.write_text("stop\n", encoding="utf-8")
+        runner.join(3)
+    assert not runner.is_alive()
+    assert created[0].unhooked
+    assert (read_json(paths.runtime_state) or {})["state"] == "STOPPED"
+
+
+def test_e2e11_stop_unhooks_then_mode_switch_without_stale_capture(
+    monkeypatch, tmp_path,
+):
+    """CI checks real adapter lifecycle with synthetic Win32; physical key DF-12."""
+    from d4planner.controller import load_profile
+    from d4planner.runtime.input_marker import HookInputMarkerCapture
+    from d4planner.runtime.keyboard_hook import BoundedSamples, F11Sample, WM_KEYDOWN, WM_KEYUP
+    from d4planner.runtime import supervisor as supervisor_module
+
+    profile = load_profile("xbox16")
+    created = []
+
+    class SyntheticHook:
+        hook_errors = 0
+        def __init__(self, *, game_pid, block, virtual_keys=None):
+            self.pid, self.block = game_pid, block
+            self.keys = virtual_keys or frozenset({0x7A})
+            self.samples = BoundedSamples(capacity=128)
+            self.registered, self.unhooked = False, False
+            self.sent = False
+            created.append(self)
+        def __enter__(self):
+            self.registered = True
+            return self
+        def __exit__(self, *_):
+            self.registered = False
+            self.unhooked = True
+            # Simulate release queued just before unhook completion.
+            self.samples.append(F11Sample(
+                1800000000033, WM_KEYUP, "up", 0, 300, self.block,
+                virtual_key=0x7A,
+            ))
+        def set_target_pid(self, pid):
+            self.pid = int(pid or 0)
+        def pump(self):
+            if not self.sent:
+                self.sent = True
+                self.samples.append(F11Sample(
+                    1800000000001, WM_KEYDOWN, "down", 0, 300, self.block,
+                    virtual_key=0x7A,
+                ))
+            return True
+        def suppress(self, vk):
+            return self.registered and self.block and vk in self.keys
+
+    def fake_hook(**kwargs):
+        return HookInputMarkerCapture(
+            backend_factory=SyntheticHook, poll_interval=.002, **kwargs
+        )
+    monkeypatch.setattr(supervisor_module,"HookInputMarkerCapture",fake_hook)
+    fake_runtime = None
+    for index, (selected, blocking) in enumerate((
+        (profile,True), (None,True), (profile,False),
+    )):
+        paths = RuntimePaths(tmp_path / f"cycle-{index}")
+        runtime = E2ERuntime(paths)
+        manager = UserPathManager(paths,MemoryPathBackend(
+            user_path="",machine_path="MACHINE"
+        ))
+        supervisor = Supervisor(
+            paths=paths, runtime=runtime, path_manager=manager,
+            controller_profile=selected, block_marker=blocking,
+            silent=True, poll_interval=.005, health_poll_interval=.02,
+        )
+        # Explicitly attach a hook adapter to avoid relying on platform os.name.
+        supervisor.marker_capture = fake_hook(profile=selected,block=blocking)
+        thread = threading.Thread(target=supervisor.run,daemon=True)
+        thread.start()
+        assert wait_until(lambda: (read_json(paths.runtime_state) or {}).get("state") == "RUNNING")
+        instance = created[-1]
+        assert instance.registered and not instance.unhooked
+        assert instance.suppress(0x7A) is blocking
+        if selected is not None:
+            assert instance.suppress(0x7B) is blocking
+        else:
+            assert instance.suppress(0x7B) is False
+        if blocking and selected:
+            monkeypatch.setattr(cli, "_pid_alive", lambda pid: True)
+            assert cli.command_start(paths, speech=False, isolated=False, detached=True,
+                                     timeout=.1, controller_profile="xbox16",
+                                     block_marker=False) == 4
+            assert cli.command_start(paths, speech=False, isolated=False, detached=True,
+                                     timeout=.1, controller_profile=None,
+                                     block_marker=True) == 4
+        paths.stop_request.write_text("stop\n", encoding="utf-8")
+        thread.join(3)
+        assert not thread.is_alive()
+        assert instance.unhooked and not instance.registered
+        assert instance.suppress(0x7A) is False
+        assert instance.suppress(0x7B) is False
+        state = read_json(paths.runtime_state)
+        assert state["state"] == "STOPPED"
+        reader = EventLogReader(paths.events_db)
+        try:
+            rows = [ev for ev in reader.read_after(state["sessionId"],0)
+                    if ev.type == "input.marker.raw"]
+        finally:
+            reader.close()
+        assert [ev.data["state"] for ev in rows] == (
+            ["down","up"] if selected is not None or blocking else []
+        )
+        assert runtime._steam.pid == 200 and runtime._game.pid == 300
+    assert len(created) == 3
