@@ -146,3 +146,27 @@ def test_native_adapter_unhooks_before_draining_release_tail():
     assert [row.control_id for row in tail] == ["A", "A"]
     assert capture.drain() == []
     assert capture.dropped_count == 0
+
+
+def test_vk_punctuation_scan_code_diagnostics_not_claimed_steam_origin():
+    profile = load_profile("xbox16")
+    from d4planner.runtime.keyboard_hook import F11Sample
+    for control, vk, scan in [
+        ("DPAD_UP", 0xDB, 0x1A),
+        ("DPAD_DOWN", 0xDD, 0x1B),
+        ("DPAD_LEFT", 0xDC, 0x2B),
+        ("DPAD_RIGHT", 0xC0, 0x29),
+    ]:
+        capture = HookInputMarkerCapture(profile=profile, block=True)
+        sample = F11Sample(
+            timestamp_ms=1800000000000, message=WM_KEYDOWN,
+            state="down", flags=0x10, foreground_pid=9001,
+            suppressed=True, virtual_key=vk, scan_code=scan,
+        )
+        result = capture._convert_sample(sample)
+        assert result is not None and result.control_id == control
+        draft = result.as_draft()
+        assert draft.data["scanCode"] == scan
+        assert draft.data["virtualKey"] == vk
+        assert draft.data["mappingSource"] == "configuredLayout"
+        assert draft.data.get("physicalSteamVerified") is None
