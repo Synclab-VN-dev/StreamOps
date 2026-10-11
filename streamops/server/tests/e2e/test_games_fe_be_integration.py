@@ -15,7 +15,7 @@ from playwright.sync_api import Browser, expect
 from streamops.server.app import create_app
 from streamops.server.services import SteamService
 from streamops.server.tests.test_games_lifecycle import GAME, build_service
-from streamops.server.tests.test_steam import FakeSteamBackend, RUNNING
+from streamops.server.tests.test_steam import FakeSteamBackend, RUNNING, STOPPED
 from .conftest import wait_until
 
 
@@ -114,5 +114,40 @@ def test_real_game_service_confirmed_start_and_reconcile_over_ws(
         page.locator("#game-detail .gm-detail-refresh").click()
         expect(page.locator("#game-detail")).to_contain_text("Running", timeout=15000)
         assert platform.start_calls == 1 and platform.stop_calls == 0
+    finally:
+        page.close()
+
+
+
+def test_real_steam_ws_push_and_restart_confirmation_without_rest(
+        browser: Browser, integrated_game_ui_server):
+    """E2E-06: real merged Steam WS pushes status, restart is opt-in, zero REST polling."""
+    base, platform, steam = integrated_game_ui_server
+    page = browser.new_page()
+    requests = []
+    page.on("request", lambda req: requests.append(req.url)
+            if "/api/v1/" in req.url and req.resource_type != "websocket" else None)
+    try:
+        page.goto(base + "/steam")
+        expect(page.locator("#steam-state")).to_have_text("Running")
+        expect(page.locator("#status-text")).to_have_text("Steam WS connected")
+        steam.status_result = STOPPED
+        expect(page.locator("#steam-state")).to_have_text("Stopped", timeout=15000)
+        steam.status_result = RUNNING
+        expect(page.locator("#steam-state")).to_have_text("Running", timeout=15000)
+        page.locator("#steam-runtime-details summary").click()
+        button = page.locator("#restart-button")
+        expect(button).to_be_enabled()
+        page.once("dialog", lambda d: d.dismiss())
+        button.click()
+        assert steam.restart_calls == 0, "Canceled restart must not call real SteamService"
+        page.once("dialog", lambda d: d.accept())
+        button.click()
+        expect(page.locator("#activity-log")).to_contain_text(
+            "Steam restart completed", timeout=15000,
+        )
+        assert steam.restart_calls == 1
+        assert platform.start_calls == platform.stop_calls == 0
+        assert not requests, f"Steam frontend used REST instead of WS: {requests}"
     finally:
         page.close()
