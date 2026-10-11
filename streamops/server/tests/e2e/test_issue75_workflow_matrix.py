@@ -29,6 +29,8 @@ class ScenarioWS(MockPluginWebSocket):
         self.obs_sockets=[]
         self.install_requires_restart=False
         self.already_adopted=False
+        self.rollback_alias_override=None
+        self.rollback_missing_proof=False
         super().__init__(page, plugin_state=plugin_state, obs_state=obs_state)
 
     def status(self):
@@ -42,6 +44,10 @@ class ScenarioWS(MockPluginWebSocket):
             "operation":self.status_operation,
             "last_verification":None,
         })
+        if self.rollback_alias_override is not None:
+            current['rollback_available']=self.rollback_alias_override
+        if self.rollback_missing_proof:
+            current.pop('rollback',None)
         return current
 
     def approved_release(self):
@@ -784,3 +790,26 @@ def test_issue75_mobile_purpose_uses_full_card_width_under_heading(
     )
     assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
     assert fake.mutations()==[]
+
+
+def test_issue75_rollback_alias_cannot_override_backend_backup_denial(
+    page:Page,live_server:BrowserTestServer
+):
+    fake=ScenarioWS(page,plugin_state="VERIFIED",rollback=False,installed_version="2.0")
+    fake.rollback_alias_override=True
+    launch(page,live_server,fake)
+    expect(page.get_by_role("button",name="Rollback")).to_be_disabled()
+    assert fake.mutations()==[], "Contradictory compatibility alias is not backup evidence"
+
+
+def test_issue75_rollback_missing_canonical_proof_remains_disabled(
+    page:Page,live_server:BrowserTestServer
+):
+    fake=ScenarioWS(page,plugin_state="VERIFIED",rollback=False,installed_version="2.0")
+    fake.rollback_missing_proof=True
+    fake.rollback_alias_override=True
+    launch(page,live_server,fake)
+    expect(page.get_by_role("button",name="Rollback")).to_be_disabled()
+    assert fake.mutations()==[], "A legacy boolean cannot authorize Rollback"
+
+
