@@ -132,6 +132,20 @@ class ScenarioWS(MockPluginWebSocket):
 
         def handle(raw):
             req=json.loads(raw);self.calls.append(req)
+            # The existing OBS dashboard performs safe read-only queries on
+            # page load. The test fixture must serve their documented schemas;
+            # rejecting those reads makes unrelated Dashboard initialization fail.
+            reads = {
+                "source_catalog.list": {"sources": []},
+                "scene_profile_templates.list": {"templates": []},
+                "scene_profiles.list": {"profiles": []},
+                "inventory.get": {"options": {}},
+            }
+            if req["operation"] in reads:
+                assert req.get("payload", {}) == {}, "OBS read may not mutate resources"
+                ws.send(json.dumps({"type":"response","request_id":req["request_id"],
+                                    "ok":True,"data":reads[req["operation"]]}))
+                return
             if req["operation"] != "obs.lifecycle.restart":
                 raise AssertionError("No background OBS mutation is permitted")
             self.obs_state="READY"
