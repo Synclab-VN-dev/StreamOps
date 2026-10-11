@@ -226,7 +226,8 @@ export class PluginStore {
         markPendingInSession(false);
         this.pendingMutation = null;
       }
-      this.log({operation:'obs.lifecycle.restart', result:'unknown', error_code:error.code || 'unknown_outcome'});
+      this.log({operation:'obs.lifecycle.restart', result:this.unknownOutcome ? 'unknown' : 'failed',
+        error_code:error.code || 'unknown_outcome'});
       throw error;
     } finally {
       this.busy = false;
