@@ -27,12 +27,31 @@ if ($LASTEXITCODE -ne 0) {
     throw "Failed to restrict token handoff directory ACL (icacls exit $LASTEXITCODE)."
 }
 
-# Fail closed if any other grant remains, including unexpected explicit ACEs
-# from a pre-existing directory. Never write a credential before verification.
+# Windows can give newly created directories explicit ACL entries for
+# SYSTEM/Administrators/other principals, not just inherited entries.
+# Remove those explicit grants/denials by SID, while retaining this user's
+# explicit grant. Do not widen privileges or disable the ACL verification.
 $acl = Get-Acl -LiteralPath $item.FullName -ErrorAction Stop
 if (-not $acl.AreAccessRulesProtected) {
     throw "Token handoff directory still inherits permissions."
 }
+$existingRules = $acl.GetAccessRules(
+    $true, $true, [System.Security.Principal.SecurityIdentifier]
+)
+$otherSids = @(
+    $existingRules |
+        Where-Object { $_.IdentityReference.Value -ne $sid } |
+        ForEach-Object { $_.IdentityReference.Value } |
+        Sort-Object -Unique
+)
+foreach ($otherSid in $otherSids) {
+    & icacls.exe $item.FullName "/remove" ("*" + $otherSid) | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to remove an unexpected token handoff ACL entry."
+    }
+}
+# Never write the token until the final DACL is exactly owner-only.
+$acl = Get-Acl -LiteralPath $item.FullName -ErrorAction Stop
 $rules = $acl.GetAccessRules(
     $true, $true, [System.Security.Principal.SecurityIdentifier]
 )
