@@ -83,9 +83,11 @@ def position(page,case,reference):
     page.wait_for_timeout(80)
 
 def stage_reference(page,url,case):
-    page.goto(url+"/?design="+case["design"])
+    page.goto(url+"/?design="+case["design"]+"&state="+case["state"])
     if case["design"]=="plugin":
         expect(page.get_by_role("heading",name="OBS Plugin Manager")).to_be_visible()
+        if case["state"]=="blocked":
+            expect(page.get_by_text("Live / blocked",exact=True)).to_be_visible()
         if case["state"]=="confirm":
             reference_scroll=page.evaluate("window.scrollY")
             page.get_by_role("button",name="Install plugin",exact=True).click()
@@ -107,7 +109,9 @@ def stage_product(page,server,case):
     # Browser fixture is BE-v2 shaped; no production mock images, REST fallback,
     # fake releases, or filesystem/OBS mutations.
     fake=ScenarioWS(page,plugin_state="NOT_INSTALLED",
-                    installed_version=None,obs_state="STOPPED")
+                    installed_version=None,
+                    obs_state="READY" if case["state"]=="blocked" else "STOPPED",
+                    streaming=case["state"]=="blocked")
     page.goto(server.base_url+("/obs" if case["design"]=="dashboard" else "/obs/plugins"))
     if case["design"]=="plugin":
         expect(page.locator("#plugin-managed-count")).to_have_text("1")
