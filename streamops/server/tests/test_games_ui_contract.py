@@ -16,6 +16,10 @@ def test_game_manager_transport_is_ws_only():
     assert "fetch(" not in games
     assert "/api/v1/games/ws" in read("games-ws.js")
     assert "/api/v1/steam/ws" in read("steam-ws.js")
+    assert "/api/v1/obs/ws" in read("node-health.js")
+    assert "obs.snapshot" in read("node-health.js")
+    assert "capture_ready" in read("node-health.js")
+    assert "fetch(" not in read("node-health.js")
     assert "games.operations.get" in read("games-ws.js")
     assert "games.reconcile" in games
     assert "games.lifecycle.force_stop" not in games
@@ -44,6 +48,8 @@ def test_steam_summary_in_correct_location():
     assert 'href="/games"' in html
     assert 'src="/assets/games-ws.js"' in html
     assert 'src="/assets/steam-ws.js"' in html
+    assert 'src="/assets/node-health.js"' in html
+    assert 'id="node-health-status"' in html
     assert 'href="/assets/games.css"' in html
 
 def test_gaming_detail_stays_in_two_pages_and_assets_exist():
@@ -55,5 +61,5 @@ def test_gaming_detail_stays_in_two_pages_and_assets_exist():
     assert 'src="/assets/games.js"' in html
     assert "Game Manager" in html
     assert "Mock" not in html
-    for name in ["games.html","games.js","games.css","games-store.js","games-control.js","games-ws.js","steam-ws.js","games-components.js"]:
+    for name in ["games.html","games.js","games.css","games-store.js","games-control.js","games-ws.js","steam-ws.js","node-health.js","games-components.js"]:
         assert (WEB_ROOT / name).is_file()
