@@ -683,13 +683,13 @@ def test_issue75_legacy_adopt_empty_catalog_then_approved_release_enables_instal
     act(page,"Adopt existing")
     confirm(page)
     expect(page.locator(".plugin-card")).to_contain_text("Legacy baseline adopted")
-    expect(page.get_by_role("button",name="Install plugin")).to_be_disabled()
+    expect(page.get_by_role("button",name="Install approved release")).to_be_disabled()
     assert fake.mutations("obs_plugin.install")==[]
     # Release approval becomes available later; only a fresh BE catalog read
     # can enable Install. Adoption itself never downloads an artifact.
     fake.has_catalog=True
     page.locator("#plugin-refresh").click()
-    expect(page.get_by_role("button",name="Install plugin")).to_be_enabled()
+    expect(page.get_by_role("button",name="Install approved release")).to_be_enabled()
     assert len(fake.mutations("obs_plugin.adopt"))==1
     assert fake.mutations("obs_plugin.install")==[]
 
