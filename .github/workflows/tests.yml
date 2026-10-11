@@ -75,6 +75,7 @@ jobs:
               $_ -like "streamops/server/web/games*" -or
               $_ -like "streamops/server/web/steam*" -or
               $_ -like "streamops/server/web/ws-client*" -or
+              $_ -like "streamops/server/web/node-health*" -or
               $_ -like "streamops/server/tests/e2e/test_games_ui.py" -or
               $_ -eq "streamops/server/tests/e2e/test_games_fe_be_integration.py" -or
               $_ -like "streamops/server/tests/visual_magicpath/*" -or
