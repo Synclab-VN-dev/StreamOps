@@ -24,19 +24,21 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $fe = (git rev-parse HEAD).Trim()
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify FE HEAD' }
+          # PR checkout defaults to a synthetic merge SHA; use the real FE PR HEAD.
+          $fe = '${{ github.event.pull_request.head.sha }}'
+          if (-not $fe) { $fe = (git rev-parse HEAD).Trim() }
+          if (-not $fe) { throw 'Cannot identify FE HEAD' }
           Write-Host "FE HEAD: $fe"
           Write-Host "BE HEAD: $env:ISSUE75_BE_SHA"
           $dir = Join-Path $env:RUNNER_TEMP 'issue75-combined'
-          git fetch origin $env:ISSUE75_BE_SHA
+          git fetch origin $fe $env:ISSUE75_BE_SHA
           if ($LASTEXITCODE -ne 0) { throw 'Cannot fetch fixed BE HEAD' }
           git worktree add --detach $dir $fe
           if ($LASTEXITCODE -ne 0) { throw 'Cannot create isolated worktree' }
           Set-Location $dir
           # This merge is local to a disposable unpushed CI worktree ONLY.
           # A conflict is a real integration failure, never auto-resolved.
-          git merge --no-commit --no-ff $env:ISSUE75_BE_SHA
+          git -c user.name='OpenStream Integration CI' -c user.email='ci@invalid.local' merge --no-commit --no-ff $env:ISSUE75_BE_SHA
           if ($LASTEXITCODE -ne 0) {
             git status --short
             throw 'FE+BE exact-HEAD merge conflict; do not update either branch automatically'
