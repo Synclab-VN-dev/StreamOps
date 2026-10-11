@@ -207,3 +207,25 @@ def test_reporter_rejects_duplicate_down_and_unsuppressed_edges_even_with_multip
     ]
     result = reporter.analyze(events=pristine, start=start, end=end, quick_check="ok")
     assert next(x for x in result["matrix"] if x["controlId"] == "A")["result"] == "FAIL"
+
+
+def test_regrade_saved_capture_does_not_mutate_prior_owner_evidence(tmp_path):
+    start, end = snapshots()
+    events = captured_rows()
+    original = reporter.analyze(events=events, start=start, end=end, quick_check="ok")
+    capture = tmp_path / "capture.json"
+    event_file = tmp_path / "capture-events.jsonl"
+    target = tmp_path / "capture-regraded.json"
+    capture.write_text(json.dumps(original), encoding="utf-8")
+    event_file.write_text(
+        "".join(json.dumps(event) + "\n" for event in events),
+        encoding="utf-8",
+    )
+    before = capture.read_bytes()
+    result = reporter.regrade_saved_capture(capture, target)
+    assert result["status"] == "PENDING_OWNER_REVIEW"
+    assert sum(x["result"] == "PASS" for x in result["matrix"]) == 16
+    assert result["physicallyVerified"] == 0
+    assert result["regradedFrom"] == str(capture)
+    assert capture.read_bytes() == before
+    assert target.exists()
