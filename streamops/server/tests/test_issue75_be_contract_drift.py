@@ -1,4 +1,11 @@
 """Contract drift assertions against the real BE in isolated #75 CI only."""
+import os
+import pytest
+
+if os.environ.get("ISSUE75_EXACT_BE_COMBINED") != "1":
+    pytest.skip("BE contract drift runs only in required exact-HEAD combined CI",
+                allow_module_level=True)
+
 from streamops.server.tests.test_obs_plugin_ws_contract_v2 import _client, _service
 from streamops.server.tests.e2e.test_issue75_workflow_matrix import ScenarioWS
 
