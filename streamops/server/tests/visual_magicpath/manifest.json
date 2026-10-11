@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "intended_usage": "design-source reference renders vs production FE; previews retained for audit, not treated as multi-viewport screenshots",
-  "approved": false,
+  "approved": true,
   "approval": {
-    "approved_by": null,
-    "approved_at": null,
-    "reference": "Owner explicitly approved exactly 19 expected-magicpath PNGs in GitHub Actions run 38063015627 / artifact 11673783250 (recorded 2026-10-11). Promotion must verify SHA-256 before setting approved=true.",
+    "approved_by": "Project owner \u2014 explicit Golden approval in conversation (recorded at review_url)",
+    "approved_at": "2026-10-11T03:49:01.580727+00:00",
+    "reference": "Owner-approved immutable MagicPath Golden PNGs; GitHub Actions run 38063015627, artifact 11673783250; each screenshot SHA256 verified",
     "expected_sha256": {
       "games-default-1440x900": "46e9dc4af3fbdded3af0b90ed90e174e541bf95b1af087c4b1dcb1db7dbc70a1",
       "games-default-360x800": "47e5695e3550f9c9077cc6c336cb8f74be875367ef39f14f48ea48a4e8b8e85c",
