@@ -67,6 +67,38 @@ def decide_f11(*, n_code: int, message: int, vk: int,
     )
 
 
+class EdgeFilter:
+    """Per-key physical DOWN/UP edge tracking for Xbox16 marker mode.
+
+    Windows may emit repeated WM_KEYDOWN while a controller button is held.
+    Repeats must not produce duplicate marker edges or modify other keys.
+    The hook callback is serialized by its Win32 message-pumping thread.
+    """
+
+    def __init__(self) -> None:
+        self._pressed: set[int] = set()
+
+    def accept(self, vk: int, state: str) -> bool:
+        pressed = vk in self._pressed
+        if state == "down":
+            if pressed:
+                return False
+            self._pressed.add(vk)
+            return True
+        if state == "up":
+            if not pressed:
+                return False
+            self._pressed.remove(vk)
+            return True
+        raise ValueError(f"unsupported edge state: {state!r}")
+
+    def reset(self, vk: int | None = None) -> None:
+        if vk is None:
+            self._pressed.clear()
+        else:
+            self._pressed.discard(vk)
+
+
 @dataclass(frozen=True, slots=True)
 class F11Sample:
     timestamp_ms: int
@@ -216,6 +248,11 @@ class WindowsF11Hook:
                                         for vk in self.virtual_keys):
             raise ValueError("virtual_keys must be a non-empty set of valid Windows VKs")
         self.samples = BoundedSamples(capacity)
+        # Preserve legacy F11 raw capture behavior unless a versioned
+        # multi-key profile explicitly opts into edge-only semantics.
+        self._edges = EdgeFilter() if virtual_keys is not None else None
+        self._edges_target_pid = game_pid
+        self.ignored_repeats = 0
         self.hook_errors = 0
         self.keyboard_seen = 0
         self.f11_seen = 0
@@ -330,6 +367,24 @@ class WindowsF11Hook:
                                     virtual_key=int(kb.vkCode),
                                     scan_code=int(kb.scanCode),
                                 ))
+                        if self._edges is not None:
+                            if self._edges_target_pid != self.game_pid:
+                                # A restarted/replaced D4 PID cannot inherit
+                                # the old process's held-button state.
+                                self._edges.reset()
+                                self._edges_target_pid = self.game_pid
+                            if foreground_pid != self.game_pid:
+                                # Outside D4, no keyboard event is blocked.
+                                self._edges.reset(int(kb.vkCode))
+                            elif not self._edges.accept(
+                                int(kb.vkCode), KEY_STATES[message]
+                            ):
+                                self.ignored_repeats += 1
+                                # A repeat is not a distinct marker event.
+                                # Suppress only while the queue/hook is healthy.
+                                if self.block and not self.samples.dropped and not self.hook_errors:
+                                    return 1
+                                return int(self._call_next(self._hook, n_code, message, param))
                         if safe_capture_or_pass(
                             on_error=self._count_error,
                             n_code=n_code, message=message, vk=kb.vkCode,
