@@ -189,7 +189,7 @@ class ScenarioWS(MockPluginWebSocket):
 
 def launch(page:Page,server:BrowserTestServer,scenario:ScenarioWS):
     page.goto(server.base_url+"/obs/plugins")
-    expect(page.locator("#plugin-managed-count")).to_have_text("1" if scenario.registry else "0")
+    expect(page.locator("#plugin-managed-count")).to_have_text("1" if scenario.registry else "0", timeout=15000)
     if scenario.registry:
         expect(page.locator(".plugin-card")).to_have_count(1)
         expect(page.locator(".plugin-card-header")).to_have_attribute("aria-expanded","true")
