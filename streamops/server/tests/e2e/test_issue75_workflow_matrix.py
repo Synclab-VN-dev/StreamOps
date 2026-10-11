@@ -699,3 +699,27 @@ def test_issue75_adopt_backend_409_race_reconciles_without_stopping_obs(
     expect(page.locator(".plugin-card")).to_contain_text("Existing")
     assert len(fake.mutations("obs_plugin.adopt"))==1
     assert fake.mutations("obs.lifecycle.stop")==[]
+
+
+
+def test_issue75_design_aligned_cards_keep_live_ws_counts_and_logical_activity(
+    page:Page,live_server:BrowserTestServer
+):
+    fake=ScenarioWS(page,plugin_state="UNMANAGED",catalog=False)
+    page.set_viewport_size({"width":390,"height":844})
+    launch(page,live_server,fake)
+    expect(page.locator(".plugin-manager-page .topbar")).to_have_count(0)
+    assert page.locator(".plugin-shell").evaluate("el => el.getBoundingClientRect().width") <= 448
+    expect(page.locator("#plugin-managed-count")).to_have_text("1")
+    expect(page.locator("#plugin-installed-count")).to_have_text("1")
+    expect(page.locator("#plugin-operation-count")).to_have_text("0")
+    assert fake.mutations()==[]
+    act(page,"Adopt existing")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("Legacy baseline adopted")
+    # BE adapter records requested and terminal events with same request_id,
+    # but a single user action is one operation in the summary.
+    expect(page.locator("#plugin-operation-count")).to_have_text("1")
+    expect(page.locator("#plugin-last-event")).to_contain_text("adopt")
+    expect(page.locator("#plugin-error-count")).to_have_text("0")
+    assert len(fake.mutations("obs_plugin.adopt"))==1

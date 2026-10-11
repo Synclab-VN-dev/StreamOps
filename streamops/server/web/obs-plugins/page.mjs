@@ -184,9 +184,13 @@ function render() {
   }
   byId('plugin-release-source').textContent = 'Release catalog: ' + store.catalogSourceState;
   const activities = store.activity || [];
-  const lastEvent = activities.length ? activities[activities.length - 1].operation : '—';
-  byId('plugin-last-event').textContent = lastEvent;
-  byId('plugin-operation-count').textContent = String(activities.length);
+  const last = activities[activities.length - 1];
+  byId('plugin-last-event').textContent = last ? last.operation + ' · ' + last.result : '—';
+  // One backend mutation writes "requested" and one terminal entry: they
+  // represent ONE operation, not two independent actions.
+  byId('plugin-operation-count').textContent = String(
+    activities.filter(entry => entry.result === 'requested').length
+  );
   byId('plugin-error-count').textContent = String(activities.filter(e => e.result === 'failed' || e.error_code).length);
   const activity = byId('plugin-activity');
   activity.replaceChildren();
