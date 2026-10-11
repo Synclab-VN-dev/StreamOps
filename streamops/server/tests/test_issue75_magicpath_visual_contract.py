@@ -65,6 +65,18 @@ def validate_source(manifest):
     assert manifest["rendering"]["reference_drift_limit"]==.015
     assert manifest["rendering"]["automatic_golden_update"] is False
 
+def validate_pinned_magicpath_coverage(manifest):
+    # Under Development Rule v5, unchanged pinned MagicPath designs are the
+    # authoritative Golden source; Owner need not approve each passing PNG.
+    # Never waive a missing UI state or substitute a production screenshot.
+    validate_source(manifest)
+    missing=set(manifest["uncovered_design_states"])
+    assert not missing, "Missing official MagicPath state references: "+", ".join(sorted(missing))
+    assert REQUIRED_DESIGN_STATES <= {c["state"] for c in manifest["required_cases"]}, (
+        "Incomplete Golden state coverage for pinned MagicPath revision"
+    )
+
+
 def validate_approval(manifest,root=ROOT):
     assert manifest["approved"] is True,"Missing explicit owner-approved MagicPath golden"
     for field in ("approved_by","approved_at","review_url"):
