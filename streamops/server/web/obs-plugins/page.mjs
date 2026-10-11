@@ -173,6 +173,14 @@ function renderPlugin(plugin) {
     card.append(details);
     return card;
   }
+  if (plugin.state === 'LEGACY_ADOPTED') {
+    details.classList.add('plugin-legacy-details');
+    details.append(text('div','plugin-legacy-note',
+      'Legacy adopted. Existing legacy files and configuration were preserved. An adopted baseline is not a verified approved release.'));
+    details.append(actionButton(plugin,'install','Install approved release',eligible.install));
+    card.append(details);
+    return card;
+  }
   const grid = text('div','plugin-detail-grid');
   stat(grid,'Compatibility',release?.compatibility || (plugin.compatible ? 'Compatible' : 'Unknown'));
   stat(grid,'Managed baseline',plugin.managed ? 'Yes' : 'No');
