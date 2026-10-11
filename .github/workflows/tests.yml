@@ -156,8 +156,12 @@ jobs:
           New-Item -ItemType Directory -Force $homeDir | Out-Null
           & pwsh -NoProfile -File ./scripts/acceptance/issue87-uat.ps1 `
             -Mode Preflight -DataDir $homeDir -EvidenceDir $evidence
-          if ($LASTEXITCODE -ne 2) {
-            throw "Expected BLOCKED without a running Session1 hook, got $LASTEXITCODE"
+          $preflightExit = $LASTEXITCODE
+          # GitHub's pwsh runner implicitly exits with LASTEXITCODE at the
+          # end of a job step; BLOCKED is expected in this negative test.
+          $global:LASTEXITCODE = 0
+          if ($preflightExit -ne 2) {
+            throw "Expected BLOCKED without a running Session1 hook, got $preflightExit"
           }
           $report = Get-Content (Join-Path $evidence 'preflight.json') -Raw | ConvertFrom-Json
           $byId = @{}
@@ -168,6 +172,8 @@ jobs:
           if ($byId['PF-04'] -ne 'BLOCKED') {
             throw 'Unsafe false PASS: missing live hook was not blocked'
           }
+          Write-Host 'Issue87 read-only negative preflight PASS: CLI validated; no live hook was accepted'
+          $global:LASTEXITCODE = 0
       - name: Build D4Planner NVDA add-on
         if: steps.changes.outputs.d4planner == 'true'
         run: python utility/d4planner/tools/build_nvda_addon.py
