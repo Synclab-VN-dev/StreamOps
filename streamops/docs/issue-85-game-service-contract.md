@@ -45,10 +45,17 @@ window `FOREGROUND/BACKGROUND/NOT_DETECTED/UNKNOWN`, OBS
 registered, installed or running does not imply OBS capture success.
 
 ## Mutation security
-All **game** Start/Stop/Restart and Steam WS Restart require the operator's
-`STREAMOPS_GAME_CONTROL_TOKEN` environment variable (at least 24 characters).
-Without it, mutations are disabled, but read-only WS/REST continues under the
-repository's existing `require_access` trusted-LAN policy.
+**Local-only operator CLI exception:** GameService Start/Stop/Restart sent directly
+from the loopback socket (`127.0.0.1` or `::1`) with **no `Origin` or forwarding
+headers** does not require a token. Use this for manually approved Windows A
+PowerShell tests via `http://127.0.0.1:<PR-port>`; bind the manual node to
+`127.0.0.1`. The peer IP is checked from the actual socket, not the `Host`
+header. A browser-origin request does not receive this exception.
+
+**Remote clients and Steam WS Restart** still require the operator's
+`STREAMOPS_GAME_CONTROL_TOKEN` (at least 24 characters). Without it,
+nonlocal game mutations and Steam restart are disabled; read-only WS/REST
+continues under the repository's `require_access` trusted-LAN policy.
 
 REST mutation: header `X-StreamOps-Game-Token: <token>` plus
 `Idempotency-Key: <unique-per-intent>`. WebSocket mutation: create the connection
