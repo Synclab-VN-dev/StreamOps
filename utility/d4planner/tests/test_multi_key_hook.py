@@ -55,3 +55,27 @@ def test_legacy_f11_only_by_default_and_unknown_key_passthrough():
                            flags=0, foreground_pid=77, game_pid=77,
                            block=True, samples=q, timestamp_ms=100)
     assert len(q.drain()) == 1
+
+
+
+def test_edge_filter_ignores_hold_repeat_without_cross_key_bleed():
+    from d4planner.runtime.keyboard_hook import EdgeFilter
+    tracker = EdgeFilter()
+    assert tracker.accept(0x7A, "down")
+    assert not tracker.accept(0x7A, "down")  # OS auto-repeat is not a second press
+    assert tracker.accept(0x7B, "down")      # simultaneous B is independent
+    assert tracker.accept(0x7A, "up")
+    assert not tracker.accept(0x7A, "up")    # duplicate UP also ignored
+    assert tracker.accept(0x7B, "up")
+    assert tracker.accept(0x7A, "down")     # a new press can be captured
+    tracker.reset(0x7A)
+    assert tracker.accept(0x7A, "down")     # focus/PID change re-arms key
+    tracker.reset()
+    assert tracker.accept(0x7A, "down")
+
+
+def test_edge_filter_rejects_unexpected_state():
+    from d4planner.runtime.keyboard_hook import EdgeFilter
+    import pytest
+    with pytest.raises(ValueError):
+        EdgeFilter().accept(0x7A, "repeat")
