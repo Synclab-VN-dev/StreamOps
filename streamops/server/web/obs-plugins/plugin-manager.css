@@ -229,3 +229,12 @@ body.plugin-manager-page {background:#f5f6f8;color:#18181b;min-height:100vh;font
     white-space:nowrap;max-width:none
   }
 }
+
+/* Final pinned mobile type refinement. The purpose is regular body copy,
+   while Not installed is allowed to wrap only at the narrow 360px viewport. */
+.plugin-manager-page .plugin-purpose-line{font-weight:400}
+@media(max-width:374px){
+ .plugin-manager-page .plugin-card-meta .plugin-pill{
+   max-width:72px;white-space:normal;line-height:1.35
+ }
+}
