@@ -137,17 +137,24 @@
       "height": 900,
       "capture": "card",
       "label": "dashboard-plugin-card-1440x900"
+    },
+    {
+      "design": "plugin",
+      "state": "blocked",
+      "width": 390,
+      "height": 844,
+      "capture": "top",
+      "label": "plugin-blocked-390x844"
     }
   ],
   "uncovered_design_states": [
     "loading",
     "empty",
     "offline",
-    "blocked",
     "verify-failed",
     "rollback-failed",
     "recovery-required",
     "legacy-adopted"
   ],
-  "note": "Owner-requested design correction on 2026-10-11: MagicPath Confirm becomes native modal popup to match production FE, replacing header-region inline <section>. Golden approval remains pending; missing states remain blocked."
+  "note": "Pinned MagicPath source is immutable; test-only scenario selector may choose pre-existing MagicPath blocked state. Other missing states remain fail-closed. No per-image Owner approval for unchanged pinned revision."
 }
