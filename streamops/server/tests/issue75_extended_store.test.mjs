@@ -238,6 +238,21 @@ test('UNIT WS: OBS restart is a separate explicit operation; its response does n
   assert.equal(store.activity.some(x=>x.operation==='obs.lifecycle.restart'&&x.result==='completed'),true);
   store.destroy();
 });
+test('UNIT WS: a typed rejected restart is FAILED, never an unconfirmed restart',async()=>{
+  const {ws,obs,store}=await ready({state:'RESTART_REQUIRED'});
+  const error=new Error('OBS streaming guard');error.code='obs_busy_streaming';
+  obs.failure=error;
+  await assert.rejects(()=>store.restart(),e=>e.code==='obs_busy_streaming');
+  assert.equal(store.unknownOutcome,false);
+  assert.equal(store.pendingMutation,null);
+  assert.equal(obs.restarts,1);
+  assert.equal(store.activity.some(e=>e.operation==='obs.lifecycle.restart'
+    && e.result==='failed'&&e.error_code==='obs_busy_streaming'),true);
+  assert.equal(store.activity.some(e=>e.operation==='obs.lifecycle.restart'&&e.result==='completed'),false);
+  assert.equal(store.inventory[0].state,'RESTART_REQUIRED');
+  assert.equal(count(ws,'obs_plugin.verify'),0);
+  store.destroy();
+});
 test('UNIT WS: ambiguous OBS restart failure stays fail-closed',async()=>{
   const {obs,store}=await ready();
   obs.failure=new Error('Socket dropped during restart');
