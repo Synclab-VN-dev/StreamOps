@@ -24,7 +24,8 @@ jobs:
             utility/d4planner/tests/test_controller_contract.py \
             utility/d4planner/tests/test_controller_additional_gates.py \
             utility/d4planner/tests/test_multi_key_hook.py \
-            utility/d4planner/tests/test_multi_key_capture.py
+            utility/d4planner/tests/test_multi_key_capture.py \
+            utility/d4planner/tests/test_issue87_uat_evidence.py
       - name: Controller CLI validate on Linux
         run: |
           python -m d4planner.cli controller profiles
@@ -131,6 +132,17 @@ jobs:
           } finally {
             Pop-Location
           }
+      - name: Parse issue87 read-only acceptance PowerShell
+        if: steps.changes.outputs.d4planner == 'true'
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'scripts/acceptance/issue87-uat.ps1').Path,
+            [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
       - name: Build D4Planner NVDA add-on
         if: steps.changes.outputs.d4planner == 'true'
         run: python utility/d4planner/tools/build_nvda_addon.py
