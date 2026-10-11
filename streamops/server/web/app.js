@@ -103,10 +103,26 @@ async function updateObs() {
   }
 }
 
+// A fixed interval prevents refresh drift when an HTTP response is slow.
+// Coalesce ticks while requests are in flight to avoid overlapping polls.
+let pollInFlight = false;
+let pollPending = false;
 async function poll() {
-  await Promise.all([updateHealth(), updateSteam(), updateObs()]);
-  window.setTimeout(poll, 15000);
+  if (pollInFlight) {
+    pollPending = true;
+    return;
+  }
+  pollInFlight = true;
+  try {
+    do {
+      pollPending = false;
+      await Promise.all([updateHealth(), updateSteam(), updateObs()]);
+    } while (pollPending);
+  } finally {
+    pollInFlight = false;
+  }
 }
 
 addActivity("Page loaded");
-poll();
+window.setInterval(() => { void poll(); }, 15000);
+void poll();
