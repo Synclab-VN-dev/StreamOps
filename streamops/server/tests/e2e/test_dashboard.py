@@ -86,3 +86,59 @@ def test_dashboard_logs_state_changes_without_poll_duplicates(
     wait_until(lambda: live_server.steam.status_calls > status_calls)
     expect(page.locator("#steam-card-detail")).to_contain_text("PID 4100")
     expect(page.locator("#activity-log")).to_contain_text("Steam status: running (PID 4100)")
+
+
+
+def test_dashboard_coalesces_inflight_poll_without_missing_next_tick(
+    page: Page, live_server: BrowserTestServer
+) -> None:
+    """A slow HTTP response cannot defer the next polling tick indefinitely.
+
+    Deliberately hold one Steam read across two fixed 15-second clock ticks.
+    The dashboard must not create overlapping requests and must run exactly
+    one coalesced refresh once the slow request completes.
+    """
+    page.clock.install()
+    page.goto(f"{live_server.base_url}/")
+    expect(page.locator("#steam-card-status")).to_have_text("Running")
+
+    page.evaluate("""() => {
+      const original = window.StreamOpsUI.fetchJson;
+      const probe = {calls:0, active:0, maxActive:0, release:null};
+      window.__dashboardPollProbe = probe;
+      window.StreamOpsUI.fetchJson = async (url, options) => {
+        if (url !== '/api/v1/steam/status') return original(url, options);
+        probe.calls++;
+        probe.active++;
+        probe.maxActive = Math.max(probe.maxActive, probe.active);
+        try {
+          if (probe.calls === 1) {
+            await new Promise(resolve => { probe.release = resolve; });
+          }
+          return await original(url, options);
+        } finally {
+          probe.active--;
+        }
+      };
+    }""")
+
+    page.clock.fast_forward(15_000)
+    page.wait_for_function(
+        "window.__dashboardPollProbe.calls === 1 && "
+        "typeof window.__dashboardPollProbe.release === 'function'"
+    )
+    page.clock.fast_forward(15_000)
+    assert page.evaluate("window.__dashboardPollProbe.calls") == 1, (
+        "In-flight HTTP polling must not overlap"
+    )
+
+    page.evaluate("window.__dashboardPollProbe.release()")
+    page.wait_for_function(
+        "window.__dashboardPollProbe.calls === 2 && "
+        "window.__dashboardPollProbe.active === 0"
+    )
+    assert page.evaluate("window.__dashboardPollProbe.maxActive") == 1
+    expect(page.locator("#steam-card-status")).to_have_text("Running")
+    assert page.locator("#activity-log").inner_text().count(
+        "Steam status: running"
+    ) == 1, "Coalesced polls must not create duplicate Activity Log entries"
