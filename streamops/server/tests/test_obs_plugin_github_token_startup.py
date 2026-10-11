@@ -98,3 +98,29 @@ def test_windows_launcher_has_no_plaintext_token_cli_contract():
     assert "ZeroFreeBSTR" in runner
     assert "Remove-Item -LiteralPath $ObsPluginCredentialFile" in runner
     assert "STREAMOPS_OBS_PLUGIN_GITHUB_TOKEN_ENV" in runner
+
+
+def test_powershell_launchers_parse_on_windows():
+    import shutil
+    import subprocess
+    import sys
+
+    if sys.platform != "win32":
+        pytest.skip("Windows PowerShell parse gate")
+    executable = shutil.which("pwsh") or shutil.which("powershell")
+    if not executable:
+        pytest.fail("Windows CI has no PowerShell available to parse launcher")
+    root = Path(__file__).resolve().parents[3]
+    for name in ("start-streamops-node.ps1", "run-streamops-node.ps1"):
+        path = root / "scripts/devices/a-windows" / name
+        command = (
+            "$tokens=$null; $errors=$null; "
+            "[System.Management.Automation.Language.Parser]::ParseFile("
+            "$args[0],[ref]$tokens,[ref]$errors) | Out-Null; "
+            "if($errors.Count -gt 0){ $errors | Format-List; exit 1 }"
+        )
+        result = subprocess.run(
+            [executable, "-NoProfile", "-NonInteractive", "-Command", command, str(path)],
+            capture_output=True, text=True, timeout=20,
+        )
+        assert result.returncode == 0, f"{name} parse failed: {result.stderr} {result.stdout}"
