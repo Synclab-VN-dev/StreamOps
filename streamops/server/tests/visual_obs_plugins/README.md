@@ -16,3 +16,6 @@ Browser viewports: 360x800, 390x844, 768x1024, 1440x900; modal, expanded/scroll 
 
 ## Design-only update approved on 2026-10-11
 Only the fake OpenStream OBS Plugin example and dependent fake totals/activity labels were removed from the MagicPath source. The canonical remaining design plugin is Multiple RTMP Outputs. **The inline confirmation UI, layout and UI-state coverage are intentionally unchanged**; owner Golden approval is still required. See previous pinned revision in the Git commit history.
+
+## Owner-approved MagicPath Confirm placement correction (2026-10-11)
+Only Confirm presentation was changed in MagicPath component `458351046272638976`: native centered `<dialog>`, opened with `showModal()`, with backdrop, Cancel / Confirm and Escape-to-close, matching existing FE semantics. Updated revision: `459936145191612416` (prior `459906255415296000`). Do not interpret this as owner approval of candidate Golden screenshots. The `approved=false` gate, screenshot thresholds, missing-state blockers and all FE production runtime guards remain untouched.

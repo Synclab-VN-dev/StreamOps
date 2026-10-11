@@ -14,7 +14,7 @@ REQUIRED_DESIGN_STATES={
     "loading","empty","offline","blocked","verify-failed",
     "rollback-failed","recovery-required","legacy-adopted",
 }
-IDS={"plugin":("458351046272638976","459906255415296000"),
+IDS={"plugin":("458351046272638976","459936145191612416"),
      "dashboard":("456064390102405120","458892152907374592")}
 
 def blob_sha(b):
@@ -121,4 +121,8 @@ def test_magicpath_plugin_reference_contains_only_registry_backed_plugin_demo():
     assert "openstream-obs-plugin" not in original
     assert original.count(">Multiple RTMP Outputs</h2>")==1
     assert '<Stat label="Managed" value="1" />' in original
-    assert "{confirmAction && <section" in original, "Do not change confirmation UX without owner approval"
+    assert "{confirmAction && <section" not in original, "Inline Confirm must not shift the header"
+    assert "const confirmDialogRef = useRef<HTMLDialogElement>(null)" in original
+    assert "modal.showModal()" in original, "Confirm must use browser top-layer modal"
+    assert 'onCancel={() => setConfirmAction(null)}' in original
+    assert '<dialog' in original and 'aria-labelledby="plugin-confirm-title"' in original

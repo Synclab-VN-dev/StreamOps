@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Puzzle, SlidersHorizontal, RadioTower, ChevronDown } from "lucide-react";
 type Tone = "ok" | "warn" | "bad" | "neutral" | "blue";
 function Pill({
@@ -35,6 +35,14 @@ export const StreamOpsOBSPluginManager = () => {
   const [activityOpen, setActivityOpen] = useState(false);
   const [scenario, setScenario] = useState("normal");
   const [confirmAction, setConfirmAction] = useState<string | null>(null);
+  // Match StreamOps FE: a native top-layer modal rather than an inline
+  // confirmation card that shifts the page header and inventory down.
+  const confirmDialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const modal = confirmDialogRef.current;
+    if (!modal) return;
+    if (confirmAction && !modal.open) modal.showModal();else if (!confirmAction && modal.open) modal.close();
+  }, [confirmAction]);
   const scenarios = [["normal", "Normal"], ["installing", "Installing"], ["updating", "Updating"], ["restarting", "Restarting OBS"], ["verifying", "Verifying"], ["blocked", "Live / blocked"], ["rollback", "Rolling back"], ["restored", "Rollback success"], ["rollback-failed", "Rollback failed"], ["verify-failed", "Verify failed"], ["offline", "OBS offline"], ["vendor", "Vendor unavailable"], ["empty", "Empty"], ["loading", "Loading"], ["error", "Load error"]];
   const action = (label: string) => {
     setConfirmAction(null);
@@ -66,7 +74,21 @@ export const StreamOpsOBSPluginManager = () => {
       </header>
 
       {scenario !== "normal" && <section className={"mb-3 rounded-3xl border p-4 " + (["rollback-failed", "verify-failed", "error", "vendor"].includes(scenario) ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50")}><div className="flex items-center justify-between gap-2"><h2 className="text-sm font-semibold">{scenarios.find(s => s[0] === scenario)?.[1]}</h2><Pill tone={["rollback-failed", "verify-failed", "error", "vendor"].includes(scenario) ? "bad" : "warn"}>Design preview</Pill></div><p className="mt-2 text-xs leading-5">{scenario === "blocked" ? "OBS is streaming or recording. Install, Update and Rollback are disabled; running outputs will not be stopped." : scenario === "rollback-failed" ? "Recovery failed. Preserve evidence, do not retry destructive operations until OBS and backup state are checked." : scenario === "restored" ? "Update failed but the previous version was restored and verified." : scenario === "offline" ? "OBS / WebSocket unavailable. Reconnect and refresh status; do not assume the operation succeeded." : scenario === "vendor" ? "OBS is ready, but the multi-RTMP Vendor probe is unavailable." : scenario === "empty" ? "No managed plugins in the registry." : scenario === "loading" ? "Loading inventory and plugin status…" : scenario === "error" ? "Could not load plugin inventory. Retry without changing installed files." : scenario === "verify-failed" ? "Plugin verification failed. Inspect the checks and retry after fixing the cause." : scenario === "rollback" ? "Restoring the previous plugin and configuration, then verifying OBS readiness." : scenario === "restarting" ? "Expected OBS restart in progress. Waiting for WebSocket reconnection." : scenario === "verifying" ? "Checking installed version, OBS READY, WebSocket and Vendor probe." : "Operation in progress: validating package, backing up configuration and applying files."}</p>{["error", "offline", "verify-failed"].includes(scenario) && <button onClick={() => setScenario("normal")} className="mt-3 rounded-xl border border-zinc-300 bg-white px-3 py-2 text-xs font-semibold">Retry / Refresh preview</button>}</section>}
-      {confirmAction && <section className="mb-3 rounded-3xl border border-blue-200 bg-blue-50 p-4"><p className="text-sm font-semibold">Confirm {confirmAction}</p><p className="mt-1 text-xs">{confirmAction === "Install" ? "Install the approved managed release of Multiple RTMP Outputs? Package integrity, platform compatibility and OBS output safety must be checked before changes." : "Check OBS is idle and preserve the current plugin configuration before proceeding."}</p><div className="mt-3 flex gap-2"><button onClick={() => action(confirmAction)} className="rounded-xl bg-zinc-950 px-4 py-2 text-xs font-semibold text-white">Confirm</button><button onClick={() => setConfirmAction(null)} className="rounded-xl bg-white px-4 py-2 text-xs font-semibold">Cancel</button></div></section>}
+      <dialog ref={confirmDialogRef} onCancel={() => setConfirmAction(null)} onClose={() => setConfirmAction(null)} aria-labelledby="plugin-confirm-title" className="m-auto w-[calc(100%-32px)] max-w-[440px] rounded-[20px] border border-zinc-200 bg-white p-0 text-zinc-900 shadow-[0_24px_80px_#09090b40] backdrop:bg-zinc-950/50">
+        <div className="grid gap-3 p-[22px]">
+          <h2 id="plugin-confirm-title" className="m-0 text-lg font-semibold">
+            {confirmAction === "Install" ? "Install plugin?" : confirmAction === "Rollback" ? "Rollback plugin?" : `${confirmAction} plugin?`}
+          </h2>
+          <p className="m-0 text-xs leading-5 text-zinc-600">Multiple RTMP Outputs · obs-multi-rtmp</p>
+          <p className="m-0 text-xs leading-5 text-zinc-700">
+            {confirmAction === "Install" ? "Only the backend-selected approved release can be installed. Existing files/config will be handled by BE." : "Check OBS is idle and preserve the current plugin configuration before proceeding."}
+          </p>
+          <div className="mt-2.5 flex justify-end gap-2">
+            <button type="button" onClick={() => setConfirmAction(null)} className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold">Cancel</button>
+            <button type="button" onClick={() => confirmAction && action(confirmAction)} className="rounded-xl bg-zinc-950 px-3 py-2 text-xs font-semibold text-white">Confirm</button>
+          </div>
+        </div>
+      </dialog>
       {notice && <div className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700">{notice}</div>}
 
       <section className="mb-3 rounded-3xl border border-black/5 bg-white p-4 shadow-sm">

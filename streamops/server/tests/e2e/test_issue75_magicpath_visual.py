@@ -87,8 +87,17 @@ def stage_reference(page,url,case):
     if case["design"]=="plugin":
         expect(page.get_by_role("heading",name="OBS Plugin Manager")).to_be_visible()
         if case["state"]=="confirm":
+            reference_scroll=page.evaluate("window.scrollY")
             page.get_by_role("button",name="Install plugin",exact=True).click()
-            expect(page.get_by_text("Confirm Install",exact=True)).to_be_visible()
+            native_modal=page.get_by_role("dialog")
+            expect(native_modal).to_be_visible()
+            expect(native_modal.get_by_role("heading",name="Install plugin?")).to_be_visible()
+            assert native_modal.evaluate("el => el.matches(':modal')"), (
+                "Pinned MagicPath Confirm must open a native top-layer popup"
+            )
+            assert page.evaluate("window.scrollY")==reference_scroll, (
+                "Confirm must overlay rather than shift the original page"
+            )
     else:
         expect(page.get_by_role("heading",name="Plugin Manager",exact=True)).to_be_visible()
     stable(page)
@@ -106,7 +115,11 @@ def stage_product(page,server,case):
         expect(page.locator(".plugin-card-header")).to_have_attribute("aria-expanded","true")
         if case["state"]=="confirm":
             page.get_by_role("button",name="Install plugin",exact=True).click()
-            expect(page.locator("#plugin-confirm-dialog")).to_be_visible()
+            modal=page.locator("#plugin-confirm-dialog")
+            expect(modal).to_be_visible()
+            assert modal.evaluate("el => el.matches(':modal')"), (
+                "Product Confirm must remain a native modal, not an inline panel"
+            )
     else:
         expect(page.locator("#plugin-dashboard-managed")).to_have_text("1")
     stable(page)

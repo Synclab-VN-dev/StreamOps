@@ -13,7 +13,7 @@
     {
       "kind": "plugin",
       "component_id": "458351046272638976",
-      "revision_id": "459906255415296000",
+      "revision_id": "459936145191612416",
       "files": [
         {
           "path": "originals/plugin/src/App.tsx",
@@ -21,7 +21,7 @@
         },
         {
           "path": "originals/plugin/src/components/generated/StreamOpsOBSPluginManager.tsx",
-          "git_blob_sha1": "3a01b444409b9adf2aa5646765aa58445511f591"
+          "git_blob_sha1": "5f8a5a648fc51ca7f0ffe761030094e06d4a5783"
         },
         {
           "path": "originals/plugin/src/index.css",
@@ -29,7 +29,7 @@
         }
       ],
       "preview": {
-        "path": "references/plugin-459906255415296000.jpg",
+        "path": "references/plugin-459936145191612416.jpg",
         "git_blob_sha1": "ee5ff0f49f964ab552c0f9a7977da96cf39c82eb"
       }
     },
@@ -149,5 +149,5 @@
     "recovery-required",
     "legacy-adopted"
   ],
-  "note": "MagicPath revision 459906255415296000 removes the extra fake OpenStream OBS Plugin sample and reflects 1 registry plugin. Inline confirm and other design behaviors remain UNCHANGED and unapproved; uncovered states still block approval."
+  "note": "Owner-requested design correction on 2026-10-11: MagicPath Confirm becomes native modal popup to match production FE, replacing header-region inline <section>. Golden approval remains pending; missing states remain blocked."
 }
