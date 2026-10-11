@@ -1,4 +1,4 @@
-"""Production Win32 F11 low-level keyboard hook with optional diagnostic reuse.
+"""Production Win32 low-level keyboard hook with optional diagnostic reuse.
 
 No game injection. Never does SQLite writes inside a hook callback.
 """
@@ -39,19 +39,32 @@ class Decision:
     state: str | None = None
 
 
-def decide_f11(*, n_code: int, message: int, vk: int,
-               foreground_pid: int | None, game_pid: int,
-               block: bool) -> Decision:
-    """Pure, fail-open policy for target PID foreground F11 only."""
+def decide_marker(
+    *, n_code: int, message: int, vk: int,
+    foreground_pid: int | None, game_pid: int, block: bool,
+    virtual_keys: frozenset[int],
+) -> Decision:
+    """Pure fail-open policy: only configured keys with matched D4 foreground PID."""
     if (
         n_code != HC_ACTION
-        or vk != VK_F11
+        or vk not in virtual_keys
         or message not in KEY_STATES
         or game_pid <= 0
         or foreground_pid != game_pid
     ):
         return Decision()
     return Decision(capture=True, suppress=bool(block), state=KEY_STATES[message])
+
+
+def decide_f11(*, n_code: int, message: int, vk: int,
+               foreground_pid: int | None, game_pid: int,
+               block: bool) -> Decision:
+    """Backward-compatible F11-only policy for the issue #82 diagnostic."""
+    return decide_marker(
+        n_code=n_code, message=message, vk=vk,
+        foreground_pid=foreground_pid, game_pid=game_pid,
+        block=block, virtual_keys=frozenset({VK_F11}),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,13 +76,17 @@ class F11Sample:
     foreground_pid: int | None
     suppressed: bool
     target_match: bool = True
+    virtual_key: int = VK_F11
+    scan_code: int = 0
 
     def as_dict(self) -> dict[str, object]:
         stamp = datetime.fromtimestamp(self.timestamp_ms / 1000).astimezone()
         return {
             "timestamp": stamp.isoformat(timespec="milliseconds"),
             "event": "diagnostic.f11",
-            "key": "F11",
+            "key": "F11" if self.virtual_key == VK_F11 else f"VK_{self.virtual_key:02X}",
+            "virtualKey": self.virtual_key,
+            "scanCode": self.scan_code,
             "state": self.state,
             "message": hex(self.message),
             "flags": hex(self.flags),
@@ -115,11 +132,15 @@ def capture_or_pass(
     *, n_code: int, message: int, vk: int, flags: int,
     foreground_pid: int | None, game_pid: int, block: bool,
     samples: BoundedSamples, timestamp_ms: int,
+    virtual_keys: frozenset[int] | None = None,
+    scan_code: int = 0,
 ) -> bool:
-    """Return True only after the marker has been safely queued."""
-    decision = decide_f11(
+    """Return True only when this key is suppressed AFTER safe queue admission."""
+    decision = decide_marker(
         n_code=n_code, message=message, vk=vk,
         foreground_pid=foreground_pid, game_pid=game_pid, block=block,
+        virtual_keys=virtual_keys if virtual_keys is not None
+        else frozenset({VK_F11}),
     )
     if not decision.capture:
         return False
@@ -130,6 +151,8 @@ def capture_or_pass(
         flags=flags,
         foreground_pid=int(foreground_pid),
         suppressed=decision.suppress,
+        virtual_key=vk,
+        scan_code=scan_code,
     ))
     return decision.suppress and queued
 
@@ -175,10 +198,11 @@ def require_game_pid(pid: int) -> None:
 
 
 class WindowsF11Hook:
-    """Message-pumped low-level keyboard hook; no game-process injection."""
+    """One message-pumped hook with configurable VK set; no game-process injection."""
 
     def __init__(self, *, game_pid: int, block: bool, diagnose: bool = False,
-                 capacity: int = 2048) -> None:
+                 capacity: int = 2048,
+                 virtual_keys: frozenset[int] | None = None) -> None:
         if os.name != "nt":
             raise OSError("WindowsF11Hook requires Windows")
         if game_pid < 0:
@@ -186,10 +210,16 @@ class WindowsF11Hook:
         self.game_pid = game_pid
         self.block = block
         self.diagnose = diagnose
+        self.virtual_keys = (virtual_keys if virtual_keys is not None
+                             else frozenset({VK_F11}))
+        if not self.virtual_keys or any(type(vk) is not int or not 0 < vk < 256
+                                        for vk in self.virtual_keys):
+            raise ValueError("virtual_keys must be a non-empty set of valid Windows VKs")
         self.samples = BoundedSamples(capacity)
         self.hook_errors = 0
         self.keyboard_seen = 0
         self.f11_seen = 0
+        self.marker_seen = 0
         self.f11_target = 0
         self.f11_other_foreground = 0
         self._hook: int | None = None
@@ -274,8 +304,10 @@ class WindowsF11Hook:
                         param, ctypes.POINTER(self._kb_struct)
                     ).contents
                     self.keyboard_seen += 1
-                    if kb.vkCode == VK_F11:
-                        self.f11_seen += 1
+                    if kb.vkCode in self.virtual_keys:
+                        self.marker_seen += 1
+                        if kb.vkCode == VK_F11:
+                            self.f11_seen += 1
                         hwnd = self._foreground()
                         pid = wintypes.DWORD()
                         if hwnd:
@@ -295,6 +327,8 @@ class WindowsF11Hook:
                                     foreground_pid=foreground_pid,
                                     suppressed=False,
                                     target_match=False,
+                                    virtual_key=int(kb.vkCode),
+                                    scan_code=int(kb.scanCode),
                                 ))
                         if safe_capture_or_pass(
                             on_error=self._count_error,
@@ -302,6 +336,7 @@ class WindowsF11Hook:
                             flags=kb.flags, foreground_pid=foreground_pid,
                             game_pid=self.game_pid, block=self.block,
                             samples=self.samples, timestamp_ms=time.time_ns() // 1_000_000,
+                            virtual_keys=self.virtual_keys, scan_code=int(kb.scanCode),
                         ):
                             return 1
                 except Exception:
