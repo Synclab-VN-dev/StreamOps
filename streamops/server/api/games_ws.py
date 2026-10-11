@@ -1,11 +1,10 @@
-"""Authenticated game command channel and revisioned observer events."""
+"""Game command channel and revisioned observer events (trusted-LAN V1)."""
 from __future__ import annotations
 import asyncio
 import json
 import logging
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from ..auth import require_access
-from ..services.games.access import require_mutation, GameAccessDenied
 from ..services.games.lifecycle import GameServiceError
 
 router = APIRouter()
@@ -28,7 +27,7 @@ def _fields(payload, required=(), optional=()):
         if not isinstance(payload[key],str) or not payload[key]:
             raise GameServiceError("invalid_request",f"{key} must be a nonempty string.")
 
-async def _execute(service, op, data, headers, client_host=None):
+async def _execute(service, op, data):
     if op == "games.list":
         _fields(data, optional=("provider",))
         return await service.list(data.get("provider"))
@@ -37,7 +36,6 @@ async def _execute(service, op, data, headers, client_host=None):
         return await service.get(data["game_id"])
     if op in ("games.lifecycle.start","games.lifecycle.stop","games.lifecycle.restart"):
         _fields(data,("game_id","idempotency_key"))
-        require_mutation(headers, client_host=client_host, allow_loopback=True)
         return await service.action(data["game_id"], op.rsplit(".",1)[-1],data["idempotency_key"])
     if op == "games.operations.get":
         _fields(data,("operation_id",))
@@ -54,7 +52,6 @@ async def _execute(service, op, data, headers, client_host=None):
 
 @router.websocket("/api/v1/games/ws")
 async def games_ws(websocket: WebSocket, _access: None = Depends(require_access)):
-    # Authenticated mutation requires token in Sec-WebSocket-Protocol, not URL.
     supported = "streamops-games-v1"
     protocols = [x.strip() for x in websocket.headers.get("sec-websocket-protocol","").split(",")]
     await websocket.accept(subprotocol=supported if supported in protocols else None)
@@ -78,10 +75,9 @@ async def games_ws(websocket: WebSocket, _access: None = Depends(require_access)
             except ValueError: pass
             try:
                 rid,op,data = _request(raw)
-                result = await _execute(service,op,data,websocket.headers,
-                                        websocket.client.host if websocket.client else None)
+                result = await _execute(service,op,data)
                 response = {"type":"response","request_id":rid,"ok":True,"data":result}
-            except (GameServiceError,GameAccessDenied) as exc:
+            except GameServiceError as exc:
                 response = {"type":"response","request_id":rid,"ok":False,
                     "error":{"code":exc.code,"message":str(exc)}}
             except Exception:
