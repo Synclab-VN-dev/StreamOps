@@ -36,10 +36,26 @@ pytestmark=[
 def original_magicpath_url():
     renderer=ROOT/"reference_source"
     executable="npm.cmd" if os.name=="nt" else "npm"
+    # Compile once, then serve immutable dist/ assets; Vite dev-on-demand
+    # compilation occasionally returned a blank reference page on Windows.
+    # A failed build is a hard failure with full stdout/stderr, never a retry.
+    build=subprocess.run(
+        [executable,"run","build"],cwd=renderer,
+        capture_output=True,text=True,timeout=120,
+        env={**os.environ,"CI":"1"},
+    )
+    if build.returncode:
+        raise RuntimeError(
+            "Pinned MagicPath renderer compilation failed:\\n"+
+            build.stdout[-3000:]+build.stderr[-3000:]
+        )
+    ARTIFACTS.mkdir(parents=True,exist_ok=True)
+    renderer_log=ARTIFACTS/"reference-renderer.log"
+    renderer_output=renderer_log.open("w",encoding="utf-8")
     proc=subprocess.Popen(
-        [executable,"run","start"],
+        [executable,"run","preview"],
         cwd=renderer,
-        stdout=subprocess.DEVNULL,
+        stdout=renderer_output,
         stderr=subprocess.STDOUT,
         env={**os.environ,"CI":"1"},
     )
@@ -47,7 +63,9 @@ def original_magicpath_url():
     try:
         for _ in range(160):
             if proc.poll() is not None:
-                raise RuntimeError("Original MagicPath renderer build/start failed")
+                renderer_output.flush()
+                raise RuntimeError("Pinned MagicPath preview exited: "+
+                    renderer_log.read_text(encoding="utf-8")[-4000:])
             try:
                 with urllib.request.urlopen(url+"/?design=plugin",timeout=1) as response:
                     if response.status==200:
@@ -55,7 +73,9 @@ def original_magicpath_url():
             except OSError:
                 time.sleep(.2)
         else:
-            raise TimeoutError("Pinned MagicPath renderer unavailable")
+            renderer_output.flush()
+            raise TimeoutError("Pinned MagicPath renderer unavailable: "+
+                renderer_log.read_text(encoding="utf-8")[-4000:])
         yield url
     finally:
         proc.terminate()
@@ -63,6 +83,7 @@ def original_magicpath_url():
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait(timeout=5)
+        renderer_output.close()
 
 def stable(page):
     page.add_style_tag(content=(
