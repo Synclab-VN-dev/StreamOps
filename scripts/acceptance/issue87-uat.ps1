@@ -52,7 +52,7 @@ function Save-Preflight {
     } catch { $sha = 'unavailable' }
     $summary = @{}
     foreach ($status in @('PASS','FAIL','BLOCKED','SKIP')) {
-        $summary[$status] = @($checks | Where-Object { $_['result'] -eq $status }).Count
+        $summary[$status] = @($checks.ToArray() | Where-Object { $_['result'] -eq $status }).Count
     }
     [ordered]@{
         ticket = 87; pr = 95; mode = $Mode;
@@ -61,7 +61,7 @@ function Save-Preflight {
         evidenceDir = $EvidenceDir
         timestamp = (Get-Date).ToString('o')
         summary = $summary
-        checks = @($checks)
+        checks = $checks.ToArray()
         safety = 'readOnly; no Steam/D4/OBS/D4Planner start-stop; owner physical verification required'
     } | ConvertTo-Json -Depth 10 |
         Set-Content -LiteralPath $reportPath -Encoding utf8
@@ -165,7 +165,11 @@ try {
     }
     exit $analysisExit
 } catch {
-    Add-Check 'PF-ERROR' 'UAT completed without script errors' $_.Exception.Message 'FAIL'
+    Add-Check 'PF-ERROR' 'UAT completed without script errors' @{
+        message = $_.Exception.Message
+        category = $_.CategoryInfo.ToString()
+        stack = $_.ScriptStackTrace
+    } 'FAIL'
     Save-Preflight
     Write-Error "UAT script error: $($_.Exception.Message). Evidence: $reportPath"
     exit 2
