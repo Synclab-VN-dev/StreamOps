@@ -46,6 +46,38 @@ function ConvertTo-TaskArgument([string]$Value) {
     return '"' + $Value.Replace('"', '\"') + '"'
 }
 
+function Read-GitHubTokenFromClipboard {
+    $secure = $null
+    $clipboardText = $null
+    $clipboardLines = $null
+    try {
+        $clipboardLines = @(Get-Clipboard -ErrorAction Stop)
+        if ($clipboardLines.Count -ne 1) {
+            throw "Clipboard must contain exactly one token line."
+        }
+        $clipboardText = [string]$clipboardLines[0]
+        if ([string]::IsNullOrWhiteSpace($clipboardText) -or
+            $clipboardText -match '[\s\x00-\x1f\x7f]') {
+            throw "Clipboard token is empty or contains whitespace/control characters."
+        }
+        $secure = ConvertTo-SecureString -String $clipboardText -AsPlainText -Force
+    }
+    finally {
+        $clipboardText = $null
+        $clipboardLines = $null
+        # Clear the active clipboard after the read, including invalid content.
+        # Clipboard History/cloud sync cannot be cleared by this operation.
+        try {
+            Set-Clipboard -Value " " -ErrorAction Stop
+        }
+        catch {
+            if ($null -ne $secure) { $secure.Dispose() }
+            throw "Could not clear Windows clipboard after reading token."
+        }
+    }
+    return $secure
+}
+
 function Get-ProbeHost([string]$HostName) {
     if ($HostName -ne "0.0.0.0") {
         return $HostName
@@ -148,25 +180,7 @@ $tokenHandoff = $null
 if ($ObsPluginSourceProvider -eq "github-release" -and -not $NoGitHubTokenPrompt) {
     $secureToken = $null
     if ($GitHubTokenFromClipboard) {
-        $clipboardText = $null
-        try {
-            $clipboardLines = @(Get-Clipboard -ErrorAction Stop)
-            if ($clipboardLines.Count -ne 1) {
-                throw "Clipboard must contain one token line."
-            }
-            $clipboardText = [string]$clipboardLines[0]
-            if ([string]::IsNullOrWhiteSpace($clipboardText) -or
-                $clipboardText -match '[\\s\\x00-\\x1f\\x7f]') {
-                throw "Clipboard token is empty or contains whitespace/control characters."
-            }
-            $secureToken = ConvertTo-SecureString -String $clipboardText -AsPlainText -Force
-        }
-        finally {
-            $clipboardText = $null
-            $clipboardLines = $null
-            # Clear only the current clipboard. Windows Clipboard History may retain a copy.
-            Set-Clipboard -Value " " -ErrorAction Stop
-        }
+        $secureToken = Read-GitHubTokenFromClipboard
         Write-Host "GitHub token taken from clipboard (value hidden; active clipboard cleared)."
     }
     else {
@@ -176,7 +190,8 @@ if ($ObsPluginSourceProvider -eq "github-release" -and -not $NoGitHubTokenPrompt
             $secureToken = Read-Host "GitHub read-only token for managed OBS plugins (Enter to skip)" -AsSecureString
         }
     }
-    if ($null -ne $secureToken -and $secureToken.Length -gt 0) {
+    try {
+        if ($null -ne $secureToken -and $secureToken.Length -gt 0) {
             $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
             if (-not [string]::Equals($currentUser, $interactiveUser, [StringComparison]::OrdinalIgnoreCase)) {
                 throw "Token handoff requires the startup shell to run as the logged-in desktop user: $interactiveUser"
@@ -191,8 +206,11 @@ if ($ObsPluginSourceProvider -eq "github-release" -and -not $NoGitHubTokenPrompt
             # ConvertFrom-SecureString uses Windows CurrentUser DPAPI (no key).
             [IO.File]::WriteAllText($tokenHandoff, (ConvertFrom-SecureString $secureToken))
             Write-Host "GitHub token captured securely for this server start (value hidden)."
+        }
     }
-    if ($null -ne $secureToken) { $secureToken.Dispose() }
+    finally {
+        if ($null -ne $secureToken) { $secureToken.Dispose() }
+    }
     if (-not $tokenHandoff) {
         Write-Warning "GitHub token missing; OBS Plugin Manager catalog will report plugin_github_token_missing until the node is restarted with a token."
     }
