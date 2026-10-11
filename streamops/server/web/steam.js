@@ -80,11 +80,6 @@
     gameToggle.setAttribute("aria-expanded",String(!expanded));
     gameBody.hidden=expanded;
   });
-  $("#steam-apply-token").addEventListener("click",()=>{
-    control.setCredential($("#steam-control-token").value);
-    $("#steam-control-token").value="";
-    $("#steam-token-status").textContent=control.hasCredential()?"Credential ready":"Invalid token (min 24 characters)";
-  });
   $("#restart-button").addEventListener("click",async()=>{
     if(busy || !connected || !current?.installation_detected || !current?.interactive) return;
     if(!window.confirm("Restart Steam in Big Picture Mode? Active games or downloads may be interrupted.")) {log("Restart cancelled");return;}
