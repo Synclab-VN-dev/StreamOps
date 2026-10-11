@@ -107,7 +107,10 @@ function Ensure-PR-Python {
   $logs.Add([ordered]@{name='pr95-venv-verify';code=0;python=$venvPython;source=$expected})
 }
 function Prompt-Owner([string]$id,[string]$question) {
-  do {$reply=(Read-Host "$id $question [Y/N/S=skip]").Trim().ToUpperInvariant()}
+  # Only an informed review of this exact Vietnamese question is evidence.
+  # Y is never a blanket approval for the whole UAT/PR.
+  Write-Host "$id - $question"
+  do {$reply=(Read-Host 'Y=Da tu kiem tra va dung; N=Khong dung; S=Chua kiem tra (giu BLOCKED)').Trim().ToUpperInvariant()}
   until($reply -in @('Y','N','S'))
   $manual[$id]=$reply
   $grade=if($reply -eq 'Y'){'PASS'}elseif($reply -eq 'N'){'FAIL'}else{'BLOCKED'}
@@ -302,8 +305,9 @@ try {
     $startEvidence=Join-Path $EvidenceDir 'start.json'
     $capture=Run-Python 'capture-start' @($reporter,'--home',$homeDir,'--mode','snapshot','--out',$startEvidence)
     if($capture.code -ne 0){throw 'Capture baseline invalid'}
-    Write-Host 'Press/release all 16 physical controller buttons on C via Steam Link, keeping Diablo IV foreground.'
-    Read-Host 'When finished, press ENTER here to collect evidence'
+    Write-Host 'Tren dien thoai C/Steam Link: giu Diablo IV la cua so dang mo; bam va tha tung nut trong 16 nut controller. Co the bam nhieu lan moi nut.'
+    Write-Host 'Trong game, mo Inventory va dua con tro vao trang bi de thu speech NVDA; neu khong co speech, muc speech se BLOCKED.'
+    Read-Host 'Khi da thu xong, nhan ENTER de thu thap bang chung'
     $resultPath=Join-Path $EvidenceDir 'capture.json'
     $analysis=Run-Python 'capture-end' @($reporter,'--home',$homeDir,'--mode','analyze','--start',$startEvidence,'--out',$resultPath)
     if(Test-Path $resultPath){$data=Get-Content $resultPath -Raw|ConvertFrom-Json;$matrix=@($data.matrix)}
@@ -318,17 +322,28 @@ try {
     } finally {$env:D4PLANNER_HOME=$previousHome}
     $speechCount=if($data){[int]$data.speechEvents}else{0}
     $logsOk=($fullLog.code -eq 0 -and $inputLog.code -eq 0 -and $prettyLog.code -eq 0)
+    # The analyzer exit 2 can be caused solely by DF-06 marker mismatches.
+    # Do not misclassify canonical DB/log health as product failure for that.
+    $integrityFails=if($data){@($data.checks|Where-Object {$_.result -eq 'FAIL'})}else{@('capture.json missing')}
+    $dbState=if(!$logsOk -or $integrityFails.Count){'FAIL'}elseif($speechCount -eq 0){'BLOCKED'}else{'PASS'}
     Set-Result 'DF-08' 'Canonical SQLite + raw/pretty CLI input; speech retained when observed' @{
       analyzer=$resultPath;exitCode=$analysis.code;speechEvents=$speechCount
-      full=$fullLog;input=$inputLog;pretty=$prettyLog
-    } $(if($analysis.code -ne 0 -or !$logsOk){'FAIL'}elseif($speechCount -eq 0){'BLOCKED'}else{'PASS'})
-    Write-Host "Automatic keyboard marker matrix: $goodMarkers/16. Physical origin requires your confirmation."
-    Prompt-Owner 'MAN-01' 'Steam Input bindings and four punctuation mappings are correct?'
-    Prompt-Owner 'MAN-02' 'Status shows correct BLOCK/ACTIVE 16-key Session1?'
-    Prompt-Owner 'MAN-03' 'All 16 physical keys came from controller C, with gamepad retained?'
-    Prompt-Owner 'MAN-04' 'Gameplay, LT/RT and F10/F11 overlay have no regression/blink?'
-    Prompt-Owner 'MAN-05' 'Blocking physical mapped keyboard keys is acceptable; other keys/apps unaffected?'
-    Prompt-Owner 'MAN-06' 'Speech and input raw/pretty logs are usable and preserved?'
+      integrityFailures=@($integrityFails);full=$fullLog;input=$inputLog;pretty=$prettyLog
+    } $dbState
+    Write-Host "Ma tran phim: $goodMarkers/16 nut PASS. Day la tin hieu keyboard, khong tu chung minh nguon controller C."
+    Write-Host 'Chi tra loi Y NEU ANH DA THUC SU KIEM TRA noi dung cau hoi. Neu khong chac, chon S.'
+    Prompt-Owner 'MAN-01' 'Anh da xem layout Steam Input, thay dung 16 mapping (gom 4 phim dau cau) va giu mapping gamepad goc?'
+    Prompt-Owner 'MAN-02' 'Trang thai PR95 RUNNING; inputMarker ACTIVE, BLOCK, xbox-steaminput-18-v1, Session 1, digital=16, dropped=0?'
+    Prompt-Owner 'MAN-03' 'Anh THUC SU nhan nut controller C/Steam Link; ca 16 nut co DOWN/UP va gamepad goc van hoat dong?'
+    Prompt-Owner 'MAN-04' 'Anh da choi thu, test LT/RT, F10/F11, overlay va khong thay giat/nhay con tro hay loi gameplay?'
+    Prompt-Owner 'MAN-05' 'Anh da test phim ban phim vat ly, cua so khac, BLOCK chi anh huong phim map trong D4 va chap nhan gioi han nay?'
+    Prompt-Owner 'MAN-06' 'Anh da xem log input raw/pretty va speech NVDA, xac nhan du, dung, de doc va duoc luu?' 
+    if($goodMarkers -ne 16 -and $items['MAN-03'].result -eq 'PASS'){
+      Set-Result 'MAN-03' 'Controller C source & full 16 digital edge evidence' 'Khong du 16 marker hop le; khong the PASS MAN-03' 'BLOCKED'
+    }
+    if($dbState -ne 'PASS' -and $items['MAN-06'].result -eq 'PASS'){
+      Set-Result 'MAN-06' 'Owner verifies complete input and speech logs' 'Speech/SQLite/log chua PASS nen khong du bang chung MAN-06' 'BLOCKED'
+    }
     Set-Result 'DF-05' 'Steam Input visual binding verified' $manual['MAN-01'] $items['MAN-01'].result
     Set-Result 'DF-06' 'All 16 physical buttons and marker DOWN/UP' @{markerPass=$goodMarkers;owner=$manual['MAN-03'];matrix=$resultPath} $(if($goodMarkers -eq 16 -and $manual['MAN-03'] -eq 'Y'){'PASS'}elseif($goodMarkers -lt 16){'FAIL'}else{'BLOCKED'})
     Set-Result 'DF-07' 'Gamepad and cursor/gameplay physically checked' $manual['MAN-04'] $items['MAN-04'].result
@@ -362,8 +377,13 @@ try {
     Set-Result 'DF-12' 'No hook after stop, physical keyboard restored' @{stopped=$stopped} 'BLOCKED'
     Set-Result 'DF-14' 'Report/evidence uploaded to PR and ticket' $reportFile 'BLOCKED'
     if($taskStarted -and $ready){
-      Prompt-Owner 'MAN-07' 'After stop, keyboard restored and Steam/Diablo IV still running?'
-      Prompt-Owner 'MAN-08' 'Approve V1 16 digital, LT/RT threshold, two analog reserved (GO/NO-GO)?'
+      Prompt-Owner 'MAN-07' 'SAU khi script dung PR95: anh da test keyboard hoat dong lai va Steam, Diablo IV, NVDA van dang chay?'
+      if($goodMarkers -eq 16 -and $dbState -eq 'PASS' -and $manual['MAN-03'] -eq 'Y' -and $manual['MAN-06'] -eq 'Y'){
+        Prompt-Owner 'MAN-08' 'QUYET DINH RIENG (GO/NO-GO): Anh co DUYET V1 16 nut so, LT/RT threshold va 2 analog duoc de nguyen; da xem matrix/log? Y=GO; N=NO-GO; S=chua duyet'
+      }else{
+        Set-Result 'MAN-08' 'Owner GO/NO-GO after verified marker and speech evidence' 'BLOCKED: con marker hoac speech/manual chua xac minh; KHONG xin duyet V1' 'BLOCKED'
+        Write-Host 'MAN-08 van BLOCKED: con thieu bang chung, khong tu dong coi Y la GO.'
+      }
     }
     if($stopped -and $manual['MAN-07'] -eq 'Y'){
       Set-Result 'DF-12' 'Stop restored physical mapped keyboard keys' 'Owner confirmed' 'PASS'
