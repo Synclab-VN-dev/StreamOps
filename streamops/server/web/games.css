@@ -201,7 +201,7 @@ body.gm-page { color-scheme:light; color:#18181b; background:#f5f6f8; font-famil
 .gm-page button.gm-detail-action {min-width:0;min-height:45px;border-radius:15px;padding:8px 2px;font-size:12px;}
 .gm-page button.gm-detail-stop {border-color:#f4f4f5;background:#f4f4f5;color:#18181b;}
 .gm-page button.gm-detail-restart {border-color:#e4e4e7;background:#fff;color:#18181b;}
-.gm-page button.gm-detail-refresh {min-height:42px;width:100%;border-radius:12px;margin-top:12px;border-color:#e4e4e7;background:#fff;color:#18181b;}
+.gm-page button.gm-detail-refresh {min-height:44px;width:100%;border-radius:12px;margin-top:12px;border-color:#e4e4e7;background:#fff;color:#18181b;}
 .gm-page .gm-detail-advanced {border-top:1px solid #f4f4f5;padding:16px;}
 .gm-detail-advanced summary {font-size:13px;font-weight:700;cursor:pointer;}
 .gm-detail-advanced button {margin-top:10px;}
