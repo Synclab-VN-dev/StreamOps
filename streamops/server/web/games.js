@@ -2,7 +2,7 @@
   const service=window.StreamOpsGames, store=service.store, ui=window.StreamOpsGamesComponents;
   const control=window.StreamOpsGameControl, log=window.StreamOpsUI.createActivityLog("#activity-log");
   const $=s=>document.querySelector(s);
-  let selected=null, activeOperation=null, lastSignature="", returnFocus=null, returnScrollY=null;
+  let selected=null, activeOperation=null, confirming=false, lastSignature="", returnFocus=null, returnScrollY=null;
   function error(message) { const e=$("#games-error");e.textContent=message||"";e.hidden=!message; }
   function render() {
     const games=store.items(), summary=store.summary();
@@ -50,11 +50,25 @@
       try {await service.client.request("games.reconcile",{game_id:game.id});await service.resync();log("Refreshed observation for "+game.name);}
       catch(e){error(e.message);}return;
     }
-    if (activeOperation) return;
+    if (activeOperation || confirming) return;
     if (!game.capabilities?.[name] || store.stale) return error(game.capability_reason||"Action unavailable");
-    const warning=name==="start"?"Start "+game.name+"?":name==="stop"?"Gracefully stop "+game.name+"? Unsaved progress may be lost.":
-      "Restart "+game.name+"? Unsaved progress may be lost.";
-    if (!window.confirm(warning)) {log(name+" cancelled");return;}
+    confirming=true;
+    let approved=false;
+    try {
+      const label=name[0].toUpperCase()+name.slice(1);
+      approved=await window.StreamOpsConfirmation.ask({
+        title:label+" "+game.name+"?",
+        message:name==="start"?"Start a game session. Make sure the launcher is ready.":
+          name==="stop"?"Gracefully stop the game. Make sure progress is saved.":
+          "The current game will stop and restart. Save progress first.",
+        confirmLabel:label,
+        notice:"Only a confirmed operation is sent to host A. An acknowledgement is not proof of completion."
+      });
+    } finally { confirming=false; }
+    if (!approved) {log(name+" cancelled");return;}
+    // The host state may have changed while the modal was open; fail closed.
+    const current=store.games.get(game.id);
+    if (store.stale || !current?.capabilities?.[name]) return error("Game status/capability changed during confirmation. Refresh before retrying.");
     activeOperation=true;render();log(name+" requested for "+game.name);
     try {
       const key="game-"+Date.now()+"-"+Math.random().toString(36).slice(2);
