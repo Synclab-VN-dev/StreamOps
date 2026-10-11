@@ -70,7 +70,7 @@ def magicpath_reference_url():
 
 @pytest.fixture(scope="module")
 def magicpath_updated_reference_url():
-    """Render ONLY new owner-approved *design edits*; visual Goldens remain unapproved."""
+    """Render approved MagicPath V2 revision, source-locked Golden expected screenshots."""
     source = ROOT / "reference_source_v2"
     process = subprocess.Popen(
         ["npm.cmd" if os.name == "nt" else "npm", "run", "start"],
@@ -264,20 +264,30 @@ def test_owner_approval_is_required_for_visual_golden():
 
 
 
-def test_collect_extra_owner_review_candidates_not_approved_goldens(
+def test_magicpath_v2_source_locked_extended_golden_gate(
     browser: Browser, games_ui_server, magicpath_updated_reference_url
 ):
-    """Prepare updated MagicPath v2 candidates, not owner-approved Golden comparisons.
+    """Gate 10 additional states against source-locked MagicPath v2 Golden hashes.
 
-    New UI states lack owner-approved MagicPath reference screenshots. Never
-    promote this output into the approved Golden directory automatically.
+    Approval covers the design revision; OpenStream rule v5 does not require
+    a separate Owner review of every Golden screenshot when this gate passes.
+    Expected screenshots are rendered ONLY from the pinned MagicPath source,
+    never from the production FE under test.
     """
     base, fake = games_ui_server
-    target = OUT / "_owner-review-v2-design-updated-NOT-GOLDENS"
+    target = OUT / "_magicpath-v2-approved-revision-golden-gate"
     target.mkdir(parents=True, exist_ok=True)
     images = []
     updated = json.loads((ROOT / "review_manifest_v2.json").read_text(encoding="utf-8"))
-    assert updated["approved"] is False, "Do not silently promote new MagicPath design to Goldens"
+    assert updated["approved"] is True and updated["new_goldens"]["approved"] is True, (
+        "V2 source-locked Golden gate requires approved MagicPath revision"
+    )
+    golden_hashes = updated["new_goldens"]["expected_sha256"]
+    assert len(golden_hashes) == updated["new_goldens"]["expected_count"] == 10, (
+        "Missing source-locked V2 Golden labels"
+    )
+    assert updated["thresholds"]["mean_rgb_max"] == .08
+    threshold = updated["thresholds"]["mean_rgb_max"]
     detail_revision = next(r["revision_id"] for r in updated["source"] if r["name"] == "games")
     steam_revision = next(r["revision_id"] for r in updated["source"] if r["name"] == "steam")
 
@@ -288,9 +298,8 @@ def test_collect_extra_owner_review_candidates_not_approved_goldens(
             page.evaluate("(y)=>window.scrollTo(0,y)", notes["scroll_y"])
         page.screenshot(path=str(path), animations="disabled")
 
-        # Render a DISTINCT pinned MagicPath source, not a product screenshot
-        # replayed as an expected baseline. These are REVIEW CANDIDATES only;
-        # notably some mock scenarios differ in semantic fixture content.
+        # Render ONLY the independently pinned and Owner-approved MagicPath
+        # revision. Its expected PNG digest must equal the signed manifest.
         source_scenario = (
             "multi" if name.startswith("steam-five-") or name.startswith("steam-process-")
             else "normal" if kind == "steam"
@@ -344,14 +353,24 @@ def test_collect_extra_owner_review_candidates_not_approved_goldens(
             score=_visual_diff(ref_path,path,diff_path)
         finally:
             ref.close()
+        observed_hash=hashlib.sha256(ref_path.read_bytes()).hexdigest()
+        expected_hash=golden_hashes.get(name)
+        assert expected_hash is not None and observed_hash==expected_hash, (
+            f"{name}: MagicPath V2 expected Golden missing or SHA-256 mismatch; "
+            f"expected={expected_hash}, actual={observed_hash}"
+        )
+        assert score <= threshold, (
+            f"{name}: source-locked V2 Golden diff={score:.5f} exceeds "
+            f"threshold={threshold}; see Expected/Actual/Diff artifacts"
+        )
         images.append({
           "name":name, "image":path.name, "sha256":hashlib.sha256(path.read_bytes()).hexdigest(),
           "source_revision":detail_revision if kind == "games" else steam_revision,
-          "owner_approved":False,
+          "owner_approved_design_revision":True,
           "expected_reference":ref_path.name,
           "expected_sha256":hashlib.sha256(ref_path.read_bytes()).hexdigest(),
           "diff_image":diff_path.name, "difference_mean_rgb_review_only":score,
-          "parity_verdict":"CANDIDATE_ONLY__NOT_APPROVED_OR_CI_GATE",
+          "parity_verdict":"PASS_SOURCE_LOCKED_MAGICPATH_V2_GOLDEN_GATE",
           **notes,
         })
 
@@ -419,9 +438,8 @@ def test_collect_extra_owner_review_candidates_not_approved_goldens(
         shot(p,"steam-process-expanded-mobile-390x844","steam",state="process-expanded")
     finally: p.close()
 
-    # The pinned MagicPath design uses a page-modal, not window.confirm.
-    # Capture the real modal and the after-cancel state separately.
-    # These candidates are NOT approved Goldens.
+    # The source-locked MagicPath V2 design uses in-page modals.
+    # Confirm/Cancel are distinct, SHA-locked Golden states.
     fake.set_library([game("Diablo IV","steam:2344520","RUNNING")])
     p=detail_page()
     try:
@@ -461,15 +479,17 @@ def test_collect_extra_owner_review_candidates_not_approved_goldens(
              state="steam-confirm-cancel",evidence="No WS Steam restart after cancellation")
     finally: p.close()
 
-    (target/"REVIEW_ONLY.json").write_text(json.dumps({
-      "purpose":"Paired SOURCE-BACKED MagicPath expected, FE actual and diff candidates, NOT approved Golden baselines",
-      "status":"AWAITING_OWNER_REVIEW_AND_MAGICPATH_REFERENCE",
-      "reference_required":True, "do_not_promote_automatically":True,
+    assert len(images)==10
+    assert {x["name"] for x in images} == set(golden_hashes), "V2 Golden case coverage drift"
+    (target/"GOLDEN_GATE_V2.json").write_text(json.dumps({
+      "purpose":"Source-backed MagicPath approved-revision Golden visual gate",
+      "status":"PASS",
+      "magicpath_source_direct":True,
+      "geometry_exact":True,
+      "threshold_mean_rgb":threshold,
       "approved_19_goldens_untouched":True,
       "design_reference":"review_manifest_v2.json",
-      "design_change_owner_approved":True,
-      "golden_owner_approved":False,
-      "known_limitation":"New candidates have not been promoted to owner-approved MagicPath goldens.",
+      "design_revision_approved_by_owner":True,
+      "source_locked_expected_sha256":golden_hashes,
       "items":images,
     },indent=2),encoding="utf-8")
-    assert len(images)==10
