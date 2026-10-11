@@ -13,6 +13,7 @@ import time
 from typing import Protocol
 
 from .events.model import EventDraft
+from ..controller import ControllerProfile, ControllerResolver
 
 
 KEY_CODES: dict[str, int] = {
@@ -105,6 +106,9 @@ class MarkerSample:
     window_title: str
     suppressed: bool | None = None
     capture_method: str | None = None
+    control_id: str | None = None
+    layout_id: str | None = None
+    mapping_source: str | None = None
 
     def as_draft(self) -> EventDraft:
         data = {
@@ -122,6 +126,12 @@ class MarkerSample:
             data["suppressed"] = self.suppressed
         if self.capture_method is not None:
             data["captureMethod"] = self.capture_method
+        if self.control_id is not None:
+            data["controlId"] = self.control_id
+        if self.layout_id is not None:
+            data["layoutId"] = self.layout_id
+        if self.mapping_source is not None:
+            data["mappingSource"] = self.mapping_source
         return EventDraft("input.marker.raw", data, timestamp=self.timestamp)
 
 
@@ -237,17 +247,20 @@ __all__ = [
 
 
 class HookInputMarkerCapture:
-    """Production F11 capture and suppression using the shared Win32 hook core.
+    """One hook for an optional Xbox16 profile in OBSERVE or BLOCK mode.
 
-    In block mode the polling backend MUST NOT be started: suppressed keyboard
-    events may never become visible to GetAsyncKeyState. The hook lives on a
-    dedicated message-pumping thread, while Supervisor remains the only
-    SQLite writer. No keyboard event is generated or sent to the game.
+    No polling duplicates: one callback queues markers, Supervisor writes SQLite.
     """
 
-    def __init__(self, *, poll_interval: float = 0.01, backend_factory=None) -> None:
+    def __init__(
+        self, *, poll_interval: float = 0.01, backend_factory=None,
+        profile: ControllerProfile | None = None, block: bool = True,
+    ) -> None:
         self.poll_interval = max(0.001, float(poll_interval))
         self._backend_factory = backend_factory
+        self.profile = profile
+        self.block = bool(block)
+        self.resolver = ControllerResolver(profile) if profile else None
         self._target_pid: int | None = None
         self._samples: queue.SimpleQueue[MarkerSample] = queue.SimpleQueue()
         self._stop = threading.Event()
@@ -261,20 +274,27 @@ class HookInputMarkerCapture:
     def set_target_pid(self, pid: int | None) -> None:
         self._target_pid = int(pid) if pid and int(pid) > 0 else None
 
-    @staticmethod
-    def _convert_sample(sample) -> MarkerSample:
-        from datetime import datetime
-
+    def _convert_sample(self, sample) -> MarkerSample | None:
+        vk = int(getattr(sample, "virtual_key", 0x7A))
+        binding = self.resolver.by_virtual_key(vk) if self.resolver else None
+        if self.resolver and binding is None:
+            return None
+        if not self.resolver and vk != 0x7A:
+            return None
+        profile = self.profile
         return MarkerSample(
             timestamp=datetime.fromtimestamp(sample.timestamp_ms / 1000)
             .astimezone().isoformat(timespec="milliseconds"),
-            key="f11",
-            virtual_key=0x7A,
+            key=binding.key if binding else "f11",
+            virtual_key=vk,
             state=sample.state,
             process_id=sample.foreground_pid,
             window_title="Diablo IV",
-            suppressed=True,
+            suppressed=bool(sample.suppressed),
             capture_method="keyboardHook",
+            control_id=binding.control_id if binding else None,
+            layout_id=profile.layout_id if profile else None,
+            mapping_source=profile.mapping_source if profile else None,
         )
 
     def _drain_hook(self, hook) -> None:
@@ -282,8 +302,13 @@ class HookInputMarkerCapture:
         if samples is None:
             return
         for sample in samples.drain():
-            if sample.target_match and sample.suppressed and sample.foreground_pid:
-                self._samples.put(self._convert_sample(sample))
+            if not sample.target_match or not sample.foreground_pid:
+                continue
+            if self.profile is None and not sample.suppressed:
+                continue
+            converted = self._convert_sample(sample)
+            if converted is not None:
+                self._samples.put(converted)
 
     def _update_overflow(self, hook) -> None:
         dropped = int(getattr(getattr(hook, "samples", None), "dropped", 0))
@@ -307,7 +332,12 @@ class HookInputMarkerCapture:
         hook = None
         try:
             factory = self._backend_factory or WindowsF11Hook
-            hook = factory(game_pid=self._target_pid or 0, block=True)
+            kwargs = {"game_pid": self._target_pid or 0, "block": self.block}
+            if self.profile is not None:
+                kwargs["virtual_keys"] = frozenset(
+                    binding.virtual_key for binding in self.profile.digital
+                )
+            hook = factory(**kwargs)
             try:
                 with hook:
                     self._hook = hook
@@ -349,7 +379,7 @@ class HookInputMarkerCapture:
         self._stop.clear()
         self._ready.clear()
         self._thread = threading.Thread(
-            target=self._run, daemon=True, name="d4planner-f11-keyboard-hook"
+            target=self._run, daemon=True, name="d4planner-keyboard-hook"
         )
         self._thread.start()
         if not self._ready.wait(timeout=5.0):
