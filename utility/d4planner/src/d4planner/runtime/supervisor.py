@@ -66,12 +66,16 @@ class Supervisor:
         marker_capture: InputMarkerCapture | HookInputMarkerCapture | None = None,
         block_marker: bool = False,
         controller_profile: ControllerProfile | None = None,
+        uat_attach_only: bool = False,
     ):
         self.paths = paths
         self.runtime = runtime
         self.path_manager = path_manager
         self.silent = silent
         self.isolated = isolated
+        self.uat_attach_only = bool(uat_attach_only)
+        if self.uat_attach_only and not self.isolated:
+            raise ValueError("UAT attach-only requires isolated mode")
         self.poll_interval = poll_interval
         self.health_poll_interval = health_poll_interval
         self.game_start_timeout = game_start_timeout
@@ -296,7 +300,12 @@ class Supervisor:
             else:
                 self.status.extras["userPathManaged"] = False
 
-            addon_changed = self.runtime.ensure_addon_runtime()
+            # Acceptance attach-only may not install/restart an NVDA add-on.
+            # Require the existing add-on to be ready; fail closed otherwise.
+            addon_changed = (
+                False if self.uat_attach_only
+                else self.runtime.ensure_addon_runtime()
+            )
             if not self.runtime.addon_installed():
                 raise RuntimeBlocked("D4Planner NVDA add-on 0.2.0 is not installed correctly")
 
@@ -305,11 +314,16 @@ class Supervisor:
                 raise RuntimeBlocked("no active interactive Windows console session")
 
             existing_nvda = self.runtime.nvda_process()
+            if self.uat_attach_only and not existing_nvda:
+                raise RuntimeBlocked("UAT attach-only requires existing NVDA; no launch")
             if addon_changed and existing_nvda:
                 nvda = self.runtime.restart_nvda()
                 self.status.extras["nvdaRestartReason"] = "add-on updated"
             else:
-                nvda = self.runtime.ensure_nvda_running()
+                nvda = (
+                    existing_nvda if self.uat_attach_only
+                    else self.runtime.ensure_nvda_running()
+                )
             if nvda.session_id != console:
                 raise RuntimeBlocked(
                     f"NVDA SessionId={nvda.session_id} does not match active console SessionId={console}"
@@ -352,7 +366,7 @@ class Supervisor:
             )
 
             steam = self.runtime.steam_process()
-            if self.isolated and steam:
+            if self.isolated and steam and not self.uat_attach_only:
                 self.status.steam = steam
                 self.transition(
                     RuntimeState.RESTART_REQUIRED,
@@ -391,6 +405,10 @@ class Supervisor:
                     data={"pid": game.pid},
                 )
             else:
+                if self.uat_attach_only:
+                    raise RuntimeBlocked(
+                        "UAT attach-only requires existing Diablo IV; no game launch"
+                    )
                 if steam and not self._steam_priority_allows_launch(steam):
                     priority = getattr(steam, "priority_class", None) or "unknown"
                     self.status.steam = steam
@@ -712,6 +730,12 @@ class Supervisor:
             return
 
         if current is None:
+            if self.uat_attach_only:
+                self.transition(
+                    RuntimeState.BLOCKED,
+                    "UAT NVDA exited; no auto-restart allowed",
+                )
+                return
             self.transition(RuntimeState.DEGRADED, "NVDA process exited; attempting recovery")
             try:
                 write_capture_config(self.paths, enabled=False)
@@ -720,7 +744,11 @@ class Supervisor:
             self.status.capture_active = False
 
         try:
-            nvda = current or self.runtime.ensure_nvda_running()
+            nvda = current or (
+                None if self.uat_attach_only else self.runtime.ensure_nvda_running()
+            )
+            if nvda is None:
+                raise RuntimeBlocked("UAT NVDA unavailable; no auto-restart allowed")
             console = self.runtime.active_console_session_id()
             if nvda.session_id != console:
                 raise RuntimeBlocked("restarted NVDA is not in the active console session")
