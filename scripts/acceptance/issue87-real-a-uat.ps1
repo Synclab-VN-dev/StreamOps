@@ -23,6 +23,8 @@ $root=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $homeDir=Join-Path $root '.streamops/pr95/d4planner'
 $taskName='StreamOps-PR95-Manual'
 $reporter=Join-Path $root 'utility/d4planner/tools/issue87_uat_evidence.py'
+# Always use PR95 checkout for relative local CI paths.
+Push-Location $root
 if (!$EvidenceDir) { $EvidenceDir=Join-Path $root ('.streamops/pr95/uat/real-'+(Get-Date -Format 'yyyyMMdd-HHmmss')) }
 New-Item -ItemType Directory -Force -Path $EvidenceDir | Out-Null
 $reportFile=Join-Path $EvidenceDir 'report.json'
@@ -134,6 +136,23 @@ try {
     gitHead=$head;branch=$branchName
   }
   Set-Result 'DF-01' 'Exact PR SHA, host, session, process and language snapshot' $baseline 'PASS'
+  # Optional dependency mutation is explicit. Default preflight only reads.
+  if($RunLocalCI){
+    $install=Run-Python 'local-pip' @('-m','pip','install','-e','utility/d4planner[dev]')
+    $unit=Run-Python 'local-pytest' @('-m','pytest','-q','utility/d4planner/tests')
+    $compile=Run-Python 'local-compile' @('-m','compileall','-q','utility/d4planner')
+    $addon=Run-Python 'local-addon-build' @('utility/d4planner/tools/build_nvda_addon.py')
+    $good=($install.code -eq 0 -and $unit.code -eq 0 -and $compile.code -eq 0 -and $addon.code -eq 0)
+    Set-Result 'DF-02' 'Local full pytest/compile/addon build' @{install=$install;unit=$unit;compile=$compile;addon=$addon} $(if($good){'PASS'}else{'FAIL'})
+    if(!$good){throw 'Local CI failed; no supervisor started'}
+  }
+  $installed=Run-Python 'module-path' @('-c','import d4planner;print(d4planner.__file__)')
+  $expected=Join-Path $root 'utility/d4planner/src/d4planner/__init__.py'
+  if($installed.code -ne 0){throw 'D4Planner package not installed; run -RunLocalCI'}
+  $resolved=(Get-Content $installed.log -Raw).Trim()
+  if([IO.Path]::GetFullPath($resolved) -ine [IO.Path]::GetFullPath($expected)){
+    throw "D4Planner Python package is not from PR95 worktree: $resolved. Run -RunLocalCI"
+  }
   $valid=Run-Python 'controller-validate' @('-m','d4planner.cli','controller','validate','xbox16')
   $profiles=Run-Python 'controller-profiles' @('-m','d4planner.cli','controller','profiles')
   $ok=($valid.code -eq 0 -and $profiles.code -eq 0)
@@ -147,15 +166,7 @@ try {
     if($gameSession -le 0 -or !@($nvda|Where-Object {$_.SessionId -eq $gameSession}).Count){
       throw 'Game/NVDA must share interactive Session 1'
     }
-    if($RunLocalCI){
-      $install=Run-Python 'local-pip' @('-m','pip','install','-e','utility/d4planner[dev]')
-      $unit=Run-Python 'local-pytest' @('-m','pytest','-q','utility/d4planner/tests')
-      $compile=Run-Python 'local-compile' @('-m','compileall','-q','utility/d4planner')
-      $addon=Run-Python 'local-addon-build' @('utility/d4planner/tools/build_nvda_addon.py')
-      $good=($install.code -eq 0 -and $unit.code -eq 0 -and $compile.code -eq 0 -and $addon.code -eq 0)
-      Set-Result 'DF-02' 'Local full pytest/compile/addon build' @{install=$install;unit=$unit;compile=$compile;addon=$addon} $(if($good){'PASS'}else{'FAIL'})
-      if(!$good){throw 'Local CI failed; no supervisor started'}
-    }
+
     $exe=(Get-Command $Python -ErrorAction Stop).Source
     if(!(Test-Path -LiteralPath $exe -PathType Leaf)){throw 'Python must resolve to a real exe'}
     New-Item -ItemType Directory -Force -Path $homeDir|Out-Null
@@ -236,7 +247,7 @@ try {
     Set-Result 'DF-11' 'Legacy Real-A observe and block rounds' 'Additional approved round required' 'BLOCKED'
     Set-Result 'DF-12' 'No hook after stop, physical keyboard restored' @{stopped=$stopped} 'BLOCKED'
     Set-Result 'DF-14' 'Report/evidence uploaded to PR and ticket' $reportFile 'BLOCKED'
-    if($taskStarted){
+    if($taskStarted -and $ready){
       Prompt-Owner 'MAN-07' 'After stop, keyboard restored and Steam/Diablo IV still running?'
       Prompt-Owner 'MAN-08' 'Approve V1 16 digital, LT/RT threshold, two analog reserved (GO/NO-GO)?'
     }
@@ -249,4 +260,5 @@ try {
   $report=Get-Content $reportFile -Raw|ConvertFrom-Json
   Write-Host ("PASS={0} FAIL={1} BLOCKED={2} SKIP={3}" -f $report.summary.PASS,$report.summary.FAIL,$report.summary.BLOCKED,$report.summary.SKIP)
   foreach($errorText in $failures){Write-Host "BLOCKER: $errorText"}
+  Pop-Location
 }
