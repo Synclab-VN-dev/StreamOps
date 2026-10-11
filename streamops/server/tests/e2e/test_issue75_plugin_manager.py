@@ -123,7 +123,7 @@ def test_issue75_adopt_is_explicit_and_does_not_stop_obs(page: Page, live_server
     page.goto(live_server.base_url + "/obs/plugins")
     expect(page.locator("#plugin-managed-count")).to_have_text("1")
     expect(page.locator(".plugin-card")).to_have_count(1)
-    page.locator(".plugin-card-header").click()
+    expect(page.locator(".plugin-card-header")).to_have_attribute("aria-expanded", "true")
     adopt = page.get_by_role("button", name="Adopt existing")
     expect(adopt).to_be_enabled()
 
@@ -145,7 +145,7 @@ def test_issue75_adopt_disabled_if_obs_running(page: Page, live_server: BrowserT
     fake = MockPluginWebSocket(page, obs_state="READY")
     page.goto(live_server.base_url + "/obs/plugins")
     expect(page.locator("#plugin-managed-count")).to_have_text("1")
-    page.locator(".plugin-card-header").click()
+    expect(page.locator(".plugin-card-header")).to_have_attribute("aria-expanded", "true")
     adopt = page.get_by_role("button", name="Adopt existing")
     expect(adopt).to_be_disabled()
     expect(page.locator(".plugin-disabled-reason")).to_contain_text("stopped separately")
@@ -156,7 +156,7 @@ def test_issue75_empty_catalog_has_no_install_source(page: Page, live_server: Br
     fake = MockPluginWebSocket(page, plugin_state="NOT_INSTALLED")
     page.goto(live_server.base_url + "/obs/plugins")
     expect(page.locator("#plugin-release-source")).to_have_text("Release catalog: EMPTY")
-    page.locator(".plugin-card-header").click()
+    expect(page.locator(".plugin-card-header")).to_have_attribute("aria-expanded", "true")
     expect(page.get_by_role("button", name="Install plugin")).to_be_disabled()
     assert not [req for req in fake.calls if req["operation"] == "obs_plugin.install"]
 

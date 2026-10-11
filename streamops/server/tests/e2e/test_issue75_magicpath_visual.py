@@ -102,8 +102,8 @@ def stage_product(page,server,case):
     page.goto(server.base_url+("/obs" if case["design"]=="dashboard" else "/obs/plugins"))
     if case["design"]=="plugin":
         expect(page.locator("#plugin-managed-count")).to_have_text("1")
-        if case["state"] in {"expanded","confirm"}:
-            page.locator(".plugin-card-header").click()
+        # The approved reference expands the first plugin on initial load.
+        expect(page.locator(".plugin-card-header")).to_have_attribute("aria-expanded","true")
         if case["state"]=="confirm":
             page.get_by_role("button",name="Install plugin",exact=True).click()
             expect(page.locator("#plugin-confirm-dialog")).to_be_visible()

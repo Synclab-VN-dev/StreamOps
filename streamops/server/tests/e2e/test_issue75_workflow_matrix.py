@@ -186,7 +186,7 @@ def launch(page:Page,server:BrowserTestServer,scenario:ScenarioWS):
     expect(page.locator("#plugin-managed-count")).to_have_text("1" if scenario.registry else "0")
     if scenario.registry:
         expect(page.locator(".plugin-card")).to_have_count(1)
-        page.locator(".plugin-card-header").click()
+        expect(page.locator(".plugin-card-header")).to_have_attribute("aria-expanded","true")
 
 
 def act(page:Page,label:str):
@@ -331,8 +331,10 @@ def test_issue75_keyboard_focus_mobile_and_expand_collapse(page:Page,live_server
     page.set_viewport_size({"width":360,"height":800})
     page.goto(live_server.base_url+"/obs/plugins")
     header=page.locator(".plugin-card-header")
-    expect(header).to_have_attribute("aria-expanded","false")
+    expect(header).to_have_attribute("aria-expanded","true")
     header.focus()
+    page.keyboard.press("Enter")
+    expect(header).to_have_attribute("aria-expanded","false")
     page.keyboard.press("Enter")
     expect(header).to_have_attribute("aria-expanded","true")
     expect(page.get_by_role("button",name="Adopt existing")).to_be_enabled()

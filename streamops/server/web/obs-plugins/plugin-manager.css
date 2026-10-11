@@ -139,3 +139,15 @@ body.plugin-manager-page {background:#f5f6f8;color:#18181b;min-height:100vh;font
   .plugin-manager-page .plugin-detail-grid {grid-template-columns:1fr}
   .plugin-manager-page .plugin-action {width:auto}
 }
+
+/* #75 FE-G5: default-open detail and safe CTA from pinned MagicPath. */
+.plugin-manager-page .plugin-install-preview {padding:0 16px 14px}
+.plugin-manager-page .plugin-install-preview>.plugin-action {display:block;width:100%;min-height:42px;border-radius:13px;font-size:13px}
+.plugin-manager-page .plugin-install-preview .plugin-supporting {margin:8px 0 0;font-size:11px;line-height:1.5;color:#71717a}
+.plugin-manager-page .plugin-detail {padding-top:12px}
+.plugin-manager-page .plugin-detail-grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.plugin-manager-page .plugin-detail .plugin-stat {background:#fafafa;border-color:transparent;padding:8px}
+.plugin-manager-page .plugin-detail .plugin-stat strong {font-size:11px}
+@media(max-width:560px) {
+ .plugin-manager-page .plugin-detail-grid {grid-template-columns:repeat(2,minmax(0,1fr))}
+}

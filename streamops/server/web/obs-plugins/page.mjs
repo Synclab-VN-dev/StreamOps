@@ -8,7 +8,7 @@ const text = (tag, className, content) => {
   if (content !== undefined && content !== null) node.textContent = String(content);
   return node;
 };
-let pendingAction = null, expandedId = null;
+let pendingAction = null, expandedId = null, initialExpansionResolved = false;
 const dialog = byId('plugin-confirm-dialog');
 const store = createPluginStore(render);
 function notify(message, error = false) {
@@ -121,6 +121,17 @@ function renderPlugin(plugin) {
     field('Compatibility', release?.compatibility || (plugin.compatible ? 'Compatible' : 'Unknown'))
   );
   card.append(mini);
+  // The pinned MagicPath opens the first plugin and puts its Install CTA below
+  // metadata. This remains backend-authorized, with confirmation required.
+  if (plugin.state === 'NOT_INSTALLED') {
+    const installPreview = text('div','plugin-install-preview');
+    const install = actionButton(plugin,'install','Install plugin',eligible.install);
+    install.classList.add('plugin-primary');
+    installPreview.append(install);
+    installPreview.append(text('p','plugin-supporting',
+      'Install only the backend-selected approved release. Server validates integrity, compatibility and OBS output safety.'));
+    card.append(installPreview);
+  }
   if (expandedId !== plugin.plugin_id) return card;
   const details = text('div','plugin-detail');
   details.id = header.getAttribute('aria-controls');
@@ -135,7 +146,7 @@ function renderPlugin(plugin) {
   const actions = text('div','plugin-action-row');
   const offered = [];
   if (plugin.state === 'UNMANAGED') offered.push(['adopt','Adopt existing']);
-  if (['NOT_INSTALLED','LEGACY_ADOPTED'].includes(plugin.state)) offered.push(['install','Install plugin']);
+  if (plugin.state === 'LEGACY_ADOPTED') offered.push(['install','Install plugin']);
   if (plugin.state === 'UPDATE_AVAILABLE') offered.push(['update','Update plugin']);
   if (plugin.restart_required) offered.push(['restart','Restart OBS']);
   if (plugin.installed && !['UNMANAGED','LEGACY_ADOPTED'].includes(plugin.state)) offered.push(['verify','Verify']);
@@ -160,6 +171,12 @@ function renderPlugin(plugin) {
   return card;
 }
 function render() {
+  // Default-expanded on the first valid WS inventory. Preserve user choice
+  // across subsequent revision updates and refreshes.
+  if (!initialExpansionResolved && !store.loading && store.inventory.length) {
+    expandedId = store.inventory[0].plugin_id;
+    initialExpansionResolved = true;
+  }
   const counts = summary(store.inventory);
   byId('plugin-managed-count').textContent = store.loading ? '—' : String(counts.managed);
   byId('plugin-installed-count').textContent = store.loading ? '—' : String(counts.installed);
