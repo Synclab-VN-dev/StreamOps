@@ -167,6 +167,48 @@ test('UNIT WS: concurrent duplicate clicks are rejected before a second mutation
   assert.equal(store.inventory[0].state,'LEGACY_ADOPTED');
   store.destroy();
 });
+test('UNIT WS: vendor verification failure never becomes verified after read-only reconcile',async()=>{
+  const {ws,store}=await ready({state:'INSTALLED'});
+  store.runtime={state:'READY',streaming:false,recording:false,websocket:true};
+  const error=new Error('vendor probe unavailable');error.code='plugin_verify_failed';
+  ws.mutationFailure=error;
+  const request=ws.request.bind(ws);
+  ws.request=(operation,payload)=>{
+    if(operation==='obs_plugin.verify'){
+      ws.state='VERIFY_FAILED';ws.revision++;
+      ws.operationResult={state:'FAILED',operation:'verify',operation_id:'failed-probe'};
+    }
+    return request(operation,payload);
+  };
+  await assert.rejects(()=>store.execute('verify','obs-multi-rtmp'),e=>e.code==='plugin_verify_failed');
+  assert.equal(store.inventory[0].state,'VERIFY_FAILED');
+  assert.equal(store.activity.some(e=>e.operation==='verify'&&e.result==='failed'),true);
+  assert.equal(store.activity.some(e=>e.operation==='verify'&&e.result==='completed'),false);
+  assert.equal(count(ws,'obs_plugin.verify'),1);
+  store.destroy();
+});
+test('UNIT WS: backend auto-restoration cannot turn a failed update into success',async()=>{
+  const {ws,store}=await ready({state:'UPDATE_AVAILABLE',release:{
+    available_version:'2.0',installable:true,compatibility:'compatible'
+  }});
+  const error=new Error('backend restored previous baseline');error.code='plugin_update_failed';
+  ws.mutationFailure=error;
+  const request=ws.request.bind(ws);
+  ws.request=(operation,payload)=>{
+    if(operation==='obs_plugin.update'){
+      ws.state='INSTALLED';ws.revision++;
+      ws.operationResult={state:'FAILED',operation:'update',operation_id:'failed-update'};
+    }
+    return request(operation,payload);
+  };
+  await assert.rejects(()=>store.execute('update','obs-multi-rtmp'),e=>e.code==='plugin_update_failed');
+  assert.equal(store.inventory[0].state,'INSTALLED','restored does not mean update succeeded');
+  assert.equal(store.activity.some(e=>e.operation==='update'&&e.result==='failed'),true);
+  assert.equal(store.activity.some(e=>e.operation==='update'&&e.result==='completed'),false);
+  assert.equal(count(ws,'obs_plugin.update'),1);
+  assert.equal(count(ws,'obs_plugin.rollback'),0,'FE must not double-trigger BE auto rollback');
+  store.destroy();
+});
 test('UNIT WS: typed backend conflict reports failure, not an unknown result or auto retry',async()=>{
   const {ws,store}=await ready();
   const err=new Error('Conflict');err.code='plugin_state_conflict';
