@@ -734,3 +734,81 @@ def test_heartbeat_is_read_only_deduplicated_and_resyncs_epoch_gap(page: Page, g
     wait_until(lambda: len([op for op,_ in fake.received if op=="games.list"]) > before)
     expect(page.locator("#game-library")).to_contain_text("Diablo IV")
     assert not any(op.startswith("games.lifecycle.") for op,_ in fake.received)
+
+
+@pytest.mark.parametrize("width,height", [(390,844),(1440,900)])
+def test_detail_back_restores_scroll_focus_after_long_library(page: Page, games_ui_server, width, height):
+    """E2E-04: full library scroll position and original row survive detail navigation."""
+    base, fake = games_ui_server
+    page.set_viewport_size({"width":width,"height":height})
+    page.goto(base+"/games")
+    entries = [game("Indexed game "+str(i), "steam:"+str(1000+i), "STOPPED")
+               for i in range(18)]
+    fake.set_library(entries)
+    opener=page.locator('#game-library .gm-game-row[data-game-id="steam:1016"]')
+    expect(opener).to_be_visible()
+    opener.scroll_into_view_if_needed()
+    before=page.evaluate("window.scrollY")
+    assert before > 100, "Must exercise an actually scrolled Game Library"
+    opener.click()
+    expect(page.locator("#game-detail")).to_contain_text("Indexed game 16")
+    if width <= 900:
+        expect(page.locator("#games-main")).to_be_hidden()
+        assert page.evaluate("window.scrollY") <= 2, "Mobile detail must open at its heading"
+    else:
+        expect(page.locator("#games-main")).to_be_visible()
+    page.locator("#game-detail .gm-detail-advanced summary").click()
+    assert page.locator("#game-detail .gm-detail-advanced").evaluate("(e)=>e.open")
+    page.get_by_role("button",name="Back to games").click()
+    expect(page.locator("#games-main")).to_be_visible()
+    after=page.evaluate("window.scrollY")
+    assert abs(after-before)<=3, f"Library scroll lost when closing detail: {before} -> {after}"
+    assert page.evaluate("document.activeElement?.dataset?.gameId==='steam:1016'")
+    assert not any(op.startswith("games.lifecycle.") for op,_ in fake.received)
+
+
+def test_games_offline_loading_and_read_only_recovery_are_explicit(page: Page, games_ui_server):
+    """E2E-03: UI distinguishes loading, disconnected/UNKNOWN and recovered observations."""
+    base, fake=games_ui_server
+    requests=[]
+    page.on("request",lambda req:requests.append(req.url) if
+        req.url.startswith(base+"/api/v1/") and not req.url.startswith("ws") else None)
+    page.goto(base+"/games")
+    expect(page.locator("#game-library .gm-game-row")).to_have_count(1)
+    page.evaluate("""() => {
+       const s=window.StreamOpsGames.store;
+       s.games.clear();s.loading=true;s.stale=false;s.emit();
+    }""")
+    expect(page.locator("#game-library")).to_contain_text("Loading library")
+    fake.set_library([game("Observed after loading","steam:2344520")])
+    expect(page.locator("#game-library")).to_contain_text("Observed after loading")
+    page.locator('#game-library .gm-game-row[data-game-id="steam:2344520"]').click()
+    page.evaluate("window.StreamOpsGames.client.socket.close()")
+    expect(page.locator("#status-text")).to_contain_text("offline / stale")
+    expect(page.locator("#game-detail button[data-action='stop']")).to_be_disabled()
+    expect(page.locator("#game-summary")).to_contain_text("Unknown")
+    expect(page.locator("#status-text")).to_contain_text("connected",timeout=15000)
+    expect(page.locator("#game-library")).to_contain_text("Observed after loading")
+    assert not any(op.startswith("games.lifecycle.") for op,_ in fake.received)
+    assert not [url for url in requests if "/api/v1/" in url and "/ws" not in url], (
+       "Game Manager must never use REST fallback or status polling"
+    )
+
+
+def test_game_status_announcements_use_accessible_text_not_only_color(page: Page, games_ui_server):
+    """E2E-11: live regions, typed statuses and visible focus cover no-color state."""
+    base,fake=games_ui_server
+    page.set_viewport_size({"width":390,"height":844})
+    page.goto(base+"/games")
+    for target in ["#status-text","#game-summary","#running-games","#game-library"]:
+        expect(page.locator(target)).to_have_attribute("aria-live","polite")
+    expect(page.locator("#games-error")).to_have_attribute("role","alert")
+    expect(page.locator("#token-status")).to_have_attribute("role","status")
+    page.locator('#game-library .gm-game-row[data-game-id="steam:2344520"]').click()
+    expect(page.locator("#game-detail")).to_contain_text("Running")
+    assert page.locator("#game-detail [data-code='CONFIGURED_ONLY']").count()>0
+    fake.send_change("STOPPED")
+    expect(page.locator("#game-detail")).to_contain_text("Stopped")
+    expect(page.locator("#game-detail [data-code='STOPPED']")).to_have_count(1)
+    assert page.evaluate("document.documentElement.scrollWidth<=innerWidth")
+    assert not any(op.startswith("games.lifecycle.") for op,_ in fake.received)
