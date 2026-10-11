@@ -18,6 +18,10 @@
     $("#steam-started").textContent=fresh?format.formatDateTime(current.started_at):"--";
     $("#steam-uptime").textContent=fresh?format.formatDuration(current.uptime_seconds):"--";
     $("#steam-session").textContent=fresh?current.session_id??"--":"--";
+    $("#steam-session-expanded").textContent=fresh&&current.session_id!=null
+      ? String(current.session_id)+(current.active_console_session_id!=null
+        ? current.active_console_session_id===current.session_id?" · Active console":" · Not active console"
+        : ""):"--";
     $("#steam-interactive").textContent=fresh && current.interactive!=null?(current.interactive?"Yes":"No"):"--";
     $("#steam-installation").textContent=fresh && current.installation_detected!=null?(current.installation_detected?"Detected":"Not detected"):"Unknown";
     $("#restart-button").disabled=busy||!fresh||current.installation_detected!==true||current.interactive!==true;
