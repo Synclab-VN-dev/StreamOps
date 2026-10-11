@@ -205,9 +205,8 @@ def test_pinned_magicpath_visual_parity(
             assert drift <= .015, f"Pinned design renderer drift against approved Golden: {label}: {drift}"
         _stage_production(actual_page, fake, base, design, scenario)
         _ready(actual_page)
-        # Credential controls are a required production-only security affordance,
-        # not part of the MagicPath design. Tested separately in Steam E2E.
-        actual_page.add_style_tag(content=".gm-control-panel{display:none!important}")
+        # Production UI is captured unmodified; no credential masking remains
+        # after #85 V1 became tokenless. Do not hide product elements for parity.
         actual_page.screenshot(path=str(actual), animations="disabled")
         verified_reference=ROOT / "goldens" / (label + ".png") if MANIFEST["approved"] else expected
         score=_visual_diff(verified_reference,actual,diff)
