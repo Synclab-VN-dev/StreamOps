@@ -1,9 +1,12 @@
-"""Game mutation access gate, additive to the existing trusted-LAN read policy.
+"""Game mutation gate: local operator CLI or authenticated remote control.
 
-A mutation token is required even when legacy require_access trusts LAN.
-Never accept credentials in query strings or lifecycle request bodies.
+Only GameService explicitly enables loopback access without a token. The peer
+IP is taken from the ASGI socket, never from Host or forwarded headers. Browser
+Origin requests and forwarded requests still require a token. Steam Restart
+remains token-gated. Never accept credentials in URLs or request bodies.
 """
 import hmac
+import ipaddress
 import os
 
 class GameAccessDenied(Exception):
@@ -23,6 +26,15 @@ def authorized(headers) -> bool:
             values.append(item[len(prefix):])
     return any(hmac.compare_digest(value, token) for value in values if isinstance(value, str))
 
-def require_mutation(headers) -> None:
-    if not authorized(headers):
-        raise GameAccessDenied("Game controls are disabled until a valid control token is supplied.")
+def _local_cli(headers, client_host: str | None) -> bool:
+    if not client_host or any(headers.get(name) for name in ("origin", "forwarded", "x-forwarded-for")):
+        return False
+    try:
+        return ipaddress.ip_address(client_host).is_loopback
+    except ValueError:
+        return False
+
+def require_mutation(headers, *, client_host: str | None = None, allow_loopback: bool = False) -> None:
+    if authorized(headers) or (allow_loopback and _local_cli(headers, client_host)):
+        return
+    raise GameAccessDenied("Game controls require a local loopback CLI or valid control token.")
