@@ -96,6 +96,18 @@ def test_raw_input_logs_filter_but_speech_remains_in_sqlite(tmp_path, capsys, mo
     assert len(all_events)==33
     assert all_events[0]["type"]=="speech.raw"
     assert len({x["eventSeq"] for x in all_events})==33
+    # Read-only SQLite integrity check; input shares the same canonical stream.
+    import sqlite3
+    with sqlite3.connect(paths.events_db) as connection:
+        assert connection.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+    assert cli.command_status(paths, raw_json=True) == 0
+    raw_status = json.loads(capsys.readouterr().out)
+    marker_status = raw_status["extras"]["inputMarker"]
+    assert marker_status["layoutId"] == profile.layout_id
+    assert marker_status["configuredDigitalCount"] == 16
+    assert marker_status["analogDisabledCount"] == 2
+    assert marker_status["mode"] == "BLOCK"
+    assert marker_status["backend"] == "keyboardHook"
     assert cli.command_status(paths, raw_json=False) == 0
     assert profile.layout_id in capsys.readouterr().out
     assert cli.command_logs(paths, follow=False, raw=True,
