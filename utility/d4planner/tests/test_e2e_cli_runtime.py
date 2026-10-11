@@ -914,3 +914,57 @@ def test_session_records_immutable_xbox16_contract_snapshot(tmp_path):
     }
     assert all(not entry["captureEnabled"] for entry in snapshot["analog"])
     supervisor.store.close()
+
+
+
+def test_supervisor_selects_exactly_one_marker_backend_for_each_mode(
+    monkeypatch, tmp_path,
+):
+    """Profile observe/block never spawns the legacy F11 polling backend."""
+    import d4planner.runtime.supervisor as supervisor_module
+    from d4planner.controller import load_profile
+
+    creations = []
+    instances = []
+
+    class FakeBackend(FakeMarkerCapture):
+        def __init__(self, kind, kwargs):
+            super().__init__()
+            self.kind = kind
+            self.kwargs = kwargs
+            instances.append(self)
+
+    def hook_factory(**kwargs):
+        creations.append("HOOK")
+        return FakeBackend("HOOK", kwargs)
+
+    def poll_factory(**kwargs):
+        creations.append("POLL")
+        return FakeBackend("POLL", kwargs)
+
+    monkeypatch.setattr(supervisor_module, "HookInputMarkerCapture", hook_factory)
+    monkeypatch.setattr(supervisor_module, "InputMarkerCapture", poll_factory)
+    for name, profile, block, expected in [
+        ("legacy-observe", None, False, "POLL"),
+        ("legacy-block", None, True, "HOOK"),
+        ("xbox-observe", load_profile("xbox16"), False, "HOOK"),
+        ("xbox-block", load_profile("xbox16"), True, "HOOK"),
+    ]:
+        home = RuntimePaths(tmp_path / name)
+        runtime = E2ERuntime(home)
+        mgr = UserPathManager(home, MemoryPathBackend(user_path="", machine_path="MACHINE"))
+        sup = Supervisor(paths=home, runtime=runtime, path_manager=mgr,
+                         controller_profile=profile, block_marker=block)
+        before = len(creations)
+        sup._start_marker_capture()
+        assert len(creations) == before + 1
+        assert creations[-1] == expected
+        assert instances[-1].started
+        assert sup.status.extras["inputMarker"]["backend"] == (
+            "keyboardHook" if expected == "HOOK" else "asyncKeyState"
+        )
+        if profile:
+            assert instances[-1].kwargs["profile"] == profile
+            assert instances[-1].kwargs["block"] == block
+        sup._stop_marker_capture()
+        assert instances[-1].stopped
