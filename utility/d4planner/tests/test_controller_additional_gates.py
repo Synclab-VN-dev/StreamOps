@@ -222,3 +222,47 @@ def test_capture_restart_is_fresh_and_never_replays_prior_key_edges():
         assert [row.state for row in capture.drain()] == ["down", "up"]
         assert capture.drain() == []
     assert capture.dropped_count == 0
+
+
+@pytest.mark.parametrize(
+    "control,key,vk",
+    [
+        ("L3","F2",0x71), ("R3","F1",0x70),
+        ("SELECT","F4",0x73), ("START","F3",0x72),
+        ("LT","F6",0x75), ("RT","F5",0x74),
+        ("LB","F8",0x77), ("RB","F7",0x76),
+        ("X","F10",0x79), ("Y","F9",0x78),
+        ("A","F11",0x7A), ("B","F12",0x7B),
+        ("DPAD_UP","[",0xDB), ("DPAD_DOWN","]",0xDD),
+        ("DPAD_LEFT","\\",0xDC), ("DPAD_RIGHT","`",0xC0),
+    ],
+)
+def test_ut04_vk_mapping_is_keylayout_independent(control,key,vk):
+    """V1 binds Win32 virtual keys, not text or the host's keyboard locale.
+
+    A locale-specific physical scanCode cannot be proven in CI; it remains
+    DF-05/DF-09. No keycode-to-character reinterpretation is permitted.
+    """
+    from d4planner.controller import ControllerResolver
+    profile = load_profile("xbox16")
+    resolver = ControllerResolver(profile)
+    binding = resolver.by_virtual_key(vk)
+    assert binding is not None
+    assert (binding.control_id, binding.key, binding.virtual_key) == (
+        control,key,vk
+    )
+    assert resolver.by_control_id(control) == binding
+    # Correctly ignore the scan code; it is evidence, not a replacement VK.
+    from d4planner.runtime.input_marker import HookInputMarkerCapture
+    sample = F11Sample(
+        1800000000000,WM_KEYDOWN,"down",0,123,True,
+        virtual_key=vk,scan_code=0x123,
+    )
+    event = HookInputMarkerCapture(profile=profile,block=True)._convert_sample(sample)
+    assert event is not None
+    data = event.as_draft().data
+    assert (data["key"],data["controlId"],data["virtualKey"]) == (
+        key,control,vk
+    )
+    assert data["scanCode"] == 0x123
+    assert data["mappingSource"] == "configuredLayout"
