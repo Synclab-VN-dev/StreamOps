@@ -17,7 +17,8 @@ param(
     [string]$ObsPluginSourceProvider = "github-release",
     [string]$ObsPluginSourceLocation = "Synclab-VN-dev/StreamOps-OBS-Plugins",
     [string]$ObsPluginGitHubTokenEnv = "STREAMOPS_OBS_PLUGIN_GITHUB_TOKEN",
-    [switch]$NoGitHubTokenPrompt
+    [switch]$NoGitHubTokenPrompt,
+    [switch]$GitHubTokenFromClipboard
 )
 
 $ErrorActionPreference = "Stop"
@@ -140,13 +141,42 @@ if (Test-Path -LiteralPath $runtimePath) {
 # Prompt only when actually starting/restarting the node. Scheduled Tasks do
 # not inherit the SSH terminal environment. A one-use DPAPI handoff is readable
 # only by the same Windows user and never appears in task arguments or logs.
+if ($GitHubTokenFromClipboard -and ($NoGitHubTokenPrompt -or $ObsPluginSourceProvider -ne "github-release")) {
+    throw "GitHubTokenFromClipboard requires github-release and cannot be combined with NoGitHubTokenPrompt."
+}
 $tokenHandoff = $null
 if ($ObsPluginSourceProvider -eq "github-release" -and -not $NoGitHubTokenPrompt) {
-    $redirected = $true
-    try { $redirected = [Console]::IsInputRedirected } catch { }
-    if (-not $redirected) {
-        $secureToken = Read-Host "GitHub read-only token for managed OBS plugins (Enter to skip)" -AsSecureString
-        if ($null -ne $secureToken -and $secureToken.Length -gt 0) {
+    $secureToken = $null
+    if ($GitHubTokenFromClipboard) {
+        $clipboardText = $null
+        try {
+            $clipboardLines = @(Get-Clipboard -ErrorAction Stop)
+            if ($clipboardLines.Count -ne 1) {
+                throw "Clipboard must contain one token line."
+            }
+            $clipboardText = [string]$clipboardLines[0]
+            if ([string]::IsNullOrWhiteSpace($clipboardText) -or
+                $clipboardText -match '[\\s\\x00-\\x1f\\x7f]') {
+                throw "Clipboard token is empty or contains whitespace/control characters."
+            }
+            $secureToken = ConvertTo-SecureString -String $clipboardText -AsPlainText -Force
+        }
+        finally {
+            $clipboardText = $null
+            $clipboardLines = $null
+            # Clear only the current clipboard. Windows Clipboard History may retain a copy.
+            Set-Clipboard -Value " " -ErrorAction Stop
+        }
+        Write-Host "GitHub token taken from clipboard (value hidden; active clipboard cleared)."
+    }
+    else {
+        $redirected = $true
+        try { $redirected = [Console]::IsInputRedirected } catch { }
+        if (-not $redirected) {
+            $secureToken = Read-Host "GitHub read-only token for managed OBS plugins (Enter to skip)" -AsSecureString
+        }
+    }
+    if ($null -ne $secureToken -and $secureToken.Length -gt 0) {
             $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
             if (-not [string]::Equals($currentUser, $interactiveUser, [StringComparison]::OrdinalIgnoreCase)) {
                 throw "Token handoff requires the startup shell to run as the logged-in desktop user: $interactiveUser"
@@ -160,10 +190,9 @@ if ($ObsPluginSourceProvider -eq "github-release" -and -not $NoGitHubTokenPrompt
             $tokenHandoff = Join-Path $secretDir ("github-token-" + [Guid]::NewGuid().ToString("N") + ".dpapi")
             # ConvertFrom-SecureString uses Windows CurrentUser DPAPI (no key).
             [IO.File]::WriteAllText($tokenHandoff, (ConvertFrom-SecureString $secureToken))
-            $secureToken.Dispose()
             Write-Host "GitHub token captured securely for this server start (value hidden)."
-        }
     }
+    if ($null -ne $secureToken) { $secureToken.Dispose() }
     if (-not $tokenHandoff) {
         Write-Warning "GitHub token missing; OBS Plugin Manager catalog will report plugin_github_token_missing until the node is restarted with a token."
     }
