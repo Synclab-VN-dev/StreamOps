@@ -87,11 +87,14 @@ def analyze(
 
     matrix = []
     for item in profile.digital:
+        # Multiple intentional presses are permitted. Missing UP, duplicate
+        # DOWN, incorrect VK/layout and unsuppressed events still fail closed.
         observed = by_control[item.control_id]
         actual_states = [str(row.get("state") or "").lower() for row in observed]
         correct = (
-            valid and len(observed) == 2
-            and actual_states == ["down", "up"]
+            valid and len(observed) >= 2
+            and len(observed) % 2 == 0
+            and actual_states == [state for _ in range(len(observed)//2) for state in ("down", "up")]
             and all(
                 row.get("virtualKey") == item.virtual_key
                 and str(row.get("key") or "").upper() == item.key
@@ -108,6 +111,9 @@ def analyze(
                          "states": ["down", "up"], "suppressed": True},
             "actual": {
                 "states": actual_states,
+                "downCount": actual_states.count("down"),
+                "upCount": actual_states.count("up"),
+                "pairCount": len(observed)//2 if len(observed) % 2 == 0 else None,
                 "virtualKeys": [row.get("virtualKey") for row in observed],
                 "scanCodes": [row.get("scanCode") for row in observed],
                 "seq": [row["eventSeq"] for row in observed],
