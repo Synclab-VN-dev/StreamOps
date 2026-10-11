@@ -113,7 +113,11 @@ def test_powershell_launchers_parse_on_windows():
     if not executable:
         pytest.fail("Windows CI has no PowerShell available to parse launcher")
     root = Path(__file__).resolve().parents[3]
-    for name in ("start-streamops-node.ps1", "run-streamops-node.ps1"):
+    for name in (
+        "start-streamops-node.ps1",
+        "run-streamops-node.ps1",
+        "protect-obs-plugin-token-dir.ps1",
+    ):
         path = root / "scripts/devices/a-windows" / name
         quoted_path = str(path).replace("'", "''")
         command = (
