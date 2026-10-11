@@ -312,3 +312,82 @@ test('UNIT WS: destroy releases observers and closes plugin WS',async()=>{
   assert.equal(ws.byState.size,0);
   assert.equal(ws.byEvent.size,0);
 });
+
+
+test('UNIT Adopt typed-error matrix: denied/recovery/timeout never falls back to Install or duplicates mutation',async()=>{
+  // Explicitly cover BE's guard codes at the WS boundary. A typed rejection is
+  // definitive; timeout is uncertain and must remain blocked for reconciliation.
+  const codes=[
+    'plugin_adopt_requires_obs_stopped',
+    'plugin_adoption_required',
+    'plugin_not_installed',
+    'obs_busy_streaming',
+    'obs_busy_recording',
+    'plugin_state_conflict',
+    'plugin_recovery_required',
+    'plugin_adopt_failed',
+    'plugin_operation_timeout'
+  ];
+  for(const code of codes){
+    const {ws,store}=await ready();
+    const error=new Error('server rejected or timed out');error.code=code;
+    ws.mutationFailure=error;
+    await assert.rejects(()=>store.execute('adopt','obs-multi-rtmp'),e=>e.code===code,code);
+    assert.equal(store.inventory[0].state,'UNMANAGED',code);
+    assert.equal(store.activity.filter(e=>e.operation==='adopt'&&e.result==='completed').length,0,code);
+    assert.equal(store.activity.filter(e=>e.operation==='adopt'&&e.result==='adopted').length,0,code);
+    assert.equal(count(ws,'obs_plugin.adopt'),1,code);
+    assert.equal(count(ws,'obs_plugin.install'),0,code);
+    assert.equal(store.unknownOutcome,code==='plugin_operation_timeout',code);
+    assert.equal(store.activity.some(e=>e.operation==='adopt'&&e.error_code===code
+      &&e.result===(code==='plugin_operation_timeout'?'unknown':'failed')),true,code);
+    store.destroy();
+  }
+});
+
+test('UNIT OBS restart: expected transient plugin WS reconnect stays pending until explicit restart ack',async()=>{
+  const {ws,obs,store}=await ready({state:'RESTART_REQUIRED'});
+  const gate=deferred();
+  obs.request=(operation,payload)=>{
+    assert.equal(operation,'obs.lifecycle.restart');
+    assert.deepEqual(payload,{});
+    obs.restarts++;
+    return gate.promise;
+  };
+  const task=store.restart();
+  await until(()=>store.busy&&obs.restarts===1,'restart dispatched');
+  ws.transition(false);
+  assert.equal(store.connected,false);
+  assert.equal(store.unknownOutcome,true,'transient disconnect during mutation must be fail closed');
+  ws.transition(true);
+  await until(()=>store.observerReady&&!store.refreshInFlight,'fresh inventory after reconnect');
+  assert.equal(store.activity.some(e=>e.operation==='obs.lifecycle.restart'&&e.result==='completed'),false);
+  assert.equal(store.inventory[0].state,'RESTART_REQUIRED','reconnect is not plugin verification');
+  gate.resolve({state:'READY'});
+  await task;
+  assert.equal(store.unknownOutcome,false,'explicit lifecycle response closes pending restart');
+  assert.equal(store.activity.filter(e=>e.operation==='obs.lifecycle.restart'&&e.result==='completed').length,1);
+  assert.equal(count(ws,'obs_plugin.verify'),0);
+  store.destroy();
+});
+
+test('UNIT OBS reconnect: unexpected plugin WS disconnection during Adopt remains UNKNOWN, never retries',async()=>{
+  const {ws,store}=await ready();
+  const gate=deferred();
+  ws.mutationWait=gate;
+  const task=store.execute('adopt','obs-multi-rtmp');
+  await until(()=>count(ws,'obs_plugin.adopt')===1,'Adopt dispatched');
+  ws.operationResult={state:'RUNNING',operation:'adopt',operation_id:'unknown-running'};
+  ws.transition(false);
+  gate.reject(new Error('Unexpected socket closure'));
+  await assert.rejects(task);
+  assert.equal(store.unknownOutcome,true);
+  ws.transition(true);
+  await until(()=>store.observerReady&&!store.refreshInFlight,'read only reconnect');
+  assert.equal(store.unknownOutcome,true,'backend RUNNING is not terminal');
+  await assert.rejects(()=>store.execute('adopt','obs-multi-rtmp'),/blocked/i);
+  assert.equal(count(ws,'obs_plugin.adopt'),1,'no duplicate Adopt');
+  assert.equal(count(ws,'obs_plugin.install'),0,'no alternate fallback mutation');
+  assert.ok(count(ws,'obs_plugin.operation_status')>=1);
+  store.destroy();
+});
