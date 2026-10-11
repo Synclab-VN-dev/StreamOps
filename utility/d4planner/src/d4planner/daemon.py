@@ -80,8 +80,15 @@ def main(argv: list[str] | None = None) -> int:
     # Explicit run-scoped home for Task Scheduler: it does not inherit the SSH
     # caller's D4PLANNER_HOME. Required for PR95 isolated Real-A acceptance.
     parser.add_argument("--home", type=Path, default=None)
+    parser.add_argument("--uat-attach-only", action="store_true",
+                        help="Attach to already-running Steam/NVDA/D4 without process restart")
     parser.add_argument("--game-start-timeout", type=float, default=90.0)
     args = parser.parse_args(argv)
+    if args.uat_attach_only and (
+        not args.isolated or args.home is None or
+        not args.block or args.controller_profile is None
+    ):
+        parser.error("--uat-attach-only requires --home, --isolated, --block and --controller-profile")
     try:
         profile = load_profile(args.controller_profile) if args.controller_profile else None
     except ProfileValidationError as exc:
@@ -104,6 +111,7 @@ def main(argv: list[str] | None = None) -> int:
             isolated=args.isolated,
             block_marker=args.block,
             controller_profile=profile,
+            uat_attach_only=args.uat_attach_only,
             game_start_timeout=args.game_start_timeout,
         )
         return supervisor.run()
