@@ -82,6 +82,32 @@ jobs:
       - name: Compile D4Planner runtime
         if: steps.changes.outputs.d4planner == 'true'
         run: python -m compileall -q utility/d4planner
+      - name: D4Planner V1 packaged wheel smoke (isolated)
+        if: steps.changes.outputs.d4planner == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $wheelDir = Join-Path $env:RUNNER_TEMP 'd4planner-wheel'
+          $venvDir = Join-Path $env:RUNNER_TEMP 'd4planner-wheel-venv'
+          New-Item -ItemType Directory -Force $wheelDir | Out-Null
+          python -m pip wheel --no-deps --wheel-dir $wheelDir utility/d4planner
+          if ($LASTEXITCODE -ne 0) { throw 'D4Planner wheel build failed' }
+          $wheel = @(Get-ChildItem $wheelDir -Filter 'd4planner-*.whl')
+          if ($wheel.Count -ne 1) { throw "Expected exactly one D4Planner wheel, got $($wheel.Count)" }
+          python -m venv $venvDir
+          if ($LASTEXITCODE -ne 0) { throw 'D4Planner isolated venv creation failed' }
+          $isolatedPython = Join-Path $venvDir 'Scripts/python.exe'
+          & $isolatedPython -m pip install --no-index --no-deps $wheel[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw 'D4Planner isolated wheel install failed' }
+          Push-Location $env:RUNNER_TEMP
+          try {
+            & $isolatedPython -I -m d4planner.cli controller validate xbox16
+            if ($LASTEXITCODE -ne 0) { throw 'D4Planner installed wheel profile validation failed' }
+            & $isolatedPython -I -m d4planner.cli controller profiles
+            if ($LASTEXITCODE -ne 0) { throw 'D4Planner installed wheel profile discovery failed' }
+          } finally {
+            Pop-Location
+          }
       - name: Build D4Planner NVDA add-on
         if: steps.changes.outputs.d4planner == 'true'
         run: python utility/d4planner/tools/build_nvda_addon.py
