@@ -1,4 +1,4 @@
-/* Read-only WS connection: commands needing credentials use games-control.js. */
+/* Observation WS stays read-only; lifecycle uses separate tokenless trusted-LAN control WS. */
 (() => {
   const Client = window.StreamOpsWebSocketClient;
   const Model = window.StreamOpsGamesStore;
