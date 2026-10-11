@@ -255,14 +255,19 @@ class HookInputMarkerCapture:
     def __init__(
         self, *, poll_interval: float = 0.01, backend_factory=None,
         profile: ControllerProfile | None = None, block: bool = True,
+        sample_capacity: int = 8192,
     ) -> None:
+        if sample_capacity < 1:
+            raise ValueError("sample_capacity must be positive")
         self.poll_interval = max(0.001, float(poll_interval))
         self._backend_factory = backend_factory
         self.profile = profile
         self.block = bool(block)
         self.resolver = ControllerResolver(profile) if profile else None
         self._target_pid: int | None = None
-        self._samples: queue.SimpleQueue[MarkerSample] = queue.SimpleQueue()
+        # The Supervisor can stall during SQLite backpressure. Avoid an
+        # unbounded second-stage queue behind the bounded Win32 hook queue.
+        self._samples: queue.Queue[MarkerSample] = queue.Queue(maxsize=sample_capacity)
         self._stop = threading.Event()
         self._ready = threading.Event()
         self._thread: threading.Thread | None = None
@@ -308,7 +313,16 @@ class HookInputMarkerCapture:
                 continue
             converted = self._convert_sample(sample)
             if converted is not None:
-                self._samples.put(converted)
+                try:
+                    self._samples.put_nowait(converted)
+                except queue.Full as exc:
+                    self._dropped_count += 1
+                    # Explicit fatal diagnostic; never silently lose input or
+                    # claim that suppression remains reliable.
+                    raise RuntimeError(
+                        "Controller adapter queue overflow: "
+                        f"droppedCount={self._dropped_count}"
+                    ) from exc
 
     def _update_overflow(self, hook) -> None:
         dropped = int(getattr(getattr(hook, "samples", None), "dropped", 0))
