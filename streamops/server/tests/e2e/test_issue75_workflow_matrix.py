@@ -715,6 +715,8 @@ def test_issue75_design_aligned_cards_keep_live_ws_counts_and_logical_activity(
     expect(page.locator("#plugin-managed-count")).to_have_text("1")
     expect(page.locator("#plugin-installed-count")).to_have_text("1")
     expect(page.locator("#plugin-operation-count")).to_have_text("0")
+    expect(page.locator(".plugin-activity-summary")).to_be_visible()
+    expect(page.locator("#plugin-error-count")).to_be_visible()
     assert fake.mutations()==[]
     act(page,"Adopt existing")
     confirm(page)

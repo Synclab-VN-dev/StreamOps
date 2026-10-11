@@ -157,3 +157,18 @@ body.plugin-manager-page {background:#f5f6f8;color:#18181b;min-height:100vh;font
 .plugin-manager-page .plugin-install-details {gap:8px}
 .plugin-manager-page .plugin-install-source-note {padding:12px;border-radius:14px;background:#f4f4f5;color:#52525b;font-size:11px;line-height:1.5}
 .plugin-manager-page .plugin-install-details .plugin-supporting {margin:0}
+
+/* Pinned MagicPath keeps the real Activity summary visible even while the
+   optional detailed event list is collapsed. Never inject demo events. */
+.plugin-manager-page .plugin-activity-frame {
+  border:1px solid rgba(0,0,0,.055);border-radius:24px;background:#fff;
+  padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.04)
+}
+.plugin-manager-page .plugin-activity-frame>.plugin-activity-details {
+  border:0;border-radius:0;background:transparent;padding:0;box-shadow:none
+}
+.plugin-manager-page .plugin-activity-details summary {position:relative;padding-right:28px}
+.plugin-manager-page .plugin-activity-details summary::after {
+  content:"⌄";position:absolute;top:0;right:0;color:#a1a1aa;font-size:16px
+}
+.plugin-manager-page .plugin-activity-details[open] summary::after {content:"⌃"}

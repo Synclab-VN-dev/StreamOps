@@ -29,14 +29,16 @@
   </section>
   <section class="plugin-panel" aria-labelledby="plugin-tools-title">
     <div class="plugin-section-heading"><div><span class="plugin-section-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></span><h2 id="plugin-tools-title">Manager tools</h2></div></div>
-    <details class="plugin-activity-details"><summary>Activity Log <span class="plugin-muted">Plugin operations in this browser session</span></summary>
+    <div class="plugin-activity-frame">
+      <details class="plugin-activity-details"><summary>Activity Log <span class="plugin-muted">Plugin operations in this browser session</span></summary>
+        <ol id="plugin-activity" class="plugin-activity" aria-live="polite"></ol>
+      </details>
       <div class="plugin-activity-summary" aria-label="Activity summary">
         <div><span>Last event</span><strong id="plugin-last-event">—</strong></div>
         <div><span>Operations</span><strong id="plugin-operation-count">0</strong></div>
         <div><span>Errors</span><strong id="plugin-error-count">0</strong></div>
       </div>
-      <ol id="plugin-activity" class="plugin-activity" aria-live="polite"></ol>
-    </details>
+    </div>
   </section>
   <p id="plugin-notice" class="plugin-notice" role="status" hidden></p>
 </main>
