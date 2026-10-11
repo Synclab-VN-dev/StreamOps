@@ -335,6 +335,7 @@ def test_issue75_keyboard_focus_mobile_and_expand_collapse(page:Page,live_server
     header.focus()
     page.keyboard.press("Enter")
     expect(header).to_have_attribute("aria-expanded","false")
+    expect(header).to_be_focused()
     page.keyboard.press("Enter")
     expect(header).to_have_attribute("aria-expanded","true")
     expect(page.get_by_role("button",name="Adopt existing")).to_be_enabled()
@@ -439,7 +440,9 @@ def test_issue75_timeout_remains_fail_closed_after_page_reload(page:Page,live_se
     page.reload()
     expect(page.locator("#plugin-managed-count")).to_have_text("1")
     expect(page.locator("#plugin-connection-warning")).to_contain_text("unknown")
-    page.locator(".plugin-card-header").click()
+    # Pinned MagicPath now opens the first registry card by default; do not
+    # collapse it before asserting fail-closed behavior after a reload.
+    expect(page.locator(".plugin-card-header")).to_have_attribute("aria-expanded","true")
     expect(page.get_by_role("button",name="Adopt existing")).to_be_disabled()
     assert len(fake.mutations("obs_plugin.adopt"))==1
     assert any(r["operation"]=="obs_plugin.operation_status" for r in fake.calls)

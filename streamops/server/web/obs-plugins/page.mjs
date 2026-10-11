@@ -107,7 +107,19 @@ function renderPlugin(plugin) {
   pill.dataset.tone = statusTone(plugin.state);
   right.append(pill,text('span','plugin-chevron',expandedId === plugin.plugin_id ? '⌃' : '⌄'));
   header.append(left,right);
-  header.addEventListener('click',() => {expandedId = expandedId === plugin.plugin_id ? null : plugin.plugin_id; render();});
+  header.addEventListener('click',() => {
+    // Rendering rebuilds the card's DOM. Keep keyboard focus on the new
+    // header so Enter/Space can close and reopen it without a mouse.
+    const restoreFocus = document.activeElement === header;
+    expandedId = expandedId === plugin.plugin_id ? null : plugin.plugin_id;
+    render();
+    if (restoreFocus) {
+      const fresh = [...document.querySelectorAll('.plugin-card')].find(
+        node => node.dataset.pluginId === plugin.plugin_id
+      )?.querySelector('.plugin-card-header');
+      fresh?.focus();
+    }
+  });
   card.append(header);
   const mini = text('div','plugin-mini-details');
   const field = (label, value) => {
