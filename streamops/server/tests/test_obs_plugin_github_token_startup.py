@@ -93,6 +93,8 @@ def test_windows_launcher_has_no_plaintext_token_cli_contract():
     )
     assert "Read-Host" in start and "-AsSecureString" in start
     assert "ConvertFrom-SecureString" in start
+    assert "protect-obs-plugin-token-dir.ps1" in start
+    assert "Set-Acl -LiteralPath $secretDir" not in start
     assert "ObsPluginCredentialFile" in runner
     assert "ConvertTo-SecureString" in runner
     assert "ZeroFreeBSTR" in runner
@@ -125,3 +127,42 @@ def test_powershell_launchers_parse_on_windows():
             capture_output=True, text=True, timeout=20,
         )
         assert result.returncode == 0, f"{name} parse failed: {result.stderr} {result.stdout}"
+
+
+def test_powershell_token_directory_acl_without_admin():
+    """Actual Windows DACL smoke: protect a fresh user-owned folder and verify
+    only the current user has explicit access; do not just parse the script.
+    """
+    import shutil
+    import subprocess
+    import sys
+    import tempfile
+
+    if sys.platform != "win32":
+        pytest.skip("Windows DACL smoke gate")
+    executable = shutil.which("pwsh") or shutil.which("powershell")
+    assert executable, "Windows CI requires PowerShell"
+    root = Path(__file__).resolve().parents[3]
+    helper = root / "scripts/devices/a-windows/protect-obs-plugin-token-dir.ps1"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        secret_dir = Path(tmpdir) / ".secrets"
+        secret_dir.mkdir()
+        result = subprocess.run(
+            [executable, "-NoProfile", "-NonInteractive", "-File",
+             str(helper), "-Directory", str(secret_dir)],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert result.returncode == 0, (
+            "DACL restriction failed for a normal owned folder: "
+            + result.stderr + result.stdout
+        )
+        acl = subprocess.run(
+            ["icacls.exe", str(secret_dir)],
+            capture_output=True, text=True, timeout=20,
+        )
+        assert acl.returncode == 0
+        # Helper validates SID-based, owner-only DACL and removed inheritance.
+        assert secret_dir.is_dir()
+        canary = secret_dir / "handoff.canary"
+        canary.write_text("not a real token", encoding="utf-8")
+        assert canary.read_text(encoding="utf-8") == "not a real token"
