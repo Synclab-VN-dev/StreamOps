@@ -18,6 +18,7 @@ import pytest
 from playwright.sync_api import Browser, expect
 
 from .test_games_ui import games_ui_server, game
+from ..test_magicpath_visual_contract import validate_source_locked_v2_manifest
 
 ROOT = Path(__file__).resolve().parents[1] / "visual_magicpath"
 SOURCE = ROOT / "reference_source"
@@ -279,6 +280,7 @@ def test_magicpath_v2_source_locked_extended_golden_gate(
     target.mkdir(parents=True, exist_ok=True)
     images = []
     updated = json.loads((ROOT / "review_manifest_v2.json").read_text(encoding="utf-8"))
+    validate_source_locked_v2_manifest(updated)
     assert updated["approved"] is True and updated["new_goldens"]["approved"] is True, (
         "V2 source-locked Golden gate requires approved MagicPath revision"
     )
