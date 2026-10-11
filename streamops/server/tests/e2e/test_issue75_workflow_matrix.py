@@ -287,6 +287,8 @@ def test_issue75_streaming_blocks_install_without_stopping_output(page:Page,live
     fake=ScenarioWS(page,streaming=True,obs_state="READY")
     launch(page,live_server,fake)
     expect(page.get_by_role("button",name="Install plugin")).to_be_disabled()
+    expect(page.locator("#plugin-output-safety-banner")).to_be_visible()
+    expect(page.locator("#plugin-output-safety-banner")).to_contain_text("Live / blocked")
     assert fake.mutations()==[]
 
 
@@ -295,6 +297,7 @@ def test_issue75_recording_blocks_update_without_stopping_output(page:Page,live_
                     recording=True,obs_state="READY")
     launch(page,live_server,fake)
     expect(page.get_by_role("button",name="Update plugin")).to_be_disabled()
+    expect(page.locator("#plugin-output-safety-banner")).to_be_visible()
     assert fake.mutations()==[]
 
 
