@@ -241,9 +241,12 @@ $script:values = switch ($Scenario) {
 $script:clears = 0
 $script:clearedValue = $null
 function Get-Clipboard {
+    [CmdletBinding()]
+    param()
     foreach ($entry in $script:values) { Write-Output $entry }
 }
 function Set-Clipboard {
+    [CmdletBinding()]
     param([string]$Value)
     $script:clears++
     if ($Scenario -eq "clearfail") {
