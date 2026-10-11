@@ -3,7 +3,7 @@
   const $=s=>document.querySelector(s), format=window.StreamOpsUI;
   const log=format.createActivityLog("#activity-log"), ws=window.StreamOpsSteam;
   const games=window.StreamOpsGames, components=window.StreamOpsGamesComponents, control=window.StreamOpsGameControl;
-  let current=null, connected=false, busy=false, previous="", lastGames="", showAll=false;
+  let current=null, connected=false, busy=false, prompting=false, previous="", lastGames="", showAll=false;
   function setError(message) {$("#error-message").textContent=message||"";$("#error-message").hidden=!message;}
   function render() {
     const fresh=connected && current && current.stale!==true;
@@ -81,8 +81,20 @@
     gameBody.hidden=expanded;
   });
   $("#restart-button").addEventListener("click",async()=>{
-    if(busy || !connected || !current?.installation_detected || !current?.interactive) return;
-    if(!window.confirm("Restart Steam in Big Picture Mode? Active games or downloads may be interrupted.")) {log("Restart cancelled");return;}
+    if(busy || prompting || !connected || !current?.installation_detected || !current?.interactive) return;
+    prompting=true;
+    let approved=false;
+    try {
+      approved=await window.StreamOpsConfirmation.ask({
+        title:"Restart Steam in Big Picture?",
+        message:"Active games or downloads may be interrupted. Save progress first.",
+        confirmLabel:"Restart"
+      });
+    } finally { prompting=false; }
+    if (!approved) {log("Restart cancelled");return;}
+    if(!connected || current?.stale || !current?.installation_detected || !current?.interactive) {
+      setError("Steam status changed during confirmation. Refresh before retrying.");return;
+    }
     busy=true;render();setError("");log("Steam restart requested");
     try {
       const value=await control.command("/api/v1/steam/ws","steam.lifecycle.restart",{});
