@@ -271,3 +271,15 @@ body.gm-page { color-scheme:light; color:#18181b; background:#f5f6f8; font-famil
 .gm-page .gm-confirm-accept{background:#09090b;border:1px solid #09090b;color:#fff;}
 .gm-page .gm-confirm-overlay button:focus-visible{outline:3px solid #93c5fd;outline-offset:2px;}
 @media(prefers-reduced-motion:reduce){.gm-page .gm-confirm-overlay *{animation:none!important;transition:none!important;}}
+
+/* #86 MagicPath V2: scoped expanded-state parity, no change to collapsed approved Golden. */
+.gm-steam-page #steam-runtime-details[open] .gm-runtime-expanded .status-list{
+  background:#fafafa;border-radius:16px;padding:0 12px;margin-bottom:12px;
+}
+.gm-steam-page #steam-runtime-details[open] .gm-runtime-expanded #node-health-status{
+  background:#fafafa;border-radius:12px;padding:10px 12px;margin:8px 0 0;
+}
+/* Preserve the 44px close-button hit target outside the heading text flow. */
+.gm-page .gm-confirm-head{position:relative;min-height:24px;}
+.gm-page .gm-confirm-head h2{min-width:0;padding-right:20px;}
+.gm-page .gm-confirm-close{position:absolute;right:-10px;top:-10px;width:44px;height:44px;}
