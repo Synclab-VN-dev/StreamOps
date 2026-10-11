@@ -313,6 +313,44 @@ def test_collect_extra_owner_review_candidates_not_approved_goldens(browser: Bro
         shot(p,"steam-process-expanded-mobile-390x844","steam",state="process-expanded")
     finally: p.close()
 
+    # Native confirmation is browser chrome, not part of a Playwright page
+    # screenshot. Record the exact dialog wording and the after-cancel page,
+    # proving the action was not sent. Candidate screenshots are NOT Goldens.
+    fake.set_library([game("Diablo IV","steam:2344520","RUNNING")])
+    p=detail_page()
+    try:
+        seen=[]
+        def cancel_game(dialog):
+            seen.append(dialog.message)
+            dialog.dismiss()
+        p.once("dialog",cancel_game)
+        p.locator('#game-detail button[data-action="stop"]').click()
+        assert len(seen)==1 and "Unsaved progress" in seen[0]
+        assert not any(op=="games.lifecycle.stop" for op,_ in fake.received)
+        shot(p,"games-stop-confirm-cancel-mobile-390x844","games",
+             state="native-confirm-cancel",native_dialog_text=seen[0],
+             native_dialog_capture="Browser-native dialog unavailable in page screenshot")
+    finally: p.close()
+
+    p=browser.new_page(viewport={"width":390,"height":844},device_scale_factor=1)
+    try:
+        p.goto(base+"/steam")
+        expect(p.locator("#steam-state")).to_have_text("Running")
+        p.locator("#steam-runtime-details summary").click()
+        expect(p.locator("#restart-button")).to_be_enabled()
+        seen=[]
+        def cancel_steam(dialog):
+            seen.append(dialog.message)
+            dialog.dismiss()
+        p.once("dialog",cancel_steam)
+        p.locator("#restart-button").click()
+        assert len(seen)==1 and "Big Picture" in seen[0]
+        assert not any(op=="steam.lifecycle.restart" for op,_ in fake.received)
+        shot(p,"steam-restart-confirm-cancel-mobile-390x844","steam",
+             state="native-confirm-cancel",native_dialog_text=seen[0],
+             native_dialog_capture="Browser-native dialog unavailable in page screenshot")
+    finally: p.close()
+
     (target/"REVIEW_ONLY.json").write_text(json.dumps({
       "purpose":"Actual FE screenshot candidates for additional visual review; NOT design Golden baselines",
       "status":"AWAITING_OWNER_REVIEW_AND_MAGICPATH_REFERENCE",
@@ -321,4 +359,4 @@ def test_collect_extra_owner_review_candidates_not_approved_goldens(browser: Bro
       "known_limitation":"Native browser confirmation dialogs are outside page screenshots and require a separate design decision.",
       "items":images,
     },indent=2),encoding="utf-8")
-    assert len(images)==6
+    assert len(images)==8
