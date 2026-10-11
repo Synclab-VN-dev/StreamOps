@@ -207,7 +207,20 @@ try {
     $analysis=Run-Python 'capture-end' @($reporter,'--home',$homeDir,'--mode','analyze','--start',$startEvidence,'--out',$resultPath)
     if(Test-Path $resultPath){$data=Get-Content $resultPath -Raw|ConvertFrom-Json;$matrix=@($data.matrix)}
     $goodMarkers=@($matrix|Where-Object {$_.result -eq 'PASS'}).Count
-    Set-Result 'DF-08' 'SQLite integrity, marker streams and speech observations' @{report=$resultPath;exitCode=$analysis.code} $(if($analysis.code -eq 0){'PASS'}else{'FAIL'})
+    # Capture the same CLI reader surfaces the owner will inspect.
+    $previousHome=$env:D4PLANNER_HOME
+    try {
+      $env:D4PLANNER_HOME=$homeDir
+      $fullLog=Run-Python 'logs-raw-all' @('-m','d4planner.cli','logs','--raw')
+      $inputLog=Run-Python 'logs-raw-input' @('-m','d4planner.cli','logs','--input','--raw')
+      $prettyLog=Run-Python 'logs-pretty-input' @('-m','d4planner.cli','logs','--input')
+    } finally {$env:D4PLANNER_HOME=$previousHome}
+    $speechCount=if($data){[int]$data.speechEvents}else{0}
+    $logsOk=($fullLog.code -eq 0 -and $inputLog.code -eq 0 -and $prettyLog.code -eq 0)
+    Set-Result 'DF-08' 'Canonical SQLite + raw/pretty CLI input; speech retained when observed' @{
+      analyzer=$resultPath;exitCode=$analysis.code;speechEvents=$speechCount
+      full=$fullLog;input=$inputLog;pretty=$prettyLog
+    } $(if($analysis.code -ne 0 -or !$logsOk){'FAIL'}elseif($speechCount -eq 0){'BLOCKED'}else{'PASS'})
     Write-Host "Automatic keyboard marker matrix: $goodMarkers/16. Physical origin requires your confirmation."
     Prompt-Owner 'MAN-01' 'Steam Input bindings and four punctuation mappings are correct?'
     Prompt-Owner 'MAN-02' 'Status shows correct BLOCK/ACTIVE 16-key Session1?'
