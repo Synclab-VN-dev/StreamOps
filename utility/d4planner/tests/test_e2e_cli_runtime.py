@@ -1194,3 +1194,62 @@ def test_e2e11_stop_unhooks_then_mode_switch_without_stale_capture(
         )
         assert runtime._steam.pid == 200 and runtime._game.pid == 300
     assert len(created) == 3
+
+
+def test_uat_attach_only_existing_steam_game_nvda_no_restart_or_launch(tmp_path):
+    """Issue87 Real-A launcher safety, modelled in hosted CI."""
+    from d4planner.controller import load_profile
+    paths=RuntimePaths(tmp_path/"uat-attached")
+    runtime=E2ERuntime(paths)
+    calls=[]
+    def forbidden(name):
+        def rejected(*args,**kwargs):
+            calls.append(name)
+            raise AssertionError(f"UAT must never {name}")
+        return rejected
+    runtime.ensure_addon_runtime=forbidden("install/restart addon")
+    runtime.restart_nvda=forbidden("restart NVDA")
+    runtime.ensure_nvda_running=forbidden("launch NVDA")
+    runtime.launch_game=forbidden("launch Diablo IV")
+    sup=Supervisor(
+        paths=paths,runtime=runtime,
+        path_manager=UserPathManager(paths,MemoryPathBackend(user_path="",machine_path="MACHINE")),
+        controller_profile=load_profile("xbox16"),
+        block_marker=True,isolated=True,uat_attach_only=True,
+        marker_capture=FakeMarkerCapture(),
+    )
+    assert sup.bootstrap() == RuntimeState.RUNNING
+    assert runtime.launch_calls == 0 and calls == []
+    assert sup.status.active_console_session_id == 1
+    assert sup.status.game.pid == 300
+    sup.store.close()
+
+
+def test_uat_attach_only_missing_nvda_or_d4_fails_without_process_launch(tmp_path):
+    from d4planner.controller import load_profile
+    for missing in ("nvda","game"):
+        paths=RuntimePaths(tmp_path/missing)
+        runtime=E2ERuntime(paths)
+        calls=[]
+        if missing=="nvda":
+            runtime._nvda=None
+        else:
+            runtime._game=None
+        def rejected(*args,**kwargs):
+            calls.append("unexpected process mutation")
+            raise AssertionError("UAT must never start game/NVDA")
+        runtime.ensure_nvda_running=rejected
+        runtime.restart_nvda=rejected
+        runtime.launch_game=rejected
+        runtime.ensure_addon_runtime=rejected
+        supervisor=Supervisor(
+            paths=paths,runtime=runtime,
+            path_manager=UserPathManager(paths,MemoryPathBackend(user_path="",machine_path="MACHINE")),
+            controller_profile=load_profile("xbox16"),
+            block_marker=True,isolated=True,uat_attach_only=True,
+            marker_capture=FakeMarkerCapture(),
+        )
+        assert supervisor.bootstrap() == RuntimeState.BLOCKED
+        assert not calls
+        assert (read_json(paths.runtime_state) or {})["state"] == "BLOCKED"
+        supervisor.store.close()
