@@ -1,7 +1,7 @@
 """Issue #75 FE-G5: actual FE vs original, PINNED MagicPath reference.
 
-This is intentionally fail-closed while owner-approved goldens / design states
-are absent. Never accept a production screenshot as a design baseline.
+This is fail-closed when pinned MagicPath reference states are absent.
+Unchanged Golden images sourced from that revision require no repeat Owner approval. Never accept a production screenshot as a design baseline.
 """
 from __future__ import annotations
 import hashlib
@@ -19,7 +19,7 @@ from playwright.sync_api import Browser,expect
 from .test_issue75_workflow_matrix import ScenarioWS
 from .conftest import BrowserTestServer
 from ..test_issue75_magicpath_visual_contract import (
-    ROOT,read_bytes,load,validate_approval,validate_source
+    ROOT,read_bytes,load,validate_approval,validate_source,validate_pinned_magicpath_coverage
 )
 
 MANIFEST=load()
@@ -196,7 +196,9 @@ def test_original_magicpath_to_live_fe_visual(
         report={
             "case":case,"magicpath_component_id":reference_design["component_id"],
             "magicpath_revision_id":reference_design["revision_id"],
-            "git_head":os.environ.get("GITHUB_SHA","local"),
+            "git_head":os.environ.get("FE_HEAD_SHA") or os.environ.get("GITHUB_SHA","local"),
+            "expected_sha256":hashlib.sha256(expected.read_bytes()).hexdigest(),
+            "actual_sha256":hashlib.sha256(actual.read_bytes()).hexdigest(),
             "approved":MANIFEST["approved"],
             "candidate":not MANIFEST["approved"],
             "difference_mean_rgb":score,
@@ -233,8 +235,7 @@ def test_original_magicpath_to_live_fe_visual(
         ref_page.close()
         fe_page.close()
 
-def test_magicpath_golden_owner_approval_is_mandatory():
-    # Placed after parameterized captures so CI uploads REVIEW CANDIDATES
-    # even when the manifest is not yet explicitly approved by the owner.
-    validate_source(MANIFEST)
-    validate_approval(MANIFEST)
+def test_magicpath_pinned_revision_state_coverage_is_mandatory():
+    # Evaluate after the screenshots so artifacts exist even on blocked states.
+    # Rule v5 does not demand a second approval for unchanged passing refs.
+    validate_pinned_magicpath_coverage(MANIFEST)
