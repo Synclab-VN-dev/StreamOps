@@ -808,3 +808,51 @@ def test_e2e_block_queue_overflow_propagates_status_and_log(tmp_path):
     overflow = [row for row in rows if row.type == "input.marker.overflow"]
     assert len(overflow) == 1
     assert overflow[0].data["droppedCount"] == 3
+
+
+
+def test_running_is_published_only_after_marker_hook_active(tmp_path):
+    """Regression: clients must never see RUNNING before keyboard hook ready."""
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = E2ERuntime(paths)
+    manager = UserPathManager(
+        paths, MemoryPathBackend(user_path="", machine_path="MACHINE")
+    )
+    entered = threading.Event()
+    release = threading.Event()
+
+    class GatedCapture(FakeMarkerCapture):
+        def start(self):
+            entered.set()
+            if not release.wait(3.0):
+                raise RuntimeError("synthetic hook startup gate timed out")
+            super().start()
+
+    marker = GatedCapture()
+    supervisor = Supervisor(
+        paths=paths, runtime=runtime, path_manager=manager,
+        marker_capture=marker, block_marker=True,
+        poll_interval=0.01, health_poll_interval=0.05,
+    )
+    worker = threading.Thread(target=supervisor.run, daemon=True)
+    worker.start()
+    try:
+        assert entered.wait(2.0), "hook startup did not begin"
+        state_before = read_json(paths.runtime_state) or {}
+        assert state_before["state"] != RuntimeState.RUNNING.value
+        assert state_before["extras"]["inputMarker"]["state"] != "ACTIVE"
+        release.set()
+        assert wait_until(
+            lambda: (read_json(paths.runtime_state) or {}).get("state")
+            == RuntimeState.RUNNING.value
+        )
+        ready = read_json(paths.runtime_state)
+        assert marker.started is True
+        assert ready["extras"]["inputMarker"]["state"] == "ACTIVE"
+    finally:
+        release.set()
+        paths.stop_request.parent.mkdir(parents=True, exist_ok=True)
+        paths.stop_request.write_text("stop\n", encoding="utf-8")
+        worker.join(3.0)
+    assert not worker.is_alive()
+    assert marker.stopped
