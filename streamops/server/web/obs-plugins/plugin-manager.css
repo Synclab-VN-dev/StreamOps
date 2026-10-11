@@ -238,3 +238,15 @@ body.plugin-manager-page {background:#f5f6f8;color:#18181b;min-height:100vh;font
    max-width:72px;white-space:normal;line-height:1.35
  }
 }
+
+/* Pinned MagicPath "Live / blocked" scenario. Only shown while OBS is
+   streaming/recording; never implies StreamOps should stop the output. */
+.plugin-output-safety-banner{
+  display:grid;gap:12px;padding:16px;border:1px solid #fcd34d;
+  border-radius:24px;background:#fffbeb;min-width:0
+}
+.plugin-output-safety-banner[hidden]{display:none}
+.plugin-output-safety-header{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.plugin-output-safety-header h2{font-size:13px;font-weight:600;margin:0}
+.plugin-output-safety-header span{font-size:11px;color:#b45309}
+.plugin-output-safety-banner p{margin:0;font-size:12px;line-height:1.75;color:#27272a}
