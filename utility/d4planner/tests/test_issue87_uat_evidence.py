@@ -141,3 +141,63 @@ def test_reporter_snapshot_refuses_hook_overflow_even_when_active(tmp_path):
     assert state["droppedCount"] == 1
     assert state["overflow"]
     assert not state["validForReview"]
+
+
+def test_reporter_accepts_multiple_complete_presses_without_false_fail():
+    # Real-A #87 included several intentional taps for every button.
+    # One clean pair is not the only valid capture: five clean pairs must pass.
+    start, end = snapshots()
+    profile = load_profile("xbox16")
+    events = []
+    seq = 4
+    for binding in profile.digital:
+        for _ in range(5):
+            for state in ("down", "up"):
+                events.append({
+                    "eventSeq": seq, "type": "input.marker.raw",
+                    "data": {
+                        "key": binding.key, "virtualKey": binding.virtual_key,
+                        "state": state, "controlId": binding.control_id,
+                        "layoutId": profile.layout_id,
+                        "mappingSource": "configuredLayout",
+                        "suppressed": True,
+                    },
+                })
+                seq += 1
+    end["maxSeq"] = seq - 1
+    output = reporter.analyze(events=events, start=start, end=end, quick_check="ok")
+    assert output["status"] == "PENDING_OWNER_REVIEW"
+    assert output["summary"]["FAIL"] == 0
+    assert all(x["result"] == "PASS" and x["actual"]["pairCount"] == 5 for x in output["matrix"])
+    assert output["physicallyVerified"] == 0
+
+
+def test_reporter_rejects_duplicate_down_and_unsuppressed_edges_even_with_multiple_presses():
+    start, end = snapshots()
+    rows = captured_rows()
+    profile = load_profile("xbox16")
+    a = next(binding for binding in profile.digital if binding.control_id == "A")
+    rows.extend([
+        {"eventSeq": 40, "type": "input.marker.raw", "data": {
+            "controlId": "A", "key": a.key, "virtualKey": a.virtual_key,
+            "state": "down", "layoutId": profile.layout_id,
+            "mappingSource": "configuredLayout", "suppressed": True}},
+        {"eventSeq": 41, "type": "input.marker.raw", "data": {
+            "controlId": "A", "key": a.key, "virtualKey": a.virtual_key,
+            "state": "down", "layoutId": profile.layout_id,
+            "mappingSource": "configuredLayout", "suppressed": True}},
+        {"eventSeq": 42, "type": "input.marker.raw", "data": {
+            "controlId": "A", "key": a.key, "virtualKey": a.virtual_key,
+            "state": "up", "layoutId": profile.layout_id,
+            "mappingSource": "configuredLayout", "suppressed": True}},
+    ])
+    end["maxSeq"] = 42
+    result = reporter.analyze(events=rows, start=start, end=end, quick_check="ok")
+    assert result["status"] == "FAIL"
+    assert next(x for x in result["matrix"] if x["controlId"] == "A")["result"] == "FAIL"
+
+    rows[-2]["data"]["state"] = "up"
+    rows[-1]["data"]["state"] = "up"
+    rows[-1]["data"]["suppressed"] = False
+    result = reporter.analyze(events=rows, start=start, end=end, quick_check="ok")
+    assert next(x for x in result["matrix"] if x["controlId"] == "A")["result"] == "FAIL"
