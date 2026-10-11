@@ -894,3 +894,32 @@ def test_tokenless_steam_and_games_ws_contract_does_not_request_credentials(page
     page.locator("#restart-button").click()
     wait_until(lambda: any(op == "steam.lifecycle.restart" for op,_ in fake.received))
     expect(page.locator("#steam-state")).to_have_text("Running")
+
+
+def test_steam_ws_push_offline_and_session_safety_without_rest(page: Page, games_ui_server):
+    """E2E-06 auto coverage: Steam WS is push-only, without periodic REST fallback.
+
+    WS connected means the Node transport is reachable. It must NOT be
+    misrepresented as Node capture_ready without an explicit BE status field.
+    """
+    base,fake=games_ui_server
+    api_reads=[]
+    page.on("request",lambda req:api_reads.append(req.url) if
+       "/api/v1/" in req.url and req.resource_type!="websocket" else None)
+    page.goto(base+"/steam")
+    expect(page.locator("#steam-state")).to_have_text("Running")
+    expect(page.locator("#status-text")).to_have_text("Steam WS connected")
+    fake.set_steam(False)
+    expect(page.locator("#steam-state")).to_have_text("Stopped")
+    fake.set_steam(True)
+    expect(page.locator("#steam-state")).to_have_text("Running")
+    fake.steam["interactive"]=False
+    fake.emit("steam.snapshot",fake.steam,steam=True)
+    expect(page.locator("#restart-button")).to_be_disabled()
+    page.evaluate("window.StreamOpsSteam.socket.close()")
+    expect(page.locator("#steam-state")).to_have_text("UNKNOWN")
+    expect(page.locator("#status-text")).to_have_text("Steam WS offline")
+    expect(page.locator("#steam-state")).to_have_text("Running",timeout=15000)
+    expect(page.locator("#restart-button")).to_be_disabled()
+    assert not api_reads, "Steam WebUI must never use REST reads or status polling"
+    assert not any(op=="steam.lifecycle.restart" for op,_ in fake.received)
