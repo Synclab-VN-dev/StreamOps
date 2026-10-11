@@ -382,7 +382,7 @@ class Supervisor:
                         self._start_marker_capture()
                         if (self.block_marker or self.controller_profile is not None) and not self._marker_started:
                             raise RuntimeBlocked(
-                                "Controller keyboard hook failed to start"
+                                self.status.last_error or "Controller keyboard hook failed to start"
                             )
                     self.transition(
                         RuntimeState.WAITING_FOR_GAME,
@@ -423,7 +423,7 @@ class Supervisor:
             if start_marker:
                 self._start_marker_capture()
                 if (self.block_marker or self.controller_profile is not None) and not self._marker_started:
-                    raise RuntimeBlocked("Controller keyboard hook failed to start")
+                    raise RuntimeBlocked(self.status.last_error or "Controller keyboard hook failed to start")
             self.transition(RuntimeState.RUNNING, "D4Planner runtime ready")
             return self.status.state
         except RuntimeBlocked as exc:
@@ -868,6 +868,16 @@ class Supervisor:
         if state in {RuntimeState.BLOCKED, RuntimeState.RESTART_REQUIRED}:
             self._stop_marker_capture()
             if self.store:
+                # Preserve runtime-stop behavior when a keyboard backend
+                # fails during startup. Other bootstrap block reasons keep
+                # their previous terminal states.
+                if self.status.extras["inputMarker"].get("state") == "ERROR":
+                    self._safe_emit("runtime.stop", {"detail": "Hook startup failed"})
+                    self.transition(
+                        RuntimeState.STOPPED,
+                        "D4Planner stopped after keyboard hook startup failure",
+                        error=self.status.last_error,
+                    )
                 self.store.close()
             return 2 if state == RuntimeState.BLOCKED else 3
 
