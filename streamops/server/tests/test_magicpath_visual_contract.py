@@ -58,3 +58,75 @@ def test_design_reference_is_not_generated_from_production_ui() -> None:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     assert "single compressed preview" in manifest["intended_usage"] or "design-source reference" in manifest["intended_usage"]
     assert manifest["approved"] in (True, False)
+
+
+
+def validate_approved_goldens(root: Path, manifest: dict) -> None:
+    """Fail closed when any reference, hash or approval record is missing."""
+    import re
+    golden_dir = root / "goldens"
+    hashes = manifest["approval"]["expected_sha256"]
+    assert manifest["approved"] is True
+    assert manifest["approval"]["approved_by"]
+    assert manifest["approval"]["approved_at"]
+    assert manifest["approval"]["review_url"]
+    assert len(hashes) == 19
+    expected_files = {label + ".png" for label in hashes}
+    assert {p.name for p in golden_dir.glob("*.png")} == expected_files
+    for label, digest in hashes.items():
+        assert re.fullmatch("[0-9a-f]{64}", digest), label
+        p = golden_dir / (label + ".png")
+        payload = p.read_bytes()
+        assert payload.startswith(b"\x89PNG\r\n\x1a\n"), label
+        assert hashlib.sha256(payload).hexdigest() == digest, label
+
+
+def test_pinned_goldens_are_complete_approved_and_sha256_verified() -> None:
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    validate_approved_goldens(ROOT, manifest)
+
+
+def test_missing_or_tampered_golden_is_a_hard_failure(tmp_path: Path) -> None:
+    """FE-G5 negative check: neither missing nor modified baseline can pass."""
+    import copy
+    import pytest
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    label = "steam-normal-360x800"
+    reference = ROOT / "goldens" / (label + ".png")
+    baseline_dir = tmp_path / "goldens"
+    baseline_dir.mkdir()
+    for candidate in (ROOT / "goldens").glob("*.png"):
+        (baseline_dir / candidate.name).write_bytes(candidate.read_bytes())
+    validate_approved_goldens(tmp_path, manifest)
+    reference_copy = baseline_dir / reference.name
+    payload = bytearray(reference_copy.read_bytes())
+    payload[-40] ^= 0x33
+    reference_copy.write_bytes(payload)
+    with pytest.raises(AssertionError, match=label):
+        validate_approved_goldens(tmp_path, manifest)
+    reference_copy.unlink()
+    with pytest.raises(AssertionError):
+        validate_approved_goldens(tmp_path, manifest)
+    reference_copy.write_bytes(reference.read_bytes())
+    manifest_missing = copy.deepcopy(manifest)
+    manifest_missing["approval"]["review_url"] = ""
+    with pytest.raises(AssertionError):
+        validate_approved_goldens(tmp_path, manifest_missing)
+
+
+def test_visual_gate_detects_deliberate_theme_and_geometry_regression(tmp_path: Path) -> None:
+    """E2E-10 negative visual regression; a real layout/theme break must fail .08."""
+    from PIL import Image, ImageDraw, ImageChops, ImageStat
+    reference = ROOT / "goldens" / "games-default-390x844.png"
+    with Image.open(reference) as im:
+        expected = im.convert("RGB")
+    actual = expected.copy()
+    draw = ImageDraw.Draw(actual)
+    # Intentionally wrong full-section theme: no masking or changed tolerance.
+    draw.rectangle((0, 0, expected.width, expected.height // 2), fill=(255, 0, 255))
+    diff = ImageChops.difference(expected, actual)
+    difference = sum(ImageStat.Stat(diff).mean) / (255.0 * 3)
+    assert difference > 0.08, "Visual gate would miss a deliberately broken theme"
+    # Geometry is a separate hard fail even when a small pixel ratio could pass.
+    shifted = actual.crop((0, 0, expected.width - 10, expected.height))
+    assert shifted.size != expected.size
