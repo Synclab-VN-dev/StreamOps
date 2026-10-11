@@ -196,3 +196,17 @@ body.plugin-manager-page {background:#f5f6f8;color:#18181b;min-height:100vh;font
  .plugin-manager-page #plugin-release-source{font-size:9px;max-width:135px}
  .plugin-manager-page .plugin-card-meta{align-self:flex-start}
 }
+
+/* MagicPath section headings use a thin trailing divider and semibold text.
+   Keep the backend catalog source in the same row, never a phantom new card. */
+.plugin-manager-page .plugin-panel[aria-labelledby="plugin-managed-title"]>.plugin-section-heading::after,
+.plugin-manager-page .plugin-panel[aria-labelledby="plugin-tools-title"]>.plugin-section-heading::after{
+  content:"";height:1px;background:#e4e4e7;flex:1;min-width:6px;order:2
+}
+.plugin-manager-page .plugin-panel[aria-labelledby="plugin-managed-title"]>.plugin-section-heading>div,
+.plugin-manager-page .plugin-panel[aria-labelledby="plugin-tools-title"]>.plugin-section-heading>div{order:1}
+.plugin-manager-page .plugin-panel[aria-labelledby="plugin-managed-title"] #plugin-release-source{order:3}
+.plugin-manager-page .plugin-page-heading h1,
+.plugin-manager-page .plugin-section-heading h2,
+.plugin-manager-page .plugin-heading-text strong,
+.plugin-manager-page .plugin-activity-details summary{font-weight:600}
