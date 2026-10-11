@@ -176,8 +176,10 @@ function renderPlugin(plugin) {
   }
   if (plugin.state === 'LEGACY_ADOPTED') {
     details.classList.add('plugin-legacy-details');
-    details.append(text('div','plugin-legacy-note',
-      'Legacy adopted. Existing legacy files and configuration were preserved. An adopted baseline is not a verified approved release.'));
+    const note = text('div','plugin-legacy-note');
+    note.append(text('strong','','Legacy adopted'),text('p','',
+      'Legacy baseline adopted and preserved. Existing legacy files and configuration were preserved. An adopted baseline is not a verified approved release.'));
+    details.append(note);
     details.append(actionButton(plugin,'install','Install approved release',eligible.install));
     details.append(text('div','plugin-install-source-note',
       'Source: StreamOps managed distribution · Server allowlist · SHA-256 and compatibility verified before installation.'));
