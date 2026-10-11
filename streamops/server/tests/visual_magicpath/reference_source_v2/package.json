@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "vite --host 127.0.0.1 --port 5179 --strictPort"
+    "start": "vite preview --host 127.0.0.1 --port 5179 --strictPort",
+    "build": "vite build"
   },
   "dependencies": {
     "react": "19.1.1",
