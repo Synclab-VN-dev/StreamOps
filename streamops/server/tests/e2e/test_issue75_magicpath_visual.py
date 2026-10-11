@@ -105,6 +105,13 @@ def stage_reference(page,url,case):
     stable(page)
     position(page,case,True)
 
+class PendingInventoryScenario(ScenarioWS):
+    # A real loading screenshot must not rely on an arbitrary timing race.
+    def plugin_socket(self,ws):
+        self.sockets.append(ws)
+        ws.on_message(lambda raw:self.calls.append(json.loads(raw)))
+
+
 def stage_product(page,server,case):
     # Browser fixture is BE-v2 shaped; no production mock images, REST fallback,
     # fake releases, or filesystem/OBS mutations.
@@ -116,18 +123,24 @@ def stage_product(page,server,case):
         "legacy-adopted":"LEGACY_ADOPTED",
         "offline":"INSTALLED"
     }
-    fake=ScenarioWS(page,
+    fake=(PendingInventoryScenario if state=='loading' else ScenarioWS)(page,
         plugin_state=props.get(state,"NOT_INSTALLED"),
         installed_version="0.7.2" if state in props else None,
         registry=state!="empty",
         catalog=state!="empty",
         obs_state="READY" if state in {"blocked","verify-failed","rollback-failed","recovery-required"} else "STOPPED",
         streaming=state=="blocked")
+    if state in {"rollback-failed","recovery-required"}:
+        fake.status_operation={"state":"FAILED","operation":"rollback" if state=="rollback-failed" else "update",
+                               "error_code":"plugin_rollback_failed" if state=="rollback-failed" else "plugin_recovery_required"}
     page.goto(server.base_url+("/obs" if case["design"]=="dashboard" else "/obs/plugins"))
     if case["design"]=="plugin":
-        expect(page.locator("#plugin-managed-count")).to_have_text("1")
+        expect(page.locator("#plugin-managed-count")).to_have_text(
+            "—" if state=="loading" else "0" if state=="empty" else "1"
+        )
         # The approved reference expands the first plugin on initial load.
-        expect(page.locator(".plugin-card-header")).to_have_attribute("aria-expanded","true")
+        if state not in {"loading","empty"}:
+            expect(page.locator(".plugin-card-header")).to_have_attribute("aria-expanded","true")
         if case["state"]=="confirm":
             page.get_by_role("button",name="Install plugin",exact=True).click()
             modal=page.locator("#plugin-confirm-dialog")
