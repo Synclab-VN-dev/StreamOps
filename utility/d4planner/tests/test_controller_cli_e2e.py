@@ -121,3 +121,21 @@ def test_legacy_input_marker_has_no_new_metadata():
     assert "controlId" not in data
     assert "layoutId" not in data
     assert "mappingSource" not in data
+
+
+def test_daemon_explicit_home_overrides_parent_environment_without_side_effects(
+    monkeypatch, tmp_path,
+):
+    from d4planner import daemon
+    seen = []
+    monkeypatch.setenv("D4PLANNER_HOME", str(tmp_path / "default-production"))
+    monkeypatch.setattr(
+        daemon, "_acquire_singleton", lambda paths: seen.append(paths.root) or None
+    )
+    home = tmp_path / "pr95-isolated"
+    assert daemon.main([
+        "--home", str(home), "--controller-profile", "xbox16",
+        "--block", "--isolated",
+    ]) == 5  # deliberate singleton-denied; never starts NVDA/Steam.
+    assert seen == [home]
+    assert not (tmp_path / "default-production").exists()
