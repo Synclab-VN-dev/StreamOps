@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, Header, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 from ..auth import require_access
-from ..services.games.access import GameAccessDenied, require_mutation
 from ..services.games.lifecycle import GameServiceError
 
 router = APIRouter(dependencies=[Depends(require_access)])
@@ -39,8 +38,6 @@ async def games_get(game_id: str, request: Request, response: Response):
 @router.post("/api/v1/games/{game_id}/actions", status_code=202)
 async def game_action(game_id: str, body: Action, request: Request,
                       idempotency_key: str | None = Header(default=None)):
-    try: require_mutation(request.headers, client_host=request.client.host if request.client else None, allow_loopback=True)
-    except GameAccessDenied as exc: return JSONResponse(status_code=403, content={"error":{"code":exc.code,"message":str(exc)}})
     try: return await _service(request).action(game_id, body.action, idempotency_key or "")
     except GameServiceError as exc: return _raise(exc)
 
