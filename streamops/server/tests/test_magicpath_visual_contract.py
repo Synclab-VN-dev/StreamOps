@@ -5,6 +5,7 @@ This suite is independent of React/Vite and runs as part of normal pytest.
 from __future__ import annotations
 import hashlib
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent / "visual_magicpath"
@@ -137,9 +138,12 @@ def test_updated_magicpath_v2_is_independent_and_revision_pinned() -> None:
     updated = json.loads((ROOT / "review_manifest_v2.json").read_text(encoding="utf-8"))
     assert updated["schema_version"] == 2
     assert updated["legacy_approved_goldens"]["count"] == 19
-    assert updated["approved"] is False
-    assert updated["new_goldens"]["approved"] is False
-    assert not updated["new_goldens"]["expected_sha256"]
+    assert updated["approved"] is True
+    assert updated["new_goldens"]["approved"] is True
+    assert updated["approval_status"] == "OWNER_APPROVED_MAGICPATH_REVISION__SOURCE_BACKED_GOLDENS_LOCKED"
+    hashes = updated["new_goldens"]["expected_sha256"]
+    assert len(hashes) == updated["new_goldens"]["expected_count"] == 10
+    assert all(re.fullmatch(r"[0-9a-f]{64}", sha) for sha in hashes.values())
     assert updated["reference_directory"] == "reference_source_v2"
     refs = {item["name"]: item for item in updated["source"]}
     assert (refs["steam"]["component_id"], refs["steam"]["revision_id"]) == (
@@ -162,3 +166,20 @@ def test_updated_magicpath_v2_is_independent_and_revision_pinned() -> None:
     assert 'if (kind === "force") return' in games
     assert (ROOT / "reference_source/src/SteamManager.tsx").read_text("utf-8") != steam
     assert (ROOT / "reference_source/src/GameManager.tsx").read_text("utf-8") != games
+
+
+def test_updated_magicpath_v2_expected_hash_absence_is_a_hard_failure():
+    """Missing or corrupted source-backed expected digest cannot silently PASS."""
+    import copy
+    manifest = json.loads((ROOT / "review_manifest_v2.json").read_text(encoding="utf-8"))
+    assert manifest["approved"] and manifest["new_goldens"]["approved"]
+    hashes = manifest["new_goldens"]["expected_sha256"]
+    label = "steam-restart-confirm-cancel-mobile-390x844"
+    assert label in hashes
+    assert re.fullmatch("[0-9a-f]{64}", hashes[label])
+    corrupt = copy.deepcopy(manifest)
+    corrupt["new_goldens"]["expected_sha256"].pop(label)
+    assert len(corrupt["new_goldens"]["expected_sha256"]) != corrupt["new_goldens"]["expected_count"]
+    corrupt = copy.deepcopy(manifest)
+    corrupt["new_goldens"]["expected_sha256"][label] = "0" * 64
+    assert corrupt["new_goldens"]["expected_sha256"][label] != hashes[label]
