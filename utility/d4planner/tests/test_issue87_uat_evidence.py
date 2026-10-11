@@ -121,3 +121,23 @@ def test_reporter_reads_canonical_sqlite_without_writing(tmp_path):
     assert [row["type"] for row in rows]==["speech.raw","input.marker.raw"]
     assert reporter.snapshot(paths)["maxSeq"]==before["maxSeq"]
     store.close()
+
+
+
+def test_reporter_snapshot_refuses_hook_overflow_even_when_active(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    atomic_write_json(paths.runtime_state, {
+        "state":"RUNNING", "sessionId":"overflow-test",
+        "extras":{"inputMarker":{
+            "state":"ACTIVE","layoutId":"xbox-steaminput-18-v1",
+            "mode":"BLOCK","backend":"keyboardHook",
+            "configuredDigitalCount":16,"analogDisabledCount":2,
+            "droppedCount":1, "overflow":True,
+            "error":"dropped marker before SQLite ingress",
+        }},
+    })
+    state = reporter.snapshot(paths)
+    assert state["droppedCount"] == 1
+    assert state["overflow"]
+    assert not state["validForReview"]
