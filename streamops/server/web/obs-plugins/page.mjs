@@ -112,6 +112,7 @@ function renderPlugin(plugin) {
   const right = text('span','plugin-card-meta');
   const pill = text('span','plugin-pill',plugin.state === 'LEGACY_ADOPTED' ? 'Legacy adopted' : stateLabel(plugin.state));
   pill.dataset.tone = statusTone(plugin.state);
+  if (plugin.state === 'LEGACY_ADOPTED') pill.classList.add('plugin-legacy-pill');
   right.append(pill,text('span','plugin-chevron',expandedId === plugin.plugin_id ? '⌃' : '⌄'));
   // MagicPath puts the purpose on its own full-width row below
   // title/status, not squeezed into the narrow title/status columns.
