@@ -14,7 +14,7 @@ REQUIRED_DESIGN_STATES={
     "loading","empty","offline","blocked","verify-failed",
     "rollback-failed","recovery-required","legacy-adopted",
 }
-IDS={"plugin":("458351046272638976","459936145191612416"),
+IDS={"plugin":("458351046272638976","460035256414801920"),
      "dashboard":("456064390102405120","458892152907374592")}
 
 def blob_sha(b):
