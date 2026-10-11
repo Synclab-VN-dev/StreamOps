@@ -234,7 +234,9 @@ def test_owner_approval_is_required_for_visual_golden():
 
 
 
-def test_collect_extra_owner_review_candidates_not_approved_goldens(browser: Browser, games_ui_server):
+def test_collect_extra_owner_review_candidates_not_approved_goldens(
+    browser: Browser, games_ui_server, magicpath_reference_url
+):
     """Prepare actual-only visual evidence for owner review, not a Golden comparison.
 
     New UI states lack owner-approved MagicPath reference screenshots. Never
@@ -253,10 +255,72 @@ def test_collect_extra_owner_review_candidates_not_approved_goldens(browser: Bro
         if "scroll_y" in notes:
             page.evaluate("(y)=>window.scrollTo(0,y)", notes["scroll_y"])
         page.screenshot(path=str(path), animations="disabled")
+
+        # Render a DISTINCT pinned MagicPath source, not a product screenshot
+        # replayed as an expected baseline. These are REVIEW CANDIDATES only;
+        # notably some mock scenarios differ in semantic fixture content.
+        source_scenario = (
+            "multi" if name.startswith("steam-five-") or name.startswith("steam-process-")
+            else "normal" if kind == "steam"
+            else "stopTimeout" if name.startswith("games-unknown-timeout")
+            else "session" if name.startswith("games-failed-session")
+            else "detail" if name.startswith("games-advanced") or name.startswith("games-stop-confirm")
+            else "default"
+        )
+        ref = browser.new_page(viewport={"width":390,"height":844},device_scale_factor=1)
+        ref_path = target / (name + "-expected-magicpath-CANDIDATE.png")
+        diff_path = target / (name + "-diff-REVIEW.png")
+        try:
+            _stage_reference(ref, magicpath_reference_url, kind, source_scenario)
+            _ready(ref)
+            # Remove design-tool fixtures from reference rendering only.
+            ref.evaluate("""() => {
+              const selector=document.querySelector('select[aria-label="Design scenario"]');
+              let node=selector;
+              while(node && !node.classList.contains('mb-3')) node=node.parentElement;
+              if(node) node.style.display='none';
+              for (const el of document.querySelectorAll('p')) {
+                if (el.textContent?.includes('StreamOps UI Prototype')) el.style.display='none';
+              }
+            }""")
+            if name.startswith("games-advanced"):
+                ref.get_by_role("button",name="Advanced & recovery").click()
+            elif name.startswith("games-failed-session"):
+                ref.get_by_role("button",name="Diablo IV").first.click()
+            elif name.startswith("games-unknown-timeout"):
+                ref.get_by_role("button",name="Stop",exact=True).click()
+                ref.get_by_role("dialog").get_by_role("button",name="Simulate stop").click()
+                expect(ref.get_by_text("Operation outcome unknown.",exact=False)).to_be_visible(timeout=6000)
+            elif name.startswith("steam-five") or name.startswith("steam-process"):
+                ref.get_by_role("button",name="+2 more games").click()
+                if name.startswith("steam-process"):
+                    ref.get_by_role("button",name="Steam Process Status").click()
+            elif name.startswith("games-stop-confirm"):
+                ref.get_by_role("button",name="Stop",exact=True).click()
+                expect(ref.get_by_role("dialog")).to_be_visible()
+                if "cancel" in name:
+                    ref.get_by_role("dialog").get_by_role("button",name="Cancel").click()
+            elif name.startswith("steam-restart-confirm"):
+                ref.get_by_role("button",name="Steam Process Status").click()
+                ref.get_by_role("button",name="Restart in Big Picture").click()
+                expect(ref.get_by_role("dialog")).to_be_visible()
+                if "cancel" in name:
+                    ref.get_by_role("dialog").get_by_role("button",name="Cancel").click()
+            elif name.startswith("games-scrolled"):
+                ref.evaluate("(y)=>window.scrollTo(0,y)", notes.get("scroll_y",0))
+            ref.screenshot(path=str(ref_path),animations="disabled")
+            score=_visual_diff(ref_path,path,diff_path)
+        finally:
+            ref.close()
         images.append({
           "name":name, "image":path.name, "sha256":hashlib.sha256(path.read_bytes()).hexdigest(),
           "source_revision":detail_revision if kind == "games" else steam_revision,
-          "owner_approved":False, "expected_reference":None, **notes,
+          "owner_approved":False,
+          "expected_reference":ref_path.name,
+          "expected_sha256":hashlib.sha256(ref_path.read_bytes()).hexdigest(),
+          "diff_image":diff_path.name, "difference_mean_rgb_review_only":score,
+          "parity_verdict":"CANDIDATE_ONLY__NOT_APPROVED_OR_CI_GATE",
+          **notes,
         })
 
     def detail_page():
@@ -349,7 +413,7 @@ def test_collect_extra_owner_review_candidates_not_approved_goldens(browser: Bro
     finally: p.close()
 
     (target/"REVIEW_ONLY.json").write_text(json.dumps({
-      "purpose":"Actual FE screenshot candidates for additional visual review; NOT design Golden baselines",
+      "purpose":"Paired SOURCE-BACKED MagicPath expected, FE actual and diff candidates, NOT approved Golden baselines",
       "status":"AWAITING_OWNER_REVIEW_AND_MAGICPATH_REFERENCE",
       "reference_required":True, "do_not_promote_automatically":True,
       "approved_19_goldens_untouched":True,
