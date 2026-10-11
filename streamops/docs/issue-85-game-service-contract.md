@@ -44,33 +44,35 @@ window `FOREGROUND/BACKGROUND/NOT_DETECTED/UNKNOWN`, OBS
 `UNKNOWN` until the corresponding status can be verified; a game being
 registered, installed or running does not imply OBS capture success.
 
-## Mutation security
-**Local-only operator CLI exception:** GameService Start/Stop/Restart sent directly
-from the loopback socket (`127.0.0.1` or `::1`) with **no `Origin` or forwarding
-headers** does not require a token. Use this for manually approved Windows A
-PowerShell tests via `http://127.0.0.1:<PR-port>`; bind the manual node to
-`127.0.0.1`. The peer IP is checked from the actual socket, not the `Host`
-header. A browser-origin request does not receive this exception.
+## Internal API access policy (owner-approved personal deployment)
+StreamOps is a single-operator, trusted-network system. **None of its internal
+REST or WebSocket APIs require a token, login, credential header, or auth
+subprotocol**, including GameService Start/Stop/Restart and Steam WS Restart.
+CLI and WebUI share the same GameService state and response contract. The
+optional `streamops-games-v1` WebSocket subprotocol is for protocol negotiation,
+**not authentication**. Operation `Idempotency-Key` (REST) and
+`idempotency_key` (WS) are still required for game lifecycle requests to prevent
+duplicate execution; they are **not security credentials**.
 
-**Remote clients and Steam WS Restart** still require the operator's
-`STREAMOPS_GAME_CONTROL_TOKEN` (at least 24 characters). Without it,
-nonlocal game mutations and Steam restart are disabled; read-only WS/REST
-continues under the repository's `require_access` trusted-LAN policy.
+This is an explicit owner-approved trusted-LAN policy, not a claim that the
+unprotected API is safe on untrusted networks. Do not expose StreamOps
+management ports to the public Internet. Network isolation/firewall changes,
+if desired, require separate approval; no infrastructure changes are included
+in PR #88. All process identity, approved game allowlist, desktop session,
+graceful WM_CLOSE, and disabled Force Stop gates remain in effect.
 
-REST mutation: header `X-StreamOps-Game-Token: <token>` plus
-`Idempotency-Key: <unique-per-intent>`. WebSocket mutation: create the connection
-with subprotocols `["streamops-games-v1", "streamops-game-control.<token>"]`;
-the accepted subprotocol is `streamops-games-v1`. Do not place tokens in URLs,
-logs or committed files. The token protocol is intended for a trusted local LAN
-or TLS-protected endpoint, **not** an untrusted network. This game-control token
-is an additive gate; it does not retrofit authentication onto legacy APIs.
-FE #86 must implement a secure operator-session credential UX separately.
-
-Example read-only PowerShell after starting StreamOps node:
+Token-free operator CLI example from Windows A:
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8765/api/v1/games
-Invoke-RestMethod http://127.0.0.1:8765/api/v1/games/steam:2344520
+$base = "http://127.0.0.1:18788"
+Invoke-RestMethod "$base/api/v1/games"
+Invoke-RestMethod -Method Post -Uri "$base/api/v1/games/steam:2344520/actions" \
+    -ContentType "application/json" \
+    -Headers @{ "Idempotency-Key" = [guid]::NewGuid().ToString() } \
+    -Body '{"action":"start"}'
 ```
+Every accepted lifecycle request is asynchronous. HTTP 202 and operation ID
+do not mean success: check the operation terminal result and observed game
+state before marking real-host acceptance PASS.
 
 ## Safety scope
 Only allowlisted `steam:2344520` (Diablo IV) in V1. Static registry contains
