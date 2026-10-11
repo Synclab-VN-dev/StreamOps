@@ -978,3 +978,50 @@ def test_node_health_is_read_only_obs_ws_not_steam_or_rest(page: Page, games_ui_
     assert not api_reads, f"Node/Steam status may not fall back to REST: {api_reads}"
     assert not any(op.startswith("games.lifecycle.") or op=="steam.lifecycle.restart"
                    for op,_ in fake.received)
+
+
+def test_magicpath_game_confirmation_modal_keyboard_cancel_and_geometry(page: Page, games_ui_server):
+    """E2E-10: the design specifies an in-page modal, not browser window.confirm."""
+    base, fake = games_ui_server
+    native = []
+    page.on("dialog", lambda dialog: (native.append(dialog.message), dialog.dismiss()))
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(base + "/games")
+    page.locator('#game-library button[data-game-id="steam:2344520"]').click()
+    stop=page.locator('#game-detail button[data-action="stop"]')
+    stop.click()
+    modal=page.get_by_role("dialog")
+    expect(modal).to_be_visible()
+    expect(modal).to_have_attribute("aria-modal","true")
+    expect(modal).to_contain_text("Stop Diablo IV?")
+    expect(modal).to_contain_text("progress")
+    assert not native, "Native browser dialog is not the pinned MagicPath modal"
+    box=modal.bounding_box()
+    assert box and box["width"] <= 390-24 and box["x"] >= 0
+    assert page.locator(".gm-confirm-cancel").evaluate("(e)=>document.activeElement===e")
+    page.keyboard.press("Escape")
+    expect(modal).to_have_count(0)
+    expect(page.locator("#game-detail")).to_be_visible()
+    assert not any(op.startswith("games.lifecycle.") for op,_ in fake.received)
+    stop=page.locator('#game-detail button[data-action="stop"]')
+    stop.focus()
+    page.keyboard.press("Enter")
+    expect(page.get_by_role("dialog")).to_be_visible()
+    page.locator(".gm-confirm-close").click()
+    expect(page.get_by_role("dialog")).to_have_count(0)
+    assert not any(op.startswith("games.lifecycle.") for op,_ in fake.received)
+
+
+def test_magicpath_steam_confirmation_modal_does_not_restart_on_escape(page: Page, games_ui_server):
+    """E2E-10: Steam modal follows source design, guards real WS lifecycle."""
+    base, fake = games_ui_server
+    page.goto(base + "/steam")
+    page.locator("#steam-runtime-details summary").click()
+    page.locator("#restart-button").click()
+    modal=page.get_by_role("dialog")
+    expect(modal).to_be_visible()
+    expect(modal).to_contain_text("Restart Steam in Big Picture?")
+    expect(modal.locator(".gm-confirm-accept")).to_have_text("Restart")
+    page.keyboard.press("Escape")
+    expect(modal).to_have_count(0)
+    assert not any(op=="steam.lifecycle.restart" for op,_ in fake.received)
