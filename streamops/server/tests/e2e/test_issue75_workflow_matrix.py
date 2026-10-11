@@ -847,3 +847,36 @@ def test_issue75_two_tabs_reconcile_adopt_without_duplicate_mutation(
         assert fake.mutations("obs_plugin.install")==[]
     finally:
         second.close()
+
+
+def test_issue75_refresh_while_backend_operation_running_reconciles_without_replay(
+    page:Page,live_server:BrowserTestServer
+):
+    """E2E-18: read-only refresh after uncertain mutation cannot repeat it."""
+    fake=ScenarioWS(page,plugin_state="UNMANAGED",catalog=False)
+    fake.fail_operation="plugin_operation_timeout"
+    launch(page,live_server,fake)
+    act(page,"Adopt existing")
+    confirm(page)
+    expect(page.locator("#plugin-connection-warning")).to_contain_text("unknown")
+    assert len(fake.mutations("obs_plugin.adopt"))==1
+    # The server still has an active operation. Refresh is read-only and does
+    # not grant Adopt/Install permission or infer a successful outcome.
+    fake.status_operation={"state":"RUNNING","operation":"adopt","operation_id":"still-active"}
+    page.locator("#plugin-refresh").click()
+    expect(page.locator("#plugin-connection-warning")).to_contain_text("unknown")
+    expect(page.get_by_role("button",name="Adopt existing")).to_be_disabled()
+    assert len(fake.mutations("obs_plugin.adopt"))==1
+    assert any(x["operation"]=="obs_plugin.operation_status" for x in fake.calls)
+    # A higher revision AND a matching server terminal operation reconcile
+    # uncertainty without client replay or synthetic install/verify.
+    fake.plugin_state="LEGACY_ADOPTED"
+    fake.revision+=1
+    fake.status_operation={"state":"SUCCEEDED","operation":"adopt",
+                           "operation_id":"confirmed-adopt"}
+    page.locator("#plugin-refresh").click()
+    expect(page.locator(".plugin-card")).to_contain_text("Legacy baseline adopted")
+    expect(page.locator("#plugin-connection-warning")).to_be_hidden()
+    assert len(fake.mutations("obs_plugin.adopt"))==1
+    assert fake.mutations("obs_plugin.install")==[]
+    assert fake.mutations("obs_plugin.verify")==[]
