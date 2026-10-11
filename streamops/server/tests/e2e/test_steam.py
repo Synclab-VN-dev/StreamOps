@@ -15,6 +15,7 @@ def test_steam_process_status_and_restart_ws(page: Page, games_ui_server):
     expect(page.locator("#steam-session")).to_have_text("1")
     expect(page.locator("#steam-interactive")).to_have_text("Yes")
     page.locator("#steam-runtime-details summary").click()
+    expect(page.locator("#steam-session-expanded")).to_have_text("1")
     expect(page.get_by_role("button",name="Restart in Big Picture")).to_be_enabled()
     # BE #85 accepts the versioned Steam WS on the trusted LAN without
     # application tokens. The product must not block Restart on token input.
