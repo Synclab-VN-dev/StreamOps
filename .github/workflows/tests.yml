@@ -143,6 +143,28 @@ jobs:
             [ref]$tokens, [ref]$errors
           ) | Out-Null
           if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+      - name: Issue87 UAT safe preflight smoke (no runtime start)
+        if: steps.changes.outputs.d4planner == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $homeDir = Join-Path $env:RUNNER_TEMP 'issue87-empty-home'
+          $evidence = Join-Path $env:RUNNER_TEMP 'issue87-preflight-smoke'
+          New-Item -ItemType Directory -Force $homeDir | Out-Null
+          & pwsh -NoProfile -File ./scripts/acceptance/issue87-uat.ps1 `
+            -Mode Preflight -DataDir $homeDir -EvidenceDir $evidence
+          if ($LASTEXITCODE -ne 2) {
+            throw "Expected BLOCKED without a running Session1 hook, got $LASTEXITCODE"
+          }
+          $report = Get-Content (Join-Path $evidence 'preflight.json') -Raw | ConvertFrom-Json
+          $byId = @{}
+          foreach ($item in $report.checks) { $byId[$item.id] = $item.result }
+          if ($byId['PF-03A'] -ne 'PASS' -or $byId['PF-03B'] -ne 'PASS') {
+            throw 'Controller CLI profile/validate failed in UAT preflight smoke'
+          }
+          if ($byId['PF-04'] -ne 'BLOCKED') {
+            throw 'Unsafe false PASS: missing live hook was not blocked'
+          }
       - name: Build D4Planner NVDA add-on
         if: steps.changes.outputs.d4planner == 'true'
         run: python utility/d4planner/tools/build_nvda_addon.py
