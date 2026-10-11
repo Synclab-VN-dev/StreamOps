@@ -39,6 +39,12 @@ jobs:
       - name: Install updated independent MagicPath V2 review renderer
         working-directory: streamops/server/tests/visual_magicpath/reference_source_v2
         run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Build immutable original MagicPath reference preview
+        working-directory: streamops/server/tests/visual_magicpath/reference_source
+        run: npm run build
+      - name: Build independent updated MagicPath V2 preview
+        working-directory: streamops/server/tests/visual_magicpath/reference_source_v2
+        run: npm run build
       - name: Verify original MagicPath source revision and immutable preview hashes
         run: python -m pytest -q streamops/server/tests/test_magicpath_visual_contract.py
       - name: FE-G5 — Render and compare at 360, 390, 768, 1440 + states
