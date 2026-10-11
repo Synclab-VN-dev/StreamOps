@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import os
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -10,6 +11,9 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from .api.games import router as games_router
+from .api.games_ws import router as games_ws_router
+from .api.steam_ws import router as steam_ws_router
 from .api.health import router as health_router
 from .api.live import router as live_router
 from .api.live_ws import router as live_ws_router
@@ -66,6 +70,14 @@ from .services.multistream import MultistreamService
 from .multistream import MultiRtmpVendorAdapter, MultistreamRepository, MultistreamSecretStore
 from .services.obs_status import ObsStatusHub
 from .services.runtime import RuntimeLease
+from .services.games.catalog import GameCatalogService
+from .services.games.observer import GameObserver
+from .services.games.status_hub import GameStatusHub
+from .services.games.operations import GameOperationStore
+from .services.games.lifecycle import GameLifecycle
+from .services.games.service import GameService
+from .services.games.steam_status import SteamStatusHub
+from .platform.windows.game_process import WindowsGameProcess
 from .streaming import DestinationStore, SecretStore
 
 
@@ -84,6 +96,9 @@ def create_app(
     live_service: LiveService | None = None,
     live_status_hub: LiveStatusHub | None = None,
     multistream_service: MultistreamService | None = None,
+    game_service: GameService | None = None,
+    game_status_hub: GameStatusHub | None = None,
+    steam_status_hub: SteamStatusHub | None = None,
     manage_runtime: bool = True,
 ) -> FastAPI:
     service = capture_service or ScreenCaptureService(
@@ -109,6 +124,20 @@ def create_app(
         MultistreamSecretStore(config.data_dir / "multistream-secrets"),
     )
 
+    if game_service is None:
+        game_catalog = GameCatalogService(mode=os.environ.get("STREAMOPS_GAME_PROVIDER_MODE", "static"))
+        game_catalog.refresh()
+        game_observer = GameObserver(game_catalog, WindowsGameProcess())
+        games_hub = game_status_hub or GameStatusHub(game_observer, game_catalog)
+        game_store = GameOperationStore(config.data_dir / "game-operations.sqlite")
+        game_lifecycle = GameLifecycle(game_catalog, game_observer, games_hub, game_store)
+        games = GameService(game_catalog, game_observer, games_hub, game_lifecycle)
+    else:
+        games = game_service
+        games_hub = game_status_hub or games.hub
+        game_lifecycle = games.lifecycle
+    steam_hub = steam_status_hub or SteamStatusHub(steam)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         lease = RuntimeLease.acquire(config) if manage_runtime else None
@@ -117,8 +146,13 @@ def create_app(
             await status_hub.start()
             await live_hub.start()
             await multistream.start()
+            await games_hub.start()
+            await steam_hub.start()
             yield
         finally:
+            await steam_hub.close()
+            await games_hub.close()
+            await game_lifecycle.close()
             await multistream.close()
             await live_hub.close()
             await status_hub.close()
@@ -138,6 +172,9 @@ def create_app(
     app.state.live_service = live
     app.state.live_status_hub = live_hub
     app.state.multistream_service = multistream
+    app.state.game_service = games
+    app.state.game_status_hub = games_hub
+    app.state.steam_status_hub = steam_hub
     app.include_router(health_router)
     app.include_router(live_router)
     app.include_router(live_ws_router)
@@ -149,6 +186,9 @@ def create_app(
     app.include_router(obs_ws_router)
     app.include_router(screen_router)
     app.include_router(steam_router)
+    app.include_router(steam_ws_router)
+    app.include_router(games_router)
+    app.include_router(games_ws_router)
 
     @app.exception_handler(StreamingError)
     async def streaming_error_handler(_request, exc: StreamingError) -> JSONResponse:
