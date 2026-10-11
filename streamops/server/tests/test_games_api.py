@@ -1,11 +1,30 @@
 """WebSocket/REST parity tests backed by the same fake platform."""
 from __future__ import annotations
 import os
+import pytest
 from fastapi.testclient import TestClient
 from streamops.server.app import create_app
 from streamops.server.tests.test_games_lifecycle import GAME, build_service
 
 TOKEN="long-operator-only-control-token-123456"
+
+
+def test_local_operator_cli_mutation_security(monkeypatch):
+    from streamops.server.services.games.access import GameAccessDenied, require_mutation
+    monkeypatch.delenv("STREAMOPS_GAME_CONTROL_TOKEN", raising=False)
+    # Direct operator PowerShell/curl via the loopback socket needs no token.
+    require_mutation({}, client_host="127.0.0.1", allow_loopback=True)
+    require_mutation({}, client_host="::1", allow_loopback=True)
+    for address, headers, local_flag in [
+        ("192.168.1.20", {}, True),
+        ("testclient", {}, True),
+        ("127.0.0.1", {"origin": "https://untrusted.example"}, True),
+        ("127.0.0.1", {"x-forwarded-for": "192.168.1.20"}, True),
+        ("127.0.0.1", {}, False),  # Steam Restart remains token-gated.
+    ]:
+        with pytest.raises(GameAccessDenied):
+            require_mutation(headers, client_host=address, allow_loopback=local_flag)
+
 
 def _client(server_config,capture_service,tmp_path):
     service,platform=build_service(tmp_path)
