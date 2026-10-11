@@ -138,7 +138,7 @@ function renderPlugin(plugin) {
     return container;
   };
   mini.append(
-    field('Installed', plugin.installed_version || (plugin.installed ? 'version unknown' : '—')),
+    field('Installed', plugin.state === 'LEGACY_ADOPTED' && plugin.installed_version ? 'Legacy '+plugin.installed_version : plugin.installed_version || (plugin.installed ? 'version unknown' : '—')),
     field('Available', release?.available_version || '—'),
     field('Compatibility', release?.compatibility || (plugin.compatible ? 'Compatible' : 'Unknown'))
   );
