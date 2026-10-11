@@ -35,6 +35,9 @@ def snapshot(paths: RuntimePaths) -> dict:
         and marker.get("backend") == "keyboardHook"
         and marker.get("configuredDigitalCount") == 16
         and marker.get("analogDisabledCount") == 2
+        and int(marker.get("droppedCount") or 0) == 0
+        and not marker.get("overflow", False)
+        and not marker.get("error")
     )
     return {
         "sessionId": session,
