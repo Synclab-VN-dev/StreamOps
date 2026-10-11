@@ -262,3 +262,9 @@ try {
   foreach($errorText in $failures){Write-Host "BLOCKER: $errorText"}
   Pop-Location
 }
+# Fail closed: preflight and UAT errors must not return a false-success exit.
+# A complete physical/owner acceptance requires the submitted JSON evidence,
+# not simply exit code zero from a script.
+if($failures.Count -gt 0){exit 2}
+if($Mode -eq 'Review' -and $manual['MAN-08'] -ne 'Y'){exit 3}
+exit 0
