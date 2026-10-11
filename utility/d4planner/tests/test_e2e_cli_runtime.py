@@ -856,3 +856,31 @@ def test_running_is_published_only_after_marker_hook_active(tmp_path):
         worker.join(3.0)
     assert not worker.is_alive()
     assert marker.stopped
+
+
+
+def test_profile_observe_hook_runtime_loss_is_not_false_running(tmp_path):
+    """Explicit xbox16 OBSERVE must fail visibly on hook loss, never fallback."""
+    from d4planner.controller import load_profile
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = E2ERuntime(paths)
+    marker = RuntimeFailMarker(error="synthetic observe hook lost")
+    supervisor = Supervisor(
+        paths=paths,
+        runtime=runtime,
+        path_manager=UserPathManager(
+            paths, MemoryPathBackend(user_path="", machine_path="MACHINE")
+        ),
+        marker_capture=marker,
+        controller_profile=load_profile("xbox16"),
+        block_marker=False,
+        poll_interval=0.001,
+        health_poll_interval=0.01,
+    )
+    assert supervisor.run() == 2
+    status = read_json(paths.runtime_state)
+    assert status["state"] == "STOPPED"
+    assert status["extras"]["inputMarker"]["state"] == "ERROR"
+    assert status["extras"]["inputMarker"]["mode"] == "OBSERVE"
+    assert "synthetic observe hook lost" in status["lastError"]
+    assert marker.started and marker.stopped
