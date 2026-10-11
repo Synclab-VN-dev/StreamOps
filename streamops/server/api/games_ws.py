@@ -28,7 +28,7 @@ def _fields(payload, required=(), optional=()):
         if not isinstance(payload[key],str) or not payload[key]:
             raise GameServiceError("invalid_request",f"{key} must be a nonempty string.")
 
-async def _execute(service, op, data, headers):
+async def _execute(service, op, data, headers, client_host=None):
     if op == "games.list":
         _fields(data, optional=("provider",))
         return await service.list(data.get("provider"))
@@ -37,7 +37,7 @@ async def _execute(service, op, data, headers):
         return await service.get(data["game_id"])
     if op in ("games.lifecycle.start","games.lifecycle.stop","games.lifecycle.restart"):
         _fields(data,("game_id","idempotency_key"))
-        require_mutation(headers)
+        require_mutation(headers, client_host=client_host, allow_loopback=True)
         return await service.action(data["game_id"], op.rsplit(".",1)[-1],data["idempotency_key"])
     if op == "games.operations.get":
         _fields(data,("operation_id",))
@@ -78,7 +78,8 @@ async def games_ws(websocket: WebSocket, _access: None = Depends(require_access)
             except ValueError: pass
             try:
                 rid,op,data = _request(raw)
-                result = await _execute(service,op,data,websocket.headers)
+                result = await _execute(service,op,data,websocket.headers,
+                                        websocket.client.host if websocket.client else None)
                 response = {"type":"response","request_id":rid,"ok":True,"data":result}
             except (GameServiceError,GameAccessDenied) as exc:
                 response = {"type":"response","request_id":rid,"ok":False,
