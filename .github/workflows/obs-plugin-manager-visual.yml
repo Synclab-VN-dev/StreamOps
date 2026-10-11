@@ -1,0 +1,48 @@
+name: OBS Plugin Manager MagicPath Visual (FE-G5)
+on:
+  pull_request:
+    paths:
+      - 'streamops/server/web/obs*'
+      - 'streamops/server/web/plugins.html'
+      - 'streamops/server/tests/visual_obs_plugins/**'
+      - 'streamops/server/tests/e2e/test_issue75_magicpath_visual.py'
+      - 'streamops/server/tests/test_issue75_magicpath_visual_contract.py'
+      - '.github/workflows/obs-plugin-manager-visual.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  obs-plugin-golden:
+    name: FE-G5 / #75 original MagicPath visual and owner approval
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install server and Playwright dependencies
+        run: python -m pip install '.[server,dev]'
+      - name: Install Playwright Chromium
+        run: python -m playwright install chromium
+      - name: Install isolated MagicPath reference renderer
+        working-directory: streamops/server/tests/visual_obs_plugins/reference_source
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Check original source and preview hashes
+        run: python -m pytest -q streamops/server/tests/test_issue75_magicpath_visual_contract.py
+      - name: Render visual reference and actual then enforce approval
+        env:
+          STREAMOPS_OBS_VISUAL_ENFORCE: '1'
+          STREAMOPS_OBS_VISUAL_ARTIFACTS: ${{ runner.temp }}/obs-plugin-visual
+        run: python -m pytest -q streamops/server/tests/e2e/test_issue75_magicpath_visual.py
+      - name: Preserve expected actual diff and result even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: obs-plugin-visual-${{ github.sha }}
+          path: ${{ runner.temp }}/obs-plugin-visual
+          if-no-files-found: warn
+          retention-days: 30
