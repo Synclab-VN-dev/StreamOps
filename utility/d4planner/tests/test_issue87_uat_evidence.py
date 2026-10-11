@@ -196,8 +196,14 @@ def test_reporter_rejects_duplicate_down_and_unsuppressed_edges_even_with_multip
     assert result["status"] == "FAIL"
     assert next(x for x in result["matrix"] if x["controlId"] == "A")["result"] == "FAIL"
 
-    rows[-2]["data"]["state"] = "up"
-    rows[-1]["data"]["state"] = "up"
-    rows[-1]["data"]["suppressed"] = False
-    result = reporter.analyze(events=rows, start=start, end=end, quick_check="ok")
+    pristine = captured_rows()
+    pristine += [
+        {"eventSeq": 40, "type": "input.marker.raw", "data": {
+            "controlId": "A", "key": a.key, "virtualKey": a.virtual_key,
+            "state": state, "layoutId": profile.layout_id,
+            "mappingSource": "configuredLayout", "suppressed": state == "down",
+        }}
+        for state in ("down", "up")
+    ]
+    result = reporter.analyze(events=pristine, start=start, end=end, quick_check="ok")
     assert next(x for x in result["matrix"] if x["controlId"] == "A")["result"] == "FAIL"
