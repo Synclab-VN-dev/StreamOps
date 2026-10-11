@@ -130,3 +130,35 @@ def test_visual_gate_detects_deliberate_theme_and_geometry_regression(tmp_path: 
     # Geometry is a separate hard fail even when a small pixel ratio could pass.
     shifted = actual.crop((0, 0, expected.width - 10, expected.height))
     assert shifted.size != expected.size
+
+
+def test_updated_magicpath_v2_is_independent_and_revision_pinned() -> None:
+    """V2 design approval must not silently rewrite the 19 approved v1 goldens."""
+    updated = json.loads((ROOT / "review_manifest_v2.json").read_text(encoding="utf-8"))
+    assert updated["schema_version"] == 2
+    assert updated["legacy_approved_goldens"]["count"] == 19
+    assert updated["approved"] is False
+    assert updated["new_goldens"]["approved"] is False
+    assert not updated["new_goldens"]["expected_sha256"]
+    assert updated["reference_directory"] == "reference_source_v2"
+    refs = {item["name"]: item for item in updated["source"]}
+    assert (refs["steam"]["component_id"], refs["steam"]["revision_id"]) == (
+        "459507753589833728", "460004034603028480")
+    assert (refs["games"]["component_id"], refs["games"]["revision_id"]) == (
+        "459507767749795840", "460004044581269504")
+    assert refs["steam"]["revision_id"] != EXPECTED_REVISIONS["steam"][1]
+    assert refs["games"]["revision_id"] != EXPECTED_REVISIONS["games"][1]
+    for item in refs.values():
+        candidate = ROOT.parents[3] / item["source_path"]
+        assert candidate.is_file(), candidate
+        normalized = candidate.read_bytes().replace(b"\r\n", b"\n")
+        assert git_blob_sha1(normalized) == item["git_blob_sha1"], item["name"]
+    steam = (ROOT / "reference_source_v2/src/SteamManager.tsx").read_text("utf-8")
+    games = (ROOT / "reference_source_v2/src/GameManager.tsx").read_text("utf-8")
+    assert "Node health: online · Capture READY" in steam
+    assert "Save progress first." in steam
+    assert ">Restart</button>" in steam
+    assert "Force Stop (disabled)" in games
+    assert 'if (kind === "force") return' in games
+    assert (ROOT / "reference_source/src/SteamManager.tsx").read_text("utf-8") != steam
+    assert (ROOT / "reference_source/src/GameManager.tsx").read_text("utf-8") != games
