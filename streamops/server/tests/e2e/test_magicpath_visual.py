@@ -232,3 +232,93 @@ def test_owner_approval_is_required_for_visual_golden():
         assert MANIFEST["approval"]["approved_at"]
         assert MANIFEST["approval"]["review_url"]
         assert len(MANIFEST["approval"]["expected_sha256"]) == len(REQUIRED_SCENARIOS)
+
+
+
+def test_collect_extra_owner_review_candidates_not_approved_goldens(browser: Browser, games_ui_server):
+    """Prepare actual-only visual evidence for owner review, not a Golden comparison.
+
+    New UI states lack owner-approved MagicPath reference screenshots. Never
+    promote this output into the approved Golden directory automatically.
+    """
+    base, fake = games_ui_server
+    target = OUT / "_owner-review-candidates-NOT-GOLDENS"
+    target.mkdir(parents=True, exist_ok=True)
+    images = []
+    detail_revision = next(r["revision_id"] for r in MANIFEST["references"] if r["name"] == "games")
+    steam_revision = next(r["revision_id"] for r in MANIFEST["references"] if r["name"] == "steam")
+
+    def shot(page, name, kind, **notes):
+        path = target / (name + ".png")
+        _ready(page)
+        if "scroll_y" in notes:
+            page.evaluate("(y)=>window.scrollTo(0,y)", notes["scroll_y"])
+        page.screenshot(path=str(path), animations="disabled")
+        images.append({
+          "name":name, "image":path.name, "sha256":hashlib.sha256(path.read_bytes()).hexdigest(),
+          "source_revision":detail_revision if kind == "games" else steam_revision,
+          "owner_approved":False, "expected_reference":None, **notes,
+        })
+
+    def detail_page():
+        page=browser.new_page(viewport={"width":390,"height":844},device_scale_factor=1)
+        page.goto(base+"/games")
+        expect(page.locator("#game-library .gm-game-row")).to_have_count(1)
+        page.locator('#game-library button[data-game-id="steam:2344520"]').click()
+        expect(page.locator("#game-detail")).to_contain_text("Diablo IV")
+        return page
+
+    p=detail_page()
+    try:
+        p.locator("#game-detail .gm-detail-advanced summary").click()
+        assert p.locator("#game-detail .gm-detail-advanced").evaluate("(e)=>e.open")
+        shot(p,"games-advanced-mobile-390x844","games",state="advanced-expanded")
+    finally: p.close()
+
+    for phase, label in [("TIMEOUT","unknown-timeout"),("WRONG_SESSION","failed-session")]:
+        p=detail_page()
+        try:
+            status="UNKNOWN" if phase=="TIMEOUT" else "FAILED"
+            p.evaluate("""({status,phase}) => window.StreamOpsGames.store.operation({
+              operation_id:'owner-review-'+phase,game_id:'steam:2344520',
+              action:'stop',status,phase,code:phase.toLowerCase()
+            })""", {"status":status,"phase":phase})
+            expect(p.locator("#game-detail .gm-operation")).to_contain_text(status+" / "+phase)
+            shot(p,"games-"+label+"-mobile-390x844","games",state=label)
+        finally: p.close()
+
+    p=browser.new_page(viewport={"width":390,"height":844},device_scale_factor=1)
+    try:
+        p.goto(base+"/games")
+        many=[game("Review title "+str(i),"steam:"+str(1200+i),"STOPPED") for i in range(15)]
+        fake.set_library(many)
+        row=p.locator('#game-library .gm-game-row[data-game-id="steam:1213"]')
+        expect(row).to_be_visible()
+        row.scroll_into_view_if_needed()
+        assert p.evaluate("window.scrollY")>100
+        shot(p,"games-scrolled-library-mobile-390x844","games",
+             state="library-scrolled",scroll_y=p.evaluate("window.scrollY"))
+    finally: p.close()
+
+    p=browser.new_page(viewport={"width":390,"height":844},device_scale_factor=1)
+    try:
+        fake.set_library([game("Diablo IV","steam:2344520","RUNNING")] +
+              [game("Running "+str(i),"steam:"+str(200+i),"RUNNING") for i in range(4)])
+        p.goto(base+"/steam")
+        expect(p.locator("#steam-running-games .gm-show-more")).to_be_visible()
+        p.locator("#steam-running-games .gm-show-more").click()
+        expect(p.locator("#steam-running-games .gm-game-row")).to_have_count(5)
+        shot(p,"steam-five-running-expanded-mobile-390x844","steam",state="multiple-expanded")
+        p.locator("#steam-runtime-details summary").click()
+        shot(p,"steam-process-expanded-mobile-390x844","steam",state="process-expanded")
+    finally: p.close()
+
+    (target/"REVIEW_ONLY.json").write_text(json.dumps({
+      "purpose":"Actual FE screenshot candidates for additional visual review; NOT design Golden baselines",
+      "status":"AWAITING_OWNER_REVIEW_AND_MAGICPATH_REFERENCE",
+      "reference_required":True, "do_not_promote_automatically":True,
+      "approved_19_goldens_untouched":True,
+      "known_limitation":"Native browser confirmation dialogs are outside page screenshots and require a separate design decision.",
+      "items":images,
+    },indent=2),encoding="utf-8")
+    assert len(images)==6
