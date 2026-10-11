@@ -96,6 +96,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'FE models fail on exact FE+BE tree' }
       - name: BE canonical REST-WS parity + FE real browser E2E
         shell: pwsh
+        env:
+          ISSUE75_EXACT_BE_COMBINED: '1'
         run: |
           Set-Location $env:ISSUE75_COMBINED
           python -m pytest -q --junitxml=$env:RUNNER_TEMP/issue75-combined-junit.xml streamops/server/tests/test_obs_plugin_ws_contract_v2.py streamops/server/tests/test_obs_plugin_api.py streamops/server/tests/test_obs_plugin_adoption.py::test_ad15_rest_and_websocket_adopt_contract streamops/server/tests/test_issue75_be_contract_drift.py streamops/server/tests/test_issue75_plugin_ui.py streamops/server/tests/e2e/test_issue75_plugin_manager.py streamops/server/tests/e2e/test_issue75_workflow_matrix.py streamops/server/tests/e2e/test_issue75_recovery_followup.py
