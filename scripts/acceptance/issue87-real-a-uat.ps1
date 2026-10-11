@@ -23,6 +23,11 @@ $root=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $homeDir=Join-Path $root '.streamops/pr95/d4planner'
 $taskName='StreamOps-PR95-Manual'
 $reporter=Join-Path $root 'utility/d4planner/tools/issue87_uat_evidence.py'
+$sourceRoot=Join-Path $root 'utility/d4planner/src'
+$venvDir=Join-Path $root '.streamops/pr95/python-venv'
+$probePython=$Python
+$originalPythonPath=$env:PYTHONPATH
+$runtimePython=$null
 # Always use PR95 checkout for relative local CI paths.
 Push-Location $root
 if (!$EvidenceDir) { $EvidenceDir=Join-Path $root ('.streamops/pr95/uat/real-'+(Get-Date -Format 'yyyyMMdd-HHmmss')) }
@@ -51,11 +56,55 @@ function Set-Result([string]$id,[string]$expected,[object]$actual,[string]$resul
 }
 function Run-Python([string]$name,[string[]]$argv) {
   $file=Join-Path $EvidenceDir ($name+'.log')
-  & $Python @argv *> $file
-  $code=$LASTEXITCODE
-  $r=[ordered]@{name=$name;code=$code;log=$file}
+  # The caller may have installed D4Planner editable from an unrelated
+  # worktree (#82). Put this SHA-pinned PR95 source ahead of site-packages
+  # for this child process ONLY. Never mutate global pip or user PYTHONPATH.
+  $oldPythonPath=$env:PYTHONPATH
+  try {
+    $env:PYTHONPATH=$sourceRoot
+    & $script:probePython @argv *> $file
+    $code=$LASTEXITCODE
+  } finally {
+    $env:PYTHONPATH=$oldPythonPath
+  }
+  $r=[ordered]@{name=$name;code=$code;log=$file;python=$script:probePython;source=$sourceRoot}
   $logs.Add($r)
   return $r
+}
+function Ensure-PR-Python {
+  # Review/local CI requires a process image that persists our PR95 package
+  # when launched by Windows Task Scheduler (no inherited caller PYTHONPATH).
+  # All writes remain inside the PR95 worktree; pip global remains untouched.
+  $venvPython=Join-Path $venvDir 'Scripts/python.exe'
+  if(!(Test-Path -LiteralPath $venvPython -PathType Leaf)){
+    New-Item -ItemType Directory -Force -Path $venvDir | Out-Null
+    $creationLog=Join-Path $EvidenceDir 'pr95-venv-create.log'
+    & $Python -m venv $venvDir *> $creationLog
+    if($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath $venvPython -PathType Leaf)){
+      throw "Cannot create isolated PR95 Python venv; see $creationLog"
+    }
+    $logs.Add([ordered]@{name='pr95-venv-create';code=0;log=$creationLog;python=$Python})
+  }
+  $purelib=@(& $venvPython -c 'import sysconfig;print(sysconfig.get_path("purelib"))')
+  if($LASTEXITCODE -ne 0 -or $purelib.Count -ne 1 -or ![string]$purelib[0]){
+    throw 'Cannot find PR95 venv site-packages'
+  }
+  $pth=Join-Path ([string]$purelib[0]).Trim() 'streamops-pr95-source.pth'
+  if(Test-Path -LiteralPath $pth){
+    $oldPath=(Get-Content -LiteralPath $pth -Raw).Trim()
+    if($oldPath -ine $sourceRoot){throw "PR95 venv points to another checkout: $oldPath"}
+  }else{
+    $sourceRoot | Set-Content -LiteralPath $pth -Encoding utf8
+  }
+  $resolved=@(& $venvPython -I -c 'import d4planner;print(d4planner.__file__)')
+  $expected=Join-Path $sourceRoot 'd4planner/__init__.py'
+  if($LASTEXITCODE -ne 0 -or $resolved.Count -ne 1 -or
+      [IO.Path]::GetFullPath(([string]$resolved[0]).Trim()) -ine [IO.Path]::GetFullPath($expected)){
+    throw 'PR95 isolated venv cannot resolve this exact checkout'
+  }
+  $script:probePython=$venvPython
+  $script:runtimePython=$venvPython
+  $logs.Add([ordered]@{name='pr95-venv-verify';code=0;python=$venvPython;source=$expected})
 }
 function Prompt-Owner([string]$id,[string]$question) {
   do {$reply=(Read-Host "$id $question [Y/N/S=skip]").Trim().ToUpperInvariant()}
@@ -177,25 +226,31 @@ try {
     nvda=@($nvda|ForEach-Object {$_.Id})
     obs=@($obs|ForEach-Object {$_.Id})
     python=(& $Python --version 2>&1|Out-String).Trim()
+    sourceScope=$sourceRoot
+    effectivePython=$probePython
+    originalPythonPath=$originalPythonPath
     gitHead=$head;branch=$branchName
   }
   Set-Result 'DF-01' 'Exact PR SHA, host, session, process and language snapshot' $baseline 'PASS'
   # Optional dependency mutation is explicit. Default preflight only reads.
   if($RunLocalCI){
-    $install=Run-Python 'local-pip' @('-m','pip','install','-e','utility/d4planner[dev]')
+    Ensure-PR-Python
+    # pytest dependencies are installed only in the PR95 venv; NEVER global.
+    $install=Run-Python 'local-pr95-pytest-install' @('-m','pip','install','pytest>=9.1.1')
+    if($install.code -ne 0){throw 'Cannot install pytest in PR95 isolated venv'}
     $unit=Run-Python 'local-pytest' @('-m','pytest','-q','utility/d4planner/tests')
     $compile=Run-Python 'local-compile' @('-m','compileall','-q','utility/d4planner')
     $addon=Run-Python 'local-addon-build' @('utility/d4planner/tools/build_nvda_addon.py')
-    $good=($install.code -eq 0 -and $unit.code -eq 0 -and $compile.code -eq 0 -and $addon.code -eq 0)
-    Set-Result 'DF-02' 'Local full pytest/compile/addon build' @{install=$install;unit=$unit;compile=$compile;addon=$addon} $(if($good){'PASS'}else{'FAIL'})
+    $good=($unit.code -eq 0 -and $compile.code -eq 0 -and $addon.code -eq 0)
+    Set-Result 'DF-02' 'Local full pytest/compile/addon build in isolated PR95 venv' @{install=$install;unit=$unit;compile=$compile;addon=$addon} $(if($good){'PASS'}else{'FAIL'})
     if(!$good){throw 'Local CI failed; no supervisor started'}
   }
   $installed=Run-Python 'module-path' @('-c','import d4planner;print(d4planner.__file__)')
-  $expected=Join-Path $root 'utility/d4planner/src/d4planner/__init__.py'
-  if($installed.code -ne 0){throw 'D4Planner package not installed; run -RunLocalCI'}
-  $resolved=(Get-Content $installed.log -Raw).Trim()
+  $expected=Join-Path $sourceRoot 'd4planner/__init__.py'
+  if($installed.code -ne 0){throw "Cannot import PR95 D4Planner via source-scoped PYTHONPATH; see $($installed.log)"}
+  $resolved=(Get-Content -LiteralPath $installed.log -Raw).Trim()
   if([IO.Path]::GetFullPath($resolved) -ine [IO.Path]::GetFullPath($expected)){
-    throw "D4Planner Python package is not from PR95 worktree: $resolved. Run -RunLocalCI"
+    throw "PR95 Python import isolation violated: expected $expected, observed $resolved"
   }
   $valid=Run-Python 'controller-validate' @('-m','d4planner.cli','controller','validate','xbox16')
   $profiles=Run-Python 'controller-profiles' @('-m','d4planner.cli','controller','profiles')
@@ -211,8 +266,11 @@ try {
       throw 'Game/NVDA must share interactive Session 1'
     }
 
-    $exe=(Get-Command $Python -ErrorAction Stop).Source
-    if(!(Test-Path -LiteralPath $exe -PathType Leaf)){throw 'Python must resolve to a real exe'}
+    # Scheduled Tasks do not inherit the SSH caller's PYTHONPATH. Create/verify
+    # a separate PR95 virtualenv so the detached daemon cannot import #82.
+    Ensure-PR-Python
+    $exe=$runtimePython
+    if(!(Test-Path -LiteralPath $exe -PathType Leaf)){throw 'PR95 isolated Python interpreter is unavailable'}
     New-Item -ItemType Directory -Force -Path $homeDir|Out-Null
     $argsText='-m d4planner.daemon --isolated --block --controller-profile xbox16 --uat-attach-only --home "'+$homeDir+'"'
     $action=New-ScheduledTaskAction -Execute $exe -Argument $argsText
