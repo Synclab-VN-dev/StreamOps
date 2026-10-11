@@ -51,6 +51,8 @@ def test_steam_summary_in_correct_location():
     assert 'src="/assets/node-health.js"' in html
     assert 'id="node-health-status"' in html
     assert 'href="/assets/games.css"' in html
+    assert 'class="gm-steam-restart-warning"' in html
+    assert "Restarts may interrupt active games and downloads." in html
 
 def test_gaming_detail_stays_in_two_pages_and_assets_exist():
     html=read("games.html")
