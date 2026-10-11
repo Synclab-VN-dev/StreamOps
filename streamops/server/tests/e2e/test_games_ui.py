@@ -684,3 +684,35 @@ def test_lifecycle_disconnect_marks_unknown_and_reconciles_without_replay(page: 
     page.get_by_role("button",name="Refresh / reconcile process").click()
     wait_until(lambda: any(op=="games.reconcile" for op,_ in fake.received))
     assert not any(op.startswith("games.lifecycle.") for op,_ in fake.received)
+
+
+@pytest.mark.parametrize("width,height",[(360,800),(390,844),(768,1024),(1440,900)])
+def test_games_keyboard_focus_live_status_and_touch_geometry(page: Page, games_ui_server, width, height):
+    """E2E-11: keyboard operation, visible focus, machine-readable status, no clipping."""
+    base, fake = games_ui_server
+    page.set_viewport_size({"width":width,"height":height})
+    page.goto(base+"/games")
+    expect(page.locator("#game-library .gm-game-row")).to_have_count(1)
+    search=page.locator("#game-search")
+    search.focus()
+    assert search.evaluate("(e)=>e.matches(':focus-visible')")
+    assert search.evaluate("(e)=>getComputedStyle(e).outlineStyle!=='none'")
+    page.keyboard.press("Tab")
+    assert page.evaluate("document.activeElement?.id==='game-filter'")
+    opener=page.locator('#game-library button[data-game-id="steam:2344520"]')
+    opener.focus()
+    opener.press("Enter")
+    detail=page.locator("#game-detail")
+    expect(detail).to_contain_text("Diablo IV")
+    expect(detail.locator('[data-code="CONFIGURED_ONLY"]')).not_to_have_count(0)
+    assert detail.get_attribute("aria-label")=="Game detail"
+    sizes=page.evaluate("""() => {
+      const nodes=[...document.querySelectorAll('#game-detail .gm-detail-action-row button')];
+      return nodes.map(e=>({w:e.getBoundingClientRect().width,h:e.getBoundingClientRect().height}));
+    }""")
+    assert len(sizes)==3 and all(x["h"]>=44 and x["w"]>=44 for x in sizes)
+    assert page.evaluate("document.documentElement.scrollWidth<=window.innerWidth")
+    page.keyboard.press("Escape")
+    assert page.evaluate('document.activeElement?.dataset?.gameId==="steam:2344520"')
+    assert page.evaluate("document.documentElement.scrollWidth<=window.innerWidth")
+    assert not any(name.startswith("games.lifecycle.") for name,_ in fake.received)
