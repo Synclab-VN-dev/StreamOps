@@ -86,6 +86,12 @@ function Add-OwnerCases {
         Add-Case $id "BLOCKED" "owner" "Real A/B evidence and explicit approval as applicable" "Not executed" $reason
     }
 }
+function Test-PortOwnership([object[]]$listeners, $runtime, [int]$port) {
+    if($null -eq $runtime -or $listeners.Count -lt 1){return $false}
+    if([int]$runtime.port -ne $port -or [int]$runtime.pid -le 0){return $false}
+    $owners=@($listeners | ForEach-Object { [int]$_.OwningProcess } | Select-Object -Unique)
+    return ($owners.Count -eq 1 -and $owners[0] -eq [int]$runtime.pid)
+}
 function Invoke-SelfTest {
     $synthetic = @(
         [pscustomobject]@{id="PASS";status="PASS";category="environment"},
@@ -114,7 +120,14 @@ function Invoke-SelfTest {
         })
         if ($matches.Count) { throw "Forbidden mutating command appears executable: $forbidden" }
     }
-    Add-Case "RUNNER-SELFTEST" "PASS" "harness" "PASS/FAIL/BLOCKED/SKIP, JSON serialization, safety audit" "All synthetic assertions passed" "No Windows A processes, listeners or WS endpoints accessed"
+    $good=@([pscustomobject]@{OwningProcess=8186},[pscustomobject]@{OwningProcess=8186})
+    $foreign=@([pscustomobject]@{OwningProcess=8186},[pscustomobject]@{OwningProcess=9011})
+    $runtime=[pscustomobject]@{pid=8186;port=18789}
+    if(-not (Test-PortOwnership $good $runtime 18789)){throw "Same-PID dual-stack port guard rejected"}
+    if(Test-PortOwnership $foreign $runtime 18789){throw "Foreign PID port collision was accepted"}
+    if(Test-PortOwnership $good $null 18789){throw "Missing runtime was accepted"}
+    if(Test-PortOwnership @() $runtime 18789){throw "Missing listener was accepted"}
+    Add-Case "RUNNER-SELFTEST" "PASS" "harness" "Status classification, JSON, safe port owner identity, no-mutation audit" "Synthetic PASS/FAIL/BLOCKED/SKIP + collision tests passed" "No Windows A processes, listeners or WS endpoints accessed"
 }
 function Test-IsolatedEnvironment {
     $safe = $true
@@ -167,15 +180,11 @@ function Test-IsolatedEnvironment {
             $runtime=Get-Content -LiteralPath $runtimeFile -Raw | ConvertFrom-Json
         }
         $listeners=@(Get-NetTCPConnection -LocalPort $ExpectedPort -State Listen -ErrorAction SilentlyContinue)
-        if ($listeners.Count -ne 1) {
-            Add-Case "PRE-PORT" "BLOCKED" "environment" "One isolated listener on 18789 with matching PID" "$($listeners.Count) listeners" "If occupied or unused, do NOT kill, reuse, or start a process"
-            $safe=$false
-        } elseif ($null -eq $runtime -or [int]$runtime.port -ne $ExpectedPort -or
-            [int]$listeners[0].OwningProcess -ne [int]$runtime.pid) {
-            Add-Case "PRE-PORT" "BLOCKED" "environment" "Listener PID matches isolated runtime.json" "Unmatched PID" "Port may belong to another process; no probes or cleanup permitted"
+        if (-not (Test-PortOwnership $listeners $runtime $ExpectedPort)) {
+            Add-Case "PRE-PORT" "BLOCKED" "environment" "Only expected PID may listen on port 18789" "$($listeners.Count) listener(s); runtime PID unverified" "Foreign PID, absent runtime or unused port: do NOT kill, reuse or start a process"
             $safe=$false
         } else {
-            Add-Case "PRE-PORT" "PASS" "environment" "PID matches runtime.json port 18789" "PID $($runtime.pid)" "Owned process only; no mutation"
+            Add-Case "PRE-PORT" "PASS" "environment" "All port 18789 listeners owned by isolated runtime PID" "PID $($runtime.pid); $($listeners.Count) listener(s)" "Dual-stack same-PID listener accepted; no mutation"
         }
     } catch {
         Add-Case "PRE-ISOLATION" "BLOCKED" "environment" "Task/DataDir/PID guards succeed" "Unavailable" "$($_.Exception.Message)"
@@ -274,7 +283,8 @@ function Test-ReadOnlyWebSockets {
         }
         Add-Case "WS-GAMES-TWO" "PASS" "product" "Two concurrent read-only WS observers" "Both returned games.list" "No synthetic changes or game operations executed"
         Add-Case "WS-STEAM" "PASS" "product" "Read-only Steam status WS response" "steam.status OK" "No Steam restart attempted"
-        Add-Case "DEVF-01" "PASS" "evidence" "Isolated A routes/assets and real WS observation" "Read-only route/WS PASS" "Real A smoke evidence; browser visuals still DEVF-04/MAN"
+        Add-Case "DEVF-01-AUTO" "PASS" "evidence" "Isolated A route/assets and read-only WS smoke" "GET+WS observation PASS" "Subcheck only; not a real browser on A/B"
+        Add-Case "DEVF-01" "BLOCKED" "evidence" "Real browser on A must verify Steam+Games WS UI without REST polling" "Read-only subchecks passed" "Need real browser evidence; never infer full DEVF acceptance from network probes"
     } catch {
         Add-Case "WS-READONLY" "FAIL" "product" "Read-only games.list and steam.status over WS" "No valid response" "$($_.Exception.Message)"
         Add-Case "DEVF-01" "BLOCKED" "environment" "Isolated A route + WS PASS" "Incomplete" "See HTTP/WS evidence, no runtime changed"
