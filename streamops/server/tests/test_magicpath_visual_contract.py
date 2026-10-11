@@ -168,18 +168,47 @@ def test_updated_magicpath_v2_is_independent_and_revision_pinned() -> None:
     assert (ROOT / "reference_source/src/GameManager.tsx").read_text("utf-8") != games
 
 
-def test_updated_magicpath_v2_expected_hash_absence_is_a_hard_failure():
-    """Missing or corrupted source-backed expected digest cannot silently PASS."""
-    import copy
-    manifest = json.loads((ROOT / "review_manifest_v2.json").read_text(encoding="utf-8"))
-    assert manifest["approved"] and manifest["new_goldens"]["approved"]
+def validate_source_locked_v2_manifest(manifest: dict) -> None:
+    """Fail closed when source-locked V2 Golden labels/approval/hashes are missing."""
+    assert manifest["approved"] is True
+    assert manifest["new_goldens"]["approved"] is True
+    assert manifest["approval_status"] == "OWNER_APPROVED_MAGICPATH_REVISION__SOURCE_BACKED_GOLDENS_LOCKED"
+    assert manifest["thresholds"]["mean_rgb_max"] == 0.08
+    assert manifest["thresholds"]["geometry_exact"] is True
     hashes = manifest["new_goldens"]["expected_sha256"]
-    label = "steam-restart-confirm-cancel-mobile-390x844"
-    assert label in hashes
-    assert re.fullmatch("[0-9a-f]{64}", hashes[label])
-    corrupt = copy.deepcopy(manifest)
-    corrupt["new_goldens"]["expected_sha256"].pop(label)
-    assert len(corrupt["new_goldens"]["expected_sha256"]) != corrupt["new_goldens"]["expected_count"]
-    corrupt = copy.deepcopy(manifest)
-    corrupt["new_goldens"]["expected_sha256"][label] = "0" * 64
-    assert corrupt["new_goldens"]["expected_sha256"][label] != hashes[label]
+    required = {
+        "games-advanced-mobile-390x844", "games-unknown-timeout-mobile-390x844",
+        "games-failed-session-mobile-390x844", "games-scrolled-library-mobile-390x844",
+        "games-stop-confirm-modal-mobile-390x844", "games-stop-confirm-cancel-mobile-390x844",
+        "steam-five-running-expanded-mobile-390x844",
+        "steam-process-expanded-mobile-390x844",
+        "steam-restart-confirm-modal-mobile-390x844",
+        "steam-restart-confirm-cancel-mobile-390x844",
+    }
+    assert set(hashes) == required
+    assert manifest["new_goldens"]["expected_count"] == len(required) == 10
+    assert all(re.fullmatch("[0-9a-f]{64}", sha) and sha != "0"*64 for sha in hashes.values())
+
+
+def test_updated_magicpath_v2_expected_hash_absence_is_a_hard_failure():
+    """The very validator used by the Golden gate must reject tampering."""
+    import copy
+    import pytest
+    manifest = json.loads((ROOT / "review_manifest_v2.json").read_text(encoding="utf-8"))
+    validate_source_locked_v2_manifest(manifest)
+    corrupted = copy.deepcopy(manifest)
+    corrupted["new_goldens"]["expected_sha256"].pop("steam-restart-confirm-cancel-mobile-390x844")
+    with pytest.raises(AssertionError):
+        validate_source_locked_v2_manifest(corrupted)
+    corrupted = copy.deepcopy(manifest)
+    corrupted["new_goldens"]["expected_sha256"]["steam-restart-confirm-cancel-mobile-390x844"] = "0"*64
+    with pytest.raises(AssertionError):
+        validate_source_locked_v2_manifest(corrupted)
+    corrupted = copy.deepcopy(manifest)
+    corrupted["approved"] = False
+    with pytest.raises(AssertionError):
+        validate_source_locked_v2_manifest(corrupted)
+    corrupted = copy.deepcopy(manifest)
+    corrupted["thresholds"]["mean_rgb_max"] = 0.12
+    with pytest.raises(AssertionError):
+        validate_source_locked_v2_manifest(corrupted)
