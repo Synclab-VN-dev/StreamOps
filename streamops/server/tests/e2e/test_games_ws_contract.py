@@ -2,7 +2,7 @@
 from __future__ import annotations
 import time
 import pytest
-from streamops.server.tests.test_games_api import _client,_snapshot,_response,TOKEN
+from streamops.server.tests.test_games_api import _client,_snapshot,_response
 from streamops.server.tests.test_games_lifecycle import GAME
 
 def call(ws,rid,operation,payload=None):
@@ -18,11 +18,10 @@ def finish(ws,op_id):
         time.sleep(.01)
     pytest.fail("operation did not reach terminal status")
 
-def test_all_eight_game_ws_operations_and_force_stop_disabled(monkeypatch,server_config,capture_service,tmp_path):
-    monkeypatch.setenv("STREAMOPS_GAME_CONTROL_TOKEN",TOKEN)
+def test_all_eight_game_ws_operations_and_force_stop_disabled(server_config,capture_service,tmp_path):
     client,platform=_client(server_config,capture_service,tmp_path)
     with client, client.websocket_connect("/api/v1/games/ws",
-            subprotocols=["streamops-games-v1",f"streamops-game-control.{TOKEN}"]) as ws:
+            subprotocols=["streamops-games-v1"]) as ws:
         _snapshot(ws)
         assert call(ws,"r-list","games.list")["data"]["games"][0]["id"]==GAME
         assert call(ws,"r-get","games.get",{"game_id":GAME})["data"]["id"]==GAME
@@ -50,19 +49,18 @@ def test_invalid_ws_requests_and_errors_are_typed(server_config,capture_service,
             ("bad-payload","games.get",{"game_id":GAME,"script":"evil"},"invalid_request"),
             ("missing-game","games.get",{"game_id":"steam:987654321"},"game_not_found"),
             ("invalid-provider","games.list",{"provider":"untrusted"},"invalid_provider"),
-            ("readonly","games.lifecycle.start",{"game_id":GAME,"idempotency_key":"first"},"capability_disabled")
+            ("not-allowlisted","games.lifecycle.start",{"game_id":"steam:99999999","idempotency_key":"unknown"},"game_not_found")
         ]:
             result=call(ws,rid,op,payload)
             assert result["request_id"]==rid
             assert result["ok"] is False
             assert result["error"]["code"]==code
 
-def test_rest_ws_payload_semantic_parity(monkeypatch,server_config,capture_service,tmp_path):
-    monkeypatch.setenv("STREAMOPS_GAME_CONTROL_TOKEN",TOKEN)
+def test_rest_ws_payload_semantic_parity(server_config,capture_service,tmp_path):
     client,platform=_client(server_config,capture_service,tmp_path)
-    headers={"X-StreamOps-Game-Token":TOKEN,"Idempotency-Key":"parity"}
+    headers={"Idempotency-Key":"parity"}
     with client,client.websocket_connect("/api/v1/games/ws",
-            subprotocols=["streamops-games-v1",f"streamops-game-control.{TOKEN}"]) as ws:
+            subprotocols=["streamops-games-v1"]) as ws:
         _snapshot(ws)
         for rid,op,url,method,payload in [
             ("list","games.list","/api/v1/games","get",{}),
