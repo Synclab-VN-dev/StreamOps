@@ -19,11 +19,13 @@ permissions:
   contents: read
 jobs:
   obs-plugin-golden:
-    name: FE-G5 / #75 original MagicPath visual and owner approval
+    name: FE-G5 / #75 pinned MagicPath source and state coverage
     runs-on: windows-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -41,6 +43,7 @@ jobs:
         run: python -m pytest -q streamops/server/tests/test_issue75_magicpath_visual_contract.py
       - name: Render visual reference and actual then enforce approval
         env:
+          FE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           STREAMOPS_OBS_VISUAL_ENFORCE: '1'
           STREAMOPS_OBS_VISUAL_ARTIFACTS: ${{ runner.temp }}/obs-plugin-visual
         run: python -m pytest -q streamops/server/tests/e2e/test_issue75_magicpath_visual.py
