@@ -1,7 +1,7 @@
 # Issue #75: MagicPath visual Golden gate
 
 Frozen original source/preview comes from these exact MagicPath revisions, and never from production UI:
-- Plugin Manager component 458351046272638976, revision 459936145191612416 (earlier 459906255415296000).
+- Plugin Manager component 458351046272638976, revision 460035256414801920 (prior 459936145191612416).
 - Dashboard component 456064390102405120, revision 458892152907374592.
 
 Reference snapshots live in originals/ and references/, their Git blob SHA1 hashes in manifest.json. Reference renderer uses those original component files in isolation; its rendering source is different from StreamOps FE. Preview JPEG files are independent audit snapshots.
@@ -37,3 +37,6 @@ Only the fake OpenStream OBS Plugin example and dependent fake totals/activity l
 
 ## Owner-approved MagicPath Confirm placement correction (2026-10-11)
 Only Confirm presentation was changed in MagicPath component `458351046272638976`: native centered `<dialog>`, opened with `showModal()`, with backdrop, Cancel / Confirm and Escape-to-close, matching existing FE semantics. Updated revision: `459936145191612416` (prior `459906255415296000`). Do not interpret this as owner approval of candidate Golden screenshots. Screenshot thresholds, missing-state blockers and all FE production runtime guards remain unchanged.
+
+## Seven-state MagicPath design update (2026-10-11)
+Owner authorized adding loading, empty, offline, verify-failed, rollback-failed, recovery-required and legacy-adopted to the existing Plugin Manager. New revision: 460035256414801920. The expected reference source and isolated renderer are byte-identical to this exact MagicPath revision; state selection is native ?state=, without a source transformer. The historical JPEG preview in references/ remains labeled to prior revision 459936145191612416; new expected captures are created directly from updated MagicPath source, each with SHA-256 evidence. All seven states must pass real FE screenshot comparison before the visual gate can be reported PASS. No backend/API contract revision is authorized by this design change.
