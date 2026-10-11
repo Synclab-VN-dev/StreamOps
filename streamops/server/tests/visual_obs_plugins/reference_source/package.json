@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "vite --host 127.0.0.1 --port 5179 --strictPort"
+    "start": "vite --host 127.0.0.1 --port 5179 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 5179 --strictPort"
   },
   "dependencies": {
     "react": "19.1.1",
