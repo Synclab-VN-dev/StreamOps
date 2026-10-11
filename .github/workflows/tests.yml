@@ -190,6 +190,44 @@ jobs:
           }
           Write-Host 'Issue87 read-only negative preflight PASS: CLI validated; no live hook was accepted'
           $global:LASTEXITCODE = 0
+      - name: Issue87 Real-A UAT detached HEAD Preflight regression
+        if: steps.changes.outputs.d4planner == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $head = (& git rev-parse HEAD).Trim()
+          # Owner tests the pinned PR in a detached worktree. Reproduce that
+          # exact Git state, not just a PowerShell parser/synthetic test.
+          & git -c advice.detachedHead=false checkout --detach HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to enter detached HEAD test state' }
+          $branch = & git branch --show-current
+          if ($branch) { throw "Expected detached HEAD, saw branch: $branch" }
+          $evidence = Join-Path $env:RUNNER_TEMP 'issue87-real-a-detached-preflight'
+          & pwsh -NoProfile -File ./scripts/acceptance/issue87-real-a-uat.ps1 `
+            -Mode Preflight -ExpectedHead $head -EvidenceDir $evidence
+          $scriptExit = $LASTEXITCODE
+          $global:LASTEXITCODE = 0
+          if ($scriptExit -ne 0) {
+            if (Test-Path (Join-Path $evidence 'report.json')) {
+              Get-Content (Join-Path $evidence 'report.json') -Raw | Write-Host
+            }
+            throw "Real-A detached HEAD preflight failed: exit=$scriptExit"
+          }
+          $report = Get-Content (Join-Path $evidence 'report.json') -Raw | ConvertFrom-Json
+          if ($report.head -ne $head -or $report.mode -ne 'Preflight') {
+            throw 'Preflight did not report the expected detached commit and mode'
+          }
+          $byId = @{}
+          foreach ($item in $report.checks) { $byId[$item.id] = $item.result }
+          if ($byId['DF-01'] -ne 'PASS' -or $byId['DF-03'] -ne 'PASS') {
+            throw 'Detached Preflight failed its read-only Git/context/profile checks'
+          }
+          if ($report.taskCreatedByScript -or $report.taskStartedByScript) {
+            throw 'Preflight must never create or start an interactive task'
+          }
+          Write-Host 'Issue87 detached worktree preflight PASS (no task/runtime created)'
+          $global:LASTEXITCODE = 0
       - name: Build D4Planner NVDA add-on
         if: steps.changes.outputs.d4planner == 'true'
         run: python utility/d4planner/tools/build_nvda_addon.py
