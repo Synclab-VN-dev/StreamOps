@@ -153,14 +153,10 @@ if ($ObsPluginSourceProvider -eq "github-release" -and -not $NoGitHubTokenPrompt
             }
             $secretDir = Join-Path $DataDir ".secrets"
             New-Item -ItemType Directory -Path $secretDir -Force | Out-Null
-            # Lock the directory BEFORE writing the encrypted handoff.
-            $security = New-Object System.Security.AccessControl.DirectorySecurity
-            $security.SetAccessRuleProtection($true, $false)
-            $permission = [System.Security.AccessControl.FileSystemAccessRule]::new(
-                $currentUser, "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow"
-            )
-            $security.AddAccessRule($permission)
-            Set-Acl -LiteralPath $secretDir -AclObject $security
+            # Restrict only the directory DACL. No SeSecurityPrivilege or
+            # Administrator rights are needed by the interactive desktop user.
+            # The helper checks the resulting owner-only ACL before token I/O.
+            & (Join-Path $PSScriptRoot "protect-obs-plugin-token-dir.ps1") -Directory $secretDir
             $tokenHandoff = Join-Path $secretDir ("github-token-" + [Guid]::NewGuid().ToString("N") + ".dpapi")
             # ConvertFrom-SecureString uses Windows CurrentUser DPAPI (no key).
             [IO.File]::WriteAllText($tokenHandoff, (ConvertFrom-SecureString $secureToken))
