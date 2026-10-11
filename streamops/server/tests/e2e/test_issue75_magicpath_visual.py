@@ -104,9 +104,35 @@ def position(page,case,reference):
     page.wait_for_timeout(80)
 
 def stage_reference(page,url,case):
-    page.goto(url+"/?design="+case["design"]+"&state="+case["state"])
+    errors=[]
+    page.on("pageerror",lambda error: errors.append(str(error)))
+    page.on("console",lambda message: errors.append("console: "+message.text)
+            if message.type=="error" else None)
+    destination=url+"/?design="+case["design"]+"&state="+case["state"]
+    response=page.goto(destination,wait_until="load",timeout=30000)
+    try:
+        if case["design"]=="plugin":
+            expect(page.get_by_role("heading",name="OBS Plugin Manager")).to_be_visible(timeout=15000)
+        else:
+            expect(page.get_by_role("heading",name="Plugin Manager",exact=True)).to_be_visible(timeout=15000)
+    except AssertionError:
+        # A missing heading indicates the reference JS never mounted; do
+        # not silently retry or skip comparison. Preserve the cause.
+        folder=ARTIFACTS/case["label"]
+        folder.mkdir(parents=True,exist_ok=True)
+        page.screenshot(path=str(folder/"reference-startup-failure.png"))
+        state=page.evaluate("""() => ({
+          title:document.title,readyState:document.readyState,
+          bodyText:document.body?.innerText?.slice(0,1000),
+          scripts:[...document.scripts].map(s=>s.src)
+        })""")
+        (folder/"reference-startup-failure.json").write_text(
+            json.dumps({"status":response.status if response else None,
+                        "url":destination,"browser":state,"errors":errors},
+                       indent=2),encoding="utf-8"
+        )
+        raise
     if case["design"]=="plugin":
-        expect(page.get_by_role("heading",name="OBS Plugin Manager")).to_be_visible()
         if case["state"]=="blocked":
             expect(page.get_by_text("Live / blocked",exact=True)).to_be_visible()
         if case["state"]=="confirm":
@@ -121,8 +147,6 @@ def stage_reference(page,url,case):
             assert page.evaluate("window.scrollY")==reference_scroll, (
                 "Confirm must overlay rather than shift the original page"
             )
-    else:
-        expect(page.get_by_role("heading",name="Plugin Manager",exact=True)).to_be_visible()
     stable(page)
     position(page,case,True)
 
