@@ -1,0 +1,44 @@
+{
+  "schema_version": 2,
+  "approval_status": "DESIGN_CHANGE_APPROVED__NEW_VISUAL_GOLDENS_PENDING",
+  "approved": false,
+  "design_change": {
+    "scope": "#86 Steam Node capture READY display; Steam restart modal real warning; Game Force Stop disabled V1",
+    "owner_decision": "2026-10-11 current conversation",
+    "production_release_approved": false
+  },
+  "legacy_approved_goldens": {
+    "count": 19,
+    "manifest_path": "streamops/server/tests/visual_magicpath/manifest.json",
+    "preserved": true
+  },
+  "reference_directory": "reference_source_v2",
+  "review_candidates_only": true,
+  "source": [
+    {
+      "name": "steam",
+      "component_id": "459507753589833728",
+      "revision_id": "460004034603028480",
+      "source_path": "streamops/server/tests/visual_magicpath/reference_source_v2/src/SteamManager.tsx",
+      "git_blob_sha1": "05e84a44eaea945f946958687ba156ec14edcbff"
+    },
+    {
+      "name": "games",
+      "component_id": "459507767749795840",
+      "revision_id": "460004044581269504",
+      "source_path": "streamops/server/tests/visual_magicpath/reference_source_v2/src/GameManager.tsx",
+      "git_blob_sha1": "17ccc06ceacbe836f5d831fb78810f2da36aa28e"
+    },
+    {
+      "name": "css",
+      "source_path": "streamops/server/tests/visual_magicpath/reference_source_v2/src/index.css",
+      "git_blob_sha1": "c8fc13b7718d153e3fbed19ee6ed9eb87f978557"
+    }
+  ],
+  "new_goldens": {
+    "approved": false,
+    "approval_url": null,
+    "expected_sha256": {},
+    "notes": "New rendered references are candidates only. No automatic Golden promotion, no threshold relaxation."
+  }
+}
