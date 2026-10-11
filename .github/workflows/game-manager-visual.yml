@@ -5,6 +5,7 @@ on:
     paths:
       - 'streamops/server/web/games*'
       - 'streamops/server/web/steam*'
+      - 'streamops/server/web/node-health.js'
       - 'streamops/server/tests/visual_magicpath/**'
       - 'streamops/server/tests/e2e/test_magicpath_visual.py'
       - 'streamops/server/tests/test_magicpath_visual_contract.py'
