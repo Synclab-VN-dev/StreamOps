@@ -1,0 +1,22 @@
+{
+  "name": "streamops-magicpath-v2-review",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "vite preview --host 127.0.0.1 --port 5179 --strictPort",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "lucide-react": "0.468.0"
+  },
+  "devDependencies": {
+    "vite": "7.1.0",
+    "tailwindcss": "4.1.12",
+    "@tailwindcss/vite": "4.1.12",
+    "tailwindcss-animate": "1.0.7",
+    "typescript": "5.9.2"
+  }
+}

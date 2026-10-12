@@ -1,9 +1,13 @@
 import json
+import threading
 import time
 from pathlib import Path
 
 from d4planner import cli, daemon
-from d4planner.runtime.store import EventStore, RuntimePaths, atomic_write_json
+from d4planner.runtime.events.model import EventEnvelope
+from d4planner.runtime.events.repository import SQLiteEventRepository
+from d4planner.runtime.events.store import EventStore
+from d4planner.runtime.store import RuntimePaths, atomic_write_json
 
 
 def test_cli_parser_exposes_expected_commands():
@@ -15,6 +19,7 @@ def test_cli_parser_exposes_expected_commands():
         ["stop"],
         ["stop", "--stop-nvda"],
         ["doctor"],
+        ["input-marker-probe", "--key", "scroll-lock", "--seconds", "5"],
         ["path", "status"],
         ["character", "equipment"],
         ["character", "equipment", "replay", "sample.jsonl", "--trace"],
@@ -51,6 +56,7 @@ def test_logs_pretty_and_raw_use_same_unified_event_stream(tmp_path, capsys):
         {
             "state": "RUNNING",
             "sessionDir": str(store.session.directory),
+            "sessionId": store.session.session_id,
             "captureActive": True,
         },
     )
@@ -87,6 +93,7 @@ def test_equipment_component_logs_pretty_and_raw(tmp_path, capsys):
         {
             "state": "RUNNING",
             "sessionDir": str(store.session.directory),
+            "sessionId": store.session.session_id,
             "captureActive": True,
         },
     )
@@ -161,7 +168,7 @@ def test_start_detach_does_not_follow_logs(monkeypatch, tmp_path):
     monkeypatch.setattr(
         cli,
         "_wait_start",
-        lambda _paths, _pid, timeout: {"state": "RUNNING", "captureActive": True},
+        lambda _paths, _pid, timeout, **kw: {"state": "RUNNING", "captureActive": True},
     )
 
     assert cli.command_start(
@@ -290,6 +297,7 @@ def test_doctor_reports_stale_supervisor_and_capture_lease(monkeypatch, tmp_path
             "state": "RUNNING",
             "supervisorPid": 99,
             "sessionDir": str(store.session.directory),
+            "sessionId": store.session.session_id,
             "captureActive": True,
             "lastEventAt": None,
         },
@@ -397,6 +405,58 @@ def test_task_preparation_failure_persists_blocked_before_supervisor(
     assert "Unable to start" in capsys.readouterr().err
 
 
+def test_isolated_restart_required_cleans_only_owned_tasks(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    cleaned = []
+    monkeypatch.setattr(cli, "_spawn_daemon", lambda **kwargs: 42)
+    monkeypatch.setattr(
+        cli,
+        "_wait_start",
+        lambda *args, **kwargs: {
+            "state": "RESTART_REQUIRED",
+            "detail": "existing Steam needs a normal restart",
+            "captureActive": False,
+        },
+    )
+    monkeypatch.setattr(
+        cli,
+        "_cleanup_isolated_tasks",
+        lambda _paths, **kwargs: cleaned.append(kwargs) or True,
+    )
+
+    result = cli.command_start(
+        paths,
+        speech=False,
+        isolated=True,
+        detached=True,
+        timeout=1,
+        block_marker=True,
+        controller_profile="xbox16",
+    )
+
+    assert result == 3
+    assert cleaned == [{"enabled": True, "stop_started_nvda": True}]
+
+
+def test_isolated_stop_cleans_owned_tasks_after_ack(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    atomic_write_json(paths.runtime_state, {
+        "state": "STOPPED",
+        "supervisorPid": None,
+        "extras": {"runtime": {"isolated": True}},
+    })
+    cleaned = []
+    monkeypatch.setattr(
+        cli,
+        "_cleanup_isolated_tasks",
+        lambda _paths, **kwargs: cleaned.append(kwargs) or True,
+    )
+
+    assert cli.command_stop(paths) == 0
+    assert cleaned == [{"enabled": True}]
+
+
 def test_second_start_does_not_spawn_duplicate_supervisor(monkeypatch, tmp_path):
     paths = RuntimePaths(tmp_path / "home")
     paths.ensure()
@@ -433,14 +493,21 @@ def test_ctrl_c_detaches_logs_without_requesting_stop(monkeypatch, tmp_path):
             "state": "RUNNING",
             "supervisorPid": 123,
             "sessionDir": str(store.session.directory),
+            "sessionId": store.session.session_id,
         },
     )
 
     def interrupted(*_args, **_kwargs):
-        yield '{"type":"runtime.start","timestamp":"","data":{}}'
+        yield {
+            "eventSeq": 1,
+            "type": "runtime.start",
+            "timestamp": "",
+            "sessionId": "detach",
+            "data": {},
+        }
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(cli, "_event_lines", interrupted)
+    monkeypatch.setattr(cli, "_sqlite_events", interrupted)
 
     assert cli.command_logs(paths, follow=True, raw=False) == 0
     assert not paths.stop_request.exists()
@@ -515,6 +582,7 @@ def test_broken_pipe_detaches_logs_without_stop_request(monkeypatch, tmp_path):
             "state": "RUNNING",
             "supervisorPid": 123,
             "sessionDir": str(store.session.directory),
+            "sessionId": store.session.session_id,
         },
     )
 
@@ -574,6 +642,32 @@ def test_stop_nvda_runs_after_capture_disabled_when_planner_already_stopped(
     assert observed == [False]
 
 
+def test_isolated_stop_nvda_uses_owned_namespace_before_task_cleanup(
+    monkeypatch, tmp_path,
+):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    atomic_write_json(paths.runtime_state, {
+        "state": "STOPPED",
+        "supervisorPid": None,
+        "extras": {"runtime": {"isolated": True}},
+    })
+    events = []
+    monkeypatch.setattr(
+        cli,
+        "_stop_nvda",
+        lambda _paths, *, timeout, isolated: events.append(("nvda", isolated)) or 0,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_cleanup_isolated_tasks",
+        lambda _paths, *, enabled: events.append(("tasks", enabled)) or True,
+    )
+
+    assert cli.command_stop(paths, timeout=0.1, stop_nvda=True) == 0
+    assert events == [("nvda", True), ("tasks", True)]
+
+
 def test_stop_nvda_already_absent_is_success(monkeypatch, tmp_path, capsys):
     paths = RuntimePaths(tmp_path / "home")
     paths.ensure()
@@ -615,3 +709,332 @@ def test_stop_nvda_failure_is_nonzero_and_capture_stays_disabled(
     assert read_json(paths.capture_state)["enabled"] is False
     err = capsys.readouterr().err
     assert "no force kill" in err
+
+
+def test_input_marker_probe_rejects_non_windows(monkeypatch, tmp_path, capsys):
+    paths = RuntimePaths(tmp_path / "home")
+    monkeypatch.setattr(cli.os, "name", "posix")
+    assert cli.command_input_marker_probe(
+        paths,
+        key="scroll-lock",
+        seconds=1,
+    ) == 2
+    assert "requires Windows" in capsys.readouterr().err
+
+
+def test_input_marker_probe_rejects_unknown_key(monkeypatch, tmp_path, capsys):
+    paths = RuntimePaths(tmp_path / "home")
+    monkeypatch.setattr(cli.os, "name", "nt")
+    assert cli.command_input_marker_probe(
+        paths,
+        key="f24",
+        seconds=1,
+    ) == 2
+    assert "unsupported marker key" in capsys.readouterr().err
+
+
+def test_input_marker_probe_relays_from_ssh_session(monkeypatch, tmp_path, capsys):
+    paths = RuntimePaths(tmp_path / "home")
+    monkeypatch.setattr(cli.os, "name", "nt")
+    monkeypatch.setattr(cli.time, "sleep", lambda _seconds: None)
+
+    class FakeRuntime:
+        def __init__(self, _paths):
+            assert _paths == paths
+
+        def current_process_session_id(self):
+            return 0
+
+        def active_console_session_id(self):
+            return 1
+
+        def launch_input_marker_probe_task(self, *, key, seconds, output_path):
+            assert key == "scroll-lock"
+            assert seconds == 1
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(
+                "Probe process session: 1\n"
+                "Active console session: 1\n"
+                "Marker key: scroll-lock (VK=0x91)\n"
+                "SCROLL_LOCK DOWN\n"
+                "SCROLL_LOCK UP\n"
+                "Input marker probe complete.\n"
+                f"{cli.INPUT_MARKER_PROBE_COMPLETE}\n",
+                encoding="utf-8",
+            )
+
+    monkeypatch.setattr(cli, "WindowsRuntime", FakeRuntime)
+
+    assert cli.command_input_marker_probe(
+        paths,
+        key="scroll-lock",
+        seconds=1,
+    ) == 0
+    out = capsys.readouterr().out
+    assert "relaying marker probe to interactive desktop" in out
+    assert "Probe process session: 1" in out
+    assert "SCROLL_LOCK DOWN" in out
+
+
+def test_pretty_event_renders_input_marker():
+    rendered = cli._pretty_event(
+        {
+            "eventSeq": 1,
+            "type": "input.marker.raw",
+            "timestamp": "2026-10-09T03:20:12.315+07:00",
+            "sessionId": "s",
+            "data": {"key": "F11", "state": "down"},
+        }
+    )
+    assert rendered == "[03:20:12.315] input.marker.raw F11 DOWN"
+
+
+def test_sqlite_follow_from_end_skips_history_and_yields_new_event(tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    store = EventStore.create(paths, silent=True, session_id="follow")
+    store.emit("speech.raw", {"text": "old"})
+
+    def append_later():
+        time.sleep(0.05)
+        writer = SQLiteEventRepository(paths.events_db)
+        try:
+            writer.append_batch(
+                [
+                    EventEnvelope(
+                        event_seq=2,
+                        type="input.marker.raw",
+                        timestamp="2026-10-09T03:20:00.200+07:00",
+                        session_id="follow",
+                        data={
+                            "source": "steamInput",
+                            "device": "keyboard",
+                            "key": "F11",
+                            "virtualKey": 122,
+                            "state": "down",
+                            "process": "diablo iv",
+                            "processId": 1280,
+                            "contextSource": "win32Foreground",
+                            "windowTitle": "Diablo IV",
+                        },
+                    )
+                ]
+            )
+        finally:
+            writer.close()
+
+    events = cli._sqlite_events(
+        paths.events_db,
+        session_id="follow",
+        follow=True,
+        from_end=True,
+    )
+    thread = threading.Thread(target=append_later)
+    thread.start()
+    try:
+        event = next(events)
+    finally:
+        events.close()
+        thread.join(timeout=1.0)
+        store.close()
+
+    assert event["eventSeq"] == 2
+    assert event["type"] == "input.marker.raw"
+
+
+
+def test_block_flag_cli_parser_and_daemon_cli(monkeypatch):
+    assert cli.build_parser().parse_args(["start", "-d", "--block"]).block is True
+    assert cli.build_parser().parse_args(["start", "-d"]).block is False
+
+
+def test_uat_attach_only_cli_requires_isolated_mode(
+    monkeypatch, tmp_path, capsys,
+):
+    paths = RuntimePaths(tmp_path / "home")
+    monkeypatch.setattr(
+        cli,
+        "_spawn_daemon",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("must not launch")),
+    )
+
+    result = cli.command_start(
+        paths,
+        speech=False,
+        isolated=False,
+        detached=True,
+        timeout=1,
+        block_marker=False,
+        controller_profile="xbox16",
+        uat_attach_only=True,
+    )
+
+    assert result == 4
+    assert "requires --isolated" in capsys.readouterr().err
+
+
+def test_uat_attach_only_cli_allows_stopped_mode_regression_variants(
+    monkeypatch, tmp_path,
+):
+    for block_marker, controller_profile in (
+        (False, "xbox16"),
+        (False, None),
+        (True, None),
+    ):
+        paths = RuntimePaths(tmp_path / f"home-{block_marker}-{controller_profile}")
+        launches = []
+        monkeypatch.setattr(
+            cli, "_spawn_daemon", lambda **kwargs: launches.append(kwargs) or 42
+        )
+        monkeypatch.setattr(
+            cli,
+            "_wait_start",
+            lambda *args, **kwargs: {
+                "state": "RUNNING",
+                "captureActive": True,
+                "extras": {
+                    "inputMarker": {
+                        "mode": "BLOCK" if block_marker else "OBSERVE",
+                        "state": "ACTIVE",
+                    }
+                },
+            },
+        )
+
+        result = cli.command_start(
+            paths,
+            speech=False,
+            isolated=True,
+            detached=True,
+            timeout=1,
+            block_marker=block_marker,
+            controller_profile=controller_profile,
+            uat_attach_only=True,
+        )
+
+        assert result == 0
+        assert launches[0]["uat_attach_only"] is True
+        assert launches[0]["block_marker"] is block_marker
+        assert launches[0].get("controller_profile") == controller_profile
+
+
+def test_uat_attach_only_cli_forwards_to_daemon(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    launches = []
+    monkeypatch.setattr(cli, "_spawn_daemon", lambda **kwargs: launches.append(kwargs) or 42)
+    monkeypatch.setattr(
+        cli,
+        "_wait_start",
+        lambda *args, **kwargs: {
+            "state": "RUNNING",
+            "captureActive": True,
+            "extras": {"inputMarker": {"mode": "BLOCK", "state": "ACTIVE"}},
+        },
+    )
+
+    result = cli.command_start(
+        paths,
+        speech=False,
+        isolated=True,
+        detached=True,
+        timeout=1,
+        block_marker=True,
+        controller_profile="xbox16",
+        uat_attach_only=True,
+    )
+
+    assert result == 0
+    assert launches == [{
+        "paths": paths,
+        "speech": False,
+        "isolated": True,
+        "block_marker": True,
+        "uat_attach_only": True,
+        "controller_profile": "xbox16",
+    }]
+
+
+def test_marker_logs_show_suppression_only_when_true():
+    event = {
+        "type": "input.marker.raw",
+        "timestamp": "2026-10-10T08:15:21.347+07:00",
+        "data": {"key": "F11", "state": "down", "suppressed": True},
+    }
+    assert "[BLOCKED]" in cli._pretty_event(event)
+    event["data"]["suppressed"] = False
+    assert "[BLOCKED]" not in cli._pretty_event(event)
+
+
+def test_block_start_refuses_live_observe_supervisor(monkeypatch, tmp_path, capsys):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    atomic_write_json(paths.runtime_state, {
+        "state": "RUNNING", "supervisorPid": 77, "silent": True,
+        "extras": {"inputMarker": {"key": "F11", "mode": "OBSERVE", "state": "ACTIVE"}},
+    })
+    monkeypatch.setattr(cli, "_pid_alive", lambda pid: True)
+    monkeypatch.setattr(
+        cli, "_spawn_daemon",
+        lambda **kw: (_ for _ in ()).throw(AssertionError("must not restart")),
+    )
+    assert cli.command_start(
+        paths, speech=False, isolated=False, detached=True,
+        timeout=1, block_marker=True,
+    ) == 4
+    assert "Run 'd4planner stop'" in capsys.readouterr().err
+
+
+def test_observe_start_refuses_live_block_supervisor(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    atomic_write_json(paths.runtime_state, {
+        "state": "RUNNING", "supervisorPid": 77, "silent": True,
+        "extras": {"inputMarker": {"key": "F11", "mode": "BLOCK", "state": "ACTIVE"}},
+    })
+    monkeypatch.setattr(cli, "_pid_alive", lambda pid: True)
+    assert cli.command_start(
+        paths, speech=False, isolated=False, detached=True,
+        timeout=1, block_marker=False,
+    ) == 4
+
+
+def test_block_start_waits_for_active_hook_and_does_not_claim_success_without_it(
+    monkeypatch, tmp_path, capsys,
+):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    monkeypatch.setattr(cli, "_spawn_daemon", lambda **kwargs: 42)
+    monkeypatch.setattr(
+        cli, "_wait_start",
+        lambda *args, **kw: {
+            "state": "RUNNING", "captureActive": True,
+            "extras": {"inputMarker": {"mode": "BLOCK", "state": "ERROR"}},
+        },
+    )
+    assert cli.command_start(
+        paths, speech=False, isolated=False, detached=True,
+        timeout=1, block_marker=True,
+    ) == 2
+    assert "hook is not active" in capsys.readouterr().err
+
+
+def test_block_start_accepts_ready_hook_status(monkeypatch, tmp_path, capsys):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    arguments = []
+    monkeypatch.setattr(
+        cli, "_spawn_daemon",
+        lambda **kwargs: arguments.append(kwargs) or 42,
+    )
+    monkeypatch.setattr(
+        cli, "_wait_start",
+        lambda *args, **kw: {
+            "state": "RUNNING", "captureActive": True,
+            "extras": {"inputMarker": {"key": "F11", "mode": "BLOCK", "state": "ACTIVE"}},
+        },
+    )
+    assert cli.command_start(
+        paths, speech=False, isolated=False, detached=True,
+        timeout=1, block_marker=True,
+    ) == 0
+    assert arguments[0]["block_marker"] is True
+    assert "F11 / BLOCK / ACTIVE" in capsys.readouterr().out

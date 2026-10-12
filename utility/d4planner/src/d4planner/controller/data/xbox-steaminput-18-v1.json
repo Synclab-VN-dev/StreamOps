@@ -1,0 +1,122 @@
+{
+  "layoutId": "xbox-steaminput-18-v1",
+  "schemaVersion": 1,
+  "alias": "xbox16",
+  "mappingSource": "configuredLayout",
+  "digital": [
+    {
+      "controlId": "A",
+      "key": "F11",
+      "virtualKey": 122,
+      "captureEnabled": true
+    },
+    {
+      "controlId": "B",
+      "key": "F12",
+      "virtualKey": 123,
+      "captureEnabled": true
+    },
+    {
+      "controlId": "X",
+      "key": "F10",
+      "virtualKey": 121,
+      "captureEnabled": true
+    },
+    {
+      "controlId": "Y",
+      "key": "F9",
+      "virtualKey": 120,
+      "captureEnabled": true
+    },
+    {
+      "controlId": "LB",
+      "key": "F8",
+      "virtualKey": 119,
+      "captureEnabled": true
+    },
+    {
+      "controlId": "RB",
+      "key": "F7",
+      "virtualKey": 118,
+      "captureEnabled": true
+    },
+    {
+      "controlId": "LT",
+      "key": "F6",
+      "virtualKey": 117,
+      "captureEnabled": true
+    },
+    {
+      "controlId": "RT",
+      "key": "F5",
+      "virtualKey": 116,
+      "captureEnabled": true
+    },
+    {
+      "controlId": "SELECT",
+      "key": "F4",
+      "virtualKey": 115,
+      "captureEnabled": true
+    },
+    {
+      "controlId": "START",
+      "key": "F3",
+      "virtualKey": 114,
+      "captureEnabled": true
+    },
+    {
+      "controlId": "L3",
+      "key": "F2",
+      "virtualKey": 113,
+      "captureEnabled": true
+    },
+    {
+      "controlId": "R3",
+      "key": "F1",
+      "virtualKey": 112,
+      "captureEnabled": true
+    },
+    {
+      "controlId": "DPAD_UP",
+      "key": "[",
+      "virtualKey": 219,
+      "captureEnabled": true
+    },
+    {
+      "controlId": "DPAD_DOWN",
+      "key": "]",
+      "virtualKey": 221,
+      "captureEnabled": true
+    },
+    {
+      "controlId": "DPAD_LEFT",
+      "key": "\\",
+      "virtualKey": 220,
+      "captureEnabled": true
+    },
+    {
+      "controlId": "DPAD_RIGHT",
+      "key": "`",
+      "virtualKey": 192,
+      "captureEnabled": true
+    }
+  ],
+  "analog": [
+    {
+      "controlId": "LEFT_STICK",
+      "axes": [
+        "X",
+        "Y"
+      ],
+      "captureEnabled": false
+    },
+    {
+      "controlId": "RIGHT_STICK",
+      "axes": [
+        "X",
+        "Y"
+      ],
+      "captureEnabled": false
+    }
+  ]
+}

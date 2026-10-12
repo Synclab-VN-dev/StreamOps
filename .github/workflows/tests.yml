@@ -6,6 +6,30 @@ on:
 permissions:
   contents: read
 jobs:
+  d4planner-portability:
+    # Pure controller profile, hook policy and synthetic ingress tests must
+    # import on Linux without trying to initialize native Windows APIs.
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install D4Planner package and tests
+        run: python -m pip install -e 'utility/d4planner[dev]'
+      - name: Linux pure controller regression (no Steam/Win32)
+        run: |
+          python -m pytest -q \
+            utility/d4planner/tests/test_controller_contract.py \
+            utility/d4planner/tests/test_controller_additional_gates.py \
+            utility/d4planner/tests/test_multi_key_hook.py \
+            utility/d4planner/tests/test_multi_key_capture.py \
+            utility/d4planner/tests/test_issue87_uat_evidence.py
+      - name: Controller CLI validate on Linux
+        run: |
+          python -m d4planner.cli controller profiles
+          python -m d4planner.cli controller validate xbox16
   windows:
     runs-on: windows-latest
     timeout-minutes: 40
@@ -23,6 +47,7 @@ jobs:
           if ("${{ github.event_name }}" -eq "push") {
             "d4planner=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
             "server=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "gameui=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
             exit 0
           }
 
@@ -52,9 +77,14 @@ jobs:
             ).Count -gt 0)
             $server = $overlay -or (@(
               $realFiles | Where-Object {
-                $_ -like "streamops/*" -or $_ -eq "pyproject.toml"
+                $_ -like "streamops/*" -or
+                $_ -like "scripts/e2e/issue85*" -or
+                $_ -like "scripts/devices/a-windows/issue85*" -or
+                $_ -like "scripts/ci/*game*" -or
+                $_ -eq "pyproject.toml"
               }
-            ).Count -gt 0)
+            ).Count -gt 0) -or
+            (".github/workflows/tests.yml" -in $files)
           }
 
           "d4planner=$($d4planner.ToString().ToLowerInvariant())" |
@@ -62,10 +92,86 @@ jobs:
           "server=$($server.ToString().ToLowerInvariant())" |
             Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
+          # FE gate scope is independent of BE G1..G6.
+          $gameui = @(
+            $files | Where-Object {
+              $_ -like "streamops/server/web/games*" -or
+              $_ -like "streamops/server/web/steam*" -or
+              $_ -like "streamops/server/web/ws-client*" -or
+              $_ -like "streamops/server/web/node-health*" -or
+              $_ -like "streamops/server/tests/e2e/test_games_ui.py" -or
+              $_ -eq "streamops/server/tests/e2e/test_games_fe_be_integration.py" -or
+              $_ -like "streamops/server/tests/visual_magicpath/*" -or
+              $_ -eq "streamops/server/tests/test_magicpath_visual_contract.py" -or
+              $_ -eq "streamops/server/tests/e2e/test_magicpath_visual.py" -or
+              $_ -eq ".github/workflows/tests.yml"
+            }
+          ).Count -gt 0
+          "gameui=$($gameui.ToString().ToLowerInvariant())" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Game Manager FE gates required: $gameui"
+
           Write-Host "Changed files:"
           $files | ForEach-Object { Write-Host "  $_" }
           Write-Host "D4Planner tests: $d4planner"
           Write-Host "Server tests: $server"
+
+      - name: 'Issue #86 PR89 read-only UAT runner classification + safety smoke'
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 89
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'issue86-uat-runner'
+          & pwsh -NoProfile -File ./scripts/acceptance/issue86-pr89-uat.ps1 -Mode SelfTest -OutputRoot $root
+          if ($LASTEXITCODE -ne 0) { throw 'Issue86 runner SelfTest failed' }
+          $selftest = Get-ChildItem -LiteralPath $root -Recurse -Filter report.json |
+            Where-Object { (Get-Content $_.FullName -Raw | ConvertFrom-Json).metadata.mode -eq 'SelfTest' } |
+            Select-Object -First 1
+          if (-not $selftest) { throw 'Missing UAT SelfTest report' }
+          $p = Get-Content $selftest.FullName -Raw | ConvertFrom-Json
+          if ($p.outcome -ne 'PASS' -or $p.summary.PASS -ne 1 -or $p.lifecycle_actions_performed -ne 0) {
+            throw 'UAT SelfTest report incorrect'
+          }
+          # GitHub runner has no isolated Host A task/runtime: fail CLOSED as BLOCKED,
+          # never test/live-control production or install anything on host A.
+          # Deliberate BLOCKED=exit 2 is not a product/CI failure here.
+          # GitHub Actions enables native-command errors by default in pwsh.
+          $PSNativeCommandUseErrorActionPreference = $false
+          & pwsh -NoProfile -File ./scripts/acceptance/issue86-pr89-uat.ps1 -Mode Preflight -OutputRoot $root
+          $blockedExit = $LASTEXITCODE
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($blockedExit -ne 2) { throw "UAT preflight did not fail closed without A: $blockedExit" }
+          $reports = @(Get-ChildItem -LiteralPath $root -Recurse -Filter report.json |
+            ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json })
+          $preflight = @($reports | Where-Object { $_.metadata.mode -eq 'Preflight' })
+          if ($preflight.Count -ne 1 -or $preflight[0].outcome -ne 'BLOCKED' -or
+              $preflight[0].lifecycle_actions_performed -ne 0 -or $preflight[0].summary.FAIL -ne 0) {
+            throw 'UAT Preflight case classification is unsafe/inaccurate'
+          }
+          # Build the exact one-shot handoff package from the tested PR worktree.
+          # Prove the downloaded script works outside source using -WorktreeRoot.
+          $package = Join-Path $root 'package'
+          New-Item -ItemType Directory -Force -Path $package | Out-Null
+          Copy-Item ./scripts/acceptance/issue86-pr89-uat.ps1 (Join-Path $package 'issue86-pr89-uat.ps1')
+          Copy-Item ./scripts/acceptance/issue86-pr89-uat.README.md (Join-Path $package 'README.md')
+          Copy-Item ./scripts/acceptance/issue86-pr89-web-setup.ps1 (Join-Path $package 'setup-issue86-pr89-web.ps1')
+          & pwsh -NoProfile -File (Join-Path $package 'setup-issue86-pr89-web.ps1') -Mode SelfTest -OutputRoot $root
+          if ($LASTEXITCODE -ne 0) { throw 'Isolated PR89 Web Setup SelfTest failed' }
+          & pwsh -NoProfile -File (Join-Path $package 'issue86-pr89-uat.ps1') `
+            -Mode SelfTest -WorktreeRoot $env:GITHUB_WORKSPACE -OutputRoot $root
+          if ($LASTEXITCODE -ne 0) { throw 'Downloaded one-shot UAT package failed SelfTest' }
+          # GitHub's pwsh wrapper propagates LASTEXITCODE even after checking it.
+          # Reset only CI's expected negative-test exit, not the UAT report.
+          $global:LASTEXITCODE = 0
+          exit 0
+
+      - name: 'Upload #86 UAT runner, instructions and CI evidence'
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.number == 89
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue86-uat-harness-${{ github.sha }}
+          path: ${{ runner.temp }}/issue86-uat-runner
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Install D4Planner dev dependencies
         if: steps.changes.outputs.d4planner == 'true'
@@ -73,9 +179,244 @@ jobs:
       - name: Test D4Planner runtime
         if: steps.changes.outputs.d4planner == 'true'
         run: python -m pytest -q utility/d4planner/tests
+      - name: Issue87 UT-04 and E2E-03/11 required gates (synthetic CI)
+        if: steps.changes.outputs.d4planner == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pytest -q utility/d4planner/tests/test_controller_additional_gates.py -k 'test_ut04_vk_mapping_is_keylayout_independent'
+          if ($LASTEXITCODE -ne 0) { throw 'Issue87 UT-04 failed' }
+          python -m pytest -q utility/d4planner/tests/test_e2e_cli_runtime.py -k 'test_e2e03_xbox16_session1_one_hook_end_to_end_to_sqlite or test_e2e11_stop_unhooks_then_mode_switch_without_stale_capture'
+          if ($LASTEXITCODE -ne 0) { throw 'Issue87 E2E-03/11 failed' }
       - name: Compile D4Planner runtime
         if: steps.changes.outputs.d4planner == 'true'
         run: python -m compileall -q utility/d4planner
+      - name: D4Planner V1 packaged wheel smoke (isolated)
+        if: steps.changes.outputs.d4planner == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $wheelDir = Join-Path $env:RUNNER_TEMP 'd4planner-wheel'
+          $venvDir = Join-Path $env:RUNNER_TEMP 'd4planner-wheel-venv'
+          New-Item -ItemType Directory -Force $wheelDir | Out-Null
+          python -m pip wheel --no-deps --wheel-dir $wheelDir utility/d4planner
+          if ($LASTEXITCODE -ne 0) { throw 'D4Planner wheel build failed' }
+          $wheel = @(Get-ChildItem $wheelDir -Filter 'd4planner-*.whl')
+          if ($wheel.Count -ne 1) { throw "Expected exactly one D4Planner wheel, got $($wheel.Count)" }
+          python -m venv $venvDir
+          if ($LASTEXITCODE -ne 0) { throw 'D4Planner isolated venv creation failed' }
+          $isolatedPython = Join-Path $venvDir 'Scripts/python.exe'
+          & $isolatedPython -m pip install --no-index --no-deps $wheel[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw 'D4Planner isolated wheel install failed' }
+          Push-Location $env:RUNNER_TEMP
+          try {
+            & $isolatedPython -I -m d4planner.cli controller validate xbox16
+            if ($LASTEXITCODE -ne 0) { throw 'D4Planner installed wheel profile validation failed' }
+            & $isolatedPython -I -m d4planner.cli controller profiles
+            if ($LASTEXITCODE -ne 0) { throw 'D4Planner installed wheel profile discovery failed' }
+          } finally {
+            Pop-Location
+          }
+      - name: Parse issue87 read-only acceptance PowerShell
+        if: steps.changes.outputs.d4planner == 'true'
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'scripts/acceptance/issue87-uat.ps1').Path,
+            [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'scripts/acceptance/issue87-real-a-uat.ps1').Path,
+            [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+      - name: Issue87 UAT safe preflight smoke (no runtime start)
+        if: steps.changes.outputs.d4planner == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Missing hook must return status=BLOCKED (exit=2); inspect that exit
+          # explicitly rather than treating a nonzero child as a PowerShell crash.
+          $PSNativeCommandUseErrorActionPreference = $false
+          $homeDir = Join-Path $env:RUNNER_TEMP 'issue87-empty-home'
+          $evidence = Join-Path $env:RUNNER_TEMP 'issue87-preflight-smoke'
+          New-Item -ItemType Directory -Force $homeDir | Out-Null
+          & pwsh -NoProfile -File ./scripts/acceptance/issue87-uat.ps1 `
+            -Mode Preflight -DataDir $homeDir -EvidenceDir $evidence
+          $preflightExit = $LASTEXITCODE
+          # GitHub's pwsh runner implicitly exits with LASTEXITCODE at the
+          # end of a job step; BLOCKED is expected in this negative test.
+          $global:LASTEXITCODE = 0
+          if ($preflightExit -ne 2) {
+            throw "Expected BLOCKED without a running Session1 hook, got $preflightExit"
+          }
+          $report = Get-Content (Join-Path $evidence 'preflight.json') -Raw | ConvertFrom-Json
+          $byId = @{}
+          foreach ($item in $report.checks) { $byId[$item.id] = $item.result }
+          if ($byId['PF-03A'] -ne 'PASS' -or $byId['PF-03B'] -ne 'PASS') {
+            throw 'Controller CLI profile/validate failed in UAT preflight smoke'
+          }
+          if ($byId['PF-04'] -ne 'BLOCKED') {
+            throw 'Unsafe false PASS: missing live hook was not blocked'
+          }
+          Write-Host 'Issue87 read-only negative preflight PASS: CLI validated; no live hook was accepted'
+          $global:LASTEXITCODE = 0
+      - name: Issue87 Real-A UAT detached HEAD Preflight regression
+        if: steps.changes.outputs.d4planner == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $head = (& git rev-parse HEAD).Trim()
+          # Owner tests the pinned PR in a detached worktree. Reproduce that
+          # exact Git state, not just a PowerShell parser/synthetic test.
+          & git -c advice.detachedHead=false checkout --detach HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to enter detached HEAD test state' }
+          $branch = & git branch --show-current
+          if ($branch) { throw "Expected detached HEAD, saw branch: $branch" }
+          $evidence = Join-Path $env:RUNNER_TEMP 'issue87-real-a-detached-preflight'
+          & pwsh -NoProfile -File ./scripts/acceptance/issue87-real-a-uat.ps1 `
+            -Mode Preflight -ExpectedHead $head -EvidenceDir $evidence
+          $scriptExit = $LASTEXITCODE
+          $global:LASTEXITCODE = 0
+          if ($scriptExit -ne 0) {
+            if (Test-Path (Join-Path $evidence 'report.json')) {
+              Get-Content (Join-Path $evidence 'report.json') -Raw | Write-Host
+            }
+            throw "Real-A detached HEAD preflight failed: exit=$scriptExit"
+          }
+          $report = Get-Content (Join-Path $evidence 'report.json') -Raw | ConvertFrom-Json
+          if ($report.head -ne $head -or $report.mode -ne 'Preflight') {
+            throw 'Preflight did not report the expected detached commit and mode'
+          }
+          $byId = @{}
+          foreach ($item in $report.checks) { $byId[$item.id] = $item.result }
+          if ($byId['DF-01'] -ne 'PASS' -or $byId['DF-03'] -ne 'PASS') {
+            throw 'Detached Preflight failed its read-only Git/context/profile checks'
+          }
+          if ($report.taskCreatedByScript -or $report.taskStartedByScript) {
+            throw 'Preflight must never create or start an interactive task'
+          }
+          Write-Host 'Issue87 detached worktree preflight PASS (no task/runtime created)'
+          $global:LASTEXITCODE = 0
+      - name: Issue87 Real-A locale marshalling regression
+        if: steps.changes.outputs.d4planner == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $head = (& git rev-parse HEAD).Trim()
+          $branch = & git branch --show-current
+          if ($branch) { throw 'Expected detached HEAD from prior UAT test' }
+          $env:ISSUE87_EXPECTED_HEAD = $head
+          $env:ISSUE87_EVIDENCE = Join-Path $env:RUNNER_TEMP 'issue87-winrt-interop-smoke'
+          # Simulate the PowerShell/Windows A WinRT failure even if the runner's
+          # OS supports this API. Calling Get-WinUserLanguageList must NOT be
+          # required for read-only UAT baseline or crash the Preflight.
+          & pwsh -NoProfile -Command @'
+          function global:Get-WinUserLanguageList {
+            throw "Cannot marshal 'parameter #2': Invalid managed/unmanaged type combination."
+          }
+          & ./scripts/acceptance/issue87-real-a-uat.ps1 -Mode Preflight `
+            -ExpectedHead $env:ISSUE87_EXPECTED_HEAD -EvidenceDir $env:ISSUE87_EVIDENCE
+          '@
+          $smokeExit = $LASTEXITCODE
+          $global:LASTEXITCODE = 0
+          if ($smokeExit -ne 0) {
+            if (Test-Path (Join-Path $env:ISSUE87_EVIDENCE 'report.json')) {
+              Get-Content (Join-Path $env:ISSUE87_EVIDENCE 'report.json') -Raw | Write-Host
+            }
+            throw "Issue87 simulated locale-marshalling Preflight failed: $smokeExit"
+          }
+          $report = Get-Content (Join-Path $env:ISSUE87_EVIDENCE 'report.json') -Raw | ConvertFrom-Json
+          $df = $report.checks | Where-Object { $_.id -eq 'DF-01' } | Select-Object -First 1
+          if ($null -eq $df -or $df.result -ne 'PASS' -or
+              $null -eq $df.actual.userCulture -or
+              $null -eq $df.actual.keyboardLayoutPreload) {
+            throw 'Missing read-only culture/keyboard-layout evidence in DF-01'
+          }
+          if ($report.taskCreatedByScript -or $report.taskStartedByScript) {
+            throw 'Preflight must not start or create any interactive task'
+          }
+          Write-Host 'Issue87 WinRT-marshalling simulated failure regression PASS'
+          $global:LASTEXITCODE = 0
+      - name: Issue87 UAT preflight with foreign editable Python installation
+        if: steps.changes.outputs.d4planner == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $head = (& git rev-parse HEAD).Trim()
+          $foreign = Join-Path $env:RUNNER_TEMP 'issue87-old-worktree82/src'
+          New-Item -ItemType Directory -Force (Join-Path $foreign 'd4planner') | Out-Null
+          Set-Content (Join-Path $foreign 'd4planner/__init__.py') `
+            'raise RuntimeError("IMPORTED_FOREIGN_WORKTREE82")' -Encoding utf8
+          $prior = $env:PYTHONPATH
+          $env:PYTHONPATH = $foreign
+          $evidence = Join-Path $env:RUNNER_TEMP 'issue87-foreign-python-preflight'
+          try {
+            & pwsh -NoProfile -File ./scripts/acceptance/issue87-real-a-uat.ps1 `
+              -Mode Preflight -ExpectedHead $head -EvidenceDir $evidence
+            $code = $LASTEXITCODE
+            $global:LASTEXITCODE = 0
+            if ($code -ne 0) {
+              Get-Content (Join-Path $evidence 'report.json') -Raw | Write-Host
+              throw "Foreign-worktree preflight unexpectedly BLOCKED: exit=$code"
+            }
+            $report = Get-Content (Join-Path $evidence 'report.json') -Raw | ConvertFrom-Json
+            $mapped = @{}
+            foreach ($item in $report.checks) { $mapped[$item.id] = $item.result }
+            if ($mapped['DF-01'] -ne 'PASS' -or $mapped['DF-03'] -ne 'PASS') {
+              throw "Wrong PR95 module or controller contract was used"
+            }
+            $log = Get-Content (Join-Path $evidence 'module-path.log') -Raw
+            if ($log -notlike '*utility*d4planner*src*d4planner*__init__.py*') {
+              throw "Module path was not pinned to PR95: $log"
+            }
+            if ($report.taskCreatedByScript -or $report.taskStartedByScript) {
+              throw 'Read-only Preflight must not create any scheduled task'
+            }
+          } finally {
+            $env:PYTHONPATH = $prior
+            $global:LASTEXITCODE = 0
+          }
+          Write-Host 'Issue87 foreign Python source override PASS'
+      - name: Issue87 isolated PR95 Python venv local CI smoke
+        if: steps.changes.outputs.d4planner == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $head = (& git rev-parse HEAD).Trim()
+          $evidence = Join-Path $env:RUNNER_TEMP 'issue87-venv-local-ci'
+          & pwsh -NoProfile -File ./scripts/acceptance/issue87-real-a-uat.ps1 `
+            -Mode Preflight -RunLocalCI -ExpectedHead $head -EvidenceDir $evidence
+          $code = $LASTEXITCODE
+          $global:LASTEXITCODE = 0
+          if ($code -ne 0) {
+            Get-Content (Join-Path $evidence 'report.json') -Raw | Write-Host
+            throw "Isolated PR95 local CI smoke failed: $code"
+          }
+          $r = Get-Content (Join-Path $evidence 'report.json') -Raw | ConvertFrom-Json
+          $byId = @{}
+          foreach($entry in $r.checks) { $byId[$entry.id] = $entry.result }
+          if ($byId['DF-02'] -ne 'PASS' -or $byId['DF-03'] -ne 'PASS') {
+            throw 'Isolated local pytest/compile/profile acceptance incomplete'
+          }
+          $venv = Join-Path $pwd '.streamops/pr95/python-venv/Scripts/python.exe'
+          if (!(Test-Path $venv)) { throw 'PR95 virtualenv python missing' }
+          & $venv -I -c 'import d4planner;print(d4planner.__file__)'
+          if ($LASTEXITCODE -ne 0) { throw 'PR95 source unavailable with isolated Python -I' }
+          if ($r.taskCreatedByScript -or $r.taskStartedByScript) {
+            throw 'Preflight -RunLocalCI must not create a scheduled task'
+          }
+          Write-Host 'Issue87 isolated venv local CI smoke PASS'
+          $global:LASTEXITCODE = 0
       - name: Build D4Planner NVDA add-on
         if: steps.changes.outputs.d4planner == 'true'
         run: python utility/d4planner/tools/build_nvda_addon.py
@@ -110,12 +451,48 @@ jobs:
           python scripts/release/streamops_node_bundle.py verify `
             --root .streamops/node-deployment --source-commit "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Test installed wheel outside source checkout
+        id: game_wheel
         if: steps.changes.outputs.server == 'true'
         shell: pwsh
         run: |
           $env:STREAMOPS_TEST_WHEEL = (Get-ChildItem dist\*.whl | Select-Object -First 1).FullName
           python -m pytest -q streamops/server/tests/test_wheel_acceptance.py
+      - name: Game G1 — Schema and seed
+        id: game_g1
+        if: steps.changes.outputs.server == 'true'
+        run: python -m pytest -q streamops/server/tests/test_games_catalog.py streamops/server/tests/test_games_package.py
+      - name: Game G2 — Provider contract
+        id: game_g2
+        if: steps.changes.outputs.server == 'true'
+        run: python -m pytest -q streamops/server/tests/test_games_provider_contract.py
+      - name: Game G3 — Static migration
+        id: game_g3
+        if: steps.changes.outputs.server == 'true'
+        run: python -m pytest -q streamops/server/tests/test_games_catalog.py streamops/server/tests/test_games_installation.py
+      - name: Game G4 — WebSocket REST and observer notify
+        id: game_g4
+        if: steps.changes.outputs.server == 'true'
+        run: python -m pytest -q streamops/server/tests/test_games_api.py streamops/server/tests/test_games_steam_ws.py streamops/server/tests/test_games_status_hub.py streamops/server/tests/e2e/test_games_ws_contract.py streamops/server/tests/e2e/test_games_recovery.py
+      - name: Game G5 — Lifecycle safety and idempotency
+        id: game_g5
+        if: steps.changes.outputs.server == 'true'
+        run: python -m pytest -q streamops/server/tests/test_games_lifecycle.py streamops/server/tests/test_games_process_identity.py
+      - name: Game G6 — Package and wheel seed
+        id: game_g6
+        if: steps.changes.outputs.server == 'true'
+        run: python -m pytest -q streamops/server/tests/test_games_package.py streamops/server/tests/test_games_installation.py
+      - name: Game observer/lifecycle race regression — 3 runs
+        id: game_race
+        if: steps.changes.outputs.server == 'true'
+        shell: pwsh
+        run: |
+          1..3 | ForEach-Object {
+            Write-Host "Game race regression iteration $_ / 3"
+            python -m pytest -q streamops/server/tests/test_games_status_hub.py streamops/server/tests/test_games_lifecycle.py -k 'hub or concurrent or backpressure or resubscribe'
+            if ($LASTEXITCODE -ne 0) { throw "Race regression iteration $_ failed" }
+          }
       - name: Test StreamOps
+        id: server_regression
         if: steps.changes.outputs.server == 'true'
         run: python -m pytest -q
       - uses: actions/upload-artifact@v4
@@ -124,3 +501,70 @@ jobs:
           name: streamops-node-deployment-${{ github.event.pull_request.head.sha || github.sha }}
           path: .streamops/node-deployment/**
           if-no-files-found: error
+      - name: Game E2E-01 — fail-closed negative tests
+        id: game_guard_selftest
+        if: steps.changes.outputs.server == 'true'
+        shell: pwsh
+        run: |
+          $env:CI_EVENT_NAME = 'push'
+          $env:GAME_SCOPE = 'true'
+          $names = @('GAME_G1','GAME_G2','GAME_G3','GAME_G4','GAME_G5','GAME_G6',
+                     'GAME_WHEEL','GAME_RACE','GAME_REGRESSION','GAME_AUDIT_SELFTEST')
+          foreach ($name in $names) {
+            [Environment]::SetEnvironmentVariable($name, 'success', 'Process')
+          }
+          $env:GAME_G4 = 'skipped'
+          & pwsh -NoProfile -File ./scripts/ci/verify_game_required_gates.ps1 *> $null
+          if ($LASTEXITCODE -eq 0) { throw 'Audit accepted SKIPPED G4 — false green' }
+          $env:GAME_G4 = 'success'
+          $env:GAME_SCOPE = 'false'
+          & pwsh -NoProfile -File ./scripts/ci/verify_game_required_gates.ps1 *> $null
+          if ($LASTEXITCODE -eq 0) { throw 'Audit accepted missing required game scope' }
+          $env:GAME_SCOPE = 'true'
+          & pwsh -NoProfile -File ./scripts/ci/verify_game_required_gates.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Audit rejected valid all-successful gates' }
+      - name: Game E2E-01 — required gate audit
+        # This step is always evaluated, even when a prior test/install fails.
+        # GitHub branch Ruleset must ALSO require the "windows" status check.
+        if: always()
+        shell: pwsh
+        env:
+          GAME_SCOPE: ${{ steps.changes.outputs.server }}
+          GAME_G1: ${{ steps.game_g1.outcome }}
+          GAME_G2: ${{ steps.game_g2.outcome }}
+          GAME_G3: ${{ steps.game_g3.outcome }}
+          GAME_G4: ${{ steps.game_g4.outcome }}
+          GAME_G5: ${{ steps.game_g5.outcome }}
+          GAME_G6: ${{ steps.game_g6.outcome }}
+          GAME_WHEEL: ${{ steps.game_wheel.outcome }}
+          GAME_RACE: ${{ steps.game_race.outcome }}
+          GAME_REGRESSION: ${{ steps.server_regression.outcome }}
+          GAME_AUDIT_SELFTEST: ${{ steps.game_guard_selftest.outcome }}
+          CI_EVENT_NAME: ${{ github.event_name }}
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CI_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: ./scripts/ci/verify_game_required_gates.ps1
+
+      # FE gates MUST run when games/steam UI or pinned MagicPath references change.
+      # Do not mark a visual gate as PASS unless owner-approved references and
+      # real comparison both pass; artifacts are preserved on every failure.
+      - name: FE-G1 — WS contract, reducer and pinned source integrity
+        if: steps.changes.outputs.gameui == 'true'
+        run: python -m pytest -q streamops/server/tests/test_games_ui_contract.py streamops/server/tests/test_magicpath_visual_contract.py
+      - name: FE-G2 — Steam browser WebSocket regression
+        if: steps.changes.outputs.gameui == 'true'
+        run: python -m pytest -q streamops/server/tests/e2e/test_steam.py
+      - name: FE-G3 — Games UI browser states and observer fanout
+        if: steps.changes.outputs.gameui == 'true'
+        run: python -m pytest -q streamops/server/tests/e2e/test_games_ui.py streamops/server/tests/e2e/test_games_fe_be_integration.py
+      - name: FE-G4 — Lifecycle and reconnect recovery
+        if: steps.changes.outputs.gameui == 'true'
+        run: python -m pytest -q streamops/server/tests/e2e/test_games_ui.py -k 'lifecycle or reconnect or state_model'
+      - name: FE-G6 — Installed wheel FE pages and asset smoke
+        if: steps.changes.outputs.gameui == 'true'
+        shell: pwsh
+        run: |
+          $env:STREAMOPS_TEST_WHEEL = (Get-ChildItem dist\*.whl | Select-Object -First 1).FullName
+          python -m pytest -q streamops/server/tests/test_wheel_acceptance.py
+      # FE-G5 is a parallel, non-skippable visual check in game-manager-visual.yml.
+      # It requires owner-approved goldens and uploads expected/actual/diff images.
