@@ -838,14 +838,13 @@ class WindowsRuntime:
         self.require_windows()
         if not self.task_isolated:
             return []
-        scripts = self.ensure_helper_scripts()
         families = {
             self.task_name("D4Planner-Supervisor"): "supervisor",
-            self.task_name("D4Planner-NVDA"): f"helper:{scripts['nvda'].stem}",
-            self.task_name("D4Planner-NVDA-Restart"): f"helper:{scripts['nvda-restart'].stem}",
-            self.task_name("D4Planner-NVDA-Stop"): f"helper:{scripts['nvda-stop'].stem}",
-            self.task_name("D4Planner-D4"): f"helper:{scripts['d4'].stem}",
-            self.task_name("D4Planner-Tolk-Probe"): f"helper:{scripts['tolk-probe'].stem}",
+            self.task_name("D4Planner-NVDA"): "helper:start-nvda",
+            self.task_name("D4Planner-NVDA-Restart"): "helper:restart-nvda",
+            self.task_name("D4Planner-NVDA-Stop"): "helper:stop-nvda",
+            self.task_name("D4Planner-D4"): "helper:start-d4",
+            self.task_name("D4Planner-Tolk-Probe"): "helper:probe-tolk",
             self.task_name("D4Planner-Input-Marker-Probe"): "input-marker-probe",
         }
         removed: list[str] = []
