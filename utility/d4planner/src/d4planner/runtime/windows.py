@@ -103,6 +103,7 @@ class WindowsRuntime:
         marker_q = self._task_owner_marker(family).replace("'", "''")
         return (
             "$u=[System.Security.Principal.WindowsIdentity]::GetCurrent().Name;"
+            "$currentSid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value;"
             f"$taskName='{task_q}';$expectedExecute='{executable_q}';"
             f"$expectedArguments='{arguments_q}';$expectedOwner='{marker_q}';"
             f"$legacyPrefix='{prefix_q}';"
@@ -110,8 +111,11 @@ class WindowsRuntime:
             "$needsRegister=$false;"
             "if($existing){"
             "$actions=@($existing.Actions);$principal=[string]$existing.Principal.UserId;"
+            "$principalSid=$null;try{$principalSid=(New-Object "
+            "System.Security.Principal.NTAccount($principal)).Translate("
+            "[System.Security.Principal.SecurityIdentifier]).Value}catch{};"
             "$description=[string]$existing.Description;"
-            "$baseOwned=($actions.Count -eq 1)-and($principal -eq $u)-and"
+            "$baseOwned=($actions.Count -eq 1)-and($principalSid -eq $currentSid)-and"
             "([string]$actions[0].Execute -eq $expectedExecute)-and"
             "([string]$actions[0].Arguments).StartsWith($legacyPrefix,[System.StringComparison]::Ordinal);"
             "$owned=($description -eq $expectedOwner) -and $baseOwned;"

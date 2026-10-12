@@ -270,7 +270,7 @@ def test_isolated_tasks_are_namespaced_and_ownership_guarded(tmp_path, monkeypat
     assert all("D4Planner-Isolated-" in command for command in commands)
     assert all("D4Planner owner=" in command for command in commands)
     assert all("$actions.Count -eq 1" in command for command in commands)
-    assert all("$principal -eq $u" in command for command in commands)
+    assert all("$principalSid -eq $currentSid" in command for command in commands)
     assert all("refusing to modify foreign scheduled task" in command for command in commands)
     # -Force is reachable only after the ownership/adoption guard succeeds.
     assert all(command.index("refusing to modify foreign scheduled task")
@@ -333,7 +333,7 @@ def test_legacy_supervisor_can_reconcile_mode_only_after_ownership_check(
     assert "-m d4planner.daemon'" in commands[2]
     assert all("family=supervisor" in command for command in commands)
     assert all(".StartsWith($legacyPrefix" in command for command in commands)
-    assert all("$principal -eq $u" in command for command in commands)
+    assert all("$principalSid -eq $currentSid" in command for command in commands)
 
 
 def test_supervisor_foreign_task_collision_is_fail_closed_in_generated_script(
@@ -355,7 +355,7 @@ def test_supervisor_foreign_task_collision_is_fail_closed_in_generated_script(
 
     script = commands[0]
     assert "($actions.Count -eq 1)" in script
-    assert "($principal -eq $u)" in script
+    assert "($principalSid -eq $currentSid)" in script
     assert "([string]$actions[0].Execute -eq $expectedExecute)" in script
     assert "refusing to modify foreign scheduled task" in script
     assert script.index("throw ('refusing") < script.index("Register-ScheduledTask")
