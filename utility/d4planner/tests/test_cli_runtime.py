@@ -405,6 +405,58 @@ def test_task_preparation_failure_persists_blocked_before_supervisor(
     assert "Unable to start" in capsys.readouterr().err
 
 
+def test_isolated_restart_required_cleans_only_owned_tasks(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    cleaned = []
+    monkeypatch.setattr(cli, "_spawn_daemon", lambda **kwargs: 42)
+    monkeypatch.setattr(
+        cli,
+        "_wait_start",
+        lambda *args, **kwargs: {
+            "state": "RESTART_REQUIRED",
+            "detail": "existing Steam needs a normal restart",
+            "captureActive": False,
+        },
+    )
+    monkeypatch.setattr(
+        cli,
+        "_cleanup_isolated_tasks",
+        lambda _paths, *, enabled: cleaned.append(enabled) or True,
+    )
+
+    result = cli.command_start(
+        paths,
+        speech=False,
+        isolated=True,
+        detached=True,
+        timeout=1,
+        block_marker=True,
+        controller_profile="xbox16",
+    )
+
+    assert result == 3
+    assert cleaned == [True]
+
+
+def test_isolated_stop_cleans_owned_tasks_after_ack(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    atomic_write_json(paths.runtime_state, {
+        "state": "STOPPED",
+        "supervisorPid": None,
+        "extras": {"runtime": {"isolated": True}},
+    })
+    cleaned = []
+    monkeypatch.setattr(
+        cli,
+        "_cleanup_isolated_tasks",
+        lambda _paths, *, enabled: cleaned.append(enabled) or True,
+    )
+
+    assert cli.command_stop(paths) == 0
+    assert cleaned == [True]
+
+
 def test_second_start_does_not_spawn_duplicate_supervisor(monkeypatch, tmp_path):
     paths = RuntimePaths(tmp_path / "home")
     paths.ensure()

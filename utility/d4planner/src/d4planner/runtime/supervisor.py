@@ -98,6 +98,10 @@ class Supervisor:
         self.block_marker = bool(block_marker)
         self.controller_profile = controller_profile
         self._marker_started = False
+        self.status.extras["runtime"] = {
+            "isolated": self.isolated,
+            "uatAttachOnly": self.uat_attach_only,
+        }
         self.status.extras["inputMarker"] = {
             "key": "F11",
             "mode": "BLOCK" if self.block_marker else "OBSERVE",

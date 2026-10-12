@@ -8,7 +8,7 @@ import zipfile
 
 from d4planner.runtime.model import ProcessInfo, TolkHealth
 from d4planner.runtime.store import RuntimePaths, atomic_write_json
-from d4planner.runtime.windows import WindowsRuntime
+from d4planner.runtime.windows import RuntimeBlocked, WindowsRuntime
 
 
 def fake_pe(machine: int, marker: bytes = b"controller-client") -> bytes:
@@ -406,6 +406,56 @@ def test_isolated_run_task_maps_legacy_base_name_to_owned_task(tmp_path, monkeyp
     assert len(calls) == 1
     assert "D4Planner-Isolated-" in calls[0]
     assert "D4Planner-Tolk-Probe'" not in calls[0]
+
+
+def test_cleanup_removes_only_owned_isolated_tasks(tmp_path, monkeypatch):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "pr95-home"))
+    runtime.task_isolated = True
+    scripts = []
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(
+        runtime,
+        "_powershell",
+        lambda script, **kw: (
+            scripts.append(script) or subprocess.CompletedProcess([], 0, "removed\n", "")
+        ),
+    )
+
+    removed = runtime.cleanup_owned_tasks()
+
+    assert len(removed) == 7
+    assert len(scripts) == 7
+    assert all("D4Planner-Isolated-" in script for script in scripts)
+    assert all("$principalSid -ne $currentSid" in script for script in scripts)
+    assert all("refusing to remove unowned scheduled task" in script for script in scripts)
+    assert all(script.index("refusing to remove") < script.index("Unregister-ScheduledTask")
+               for script in scripts)
+
+
+def test_cleanup_fails_closed_when_isolated_task_is_not_owned(tmp_path, monkeypatch):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "pr95-home"))
+    runtime.task_isolated = True
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(
+        runtime,
+        "_powershell",
+        lambda script, **kw: subprocess.CompletedProcess([], 1, "", "foreign collision"),
+    )
+
+    with pytest.raises(RuntimeBlocked, match="failed to clean isolated task"):
+        runtime.cleanup_owned_tasks()
+
+
+def test_cleanup_is_noop_for_legacy_task_namespace(tmp_path, monkeypatch):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(
+        runtime,
+        "_powershell",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("must not mutate")),
+    )
+
+    assert runtime.cleanup_owned_tasks() == []
 
 
 def test_limited_supervisor_only_verifies_interactive_tasks(tmp_path, monkeypatch):

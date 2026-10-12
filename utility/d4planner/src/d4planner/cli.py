@@ -492,6 +492,19 @@ def _print_start_summary(status: dict[str, Any]) -> None:
         print(f"{mark} {name}: {detail}")
 
 
+def _cleanup_isolated_tasks(paths: RuntimePaths, *, enabled: bool) -> bool:
+    if not enabled or os.name != "nt":
+        return True
+    runtime = WindowsRuntime(paths)
+    runtime.task_isolated = True
+    try:
+        runtime.cleanup_owned_tasks()
+    except (RuntimeBlocked, OSError) as exc:
+        print(f"Unable to clean isolated scheduled tasks: {exc}", file=sys.stderr)
+        return False
+    return True
+
+
 def command_start(
     paths: RuntimePaths,
     *,
@@ -569,6 +582,7 @@ def command_start(
             kwargs["controller_profile"] = profile.alias
         pid = _spawn_daemon(**kwargs)
     except RuntimeBlocked as exc:
+        cleanup_ok = _cleanup_isolated_tasks(paths, enabled=isolated)
         write_capture_config(paths, enabled=False)
         atomic_write_json(
             paths.runtime_state,
@@ -583,10 +597,11 @@ def command_start(
             },
         )
         print(f"Unable to start D4Planner supervisor: {exc}", file=sys.stderr)
-        return 2
+        return 2 if cleanup_ok else 1
     except (RuntimeError, OSError) as exc:
+        cleanup_ok = _cleanup_isolated_tasks(paths, enabled=isolated)
         print(f"Unable to start D4Planner supervisor: {exc}", file=sys.stderr)
-        return 4
+        return 4 if cleanup_ok else 1
     print(f"D4Planner supervisor PID {pid}")
     status = _wait_start(paths, pid, timeout=timeout,
                          block_marker=block_marker or (profile is not None))
@@ -599,13 +614,13 @@ def command_start(
             return 2
     if state == RuntimeState.BLOCKED.value:
         print(status.get("lastError") or status.get("detail"), file=sys.stderr)
-        return 2
+        return 2 if _cleanup_isolated_tasks(paths, enabled=isolated) else 1
     if state == RuntimeState.RESTART_REQUIRED.value:
         print(status.get("detail"), file=sys.stderr)
-        return 3
+        return 3 if _cleanup_isolated_tasks(paths, enabled=isolated) else 1
     if state not in {RuntimeState.RUNNING.value, RuntimeState.WAITING_FOR_GAME.value, RuntimeState.DEGRADED.value}:
         print(f"D4Planner did not become ready (state={state or 'UNKNOWN'}).", file=sys.stderr)
-        return 4
+        return 4 if _cleanup_isolated_tasks(paths, enabled=isolated) else 1
     print()
     _print_start_summary(status)
     if detached:
@@ -640,6 +655,7 @@ def command_stop(
 ) -> int:
     print("runtime.stop requested")
     status = _state(paths)
+    isolated = bool(((status.get("extras") or {}).get("runtime") or {}).get("isolated"))
     pid = status.get("supervisorPid")
     if not pid or not _pid_alive(int(pid)):
         # A crashed/stopped supervisor may have left a still-valid short capture
@@ -647,6 +663,9 @@ def command_stop(
         write_capture_config(paths, enabled=False)
         print("capture disabled")
         print("D4Planner already stopped.")
+        cleanup_ok = _cleanup_isolated_tasks(paths, enabled=isolated)
+        if not cleanup_ok:
+            return 1
         return _stop_nvda(paths, timeout=timeout) if stop_nvda else 0
 
     paths.stop_request.parent.mkdir(parents=True, exist_ok=True)
@@ -660,6 +679,8 @@ def command_stop(
             write_capture_config(paths, enabled=False)
             print("capture disabled")
             print("D4Planner stopped.")
+            if not _cleanup_isolated_tasks(paths, enabled=isolated):
+                return 1
             if stop_nvda:
                 return _stop_nvda(paths, timeout=timeout)
             print("Diablo IV and Steam were left untouched.")

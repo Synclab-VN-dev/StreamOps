@@ -828,6 +828,52 @@ class WindowsRuntime:
         for name, script_path in self._interactive_task_specs():
             self._prepare_interactive_task(name, script_path)
 
+    def cleanup_owned_tasks(self) -> list[str]:
+        """Remove only this isolated DataDir's scheduled tasks.
+
+        Legacy task definitions intentionally remain persistent.  Isolated
+        acceptance tasks are ephemeral and must not survive a terminal startup
+        failure or a graceful stop.
+        """
+        self.require_windows()
+        if not self.task_isolated:
+            return []
+        families = {
+            self.task_name("D4Planner-Supervisor"): "supervisor",
+            self.task_name("D4Planner-NVDA"): "helper:nvda",
+            self.task_name("D4Planner-NVDA-Restart"): "helper:nvda-restart",
+            self.task_name("D4Planner-NVDA-Stop"): "helper:nvda-stop",
+            self.task_name("D4Planner-D4"): "helper:d4",
+            self.task_name("D4Planner-Tolk-Probe"): "helper:tolk-probe",
+            self.task_name("D4Planner-Input-Marker-Probe"): "input-marker-probe",
+        }
+        removed: list[str] = []
+        for name, family in families.items():
+            name_q = name.replace("'", "''")
+            owner_q = self._task_owner_marker(family).replace("'", "''")
+            ps = (
+                "$currentSid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value;"
+                f"$task=Get-ScheduledTask -TaskName '{name_q}' -ErrorAction SilentlyContinue;"
+                "if($task){$actions=@($task.Actions);$principal=[string]$task.Principal.UserId;"
+                "$principalSid=$null;try{$principalSid=(New-Object "
+                "System.Security.Principal.NTAccount($principal)).Translate("
+                "[System.Security.Principal.SecurityIdentifier]).Value}catch{};"
+                f"if(([string]$task.Description -ne '{owner_q}')-or"
+                "($actions.Count -ne 1)-or($principalSid -ne $currentSid)){"
+                f"throw 'refusing to remove unowned scheduled task {name_q}'"
+                "};"
+                f"Unregister-ScheduledTask -TaskName '{name_q}' -Confirm:$false "
+                "-ErrorAction Stop;Write-Output 'removed'}"
+            )
+            result = self._powershell(ps)
+            if result.returncode != 0:
+                raise RuntimeBlocked(
+                    f"failed to clean isolated task {name}: {result.stderr.strip()[:300]}"
+                )
+            if "removed" in result.stdout.split():
+                removed.append(name)
+        return removed
+
     def prepare_nvda_stop_task(self) -> None:
         """Reconcile only the graceful-stop helper/task for upgrade-safe stop."""
         self.require_windows()
