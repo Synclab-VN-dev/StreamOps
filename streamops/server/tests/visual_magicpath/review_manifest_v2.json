@@ -1,0 +1,65 @@
+{
+  "schema_version": 2,
+  "approval_status": "OWNER_APPROVED_MAGICPATH_REVISION__SOURCE_BACKED_GOLDENS_LOCKED",
+  "approved": true,
+  "design_change": {
+    "scope": "#86 Steam Node capture READY display; Steam restart modal real warning; Game Force Stop disabled V1",
+    "owner_decision": "2026-10-11: User approved updating both MagicPath components and instructed implementation on PR #89; rule Common DEV rule.md v5 permits source-locked expected from approved revision without per-image reapproval.",
+    "production_release_approved": false,
+    "approval_evidence_url": "https://github.com/Synclab-VN-dev/StreamOps/issues/86#issuecomment-6108915060"
+  },
+  "legacy_approved_goldens": {
+    "count": 19,
+    "manifest_path": "streamops/server/tests/visual_magicpath/manifest.json",
+    "preserved": true
+  },
+  "reference_directory": "reference_source_v2",
+  "review_candidates_only": false,
+  "source": [
+    {
+      "name": "steam",
+      "component_id": "459507753589833728",
+      "revision_id": "460004034603028480",
+      "source_path": "streamops/server/tests/visual_magicpath/reference_source_v2/src/SteamManager.tsx",
+      "git_blob_sha1": "05e84a44eaea945f946958687ba156ec14edcbff"
+    },
+    {
+      "name": "games",
+      "component_id": "459507767749795840",
+      "revision_id": "460004044581269504",
+      "source_path": "streamops/server/tests/visual_magicpath/reference_source_v2/src/GameManager.tsx",
+      "git_blob_sha1": "17ccc06ceacbe836f5d831fb78810f2da36aa28e"
+    },
+    {
+      "name": "css",
+      "source_path": "streamops/server/tests/visual_magicpath/reference_source_v2/src/index.css",
+      "git_blob_sha1": "c8fc13b7718d153e3fbed19ee6ed9eb87f978557"
+    }
+  ],
+  "new_goldens": {
+    "approved": true,
+    "approval_basis": "Owner-approved MagicPath V2 design revisions; no per-image approval required under OpenStream Development Process Rules v5 §3.2",
+    "expected_sha256": {
+      "games-advanced-mobile-390x844": "92c65c5b203485fb47d54076d5185cc03a1aef9bf8b3844663d68cb43805a73d",
+      "games-unknown-timeout-mobile-390x844": "49b128b8b7021f23b475740fa5ec4f4dc8108d5d407e8987e77a6630b2b58b16",
+      "games-failed-session-mobile-390x844": "11c14bbe99a5aa2822fa9157dd6b4a4088b92de1e8f443900cc03250e247cc99",
+      "games-scrolled-library-mobile-390x844": "2b6c1dd0a419d97555f809c8fdd0b88a924d7cbe9cdf7037af9fcf1ec42aa2eb",
+      "steam-five-running-expanded-mobile-390x844": "5d424d0ffffd891172060eae048aa28a50d03ee10a2cb86894f8abb9c5040820",
+      "steam-process-expanded-mobile-390x844": "aef4443c0d3062709f466ad4e5c25e53abf073824d2d7589541ffd217b224f4b",
+      "games-stop-confirm-modal-mobile-390x844": "d4f0648ac7b9be651c656631203414f9156cd8dd430284a8946d21baedd0b92b",
+      "games-stop-confirm-cancel-mobile-390x844": "95e68acd6316119bb18d440e7f63c67dcc6351760c95506ab849e1ee50c8ff8c",
+      "steam-restart-confirm-modal-mobile-390x844": "57901d989b31044adce3bd6e8ffccffe264b8f2ddb46950ab2d0437a0dda90e5",
+      "steam-restart-confirm-cancel-mobile-390x844": "4946fa72255d2de262dc5c3cf0d10a5d4d1d6a3aa2fc21c33a10be8a98a74daf"
+    },
+    "expected_count": 10,
+    "viewport": "390x844",
+    "source_run": "https://github.com/Synclab-VN-dev/StreamOps/actions/runs/38140986488/artifacts/11703271234",
+    "hashes_immutable": true
+  },
+  "golden_source": "direct independent rendering of approved MagicPath component revisions in reference_source_v2",
+  "thresholds": {
+    "reference_expected_sha256_match": true,
+    "mean_rgb_max": 0.08,
+    "geometry_exact": true
+  }
+}

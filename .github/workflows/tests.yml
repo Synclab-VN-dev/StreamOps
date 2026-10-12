@@ -48,6 +48,7 @@ jobs:
           if ("${{ github.event_name }}" -eq "push") {
             "d4planner=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
             "server=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "gameui=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
             exit 0
           }
 
@@ -92,10 +93,86 @@ jobs:
           "server=$($server.ToString().ToLowerInvariant())" |
             Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
+          # FE gate scope is independent of BE G1..G6.
+          $gameui = @(
+            $files | Where-Object {
+              $_ -like "streamops/server/web/games*" -or
+              $_ -like "streamops/server/web/steam*" -or
+              $_ -like "streamops/server/web/ws-client*" -or
+              $_ -like "streamops/server/web/node-health*" -or
+              $_ -like "streamops/server/tests/e2e/test_games_ui.py" -or
+              $_ -eq "streamops/server/tests/e2e/test_games_fe_be_integration.py" -or
+              $_ -like "streamops/server/tests/visual_magicpath/*" -or
+              $_ -eq "streamops/server/tests/test_magicpath_visual_contract.py" -or
+              $_ -eq "streamops/server/tests/e2e/test_magicpath_visual.py" -or
+              $_ -eq ".github/workflows/tests.yml"
+            }
+          ).Count -gt 0
+          "gameui=$($gameui.ToString().ToLowerInvariant())" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Game Manager FE gates required: $gameui"
+
           Write-Host "Changed files:"
           $files | ForEach-Object { Write-Host "  $_" }
           Write-Host "D4Planner tests: $d4planner"
           Write-Host "Server tests: $server"
+
+      - name: 'Issue #86 PR89 read-only UAT runner classification + safety smoke'
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 89
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'issue86-uat-runner'
+          & pwsh -NoProfile -File ./scripts/acceptance/issue86-pr89-uat.ps1 -Mode SelfTest -OutputRoot $root
+          if ($LASTEXITCODE -ne 0) { throw 'Issue86 runner SelfTest failed' }
+          $selftest = Get-ChildItem -LiteralPath $root -Recurse -Filter report.json |
+            Where-Object { (Get-Content $_.FullName -Raw | ConvertFrom-Json).metadata.mode -eq 'SelfTest' } |
+            Select-Object -First 1
+          if (-not $selftest) { throw 'Missing UAT SelfTest report' }
+          $p = Get-Content $selftest.FullName -Raw | ConvertFrom-Json
+          if ($p.outcome -ne 'PASS' -or $p.summary.PASS -ne 1 -or $p.lifecycle_actions_performed -ne 0) {
+            throw 'UAT SelfTest report incorrect'
+          }
+          # GitHub runner has no isolated Host A task/runtime: fail CLOSED as BLOCKED,
+          # never test/live-control production or install anything on host A.
+          # Deliberate BLOCKED=exit 2 is not a product/CI failure here.
+          # GitHub Actions enables native-command errors by default in pwsh.
+          $PSNativeCommandUseErrorActionPreference = $false
+          & pwsh -NoProfile -File ./scripts/acceptance/issue86-pr89-uat.ps1 -Mode Preflight -OutputRoot $root
+          $blockedExit = $LASTEXITCODE
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($blockedExit -ne 2) { throw "UAT preflight did not fail closed without A: $blockedExit" }
+          $reports = @(Get-ChildItem -LiteralPath $root -Recurse -Filter report.json |
+            ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json })
+          $preflight = @($reports | Where-Object { $_.metadata.mode -eq 'Preflight' })
+          if ($preflight.Count -ne 1 -or $preflight[0].outcome -ne 'BLOCKED' -or
+              $preflight[0].lifecycle_actions_performed -ne 0 -or $preflight[0].summary.FAIL -ne 0) {
+            throw 'UAT Preflight case classification is unsafe/inaccurate'
+          }
+          # Build the exact one-shot handoff package from the tested PR worktree.
+          # Prove the downloaded script works outside source using -WorktreeRoot.
+          $package = Join-Path $root 'package'
+          New-Item -ItemType Directory -Force -Path $package | Out-Null
+          Copy-Item ./scripts/acceptance/issue86-pr89-uat.ps1 (Join-Path $package 'issue86-pr89-uat.ps1')
+          Copy-Item ./scripts/acceptance/issue86-pr89-uat.README.md (Join-Path $package 'README.md')
+          Copy-Item ./scripts/acceptance/issue86-pr89-web-setup.ps1 (Join-Path $package 'setup-issue86-pr89-web.ps1')
+          & pwsh -NoProfile -File (Join-Path $package 'setup-issue86-pr89-web.ps1') -Mode SelfTest -OutputRoot $root
+          if ($LASTEXITCODE -ne 0) { throw 'Isolated PR89 Web Setup SelfTest failed' }
+          & pwsh -NoProfile -File (Join-Path $package 'issue86-pr89-uat.ps1') `
+            -Mode SelfTest -WorktreeRoot $env:GITHUB_WORKSPACE -OutputRoot $root
+          if ($LASTEXITCODE -ne 0) { throw 'Downloaded one-shot UAT package failed SelfTest' }
+          # GitHub's pwsh wrapper propagates LASTEXITCODE even after checking it.
+          # Reset only CI's expected negative-test exit, not the UAT report.
+          $global:LASTEXITCODE = 0
+          exit 0
+
+      - name: 'Upload #86 UAT runner, instructions and CI evidence'
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.number == 89
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue86-uat-harness-${{ github.sha }}
+          path: ${{ runner.temp }}/issue86-uat-runner
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Install D4Planner dev dependencies
         if: steps.changes.outputs.d4planner == 'true'
@@ -450,3 +527,27 @@ jobs:
           CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           CI_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: ./scripts/ci/verify_game_required_gates.ps1
+
+      # FE gates MUST run when games/steam UI or pinned MagicPath references change.
+      # Do not mark a visual gate as PASS unless owner-approved references and
+      # real comparison both pass; artifacts are preserved on every failure.
+      - name: FE-G1 — WS contract, reducer and pinned source integrity
+        if: steps.changes.outputs.gameui == 'true'
+        run: python -m pytest -q streamops/server/tests/test_games_ui_contract.py streamops/server/tests/test_magicpath_visual_contract.py
+      - name: FE-G2 — Steam browser WebSocket regression
+        if: steps.changes.outputs.gameui == 'true'
+        run: python -m pytest -q streamops/server/tests/e2e/test_steam.py
+      - name: FE-G3 — Games UI browser states and observer fanout
+        if: steps.changes.outputs.gameui == 'true'
+        run: python -m pytest -q streamops/server/tests/e2e/test_games_ui.py streamops/server/tests/e2e/test_games_fe_be_integration.py
+      - name: FE-G4 — Lifecycle and reconnect recovery
+        if: steps.changes.outputs.gameui == 'true'
+        run: python -m pytest -q streamops/server/tests/e2e/test_games_ui.py -k 'lifecycle or reconnect or state_model'
+      - name: FE-G6 — Installed wheel FE pages and asset smoke
+        if: steps.changes.outputs.gameui == 'true'
+        shell: pwsh
+        run: |
+          $env:STREAMOPS_TEST_WHEEL = (Get-ChildItem dist\*.whl | Select-Object -First 1).FullName
+          python -m pytest -q streamops/server/tests/test_wheel_acceptance.py
+      # FE-G5 is a parallel, non-skippable visual check in game-manager-visual.yml.
+      # It requires owner-approved goldens and uploads expected/actual/diff images.

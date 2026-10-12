@@ -1,0 +1,91 @@
+(() => {
+  const service=window.StreamOpsGames, store=service.store, ui=window.StreamOpsGamesComponents;
+  const control=window.StreamOpsGameControl, log=window.StreamOpsUI.createActivityLog("#activity-log");
+  const $=s=>document.querySelector(s);
+  let selected=null, activeOperation=null, confirming=false, lastSignature="", returnFocus=null, returnScrollY=null;
+  function error(message) { const e=$("#games-error");e.textContent=message||"";e.hidden=!message; }
+  function render() {
+    const games=store.items(), summary=store.summary();
+    $("#status-text").textContent=store.stale ? "Game WS: offline / stale" : "Game WS: connected";
+    ui.renderSummary($("#game-summary"),store);
+    $("#running-caption").textContent=summary.running==null?"Unverified":summary.running+" running";
+    const running=store.stale?[]:games.filter(g=>g.observation?.process?.state==="RUNNING" && g.observation?.process?.stale===false);
+    ui.renderRows($("#running-games"),running,selected,select,store.loading?"Loading…":store.stale?"Status unavailable":"No running games");
+    const search=$("#game-search").value.trim().toLocaleLowerCase(), filter=$("#game-filter").value;
+    const library=games.filter(g=>(g.name+" "+g.provider).toLocaleLowerCase().includes(search)).filter(g=>filter==="all"||
+      (filter==="running" && g.observation?.process?.state==="RUNNING" && !g.observation?.process?.stale && !store.stale)||
+      (filter==="stopped" && g.observation?.process?.state==="STOPPED" && !g.observation?.process?.stale && !store.stale));
+    ui.renderRows($("#game-library"),library,selected,select,store.loading?"Loading library…":store.stale?"Library data stale":"No matching games");
+    const game=selected?store.games.get(selected):null;
+    ui.details($("#game-detail"),game,store,action,closeDetail);
+    $("#games-workspace").classList.toggle("gm-has-detail",!!game);
+    const signature=store.epoch+":"+store.revision+":"+store.stale;
+    if (signature!==lastSignature) { lastSignature=signature; if (!store.loading && !store.stale) log("Games updated (revision "+store.revision+")"); }
+  }
+  function select(id) {
+    // Rerender replaces the row; retain its stable game_id + list for return focus.
+    const trigger=document.activeElement;
+    const container=trigger?.closest?.("#game-library, #running-games");
+    returnFocus=container && trigger?.dataset?.gameId===id
+      ? {id, list:container.id} : {id, list:"game-library"};
+    returnScrollY=window.scrollY;
+    selected=id;render();
+    // Mobile detail takes over the workspace; always show its heading rather
+    // than inheriting the long library's scroll offset.
+    if (window.matchMedia("(max-width: 900px)").matches) window.scrollTo(0,0);
+    $("#game-detail").focus({preventScroll:true});
+  }
+  function closeDetail() {
+    const target=returnFocus, y=returnScrollY;
+    selected=null;returnFocus=null;returnScrollY=null;render();
+    const row=target && Array.from(document.querySelectorAll("#"+target.list+" .gm-game-row"))
+      .find(item=>item.dataset.gameId===target.id);
+    // Restore viewport and focus independently even when the list was rebuilt.
+    if (y!==null) window.scrollTo({top:y,behavior:"instant"});
+    (row||$("#game-search")).focus({preventScroll:true});
+  }
+  async function action(name,game) {
+    error("");
+    if (name==="reconcile") {
+      try {await service.client.request("games.reconcile",{game_id:game.id});await service.resync();log("Refreshed observation for "+game.name);}
+      catch(e){error(e.message);}return;
+    }
+    if (activeOperation || confirming) return;
+    if (!game.capabilities?.[name] || store.stale) return error(game.capability_reason||"Action unavailable");
+    confirming=true;
+    let approved=false;
+    try {
+      const label=name[0].toUpperCase()+name.slice(1);
+      approved=await window.StreamOpsConfirmation.ask({
+        title:label+" "+game.name+"?",
+        message:name==="start"?"Start a game session. Make sure the launcher is ready.":
+          name==="stop"?"Gracefully stop the game. Make sure progress is saved.":
+          "The current game will stop and restart. Save progress first.",
+        confirmLabel:label,
+        notice:"Only a confirmed operation is sent to host A. An acknowledgement is not proof of completion."
+      });
+    } finally { confirming=false; }
+    if (!approved) {log(name+" cancelled");return;}
+    // The host state may have changed while the modal was open; fail closed.
+    const current=store.games.get(game.id);
+    if (store.stale || !current?.capabilities?.[name]) return error("Game status/capability changed during confirmation. Refresh before retrying.");
+    activeOperation=true;render();log(name+" requested for "+game.name);
+    try {
+      const key="game-"+Date.now()+"-"+Math.random().toString(36).slice(2);
+      const result=await control.command("/api/v1/games/ws","games.lifecycle."+name,{game_id:game.id,idempotency_key:key});
+      if (!result?.operation_id) throw new Error("Missing operation ID");
+      store.operation(result);log(name+" accepted; verifying actual process state");
+      error("");await service.resync();
+    } catch(e){error(e.message);log(name+" failed: "+e.message,"error");}
+    finally {activeOperation=false;render();}
+  }
+  document.addEventListener("keydown",event=>{if(event.key==="Escape" && selected){event.preventDefault();closeDetail();}});
+  $("#game-search").addEventListener("input",render);
+  $("#game-filter").addEventListener("change",render);
+  $("#refresh-catalog").addEventListener("click",async()=>{
+    try { await service.client.request("games.catalog.refresh");await service.resync();log("Catalog refreshed"); }
+    catch(e){error(e.message);}
+  });
+  service.store.on(render);
+  log("Game Manager opened");
+})();
