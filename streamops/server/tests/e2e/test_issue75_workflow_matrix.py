@@ -1021,3 +1021,117 @@ def test_issue75_legacy_install_recovery_and_rollback_failure_are_fail_closed(
     expect(page.locator(".plugin-card")).to_contain_text("Recovery required")
     assert len(fake.mutations("obs_plugin.install"))==1
     assert fake.mutations("obs_plugin.rollback")==[]
+
+
+class RestartTransientDisconnectScenario(ScenarioWS):
+    """Force the actual browser WS transport to close while Restart is pending.
+
+    Restart response deliberately stays pending until the test explicitly
+    acknowledges it. Real reconnect and subscription logic must run.
+    """
+    def __init__(self,page):
+        super().__init__(page,plugin_state="RESTART_REQUIRED",
+                         installed_version="2.0",obs_state="READY")
+        self.pending_restart=None
+
+    def obs_socket(self,ws):
+        self.obs_sockets.append(ws)
+
+        def snapshot():
+            ws.send(json.dumps({"type":"event","event":"obs.snapshot","data":{
+                "runtime":{"state":self.obs_state,
+                  "output":{"streaming":False,"recording":False},
+                  "websocket":{"connected":self.obs_state=="READY"}}}}))
+        snapshot()
+
+        def handle(raw):
+            req=json.loads(raw)
+            self.calls.append(req)
+            if req["operation"] in {
+                "source_catalog.list","scene_profile_templates.list",
+                "scene_profiles.list","inventory.get"
+            }:
+                reads={
+                    "source_catalog.list":{"sources":[]},
+                    "scene_profile_templates.list":{"templates":[]},
+                    "scene_profiles.list":{"profiles":[]},
+                    "inventory.get":{"options":{}},
+                }
+                ws.send(json.dumps({"type":"response","request_id":req["request_id"],
+                                    "ok":True,"data":reads[req["operation"]]}))
+                return
+            assert req["operation"]=="obs.lifecycle.restart",req["operation"]
+            assert self.pending_restart is None,"only one OBS restart request"
+            self.pending_restart=(ws,req["request_id"])
+            self.obs_state="STOPPED"
+            snapshot()
+            # The OBS lifecycle restarts the plugin WS: no explicit response
+            # or Verify success can be inferred from this transient disconnect.
+            for connection in list(self.sockets):
+                connection.close()
+        ws.on_message(handle)
+
+    def finish_restart(self):
+        assert self.pending_restart is not None
+        ws,request_id=self.pending_restart
+        self.pending_restart=None
+        self.obs_state="READY"
+        self.plugin_state="INSTALLED"
+        self.revision+=1
+        ws.send(json.dumps({"type":"response","request_id":request_id,
+                            "ok":True,"data":{"state":"READY"}}))
+        ws.send(json.dumps({"type":"event","event":"obs.snapshot","data":{
+            "runtime":{"state":"READY",
+              "output":{"streaming":False,"recording":False},
+              "websocket":{"connected":True}}}}))
+        # Only a newly subscribed WS observer receives the change.
+        self.sockets[-1].send(json.dumps({
+            "type":"event","event":"obs_plugin.changed",
+            "data":{"plugin_id":"obs-multi-rtmp","revision":self.revision,
+                    "resources":["status","operation"]},
+        }))
+
+
+def test_issue75_restart_transient_ws_disconnect_waits_for_lifecycle_ack(
+    page:Page,live_server:BrowserTestServer,
+):
+    """E2E-16: socket restart is not success; only explicit ack completes it."""
+    fake=RestartTransientDisconnectScenario(page)
+    launch(page,live_server,fake)
+    act(page,"Restart OBS")
+    # Confirmation closes while async operation is still running.
+    confirm(page)
+    expect(page.locator("#plugin-obs-state")).to_have_text("STOPPED")
+    expect(page.locator("#plugin-activity")).to_contain_text(
+        "obs.lifecycle.restart · requested"
+    )
+    expect(page.locator("#plugin-activity")).not_to_contain_text(
+        "obs.lifecycle.restart · completed"
+    )
+    expect(page.locator(".plugin-card")).not_to_contain_text("Verified")
+    assert fake.pending_restart is not None
+    assert len(fake.mutations("obs.lifecycle.restart"))==1
+    assert fake.mutations("obs_plugin.verify")==[]
+
+    # Poll boundedly for a *second* WS route, rather than sleeping for a
+    # guessed reconnection delay. The route re-subscribes and reads inventory.
+    for _ in range(35):
+        if len(fake.sockets)>=2:
+            break
+        page.wait_for_timeout(150)
+    assert len(fake.sockets)>=2,"browser did not reconnect the plugin WS"
+    assert len([x for x in fake.calls
+                if x["operation"]=="obs_plugin.subscribe"])>=2
+    expect(page.locator("#plugin-activity")).not_to_contain_text(
+        "obs.lifecycle.restart · completed"
+    )
+    # No mutation or Verify occurred merely because the plugin WS returned.
+    assert [x["operation"] for x in fake.mutations()]==["obs.lifecycle.restart"]
+
+    fake.finish_restart()
+    expect(page.locator("#plugin-activity")).to_contain_text(
+        "obs.lifecycle.restart · completed"
+    )
+    expect(page.locator(".plugin-card")).to_contain_text("Installed")
+    expect(page.locator(".plugin-card")).not_to_contain_text("Verified")
+    assert [x["operation"] for x in fake.mutations()]==["obs.lifecycle.restart"]
