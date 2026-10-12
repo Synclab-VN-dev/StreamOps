@@ -880,3 +880,78 @@ def test_issue75_refresh_while_backend_operation_running_reconciles_without_repl
     assert len(fake.mutations("obs_plugin.adopt"))==1
     assert fake.mutations("obs_plugin.install")==[]
     assert fake.mutations("obs_plugin.verify")==[]
+
+
+def test_issue75_full_adopt_install_restart_verify_rollback(
+    page:Page,live_server:BrowserTestServer
+):
+    """E2E-33: each operation is explicit and authorized by refreshed BE state."""
+    fake=ScenarioWS(page,plugin_state="UNMANAGED",catalog=True,
+                    obs_state="STOPPED",installed_version="0.7.2",rollback=False)
+    fake.install_requires_restart=True
+    launch(page,live_server,fake)
+
+    act(page,"Adopt existing")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("Legacy baseline adopted")
+    assert fake.mutations("obs_plugin.install")==[]
+    assert fake.mutations("obs.lifecycle.restart")==[]
+    assert fake.mutations("obs_plugin.verify")==[]
+
+    act(page,"Install approved release")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("Restart required")
+    assert fake.mutations("obs.lifecycle.restart")==[]
+    fake.operator_starts_obs()
+    expect(page.get_by_role("button",name="Restart OBS")).to_be_enabled()
+    act(page,"Restart OBS")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("Installed")
+    assert fake.mutations("obs_plugin.verify")==[]
+
+    act(page,"Verify")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("Verified")
+    assert fake.mutations("obs_plugin.rollback")==[]
+
+    # Backup eligibility only becomes true after the backend reports proof.
+    fake.rollback=True
+    fake.revision+=1
+    fake.push_changed()
+    expect(page.get_by_role("button",name="Rollback")).to_be_enabled()
+    act(page,"Rollback")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("1.0")
+    assert [r["operation"] for r in fake.mutations()]==[
+        "obs_plugin.adopt","obs_plugin.install","obs.lifecycle.restart",
+        "obs_plugin.verify","obs_plugin.rollback"]
+    assert fake.mutations("obs.lifecycle.stop")==[]
+
+
+def test_issue75_dashboard_and_manager_observers_share_authoritative_revision(
+    page:Page,live_server:BrowserTestServer
+):
+    """E2E-36: Dashboard and Manager are independent WS consumers."""
+    fake=ScenarioWS(page,plugin_state="INSTALLED",installed_version="1.0")
+    dashboard=page.context.new_page()
+    dashboard.route_web_socket("**/api/v1/obs/plugins/ws",fake.plugin_socket)
+    dashboard.route_web_socket("**/api/v1/obs/ws",fake.obs_socket)
+    try:
+        launch(page,live_server,fake)
+        dashboard.goto(live_server.base_url+"/obs")
+        expect(dashboard.locator("#plugin-dashboard-managed")).to_have_text("1")
+        first=len([r for r in fake.calls if r["operation"]=="obs_plugin.inventory"])
+        fake.plugin_state="UPDATE_AVAILABLE"
+        fake.revision+=1
+        fake.push_changed()
+        expect(page.locator(".plugin-card")).to_contain_text("Update available")
+        expect(dashboard.locator("#plugin-dashboard-state")).not_to_have_text("Loading")
+        assert len([r for r in fake.calls if r["operation"]=="obs_plugin.inventory"])>=first+2
+        # Replayed revisions cannot trigger an inventory request loop.
+        requests=len([r for r in fake.calls if r["operation"]=="obs_plugin.inventory"])
+        fake.revision-=1
+        fake.push_changed()
+        assert len([r for r in fake.calls if r["operation"]=="obs_plugin.inventory"])==requests
+        assert fake.mutations()==[]
+    finally:
+        dashboard.close()
