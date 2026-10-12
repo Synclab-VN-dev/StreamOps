@@ -955,3 +955,57 @@ def test_issue75_dashboard_and_manager_observers_share_authoritative_revision(
         assert fake.mutations()==[]
     finally:
         dashboard.close()
+
+
+def test_issue75_legacy_adopt_typed_failure_and_recovery_never_auto_installs(
+    page:Page,live_server:BrowserTestServer
+):
+    """E2E-32: an unmanaged legacy plugin must be adopted before Install."""
+    fake=ScenarioWS(page,plugin_state="UNMANAGED",catalog=True,
+                    installed_version="0.7.2",obs_state="STOPPED")
+    launch(page,live_server,fake)
+    expect(page.get_by_role("button",name="Adopt existing")).to_be_enabled()
+    expect(page.get_by_role("button",name="Install approved release")).to_have_count(0)
+    fake.fail_operation="plugin_adopt_failed"
+    act(page,"Adopt existing")
+    confirm(page)
+    expect(page.locator("#plugin-notice")).to_contain_text("plugin_adopt_failed")
+    expect(page.locator(".plugin-card")).to_contain_text("Unmanaged")
+    assert fake.plugin_state=="UNMANAGED"
+    assert fake.mutations("obs_plugin.install")==[]
+    assert len(fake.mutations("obs_plugin.adopt"))==1
+
+    # A typed backend recovery state must NOT cause a synthetic Install or
+    # leave Adopt enabled against a possibly interrupted file transaction.
+    fake.fail_operation="plugin_recovery_required"
+    act(page,"Adopt existing")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("Recovery required")
+    expect(page.get_by_role("button",name="Adopt existing")).to_have_count(0)
+    assert fake.mutations("obs_plugin.install")==[]
+    assert len(fake.mutations("obs_plugin.adopt"))==2
+
+
+def test_issue75_legacy_install_recovery_and_rollback_failure_are_fail_closed(
+    page:Page,live_server:BrowserTestServer
+):
+    """E2E-35: failed legacy Install never becomes verified or retried."""
+    fake=ScenarioWS(page,plugin_state="LEGACY_ADOPTED",catalog=True,
+                    installed_version="0.7.2",obs_state="STOPPED")
+    launch(page,live_server,fake)
+    fake.fail_operation="plugin_recovery_required"
+    act(page,"Install approved release")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("Recovery required")
+    expect(page.locator("#plugin-notice")).to_contain_text("plugin_recovery_required")
+    assert fake.installed_version=="0.7.2"
+    assert len(fake.mutations("obs_plugin.install"))==1
+    assert fake.mutations("obs_plugin.rollback")==[]
+    assert fake.mutations("obs_plugin.verify")==[]
+
+    # A read-only refresh retains recovery status until the backend reports
+    # another authoritative revision; it may not attempt any rollback itself.
+    page.locator("#plugin-refresh").click()
+    expect(page.locator(".plugin-card")).to_contain_text("Recovery required")
+    assert len(fake.mutations("obs_plugin.install"))==1
+    assert fake.mutations("obs_plugin.rollback")==[]
