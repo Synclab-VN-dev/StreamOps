@@ -642,6 +642,32 @@ def test_stop_nvda_runs_after_capture_disabled_when_planner_already_stopped(
     assert observed == [False]
 
 
+def test_isolated_stop_nvda_uses_owned_namespace_before_task_cleanup(
+    monkeypatch, tmp_path,
+):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    atomic_write_json(paths.runtime_state, {
+        "state": "STOPPED",
+        "supervisorPid": None,
+        "extras": {"runtime": {"isolated": True}},
+    })
+    events = []
+    monkeypatch.setattr(
+        cli,
+        "_stop_nvda",
+        lambda _paths, *, timeout, isolated: events.append(("nvda", isolated)) or 0,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_cleanup_isolated_tasks",
+        lambda _paths, *, enabled: events.append(("tasks", enabled)) or True,
+    )
+
+    assert cli.command_stop(paths, timeout=0.1, stop_nvda=True) == 0
+    assert events == [("nvda", True), ("tasks", True)]
+
+
 def test_stop_nvda_already_absent_is_success(monkeypatch, tmp_path, capsys):
     paths = RuntimePaths(tmp_path / "home")
     paths.ensure()

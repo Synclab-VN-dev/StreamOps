@@ -647,8 +647,9 @@ def command_start(
     return command_logs(paths, follow=True, raw=False, from_end=True)
 
 
-def _stop_nvda(paths: RuntimePaths, *, timeout: float) -> int:
+def _stop_nvda(paths: RuntimePaths, *, timeout: float, isolated: bool = False) -> int:
     runtime = WindowsRuntime(paths)
+    runtime.task_isolated = isolated
     print("nvda.stop requested")
     try:
         stopped = runtime.stop_nvda(timeout=timeout)
@@ -681,10 +682,14 @@ def command_stop(
         write_capture_config(paths, enabled=False)
         print("capture disabled")
         print("D4Planner already stopped.")
+        if stop_nvda:
+            nvda_code = _stop_nvda(paths, timeout=timeout, isolated=isolated)
+            if nvda_code != 0:
+                return nvda_code
         cleanup_ok = _cleanup_isolated_tasks(paths, enabled=isolated)
         if not cleanup_ok:
             return 1
-        return _stop_nvda(paths, timeout=timeout) if stop_nvda else 0
+        return 0
 
     paths.stop_request.parent.mkdir(parents=True, exist_ok=True)
     paths.stop_request.write_text("stop\n", encoding="utf-8")
@@ -697,10 +702,12 @@ def command_stop(
             write_capture_config(paths, enabled=False)
             print("capture disabled")
             print("D4Planner stopped.")
+            if stop_nvda:
+                nvda_code = _stop_nvda(paths, timeout=timeout, isolated=isolated)
+                if nvda_code != 0:
+                    return nvda_code
             if not _cleanup_isolated_tasks(paths, enabled=isolated):
                 return 1
-            if stop_nvda:
-                return _stop_nvda(paths, timeout=timeout)
             print("Diablo IV and Steam were left untouched.")
             return 0
         time.sleep(0.2)
