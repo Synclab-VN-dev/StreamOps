@@ -109,6 +109,10 @@ try {
             if($LASTEXITCODE -ne 0 -or $actual -ne $ExpectedHead){
                 Block "WORKTREE" $ExpectedHead $actual "Existing worktree at wrong commit; will not reset"
             }
+            $registered=(& git -C $RepoRoot worktree list --porcelain | Out-String)
+            if($registered.IndexOf($WorktreeRoot,[StringComparison]::OrdinalIgnoreCase) -lt 0){
+                Block "WORKTREE" "Worktree registered to original StreamOps checkout" $WorktreeRoot "Not registered to base Git repository; will not reuse"
+            }
             Record "WORKTREE" "PASS" $ExpectedHead $actual "Reusing existing exact checkout without reset"
         }else{
             & git -C $RepoRoot worktree add --detach $WorktreeRoot $ExpectedHead
@@ -119,7 +123,11 @@ try {
         $venvPython=Join-Path $venv "Scripts\python.exe"
         if(-not (Test-Path -LiteralPath $venvPython -PathType Leaf)){
             $pyArgs=@(Choose-Python)
-            & $pyArgs[0] @($pyArgs | Select-Object -Skip 1) -m venv $venv
+            if($pyArgs.Count -eq 2) {
+                & $pyArgs[0] $pyArgs[1] -m venv $venv
+            } else {
+                & $pyArgs[0] -m venv $venv
+            }
             if($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $venvPython)){
                 Block "VENV" "Isolated Python environment" "Creation failed" "No system runtime modified"
             }
@@ -142,7 +150,10 @@ try {
         if(-not (Test-Path -LiteralPath $start -PathType Leaf)){
             Block "LAUNCHER" "Repository-managed interactive launcher" "Missing" "Cannot start safely"
         }
-        & $start -TaskName $TaskName -Port $Port -BindHost "0.0.0.0" -DataDir $data -PythonPath $venvPython
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $start -TaskName $TaskName -Port $Port -BindHost "0.0.0.0" -DataDir $data -PythonPath $venvPython
+        if($LASTEXITCODE -ne 0){
+            Block "NODE-START" "Isolated PR89 node ready" "Startup failed" "See .streamops/pr89/node/logs. Existing Steam/OBS/game remain untouched"
+        }
         $page1=Invoke-WebRequest -Uri "http://127.0.0.1:$Port/steam" -TimeoutSec 6 -UseBasicParsing
         $page2=Invoke-WebRequest -Uri "http://127.0.0.1:$Port/games" -TimeoutSec 6 -UseBasicParsing
         if($page1.StatusCode -ne 200 -or $page2.StatusCode -ne 200){
