@@ -492,12 +492,22 @@ def _print_start_summary(status: dict[str, Any]) -> None:
         print(f"{mark} {name}: {detail}")
 
 
-def _cleanup_isolated_tasks(paths: RuntimePaths, *, enabled: bool) -> bool:
+def _cleanup_isolated_tasks(
+    paths: RuntimePaths,
+    *,
+    enabled: bool,
+    stop_started_nvda: bool = False,
+) -> bool:
     if not enabled or os.name != "nt":
         return True
     runtime = WindowsRuntime(paths)
     runtime.task_isolated = True
     try:
+        status = read_json(paths.runtime_state) or {}
+        if stop_started_nvda and bool(
+            (status.get("extras") or {}).get("nvdaStartedBySupervisor")
+        ):
+            runtime.stop_nvda()
         runtime.cleanup_owned_tasks()
     except (RuntimeBlocked, OSError) as exc:
         print(f"Unable to clean isolated scheduled tasks: {exc}", file=sys.stderr)
@@ -599,7 +609,9 @@ def command_start(
         print(f"Unable to start D4Planner supervisor: {exc}", file=sys.stderr)
         return 2 if cleanup_ok else 1
     except (RuntimeError, OSError) as exc:
-        cleanup_ok = _cleanup_isolated_tasks(paths, enabled=isolated)
+        cleanup_ok = _cleanup_isolated_tasks(
+            paths, enabled=isolated, stop_started_nvda=True
+        )
         print(f"Unable to start D4Planner supervisor: {exc}", file=sys.stderr)
         return 4 if cleanup_ok else 1
     print(f"D4Planner supervisor PID {pid}")
@@ -614,13 +626,19 @@ def command_start(
             return 2
     if state == RuntimeState.BLOCKED.value:
         print(status.get("lastError") or status.get("detail"), file=sys.stderr)
-        return 2 if _cleanup_isolated_tasks(paths, enabled=isolated) else 1
+        return 2 if _cleanup_isolated_tasks(
+            paths, enabled=isolated, stop_started_nvda=True
+        ) else 1
     if state == RuntimeState.RESTART_REQUIRED.value:
         print(status.get("detail"), file=sys.stderr)
-        return 3 if _cleanup_isolated_tasks(paths, enabled=isolated) else 1
+        return 3 if _cleanup_isolated_tasks(
+            paths, enabled=isolated, stop_started_nvda=True
+        ) else 1
     if state not in {RuntimeState.RUNNING.value, RuntimeState.WAITING_FOR_GAME.value, RuntimeState.DEGRADED.value}:
         print(f"D4Planner did not become ready (state={state or 'UNKNOWN'}).", file=sys.stderr)
-        return 4 if _cleanup_isolated_tasks(paths, enabled=isolated) else 1
+        return 4 if _cleanup_isolated_tasks(
+            paths, enabled=isolated, stop_started_nvda=True
+        ) else 1
     print()
     _print_start_summary(status)
     if detached:

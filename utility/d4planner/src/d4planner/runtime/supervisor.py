@@ -320,6 +320,7 @@ class Supervisor:
                 raise RuntimeBlocked("no active interactive Windows console session")
 
             existing_nvda = self.runtime.nvda_process()
+            self.status.extras["nvdaStartedBySupervisor"] = False
             if self.uat_attach_only and not existing_nvda:
                 raise RuntimeBlocked("UAT attach-only requires existing NVDA; no launch")
             if addon_changed and existing_nvda:
@@ -330,6 +331,8 @@ class Supervisor:
                     existing_nvda if self.uat_attach_only
                     else self.runtime.ensure_nvda_running()
                 )
+                if existing_nvda is None and not self.uat_attach_only:
+                    self.status.extras["nvdaStartedBySupervisor"] = True
             if nvda.session_id != console:
                 raise RuntimeBlocked(
                     f"NVDA SessionId={nvda.session_id} does not match active console SessionId={console}"

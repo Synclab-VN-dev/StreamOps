@@ -421,7 +421,7 @@ def test_isolated_restart_required_cleans_only_owned_tasks(monkeypatch, tmp_path
     monkeypatch.setattr(
         cli,
         "_cleanup_isolated_tasks",
-        lambda _paths, *, enabled: cleaned.append(enabled) or True,
+        lambda _paths, **kwargs: cleaned.append(kwargs) or True,
     )
 
     result = cli.command_start(
@@ -435,7 +435,7 @@ def test_isolated_restart_required_cleans_only_owned_tasks(monkeypatch, tmp_path
     )
 
     assert result == 3
-    assert cleaned == [True]
+    assert cleaned == [{"enabled": True, "stop_started_nvda": True}]
 
 
 def test_isolated_stop_cleans_owned_tasks_after_ack(monkeypatch, tmp_path):
@@ -450,11 +450,11 @@ def test_isolated_stop_cleans_owned_tasks_after_ack(monkeypatch, tmp_path):
     monkeypatch.setattr(
         cli,
         "_cleanup_isolated_tasks",
-        lambda _paths, *, enabled: cleaned.append(enabled) or True,
+        lambda _paths, **kwargs: cleaned.append(kwargs) or True,
     )
 
     assert cli.command_stop(paths) == 0
-    assert cleaned == [True]
+    assert cleaned == [{"enabled": True}]
 
 
 def test_second_start_does_not_spawn_duplicate_supervisor(monkeypatch, tmp_path):
