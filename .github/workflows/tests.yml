@@ -130,6 +130,9 @@ jobs:
           New-Item -ItemType Directory -Force -Path $package | Out-Null
           Copy-Item ./scripts/acceptance/issue86-pr89-uat.ps1 (Join-Path $package 'issue86-pr89-uat.ps1')
           Copy-Item ./scripts/acceptance/issue86-pr89-uat.README.md (Join-Path $package 'README.md')
+          Copy-Item ./scripts/acceptance/issue86-pr89-web-setup.ps1 (Join-Path $package 'setup-issue86-pr89-web.ps1')
+          & pwsh -NoProfile -File (Join-Path $package 'setup-issue86-pr89-web.ps1') -Mode SelfTest -OutputRoot $root
+          if ($LASTEXITCODE -ne 0) { throw 'Isolated PR89 Web Setup SelfTest failed' }
           & pwsh -NoProfile -File (Join-Path $package 'issue86-pr89-uat.ps1') `
             -Mode SelfTest -WorktreeRoot $env:GITHUB_WORKSPACE -OutputRoot $root
           if ($LASTEXITCODE -ne 0) { throw 'Downloaded one-shot UAT package failed SelfTest' }
