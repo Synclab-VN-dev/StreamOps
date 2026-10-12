@@ -965,9 +965,9 @@ class WindowsRuntime:
             home = str(self.paths.root.resolve()).replace('"', '\\"')
             arguments.extend(["--home", f'"{home}"'])
         if uat_attach_only:
-            if not isolated or not block_marker or not controller_profile:
+            if not isolated:
                 raise RuntimeBlocked(
-                    "UAT attach-only requires isolated BLOCK controller-profile mode"
+                    "UAT attach-only requires isolated mode"
                 )
             arguments.append("--uat-attach-only")
         argument_text = " ".join(arguments).replace("'", "''")

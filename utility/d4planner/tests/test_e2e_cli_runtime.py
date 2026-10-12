@@ -2,6 +2,8 @@ import json
 import threading
 import time
 
+import pytest
+
 from d4planner import cli
 from d4planner.character.repository import EquipmentRepository
 from d4planner.runtime.events.repository import EventLogReader
@@ -1196,7 +1198,13 @@ def test_e2e11_stop_unhooks_then_mode_switch_without_stale_capture(
     assert len(created) == 3
 
 
-def test_uat_attach_only_existing_steam_game_nvda_no_restart_or_launch(tmp_path):
+@pytest.mark.parametrize(
+    ("profile_alias", "block_marker"),
+    (("xbox16", True), ("xbox16", False), (None, False), (None, True)),
+)
+def test_uat_attach_only_existing_steam_game_nvda_no_restart_or_launch(
+    tmp_path, profile_alias, block_marker,
+):
     """Issue87 Real-A launcher safety, modelled in hosted CI."""
     from d4planner.controller import load_profile
     paths=RuntimePaths(tmp_path/"uat-attached")
@@ -1214,8 +1222,8 @@ def test_uat_attach_only_existing_steam_game_nvda_no_restart_or_launch(tmp_path)
     sup=Supervisor(
         paths=paths,runtime=runtime,
         path_manager=UserPathManager(paths,MemoryPathBackend(user_path="",machine_path="MACHINE")),
-        controller_profile=load_profile("xbox16"),
-        block_marker=True,isolated=True,uat_attach_only=True,
+        controller_profile=load_profile(profile_alias) if profile_alias else None,
+        block_marker=block_marker,isolated=True,uat_attach_only=True,
         marker_capture=FakeMarkerCapture(),
     )
     assert sup.bootstrap() == RuntimeState.RUNNING

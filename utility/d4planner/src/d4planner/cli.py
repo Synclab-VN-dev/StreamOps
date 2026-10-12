@@ -531,11 +531,9 @@ def command_start(
     except ProfileValidationError as exc:
         print(str(exc), file=sys.stderr)
         return 4
-    if uat_attach_only and (
-        not isolated or not block_marker or profile is None
-    ):
+    if uat_attach_only and not isolated:
         print(
-            "--uat-attach-only requires --isolated, --block and --controller-profile",
+            "--uat-attach-only requires --isolated",
             file=sys.stderr,
         )
         return 4

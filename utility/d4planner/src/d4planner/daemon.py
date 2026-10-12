@@ -84,11 +84,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Attach to already-running Steam/NVDA/D4 without process restart")
     parser.add_argument("--game-start-timeout", type=float, default=90.0)
     args = parser.parse_args(argv)
-    if args.uat_attach_only and (
-        not args.isolated or args.home is None or
-        not args.block or args.controller_profile is None
-    ):
-        parser.error("--uat-attach-only requires --home, --isolated, --block and --controller-profile")
+    if args.uat_attach_only and (not args.isolated or args.home is None):
+        parser.error("--uat-attach-only requires --home and --isolated")
     try:
         profile = load_profile(args.controller_profile) if args.controller_profile else None
     except ProfileValidationError as exc:

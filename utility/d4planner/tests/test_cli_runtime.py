@@ -847,7 +847,7 @@ def test_block_flag_cli_parser_and_daemon_cli(monkeypatch):
     assert cli.build_parser().parse_args(["start", "-d"]).block is False
 
 
-def test_uat_attach_only_cli_requires_safe_isolated_controller_mode(
+def test_uat_attach_only_cli_requires_isolated_mode(
     monkeypatch, tmp_path, capsys,
 ):
     paths = RuntimePaths(tmp_path / "home")
@@ -860,7 +860,7 @@ def test_uat_attach_only_cli_requires_safe_isolated_controller_mode(
     result = cli.command_start(
         paths,
         speech=False,
-        isolated=True,
+        isolated=False,
         detached=True,
         timeout=1,
         block_marker=False,
@@ -869,7 +869,52 @@ def test_uat_attach_only_cli_requires_safe_isolated_controller_mode(
     )
 
     assert result == 4
-    assert "requires --isolated, --block and --controller-profile" in capsys.readouterr().err
+    assert "requires --isolated" in capsys.readouterr().err
+
+
+def test_uat_attach_only_cli_allows_stopped_mode_regression_variants(
+    monkeypatch, tmp_path,
+):
+    for block_marker, controller_profile in (
+        (False, "xbox16"),
+        (False, None),
+        (True, None),
+    ):
+        paths = RuntimePaths(tmp_path / f"home-{block_marker}-{controller_profile}")
+        launches = []
+        monkeypatch.setattr(
+            cli, "_spawn_daemon", lambda **kwargs: launches.append(kwargs) or 42
+        )
+        monkeypatch.setattr(
+            cli,
+            "_wait_start",
+            lambda *args, **kwargs: {
+                "state": "RUNNING",
+                "captureActive": True,
+                "extras": {
+                    "inputMarker": {
+                        "mode": "BLOCK" if block_marker else "OBSERVE",
+                        "state": "ACTIVE",
+                    }
+                },
+            },
+        )
+
+        result = cli.command_start(
+            paths,
+            speech=False,
+            isolated=True,
+            detached=True,
+            timeout=1,
+            block_marker=block_marker,
+            controller_profile=controller_profile,
+            uat_attach_only=True,
+        )
+
+        assert result == 0
+        assert launches[0]["uat_attach_only"] is True
+        assert launches[0]["block_marker"] is block_marker
+        assert launches[0].get("controller_profile") == controller_profile
 
 
 def test_uat_attach_only_cli_forwards_to_daemon(monkeypatch, tmp_path):

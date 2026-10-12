@@ -388,6 +388,36 @@ def test_attach_only_is_forwarded_with_absolute_home(tmp_path, monkeypatch):
     assert str((tmp_path / "pr95-home").resolve()) in script
 
 
+def test_attach_only_forwards_legacy_observe_without_dependency_mutation(
+    tmp_path, monkeypatch,
+):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "pr95-home"))
+    commands = []
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(runtime, "prepare_interactive_tasks", lambda: None)
+    monkeypatch.setattr(
+        runtime,
+        "_powershell",
+        lambda script, **kw: (
+            commands.append(script) or subprocess.CompletedProcess([], 0, "", "")
+        ),
+    )
+
+    runtime.launch_supervisor_task(
+        speech=False,
+        isolated=True,
+        block_marker=False,
+        controller_profile=None,
+        uat_attach_only=True,
+    )
+
+    script = commands[0]
+    assert "--uat-attach-only" in script
+    assert "--isolated" in script
+    assert "--block" not in script
+    assert "--controller-profile" not in script
+
+
 def test_isolated_run_task_maps_legacy_base_name_to_owned_task(tmp_path, monkeypatch):
     runtime = WindowsRuntime(RuntimePaths(tmp_path / "pr95-home"))
     runtime.task_isolated = True

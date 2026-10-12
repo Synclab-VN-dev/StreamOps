@@ -141,16 +141,31 @@ def test_daemon_explicit_home_overrides_parent_environment_without_side_effects(
     assert not (tmp_path / "default-production").exists()
 
 
-def test_daemon_uat_attach_only_rejects_mutating_modes(tmp_path):
+def test_daemon_uat_attach_only_requires_explicit_home_and_isolation(tmp_path):
     from d4planner import daemon
     import pytest
     invalid = [
         ["--uat-attach-only"],
         ["--uat-attach-only","--isolated","--block","--controller-profile","xbox16"],
         ["--uat-attach-only","--home",str(tmp_path),"--block","--controller-profile","xbox16"],
-        ["--uat-attach-only","--home",str(tmp_path),"--isolated","--controller-profile","xbox16"],
     ]
     for args in invalid:
         with pytest.raises(SystemExit) as failure:
             daemon.main(args)
         assert failure.value.code == 2
+
+
+def test_daemon_uat_attach_only_accepts_legacy_and_observe_modes(tmp_path, monkeypatch):
+    from d4planner import daemon
+    homes = []
+    monkeypatch.setattr(
+        daemon,
+        "_acquire_singleton",
+        lambda paths: homes.append(paths.root) or None,
+    )
+    for extra in ([], ["--controller-profile", "xbox16"], ["--block"]):
+        home = tmp_path / ("-".join(extra) or "legacy-observe")
+        assert daemon.main([
+            "--uat-attach-only", "--home", str(home), "--isolated", *extra,
+        ]) == 5
+        assert homes[-1] == home
