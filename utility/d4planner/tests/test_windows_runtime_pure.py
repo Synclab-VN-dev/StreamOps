@@ -435,6 +435,8 @@ def test_cleanup_removes_only_owned_isolated_tasks(tmp_path, monkeypatch):
     assert len(scripts) == 7
     assert all("D4Planner-Isolated-" in script for script in scripts)
     assert all("$principalSid -ne $currentSid" in script for script in scripts)
+    assert all("$actions[0].Execute -ne $expectedExecute" in script for script in scripts)
+    assert all("StartsWith($expectedPrefix" in script for script in scripts)
     assert all("refusing to remove unowned scheduled task" in script for script in scripts)
     assert all(script.index("refusing to remove") < script.index("Unregister-ScheduledTask")
                for script in scripts)

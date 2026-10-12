@@ -838,28 +838,54 @@ class WindowsRuntime:
         self.require_windows()
         if not self.task_isolated:
             return []
+        bin_dir = self.paths.runtime / "bin"
+        helper = lambda filename: (
+            "powershell.exe",
+            f'-NoProfile -ExecutionPolicy Bypass -File "{bin_dir / filename}"',
+        )
         families = {
-            self.task_name("D4Planner-Supervisor"): "supervisor",
-            self.task_name("D4Planner-NVDA"): "helper:start-nvda",
-            self.task_name("D4Planner-NVDA-Restart"): "helper:restart-nvda",
-            self.task_name("D4Planner-NVDA-Stop"): "helper:stop-nvda",
-            self.task_name("D4Planner-D4"): "helper:start-d4",
-            self.task_name("D4Planner-Tolk-Probe"): "helper:probe-tolk",
-            self.task_name("D4Planner-Input-Marker-Probe"): "input-marker-probe",
+            self.task_name("D4Planner-Supervisor"): (
+                "supervisor", str(Path(sys.executable)), "-m d4planner.daemon",
+            ),
+            self.task_name("D4Planner-NVDA"): (
+                "helper:start-nvda", *helper("start-nvda.ps1"),
+            ),
+            self.task_name("D4Planner-NVDA-Restart"): (
+                "helper:restart-nvda", *helper("restart-nvda.ps1"),
+            ),
+            self.task_name("D4Planner-NVDA-Stop"): (
+                "helper:stop-nvda", *helper("stop-nvda.ps1"),
+            ),
+            self.task_name("D4Planner-D4"): (
+                "helper:start-d4", *helper("start-d4.ps1"),
+            ),
+            self.task_name("D4Planner-Tolk-Probe"): (
+                "helper:probe-tolk", *helper("probe-tolk.ps1"),
+            ),
+            self.task_name("D4Planner-Input-Marker-Probe"): (
+                "input-marker-probe", str(Path(sys.executable)),
+                "-m d4planner.cli input-marker-probe ",
+            ),
         }
         removed: list[str] = []
-        for name, family in families.items():
+        for name, (family, executable, argument_prefix) in families.items():
             name_q = name.replace("'", "''")
             owner_q = self._task_owner_marker(family).replace("'", "''")
+            executable_q = executable.replace("'", "''")
+            prefix_q = argument_prefix.replace("'", "''")
             ps = (
                 "$currentSid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value;"
+                f"$expectedExecute='{executable_q}';$expectedPrefix='{prefix_q}';"
                 f"$task=Get-ScheduledTask -TaskName '{name_q}' -ErrorAction SilentlyContinue;"
                 "if($task){$actions=@($task.Actions);$principal=[string]$task.Principal.UserId;"
                 "$principalSid=$null;try{$principalSid=(New-Object "
                 "System.Security.Principal.NTAccount($principal)).Translate("
                 "[System.Security.Principal.SecurityIdentifier]).Value}catch{};"
                 f"if(([string]$task.Description -ne '{owner_q}')-or"
-                "($actions.Count -ne 1)-or($principalSid -ne $currentSid)){"
+                "($actions.Count -ne 1)-or($principalSid -ne $currentSid)-or"
+                "([string]$actions[0].Execute -ne $expectedExecute)-or"
+                "(-not ([string]$actions[0].Arguments).StartsWith($expectedPrefix,"
+                "[System.StringComparison]::Ordinal))){"
                 f"throw 'refusing to remove unowned scheduled task {name_q}'"
                 "};"
                 f"Unregister-ScheduledTask -TaskName '{name_q}' -Confirm:$false "
