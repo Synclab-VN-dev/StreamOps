@@ -970,7 +970,7 @@ def test_issue75_legacy_adopt_typed_failure_and_recovery_never_auto_installs(
     act(page,"Adopt existing")
     confirm(page)
     expect(page.locator("#plugin-notice")).to_contain_text("plugin_adopt_failed")
-    expect(page.locator(".plugin-card")).to_contain_text("Unmanaged")
+    expect(page.locator(".plugin-card")).to_contain_text("unmanaged")
     assert fake.plugin_state=="UNMANAGED"
     assert fake.mutations("obs_plugin.install")==[]
     assert len(fake.mutations("obs_plugin.adopt"))==1
