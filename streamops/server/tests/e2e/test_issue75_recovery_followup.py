@@ -54,3 +54,41 @@ def test_issue75_verify_recovery_error_keeps_all_plugin_mutations_disabled(
     expect(page.locator("#plugin-notice")).to_contain_text("plugin_recovery_required")
     assert len(fake.mutations("obs_plugin.verify")) == 1
     assert fake.mutations("obs_plugin.rollback") == []
+
+
+def test_issue75_verify_failed_backend_auto_rollback_failed_recovery(
+    page: Page, live_server: BrowserTestServer,
+):
+    """E2E-10: real BE journal path is verified separately in combined CI.
+
+    A single explicit Verify request returns typed failure while the backend's
+    automatic rollback has already failed and moved status to RECOVERY_REQUIRED.
+    The browser must never send an additional Rollback/Install or claim success.
+    """
+    fake = ScenarioWS(page, plugin_state="UPDATE_AVAILABLE",
+                      installed_version="1.0", obs_state="STOPPED", rollback=True)
+    fake.auto_rollback_failure = True
+    launch(page, live_server, fake)
+    act(page, "Update plugin")
+    confirm(page)
+    expect(page.locator(".plugin-card")).to_contain_text("2.0")
+    fake.operator_starts_obs()
+    fake.fail_operation = "plugin_verify_failed"
+    act(page, "Verify")
+    confirm(page)
+    expect(page.locator("#plugin-notice")).to_contain_text("plugin_verify_failed")
+    expect(page.locator(".plugin-card")).to_contain_text("Recovery required")
+    expect(page.locator("#plugin-state-scenario-banner")).to_contain_text("Recovery required")
+    expect(page.get_by_role("button", name="Rollback")).to_be_disabled()
+    assert fake.status_operation["state"] == "FAILED"
+    assert fake.status_operation["operation"] == "verify"
+    assert fake.plugin_state == "RECOVERY_REQUIRED"
+    assert [r["operation"] for r in fake.mutations()] == [
+        "obs_plugin.update", "obs_plugin.verify"
+    ]
+    # Repeated read-only Refresh must not trigger any automatic FE recovery.
+    page.locator("#plugin-refresh").click()
+    expect(page.locator(".plugin-card")).to_contain_text("Recovery required")
+    assert [r["operation"] for r in fake.mutations()] == [
+        "obs_plugin.update", "obs_plugin.verify"
+    ]
