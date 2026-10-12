@@ -198,7 +198,10 @@ function Test-IsolatedEnvironment {
             throw "Git checkout exists but HEAD is unreadable: $RepoRoot"
         }
         $Metadata.observed_head=$head
-        if($branch -ne "feat/86-game-manager-ws-ui" -or
+        # Git worktree --detach is permitted ONLY with explicit exact PR HEAD.
+        # This avoids touching an existing local branch checked out elsewhere.
+        $pinnedDetached=($branch -eq "" -and $ExpectedHead -and $head -eq $ExpectedHead)
+        if(($branch -ne "feat/86-game-manager-ws-ui" -and -not $pinnedDetached) -or
            ($ExpectedHead -and $head -ne $ExpectedHead)){
             Add-Case "PRE-HEAD" "BLOCKED" "environment" "PR89 branch and exact HEAD" "$branch $head" "Wrong branch or HEAD; no branch switch attempted"
             $safe=$false
