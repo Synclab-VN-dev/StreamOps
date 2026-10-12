@@ -117,7 +117,8 @@ def _state(paths: RuntimePaths) -> dict[str, Any]:
 
 def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool,
                   block_marker: bool = False,
-                  controller_profile: str | None = None) -> int:
+                  controller_profile: str | None = None,
+                  uat_attach_only: bool = False) -> int:
     if os.name == "nt":
         previous = read_json(paths.runtime_state) or {}
         previous_pid = previous.get("supervisorPid")
@@ -125,6 +126,8 @@ def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool,
         kwargs = {"speech": speech, "isolated": isolated, "block_marker": block_marker}
         if controller_profile:
             kwargs["controller_profile"] = controller_profile
+        if uat_attach_only:
+            kwargs["uat_attach_only"] = True
         runtime.launch_supervisor_task(**kwargs)
         deadline = time.monotonic() + 15.0
         while time.monotonic() < deadline:
@@ -144,6 +147,8 @@ def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool,
         cmd.append("--block")
     if controller_profile:
         cmd.extend(["--controller-profile", controller_profile])
+    if uat_attach_only:
+        cmd.append("--uat-attach-only")
     kwargs: dict[str, Any] = {
         "stdin": subprocess.DEVNULL,
         "stdout": subprocess.DEVNULL,
@@ -496,11 +501,20 @@ def command_start(
     timeout: float,
     block_marker: bool = False,
     controller_profile: str | None = None,
+    uat_attach_only: bool = False,
 ) -> int:
     try:
         profile = load_profile(controller_profile) if controller_profile else None
     except ProfileValidationError as exc:
         print(str(exc), file=sys.stderr)
+        return 4
+    if uat_attach_only and (
+        not isolated or not block_marker or profile is None
+    ):
+        print(
+            "--uat-attach-only requires --isolated, --block and --controller-profile",
+            file=sys.stderr,
+        )
         return 4
     paths.ensure()
     previous = _state(paths)
@@ -549,7 +563,8 @@ def command_start(
 
     try:
         kwargs = dict(paths=paths, speech=speech, isolated=isolated,
-                      block_marker=block_marker)
+                      block_marker=block_marker,
+                      uat_attach_only=uat_attach_only)
         if profile is not None:
             kwargs["controller_profile"] = profile.alias
         pid = _spawn_daemon(**kwargs)
@@ -1032,6 +1047,11 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--block", action="store_true",
                        help="block configured keyboard markers while Diablo IV has focus")
     start.add_argument("--controller-profile", help="controller mapping alias, e.g. xbox16")
+    start.add_argument(
+        "--uat-attach-only",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     start.add_argument("--timeout", type=float, default=120.0)
 
     status = sub.add_parser("status")
@@ -1105,6 +1125,7 @@ def main(argv: list[str] | None = None) -> int:
             timeout=args.timeout,
             block_marker=args.block,
             controller_profile=args.controller_profile,
+            uat_attach_only=args.uat_attach_only,
         )
     if args.command == "controller":
         if args.controller_command == "profiles":

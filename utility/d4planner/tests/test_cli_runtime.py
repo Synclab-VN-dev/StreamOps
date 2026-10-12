@@ -769,6 +769,67 @@ def test_block_flag_cli_parser_and_daemon_cli(monkeypatch):
     assert cli.build_parser().parse_args(["start", "-d"]).block is False
 
 
+def test_uat_attach_only_cli_requires_safe_isolated_controller_mode(
+    monkeypatch, tmp_path, capsys,
+):
+    paths = RuntimePaths(tmp_path / "home")
+    monkeypatch.setattr(
+        cli,
+        "_spawn_daemon",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("must not launch")),
+    )
+
+    result = cli.command_start(
+        paths,
+        speech=False,
+        isolated=True,
+        detached=True,
+        timeout=1,
+        block_marker=False,
+        controller_profile="xbox16",
+        uat_attach_only=True,
+    )
+
+    assert result == 4
+    assert "requires --isolated, --block and --controller-profile" in capsys.readouterr().err
+
+
+def test_uat_attach_only_cli_forwards_to_daemon(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    launches = []
+    monkeypatch.setattr(cli, "_spawn_daemon", lambda **kwargs: launches.append(kwargs) or 42)
+    monkeypatch.setattr(
+        cli,
+        "_wait_start",
+        lambda *args, **kwargs: {
+            "state": "RUNNING",
+            "captureActive": True,
+            "extras": {"inputMarker": {"mode": "BLOCK", "state": "ACTIVE"}},
+        },
+    )
+
+    result = cli.command_start(
+        paths,
+        speech=False,
+        isolated=True,
+        detached=True,
+        timeout=1,
+        block_marker=True,
+        controller_profile="xbox16",
+        uat_attach_only=True,
+    )
+
+    assert result == 0
+    assert launches == [{
+        "paths": paths,
+        "speech": False,
+        "isolated": True,
+        "block_marker": True,
+        "uat_attach_only": True,
+        "controller_profile": "xbox16",
+    }]
+
+
 def test_marker_logs_show_suppression_only_when_true():
     event = {
         "type": "input.marker.raw",

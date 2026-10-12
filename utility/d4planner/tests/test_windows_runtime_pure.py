@@ -245,7 +245,7 @@ def test_control_plane_reconciles_interactive_tasks_at_normal_priority(tmp_path,
     assert all("-Force" in command for command in commands)
 
 
-def test_isolated_tasks_are_namespaced_and_never_force_reconciled(tmp_path, monkeypatch):
+def test_isolated_tasks_are_namespaced_and_ownership_guarded(tmp_path, monkeypatch):
     runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
     scripts = {
         "nvda": tmp_path / "nvda.ps1",
@@ -268,8 +268,13 @@ def test_isolated_tasks_are_namespaced_and_never_force_reconciled(tmp_path, monk
 
     assert len(commands) == 5
     assert all("D4Planner-Isolated-" in command for command in commands)
-    assert all("-Force" not in command for command in commands)
-    assert all("refusing to modify foreign isolated task" in command for command in commands)
+    assert all("D4Planner owner=" in command for command in commands)
+    assert all("$actions.Count -eq 1" in command for command in commands)
+    assert all("$principal -eq $u" in command for command in commands)
+    assert all("refusing to modify foreign scheduled task" in command for command in commands)
+    # -Force is reachable only after the ownership/adoption guard succeeds.
+    assert all(command.index("refusing to modify foreign scheduled task")
+               < command.index("Register-ScheduledTask") for command in commands)
 
 
 def test_isolated_supervisor_forwards_home_and_uses_owned_task_name(tmp_path, monkeypatch):
@@ -298,7 +303,89 @@ def test_isolated_supervisor_forwards_home_and_uses_owned_task_name(tmp_path, mo
     assert "--home" in script
     assert str((tmp_path / "pr95-home").resolve()) in script
     assert "D4Planner-Isolated-" in script
-    assert "-Force" not in script
+    assert "family=supervisor" in script
+    assert "$actions.Count -eq 1" in script
+    assert script.index("refusing to modify foreign scheduled task") < script.index("-Force")
+
+
+def test_legacy_supervisor_can_reconcile_mode_only_after_ownership_check(
+    tmp_path, monkeypatch,
+):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
+    commands = []
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(runtime, "prepare_interactive_tasks", lambda: None)
+    monkeypatch.setattr(
+        runtime,
+        "_powershell",
+        lambda script, **kw: (
+            commands.append(script) or subprocess.CompletedProcess([], 0, "", "")
+        ),
+    )
+
+    runtime.launch_supervisor_task(speech=False, isolated=False, block_marker=False)
+    runtime.launch_supervisor_task(speech=False, isolated=False, block_marker=True)
+    runtime.launch_supervisor_task(speech=False, isolated=False, block_marker=False)
+
+    assert len(commands) == 3
+    assert "-m d4planner.daemon'" in commands[0]
+    assert "-m d4planner.daemon --block" in commands[1]
+    assert "-m d4planner.daemon'" in commands[2]
+    assert all("family=supervisor" in command for command in commands)
+    assert all(".StartsWith($legacyPrefix" in command for command in commands)
+    assert all("$principal -eq $u" in command for command in commands)
+
+
+def test_supervisor_foreign_task_collision_is_fail_closed_in_generated_script(
+    tmp_path, monkeypatch,
+):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
+    commands = []
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(runtime, "prepare_interactive_tasks", lambda: None)
+    monkeypatch.setattr(
+        runtime,
+        "_powershell",
+        lambda script, **kw: (
+            commands.append(script) or subprocess.CompletedProcess([], 0, "", "")
+        ),
+    )
+
+    runtime.launch_supervisor_task(speech=False, isolated=False)
+
+    script = commands[0]
+    assert "($actions.Count -eq 1)" in script
+    assert "($principal -eq $u)" in script
+    assert "([string]$actions[0].Execute -eq $expectedExecute)" in script
+    assert "refusing to modify foreign scheduled task" in script
+    assert script.index("throw ('refusing") < script.index("Register-ScheduledTask")
+
+
+def test_attach_only_is_forwarded_with_absolute_home(tmp_path, monkeypatch):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "pr95-home"))
+    commands = []
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(runtime, "prepare_interactive_tasks", lambda: None)
+    monkeypatch.setattr(
+        runtime,
+        "_powershell",
+        lambda script, **kw: (
+            commands.append(script) or subprocess.CompletedProcess([], 0, "", "")
+        ),
+    )
+
+    runtime.launch_supervisor_task(
+        speech=False,
+        isolated=True,
+        block_marker=True,
+        controller_profile="xbox16",
+        uat_attach_only=True,
+    )
+
+    script = commands[0]
+    assert "--uat-attach-only" in script
+    assert "--home" in script
+    assert str((tmp_path / "pr95-home").resolve()) in script
 
 
 def test_isolated_run_task_maps_legacy_base_name_to_owned_task(tmp_path, monkeypatch):
@@ -483,6 +570,9 @@ def test_input_marker_probe_task_uses_interactive_principal(tmp_path, monkeypatc
     assert "scroll-lock" in script
     assert "--seconds 12" in script
     assert str(output) in script
+    assert "family=input-marker-probe" in script
+    assert "refusing to modify foreign scheduled task" in script
+    assert ".StartsWith($legacyPrefix" in script
 
 
 
@@ -501,7 +591,7 @@ def test_supervisor_interactive_task_block_flag_preserves_session1_principal(
     )
     runtime.launch_supervisor_task(speech=False, isolated=False, block_marker=True)
     assert len(commands) == 1
-    assert "-Argument '-m d4planner.daemon --block'" in commands[0]
+    assert "$expectedArguments='-m d4planner.daemon --block'" in commands[0]
     assert "LogonType Interactive" in commands[0]
     assert "Start-ScheduledTask" in commands[0]
 
@@ -532,7 +622,7 @@ def test_supervisor_interactive_task_forwards_xbox16_profile_without_autoconfig(
     assert len(commands) == 1
     script = commands[0]
     assert "--controller-profile xbox16" in script
-    assert "-Argument '-m d4planner.daemon --block --controller-profile xbox16'" in script
+    assert "$expectedArguments='-m d4planner.daemon --block --controller-profile xbox16'" in script
     assert "LogonType Interactive" in script
     assert "-Priority 4" in script
 
