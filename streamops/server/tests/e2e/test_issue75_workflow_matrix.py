@@ -25,6 +25,7 @@ class ScenarioWS(MockPluginWebSocket):
         self.revision=10
         self.read_error_once=False
         self.fail_operation=None
+        self.auto_rollback_failure=False
         self.status_operation={"state":"IDLE","operation_id":None}
         self.obs_sockets=[]
         self.install_requires_restart=False
@@ -91,8 +92,19 @@ class ScenarioWS(MockPluginWebSocket):
                     code=self.fail_operation
                     self.fail_operation=None
                     if code == "plugin_verify_failed":
-                        self.plugin_state="VERIFY_FAILED"
+                        self.plugin_state=(
+                            "RECOVERY_REQUIRED" if self.auto_rollback_failure
+                            else "VERIFY_FAILED"
+                        )
                         self.revision+=1
+                        if self.auto_rollback_failure:
+                            # The backend attempted its own rollback while
+                            # servicing Verify and failed. FE did not call it.
+                            self.status_operation={
+                                "state":"FAILED","operation":"verify",
+                                "operation_id":"verify-auto-rollback-failed",
+                                "error_code":"plugin_verify_failed",
+                            }
                     elif code in {"plugin_recovery_required","plugin_rollback_failed"}:
                         self.plugin_state="RECOVERY_REQUIRED"
                         self.revision+=1
