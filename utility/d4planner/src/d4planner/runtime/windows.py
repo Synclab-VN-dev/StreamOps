@@ -50,6 +50,93 @@ class WindowsRuntime:
 
     def __init__(self, paths: RuntimePaths):
         self.paths = paths
+        # The daemon process copies this flag from Supervisor.  Keeping the
+        # task namespace on the runtime object means all helper calls (NVDA,
+        # Tolk, game launch and stop) use the same ownership boundary.
+        self.task_isolated = False
+
+    def task_name(self, name: str, *, isolated: bool | None = None) -> str:
+        """Return the task name owned by this runtime mode.
+
+        Legacy mode deliberately keeps its historical names.  Isolated mode
+        must never reconcile a shared D4Planner task because another checkout
+        may own it (for example the pre-existing StreamOps-70 supervisor).
+        """
+        use_isolated = self.task_isolated if isolated is None else isolated
+        if not use_isolated:
+            return name
+        digest = hashlib.sha256(
+            str(self.paths.root.resolve()).casefold().encode("utf-8")
+        ).hexdigest()[:12]
+        suffix = name.removeprefix("D4Planner-")
+        return f"D4Planner-Isolated-{digest}-{suffix}"
+
+    def _isolated(self, isolated: bool | None = None) -> bool:
+        return self.task_isolated if isolated is None else isolated
+
+    def _task_owner_marker(self, family: str) -> str:
+        root_hash = hashlib.sha256(
+            str(self.paths.root.resolve()).casefold().encode("utf-8")
+        ).hexdigest()[:12]
+        return f"D4Planner owner={root_hash} family={family}"
+
+    def _task_reconcile_script(
+        self,
+        *,
+        task_name: str,
+        executable: str,
+        arguments: str,
+        family: str,
+        legacy_argument_prefix: str,
+    ) -> str:
+        """Build a fail-closed scheduled-task reconciliation transaction.
+
+        A task may be updated only when it carries this DataDir's ownership
+        marker.  One backward-compatible adoption is allowed for tasks created
+        before ownership markers: same interactive principal, exactly one
+        action, the current executable, and the expected command family.
+        """
+        task_q = task_name.replace("'", "''")
+        executable_q = executable.replace("'", "''")
+        arguments_q = arguments.replace("'", "''")
+        prefix_q = legacy_argument_prefix.replace("'", "''")
+        marker_q = self._task_owner_marker(family).replace("'", "''")
+        return (
+            "$u=[System.Security.Principal.WindowsIdentity]::GetCurrent().Name;"
+            "$currentSid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value;"
+            f"$taskName='{task_q}';$expectedExecute='{executable_q}';"
+            f"$expectedArguments='{arguments_q}';$expectedOwner='{marker_q}';"
+            f"$legacyPrefix='{prefix_q}';"
+            "$existing=Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue;"
+            "$needsRegister=$false;"
+            "if($existing){"
+            "$actions=@($existing.Actions);$principal=[string]$existing.Principal.UserId;"
+            "$principalSid=$null;try{$principalSid=(New-Object "
+            "System.Security.Principal.NTAccount($principal)).Translate("
+            "[System.Security.Principal.SecurityIdentifier]).Value}catch{};"
+            "$description=[string]$existing.Description;"
+            "$baseOwned=($actions.Count -eq 1)-and($principalSid -eq $currentSid)-and"
+            "([string]$actions[0].Execute -eq $expectedExecute)-and"
+            "([string]$actions[0].Arguments).StartsWith($legacyPrefix,[System.StringComparison]::Ordinal);"
+            "$owned=($description -eq $expectedOwner) -and $baseOwned;"
+            "$adoptable=($description -eq '') -and $baseOwned;"
+            "if((-not $owned)-and(-not $adoptable)){"
+            "throw ('refusing to modify foreign scheduled task '+$taskName)};"
+            "if(($actions.Count -ne 1)-or($principal -ne $u)-or"
+            "([string]$actions[0].Execute -ne $expectedExecute)-or"
+            "([string]$actions[0].Arguments -ne $expectedArguments)-or"
+            "($description -ne $expectedOwner)){$needsRegister=$true}"
+            "}else{$needsRegister=$true};"
+            "if($needsRegister){"
+            "$a=New-ScheduledTaskAction -Execute $expectedExecute -Argument $expectedArguments;"
+            "$p=New-ScheduledTaskPrincipal -UserId $u -LogonType Interactive -RunLevel Limited;"
+            "$s=New-ScheduledTaskSettingsSet -Priority 4 "
+            "-ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew "
+            "-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries;"
+            "$d=New-ScheduledTask -Action $a -Principal $p -Settings $s "
+            "-Description $expectedOwner;"
+            "Register-ScheduledTask -TaskName $taskName -InputObject $d -Force | Out-Null}"
+        )
 
     def require_windows(self) -> None:
         if os.name != "nt":
@@ -711,26 +798,23 @@ class WindowsRuntime:
     def _interactive_task_specs(self) -> tuple[tuple[str, Path], ...]:
         scripts = self.ensure_helper_scripts()
         return (
-            ("D4Planner-NVDA", scripts["nvda"]),
-            ("D4Planner-NVDA-Restart", scripts["nvda-restart"]),
-            ("D4Planner-NVDA-Stop", scripts["nvda-stop"]),
-            ("D4Planner-D4", scripts["d4"]),
-            ("D4Planner-Tolk-Probe", scripts["tolk-probe"]),
+            (self.task_name("D4Planner-NVDA"), scripts["nvda"]),
+            (self.task_name("D4Planner-NVDA-Restart"), scripts["nvda-restart"]),
+            (self.task_name("D4Planner-NVDA-Stop"), scripts["nvda-stop"]),
+            (self.task_name("D4Planner-D4"), scripts["d4"]),
+            (self.task_name("D4Planner-Tolk-Probe"), scripts["tolk-probe"]),
         )
 
     def _prepare_interactive_task(self, name: str, script_path: Path) -> None:
         escaped = str(script_path).replace("'", "''")
         task_name = name.replace("'", "''")
-        ps = (
-                f"$a=New-ScheduledTaskAction -Execute 'powershell.exe' "
-                f"-Argument '-NoProfile -ExecutionPolicy Bypass -File \"{escaped}\"';"
-                "$u=[System.Security.Principal.WindowsIdentity]::GetCurrent().Name;"
-                "$p=New-ScheduledTaskPrincipal -UserId $u -LogonType Interactive -RunLevel Limited;"
-                "$s=New-ScheduledTaskSettingsSet -Priority 4 "
-                "-ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew "
-                "-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries;"
-                "$d=New-ScheduledTask -Action $a -Principal $p -Settings $s;"
-                f"Register-ScheduledTask -TaskName '{task_name}' -InputObject $d -Force | Out-Null"
+        arguments = f'-NoProfile -ExecutionPolicy Bypass -File "{escaped}"'
+        ps = self._task_reconcile_script(
+            task_name=task_name,
+            executable="powershell.exe",
+            arguments=arguments,
+            family=f"helper:{Path(script_path).stem}",
+            legacy_argument_prefix=arguments,
         )
         result = self._powershell(ps)
         if result.returncode != 0:
@@ -744,21 +828,95 @@ class WindowsRuntime:
         for name, script_path in self._interactive_task_specs():
             self._prepare_interactive_task(name, script_path)
 
+    def cleanup_owned_tasks(self) -> list[str]:
+        """Remove only this isolated DataDir's scheduled tasks.
+
+        Legacy task definitions intentionally remain persistent.  Isolated
+        acceptance tasks are ephemeral and must not survive a terminal startup
+        failure or a graceful stop.
+        """
+        self.require_windows()
+        if not self.task_isolated:
+            return []
+        bin_dir = self.paths.runtime / "bin"
+        helper = lambda filename: (
+            "powershell.exe",
+            f'-NoProfile -ExecutionPolicy Bypass -File "{bin_dir / filename}"',
+        )
+        families = {
+            self.task_name("D4Planner-Supervisor"): (
+                "supervisor", str(Path(sys.executable)), "-m d4planner.daemon",
+            ),
+            self.task_name("D4Planner-NVDA"): (
+                "helper:start-nvda", *helper("start-nvda.ps1"),
+            ),
+            self.task_name("D4Planner-NVDA-Restart"): (
+                "helper:restart-nvda", *helper("restart-nvda.ps1"),
+            ),
+            self.task_name("D4Planner-NVDA-Stop"): (
+                "helper:stop-nvda", *helper("stop-nvda.ps1"),
+            ),
+            self.task_name("D4Planner-D4"): (
+                "helper:start-d4", *helper("start-d4.ps1"),
+            ),
+            self.task_name("D4Planner-Tolk-Probe"): (
+                "helper:probe-tolk", *helper("probe-tolk.ps1"),
+            ),
+            self.task_name("D4Planner-Input-Marker-Probe"): (
+                "input-marker-probe", str(Path(sys.executable)),
+                "-m d4planner.cli input-marker-probe ",
+            ),
+        }
+        removed: list[str] = []
+        for name, (family, executable, argument_prefix) in families.items():
+            name_q = name.replace("'", "''")
+            owner_q = self._task_owner_marker(family).replace("'", "''")
+            executable_q = executable.replace("'", "''")
+            prefix_q = argument_prefix.replace("'", "''")
+            ps = (
+                "$currentSid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value;"
+                f"$expectedExecute='{executable_q}';$expectedPrefix='{prefix_q}';"
+                f"$task=Get-ScheduledTask -TaskName '{name_q}' -ErrorAction SilentlyContinue;"
+                "if($task){$actions=@($task.Actions);$principal=[string]$task.Principal.UserId;"
+                "$principalSid=$null;try{$principalSid=(New-Object "
+                "System.Security.Principal.NTAccount($principal)).Translate("
+                "[System.Security.Principal.SecurityIdentifier]).Value}catch{};"
+                f"if(([string]$task.Description -ne '{owner_q}')-or"
+                "($actions.Count -ne 1)-or($principalSid -ne $currentSid)-or"
+                "([string]$actions[0].Execute -ne $expectedExecute)-or"
+                "(-not ([string]$actions[0].Arguments).StartsWith($expectedPrefix,"
+                "[System.StringComparison]::Ordinal))){"
+                f"throw 'refusing to remove unowned scheduled task {name_q}'"
+                "};"
+                f"Unregister-ScheduledTask -TaskName '{name_q}' -Confirm:$false "
+                "-ErrorAction Stop;Write-Output 'removed'};exit 0"
+            )
+            result = self._powershell(ps)
+            if result.returncode != 0:
+                raise RuntimeBlocked(
+                    f"failed to clean isolated task {name}: {result.stderr.strip()[:300]}"
+                )
+            if "removed" in result.stdout.split():
+                removed.append(name)
+        return removed
+
     def prepare_nvda_stop_task(self) -> None:
         """Reconcile only the graceful-stop helper/task for upgrade-safe stop."""
         self.require_windows()
         scripts = self.ensure_helper_scripts()
-        self._prepare_interactive_task("D4Planner-NVDA-Stop", scripts["nvda-stop"])
+        self._prepare_interactive_task(
+            self.task_name("D4Planner-NVDA-Stop"), scripts["nvda-stop"]
+        )
 
     def ensure_interactive_tasks(self) -> None:
         """Verify prepared task definitions without mutating them."""
         self.require_windows()
         names = (
-            "D4Planner-NVDA",
-            "D4Planner-NVDA-Restart",
-            "D4Planner-NVDA-Stop",
-            "D4Planner-D4",
-            "D4Planner-Tolk-Probe",
+            self.task_name("D4Planner-NVDA"),
+            self.task_name("D4Planner-NVDA-Restart"),
+            self.task_name("D4Planner-NVDA-Stop"),
+            self.task_name("D4Planner-D4"),
+            self.task_name("D4Planner-Tolk-Probe"),
         )
         quoted = ",".join("'" + name.replace("'", "''") + "'" for name in names)
         ps = (
@@ -776,13 +934,20 @@ class WindowsRuntime:
             )
 
     def run_task(self, name: str) -> None:
-        result = self._powershell(f"Start-ScheduledTask -TaskName '{name}'")
+        task_name = self.task_name(name)
+        result = self._powershell(f"Start-ScheduledTask -TaskName '{task_name}'")
         if result.returncode != 0:
-            raise RuntimeBlocked(f"failed to start task {name}: {result.stderr.strip()[:300]}")
+            raise RuntimeBlocked(
+                f"failed to start task {task_name}: {result.stderr.strip()[:300]}"
+            )
 
-    def launch_supervisor_task(self, *, speech: bool, isolated: bool, block_marker: bool = False) -> None:
+    def launch_supervisor_task(self, *, speech: bool, isolated: bool,
+                               block_marker: bool = False,
+                               controller_profile: str | None = None,
+                               uat_attach_only: bool = False) -> None:
         """Launch the long-lived supervisor outside the caller's SSH job."""
         self.require_windows()
+        self.task_isolated = bool(isolated)
         self.prepare_interactive_tasks()
         executable = str(Path(sys.executable)).replace("'", "''")
         arguments = ["-m", "d4planner.daemon"]
@@ -792,20 +957,28 @@ class WindowsRuntime:
             arguments.append("--isolated")
         if block_marker:
             arguments.append("--block")
+        if controller_profile:
+            from ..controller import load_profile
+            validated = load_profile(controller_profile)
+            arguments.extend(["--controller-profile", validated.alias])
+        if isolated:
+            home = str(self.paths.root.resolve()).replace('"', '\\"')
+            arguments.extend(["--home", f'"{home}"'])
+        if uat_attach_only:
+            if not isolated:
+                raise RuntimeBlocked(
+                    "UAT attach-only requires isolated mode"
+                )
+            arguments.append("--uat-attach-only")
         argument_text = " ".join(arguments).replace("'", "''")
-        ps = (
-            f"$a=New-ScheduledTaskAction -Execute '{executable}' "
-            f"-Argument '{argument_text}';"
-            "$u=[System.Security.Principal.WindowsIdentity]::GetCurrent().Name;"
-            "$p=New-ScheduledTaskPrincipal -UserId $u -LogonType Interactive -RunLevel Limited;"
-            "$s=New-ScheduledTaskSettingsSet -Priority 4 "
-            "-ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew "
-            "-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries;"
-            "$d=New-ScheduledTask -Action $a -Principal $p -Settings $s;"
-            "Register-ScheduledTask -TaskName 'D4Planner-Supervisor' "
-            "-InputObject $d -Force | Out-Null;"
-            "Start-ScheduledTask -TaskName 'D4Planner-Supervisor'"
-        )
+        task_name = self.task_name("D4Planner-Supervisor", isolated=isolated)
+        ps = self._task_reconcile_script(
+            task_name=task_name,
+            executable=executable,
+            arguments=argument_text,
+            family="supervisor",
+            legacy_argument_prefix="-m d4planner.daemon",
+        ) + f";Start-ScheduledTask -TaskName '{task_name}'"
         result = self._powershell(ps)
         if result.returncode != 0:
             raise RuntimeBlocked(
@@ -829,19 +1002,14 @@ class WindowsRuntime:
             f'-m d4planner.cli input-marker-probe --key "{key_arg}" '
             f'--seconds {seconds:g} --output "{output_arg}"'
         ).replace("'", "''")
-        ps = (
-            f"$a=New-ScheduledTaskAction -Execute '{executable}' "
-            f"-Argument '{argument_text}';"
-            "$u=[System.Security.Principal.WindowsIdentity]::GetCurrent().Name;"
-            "$p=New-ScheduledTaskPrincipal -UserId $u -LogonType Interactive -RunLevel Limited;"
-            "$s=New-ScheduledTaskSettingsSet -Priority 4 "
-            "-ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew "
-            "-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries;"
-            "$d=New-ScheduledTask -Action $a -Principal $p -Settings $s;"
-            "Register-ScheduledTask -TaskName 'D4Planner-Input-Marker-Probe' "
-            "-InputObject $d -Force | Out-Null;"
-            "Start-ScheduledTask -TaskName 'D4Planner-Input-Marker-Probe'"
-        )
+        task_name = self.task_name("D4Planner-Input-Marker-Probe")
+        ps = self._task_reconcile_script(
+            task_name=task_name,
+            executable=executable,
+            arguments=argument_text,
+            family="input-marker-probe",
+            legacy_argument_prefix="-m d4planner.cli input-marker-probe ",
+        ) + f";Start-ScheduledTask -TaskName '{task_name}'"
         result = self._powershell(ps)
         if result.returncode != 0:
             raise RuntimeBlocked(

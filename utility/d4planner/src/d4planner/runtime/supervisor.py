@@ -13,6 +13,7 @@ from typing import Any, Protocol
 
 from ..character.equipment.projector import EquipmentProjector
 from ..character.repository import EquipmentRepository
+from ..controller import ControllerProfile
 from .diagnostics import JsonlDiagnosticsSink
 from .events.model import EventDraft
 from .events.store import EventStore
@@ -64,12 +65,19 @@ class Supervisor:
         tolk_retry_interval: float = 0.5,
         marker_capture: InputMarkerCapture | HookInputMarkerCapture | None = None,
         block_marker: bool = False,
+        controller_profile: ControllerProfile | None = None,
+        uat_attach_only: bool = False,
     ):
         self.paths = paths
         self.runtime = runtime
         self.path_manager = path_manager
         self.silent = silent
         self.isolated = isolated
+        if hasattr(self.runtime, "task_isolated"):
+            self.runtime.task_isolated = isolated
+        self.uat_attach_only = bool(uat_attach_only)
+        if self.uat_attach_only and not self.isolated:
+            raise ValueError("UAT attach-only requires isolated mode")
         self.poll_interval = poll_interval
         self.health_poll_interval = health_poll_interval
         self.game_start_timeout = game_start_timeout
@@ -88,12 +96,26 @@ class Supervisor:
         self._next_lease_refresh = 0.0
         self.marker_capture = marker_capture
         self.block_marker = bool(block_marker)
+        self.controller_profile = controller_profile
         self._marker_started = False
+        self.status.extras["runtime"] = {
+            "isolated": self.isolated,
+            "uatAttachOnly": self.uat_attach_only,
+        }
         self.status.extras["inputMarker"] = {
             "key": "F11",
             "mode": "BLOCK" if self.block_marker else "OBSERVE",
             "state": "STARTING",
-            "captureMethod": "keyboardHook" if self.block_marker else "asyncKeyState",
+            "captureMethod": "keyboardHook" if (self.block_marker or controller_profile)
+                else "asyncKeyState",
+            "layoutId": controller_profile.layout_id if controller_profile else None,
+            "mappingHash": controller_profile.sha256 if controller_profile else None,
+            "mappingSource": controller_profile.mapping_source if controller_profile else None,
+            "configuredDigitalCount": controller_profile.configured_count if controller_profile else 1,
+            "analogDisabledCount": controller_profile.analog_disabled_count if controller_profile else 0,
+            "backend": "keyboardHook" if (self.block_marker or controller_profile) else "asyncKeyState",
+            "physicallyVerifiedCount": None,
+            "lastInputAt": None,
             "droppedCount": 0,
             "overflow": False,
         }
@@ -178,13 +200,41 @@ class Supervisor:
             self._safe_emit(f"runtime.{target.value.casefold()}", event_data)
 
     def _create_session(self) -> None:
+        metadata = {
+            "nvdaVersion": self.runtime.nvda_version(),
+            "isolated": self.isolated,
+        }
+        if self.controller_profile is not None:
+            profile = self.controller_profile
+            # Capture the complete contract and checksum at session creation.
+            # Later package changes must never rewrite historical metadata.
+            metadata["controllerProfile"] = {
+                "layoutId": profile.layout_id,
+                "alias": profile.alias,
+                "mappingSource": profile.mapping_source,
+                "sha256": profile.sha256,
+                "digital": [
+                    {
+                        "controlId": entry.control_id,
+                        "key": entry.key,
+                        "virtualKey": entry.virtual_key,
+                        "captureEnabled": entry.capture_enabled,
+                    }
+                    for entry in profile.digital
+                ],
+                "analog": [
+                    {
+                        "controlId": entry.control_id,
+                        "axes": list(entry.axes),
+                        "captureEnabled": entry.capture_enabled,
+                    }
+                    for entry in profile.analog
+                ],
+            }
         self.store = EventStore.create(
             self.paths,
             silent=self.silent,
-            metadata={
-                "nvdaVersion": self.runtime.nvda_version(),
-                "isolated": self.isolated,
-            },
+            metadata=metadata,
         )
         self.status.session_id = self.store.session.session_id
         self.status.session_dir = str(self.store.session.directory)
@@ -217,7 +267,13 @@ class Supervisor:
         write_capture_config(self.paths, enabled=False)
         return self.status.state
 
-    def bootstrap(self) -> RuntimeState:
+    def bootstrap(self, *, start_marker: bool = False) -> RuntimeState:
+        """Bootstrap can be inspected in isolation without starting the hook.
+
+        run() opts in to marker startup before publishing RUNNING or WAITING.
+        This guarantees a client never observes a ready runtime with a
+        not-yet-started keyboard backend.
+        """
         self.paths.ensure()
         try:
             self.paths.stop_request.unlink()
@@ -250,7 +306,12 @@ class Supervisor:
             else:
                 self.status.extras["userPathManaged"] = False
 
-            addon_changed = self.runtime.ensure_addon_runtime()
+            # Acceptance attach-only may not install/restart an NVDA add-on.
+            # Require the existing add-on to be ready; fail closed otherwise.
+            addon_changed = (
+                False if self.uat_attach_only
+                else self.runtime.ensure_addon_runtime()
+            )
             if not self.runtime.addon_installed():
                 raise RuntimeBlocked("D4Planner NVDA add-on 0.2.0 is not installed correctly")
 
@@ -259,11 +320,19 @@ class Supervisor:
                 raise RuntimeBlocked("no active interactive Windows console session")
 
             existing_nvda = self.runtime.nvda_process()
+            self.status.extras["nvdaStartedBySupervisor"] = False
+            if self.uat_attach_only and not existing_nvda:
+                raise RuntimeBlocked("UAT attach-only requires existing NVDA; no launch")
             if addon_changed and existing_nvda:
                 nvda = self.runtime.restart_nvda()
                 self.status.extras["nvdaRestartReason"] = "add-on updated"
             else:
-                nvda = self.runtime.ensure_nvda_running()
+                nvda = (
+                    existing_nvda if self.uat_attach_only
+                    else self.runtime.ensure_nvda_running()
+                )
+                if existing_nvda is None and not self.uat_attach_only:
+                    self.status.extras["nvdaStartedBySupervisor"] = True
             if nvda.session_id != console:
                 raise RuntimeBlocked(
                     f"NVDA SessionId={nvda.session_id} does not match active console SessionId={console}"
@@ -306,7 +375,7 @@ class Supervisor:
             )
 
             steam = self.runtime.steam_process()
-            if self.isolated and steam:
+            if self.isolated and steam and not self.uat_attach_only:
                 self.status.steam = steam
                 self.transition(
                     RuntimeState.RESTART_REQUIRED,
@@ -345,6 +414,10 @@ class Supervisor:
                     data={"pid": game.pid},
                 )
             else:
+                if self.uat_attach_only:
+                    raise RuntimeBlocked(
+                        "UAT attach-only requires existing Diablo IV; no game launch"
+                    )
                 if steam and not self._steam_priority_allows_launch(steam):
                     priority = getattr(steam, "priority_class", None) or "unknown"
                     self.status.steam = steam
@@ -360,6 +433,12 @@ class Supervisor:
                 self.runtime.launch_game()
                 game = self.runtime.wait_for_game(timeout=self.game_start_timeout)
                 if not game:
+                    if start_marker:
+                        self._start_marker_capture()
+                        if (self.block_marker or self.controller_profile is not None) and not self._marker_started:
+                            raise RuntimeBlocked(
+                                self.status.last_error or "Controller keyboard hook failed to start"
+                            )
                     self.transition(
                         RuntimeState.WAITING_FOR_GAME,
                         "Diablo IV has not appeared yet; supervisor remains active",
@@ -396,6 +475,10 @@ class Supervisor:
             )
             self.status.capture_active = True
             self.transition(RuntimeState.CAPTURE_READY, "NVDA add-on capture enabled")
+            if start_marker:
+                self._start_marker_capture()
+                if (self.block_marker or self.controller_profile is not None) and not self._marker_started:
+                    raise RuntimeBlocked(self.status.last_error or "Controller keyboard hook failed to start")
             self.transition(RuntimeState.RUNNING, "D4Planner runtime ready")
             return self.status.state
         except RuntimeBlocked as exc:
@@ -473,15 +556,17 @@ class Supervisor:
             self.status.last_error = f"input marker capture failure: {error}"
             marker_status["state"] = "ERROR"
             marker_status["error"] = error
-            if self.block_marker:
+            if self.block_marker or self.controller_profile is not None:
+                # An explicitly selected profile must not silently remain
+                # RUNNING after hook loss, even in non-blocking OBSERVE mode.
                 if overflow:
                     self._safe_emit(
                         "input.marker.overflow",
-                        {"droppedCount": dropped_count, "mode": "BLOCK"},
+                        {"droppedCount": dropped_count, "mode": marker_status["mode"]},
                     )
                 self.transition(
                     RuntimeState.BLOCKED,
-                    "F11 blocking is no longer guaranteed",
+                    "Controller keyboard hook is no longer reliable",
                     error=self.status.last_error,
                     data={"droppedCount": dropped_count, "overflow": overflow},
                 )
@@ -492,7 +577,10 @@ class Supervisor:
                     pass
 
         try:
-            return [sample.as_draft() for sample in capture.drain()]
+            samples = capture.drain()
+            if samples:
+                marker_status["lastInputAt"] = samples[-1].timestamp
+            return [sample.as_draft() for sample in samples]
         except Exception as exc:
             self.status.last_error = (
                 f"input marker queue failure: {type(exc).__name__}: {exc}"
@@ -582,16 +670,19 @@ class Supervisor:
     def _start_marker_capture(self) -> None:
         if self.marker_capture is None:
             if os.name != "nt":
-                if self.block_marker:
-                    self.status.last_error = "F11 blocking requires Windows"
+                if self.block_marker or self.controller_profile is not None:
+                    self.status.last_error = "Controller keyboard hook requires Windows"
                     self.status.extras["inputMarker"]["state"] = "ERROR"
                 else:
                     self.status.extras["inputMarker"]["state"] = "DISABLED"
                 self._persist_status()
                 return
             self.marker_capture = (
-                HookInputMarkerCapture() if self.block_marker
-                else InputMarkerCapture(key="f11")
+                HookInputMarkerCapture(profile=self.controller_profile,
+                                       block=self.block_marker)
+                if self.controller_profile is not None
+                else (HookInputMarkerCapture() if self.block_marker
+                      else InputMarkerCapture(key="f11"))
             )
         self._sync_marker_target()
         try:
@@ -648,6 +739,12 @@ class Supervisor:
             return
 
         if current is None:
+            if self.uat_attach_only:
+                self.transition(
+                    RuntimeState.BLOCKED,
+                    "UAT NVDA exited; no auto-restart allowed",
+                )
+                return
             self.transition(RuntimeState.DEGRADED, "NVDA process exited; attempting recovery")
             try:
                 write_capture_config(self.paths, enabled=False)
@@ -656,7 +753,11 @@ class Supervisor:
             self.status.capture_active = False
 
         try:
-            nvda = current or self.runtime.ensure_nvda_running()
+            nvda = current or (
+                None if self.uat_attach_only else self.runtime.ensure_nvda_running()
+            )
+            if nvda is None:
+                raise RuntimeBlocked("UAT NVDA unavailable; no auto-restart allowed")
             console = self.runtime.active_console_session_id()
             if nvda.session_id != console:
                 raise RuntimeBlocked("restarted NVDA is not in the active console session")
@@ -830,20 +931,25 @@ class Supervisor:
             )
 
     def run(self) -> int:
-        state = self.bootstrap()
+        state = self.bootstrap(start_marker=True)
         if state in {RuntimeState.BLOCKED, RuntimeState.RESTART_REQUIRED}:
+            self._stop_marker_capture()
             if self.store:
+                # Preserve runtime-stop behavior when a keyboard backend
+                # fails during startup. Other bootstrap block reasons keep
+                # their previous terminal states.
+                if self.status.extras["inputMarker"].get("state") == "ERROR":
+                    self._safe_emit("runtime.stop", {"detail": "Hook startup failed"})
+                    self.transition(
+                        RuntimeState.STOPPED,
+                        "D4Planner stopped after keyboard hook startup failure",
+                        error=self.status.last_error,
+                    )
                 self.store.close()
             return 2 if state == RuntimeState.BLOCKED else 3
 
         exit_code = 0
         try:
-            self._start_marker_capture()
-            if self.block_marker and not self._marker_started:
-                self.transition(RuntimeState.BLOCKED,
-                                "F11 blocking hook failed to start",
-                                error=self.status.last_error)
-                return 2
             next_health_check = 0.0
             while not self.paths.stop_request.exists():
                 # Capture promotion is latency-sensitive. Process/session health

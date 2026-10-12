@@ -18,6 +18,9 @@ d4planner = "d4planner.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"d4planner.controller.data" = ["*.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"

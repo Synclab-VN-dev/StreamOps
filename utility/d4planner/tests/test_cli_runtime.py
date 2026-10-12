@@ -405,6 +405,58 @@ def test_task_preparation_failure_persists_blocked_before_supervisor(
     assert "Unable to start" in capsys.readouterr().err
 
 
+def test_isolated_restart_required_cleans_only_owned_tasks(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    cleaned = []
+    monkeypatch.setattr(cli, "_spawn_daemon", lambda **kwargs: 42)
+    monkeypatch.setattr(
+        cli,
+        "_wait_start",
+        lambda *args, **kwargs: {
+            "state": "RESTART_REQUIRED",
+            "detail": "existing Steam needs a normal restart",
+            "captureActive": False,
+        },
+    )
+    monkeypatch.setattr(
+        cli,
+        "_cleanup_isolated_tasks",
+        lambda _paths, **kwargs: cleaned.append(kwargs) or True,
+    )
+
+    result = cli.command_start(
+        paths,
+        speech=False,
+        isolated=True,
+        detached=True,
+        timeout=1,
+        block_marker=True,
+        controller_profile="xbox16",
+    )
+
+    assert result == 3
+    assert cleaned == [{"enabled": True, "stop_started_nvda": True}]
+
+
+def test_isolated_stop_cleans_owned_tasks_after_ack(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    atomic_write_json(paths.runtime_state, {
+        "state": "STOPPED",
+        "supervisorPid": None,
+        "extras": {"runtime": {"isolated": True}},
+    })
+    cleaned = []
+    monkeypatch.setattr(
+        cli,
+        "_cleanup_isolated_tasks",
+        lambda _paths, **kwargs: cleaned.append(kwargs) or True,
+    )
+
+    assert cli.command_stop(paths) == 0
+    assert cleaned == [{"enabled": True}]
+
+
 def test_second_start_does_not_spawn_duplicate_supervisor(monkeypatch, tmp_path):
     paths = RuntimePaths(tmp_path / "home")
     paths.ensure()
@@ -590,6 +642,32 @@ def test_stop_nvda_runs_after_capture_disabled_when_planner_already_stopped(
     assert observed == [False]
 
 
+def test_isolated_stop_nvda_uses_owned_namespace_before_task_cleanup(
+    monkeypatch, tmp_path,
+):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    atomic_write_json(paths.runtime_state, {
+        "state": "STOPPED",
+        "supervisorPid": None,
+        "extras": {"runtime": {"isolated": True}},
+    })
+    events = []
+    monkeypatch.setattr(
+        cli,
+        "_stop_nvda",
+        lambda _paths, *, timeout, isolated: events.append(("nvda", isolated)) or 0,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_cleanup_isolated_tasks",
+        lambda _paths, *, enabled: events.append(("tasks", enabled)) or True,
+    )
+
+    assert cli.command_stop(paths, timeout=0.1, stop_nvda=True) == 0
+    assert events == [("nvda", True), ("tasks", True)]
+
+
 def test_stop_nvda_already_absent_is_success(monkeypatch, tmp_path, capsys):
     paths = RuntimePaths(tmp_path / "home")
     paths.ensure()
@@ -767,6 +845,112 @@ def test_sqlite_follow_from_end_skips_history_and_yields_new_event(tmp_path):
 def test_block_flag_cli_parser_and_daemon_cli(monkeypatch):
     assert cli.build_parser().parse_args(["start", "-d", "--block"]).block is True
     assert cli.build_parser().parse_args(["start", "-d"]).block is False
+
+
+def test_uat_attach_only_cli_requires_isolated_mode(
+    monkeypatch, tmp_path, capsys,
+):
+    paths = RuntimePaths(tmp_path / "home")
+    monkeypatch.setattr(
+        cli,
+        "_spawn_daemon",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("must not launch")),
+    )
+
+    result = cli.command_start(
+        paths,
+        speech=False,
+        isolated=False,
+        detached=True,
+        timeout=1,
+        block_marker=False,
+        controller_profile="xbox16",
+        uat_attach_only=True,
+    )
+
+    assert result == 4
+    assert "requires --isolated" in capsys.readouterr().err
+
+
+def test_uat_attach_only_cli_allows_stopped_mode_regression_variants(
+    monkeypatch, tmp_path,
+):
+    for block_marker, controller_profile in (
+        (False, "xbox16"),
+        (False, None),
+        (True, None),
+    ):
+        paths = RuntimePaths(tmp_path / f"home-{block_marker}-{controller_profile}")
+        launches = []
+        monkeypatch.setattr(
+            cli, "_spawn_daemon", lambda **kwargs: launches.append(kwargs) or 42
+        )
+        monkeypatch.setattr(
+            cli,
+            "_wait_start",
+            lambda *args, **kwargs: {
+                "state": "RUNNING",
+                "captureActive": True,
+                "extras": {
+                    "inputMarker": {
+                        "mode": "BLOCK" if block_marker else "OBSERVE",
+                        "state": "ACTIVE",
+                    }
+                },
+            },
+        )
+
+        result = cli.command_start(
+            paths,
+            speech=False,
+            isolated=True,
+            detached=True,
+            timeout=1,
+            block_marker=block_marker,
+            controller_profile=controller_profile,
+            uat_attach_only=True,
+        )
+
+        assert result == 0
+        assert launches[0]["uat_attach_only"] is True
+        assert launches[0]["block_marker"] is block_marker
+        assert launches[0].get("controller_profile") == controller_profile
+
+
+def test_uat_attach_only_cli_forwards_to_daemon(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    launches = []
+    monkeypatch.setattr(cli, "_spawn_daemon", lambda **kwargs: launches.append(kwargs) or 42)
+    monkeypatch.setattr(
+        cli,
+        "_wait_start",
+        lambda *args, **kwargs: {
+            "state": "RUNNING",
+            "captureActive": True,
+            "extras": {"inputMarker": {"mode": "BLOCK", "state": "ACTIVE"}},
+        },
+    )
+
+    result = cli.command_start(
+        paths,
+        speech=False,
+        isolated=True,
+        detached=True,
+        timeout=1,
+        block_marker=True,
+        controller_profile="xbox16",
+        uat_attach_only=True,
+    )
+
+    assert result == 0
+    assert launches == [{
+        "paths": paths,
+        "speech": False,
+        "isolated": True,
+        "block_marker": True,
+        "uat_attach_only": True,
+        "controller_profile": "xbox16",
+    }]
 
 
 def test_marker_logs_show_suppression_only_when_true():

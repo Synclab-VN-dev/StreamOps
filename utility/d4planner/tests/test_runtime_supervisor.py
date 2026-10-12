@@ -466,7 +466,9 @@ def test_shutdown_state_write_failure_remains_fail_open(monkeypatch, tmp_path):
     paths.ensure()
     paths.stop_request.write_text("stop\n", encoding="utf-8")
 
-    monkeypatch.setattr(supervisor, "bootstrap", lambda: RuntimeState.RUNNING)
+    # This test bypasses bootstrap to isolate shutdown fail-open behavior.
+    # Allow the new keyword-only startup policy without running a marker hook.
+    monkeypatch.setattr(supervisor, "bootstrap", lambda **kwargs: RuntimeState.RUNNING)
 
     def fail_disable(*_args, **_kwargs):
         raise OSError("disk unavailable")
