@@ -245,6 +245,82 @@ def test_control_plane_reconciles_interactive_tasks_at_normal_priority(tmp_path,
     assert all("-Force" in command for command in commands)
 
 
+def test_isolated_tasks_are_namespaced_and_never_force_reconciled(tmp_path, monkeypatch):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
+    scripts = {
+        "nvda": tmp_path / "nvda.ps1",
+        "nvda-restart": tmp_path / "nvda-restart.ps1",
+        "nvda-stop": tmp_path / "nvda-stop.ps1",
+        "d4": tmp_path / "d4.ps1",
+        "tolk-probe": tmp_path / "tolk-probe.ps1",
+    }
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(runtime, "ensure_helper_scripts", lambda: scripts)
+    runtime.task_isolated = True
+    commands = []
+
+    def fake_powershell(script, *, timeout=15.0):
+        commands.append(script)
+        return subprocess.CompletedProcess([], 0, "", "")
+
+    monkeypatch.setattr(runtime, "_powershell", fake_powershell)
+    runtime.prepare_interactive_tasks()
+
+    assert len(commands) == 5
+    assert all("D4Planner-Isolated-" in command for command in commands)
+    assert all("-Force" not in command for command in commands)
+    assert all("refusing to modify foreign isolated task" in command for command in commands)
+
+
+def test_isolated_supervisor_forwards_home_and_uses_owned_task_name(tmp_path, monkeypatch):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "pr95-home"))
+    commands = []
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(runtime, "prepare_interactive_tasks", lambda: None)
+    monkeypatch.setattr(
+        runtime,
+        "_powershell",
+        lambda script, **kw: (
+            commands.append(script) or subprocess.CompletedProcess([], 0, "", "")
+        ),
+    )
+
+    runtime.launch_supervisor_task(
+        speech=False,
+        isolated=True,
+        block_marker=True,
+        controller_profile="xbox16",
+    )
+
+    assert len(commands) == 1
+    script = commands[0]
+    assert "--isolated" in script
+    assert "--home" in script
+    assert str((tmp_path / "pr95-home").resolve()) in script
+    assert "D4Planner-Isolated-" in script
+    assert "-Force" not in script
+
+
+def test_isolated_run_task_maps_legacy_base_name_to_owned_task(tmp_path, monkeypatch):
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "pr95-home"))
+    runtime.task_isolated = True
+    calls = []
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(
+        runtime,
+        "_powershell",
+        lambda script, **kw: (
+            calls.append(script) or subprocess.CompletedProcess([], 0, "", "")
+        ),
+    )
+
+    runtime.run_task("D4Planner-Tolk-Probe")
+
+    assert len(calls) == 1
+    assert "D4Planner-Isolated-" in calls[0]
+    assert "D4Planner-Tolk-Probe'" not in calls[0]
+
+
 def test_limited_supervisor_only_verifies_interactive_tasks(tmp_path, monkeypatch):
     runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
     monkeypatch.setattr(runtime, "require_windows", lambda: None)

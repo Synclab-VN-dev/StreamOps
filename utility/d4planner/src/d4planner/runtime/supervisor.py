@@ -73,6 +73,8 @@ class Supervisor:
         self.path_manager = path_manager
         self.silent = silent
         self.isolated = isolated
+        if hasattr(self.runtime, "task_isolated"):
+            self.runtime.task_isolated = isolated
         self.uat_attach_only = bool(uat_attach_only)
         if self.uat_attach_only and not self.isolated:
             raise ValueError("UAT attach-only requires isolated mode")
