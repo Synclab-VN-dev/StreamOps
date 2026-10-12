@@ -864,7 +864,7 @@ class WindowsRuntime:
                 f"throw 'refusing to remove unowned scheduled task {name_q}'"
                 "};"
                 f"Unregister-ScheduledTask -TaskName '{name_q}' -Confirm:$false "
-                "-ErrorAction Stop;Write-Output 'removed'}"
+                "-ErrorAction Stop;Write-Output 'removed'};exit 0"
             )
             result = self._powershell(ps)
             if result.returncode != 0:
