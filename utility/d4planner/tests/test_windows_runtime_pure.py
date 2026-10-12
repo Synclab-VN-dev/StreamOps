@@ -412,7 +412,15 @@ def test_cleanup_removes_only_owned_isolated_tasks(tmp_path, monkeypatch):
     runtime = WindowsRuntime(RuntimePaths(tmp_path / "pr95-home"))
     runtime.task_isolated = True
     scripts = []
+    helper_scripts = {
+        "nvda": tmp_path / "start-nvda.ps1",
+        "nvda-restart": tmp_path / "restart-nvda.ps1",
+        "nvda-stop": tmp_path / "stop-nvda.ps1",
+        "d4": tmp_path / "start-d4.ps1",
+        "tolk-probe": tmp_path / "probe-tolk.ps1",
+    }
     monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(runtime, "ensure_helper_scripts", lambda: helper_scripts)
     monkeypatch.setattr(
         runtime,
         "_powershell",
