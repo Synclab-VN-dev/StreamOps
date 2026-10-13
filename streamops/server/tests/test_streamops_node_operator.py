@@ -84,7 +84,7 @@ def test_no_staged_deployment_artifact_dependency():
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell AST")
-def test_foreign_scheduled_task_is_rejected_without_touching_system():
+def test_foreign_scheduled_task_is_rejected_without_touching_system(tmp_path):
     pwsh = shutil.which("pwsh") or shutil.which("powershell")
     assert pwsh, "Windows CI requires PowerShell"
     script = str(ENTRY).replace("'", "''")
@@ -100,8 +100,10 @@ $task=[pscustomobject]@{ Actions=@([pscustomobject]@{ Arguments='-File C:\foreig
 try { Assert-NodeTaskOwned -Task $task -ExpectedDataDir 'C:\repo\node'; exit 2 }
 catch { if($_.Exception.Message -like '*does not belong*'){ exit 0 }; throw }
 """.replace("%SCRIPT%", script)
+    harness = tmp_path / "ownership-negative.ps1"
+    harness.write_text(ps, encoding="utf-8")
     proc = subprocess.run(
-        [pwsh, "-NoProfile", "-NonInteractive", "-Command", ps],
+        [pwsh, "-NoProfile", "-NonInteractive", "-File", str(harness)],
         text=True, capture_output=True, timeout=20,
     )
     assert proc.returncode == 0, proc.stderr + proc.stdout
