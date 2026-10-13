@@ -22,6 +22,24 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+# A task name alone is not proof of ownership. Accept the current one-file task
+# or the previous repo-local runner (migration), but never a different worktree.
+function Assert-NodeTaskOwned {
+    param([Parameter(Mandatory)]$Task, [Parameter(Mandatory)][string]$ExpectedDataDir)
+    $action = $Task.Actions | Select-Object -First 1
+    if ($null -eq $action) { throw "Scheduled Task has no action." }
+    $taskArgsText = [string]$action.Arguments
+    $legacyRunner = Join-Path $PSScriptRoot "run-streamops-node.ps1"
+    $newRunnerValid = $taskArgsText.IndexOf($PSCommandPath, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+        $taskArgsText.Contains("__run")
+    $legacyRunnerValid = $taskArgsText.IndexOf($legacyRunner, [StringComparison]::OrdinalIgnoreCase) -ge 0
+    if (-not ($newRunnerValid -or $legacyRunnerValid) -or
+        -not $taskArgsText.Contains("-DataDir") -or
+        $taskArgsText.IndexOf($ExpectedDataDir, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+        throw "Refusing task operation: Scheduled Task does not belong to this launcher/DataDir."
+    }
+}
+
 function Protect-TokenDirectory {
     param([Parameter(Mandatory)][string]$Directory)
 $item = Get-Item -LiteralPath $Directory -Force -ErrorAction Stop
@@ -211,6 +229,7 @@ if (-not $DataDir.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)
 
 $runtimePath = Join-Path $DataDir "runtime.json"
 $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+if ($null -ne $task) { Assert-NodeTaskOwned -Task $task -ExpectedDataDir $DataDir }
 if ($null -ne $task -and $task.State -eq "Running") {
     Stop-ScheduledTask -TaskName $TaskName
     for ($attempt = 0; $attempt -lt 20; $attempt++) {
@@ -452,11 +471,15 @@ $existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyConti
 $taskUsesPythonPath = $false
 $taskUsesPluginSource = $false
 $taskUsesNormalPriority = $false
+$taskUsesConsolidatedLauncher = $false
 if ($null -ne $existingTask) {
+    Assert-NodeTaskOwned -Task $existingTask -ExpectedDataDir $DataDir
     $taskUsesNormalPriority = [int]$existingTask.Settings.Priority -eq 4
     $taskAction = $existingTask.Actions | Select-Object -First 1
     if ($null -ne $taskAction) {
         $taskArgumentsText = [string]$taskAction.Arguments
+        $taskUsesConsolidatedLauncher = $taskArgumentsText.IndexOf($PSCommandPath, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+            $taskArgumentsText.Contains("__run")
         $taskUsesPythonPath = $taskArgumentsText.Contains("-PythonPath") -and
             $taskArgumentsText.IndexOf($PythonPath, [StringComparison]::OrdinalIgnoreCase) -ge 0
         if ([string]::IsNullOrWhiteSpace($ObsPluginSourceProvider)) {
@@ -478,7 +501,7 @@ if (Test-Path -LiteralPath $runtimePath) {
         $runtime = Get-Content -LiteralPath $runtimePath -Raw | ConvertFrom-Json
         $probeHost = Get-ProbeHost $runtime.host
         $health = Invoke-RestMethod -Uri "http://${probeHost}:$($runtime.port)/api/v1/health" -TimeoutSec 2
-        $matchesDesiredConfig = $taskUsesPythonPath -and $taskUsesPluginSource -and $taskUsesNormalPriority -and
+        $matchesDesiredConfig = $taskUsesConsolidatedLauncher -and $taskUsesPythonPath -and $taskUsesPluginSource -and $taskUsesNormalPriority -and
             $runtime.host -eq $BindHost -and
             [int]$runtime.port -eq $Port -and
             [int]$runtime.output_index -eq $OutputIndex -and

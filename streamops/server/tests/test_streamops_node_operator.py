@@ -29,6 +29,9 @@ def test_one_operator_entrypoint_and_internal_task_dispatch():
     assert 'ZeroFreeBSTR' in text
     assert 'Set-Clipboard -Value " "' in text
     assert "TaskName" in text and "DataDir" in text
+    assert "Assert-NodeTaskOwned -Task $task -ExpectedDataDir $DataDir" in text
+    assert "$taskUsesConsolidatedLauncher" in text
+    assert "run-streamops-node.ps1" in text  # old scheduled-task action migration only
     for removed in (
         "start-streamops-node.ps1",
         "run-streamops-node.ps1",
@@ -78,3 +81,27 @@ def test_no_staged_deployment_artifact_dependency():
     assert "streamops-node-deployment-" not in workflow
     release = (ROOT / ".github" / "workflows" / "obs-multi-rtmp-build.yml").read_text(encoding="utf-8")
     assert "obs_plugin_package.py" in release
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell AST")
+def test_foreign_scheduled_task_is_rejected_without_touching_system():
+    pwsh = shutil.which("pwsh") or shutil.which("powershell")
+    assert pwsh, "Windows CI requires PowerShell"
+    script = str(ENTRY).replace("'", "''")
+    ps = r"""
+$source = '%SCRIPT%'
+$t=$null;$e=$null
+$ast=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$t,[ref]$e)
+if($e.Count){throw "Parse failure"}
+$f=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq "Assert-NodeTaskOwned"},$true)
+if($null -eq $f){throw "Ownership guard not found"}
+. ([scriptblock]::Create($f.Extent.Text))
+$task=[pscustomobject]@{ Actions=@([pscustomobject]@{ Arguments='-File C:\foreign\x.ps1 -DataDir C:\foreign\node' }) }
+try { Assert-NodeTaskOwned -Task $task -ExpectedDataDir 'C:\repo\node'; exit 2 }
+catch { if($_.Exception.Message -like '*does not belong*'){ exit 0 }; throw }
+""".replace("%SCRIPT%", script)
+    proc = subprocess.run(
+        [pwsh, "-NoProfile", "-NonInteractive", "-Command", ps],
+        text=True, capture_output=True, timeout=20,
+    )
+    assert proc.returncode == 0, proc.stderr + proc.stdout
