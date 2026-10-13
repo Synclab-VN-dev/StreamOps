@@ -643,21 +643,21 @@ Run the Windows node in the foreground with an explicit port:
 Or manage it from the repository through an on-demand Scheduled Task:
 
 ```powershell
-.\scripts\devices\a-windows\start-streamops-node.ps1 -Port 8785
-.\scripts\devices\a-windows\status-streamops-node.ps1
-.\scripts\devices\a-windows\stop-streamops-node.ps1
+.\scripts\devices\a-windows\streamops-node.ps1 start -Port 8785
+.\scripts\devices\a-windows\streamops-node.ps1 status
+.\scripts\devices\a-windows\streamops-node.ps1 stop
 ```
 
 ### GitHub token at Windows node startup (OBS Plugin Manager #47)
 
 The managed OBS Plugin Manager defaults to `Synclab-VN-dev/StreamOps-OBS-Plugins`.
-When starting or replacing a node using `start-streamops-node.ps1`, PowerShell prompts
+When starting or replacing a node using `streamops-node.ps1 start`, PowerShell prompts
 for a **GitHub read-only token** using `Read-Host -AsSecureString` (no plaintext CLI flag).
 
 ```powershell
 # For manual validation of PR #93, first check port 18793 is free.
 Get-NetTCPConnection -State Listen -LocalPort 18793 -ErrorAction SilentlyContinue
-.\scripts\devices\a-windows\start-streamops-node.ps1 -Port 18793 -BindHost 127.0.0.1 -TaskName "StreamOps-PR93-Manual" -DataDir ".streamops\pr93\node"
+.\scripts\devices\a-windows\streamops-node.ps1 start -Port 18793 -BindHost 127.0.0.1 -TaskName "StreamOps-PR93-Manual" -DataDir ".streamops\pr93\node"
 # Enter a read-only token into the masked prompt, or choose clipboard input below.
 ```
 
@@ -665,7 +665,7 @@ Alternatively, copy the token on Windows A and immediately start with the
 clipboard flag (no token on the command line):
 
 ```powershell
-.\scripts\devices\a-windows\start-streamops-node.ps1 -Port 18793 -BindHost 127.0.0.1 -TaskName "StreamOps-PR93-Manual" -DataDir ".streamops\pr93\node" -GitHubTokenFromClipboard
+.\scripts\devices\a-windows\streamops-node.ps1 start -Port 18793 -BindHost 127.0.0.1 -TaskName "StreamOps-PR93-Manual" -DataDir ".streamops\pr93\node" -GitHubTokenFromClipboard
 ```
 
 The clipboard mode requires one non-empty token line without whitespace and
@@ -705,7 +705,7 @@ that becomes unresponsive to WebSocket requests immediately after a proven-idle
 collection or profile transition. Install its no-trigger, interactive recovery task:
 
 ```powershell
-.\scripts\devices\a-windows\start-streamops-node.ps1 `
+.\scripts\devices\a-windows\streamops-node.ps1 start `
     -TaskName "StreamOps PR19 Acceptance" `
     -Port 8785 `
     -DataDir .streamops\pr19-node

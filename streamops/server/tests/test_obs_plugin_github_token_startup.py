@@ -85,10 +85,10 @@ def test_github_http_errors_are_typed_and_never_expose_token(status, remaining, 
 
 def test_windows_launcher_has_no_plaintext_token_cli_contract():
     root = Path(__file__).resolve().parents[3]
-    start = (root / "scripts/devices/a-windows/start-streamops-node.ps1").read_text(
+    start = (root / "scripts/devices/a-windows/streamops-node.ps1").read_text(
         encoding="utf-8"
     )
-    runner = (root / "scripts/devices/a-windows/run-streamops-node.ps1").read_text(
+    runner = (root / "scripts/devices/a-windows/streamops-node.ps1").read_text(
         encoding="utf-8"
     )
     assert "Read-Host" in start and "-AsSecureString" in start
@@ -97,7 +97,7 @@ def test_windows_launcher_has_no_plaintext_token_cli_contract():
     assert "Set-Clipboard -Value" in start
     assert "Get-Clipboard -ErrorAction Stop" in start
     assert "ConvertFrom-SecureString" in start
-    assert "protect-obs-plugin-token-dir.ps1" in start
+    assert "Protect-TokenDirectory -Directory $secretDir" in start
     assert "Set-Acl -LiteralPath $secretDir" not in start
     assert "ObsPluginCredentialFile" in runner
     assert "ConvertTo-SecureString" in runner
@@ -117,11 +117,7 @@ def test_powershell_launchers_parse_on_windows():
     if not executable:
         pytest.fail("Windows CI has no PowerShell available to parse launcher")
     root = Path(__file__).resolve().parents[3]
-    for name in (
-        "start-streamops-node.ps1",
-        "run-streamops-node.ps1",
-        "protect-obs-plugin-token-dir.ps1",
-    ):
+    for name in ("streamops-node.ps1",):
         path = root / "scripts/devices/a-windows" / name
         quoted_path = str(path).replace("'", "''")
         command = (
@@ -151,7 +147,7 @@ def test_powershell_token_directory_acl_without_admin():
     executable = shutil.which("pwsh") or shutil.which("powershell")
     assert executable, "Windows CI requires PowerShell"
     root = Path(__file__).resolve().parents[3]
-    helper = root / "scripts/devices/a-windows/protect-obs-plugin-token-dir.ps1"
+    helper = root / "scripts/devices/a-windows/streamops-node.ps1"
     with tempfile.TemporaryDirectory() as tmpdir:
         secret_dir = Path(tmpdir) / ".secrets"
         secret_dir.mkdir()
@@ -163,9 +159,26 @@ def test_powershell_token_directory_acl_without_admin():
             capture_output=True, text=True, timeout=20,
         )
         assert preseed.returncode == 0, preseed.stderr + preseed.stdout
+        harness = Path(tmpdir) / "acl-test.ps1"
+        harness.write_text(r'''
+param([string]$Source, [string]$Directory)
+$tokens = $null; $errors = $null
+$ast = [Management.Automation.Language.Parser]::ParseFile(
+    $Source, [ref]$tokens, [ref]$errors
+)
+if ($errors.Count -ne 0) { throw "PowerShell source parse failed" }
+$guard = $ast.Find({
+    param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -eq "Protect-TokenDirectory"
+}, $true)
+if ($null -eq $guard) { throw "Missing token ACL helper" }
+. ([scriptblock]::Create($guard.Extent.Text))
+Protect-TokenDirectory -Directory $Directory
+''', encoding="utf-8")
         result = subprocess.run(
             [executable, "-NoProfile", "-NonInteractive", "-File",
-             str(helper), "-Directory", str(secret_dir)],
+             str(harness), "-Source", str(helper), "-Directory", str(secret_dir)],
             capture_output=True, text=True, timeout=30,
         )
         assert result.returncode == 0, (
@@ -210,7 +223,7 @@ def test_windows_clipboard_reader_uses_secure_string_and_clears_clipboard(
     exe = shutil.which("pwsh") or shutil.which("powershell")
     assert exe, "Windows CI must provide PowerShell"
     root = Path(__file__).resolve().parents[3]
-    source = root / "scripts/devices/a-windows/start-streamops-node.ps1"
+    source = root / "scripts/devices/a-windows/streamops-node.ps1"
     harness = tmp_path / "clipboard-test.ps1"
     harness.write_text(r'''
 param([string]$Source, [string]$Scenario)

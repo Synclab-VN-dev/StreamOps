@@ -28,83 +28,52 @@ trees retain a byte-for-byte rollback baseline. Exact approved bytes are promote
 only after the approved artifact and manifest are independently verified, without
 rewriting the existing files.
 
-## Deployment identity and staging
+## StreamOps Node operator entrypoint (PR #52 simplification)
 
-CI creates the artifact `streamops-node-deployment-<40-char-commit>`. It contains
-the StreamOps wheel, binary dependency wheels, and `deployment-manifest.json`
-with the source commit, sizes, and SHA-256 values.
-
-On Windows A, stage without touching the running service:
+Windows A is operated through **one PowerShell script** from the selected, approved
+checkout (production or isolated PR worktree):
 
 ```powershell
-pwsh -File scripts\devices\a-windows\prepare-streamops-node-deployment.ps1 `
-  -BundleRoot C:\approved-transfer\streamops-node-deployment `
-  -ExpectedCommit <exact-pr-head>
+.\scripts\devices\a-windows\streamops-node.ps1 start
+.\scripts\devices\a-windows\streamops-node.ps1 status
+.\scripts\devices\a-windows\streamops-node.ps1 stop
 ```
 
-The script verifies every bundle file, creates an immutable venv under
-`.streamops\deployments\<commit>`, installs offline, and writes no production
-environment variables. The running commit is taken from that deployment's
-hash-pinned metadata, not the checkout HEAD.
+- `start` creates/reuses only the specified repo-owned Scheduled Task and DataDir
+  and launches `streamops.cli runserver` in the interactive Windows session.
+  It performs health/capture checks and rejects an unexpectedly occupied port.
+- `status` verifies task, PID/session and API health without modifying runtime.
+- `stop` targets only the specified repo-owned task/runtime. It does **not**
+  stop OBS, Steam, Diablo IV or a third-party process.
+- An internal `__run` dispatch is used **only by the Scheduled Task**. Operator
+  commands remain `start | stop | status`.
+- The managed GitHub Release Source defaults to
+  `Synclab-VN-dev/StreamOps-OBS-Plugins`. A read-only token can be entered via
+  secure prompt; a one-use DPAPI handoff with owner-only ACL transfers it to
+  the interactive Scheduled Task. No token is printed in logs or task arguments.
 
-Read-only validation before an approved window:
+For an isolated PR test node, provide `-TaskName StreamOps-PR52-Manual`,
+`-DataDir .streamops/pr52/node`, `-Port 18752` and `-BindHost 127.0.0.1`;
+check that the port is unoccupied **before** invoking start. Never redirect a
+production task to a test checkout.
 
-```powershell
-pwsh -File scripts\devices\a-windows\test-obs-plugin-deployment-readiness.ps1 |
-  Set-Content issue47-deployment-readiness.json
-```
+**Out of scope in this PR:** Transactional StreamOps *Node version*
+upgrade/activation/rollback and its wheelhouse deployment artifact. The former
+staged-deployment scripts and associated packaging steps have been removed.
+This does **not** remove OBS **plugin** install/update/rollback or the separately
+approved OBS plugin release packaging workflow. Merging source code is not
+authorization to deploy a new Node or publish a plugin release.
 
-The output includes the Scheduled Task action, running Python/deployment commit,
-OBS output state, three Plugin Manager APIs, managed release count, and plugin
-file hashes. It omits process command lines and all environment values.
+## Operational safety
 
-## Activation and server rollback
+- Do not invoke `start` to change an active production Node without approved
+  maintenance. The start command can replace an unhealthy/mismatched task.
+- All real OBS plugin install/update/adopt/rollback mutations are still subject
+  to their existing maintenance approvals and idle-output/recovery guards.
+- For read-only Plugin Manager checks, use `status` and the REST/WS status or
+  catalog APIs. For Vendor readiness, use `scripts/e2e/issue47_probe_vendor.py`.
+- For remaining D09 streaming-only Real-A UAT, see issue #75 DEV-F-13:
+  do not auto-enable public multi-RTMP targets or relax `syncStart` safeguards.
 
-Only after maintenance approval, with OBS streaming and recording both false:
-
-```powershell
-pwsh -File scripts\devices\a-windows\activate-streamops-node-deployment.ps1 `
-  -DeploymentRoot C:\path\to\.streamops\deployments\<exact-pr-head> `
-  -RollbackDeploymentRoot C:\path\to\.streamops\deployments\<previous-commit> `
-  -MaintenanceApproved -ExpectEmptyCatalog
-```
-
-Activation captures the existing Scheduled Task XML and idle-output evidence,
-switches only the StreamOps server runtime, and configures the process with:
-
-```text
-STREAMOPS_OBS_PLUGIN_SOURCE_PROVIDER=github-release
-STREAMOPS_OBS_PLUGIN_SOURCE_LOCATION=Synclab-VN-dev/StreamOps-OBS-Plugins
-```
-
-It validates:
-
-```text
-GET /api/v1/obs/plugins
-GET /api/v1/obs/plugins/obs-multi-rtmp
-GET /api/v1/obs/plugins/available
-```
-
-If activation fails, the prior task definition is restored automatically. Manual
-server rollback uses the captured `task.xml` and `output-idle.json` with
-`rollback-streamops-node-deployment.ps1 -MaintenanceApproved`. None of these
-deployment scripts invokes plugin adopt/install/update/rollback.
-
-## Gates remaining before real mutation UAT
-
-- Obtain maintenance approval and a current backup/rollback approval for A.
-- Configure the protected GitHub environment `obs-plugin-release` and a
-  fine-grained release-repository token with only required contents permissions.
-- Land the release-only workflow/infrastructure on `master` without merging the
-  unaccepted Plugin Manager feature. Keep runtime feature code on the Draft PR.
-- Publish no artifact until custom v1 is built from the approved StreamOps source
-  commit with license and provenance; v2 must contain a real source change and a
-  different DLL SHA-256.
-- Configure the GitHub provider on A and prove an empty repository reports
-  `source_state=EMPTY`, never upstream content.
-- Re-run read-only baseline hashes immediately before maintenance. Then stop OBS
-  explicitly, adopt legacy, verify the backup/journal, and only afterward approve
-  installation of v1.
-
-Until those gates have real evidence: deployment is **NOT READY** and plugin
-mutation UAT is **NOT READY**.
+The original rollout/approval policy remains: no automatic production change
+from a PR merge or a passing GitHub Action.

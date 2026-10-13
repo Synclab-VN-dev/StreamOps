@@ -146,11 +146,11 @@ try {
         if(Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue){
             Block "TASK-RECHECK" "No conflicting task" "Task exists" "No overwriting existing Scheduled Task"
         }
-        $start=Join-Path $WorktreeRoot "scripts\devices\a-windows\start-streamops-node.ps1"
+        $start=Join-Path $WorktreeRoot "scripts\devices\a-windows\streamops-node.ps1"
         if(-not (Test-Path -LiteralPath $start -PathType Leaf)){
             Block "LAUNCHER" "Repository-managed interactive launcher" "Missing" "Cannot start safely"
         }
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File $start -TaskName $TaskName -Port $Port -BindHost "0.0.0.0" -DataDir $data -PythonPath $venvPython
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $start start -TaskName $TaskName -Port $Port -BindHost "0.0.0.0" -DataDir $data -PythonPath $venvPython
         if($LASTEXITCODE -ne 0){
             Block "NODE-START" "Isolated PR89 node ready" "Startup failed" "See .streamops/pr89/node/logs. Existing Steam/OBS/game remain untouched"
         }
