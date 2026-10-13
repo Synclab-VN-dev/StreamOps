@@ -96,9 +96,31 @@ if($e.Count){throw "Parse failure"}
 $f=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq "Assert-NodeTaskOwned"},$true)
 if($null -eq $f){throw "Ownership guard not found"}
 . ([scriptblock]::Create($f.Extent.Text))
-$task=[pscustomobject]@{ Actions=@([pscustomobject]@{ Arguments='-File C:\foreign\x.ps1 -DataDir C:\foreign\node' }) }
-try { Assert-NodeTaskOwned -Task $task -ExpectedDataDir 'C:\repo\node'; exit 2 }
-catch { if($_.Exception.Message -like '*does not belong*'){ exit 0 }; throw }
+# Reject both a foreign task and an intentionally deceptive DataDir prefix.
+$badArgs=@(
+    '-File C:\foreign\x.ps1 -DataDir "C:\foreign\node"',
+    ('-File "' + $source + '" __run -DataDir "C:\repo\node-extra"')
+)
+foreach($argsText in $badArgs) {
+    $task=[pscustomobject]@{ Actions=@([pscustomobject]@{ Arguments=$argsText }) }
+    try {
+        Assert-NodeTaskOwned -Task $task -ExpectedDataDir 'C:\repo\node' -LauncherPath $source
+        throw "Guard accepted a foreign Scheduled Task"
+    }
+    catch {
+        if($_.Exception.Message -notlike '*does not belong*'){ throw }
+    }
+}
+# Accept the owned single-file task and the previous runner only for migration.
+$legacy=Join-Path (Split-Path -Path $source -Parent) 'run-streamops-node.ps1'
+$goodArgs=@(
+    ('-File "' + $source + '" __run -DataDir "C:\repo\node"'),
+    ('-File "' + $legacy + '" -DataDir "C:\repo\node"')
+)
+foreach($argsText in $goodArgs) {
+    $task=[pscustomobject]@{ Actions=@([pscustomobject]@{ Arguments=$argsText }) }
+    Assert-NodeTaskOwned -Task $task -ExpectedDataDir 'C:\repo\node' -LauncherPath $source
+}
 """.replace("%SCRIPT%", script)
     harness = tmp_path / "ownership-negative.ps1"
     harness.write_text(ps, encoding="utf-8")

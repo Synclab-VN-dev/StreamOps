@@ -25,17 +25,22 @@ Set-StrictMode -Version Latest
 # A task name alone is not proof of ownership. Accept the current one-file task
 # or the previous repo-local runner (migration), but never a different worktree.
 function Assert-NodeTaskOwned {
-    param([Parameter(Mandatory)]$Task, [Parameter(Mandatory)][string]$ExpectedDataDir)
+    param([Parameter(Mandatory)]$Task, [Parameter(Mandatory)][string]$ExpectedDataDir,
+          [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$LauncherPath)
     $action = $Task.Actions | Select-Object -First 1
     if ($null -eq $action) { throw "Scheduled Task has no action." }
     $taskArgsText = [string]$action.Arguments
-    $legacyRunner = Join-Path $PSScriptRoot "run-streamops-node.ps1"
-    $newRunnerValid = $taskArgsText.IndexOf($PSCommandPath, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+    # Resolve paths from the explicitly passed launcher. An AST-extracted helper
+    # cannot rely on script-scoped automatic variables being populated.
+    $launcher = [IO.Path]::GetFullPath($LauncherPath)
+    $legacyRunner = Join-Path (Split-Path -Path $launcher -Parent) "run-streamops-node.ps1"
+    $newRunnerValid = $taskArgsText.IndexOf($launcher, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
         $taskArgsText.Contains("__run")
     $legacyRunnerValid = $taskArgsText.IndexOf($legacyRunner, [StringComparison]::OrdinalIgnoreCase) -ge 0
+    # DataDir must match the actual quoted task argument, not merely a path prefix.
+    $expectedDirArg = '-DataDir "' + $ExpectedDataDir + '"'
     if (-not ($newRunnerValid -or $legacyRunnerValid) -or
-        -not $taskArgsText.Contains("-DataDir") -or
-        $taskArgsText.IndexOf($ExpectedDataDir, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+        $taskArgsText.IndexOf($expectedDirArg, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
         throw "Refusing task operation: Scheduled Task does not belong to this launcher/DataDir."
     }
 }
@@ -229,7 +234,7 @@ if (-not $DataDir.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)
 
 $runtimePath = Join-Path $DataDir "runtime.json"
 $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-if ($null -ne $task) { Assert-NodeTaskOwned -Task $task -ExpectedDataDir $DataDir }
+if ($null -ne $task) { Assert-NodeTaskOwned -Task $task -ExpectedDataDir $DataDir -LauncherPath $PSCommandPath }
 if ($null -ne $task -and $task.State -eq "Running") {
     Stop-ScheduledTask -TaskName $TaskName
     for ($attempt = 0; $attempt -lt 20; $attempt++) {
@@ -473,7 +478,7 @@ $taskUsesPluginSource = $false
 $taskUsesNormalPriority = $false
 $taskUsesConsolidatedLauncher = $false
 if ($null -ne $existingTask) {
-    Assert-NodeTaskOwned -Task $existingTask -ExpectedDataDir $DataDir
+    Assert-NodeTaskOwned -Task $existingTask -ExpectedDataDir $DataDir -LauncherPath $PSCommandPath
     $taskUsesNormalPriority = [int]$existingTask.Settings.Priority -eq 4
     $taskAction = $existingTask.Actions | Select-Object -First 1
     if ($null -ne $taskAction) {
