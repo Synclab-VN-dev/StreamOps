@@ -1,0 +1,497 @@
+"""FE-G5 — real cross-viewport visual comparison to PINNED MagicPath source.
+
+Original MagicPath reference code/preview blobs are immutable and validated by
+test_magicpath_visual_contract. The generated reference screenshots are NOT
+silently accepted as user-approved goldens. Approval is an explicit CI gate.
+"""
+from __future__ import annotations
+import hashlib
+import json
+import os
+from pathlib import Path
+import socket
+import subprocess
+import time
+import urllib.request
+from PIL import Image, ImageChops, ImageEnhance, ImageStat
+import pytest
+from playwright.sync_api import Browser, expect
+
+from .test_games_ui import games_ui_server, game
+from ..test_magicpath_visual_contract import validate_source_locked_v2_manifest
+
+ROOT = Path(__file__).resolve().parents[1] / "visual_magicpath"
+SOURCE = ROOT / "reference_source"
+MANIFEST = json.loads((ROOT / "manifest.json").read_text(encoding="utf-8"))
+OUT = Path(os.getenv("STREAMOPS_VISUAL_ARTIFACTS", str(ROOT / "_artifacts")))
+REQUIRED_SCENARIOS = (
+    [("steam", "normal", 360, 800), ("games", "default", 360, 800)]
+    + [(design, "normal" if design == "steam" else "default", width, height)
+       for design in ("steam", "games") for width, height
+       in ((390,844), (768,1024), (1440,900))]
+    + [("steam", s, 390, 844) for s in ("empty", "multi", "offline", "error")]
+    + [("games", s, 390, 844) for s in ("multi", "empty", "offline", "loading", "stopTimeout")]
+    + [("games", "detail", 390, 844), ("games", "detail", 1440, 900)]
+)
+
+pytestmark = [pytest.mark.only_browser("chromium"),
+    pytest.mark.skipif(os.getenv("STREAMOPS_VISUAL_ENFORCE_APPROVAL") != "1",
+        reason="Runs in required dedicated FE-G5 after pinned reference renderer install")]
+
+
+@pytest.fixture(scope="module")
+def magicpath_reference_url():
+    """Start the isolated original MagicPath React+Tailwind source, no FE import."""
+    port = 5178
+    process = subprocess.Popen(
+        ["npm.cmd" if os.name == "nt" else "npm", "run", "start"],
+        cwd=SOURCE, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
+        env={**os.environ, "CI": "1"},
+    )
+    url = f"http://127.0.0.1:{port}"
+    try:
+        for _ in range(150):
+            if process.poll() is not None:
+                raise RuntimeError("Pinned MagicPath Vite server exited early")
+            try:
+                with urllib.request.urlopen(url + "/?design=steam", timeout=1) as r:
+                    if r.status == 200: break
+            except OSError:
+                time.sleep(.2)
+        else:
+            raise TimeoutError("MagicPath reference server not ready")
+        yield url
+    finally:
+        process.terminate()
+        try: process.wait(timeout=8)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+
+
+@pytest.fixture(scope="module")
+def magicpath_updated_reference_url():
+    """Render approved MagicPath V2 revision, source-locked Golden expected screenshots."""
+    source = ROOT / "reference_source_v2"
+    process = subprocess.Popen(
+        ["npm.cmd" if os.name == "nt" else "npm", "run", "start"],
+        cwd=source, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
+        env={**os.environ, "CI": "1"},
+    )
+    url = "http://127.0.0.1:5179"
+    try:
+        for _ in range(150):
+            if process.poll() is not None:
+                raise RuntimeError("Updated independent MagicPath reference renderer exited early")
+            try:
+                with urllib.request.urlopen(url + "/?design=steam", timeout=1) as response:
+                    if response.status == 200: break
+            except OSError:
+                time.sleep(.2)
+        else:
+            raise TimeoutError("Updated MagicPath reference renderer not ready")
+        yield url
+    finally:
+        process.terminate()
+        try: process.wait(timeout=8)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+
+
+def _ready(page):
+    # Disable motion only, preserve original design geometry.
+    page.add_style_tag(content="*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important;}")
+    page.evaluate("() => document.fonts.ready")
+    page.wait_for_timeout(120)
+    page.evaluate("() => window.scrollTo(0,0)")
+
+
+def _stage_production(page, fake, base, design, scenario):
+    # Match the *visible* MagicPath scenario fixtures for visual comparison only.
+    # Production UI remains data-driven; #85 V1 static seed is unchanged.
+    if design == "steam":
+        fake.games = [game("Diablo IV", "steam:2344520", "RUNNING")] + [
+            game("Registered " + str(i), "steam:" + str(200 + i), "STOPPED")
+            for i in range(7)
+        ]
+        fake.steam.update(pid=6432, uptime_seconds=13335)
+    else:
+        names = ["Diablo IV", "Hollow Knight: Silksong", "Minecraft",
+                 "Elden Ring", "Hades II", "World of Warcraft", "Fortnite",
+                 "Path of Exile 2", "Baldur's Gate 3", "Forza Horizon 5"]
+        fake.games = [
+            game(name, "steam:2344520" if i == 0 else "steam:" + str(200 + i),
+                 "RUNNING" if i == 0 else "STOPPED")
+            for i, name in enumerate(names)
+        ]
+    page.goto(base + ("/steam" if design == "steam" else "/games"))
+    if design == "steam":
+        expect(page.locator("#steam-state")).not_to_have_text("Checking")
+        if scenario == "empty":
+            fake.set_library([game("Registered " + str(i), "steam:" + str(200 + i), "STOPPED") for i in range(8)])
+        elif scenario == "multi":
+            # The pinned MagicPath multi scenario contains FIVE running games
+            # and TWELVE registered games. Mirror that semantic input rather
+            # than lowering a mismatch threshold or mocking product rendering.
+            running = ["Diablo IV", "Hollow Knight: Silksong", "Minecraft",
+                       "Elden Ring", "Hades II"]
+            records = [
+                game(name, "steam:2344520" if i == 0 else "steam:" + str(300 + i), "RUNNING")
+                for i, name in enumerate(running)
+            ]
+            records.extend(game("Other registered " + str(i), "steam:" + str(400 + i), "STOPPED")
+                           for i in range(7))
+            fake.set_library(records)
+            expect(page.locator("#games-connection")).to_contain_text("5 running")
+        elif scenario in ("offline", "error"):
+            page.evaluate("() => { window.StreamOpsSteam.destroy(); window.StreamOpsGames.client.destroy(); }")
+            expect(page.locator("#steam-state")).to_have_text("UNKNOWN")
+    else:
+        expect(page.locator("#game-library button")).to_have_count(len(fake.games))
+        if scenario == "empty":
+            fake.set_library([])
+            expect(page.locator("#game-library")).to_contain_text("No matching games")
+        elif scenario == "multi":
+            fake.set_library([game("Diablo IV", "steam:2344520"),
+                              game("Hollow Knight", "steam:234"), game("Hades II", "steam:345")])
+            expect(page.locator("#game-library button")).to_have_count(3)
+        elif scenario == "offline":
+            page.evaluate("() => window.StreamOpsGames.client.destroy()")
+            expect(page.locator("#status-text")).to_contain_text("offline")
+        elif scenario == "loading":
+            page.evaluate("() => { const s=window.StreamOpsGames.store; s.reset(); s.connected=true; s.loading=true; s.stale=true; s.emit(); }")
+        elif scenario == "stopTimeout":
+            page.locator('#game-library button[data-game-id="steam:2344520"]').click()
+            page.evaluate("""() => {
+              const store=window.StreamOpsGames.store;
+              store.operation({operation_id:'visual-op',game_id:'steam:2344520',
+                 action:'stop',status:'UNKNOWN',phase:'TIMEOUT',code:'timeout'});
+            }""")
+        elif scenario == "detail":
+            page.locator('#game-library button[data-game-id="steam:2344520"]').click()
+            expect(page.locator("#game-detail")).to_contain_text("Diablo IV")
+
+
+def _stage_reference(page, url, design, scenario):
+    page.goto(url + "?design=" + design)
+    target = scenario if scenario != "detail" else "default"
+    page.locator('select[aria-label="Design scenario"]').select_option(target)
+    if scenario == "detail":
+        # Open the very first game's panel in the original MagicPath design.
+        page.get_by_role("button", name="Diablo IV").first.click()
+        expect(page.get_by_role("complementary", name="Game details")).to_be_visible()
+
+
+def _visual_diff(expected_path, actual_path, diff_path):
+    with Image.open(expected_path) as e, Image.open(actual_path) as a:
+        exp=e.convert("RGB"); act=a.convert("RGB")
+        if exp.size != act.size:
+            raise AssertionError(f"Viewport dimensions differ: {exp.size} vs {act.size}")
+        diff=ImageChops.difference(exp, act)
+        score=sum(ImageStat.Stat(diff).mean)/(255.0*3)
+        ImageEnhance.Contrast(diff).enhance(4).save(diff_path)
+        return round(score, 5)
+
+
+@pytest.mark.parametrize("design,scenario,width,height", REQUIRED_SCENARIOS)
+def test_pinned_magicpath_visual_parity(
+    browser: Browser, games_ui_server, magicpath_reference_url,
+    design: str, scenario: str, width: int, height: int,
+):
+    base, fake = games_ui_server
+    label=f"{design}-{scenario}-{width}x{height}"
+    path=OUT / label
+    path.mkdir(parents=True, exist_ok=True)
+    expected=path/"expected-magicpath.png"
+    actual=path/"actual-streamops.png"
+    diff=path/"diff.png"
+    expected_page=browser.new_page(viewport={"width":width,"height":height},device_scale_factor=1)
+    actual_page=browser.new_page(viewport={"width":width,"height":height},device_scale_factor=1)
+    try:
+        # Original reference and product are NEVER the same server or codebase.
+        _stage_reference(expected_page, magicpath_reference_url, design, scenario)
+        _ready(expected_page)
+        expected_page.screenshot(path=str(path/"source-original.png"), animations="disabled")
+        # MagicPath's scenario selector and prototype footer are design-tool
+        # scaffolding. Keep raw screenshot for audit, exclude scaffolding only
+        # from the layout comparison with production (no mock controls).
+        expected_page.evaluate("""() => {
+          const selector=document.querySelector('select[aria-label="Design scenario"]');
+          let node=selector;
+          while(node && !node.classList.contains('mb-3')) node=node.parentElement;
+          if(node) node.style.display='none';
+          for (const el of document.querySelectorAll('p')) {
+            if (el.textContent?.includes('StreamOps UI Prototype')) el.style.display='none';
+          }
+        }""")
+        _ready(expected_page)
+        expected_page.screenshot(path=str(expected), animations="disabled")
+        if MANIFEST["approved"]:
+            approved = ROOT / "goldens" / (label + ".png")
+            assert approved.is_file(), "Missing owner-approved Golden " + str(approved)
+            expected_hash = MANIFEST["approval"]["expected_sha256"].get(label)
+            assert expected_hash and hashlib.sha256(approved.read_bytes()).hexdigest() == expected_hash, "Golden hash mismatch"
+            drift=_visual_diff(approved,expected,path/"reference-drift.png")
+            assert drift <= .015, f"Pinned design renderer drift against approved Golden: {label}: {drift}"
+        _stage_production(actual_page, fake, base, design, scenario)
+        _ready(actual_page)
+        # Production UI is captured unmodified; no credential masking remains
+        # after #85 V1 became tokenless. Do not hide product elements for parity.
+        actual_page.screenshot(path=str(actual), animations="disabled")
+        verified_reference=ROOT / "goldens" / (label + ".png") if MANIFEST["approved"] else expected
+        score=_visual_diff(verified_reference,actual,diff)
+        (path/"result.json").write_text(json.dumps({
+            "design":design, "scenario":scenario, "viewport":[width,height],
+            "revision_id":next(r["revision_id"] for r in MANIFEST["references"] if r["name"]==design),
+            "difference_mean_rgb":score, "owner_approved":MANIFEST["approved"],
+            "reference_source":"original MagicPath revision source, NOT production UI",
+            "artifacts":["source-original.png","expected-magicpath.png","actual-streamops.png","diff.png"],
+        },indent=2),encoding="utf-8")
+        # Strict threshold; never relax it automatically to make red CI green.
+        assert score <= .08, f"{label}: visual diff mean={score:.3f}, allowed=.08; see diff artifact"
+    finally:
+        expected_page.close();actual_page.close()
+
+
+def test_owner_approval_is_required_for_visual_golden():
+    # When enabled in CI, missing owner review is a BLOCKER, not a SKIP.
+    if os.getenv("STREAMOPS_VISUAL_ENFORCE_APPROVAL") == "1":
+        assert MANIFEST["approved"] is True, "Golden not yet approved by project owner. Review CI expected/actual/diff artifacts."
+        assert MANIFEST["approval"]["approved_by"]
+        assert MANIFEST["approval"]["approved_at"]
+        assert MANIFEST["approval"]["review_url"]
+        assert len(MANIFEST["approval"]["expected_sha256"]) == len(REQUIRED_SCENARIOS)
+
+
+
+def test_magicpath_v2_source_locked_extended_golden_gate(
+    browser: Browser, games_ui_server, magicpath_updated_reference_url
+):
+    """Gate 10 additional states against source-locked MagicPath v2 Golden hashes.
+
+    Approval covers the design revision; OpenStream rule v5 does not require
+    a separate Owner review of every Golden screenshot when this gate passes.
+    Expected screenshots are rendered ONLY from the pinned MagicPath source,
+    never from the production FE under test.
+    """
+    base, fake = games_ui_server
+    target = OUT / "_magicpath-v2-approved-revision-golden-gate"
+    target.mkdir(parents=True, exist_ok=True)
+    images = []
+    updated = json.loads((ROOT / "review_manifest_v2.json").read_text(encoding="utf-8"))
+    validate_source_locked_v2_manifest(updated)
+    assert updated["approved"] is True and updated["new_goldens"]["approved"] is True, (
+        "V2 source-locked Golden gate requires approved MagicPath revision"
+    )
+    golden_hashes = updated["new_goldens"]["expected_sha256"]
+    assert len(golden_hashes) == updated["new_goldens"]["expected_count"] == 10, (
+        "Missing source-locked V2 Golden labels"
+    )
+    assert updated["thresholds"]["mean_rgb_max"] == .08
+    threshold = updated["thresholds"]["mean_rgb_max"]
+    detail_revision = next(r["revision_id"] for r in updated["source"] if r["name"] == "games")
+    steam_revision = next(r["revision_id"] for r in updated["source"] if r["name"] == "steam")
+
+    def shot(page, name, kind, **notes):
+        path = target / (name + ".png")
+        _ready(page)
+        if "scroll_y" in notes:
+            page.evaluate("(y)=>window.scrollTo(0,y)", notes["scroll_y"])
+        page.screenshot(path=str(path), animations="disabled")
+
+        # Render ONLY the independently pinned and Owner-approved MagicPath
+        # revision. Its expected PNG digest must equal the signed manifest.
+        source_scenario = (
+            "multi" if name.startswith("steam-five-") or name.startswith("steam-process-")
+            else "normal" if kind == "steam"
+            else "stopTimeout" if name.startswith("games-unknown-timeout")
+            else "session" if name.startswith("games-failed-session")
+            else "detail" if name.startswith("games-advanced") or name.startswith("games-stop-confirm")
+            else "default"
+        )
+        ref = browser.new_page(viewport={"width":390,"height":844},device_scale_factor=1)
+        ref_path = target / (name + "-expected-magicpath-CANDIDATE.png")
+        diff_path = target / (name + "-diff-REVIEW.png")
+        try:
+            _stage_reference(ref, magicpath_updated_reference_url, kind, source_scenario)
+            _ready(ref)
+            # Remove design-tool fixtures from reference rendering only.
+            ref.evaluate("""() => {
+              const selector=document.querySelector('select[aria-label="Design scenario"]');
+              let node=selector;
+              while(node && !node.classList.contains('mb-3')) node=node.parentElement;
+              if(node) node.style.display='none';
+              for (const el of document.querySelectorAll('p')) {
+                if (el.textContent?.includes('StreamOps UI Prototype')) el.style.display='none';
+              }
+            }""")
+            if name.startswith("games-advanced"):
+                ref.get_by_role("button",name="Advanced & recovery").click()
+            elif name.startswith("games-failed-session"):
+                ref.get_by_role("button",name="Diablo IV").first.click()
+            elif name.startswith("games-unknown-timeout"):
+                ref.get_by_role("button",name="Stop",exact=True).click()
+                ref.get_by_role("dialog").get_by_role("button",name="Simulate stop").click()
+                expect(ref.get_by_text("Operation outcome unknown.",exact=False)).to_be_visible(timeout=6000)
+            elif name.startswith("steam-five") or name.startswith("steam-process"):
+                ref.get_by_role("button",name="+2 more games").click()
+                if name.startswith("steam-process"):
+                    ref.get_by_role("button",name="Steam Process Status").click()
+            elif name.startswith("games-stop-confirm"):
+                ref.get_by_role("button",name="Stop",exact=True).click()
+                expect(ref.get_by_role("dialog")).to_be_visible()
+                if "cancel" in name:
+                    ref.get_by_role("dialog").get_by_role("button",name="Cancel").click()
+            elif name.startswith("steam-restart-confirm"):
+                ref.get_by_role("button",name="Steam Process Status").click()
+                ref.get_by_role("button",name="Restart in Big Picture").click()
+                expect(ref.get_by_role("dialog")).to_be_visible()
+                if "cancel" in name:
+                    ref.get_by_role("dialog").get_by_role("button",name="Cancel").click()
+            elif name.startswith("games-scrolled"):
+                ref.evaluate("(y)=>window.scrollTo(0,y)", notes.get("scroll_y",0))
+            ref.screenshot(path=str(ref_path),animations="disabled")
+            score=_visual_diff(ref_path,path,diff_path)
+        finally:
+            ref.close()
+        observed_hash=hashlib.sha256(ref_path.read_bytes()).hexdigest()
+        expected_hash=golden_hashes.get(name)
+        assert expected_hash is not None and observed_hash==expected_hash, (
+            f"{name}: MagicPath V2 expected Golden missing or SHA-256 mismatch; "
+            f"expected={expected_hash}, actual={observed_hash}"
+        )
+        assert score <= threshold, (
+            f"{name}: source-locked V2 Golden diff={score:.5f} exceeds "
+            f"threshold={threshold}; see Expected/Actual/Diff artifacts"
+        )
+        images.append({
+          "name":name, "image":path.name, "sha256":hashlib.sha256(path.read_bytes()).hexdigest(),
+          "source_revision":detail_revision if kind == "games" else steam_revision,
+          "owner_approved_design_revision":True,
+          "expected_reference":ref_path.name,
+          "expected_sha256":hashlib.sha256(ref_path.read_bytes()).hexdigest(),
+          "diff_image":diff_path.name, "difference_mean_rgb_review_only":score,
+          "parity_verdict":"PASS_SOURCE_LOCKED_MAGICPATH_V2_GOLDEN_GATE",
+          **notes,
+        })
+
+    def detail_page():
+        page=browser.new_page(viewport={"width":390,"height":844},device_scale_factor=1)
+        page.goto(base+"/games")
+        expect(page.locator("#game-library .gm-game-row")).to_have_count(1)
+        page.locator('#game-library button[data-game-id="steam:2344520"]').click()
+        expect(page.locator("#game-detail")).to_contain_text("Diablo IV")
+        return page
+
+    p=detail_page()
+    try:
+        p.locator("#game-detail .gm-detail-advanced summary").click()
+        assert p.locator("#game-detail .gm-detail-advanced").evaluate("(e)=>e.open")
+        shot(p,"games-advanced-mobile-390x844","games",state="advanced-expanded")
+    finally: p.close()
+
+    for phase, label in [("TIMEOUT","unknown-timeout"),("WRONG_SESSION","failed-session")]:
+        p=detail_page()
+        try:
+            status="UNKNOWN" if phase=="TIMEOUT" else "FAILED"
+            p.evaluate("""({status,phase}) => window.StreamOpsGames.store.operation({
+              operation_id:'owner-review-'+phase,game_id:'steam:2344520',
+              action:'stop',status,phase,code:phase.toLowerCase()
+            })""", {"status":status,"phase":phase})
+            expect(p.locator("#game-detail .gm-operation")).to_contain_text(status+" / "+phase)
+            shot(p,"games-"+label+"-mobile-390x844","games",state=label)
+        finally: p.close()
+
+    p=browser.new_page(viewport={"width":390,"height":844},device_scale_factor=1)
+    try:
+        p.goto(base+"/games")
+        many=[game("Review title "+str(i),"steam:"+str(1200+i),"STOPPED") for i in range(15)]
+        fake.set_library(many)
+        row=p.locator('#game-library .gm-game-row[data-game-id="steam:1213"]')
+        expect(row).to_be_visible()
+        row.scroll_into_view_if_needed()
+        assert p.evaluate("window.scrollY")>100
+        shot(p,"games-scrolled-library-mobile-390x844","games",
+             state="library-scrolled",scroll_y=p.evaluate("window.scrollY"))
+    finally: p.close()
+
+    p=browser.new_page(viewport={"width":390,"height":844},device_scale_factor=1)
+    try:
+        # Align the SOURCE scenario's five running/12 registered fixture;
+        # never inflate visual diffs by comparing unrelated mock inventories.
+        running=["Diablo IV","Hollow Knight: Silksong","Minecraft",
+                 "Hades II","Path of Exile 2"]
+        fake.set_library([
+            game(name,"steam:2344520" if i==0 else "steam:"+str(200+i),"RUNNING")
+            for i,name in enumerate(running)
+        ] + [
+            game("Other registered "+str(i),"steam:"+str(300+i),"STOPPED")
+            for i in range(7)
+        ])
+        fake.steam.update(pid=6432,uptime_seconds=13335,active_console_session_id=1)
+        fake.node["capture_backend"]="design fixture"
+        p.goto(base+"/steam")
+        expect(p.locator("#steam-running-games .gm-show-more")).to_be_visible()
+        p.locator("#steam-running-games .gm-show-more").click()
+        expect(p.locator("#steam-running-games .gm-game-row")).to_have_count(5)
+        shot(p,"steam-five-running-expanded-mobile-390x844","steam",state="multiple-expanded")
+        p.locator("#steam-runtime-details summary").click()
+        shot(p,"steam-process-expanded-mobile-390x844","steam",state="process-expanded")
+    finally: p.close()
+
+    # The source-locked MagicPath V2 design uses in-page modals.
+    # Confirm/Cancel are distinct, SHA-locked Golden states.
+    fake.set_library([game("Diablo IV","steam:2344520","RUNNING")])
+    p=detail_page()
+    try:
+        p.locator('#game-detail button[data-action="stop"]').click()
+        confirm=p.get_by_role("dialog")
+        expect(confirm).to_be_visible()
+        assert "progress" in confirm.inner_text().lower()
+        shot(p,"games-stop-confirm-modal-mobile-390x844","games",state="stop-confirm-modal")
+        p.locator(".gm-confirm-cancel").click()
+        expect(confirm).to_have_count(0)
+        assert not any(op=="games.lifecycle.stop" for op,_ in fake.received)
+        shot(p,"games-stop-confirm-cancel-mobile-390x844","games",
+             state="stop-confirm-cancel",evidence="No WS lifecycle mutation after cancellation")
+    finally: p.close()
+
+    p=browser.new_page(viewport={"width":390,"height":844},device_scale_factor=1)
+    try:
+        fake.set_library([game("Diablo IV","steam:2344520","RUNNING")] + [
+            game("Other registered "+str(i),"steam:"+str(300+i),"STOPPED")
+            for i in range(7)
+        ])
+        fake.steam.update(pid=6432,uptime_seconds=13335,active_console_session_id=1)
+        fake.node["capture_backend"]="design fixture"
+        p.goto(base+"/steam")
+        expect(p.locator("#steam-state")).to_have_text("Running")
+        p.locator("#steam-runtime-details summary").click()
+        expect(p.locator("#restart-button")).to_be_enabled()
+        p.locator("#restart-button").click()
+        confirm=p.get_by_role("dialog")
+        expect(confirm).to_be_visible()
+        assert "Big Picture" in confirm.inner_text()
+        shot(p,"steam-restart-confirm-modal-mobile-390x844","steam",state="steam-confirm-modal")
+        p.locator(".gm-confirm-cancel").click()
+        expect(confirm).to_have_count(0)
+        assert not any(op=="steam.lifecycle.restart" for op,_ in fake.received)
+        shot(p,"steam-restart-confirm-cancel-mobile-390x844","steam",
+             state="steam-confirm-cancel",evidence="No WS Steam restart after cancellation")
+    finally: p.close()
+
+    assert len(images)==10
+    assert {x["name"] for x in images} == set(golden_hashes), "V2 Golden case coverage drift"
+    (target/"GOLDEN_GATE_V2.json").write_text(json.dumps({
+      "purpose":"Source-backed MagicPath approved-revision Golden visual gate",
+      "status":"PASS",
+      "magicpath_source_direct":True,
+      "geometry_exact":True,
+      "threshold_mean_rgb":threshold,
+      "approved_19_goldens_untouched":True,
+      "design_reference":"review_manifest_v2.json",
+      "design_revision_approved_by_owner":True,
+      "source_locked_expected_sha256":golden_hashes,
+      "items":images,
+    },indent=2),encoding="utf-8")

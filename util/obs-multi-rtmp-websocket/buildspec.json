@@ -37,7 +37,7 @@
         }
     },
     "name": "obs-multi-rtmp",
-    "version": "0.7.4.3",
+    "version": "0.7.4.4",
     "author": "SoraYuki, David Cool",
     "website": "https://github.com/davidcool/obs-multi-rtmp-websocket-support",
     "email": "me@example.com"

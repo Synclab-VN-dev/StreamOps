@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "intended_usage": "design-source reference renders vs production FE; previews retained for audit, not treated as multi-viewport screenshots",
+  "approved": true,
+  "approval": {
+    "approved_by": "Project owner \u2014 explicit Golden approval in conversation (recorded at review_url)",
+    "approved_at": "2026-10-11T03:49:01.580727+00:00",
+    "reference": "Owner-approved immutable MagicPath Golden PNGs; GitHub Actions run 38063015627, artifact 11673783250; each screenshot SHA256 verified",
+    "expected_sha256": {
+      "games-default-1440x900": "46e9dc4af3fbdded3af0b90ed90e174e541bf95b1af087c4b1dcb1db7dbc70a1",
+      "games-default-360x800": "47e5695e3550f9c9077cc6c336cb8f74be875367ef39f14f48ea48a4e8b8e85c",
+      "games-default-390x844": "dbc25831036db89cb900b02e9554102f2867ea27b71a27f2809a5390d411afe8",
+      "games-default-768x1024": "04d92ee865d39347c175a0521674bb954bf70e59b2757b8b26cbebc467190e0a",
+      "games-detail-1440x900": "0078f09b09591f156a6bcbf49cc31c5742f35080fcb3ee0e7578759b3ab6d5af",
+      "games-detail-390x844": "95e68acd6316119bb18d440e7f63c67dcc6351760c95506ab849e1ee50c8ff8c",
+      "games-empty-390x844": "6383b545965ca1303cda06961ca312982b1d9723af20220769d3f031d82a07f5",
+      "games-loading-390x844": "53850323bb2e8c510585391c66ffc96529c1bfb95b26e472dfd83de790778238",
+      "games-multi-390x844": "87519923e87c1d86d3a010ef00b18f2132aa54ad1e9f753a204c3463067c26ad",
+      "games-offline-390x844": "e5bc931709debc0b6e1705ef468eac37d3ff0cd77c6d1fa6d9f9d076c0122464",
+      "games-stopTimeout-390x844": "95e68acd6316119bb18d440e7f63c67dcc6351760c95506ab849e1ee50c8ff8c",
+      "steam-empty-390x844": "8519570e9d59514122b56604a03f26cdafa47718c1f5eb6a5bba85ee3267b660",
+      "steam-error-390x844": "0e56cfc7525a69861d37916f3b87ec518cf0aaf3a7b5369db92faa1d9aa4d1c6",
+      "steam-multi-390x844": "e6f95b6accaec305774147ee60e99ad865a02c85b0dcd2514838405357aff491",
+      "steam-normal-1440x900": "d218a1479803109579746498d55e7c6fa7c4ce8a0ef0c63cf355b0420bb6af84",
+      "steam-normal-360x800": "682337ac0c380fc8af98bac728545f1fa749a660ab400b6d825ea71fa10ef043",
+      "steam-normal-390x844": "c48245d596b07e65e2cf7e8e56b0c456acb6b92451816d749b5d4df1e57adf9a",
+      "steam-normal-768x1024": "8541b7029b8b066c2e37f10fcd449ae4f32cf3ffd00c47287af37136fa5c4ace",
+      "steam-offline-390x844": "0e56cfc7525a69861d37916f3b87ec518cf0aaf3a7b5369db92faa1d9aa4d1c6"
+    },
+    "review_url": "https://github.com/Synclab-VN-dev/StreamOps/issues/86#issuecomment-6105148279",
+    "candidate": {
+      "run_id": 38063015627,
+      "artifact_id": 11673783250,
+      "artifact_name": "magicpath-visual-509c84546a150dc688ad7419c714e97163902a26",
+      "source_commit": "d2f810b3b7a15b3dd77bcae29d758910390e7673",
+      "reviewed_screenshots": 19
+    },
+    "rendering": {
+      "browser": "Playwright Chromium on Windows GitHub Actions",
+      "device_scale_factor": 1,
+      "theme": "MagicPath pinned light",
+      "animation": "disabled",
+      "source": "original pinned MagicPath source, prototype controls excluded from normalized comparison"
+    }
+  },
+  "viewports": [
+    {
+      "width": 360,
+      "height": 800
+    },
+    {
+      "width": 390,
+      "height": 844
+    },
+    {
+      "width": 768,
+      "height": 1024
+    },
+    {
+      "width": 1440,
+      "height": 900
+    }
+  ],
+  "references": [
+    {
+      "name": "steam",
+      "component_id": "459507753589833728",
+      "revision_id": "459530030574370816",
+      "generated_name": "serene-winter-5786",
+      "source_path": "streamops/server/tests/visual_magicpath/reference_source/src/SteamManager.tsx",
+      "source_git_blob_sha1": "cb910c5ecd3ec8670361cef3ca6edda053605a65",
+      "preview_path": "streamops/server/tests/visual_magicpath/references/steam-459530030574370816.jpg",
+      "preview_git_blob_sha1": "4d2f7fded083cdad534e05167844e31776e7f032"
+    },
+    {
+      "name": "games",
+      "component_id": "459507767749795840",
+      "revision_id": "459530038539325440",
+      "generated_name": "sturdily-room-4179",
+      "source_path": "streamops/server/tests/visual_magicpath/reference_source/src/GameManager.tsx",
+      "source_git_blob_sha1": "f3148bf9503c0c0286d1da740ab00fe64ebf44e2",
+      "preview_path": "streamops/server/tests/visual_magicpath/references/games-459530038539325440.jpg",
+      "preview_git_blob_sha1": "c155e35b0e54485258c1889d30ca48ec1138279b"
+    }
+  ],
+  "css_path": "streamops/server/tests/visual_magicpath/reference_source/src/index.css",
+  "css_git_blob_sha1": "c8fc13b7718d153e3fbed19ee6ed9eb87f978557",
+  "scenarios": {
+    "steam": [
+      "normal",
+      "empty",
+      "multi",
+      "stopped",
+      "offline",
+      "loading",
+      "error"
+    ],
+    "games": [
+      "default",
+      "multi",
+      "empty",
+      "unregistered",
+      "offline",
+      "session",
+      "black",
+      "startFail",
+      "stopTimeout",
+      "restartFail",
+      "stale",
+      "externalExit",
+      "loading"
+    ]
+  }
+}

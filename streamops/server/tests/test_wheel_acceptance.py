@@ -90,14 +90,16 @@ def test_installed_wheel_runs_outside_source_checkout():
                 payload = json.loads(response.read())
             assert payload["plugin_id"] == "obs-multi-rtmp"
             assert payload["expected_version"] == "0.7.4.0"
-            # Base status fields remain mandatory, but the agreed #47 BE v2
-            # adds typed operation/rollback/revision fields. A strict six-key
-            # equality would reject this backwards-compatible API extension.
-            required = {"plugin_id", "expected_version", "state", "installed", "loaded", "compatible"}
+            # Mandatory backend #47 status contract plus backward-compatible FE fields.
+            required = {"plugin_id", "expected_version", "state", "installed", "loaded", "compatible",
+                        "display_name", "installed_version", "available_version", "restart_required",
+                        "last_verification"}
             assert required <= set(payload)
+            assert isinstance(payload["display_name"], str)
             assert isinstance(payload["installed"], bool)
             assert isinstance(payload["loaded"], bool)
             assert isinstance(payload["compatible"], bool)
+            assert isinstance(payload["restart_required"], bool)
             if "rollback" in payload:
                 assert isinstance(payload["rollback"], dict)
                 assert isinstance(payload["rollback"].get("available"), bool)
@@ -145,6 +147,20 @@ def test_installed_wheel_runs_outside_source_checkout():
                 "Installed-wheel WebSocket smoke failed:\\n"
                 + ws_result.stdout + "\\n" + ws_result.stderr
             )
+            # FE assets and route must survive a wheel install outside checkout.
+            for path, marker in (
+                ("/steam", b"Game Manager"),
+                ("/games", b"Game Manager"),
+                ("/assets/games.js", b"StreamOpsGames"),
+                ("/assets/games-store.js", b"GameStore"),
+                ("/assets/games-control.js", b'new WebSocket(url, "streamops-games-v1")'),
+                ("/assets/ui-confirm.js", b"gm-confirm-dialog"),
+                ("/assets/node-health.js", b"/api/v1/obs/ws"),
+                ("/assets/games.css", b"gm-page"),
+            ):
+                with urllib.request.urlopen(base + path, timeout=10) as response:
+                    assert response.status == 200, path
+                    assert marker in response.read(), path
         finally:
             process.terminate()
             try:

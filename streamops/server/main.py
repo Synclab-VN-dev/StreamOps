@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from .config import ServerConfig, add_server_arguments
@@ -46,6 +47,19 @@ def run_server(config: ServerConfig) -> int:
         raise ServerError('Server dependencies are missing; install with "pip install streamops[server]".') from exc
 
     from .app import create_app
+
+    if os.environ.get('STREAMOPS_OBS_PLUGIN_SOURCE_PROVIDER', '').strip().lower() == 'github-release':
+        token_env = os.environ.get('STREAMOPS_OBS_PLUGIN_GITHUB_TOKEN_ENV', '').strip()
+        if not token_env or not os.environ.get(token_env, '').strip():
+            print(
+                'streamops-node: WARNING [plugin_github_token_missing]: '
+                'GitHub token was not supplied at startup. OBS Plugin Manager approved catalog '
+                'will be unavailable; restart with a GitHub token. No anonymous fallback.',
+                file=sys.stderr, flush=True,
+            )
+        else:
+            print('streamops-node: OBS Plugin Manager GitHub token configured (value hidden).',
+                  file=sys.stderr, flush=True)
 
     print(
         "Starting streamops-node "

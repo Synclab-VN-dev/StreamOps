@@ -10,6 +10,7 @@ from ..errors import (
     InvalidObsProcessRequestError,
     ObsExecutableNotAllowedError,
     ObsOperationInProgressError,
+    ObsPluginError,
     ObsReadinessTimeoutError,
     ObsShutdownError,
     ObsShutdownTimeoutError,
@@ -201,6 +202,8 @@ def public_ws_error(exc: Exception) -> tuple[str, str]:
     if isinstance(exc, WsOperationError):
         return exc.code, exc.message
     if isinstance(exc, StreamingError):
+        return exc.code, str(exc)
+    if isinstance(exc, ObsPluginError):
         return exc.code, str(exc)
     mappings: tuple[tuple[type[Exception], str], ...] = (
         (InvalidObsProcessRequestError, "invalid_obs_process_request"),

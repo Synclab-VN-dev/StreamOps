@@ -105,9 +105,9 @@ def run(awaitable):
     [
         (FakeHost(), FakeManager(runtime("STOPPED")), "NOT_INSTALLED"),
         (FakeHost("exact"), FakeManager(), "INSTALLED"),
-        (FakeHost("exact", loaded=True), FakeManager(), "LOADED"),
+        (FakeHost("exact", loaded=True), FakeManager(), "VERIFIED"),
         (FakeHost("exact", compatible=False), FakeManager(), "INCOMPATIBLE"),
-        (FakeHost("conflict"), FakeManager(), "ERROR"),
+        (FakeHost("conflict"), FakeManager(), "FAILED"),
     ],
 )
 def test_status_state_model(host, manager, state):
@@ -118,7 +118,7 @@ def test_fresh_install_stops_installs_starts_and_verifies():
     host, manager = FakeHost(), FakeManager()
     result = run(ObsPluginService(manager, host).install("obs-multi-rtmp"))
     assert result.result == "installed"
-    assert result.status.state == "LOADED"
+    assert result.status.state == "VERIFIED"
     assert manager.calls.count("stop") == 1
     assert manager.calls.count("start") == 1
     assert host.calls.count("install") == 1
@@ -136,7 +136,7 @@ def test_exact_files_not_loaded_are_restarted_and_verified():
     host, manager = FakeHost("exact"), FakeManager()
     result = run(ObsPluginService(manager, host).install("obs-multi-rtmp"))
     assert result.result == "already_installed"
-    assert result.status.state == "LOADED"
+    assert result.status.state == "VERIFIED"
     assert manager.calls.count("restart") == 1
 
 
@@ -208,3 +208,319 @@ def test_unknown_plugin_is_never_sent_to_host():
         run(ObsPluginService(FakeManager(), host).status("arbitrary.dll"))
     assert error.value.code == "plugin_not_supported"
     assert host.calls == []
+
+
+@pytest.mark.parametrize(
+    ("streaming", "recording", "code"),
+    [(True, False, "obs_busy_streaming"), (False, True, "obs_busy_recording")],
+)
+def test_update_rejects_active_outputs_without_mutating_host(streaming, recording, code):
+    host = FakeHost("exact", loaded=True)
+    manager = FakeManager(runtime(streaming=streaming, recording=recording))
+    with pytest.raises(ObsPluginError) as caught:
+        run(ObsPluginService(manager, host).update("obs-multi-rtmp"))
+    assert caught.value.code == code
+    assert "update" not in host.calls
+    assert "stop" not in manager.calls
+    assert "restart" not in manager.calls
+
+
+def test_update_rejects_missing_plugin_before_mutation():
+    host = FakeHost("absent")
+    manager = FakeManager()
+    with pytest.raises(ObsPluginError) as caught:
+        run(ObsPluginService(manager, host).update("obs-multi-rtmp"))
+    assert caught.value.code == "plugin_not_installed"
+    assert "update" not in host.calls
+    assert "stop" not in manager.calls
+
+
+def test_update_calls_distinct_host_operation_not_install():
+    class UpdatableHost(FakeHost):
+        def update(self):
+            self.calls.append("update")
+            return PluginHostResult("updated")
+
+    host = UpdatableHost("exact", loaded=True)
+    result = run(ObsPluginService(FakeManager(), host).update("obs-multi-rtmp"))
+    assert result.operation == "update"
+    assert result.result == "updated"
+    assert host.calls.count("update") == 1
+    assert "install" not in host.calls
+
+
+def test_update_failure_has_typed_sanitized_error():
+    class BrokenHost(FakeHost):
+        def update(self):
+            raise RuntimeError("sensitive token=do-not-leak")
+
+    with pytest.raises(ObsPluginError) as caught:
+        run(ObsPluginService(FakeManager(), BrokenHost("exact")).update("obs-multi-rtmp"))
+    assert caught.value.code == "plugin_update_failed"
+    assert "do-not-leak" not in str(caught.value)
+
+
+@pytest.mark.parametrize("action", ["install", "update", "rollback"])
+def test_mutations_reject_transitional_obs_state_without_stopping(action):
+    host = FakeHost("exact", loaded=True)
+    manager = FakeManager(runtime("STARTING"))
+    with pytest.raises(ObsPluginError) as caught:
+        run(getattr(ObsPluginService(manager, host), action)("obs-multi-rtmp"))
+    assert caught.value.code == "plugin_state_conflict"
+    assert "stop" not in manager.calls
+
+
+@pytest.mark.parametrize("action", ["install", "update", "verify", "rollback"])
+def test_unknown_plugin_rejected_for_every_operation(action):
+    host = FakeHost("exact", loaded=True)
+    manager = FakeManager()
+    with pytest.raises(ObsPluginError) as caught:
+        run(getattr(ObsPluginService(manager, host), action)("unapproved-plugin"))
+    assert caught.value.code == "plugin_not_supported"
+    assert host.calls == []
+
+
+def test_host_status_exception_is_sanitized_and_typed():
+    host = FakeHost()
+    host.failures["status"] = RuntimeError("private-path")
+    with pytest.raises(ObsPluginError) as caught:
+        run(ObsPluginService(FakeManager(), host).status("obs-multi-rtmp"))
+    assert caught.value.code == "plugin_status_failed"
+    assert "private-path" not in str(caught.value)
+
+
+def test_install_from_stopped_state_does_not_stop_again():
+    host, manager = FakeHost(), FakeManager(runtime("STOPPED"))
+    result = run(ObsPluginService(manager, host).install("obs-multi-rtmp"))
+    assert result.status.state == "VERIFIED"
+    assert "stop" not in manager.calls
+    assert manager.calls.count("start") == 1
+
+
+def test_concurrent_mutations_reject_second_operation():
+    import threading
+    entered = threading.Event()
+    release = threading.Event()
+    class BlockingHost(FakeHost):
+        def install(self):
+            entered.set()
+            assert release.wait(timeout=5)
+            return super().install()
+    host = BlockingHost()
+    service = ObsPluginService(FakeManager(), host)
+    async def scenario():
+        first = asyncio.create_task(service.install("obs-multi-rtmp"))
+        assert await asyncio.to_thread(entered.wait, 5)
+        try:
+            with pytest.raises(ObsPluginError) as caught:
+                await service.rollback("obs-multi-rtmp")
+            assert caught.value.code == "plugin_state_conflict"
+        finally:
+            release.set()
+        await first
+    run(scenario())
+    assert host.calls.count("install") == 1
+    assert "rollback" not in host.calls
+
+
+def test_vendor_probe_requires_registered_handler_and_sanitizes_error():
+    class VendorClient:
+        def __init__(self, reply=None, failure=None):
+            self.reply, self.failure, self.calls, self.closed = reply, failure, [], False
+        def connect(self):
+            self.calls.append("connect")
+        def request(self, name, payload):
+            self.calls.append((name, payload))
+            if self.failure:
+                raise self.failure
+            return self.reply
+        def close(self):
+            self.closed = True
+
+    for good in (True, False):
+        client = VendorClient(
+            {"responseData": {"targets": [], "count": 0}} if good
+            else {"responseData": {}},
+            None if good else RuntimeError("stream_key=must-never-leak"),
+        )
+        manager = FakeManager()
+        manager.client_factory = lambda: client
+        service = ObsPluginService(manager, FakeHost("exact", loaded=True))
+        if good:
+            assert run(service.verify("obs-multi-rtmp")).result == "verified"
+        else:
+            with pytest.raises(ObsPluginError) as caught:
+                run(service.verify("obs-multi-rtmp"))
+            assert caught.value.code == "plugin_verify_failed"
+            assert "must-never-leak" not in str(caught.value)
+        assert client.closed is True
+        assert ("CallVendorRequest", {
+            "vendorName": "sorayuki.multi_rtmp",
+            "requestType": "list_targets",
+            "requestData": {},
+        }) in client.calls
+
+
+@pytest.mark.parametrize("installed,available,expected", [
+    ("1.0.0", "2.0.0", "UPDATE_AVAILABLE"),
+    ("1.0.0", "1.0.0", "VERIFIED"),
+    ("2.0.0", "1.0.0", "VERIFIED"),
+])
+def test_version_status_transition(installed, available, expected):
+    class Host(FakeHost):
+        def status(self):
+            return PluginHostStatus("exact", True, True, installed,
+                                    installed_version=installed, available_version=available)
+    value = run(ObsPluginService(FakeManager(), Host()).status("obs-multi-rtmp"))
+    assert value.state == expected
+    assert value.installed_version == installed
+    assert value.available_version == available
+
+
+def test_inventory_only_reports_registered_plugin():
+    value = run(ObsPluginService(FakeManager(), FakeHost()).inventory())
+    assert len(value) == 1
+    assert value[0].plugin_id == "obs-multi-rtmp"
+    assert value[0].state == "NOT_INSTALLED"
+
+
+def test_manual_restart_workflow_install_then_process_start_then_verify():
+    host, manager = FakeHost(), FakeManager()
+    service = ObsPluginService(manager, host, defer_restart=True)
+    result = run(service.install("obs-multi-rtmp"))
+    assert result.result == "installed"
+    assert result.operation == "install"
+    assert result.status.restart_required is True
+    assert result.status.state == "RESTART_REQUIRED"
+    assert manager.value.state == "STOPPED"
+    assert manager.calls.count("stop") == 1
+    assert manager.calls.count("start") == 0
+    # Operator invokes the existing Process API, then Plugin Manager verify.
+    manager.start()
+    pending = run(service.status("obs-multi-rtmp"))
+    assert pending.restart_required is True
+    assert pending.state == "RESTART_REQUIRED"
+    verified = run(service.verify("obs-multi-rtmp"))
+    assert verified.status.state == "VERIFIED"
+    assert verified.status.restart_required is False
+    assert verified.status.last_verification is not None
+    assert verified.result == "verified"
+
+
+def test_manual_restart_workflow_update_is_not_an_install_alias():
+    class Host(FakeHost):
+        def update(self):
+            self.calls.append("update")
+            return PluginHostResult("updated")
+    host, manager = Host("exact", loaded=True), FakeManager()
+    service = ObsPluginService(manager, host, defer_restart=True)
+    update = run(service.update("obs-multi-rtmp"))
+    assert update.operation == "update"
+    assert update.status.restart_required
+    assert update.status.state == "RESTART_REQUIRED"
+    assert manager.calls.count("start") == 0
+    assert host.calls.count("update") == 1
+    assert "install" not in host.calls
+    manager.start()
+    verified = run(service.verify("obs-multi-rtmp"))
+    assert verified.status.state == "VERIFIED"
+    assert verified.status.last_verification is not None
+
+
+def test_manual_restart_verify_failure_triggers_rollback_and_restarts_obs():
+    host, manager = FakeHost(), FakeManager()
+    service = ObsPluginService(manager, host, defer_restart=True)
+    result = run(service.install("obs-multi-rtmp"))
+    assert result.status.restart_required
+    manager.start()
+    host.failures["verify"] = ObsPluginError("plugin_verify_failed", "Vendor absent", 409)
+    with pytest.raises(ObsPluginError) as caught:
+        run(service.verify("obs-multi-rtmp"))
+    assert caught.value.code == "plugin_verify_failed"
+    assert "rollback" in host.calls
+    assert manager.value.state == "READY"
+
+
+def test_deferred_install_preserves_active_output_and_does_not_stop():
+    for output in ("streaming", "recording"):
+        manager = FakeManager(runtime(**{output: True}))
+        host = FakeHost()
+        service = ObsPluginService(manager, host, defer_restart=True)
+        with pytest.raises(ObsPluginError) as caught:
+            run(service.install("obs-multi-rtmp"))
+        assert caught.value.code == "obs_busy_" + output
+        assert "stop" not in manager.calls
+        assert "install" not in host.calls
+
+
+def test_mutation_timeout_is_typed_and_sanitized():
+    import time
+
+    class SlowHost(FakeHost):
+        def update(self):
+            time.sleep(0.15)
+            self.calls.append("update")
+            return PluginHostResult("updated")
+
+    host = SlowHost("exact", loaded=True)
+    service = ObsPluginService(FakeManager(), host, operation_timeout=0.01)
+    with pytest.raises(ObsPluginError) as caught:
+        run(service.update("obs-multi-rtmp"))
+    assert caught.value.code == "plugin_operation_timeout"
+    assert caught.value.status_code == 504
+    assert "password" not in str(caught.value)
+
+
+def test_operation_timeout_must_be_positive():
+    with pytest.raises(ValueError):
+        ObsPluginService(FakeManager(), FakeHost(), operation_timeout=0)
+
+
+def test_update_operation_reports_previous_and_new_version():
+    class VersionHost(FakeHost):
+        def __init__(self):
+            super().__init__("exact", loaded=True)
+            self.version = "1.0.0"
+        def status(self):
+            return PluginHostStatus(
+                "exact", True, self.loaded, self.version if self.loaded else None,
+                installed_version=self.version, available_version="2.0.0",
+            )
+        def update(self):
+            self.calls.append("update")
+            self.version = "2.0.0"
+            self.loaded = False
+            return PluginHostResult("updated")
+
+    host, manager = VersionHost(), FakeManager()
+    service = ObsPluginService(manager, host, defer_restart=True)
+    result = run(service.update("obs-multi-rtmp"))
+    assert result.api_payload()["previous_version"] == "1.0.0"
+    assert result.api_payload()["installed_version"] == "2.0.0"
+    assert result.api_payload()["available_version"] == "2.0.0"
+    assert result.api_payload()["restart_required"] is True
+
+
+def test_failed_vendor_probe_sets_verify_failed_until_subsequent_success():
+    class FlakyVendor:
+        def __init__(self):
+            self.healthy = False
+        def connect(self):
+            pass
+        def request(self, request_type, payload):
+            if not self.healthy:
+                raise RuntimeError("Vendor missing")
+            return {"responseData": {"targets": [], "count": 0}}
+        def close(self):
+            pass
+
+    vendor = FlakyVendor()
+    manager = FakeManager()
+    manager.client_factory = lambda: vendor
+    service = ObsPluginService(manager, FakeHost("exact", loaded=True))
+    with pytest.raises(ObsPluginError):
+        run(service.verify("obs-multi-rtmp"))
+    assert run(service.status("obs-multi-rtmp")).state == "VERIFY_FAILED"
+    vendor.healthy = True
+    assert run(service.verify("obs-multi-rtmp")).status.state == "VERIFIED"
+    assert run(service.status("obs-multi-rtmp")).state == "VERIFIED"

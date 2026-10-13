@@ -83,6 +83,8 @@
         this.socket = null;
         const wasConnected = this.connected;
         this.connected = false;
+        // Snapshots from the previous connection cannot be replayed as fresh.
+        this.cachedEvents.clear();
         this._rejectPending(
           new Error(`${this.label} connection closed before the operation completed.`)
         );
@@ -126,8 +128,13 @@
     on(eventName, listener, {replay = false} = {}) {
       if (!this.listeners.has(eventName)) this.listeners.set(eventName, new Set());
       this.listeners.get(eventName).add(listener);
-      if (replay && this.cachedEvents.has(eventName)) {
-        queueMicrotask(() => listener(this.cachedEvents.get(eventName)));
+      if (replay && this.connected && this.cachedEvents.has(eventName)) {
+        const generation = this.generation;
+        queueMicrotask(() => {
+          if (this.connected && !this.destroyed && generation === this.generation
+              && this.listeners.get(eventName)?.has(listener)
+              && this.cachedEvents.has(eventName)) listener(this.cachedEvents.get(eventName));
+        });
       }
       return () => this.listeners.get(eventName)?.delete(listener);
     }
@@ -143,7 +150,7 @@
     }
 
     waitFor(eventName) {
-      if (this.cachedEvents.has(eventName)) {
+      if (this.connected && this.cachedEvents.has(eventName)) {
         return Promise.resolve(this.cachedEvents.get(eventName));
       }
       return new Promise((resolve) => {
@@ -162,6 +169,7 @@
       this.watchdogTimer = null;
       this._rejectPending(new Error('Page closed before the operation completed.'));
       this.connected = false;
+      this.cachedEvents.clear();
       this.generation++;
       const socket = this.socket;
       this.socket = null;
