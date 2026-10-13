@@ -14,56 +14,32 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 25
     env:
-      # Canonical PR #52 BE v2 HEAD, deliberately fixed for reproducibility.
-      ISSUE75_BE_SHA: '70acbb4037405763e1fc07fa07cd7fd09817257b'
+      # PR #52 was merged into master; verify ancestry instead of remerging its
+      # obsolete pre-integration HEAD and resurrecting deleted Node scripts.
+      ISSUE75_BE_MERGE_SHA: '9918544302572e6221999f7c0ac81b527f2dc399'
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Assemble disposable exact-HEAD integration worktree
+      - name: Verify and isolate exact FE HEAD containing merged BE
         shell: pwsh
         run: |
-          $ErrorActionPreference='Stop'
-          # PR checkout defaults to a synthetic merge SHA; use the real FE PR HEAD.
+          $ErrorActionPreference = 'Stop'
           $fe = '${{ github.event.pull_request.head.sha }}'
           if (-not $fe) { $fe = (git rev-parse HEAD).Trim() }
-          if (-not $fe) { throw 'Cannot identify FE HEAD' }
-          Write-Host "FE HEAD: $fe"
-          Write-Host "BE HEAD: $env:ISSUE75_BE_SHA"
-          $dir = Join-Path $env:RUNNER_TEMP 'issue75-combined'
-          git fetch origin $fe $env:ISSUE75_BE_SHA
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot fetch fixed BE HEAD' }
-          git worktree add --detach $dir $fe
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot create isolated worktree' }
-          Set-Location $dir
-          # This merge is local to a disposable unpushed CI worktree ONLY.
-          # A conflict is a real integration failure, never auto-resolved.
-          git -c user.name='OpenStream Integration CI' -c user.email='ci@invalid.local' merge --no-commit --no-ff $env:ISSUE75_BE_SHA
+          if (-not $fe) { throw 'Cannot identify exact FE HEAD' }
+          git fetch origin $fe $env:ISSUE75_BE_MERGE_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot fetch FE head and approved BE merge commit' }
+          git merge-base --is-ancestor $env:ISSUE75_BE_MERGE_SHA $fe
           if ($LASTEXITCODE -ne 0) {
-            # Resolve only nonproduction CI/workflow overlaps, preserving BOTH
-            # versions of the wheel acceptance tests as independently executed
-            # contract checks. All other conflicts are real BLOCKERS.
-            $conflicts = @(git diff --name-only --diff-filter=U)
-            $expected = @('.github/workflows/tests.yml', 'streamops/server/tests/test_wheel_acceptance.py')
-            $unexpected = @($conflicts | Where-Object { $_ -notin $expected })
-            if ($unexpected.Count -gt 0 -or $conflicts.Count -ne 2) {
-              git status --short
-              throw "Unexpected FE+BE merge conflicts: $($conflicts -join ', ')"
-            }
-            $beWheel = 'streamops/server/tests/test_issue75_be_wheel_acceptance_ci.py'
-            git show ':3:streamops/server/tests/test_wheel_acceptance.py' |
-              Out-File -LiteralPath $beWheel -Encoding utf8
-            if ($LASTEXITCODE -ne 0) { throw 'Cannot preserve BE wheel acceptance separately' }
-            git checkout --ours -- .github/workflows/tests.yml streamops/server/tests/test_wheel_acceptance.py
-            if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve isolated CI-only conflicts' }
-            git add .github/workflows/tests.yml streamops/server/tests/test_wheel_acceptance.py $beWheel
-            if ($LASTEXITCODE -ne 0 -or @(git diff --name-only --diff-filter=U).Count -ne 0) {
-              throw 'Unresolved conflicts after isolated CI-only resolution'
-            }
-            Write-Host 'Both FE and BE wheel contracts preserved; no production conflict suppressed.'
+            throw "FE HEAD does not contain merged BE PR52 commit $env:ISSUE75_BE_MERGE_SHA"
           }
-          $combined=(git status --porcelain | Measure-Object).Count
-          Write-Host "Temporary uncommitted integration tree, changed entries: $combined"
+          $dir = Join-Path $env:RUNNER_TEMP 'issue75-combined'
+          git worktree add --detach $dir $fe
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot create disposable FE/BE integration worktree' }
+          $actual = (git -C $dir rev-parse HEAD).Trim()
+          if ($actual -ne $fe) { throw "Worktree SHA drift: expected $fe got $actual" }
+          Write-Host "Verified FE+BE exact HEAD: $actual (includes merged PR52)"
           "ISSUE75_COMBINED=$dir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - uses: actions/setup-python@v5
         with:
@@ -86,7 +62,8 @@ jobs:
           python -m pip wheel . --no-deps -w dist
           if ($LASTEXITCODE -ne 0) { throw 'Combined wheel build failed' }
           $env:STREAMOPS_TEST_WHEEL = (Get-ChildItem dist/*.whl | Select-Object -First 1).FullName
-          python -m pytest -q streamops/server/tests/test_wheel_acceptance.py streamops/server/tests/test_issue75_be_wheel_acceptance_ci.py
+          # Wheel acceptance now combines required #52 backend fields and #75 frontend assets.
+          python -m pytest -q streamops/server/tests/test_wheel_acceptance.py
           if ($LASTEXITCODE -ne 0) { throw 'Combined FE/BE wheel contract drift' }
       - name: FE model, envelopes and fail-closed Unit tests
         shell: pwsh
