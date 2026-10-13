@@ -643,10 +643,61 @@ Run the Windows node in the foreground with an explicit port:
 Or manage it from the repository through an on-demand Scheduled Task:
 
 ```powershell
-.\scripts\devices\a-windows\start-streamops-node.ps1 -Port 8785
-.\scripts\devices\a-windows\status-streamops-node.ps1
-.\scripts\devices\a-windows\stop-streamops-node.ps1
+.\scripts\devices\a-windows\streamops-node.ps1 start -Port 8785
+.\scripts\devices\a-windows\streamops-node.ps1 status
+.\scripts\devices\a-windows\streamops-node.ps1 stop
 ```
+
+### GitHub token at Windows node startup (OBS Plugin Manager #47)
+
+The managed OBS Plugin Manager defaults to `Synclab-VN-dev/StreamOps-OBS-Plugins`.
+When starting or replacing a node using `streamops-node.ps1 start`, PowerShell prompts
+for a **GitHub read-only token** using `Read-Host -AsSecureString` (no plaintext CLI flag).
+
+```powershell
+# For manual validation of PR #93, first check port 18793 is free.
+Get-NetTCPConnection -State Listen -LocalPort 18793 -ErrorAction SilentlyContinue
+.\scripts\devices\a-windows\streamops-node.ps1 start -Port 18793 -BindHost 127.0.0.1 -TaskName "StreamOps-PR93-Manual" -DataDir ".streamops\pr93\node"
+# Enter a read-only token into the masked prompt, or choose clipboard input below.
+```
+
+Alternatively, copy the token on Windows A and immediately start with the
+clipboard flag (no token on the command line):
+
+```powershell
+.\scripts\devices\a-windows\streamops-node.ps1 start -Port 18793 -BindHost 127.0.0.1 -TaskName "StreamOps-PR93-Manual" -DataDir ".streamops\pr93\node" -GitHubTokenFromClipboard
+```
+
+The clipboard mode requires one non-empty token line without whitespace and
+overwrites the **active clipboard** after reading (including invalid input).
+The clipboard still temporarily contains a plaintext credential, which might
+persist in Windows Clipboard History, cloud sync or clipboard-monitoring tools.
+For higher-security environments use the masked prompt instead. The two flags
+`-GitHubTokenFromClipboard` and `-NoGitHubTokenPrompt` are mutually exclusive.
+A running healthy node will not re-read clipboard when start is called again.
+
+The token travels to the interactive desktop Scheduled Task via a **one-use,
+DPAPI CurrentUser-encrypted handoff**, not through command-line arguments.
+The invoking shell must run under the **same Windows account** as the
+interactive desktop task. It is immediately removed from disk after handoff,
+and is held only in the server process environment during this process's life.
+Starting a new process needs a new prompt. For SSH input use an interactive TTY.
+
+Press Enter to skip token entry; or use `-NoGitHubTokenPrompt` for a
+noninteractive diagnostics-only startup. The node continues running, but the
+managed catalog safely fails closed with HTTP 503 `plugin_github_token_missing`
+and logs a warning in `.streamops\node\logs\node-*.stderr.log` (or the
+configured DataDir's `logs`). Never paste the token into the ticket, process
+arguments, commands, plaintext files or logs. Existing environment-based
+`-ObsPluginGitHubTokenEnv` remains supported for managed deployment.
+
+The REST catalog `GET /api/v1/obs/plugins/available` and equivalent
+WebSocket operation `obs_plugin.available` carry typed, secret-free errors
+(`plugin_github_token_missing`, `plugin_github_auth_failed`,
+`plugin_github_rate_limited`) for clients to show to operators.
+This does not resolve independent `plugin_status_failed` issues in local
+OBS plugin file/journal/process inspection.
+
 
 Real-OBS acceptance uses a separate node on port `8785` with the isolated data
 directory `.streamops\pr19-node`. The acceptance harness can recover an OBS process
@@ -654,7 +705,7 @@ that becomes unresponsive to WebSocket requests immediately after a proven-idle
 collection or profile transition. Install its no-trigger, interactive recovery task:
 
 ```powershell
-.\scripts\devices\a-windows\start-streamops-node.ps1 `
+.\scripts\devices\a-windows\streamops-node.ps1 start `
     -TaskName "StreamOps PR19 Acceptance" `
     -Port 8785 `
     -DataDir .streamops\pr19-node
