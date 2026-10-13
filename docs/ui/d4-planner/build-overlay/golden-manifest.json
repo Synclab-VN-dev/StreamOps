@@ -1,0 +1,161 @@
+{
+  "schemaVersion": "1.0.0",
+  "status": "HANDOFF_REFERENCE_ONLY_VISUAL_GATE_BLOCKED",
+  "sourceOfTruth": {
+    "provider": "MagicPath",
+    "projectId": "458763473602621440",
+    "componentId": "458765764401446912",
+    "revisionId": "458808549301174272",
+    "generatedName": "finely-wood-8539",
+    "projectUrl": "https://www.magicpath.ai/files/458763473602621440",
+    "approvedByOwner": true,
+    "scope": "existing selected revision only"
+  },
+  "sourceFiles": [
+    {
+      "path": "D4PlannerCompactBuildHUD.tsx",
+      "originalPath": "src/components/generated/D4PlannerCompactBuildHUD.tsx",
+      "sha256": "760048ca599260d3964e4b9c0b28392474b84120e4124b6b181f421afd2d3c8e"
+    },
+    {
+      "path": "reference/src/components/generated/D4PlannerCompactBuildHUD.tsx",
+      "originalPath": "src/components/generated/D4PlannerCompactBuildHUD.tsx",
+      "sha256": "760048ca599260d3964e4b9c0b28392474b84120e4124b6b181f421afd2d3c8e"
+    },
+    {
+      "path": "reference/src/App.tsx",
+      "originalPath": "src/App.tsx",
+      "sha256": "9d731493f8def88f37d06b48da634a59d32a4d22baa9a3cac786862fff26cde0"
+    },
+    {
+      "path": "reference/src/index.css",
+      "originalPath": "src/index.css",
+      "sha256": "39ba1d5619534ca8218a9f54b9d46738deb88adb93dbd37b5f87942fd9b750bd"
+    }
+  ],
+  "nativeMagicPathPreview": {
+    "path": "golden/approved-revision/default-expanded.jpg",
+    "mimeType": "image/jpeg",
+    "sha256": "65ed60a4499b99ece5120afcca0a26b51f9beaf03a0a97b21e0114887068e87d",
+    "sourceMethod": "MagicPath.view_component",
+    "sourceRevisionId": "458808549301174272",
+    "description": "Default expanded design preview returned directly by MagicPath; compressed canvas render, not controlled Playwright screenshot",
+    "caseId": "S00",
+    "status": "REFERENCE_ONLY",
+    "viewport": null,
+    "renderedState": "default-expanded",
+    "pixelDiffReady": false
+  },
+  "requiredVisualCases": [
+    {
+      "caseId": "S00",
+      "state": "default-expanded",
+      "status": "REFERENCE_ONLY",
+      "missing": "controlled viewport dimensions and lossless state capture"
+    },
+    {
+      "caseId": "S01",
+      "state": "collapsed",
+      "status": "BLOCKED_NO_CAPTURE",
+      "missing": "native MagicPath state/viewport image"
+    },
+    {
+      "caseId": "S02",
+      "state": "expanded-after-collapse",
+      "status": "BLOCKED_NO_CAPTURE",
+      "missing": "native MagicPath state/viewport image"
+    },
+    {
+      "caseId": "S03",
+      "state": "equipment-open",
+      "status": "BLOCKED_NO_CAPTURE",
+      "missing": "native MagicPath state/viewport image"
+    },
+    {
+      "caseId": "S04",
+      "state": "charms-open",
+      "status": "BLOCKED_NO_CAPTURE",
+      "missing": "native MagicPath state/viewport image"
+    },
+    {
+      "caseId": "S05",
+      "state": "close-section",
+      "status": "BLOCKED_NO_CAPTURE",
+      "missing": "native MagicPath state/viewport image"
+    },
+    {
+      "caseId": "S06",
+      "state": "item-comparison",
+      "status": "BLOCKED_NO_CAPTURE",
+      "missing": "native MagicPath state/viewport image"
+    },
+    {
+      "caseId": "S07",
+      "state": "affixes-open",
+      "status": "BLOCKED_NO_CAPTURE",
+      "missing": "native MagicPath state/viewport image"
+    },
+    {
+      "caseId": "S08",
+      "state": "issues-all-filter",
+      "status": "BLOCKED_NO_CAPTURE",
+      "missing": "native MagicPath state/viewport image"
+    },
+    {
+      "caseId": "S09",
+      "state": "effects-open",
+      "status": "BLOCKED_NO_CAPTURE",
+      "missing": "native MagicPath state/viewport image"
+    },
+    {
+      "caseId": "S10",
+      "state": "item-close-reset",
+      "status": "BLOCKED_NO_CAPTURE",
+      "missing": "native MagicPath state/viewport image"
+    },
+    {
+      "caseId": "S11",
+      "state": "pin-toggle",
+      "status": "BLOCKED_NO_CAPTURE",
+      "missing": "native MagicPath state/viewport image"
+    },
+    {
+      "caseId": "S12",
+      "state": "loading-stale-missing-data",
+      "status": "BLOCKED_UNDESIGNED",
+      "missing": "Owner-approved MagicPath UI state/contract"
+    },
+    {
+      "caseId": "S13",
+      "state": "idle-drag-os-clickthrough",
+      "status": "BLOCKED_UNDESIGNED",
+      "missing": "Owner-approved MagicPath UI state/contract"
+    },
+    {
+      "caseId": "S14",
+      "state": "healthy-variable-comparison",
+      "status": "BLOCKED_UNDESIGNED",
+      "missing": "Owner-approved MagicPath UI state/contract"
+    }
+  ],
+  "requiredViewportPolicy": {
+    "referenceCandidates": [
+      "360x800",
+      "390x844",
+      "768x1024",
+      "1440x900"
+    ],
+    "status": "BLOCKED_NO_APPROVED_CAPTURES",
+    "note": "These are rule defaults, not approved responsive designs in this revision; capture separately from MagicPath before FE gate"
+  },
+  "qualityGate": {
+    "designProvenance": "AVAILABLE",
+    "sourceHash": "AVAILABLE",
+    "defaultVisualReference": "REFERENCE_ONLY",
+    "deterministicPixelDiff": "BLOCKED",
+    "unitE2E": "NOT_APPLICABLE_DOCS_ONLY",
+    "productionVisualGate": "BLOCKED",
+    "doesNotAuthorizeMerge": true
+  },
+  "generatedOn": "2026-10-13"
+}
