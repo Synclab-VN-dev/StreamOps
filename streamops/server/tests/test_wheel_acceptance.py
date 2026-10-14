@@ -90,11 +90,33 @@ def test_installed_wheel_runs_outside_source_checkout():
                 payload = json.loads(response.read())
             assert payload["plugin_id"] == "obs-multi-rtmp"
             assert payload["expected_version"] == "0.7.4.0"
-            assert {"plugin_id", "expected_version", "state", "installed", "loaded", "compatible",
-                "display_name", "installed_version", "available_version", "restart_required",
-                "last_verification"} <= set(payload)
+            # Mandatory backend #47 status contract plus backward-compatible FE fields.
+            required = {"plugin_id", "expected_version", "state", "installed", "loaded", "compatible",
+                        "display_name", "installed_version", "available_version", "restart_required",
+                        "last_verification"}
+            assert required <= set(payload)
             assert isinstance(payload["display_name"], str)
+            assert isinstance(payload["installed"], bool)
+            assert isinstance(payload["loaded"], bool)
+            assert isinstance(payload["compatible"], bool)
             assert isinstance(payload["restart_required"], bool)
+            if "rollback" in payload:
+                assert isinstance(payload["rollback"], dict)
+                assert isinstance(payload["rollback"].get("available"), bool)
+                assert isinstance(payload.get("revision"), int)
+                assert isinstance(payload.get("operation"), dict)
+            # E2E-25: the actual installed wheel must serve FE routes and
+            # JS assets. An editable checkout passing tests is insufficient.
+            with urllib.request.urlopen(base + "/obs/plugins", timeout=10) as response:
+                assert response.status == 200
+                page_markup = response.read().decode("utf-8")
+            assert 'id="plugin-managed-count"' in page_markup
+            assert '/assets/obs-plugins/page.mjs' in page_markup
+            with urllib.request.urlopen(base + "/assets/obs-plugins/page.mjs", timeout=10) as response:
+                assert response.status == 200
+                page_module = response.read().decode("utf-8")
+            assert "createPluginStore" in page_module
+            assert "plugin-confirm-dialog" in page_module
             # G6: GameService is discoverable from the installed wheel,
             # not an editable repository checkout.
             with urllib.request.urlopen(base + "/api/v1/games", timeout=10) as response:

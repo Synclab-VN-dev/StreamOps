@@ -1,0 +1,89 @@
+name: Issue75 FE-BE Exact-HEAD Integration
+on:
+  pull_request:
+    paths:
+      - 'streamops/server/**'
+      - 'pyproject.toml'
+      - '.github/workflows/issue75-fe-be-contract-integration.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  combined-contract:
+    name: Issue75 / FE+BE isolated contract E2E
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      # PR #52 was merged into master; verify ancestry instead of remerging its
+      # obsolete pre-integration HEAD and resurrecting deleted Node scripts.
+      ISSUE75_BE_MERGE_SHA: '9918544302572e6221999f7c0ac81b527f2dc399'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify and isolate exact FE HEAD containing merged BE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $fe = '${{ github.event.pull_request.head.sha }}'
+          if (-not $fe) { $fe = (git rev-parse HEAD).Trim() }
+          if (-not $fe) { throw 'Cannot identify exact FE HEAD' }
+          git fetch origin $fe $env:ISSUE75_BE_MERGE_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot fetch FE head and approved BE merge commit' }
+          git merge-base --is-ancestor $env:ISSUE75_BE_MERGE_SHA $fe
+          if ($LASTEXITCODE -ne 0) {
+            throw "FE HEAD does not contain merged BE PR52 commit $env:ISSUE75_BE_MERGE_SHA"
+          }
+          $dir = Join-Path $env:RUNNER_TEMP 'issue75-combined'
+          git worktree add --detach $dir $fe
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot create disposable FE/BE integration worktree' }
+          $actual = (git -C $dir rev-parse HEAD).Trim()
+          if ($actual -ne $fe) { throw "Worktree SHA drift: expected $fe got $actual" }
+          Write-Host "Verified FE+BE exact HEAD: $actual (includes merged PR52)"
+          "ISSUE75_COMBINED=$dir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated combined dependencies
+        shell: pwsh
+        run: |
+          Set-Location $env:ISSUE75_COMBINED
+          python -m pip install '.[server,dev]'
+          if ($LASTEXITCODE -ne 0) { throw 'Combined dependencies failed' }
+          python -m playwright install chromium
+          if ($LASTEXITCODE -ne 0) { throw 'Combined Chromium failed' }
+      - name: Run both FE and BE installed-wheel contract checks
+        shell: pwsh
+        run: |
+          Set-Location $env:ISSUE75_COMBINED
+          python -m pip wheel . --no-deps -w dist
+          if ($LASTEXITCODE -ne 0) { throw 'Combined wheel build failed' }
+          $env:STREAMOPS_TEST_WHEEL = (Get-ChildItem dist/*.whl | Select-Object -First 1).FullName
+          # Wheel acceptance now combines required #52 backend fields and #75 frontend assets.
+          python -m pytest -q streamops/server/tests/test_wheel_acceptance.py
+          if ($LASTEXITCODE -ne 0) { throw 'Combined FE/BE wheel contract drift' }
+      - name: FE model, envelopes and fail-closed Unit tests
+        shell: pwsh
+        run: |
+          Set-Location $env:ISSUE75_COMBINED
+          node --test streamops/server/tests/issue75_core.test.mjs streamops/server/tests/issue75_store.test.mjs streamops/server/tests/issue75_extended_core.test.mjs streamops/server/tests/issue75_extended_store.test.mjs streamops/server/tests/issue75_wsclient.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'FE models fail on exact FE+BE tree' }
+      - name: BE canonical REST-WS parity + FE real browser E2E
+        shell: pwsh
+        env:
+          ISSUE75_EXACT_BE_COMBINED: '1'
+        run: |
+          Set-Location $env:ISSUE75_COMBINED
+          python -m pytest -q --junitxml=$env:RUNNER_TEMP/issue75-combined-junit.xml streamops/server/tests/test_obs_plugin_ws_contract_v2.py streamops/server/tests/test_obs_plugin_api.py streamops/server/tests/test_obs_plugin_adoption.py::test_ad15_rest_and_websocket_adopt_contract streamops/server/tests/test_obs_plugin_adoption.py::test_ad10_verify_failure_restores_legacy_byte_for_byte streamops/server/tests/test_obs_plugin_adoption.py::test_ad14_vendor_failure_is_typed_and_restores_legacy streamops/server/tests/test_obs_plugin_adoption.py::test_cr07_corrupt_backup_after_crash_never_overwrites_partial_plugin streamops/server/tests/test_obs_plugin_adoption.py::test_ad12_catalog_is_not_installable_while_recovery_is_required streamops/server/tests/test_issue75_be_contract_drift.py streamops/server/tests/test_issue75_be_auto_rollback_ci.py streamops/server/tests/test_issue75_plugin_ui.py streamops/server/tests/e2e/test_issue75_plugin_manager.py streamops/server/tests/e2e/test_issue75_workflow_matrix.py streamops/server/tests/e2e/test_issue75_recovery_followup.py
+          if ($LASTEXITCODE -ne 0) { throw 'Combined contract or FE E2E failed' }
+      - name: Preserve integration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue75-combined-${{ github.sha }}
+          path: ${{ runner.temp }}/issue75-combined-junit.xml
+          if-no-files-found: warn
+          retention-days: 30

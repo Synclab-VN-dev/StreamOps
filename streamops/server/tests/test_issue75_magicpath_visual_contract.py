@@ -1,0 +1,146 @@
+"""Issue #75: pinned MagicPath source + fail-closed Golden approval contract."""
+import copy
+import hashlib
+import json
+import re
+from pathlib import Path
+import pytest
+
+ROOT=Path(__file__).resolve().parent/"visual_obs_plugins"
+# Required UI states cannot be removed from the review manifest to bypass
+# visual parity. If the pinned design cannot render them, keep them blocked.
+REQUIRED_DESIGN_STATES={
+    "normal","expanded","confirm","plugin-card",
+    "loading","empty","offline","blocked","verify-failed",
+    "rollback-failed","recovery-required","legacy-adopted",
+}
+IDS={"plugin":("458351046272638976","460035256414801920"),
+     "dashboard":("456064390102405120","458892152907374592")}
+
+def blob_sha(b):
+    return hashlib.sha1(b"blob "+str(len(b)).encode()+b"\0"+b).hexdigest()
+
+def read_bytes(path):
+    b=path.read_bytes()
+    return b.replace(b"\r\n",b"\n") if path.suffix in {".tsx",".css"} else b
+
+def load():
+    return json.loads((ROOT/"manifest.json").read_text(encoding="utf-8"))
+
+def validate_source(manifest):
+    assert manifest["schema_version"]==1
+    assert len(manifest["references"])==2
+    for ref in manifest["references"]:
+        assert (ref["component_id"],ref["revision_id"])==IDS[ref["kind"]]
+        for file in [*ref["files"],ref["preview"]]:
+            candidate=ROOT/file["path"]
+            assert candidate.is_file(),str(candidate)
+            assert blob_sha(read_bytes(candidate))==file["git_blob_sha1"],str(candidate)
+    assert read_bytes(ROOT/"originals/plugin/src/index.css")==read_bytes(ROOT/"originals/dashboard/src/index.css")
+    # The isolated renderer must use byte-identical MagicPath component source.
+    for ref in manifest["references"]:
+        component=next(f for f in ref["files"] if "/components/generated/" in f["path"])
+        relative=component["path"].split("/src/",1)[1]
+        original=ROOT/component["path"]
+        rendered=ROOT/"reference_source"/"src"/relative
+        assert read_bytes(original)==read_bytes(rendered),"Renderer source modified: "+relative
+    assert read_bytes(ROOT/"originals/plugin/src/index.css")==read_bytes(
+        ROOT/"reference_source/src/index.css"),"Renderer styles differ from original"
+    main=(ROOT/"reference_source/src/main.tsx").read_text(encoding="utf-8")
+    assert "StreamOpsOBSPluginManager" in main and "StreamOpsMobileDashboard" in main
+    assert "server/web" not in main
+    cases=manifest["required_cases"]
+    assert len(cases)>=9
+    assert len({c["label"] for c in cases})==len(cases)
+    assert {(c["width"],c["height"]) for c in cases}=={(360,800),(390,844),(768,1024),(1440,900)}
+    covered={c["state"] for c in cases}
+    uncovered=set(manifest["uncovered_design_states"])
+    assert covered.isdisjoint(uncovered),"A state cannot be both covered and blocked"
+    assert REQUIRED_DESIGN_STATES <= covered | uncovered,(
+        "Required MagicPath states were silently removed from the coverage gate"
+    )
+    assert covered>={"normal","expanded","confirm","plugin-card"}
+    assert all(c["label"]==f'{c["design"]}-{c["state"]}-{c["width"]}x{c["height"]}' for c in cases)
+    assert manifest["rendering"]["mean_rgb_limit"]==.08
+    assert manifest["rendering"]["reference_drift_limit"]==.015
+    assert manifest["rendering"]["automatic_golden_update"] is False
+
+def validate_pinned_magicpath_coverage(manifest):
+    # Under Development Rule v5, unchanged pinned MagicPath designs are the
+    # authoritative Golden source; Owner need not approve each passing PNG.
+    # Never waive a missing UI state or substitute a production screenshot.
+    validate_source(manifest)
+    missing=set(manifest["uncovered_design_states"])
+    assert not missing, "Missing official MagicPath state references: "+", ".join(sorted(missing))
+    assert REQUIRED_DESIGN_STATES <= {c["state"] for c in manifest["required_cases"]}, (
+        "Incomplete Golden state coverage for pinned MagicPath revision"
+    )
+
+
+def validate_approval(manifest,root=ROOT):
+    assert manifest["approved"] is True,"Missing explicit owner-approved MagicPath golden"
+    for field in ("approved_by","approved_at","review_url"):
+        assert manifest["approval"].get(field),"Missing approval "+field
+    hashes=manifest["approval"]["expected_sha256"]
+    labels={c["label"] for c in manifest["required_cases"]}
+    assert set(hashes)==labels,"Incomplete Golden approval"
+    directory=root/"goldens"
+    assert {p.stem for p in directory.glob("*.png")}==labels
+    for label,digest in hashes.items():
+        assert re.fullmatch("[0-9a-f]{64}",digest),label
+        data=(directory/(label+".png")).read_bytes()
+        assert data.startswith(b"\x89PNG\r\n\x1a\n"),label
+        assert hashlib.sha256(data).hexdigest()==digest,label
+    assert not manifest["uncovered_design_states"],"MagicPath design state references missing"
+    assert REQUIRED_DESIGN_STATES <= {c["state"] for c in manifest["required_cases"]},(
+        "Every required design state must have its own owner-approved visual case"
+    )
+
+def test_original_magicpath_source_and_preview_hashes():
+    validate_source(load())
+
+def test_missing_approval_or_goldens_cannot_pass(tmp_path):
+    m=copy.deepcopy(load())
+    m["approved"]=False
+    with pytest.raises(AssertionError,match="Missing explicit owner-approved"):
+        validate_approval(m)
+    impostor=copy.deepcopy(m)
+    impostor["approved"]=True
+    impostor["approval"].update(approved_by="fake",approved_at="2026",review_url="https://github.com")
+    with pytest.raises(AssertionError,match="Incomplete Golden"):
+        validate_approval(impostor,tmp_path)
+
+def test_coverage_manifest_cannot_silently_drop_unrenderable_design_states():
+    manifest=copy.deepcopy(load())
+    manifest["uncovered_design_states"]=[]
+    # All states now have Golden cases. Removing one must still fail closed.
+    manifest["required_cases"]=[
+        case for case in manifest["required_cases"]
+        if case["state"]!="recovery-required"
+    ]
+    with pytest.raises(AssertionError,match="silently removed"):
+        validate_source(manifest)
+
+
+def test_visual_comparator_detects_large_theme_and_geometry_regression():
+    from PIL import Image,ImageDraw,ImageChops,ImageStat
+    original=Image.new("RGB",(390,844),"white")
+    assert Image.new("RGB",(380,844),"white").size!=original.size
+    altered=original.copy()
+    ImageDraw.Draw(altered).rectangle((0,0,390,650),fill="magenta")
+    diff=ImageChops.difference(original,altered)
+    assert sum(ImageStat.Stat(diff).mean)/(255*3)>.08
+
+
+def test_magicpath_plugin_reference_contains_only_registry_backed_plugin_demo():
+    original=(ROOT/"originals/plugin/src/components/generated/StreamOpsOBSPluginManager.tsx").read_text(encoding="utf-8")
+    assert "OpenStream OBS Plugin" not in original
+    assert "openstream-obs-plugin" not in original
+    assert original.count(">Multiple RTMP Outputs</h2>")==1
+    assert '<Stat label="Managed" value={isLoading || isOffline' in original
+    assert 'isEmpty ? "0" : "1"' in original
+    assert "{confirmAction && <section" not in original, "Inline Confirm must not shift the header"
+    assert "const confirmDialogRef = useRef<HTMLDialogElement>(null)" in original
+    assert "modal.showModal()" in original, "Confirm must use browser top-layer modal"
+    assert 'onCancel={() => setConfirmAction(null)}' in original
+    assert '<dialog' in original and 'aria-labelledby="plugin-confirm-title"' in original

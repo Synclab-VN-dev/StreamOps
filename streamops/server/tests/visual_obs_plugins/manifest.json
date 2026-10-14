@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "project_id": "456063904129388544",
+  "source": "Original MagicPath component revision source and compressed preview, never StreamOps production",
+  "approved": false,
+  "approval": {
+    "approved_by": null,
+    "approved_at": null,
+    "review_url": null,
+    "expected_sha256": {}
+  },
+  "references": [
+    {
+      "kind": "plugin",
+      "component_id": "458351046272638976",
+      "revision_id": "460035256414801920",
+      "files": [
+        {
+          "path": "originals/plugin/src/App.tsx",
+          "git_blob_sha1": "9839392fe0e7738771dedb712b04c1969b1d1807"
+        },
+        {
+          "path": "originals/plugin/src/components/generated/StreamOpsOBSPluginManager.tsx",
+          "git_blob_sha1": "ea67e1d873ad8017ebe1e6e9abc9e1d6dc21a64a"
+        },
+        {
+          "path": "originals/plugin/src/index.css",
+          "git_blob_sha1": "c8fc13b7718d153e3fbed19ee6ed9eb87f978557"
+        }
+      ],
+      "preview": {
+        "path": "references/plugin-459936145191612416.jpg",
+        "git_blob_sha1": "ee5ff0f49f964ab552c0f9a7977da96cf39c82eb"
+      },
+      "preview_revision_id": "459936145191612416",
+      "current_magicpath_preview_url": "https://storage.googleapis.com/storage.magicpath.ai/component-previews/479df89a-3365-447c-a791-015f66c58141.png"
+    },
+    {
+      "kind": "dashboard",
+      "component_id": "456064390102405120",
+      "revision_id": "458892152907374592",
+      "files": [
+        {
+          "path": "originals/dashboard/src/App.tsx",
+          "git_blob_sha1": "1c437a87e029c54fe8cff7833ff475e61e585f58"
+        },
+        {
+          "path": "originals/dashboard/src/components/generated/StreamOpsMobileDashboard.tsx",
+          "git_blob_sha1": "54d52ad4a6ac00a58ba9e3d13dc94210b465a108"
+        },
+        {
+          "path": "originals/dashboard/src/index.css",
+          "git_blob_sha1": "c8fc13b7718d153e3fbed19ee6ed9eb87f978557"
+        }
+      ],
+      "preview": {
+        "path": "references/dashboard-458892152907374592.jpg",
+        "git_blob_sha1": "8068370dc4bf1cd09592de72eea290ffb3fe578e"
+      }
+    }
+  ],
+  "rendering": {
+    "browser": "Chromium on Windows GitHub Actions",
+    "device_scale_factor": 1,
+    "animation": "disabled",
+    "mean_rgb_limit": 0.08,
+    "reference_drift_limit": 0.015,
+    "automatic_golden_update": false
+  },
+  "required_cases": [
+    {
+      "design": "plugin",
+      "state": "normal",
+      "width": 360,
+      "height": 800,
+      "capture": "top",
+      "label": "plugin-normal-360x800"
+    },
+    {
+      "design": "plugin",
+      "state": "normal",
+      "width": 390,
+      "height": 844,
+      "capture": "top",
+      "label": "plugin-normal-390x844"
+    },
+    {
+      "design": "plugin",
+      "state": "normal",
+      "width": 768,
+      "height": 1024,
+      "capture": "top",
+      "label": "plugin-normal-768x1024"
+    },
+    {
+      "design": "plugin",
+      "state": "normal",
+      "width": 1440,
+      "height": 900,
+      "capture": "top",
+      "label": "plugin-normal-1440x900"
+    },
+    {
+      "design": "plugin",
+      "state": "expanded",
+      "width": 390,
+      "height": 844,
+      "capture": "scroll",
+      "label": "plugin-expanded-390x844"
+    },
+    {
+      "design": "plugin",
+      "state": "expanded",
+      "width": 1440,
+      "height": 900,
+      "capture": "scroll",
+      "label": "plugin-expanded-1440x900"
+    },
+    {
+      "design": "plugin",
+      "state": "confirm",
+      "width": 390,
+      "height": 844,
+      "capture": "top",
+      "label": "plugin-confirm-390x844"
+    },
+    {
+      "design": "dashboard",
+      "state": "plugin-card",
+      "width": 390,
+      "height": 844,
+      "capture": "card",
+      "label": "dashboard-plugin-card-390x844"
+    },
+    {
+      "design": "dashboard",
+      "state": "plugin-card",
+      "width": 1440,
+      "height": 900,
+      "capture": "card",
+      "label": "dashboard-plugin-card-1440x900"
+    },
+    {
+      "design": "plugin",
+      "state": "blocked",
+      "width": 390,
+      "height": 844,
+      "capture": "top",
+      "label": "plugin-blocked-390x844"
+    },
+    {
+      "design": "plugin",
+      "state": "loading",
+      "width": 390,
+      "height": 844,
+      "capture": "top",
+      "label": "plugin-loading-390x844"
+    },
+    {
+      "design": "plugin",
+      "state": "empty",
+      "width": 390,
+      "height": 844,
+      "capture": "top",
+      "label": "plugin-empty-390x844"
+    },
+    {
+      "design": "plugin",
+      "state": "offline",
+      "width": 390,
+      "height": 844,
+      "capture": "top",
+      "label": "plugin-offline-390x844"
+    },
+    {
+      "design": "plugin",
+      "state": "verify-failed",
+      "width": 390,
+      "height": 844,
+      "capture": "top",
+      "label": "plugin-verify-failed-390x844"
+    },
+    {
+      "design": "plugin",
+      "state": "rollback-failed",
+      "width": 390,
+      "height": 844,
+      "capture": "top",
+      "label": "plugin-rollback-failed-390x844"
+    },
+    {
+      "design": "plugin",
+      "state": "recovery-required",
+      "width": 390,
+      "height": 844,
+      "capture": "top",
+      "label": "plugin-recovery-required-390x844"
+    },
+    {
+      "design": "plugin",
+      "state": "legacy-adopted",
+      "width": 390,
+      "height": 844,
+      "capture": "top",
+      "label": "plugin-legacy-adopted-390x844"
+    }
+  ],
+  "uncovered_design_states": [],
+  "note": "Seven scenario layouts added in MagicPath revision 460035256414801920 with Owner authorization (2026-10-11). Actual FE/Golden visual CI still required; legacy thumbnail pinned to preceding revision remains historical audit only; expected PNG is rendered from the new source."
+}

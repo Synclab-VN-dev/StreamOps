@@ -42,6 +42,7 @@ streamops = [
   "docs/*.md",
   "server/web/*",
   "server/data/*.json",
+  "server/web/obs-plugins/*",
   "server/platform/windows/obs_plugin/*.json",
 ]
 
