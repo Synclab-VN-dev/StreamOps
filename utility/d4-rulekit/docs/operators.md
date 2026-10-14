@@ -32,3 +32,13 @@ the Owner checkpoint and downstream G2/G3 validation.
 - G2 must check field types, units, reference existence, valid order/phase and impossible stacks.
 - Exact `math`, `stage`, `who`, `snapshot` allowable enum definitions: inspect
   the actual JSON Schema as source of truth, not this summary.
+
+## Machine-readable operator-to-event mapping (CI-03)
+
+The **source of truth** for all 15 schema operators is
+[execution-v1.json](../contracts/execution-v1.json), under `operators`.
+CI checks exact equality with `$defs.action.oneOf[].properties.op.const`.
+`modify_stat` emits no damage event; `deal_damage` produces a damage event.
+`trigger_skill` schedules a child skill event, but does **not** silently inherit crit,
+proc or snapshot state without separately sourced rule data. Concrete stage and target
+applicability are G2 checks; the CI-03 contract does not claim a full Blizzard interpreter.

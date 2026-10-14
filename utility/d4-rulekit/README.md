@@ -35,3 +35,21 @@ mechanics, to resolve references, or to calculate DPS. Never promote synthetic e
 production data. Missing rules must be reported; do not silently assume zero impact.
 
 No changes to FE, MagicPath, StreamOps runtime, OBS, or GitHub repo settings.
+
+## CI-03: game-evidence-backed execution contract
+
+- **Canonical semantics:** `contracts/execution-v1.json` (not the JSON Schema).
+- **Evidence register:** `docs/game-mechanics-3.2.3.md`.
+- **Reference vectors:** `references/3.2.3/ci03-reference-vectors.json`.
+- **Negative regression:** `tests/test_execution_contract.py`.
+- **Workflow:** `.github/workflows/d4-rulekit.yml` executes G1 and CI-03 independently.
+
+```bash
+python -m d4_rulekit.contract_check \
+  --contract utility/d4-rulekit/contracts/execution-v1.json \
+  --references utility/d4-rulekit/references/3.2.3/ci03-reference-vectors.json \
+  --report artifacts/d4-rulekit/ci03-contract.json
+```
+
+Returns exit 0 (structural/contract PASS), 1 (contract FAIL), 2 (missing data BLOCKED).
+`gameAccuracy=NOT_VERIFIED_BY_CI03` always: implementation is **not** a combat simulator.

@@ -16,3 +16,12 @@
 - Unsupported mechanic or unknown coefficients remain UNKNOWN/UNVERIFIED, never default zero.
 - Major engine/schema extension (new operator, event identity or semantics) is blocked pending
   Owner approval; merely new patch rolls/values normally change rule data only.
+
+## CI-03 mechanism versioning
+
+`contractVersion=1.0.0` describes operator interpretation, **not** the Blizzard patch.
+`patchBaseline.gameVersion=3.2.3` is the initial evidence scope. Reference examples tagged
+`1.2.0` are **historical** and must never be applied automatically to `3.2.3`.
+When a patch affects only values, #109 updates patch-specific rule data. A new grouping,
+new operator semantics or game-incompatible mechanics may require a versioned contract
+migration and new Owner approval; CI rejects ambiguous defaults.
