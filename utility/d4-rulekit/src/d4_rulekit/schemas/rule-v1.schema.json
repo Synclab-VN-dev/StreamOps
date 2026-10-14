@@ -1,0 +1,1491 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openstream.local/schemas/d4-rule-dsl-v1.schema.json",
+  "title": "OpenStream D4 Rule DSL — v1 Candidate Contract",
+  "description": "Schema-level syntax/shape check only. Semantic/unit/dependency/patch/physics/calculation correctness require external gates. Do not execute formulas as code.",
+  "allOf": [
+    {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0.0"
+        },
+        "ruleId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:/-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "game": {
+          "$ref": "#/$defs/patch"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "applicability": {
+          "$ref": "#/$defs/applicability"
+        },
+        "parameters": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/expr"
+          }
+        },
+        "mechanics": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/mechanic"
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "verification": {
+          "$ref": "#/$defs/verification"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "ruleId",
+        "game",
+        "source",
+        "mechanics",
+        "verification"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "$defs": {
+    "expr": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "literal"
+            },
+            "value": {
+              "type": [
+                "number",
+                "integer",
+                "string",
+                "boolean"
+              ]
+            },
+            "unit": {
+              "type": "string",
+              "enum": [
+                "none",
+                "ratio",
+                "percent_point",
+                "seconds",
+                "milliseconds",
+                "damage",
+                "life",
+                "resource",
+                "count",
+                "distance",
+                "rate_per_second"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "ref"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "actor",
+                "source",
+                "target",
+                "skill",
+                "item",
+                "event",
+                "build",
+                "scenario",
+                "rule",
+                "state",
+                "summon",
+                "enemy",
+                "globals"
+              ]
+            },
+            "path": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.]*$"
+            }
+          },
+          "required": [
+            "kind",
+            "scope",
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "call"
+            },
+            "fn": {
+              "type": "string",
+              "enum": [
+                "add",
+                "subtract",
+                "multiply",
+                "divide",
+                "power",
+                "minimum",
+                "maximum",
+                "clamp",
+                "absolute",
+                "floor",
+                "ceil",
+                "round",
+                "if",
+                "equals",
+                "not_equals",
+                "greater",
+                "greater_equal",
+                "less",
+                "less_equal",
+                "and",
+                "or",
+                "not",
+                "has_tag",
+                "contains",
+                "count",
+                "lookup",
+                "coalesce",
+                "sum",
+                "product"
+              ]
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/expr"
+              },
+              "minItems": 1,
+              "maxItems": 64
+            }
+          },
+          "required": [
+            "kind",
+            "fn",
+            "args"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "trigger": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "always",
+            "on_event",
+            "periodic",
+            "on_equip",
+            "on_unequip",
+            "on_condition_enter",
+            "on_condition_exit"
+          ]
+        },
+        "event": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:/-]*$"
+        },
+        "intervalSeconds": {
+          "$ref": "#/$defs/expr"
+        },
+        "initialDelaySeconds": {
+          "$ref": "#/$defs/expr"
+        },
+        "onSource": {
+          "type": "string",
+          "enum": [
+            "self",
+            "owner",
+            "summon",
+            "ally",
+            "enemy",
+            "any"
+          ]
+        },
+        "filters": {
+          "$ref": "#/$defs/expr"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "proc": {
+      "type": "object",
+      "properties": {
+        "chance": {
+          "$ref": "#/$defs/expr"
+        },
+        "chanceModel": {
+          "type": "string",
+          "enum": [
+            "direct",
+            "lucky_hit_scaled",
+            "event_weighted",
+            "deterministic"
+          ]
+        },
+        "internalCooldownSeconds": {
+          "$ref": "#/$defs/expr"
+        },
+        "oncePerCast": {
+          "type": "boolean"
+        },
+        "oncePerTarget": {
+          "type": "boolean"
+        },
+        "triggeredEventsCanProc": {
+          "type": "boolean"
+        },
+        "maxChainDepth": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "seedPolicy": {
+          "type": "string",
+          "enum": [
+            "deterministic",
+            "simulation_rng"
+          ]
+        }
+      },
+      "required": [
+        "chanceModel",
+        "triggeredEventsCanProc",
+        "maxChainDepth"
+      ],
+      "additionalProperties": false
+    },
+    "target": {
+      "type": "object",
+      "properties": {
+        "selector": {
+          "type": "string",
+          "enum": [
+            "self",
+            "source",
+            "target",
+            "all_enemies",
+            "enemies_in_area",
+            "nearest_enemies",
+            "all_allies",
+            "summons",
+            "random_enemy",
+            "ground_location"
+          ]
+        },
+        "limit": {
+          "$ref": "#/$defs/expr"
+        },
+        "radius": {
+          "$ref": "#/$defs/expr"
+        },
+        "shape": {
+          "type": "string",
+          "enum": [
+            "single",
+            "circle",
+            "cone",
+            "line",
+            "chain",
+            "projectile_path",
+            "aura",
+            "global"
+          ]
+        },
+        "maxDistance": {
+          "$ref": "#/$defs/expr"
+        },
+        "sort": {
+          "type": "string",
+          "enum": [
+            "nearest",
+            "farthest",
+            "random",
+            "lowest_health",
+            "highest_health"
+          ]
+        },
+        "lineOfSight": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "selector"
+      ],
+      "additionalProperties": false
+    },
+    "state": {
+      "type": "object",
+      "properties": {
+        "stateId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:/-]*$"
+        },
+        "durationSeconds": {
+          "$ref": "#/$defs/expr"
+        },
+        "stacks": {
+          "$ref": "#/$defs/expr"
+        },
+        "maxStacks": {
+          "$ref": "#/$defs/expr"
+        },
+        "stacking": {
+          "type": "string",
+          "enum": [
+            "refresh",
+            "replace",
+            "independent",
+            "add",
+            "highest_wins",
+            "lowest_wins",
+            "ignore"
+          ]
+        },
+        "expiration": {
+          "type": "string",
+          "enum": [
+            "each_stack",
+            "all_at_once",
+            "permanent"
+          ]
+        },
+        "dispelGroup": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "stateId",
+        "stacking",
+        "expiration"
+      ],
+      "additionalProperties": false
+    },
+    "skillselector": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "id"
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:/-]*$"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "event_skill"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "expr"
+            },
+            "value": {
+              "$ref": "#/$defs/expr"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "action": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "modify_stat"
+            },
+            "stat": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:/-]*$"
+            },
+            "who": {
+              "type": "string",
+              "enum": [
+                "actor",
+                "target",
+                "skill",
+                "summon",
+                "event"
+              ]
+            },
+            "math": {
+              "type": "string",
+              "enum": [
+                "add",
+                "multiply",
+                "set",
+                "min",
+                "max",
+                "cap",
+                "floor",
+                "override"
+              ]
+            },
+            "value": {
+              "$ref": "#/$defs/expr"
+            },
+            "bucket": {
+              "type": "string",
+              "minLength": 1
+            },
+            "stage": {
+              "type": "string",
+              "enum": [
+                "base",
+                "pre_transform",
+                "pre_cast",
+                "pre_hit",
+                "hit",
+                "post_hit",
+                "continuous"
+              ]
+            },
+            "snapshot": {
+              "type": "string",
+              "enum": [
+                "cast",
+                "hit",
+                "tick",
+                "dynamic"
+              ]
+            },
+            "priority": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "op",
+            "stat",
+            "who",
+            "math",
+            "value",
+            "stage"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "modify_skill"
+            },
+            "skill": {
+              "$ref": "#/$defs/skillselector"
+            },
+            "property": {
+              "type": "string",
+              "enum": [
+                "coefficient",
+                "rank",
+                "cast_time",
+                "animation_frames",
+                "cooldown",
+                "charges",
+                "resource_cost",
+                "projectile_count",
+                "projectile_speed",
+                "projectile_pierce",
+                "ricochet_count",
+                "hits_per_target",
+                "area_radius",
+                "area_shape",
+                "duration",
+                "tick_interval",
+                "target_limit",
+                "summon_count",
+                "summon_attack_speed",
+                "lucky_hit_coefficient"
+              ]
+            },
+            "math": {
+              "type": "string",
+              "enum": [
+                "add",
+                "multiply",
+                "set",
+                "min",
+                "max",
+                "override"
+              ]
+            },
+            "value": {
+              "$ref": "#/$defs/expr"
+            },
+            "stage": {
+              "type": "string",
+              "enum": [
+                "pre_transform",
+                "pre_cast",
+                "cast",
+                "hit",
+                "tick"
+              ]
+            },
+            "priority": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "op",
+            "skill",
+            "property",
+            "math",
+            "value",
+            "stage"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "transform_tags"
+            },
+            "skill": {
+              "$ref": "#/$defs/skillselector"
+            },
+            "add": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            "remove": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            "damageType": {
+              "type": "string",
+              "minLength": 1
+            },
+            "category": {
+              "type": "string",
+              "minLength": 1
+            },
+            "form": {
+              "type": "string",
+              "minLength": 1
+            },
+            "priority": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "op",
+            "skill"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "deal_damage"
+            },
+            "damageType": {
+              "type": "string",
+              "minLength": 1
+            },
+            "skill": {
+              "$ref": "#/$defs/skillselector"
+            },
+            "coefficient": {
+              "$ref": "#/$defs/expr"
+            },
+            "baseDamage": {
+              "$ref": "#/$defs/expr"
+            },
+            "hits": {
+              "$ref": "#/$defs/expr"
+            },
+            "target": {
+              "$ref": "#/$defs/target"
+            },
+            "damageTags": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            "snapshot": {
+              "type": "string",
+              "enum": [
+                "cast",
+                "hit",
+                "tick",
+                "dynamic"
+              ]
+            },
+            "canCrit": {
+              "type": "boolean"
+            },
+            "canOverpower": {
+              "type": "boolean"
+            },
+            "canLuckyHit": {
+              "type": "boolean"
+            },
+            "inheritFromEvent": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "op",
+            "damageType",
+            "coefficient",
+            "target"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "spawn_projectile"
+            },
+            "skill": {
+              "$ref": "#/$defs/skillselector"
+            },
+            "count": {
+              "$ref": "#/$defs/expr"
+            },
+            "speed": {
+              "$ref": "#/$defs/expr"
+            },
+            "target": {
+              "$ref": "#/$defs/target"
+            },
+            "behavior": {
+              "type": "string",
+              "enum": [
+                "straight",
+                "homing",
+                "seeking",
+                "piercing",
+                "ricochet",
+                "orbiting",
+                "random_spread"
+              ]
+            },
+            "onHitEvent": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:/-]*$"
+            },
+            "canHitSameTargetMultipleTimes": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "op",
+            "skill",
+            "count",
+            "target",
+            "behavior"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "trigger_skill"
+            },
+            "skill": {
+              "$ref": "#/$defs/skillselector"
+            },
+            "target": {
+              "$ref": "#/$defs/target"
+            },
+            "castMode": {
+              "type": "string",
+              "enum": [
+                "normal",
+                "triggered",
+                "free",
+                "echo",
+                "copy"
+              ]
+            },
+            "spendResource": {
+              "type": "boolean"
+            },
+            "inheritBuffs": {
+              "type": "boolean"
+            },
+            "inheritCritRoll": {
+              "type": "boolean"
+            },
+            "canTriggerMoreProcs": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "op",
+            "skill",
+            "castMode",
+            "canTriggerMoreProcs"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "apply_state"
+            },
+            "who": {
+              "type": "string",
+              "enum": [
+                "actor",
+                "target",
+                "summon",
+                "ally"
+              ]
+            },
+            "state": {
+              "$ref": "#/$defs/state"
+            }
+          },
+          "required": [
+            "op",
+            "who",
+            "state"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "remove_state"
+            },
+            "who": {
+              "type": "string",
+              "enum": [
+                "actor",
+                "target",
+                "summon",
+                "ally"
+              ]
+            },
+            "stateId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:/-]*$"
+            },
+            "stacks": {
+              "$ref": "#/$defs/expr"
+            }
+          },
+          "required": [
+            "op",
+            "who",
+            "stateId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "modify_resource"
+            },
+            "resource": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:/-]*$"
+            },
+            "who": {
+              "type": "string",
+              "enum": [
+                "actor",
+                "target",
+                "summon"
+              ]
+            },
+            "math": {
+              "type": "string",
+              "enum": [
+                "add",
+                "spend",
+                "set",
+                "generate",
+                "reserve"
+              ]
+            },
+            "amount": {
+              "$ref": "#/$defs/expr"
+            },
+            "overcap": {
+              "type": "string",
+              "enum": [
+                "discard",
+                "allow",
+                "convert"
+              ]
+            }
+          },
+          "required": [
+            "op",
+            "resource",
+            "who",
+            "math",
+            "amount"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "modify_cooldown"
+            },
+            "skill": {
+              "$ref": "#/$defs/skillselector"
+            },
+            "math": {
+              "type": "string",
+              "enum": [
+                "reduce_seconds",
+                "increase_seconds",
+                "reset",
+                "multiply_remaining",
+                "set_remaining",
+                "restore_charge"
+              ]
+            },
+            "value": {
+              "$ref": "#/$defs/expr"
+            }
+          },
+          "required": [
+            "op",
+            "skill",
+            "math"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "spawn_entity"
+            },
+            "entityId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:/-]*$"
+            },
+            "count": {
+              "$ref": "#/$defs/expr"
+            },
+            "durationSeconds": {
+              "$ref": "#/$defs/expr"
+            },
+            "target": {
+              "$ref": "#/$defs/target"
+            },
+            "inheritStats": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            "owner": {
+              "type": "string",
+              "enum": [
+                "actor",
+                "source"
+              ]
+            }
+          },
+          "required": [
+            "op",
+            "entityId",
+            "count"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "heal"
+            },
+            "who": {
+              "type": "string",
+              "enum": [
+                "actor",
+                "ally",
+                "summon"
+              ]
+            },
+            "value": {
+              "$ref": "#/$defs/expr"
+            },
+            "healingType": {
+              "type": "string",
+              "enum": [
+                "flat",
+                "percentage_max_life",
+                "life_steal"
+              ]
+            }
+          },
+          "required": [
+            "op",
+            "who",
+            "value",
+            "healingType"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "grant_barrier"
+            },
+            "who": {
+              "type": "string",
+              "enum": [
+                "actor",
+                "ally",
+                "summon"
+              ]
+            },
+            "value": {
+              "$ref": "#/$defs/expr"
+            },
+            "durationSeconds": {
+              "$ref": "#/$defs/expr"
+            }
+          },
+          "required": [
+            "op",
+            "who",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "emit_event"
+            },
+            "event": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:/-]*$"
+            },
+            "target": {
+              "$ref": "#/$defs/target"
+            },
+            "delaySeconds": {
+              "$ref": "#/$defs/expr"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/expr"
+              }
+            }
+          },
+          "required": [
+            "op",
+            "event"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "override_rule"
+            },
+            "ruleId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:/-]*$"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "disable",
+                "enable",
+                "replace",
+                "suppress_action"
+              ]
+            },
+            "replacementRuleId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:/-]*$"
+            },
+            "priority": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "op",
+            "ruleId",
+            "mode",
+            "priority"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "mechanic": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:/-]*$"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "pre_build",
+            "pre_skill",
+            "pre_cast",
+            "on_cast",
+            "pre_hit",
+            "on_hit",
+            "post_hit",
+            "on_tick",
+            "on_state_change",
+            "on_equip",
+            "on_unequip",
+            "post_event"
+          ]
+        },
+        "trigger": {
+          "$ref": "#/$defs/trigger"
+        },
+        "when": {
+          "$ref": "#/$defs/expr"
+        },
+        "proc": {
+          "$ref": "#/$defs/proc"
+        },
+        "actions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/action"
+          }
+        },
+        "priority": {
+          "type": "integer"
+        },
+        "affects": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "offense",
+              "defense",
+              "sustain",
+              "utility",
+              "build_fit"
+            ]
+          }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "phase",
+        "trigger",
+        "actions"
+      ],
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "global_rule",
+            "class_mechanic",
+            "active_skill",
+            "skill_variant",
+            "skill_passive",
+            "enchantment",
+            "affix_implicit",
+            "affix_explicit",
+            "affix_tempered",
+            "affix_greater",
+            "masterwork",
+            "legendary_aspect",
+            "unique_power",
+            "mythic_power",
+            "paragon_node",
+            "paragon_glyph",
+            "gem",
+            "rune",
+            "runeword",
+            "talisman_seal",
+            "charm",
+            "charm_set_bonus",
+            "mercenary",
+            "summon",
+            "season_power",
+            "war_plan",
+            "enemy_modifier",
+            "encounter",
+            "difficulty",
+            "consumable",
+            "other"
+          ]
+        },
+        "gameId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:/-]*$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parentGameId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:/-]*$"
+        },
+        "slot": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "kind",
+        "gameId"
+      ],
+      "additionalProperties": false
+    },
+    "patch": {
+      "type": "object",
+      "properties": {
+        "gameVersion": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[.-][A-Za-z0-9]+)*$"
+        },
+        "buildNumber": {
+          "type": "string",
+          "minLength": 1
+        },
+        "season": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "realm": {
+          "type": "string",
+          "enum": [
+            "eternal",
+            "seasonal",
+            "both"
+          ]
+        },
+        "expansion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "minEngineVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "validUntilGameVersion": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "gameVersion",
+        "realm"
+      ],
+      "additionalProperties": false
+    },
+    "applicability": {
+      "type": "object",
+      "properties": {
+        "classes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "tagsAll": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "tagsAny": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "tagsNone": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "equipSlots": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "rulesRequired": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "rulesExcluded": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "requiresExpansion": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "realm": {
+          "type": "string",
+          "enum": [
+            "eternal",
+            "seasonal",
+            "both"
+          ]
+        },
+        "minCharacterLevel": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxCharacterLevel": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "when": {
+          "$ref": "#/$defs/expr"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "blizzard_patch_note",
+            "game_datamine",
+            "game_tooltip",
+            "community_theorycraft",
+            "calculator_test",
+            "measurement",
+            "synthetic_fixture"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gameVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retrievedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "verification": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "schema_valid",
+            "semantic_valid",
+            "verified",
+            "unverified",
+            "deprecated",
+            "unsupported"
+          ]
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "high",
+            "medium",
+            "low",
+            "unknown"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          },
+          "minItems": 1
+        },
+        "goldenTestIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "knownLimitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "reviewedBy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "status",
+        "confidence",
+        "evidence"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

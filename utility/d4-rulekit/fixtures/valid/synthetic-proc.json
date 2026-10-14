@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "1.0.0",
+  "ruleId": "example.aspect.lightning_echo",
+  "name": "EXAMPLE ONLY — Lightning echo on cast",
+  "game": {
+    "gameVersion": "3.2.3",
+    "realm": "both"
+  },
+  "source": {
+    "kind": "legendary_aspect",
+    "gameId": "example.lightning_echo",
+    "displayName": "Synthetic Lightning Echo"
+  },
+  "applicability": {
+    "classes": [
+      "sorcerer"
+    ],
+    "tagsAny": [
+      "shock"
+    ]
+  },
+  "parameters": {
+    "extra_cast_chance": {
+      "kind": "literal",
+      "value": 0.15,
+      "unit": "ratio"
+    }
+  },
+  "mechanics": [
+    {
+      "id": "echo_cast",
+      "phase": "on_cast",
+      "trigger": {
+        "kind": "on_event",
+        "event": "SKILL_CAST"
+      },
+      "when": {
+        "kind": "call",
+        "fn": "has_tag",
+        "args": [
+          {
+            "kind": "ref",
+            "scope": "event",
+            "path": "skill.tags"
+          },
+          {
+            "kind": "literal",
+            "value": "shock",
+            "unit": "none"
+          }
+        ]
+      },
+      "proc": {
+        "chance": {
+          "kind": "ref",
+          "scope": "rule",
+          "path": "parameters.extra_cast_chance"
+        },
+        "chanceModel": "direct",
+        "oncePerCast": true,
+        "triggeredEventsCanProc": false,
+        "maxChainDepth": 0,
+        "seedPolicy": "deterministic"
+      },
+      "actions": [
+        {
+          "op": "trigger_skill",
+          "skill": {
+            "kind": "event_skill"
+          },
+          "castMode": "triggered",
+          "canTriggerMoreProcs": false,
+          "inheritBuffs": true,
+          "spendResource": false
+        }
+      ],
+      "affects": [
+        "offense",
+        "sustain"
+      ]
+    }
+  ],
+  "verification": {
+    "status": "draft",
+    "confidence": "unknown",
+    "evidence": [
+      {
+        "kind": "synthetic_fixture",
+        "note": "Illustrative only, NOT a real Diablo IV effect."
+      }
+    ],
+    "goldenTestIds": []
+  }
+}

@@ -1,0 +1,248 @@
+{
+  "contractVersion": "1.0.0",
+  "ruleSchemaVersion": "1.0.0",
+  "status": "CANDIDATE_REQUIRES_OWNER_REAPPROVAL_FOR_NEW_SEMANTICS",
+  "patchBaseline": {
+    "gameVersion": "3.2.3",
+    "buildNumber": "73883",
+    "sourceId": "blizzard-patch-3-2-3",
+    "policy": "exact_patch_rule_selection"
+  },
+  "scope": "execution_protocol_offense",
+  "note": "This contract controls interpretation and fail-closed behavior. It is not a verified whole-game combat engine.",
+  "phaseOrder": [
+    "pre_build",
+    "pre_skill",
+    "pre_cast",
+    "on_cast",
+    "pre_hit",
+    "on_hit",
+    "post_hit",
+    "on_tick",
+    "on_state_change",
+    "on_equip",
+    "on_unequip",
+    "post_event"
+  ],
+  "eventModel": {
+    "eventOrdering": [
+      "simulated_timestamp",
+      "phase_index",
+      "priority",
+      "ruleId",
+      "mechanicId"
+    ],
+    "orderingEvidence": "ENGINE_DETERMINISM_ONLY_NOT_BLIZZARD_INTERNAL_ORDER",
+    "distinctEvents": [
+      "SKILL_CAST",
+      "SKILL_TRIGGERED",
+      "PROJECTILE_SPAWN",
+      "DAMAGE_PRE_HIT",
+      "DAMAGE_HIT",
+      "DAMAGE_POST_HIT",
+      "PERIODIC_TICK",
+      "STATE_CHANGE"
+    ],
+    "actionCategories": [
+      "stat_modifier",
+      "skill_transform",
+      "damage_event",
+      "spawn_event",
+      "state_mutation",
+      "resource_mutation",
+      "sustain_event",
+      "rule_selection"
+    ],
+    "collisionPolicy": "modify_stat_does_not_emit_damage;deal_damage_schedules_damage_event",
+    "priorityConflict": "REJECT_EQUAL_PRIORITY_INCOMPATIBLE_OVERRIDE",
+    "recursion": "DENY_UNDECLARED_RECURSION;BOUND_DECLARED_DEPTH",
+    "stateLifecycle": "MUTATIONS_AFFECT_FUTURE_EVENTS_ONLY",
+    "triggeredInheritance": "EXPLICIT_PER_RULE_ELSE_UNVERIFIED",
+    "snapshotTiming": "EXPLICIT_PER_RULE_ELSE_UNVERIFIED"
+  },
+  "operators": {
+    "modify_stat": {
+      "class": "stat_modifier",
+      "semantics": "modify a scoped stat; contribution only (not an emitted DAMAGE event)",
+      "gameBehavior": "requires_verified_rule_data"
+    },
+    "modify_skill": {
+      "class": "stat_modifier",
+      "semantics": "typed action; event/state changes are explicit, not implicit DPS",
+      "gameBehavior": "requires_verified_rule_data"
+    },
+    "transform_tags": {
+      "class": "skill_transform",
+      "semantics": "typed action; event/state changes are explicit, not implicit DPS",
+      "gameBehavior": "requires_verified_rule_data"
+    },
+    "deal_damage": {
+      "class": "damage_event",
+      "semantics": "schedule a damage event; no immediate scalar DPS addition",
+      "gameBehavior": "requires_verified_rule_data"
+    },
+    "spawn_projectile": {
+      "class": "spawn_event",
+      "semantics": "typed action; event/state changes are explicit, not implicit DPS",
+      "gameBehavior": "requires_verified_rule_data"
+    },
+    "trigger_skill": {
+      "class": "spawn_event",
+      "semantics": "schedule child skill event; inheritance/proc options are explicit per rule",
+      "gameBehavior": "requires_verified_rule_data"
+    },
+    "spawn_entity": {
+      "class": "spawn_event",
+      "semantics": "typed action; event/state changes are explicit, not implicit DPS",
+      "gameBehavior": "requires_verified_rule_data"
+    },
+    "emit_event": {
+      "class": "spawn_event",
+      "semantics": "typed action; event/state changes are explicit, not implicit DPS",
+      "gameBehavior": "requires_verified_rule_data"
+    },
+    "apply_state": {
+      "class": "state_mutation",
+      "semantics": "typed action; event/state changes are explicit, not implicit DPS",
+      "gameBehavior": "requires_verified_rule_data"
+    },
+    "remove_state": {
+      "class": "state_mutation",
+      "semantics": "typed action; event/state changes are explicit, not implicit DPS",
+      "gameBehavior": "requires_verified_rule_data"
+    },
+    "modify_resource": {
+      "class": "resource_mutation",
+      "semantics": "typed action; event/state changes are explicit, not implicit DPS",
+      "gameBehavior": "requires_verified_rule_data"
+    },
+    "modify_cooldown": {
+      "class": "resource_mutation",
+      "semantics": "typed action; event/state changes are explicit, not implicit DPS",
+      "gameBehavior": "requires_verified_rule_data"
+    },
+    "heal": {
+      "class": "sustain_event",
+      "semantics": "typed action; event/state changes are explicit, not implicit DPS",
+      "gameBehavior": "requires_verified_rule_data"
+    },
+    "grant_barrier": {
+      "class": "sustain_event",
+      "semantics": "typed action; event/state changes are explicit, not implicit DPS",
+      "gameBehavior": "requires_verified_rule_data"
+    },
+    "override_rule": {
+      "class": "rule_selection",
+      "semantics": "resolve selected rule precedence; conflicting equal priority overrides are an error",
+      "gameBehavior": "requires_verified_rule_data"
+    }
+  },
+  "aggregationPolicies": {
+    "gear_damage_multiplier": {
+      "kind": "sum_then_factor",
+      "expression": "1 + sum(values)",
+      "applicability": "verified_eligible_gear_multipliers_only",
+      "sourceIds": [
+        "blizzard-gear-2026"
+      ],
+      "status": "OFFICIAL_MECHANIC_WITH_SYNTHETIC_VALUES"
+    },
+    "general_additive": {
+      "kind": "sum_then_factor",
+      "expression": "1 + sum(values)",
+      "applicability": "ONLY_when_verification_identifies_additive_bucket",
+      "sourceIds": [
+        "blizzard-buckets-1-2"
+      ],
+      "status": "GENERIC_MATH_NOT_GLOBAL_PATCH_ASSERTION"
+    },
+    "independent_multipliers": {
+      "kind": "product_of_factors",
+      "expression": "product(1 + value)",
+      "applicability": "ONLY_when_rule_evidence_explicitly_identifies_independent_multipliers",
+      "sourceIds": [
+        "blizzard-buckets-1-2"
+      ],
+      "status": "GENERIC_MATH_NOT_GLOBAL_PATCH_ASSERTION"
+    },
+    "historical_vulnerable_1_2": {
+      "kind": "additive_times_baseline",
+      "expression": "(1 + additive) * (1 + baseline)",
+      "applicability": "historical_1_2_example_only",
+      "sourceIds": [
+        "blizzard-buckets-1-2"
+      ],
+      "status": "HISTORICAL_ONLY_DO_NOT_APPLY_TO_3_2_3"
+    }
+  },
+  "interactions": {
+    "storm_shephard_2p_5p": {
+      "mode": "coexist_not_override",
+      "introducedIn": "3.0.4",
+      "scope": "druid_storm_shephard_exact_set",
+      "sourceIds": [
+        "blizzard-storm-3-0-4"
+      ],
+      "status": "OFFICIAL_SPECIFIC_EFFECT"
+    },
+    "generic_stack": {
+      "mode": "REQUIRES_RULE_EVIDENCE",
+      "status": "UNVERIFIED"
+    }
+  },
+  "unknownPolicy": {
+    "missingEvidence": "UNVERIFIED",
+    "unsupportedOperator": "UNSUPPORTED",
+    "missingPatchData": "UNKNOWN",
+    "ambiguousOverride": "CONTRACT_FAIL",
+    "unverifiedSnapshot": "UNVERIFIED",
+    "unverifiedProcInheritance": "UNVERIFIED",
+    "numericFallback": "FORBIDDEN"
+  },
+  "provenance": {
+    "sourceRegistry": [
+      {
+        "id": "blizzard-gear-2026",
+        "url": "https://news.blizzard.com/en-us/article/24267729/prepare-for-the-reckoning-lord-of-hatred-draws-near",
+        "kind": "official",
+        "claim": "Damage Multipliers on Gear stack additively with themselves yet remain multiplicative in damage",
+        "scope": "gear multipliers after Lord of Hatred rework"
+      },
+      {
+        "id": "blizzard-storm-3-0-4",
+        "url": "https://news.blizzard.com/en-us/article/24271857/diablo-iv-patch-notes-3-0",
+        "kind": "official",
+        "claim": "Druid Storm Shephard 5-piece bonus stacks with its 2-piece instead of overriding",
+        "scope": "specific item set, 3.0.4 fix"
+      },
+      {
+        "id": "blizzard-buckets-1-2",
+        "url": "https://news.blizzard.com/en-us/article/24014289/master-your-power-in-season-of-blood",
+        "kind": "official",
+        "claim": "Historical Season of Blood Vulnerable bonus 18% additive and 20% baseline multiplier yields 41.6% total bonus",
+        "scope": "historical 1.2, NOT a 3.2.3 global policy"
+      },
+      {
+        "id": "blizzard-patch-3-2-3",
+        "url": "https://news.blizzard.com/en-us/article/24295395/diablo-iv-patch-notes",
+        "kind": "official",
+        "claim": "Patch 3.2.3 build 73883 on 2026-10-14",
+        "scope": "patch identity, not a complete damage-formula specification"
+      },
+      {
+        "id": "blizzard-3-0-trigger-fixes",
+        "url": "https://news.blizzard.com/en-us/article/24271857/diablo-iv-patch-notes-3-0",
+        "kind": "official",
+        "claim": "Triggered/summoned skill inheritance inconsistencies fixed in 3.0; does not specify every inheritance flag",
+        "scope": "document event origin, inheritance flags; unknown mechanics remain unverified"
+      }
+    ]
+  },
+  "scopeBoundaries": {
+    "g1": "JSON schema validation only",
+    "ci03": "contract interpretation/structure and sourced examples; no actual runtime combat math",
+    "g2": "cross-rule references and semantic dependency graph - #108",
+    "g3": "independently verified calculation correctness - #108",
+    "g4": "patch catalog completeness - #108"
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "1.0.0",
+  "ruleId": "example.skill.shock_bolts",
+  "game": {
+    "gameVersion": "3.2.3",
+    "realm": "both"
+  },
+  "source": {
+    "kind": "active_skill",
+    "gameId": "example.skill.shock_bolts"
+  },
+  "mechanics": [
+    {
+      "id": "base",
+      "phase": "before_everything",
+      "trigger": {
+        "kind": "always"
+      },
+      "actions": [
+        {
+          "op": "modify_skill",
+          "skill": {
+            "kind": "id",
+            "id": "example.skill.shock_bolts"
+          },
+          "property": "coefficient",
+          "math": "set",
+          "value": {
+            "kind": "literal",
+            "value": 0.8,
+            "unit": "ratio"
+          },
+          "stage": "pre_transform"
+        },
+        {
+          "op": "modify_skill",
+          "skill": {
+            "kind": "id",
+            "id": "example.skill.shock_bolts"
+          },
+          "property": "projectile_count",
+          "math": "set",
+          "value": {
+            "kind": "literal",
+            "value": 3,
+            "unit": "count"
+          },
+          "stage": "pre_transform"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "status": "draft",
+    "confidence": "unknown",
+    "evidence": [
+      {
+        "kind": "synthetic_fixture",
+        "note": "Concept example, not actual D4 value."
+      }
+    ]
+  }
+}

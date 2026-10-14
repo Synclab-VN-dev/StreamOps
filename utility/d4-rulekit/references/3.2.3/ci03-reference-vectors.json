@@ -1,0 +1,64 @@
+{
+  "referenceSetVersion": "1.0.0",
+  "baseline": "3.2.3",
+  "vectors": [
+    {
+      "caseId": "official-gear-additive-group-synthetic-coefficients",
+      "testType": "aggregation",
+      "policyId": "gear_damage_multiplier",
+      "patch": "3.2.3",
+      "sourceIds": [
+        "blizzard-gear-2026"
+      ],
+      "coefficientsProvenance": "SYNTHETIC illustrative 0.20, 0.15 NOT sourced affix rolls",
+      "values": [
+        "0.20",
+        "0.15"
+      ],
+      "expectedFactor": "1.35",
+      "expectedStatus": "PASS_CONTRACT_ONLY"
+    },
+    {
+      "caseId": "official-legacy-vulnerable-tooltip-arithmetic",
+      "testType": "historical_arithmetic",
+      "policyId": "historical_vulnerable_1_2",
+      "patch": "1.2.0",
+      "sourceIds": [
+        "blizzard-buckets-1-2"
+      ],
+      "additive": "0.18",
+      "baseline": "0.20",
+      "expectedFactor": "1.416",
+      "expectedStatus": "PASS_HISTORICAL_ONLY"
+    },
+    {
+      "caseId": "official-storm-specific-bonuses-coexist",
+      "testType": "interaction",
+      "interactionId": "storm_shephard_2p_5p",
+      "patch": "3.0.4",
+      "sourceIds": [
+        "blizzard-storm-3-0-4"
+      ],
+      "activeBonuses": [
+        "storm_shephard_2p",
+        "storm_shephard_5p"
+      ],
+      "expectedActive": [
+        "storm_shephard_2p",
+        "storm_shephard_5p"
+      ],
+      "expectedStatus": "PASS_RULE_SPECIFIC"
+    },
+    {
+      "caseId": "unverified-triggered-inheritance-fails-closed",
+      "testType": "unverified",
+      "patch": "3.2.3",
+      "sourceIds": [
+        "blizzard-3-0-trigger-fixes"
+      ],
+      "mechanic": "inherit_crit_roll_for_arbitrary_triggered_skill",
+      "expectedStatus": "UNVERIFIED",
+      "expectedFactor": null
+    }
+  ]
+}
