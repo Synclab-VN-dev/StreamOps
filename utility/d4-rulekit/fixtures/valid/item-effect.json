@@ -1,0 +1,75 @@
+{
+  "schemaVersion": "1.0.0",
+  "ruleId": "example.aspect.lightning_barrier",
+  "game": {
+    "gameVersion": "3.2.3",
+    "realm": "both"
+  },
+  "source": {
+    "kind": "legendary_aspect",
+    "gameId": "example.aspect.lightning_barrier"
+  },
+  "mechanics": [
+    {
+      "id": "lightning_while_barrier",
+      "phase": "pre_hit",
+      "trigger": {
+        "kind": "on_event",
+        "event": "DAMAGE_PRE_HIT"
+      },
+      "when": {
+        "kind": "call",
+        "fn": "and",
+        "args": [
+          {
+            "kind": "ref",
+            "scope": "actor",
+            "path": "barrier.active"
+          },
+          {
+            "kind": "call",
+            "fn": "has_tag",
+            "args": [
+              {
+                "kind": "ref",
+                "scope": "event",
+                "path": "skill.tags"
+              },
+              {
+                "kind": "literal",
+                "value": "lightning",
+                "unit": "none"
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "op": "modify_stat",
+          "stat": "damage",
+          "who": "event",
+          "math": "multiply",
+          "value": {
+            "kind": "literal",
+            "value": 1.2,
+            "unit": "ratio"
+          },
+          "bucket": "distinct_multiplier",
+          "stage": "pre_hit",
+          "snapshot": "hit"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "status": "draft",
+    "confidence": "unknown",
+    "evidence": [
+      {
+        "kind": "synthetic_fixture",
+        "note": "Concept example, not actual D4 value."
+      }
+    ]
+  }
+}

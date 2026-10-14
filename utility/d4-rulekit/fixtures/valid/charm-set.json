@@ -1,0 +1,124 @@
+{
+  "schemaVersion": "1.0.0",
+  "ruleId": "example.charm_set.storm",
+  "game": {
+    "gameVersion": "3.2.3",
+    "realm": "both"
+  },
+  "source": {
+    "kind": "charm_set_bonus",
+    "gameId": "example.charm_set.storm"
+  },
+  "mechanics": [
+    {
+      "id": "bonus_2",
+      "phase": "pre_build",
+      "trigger": {
+        "kind": "always"
+      },
+      "when": {
+        "kind": "call",
+        "fn": "greater_equal",
+        "args": [
+          {
+            "kind": "ref",
+            "scope": "build",
+            "path": "charms.storm.count"
+          },
+          {
+            "kind": "literal",
+            "value": 2,
+            "unit": "count"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "op": "modify_stat",
+          "stat": "crit_chance",
+          "who": "actor",
+          "math": "add",
+          "value": {
+            "kind": "literal",
+            "value": 0.1,
+            "unit": "ratio"
+          },
+          "bucket": "crit_chance",
+          "stage": "continuous"
+        }
+      ]
+    },
+    {
+      "id": "bonus_3",
+      "phase": "pre_hit",
+      "trigger": {
+        "kind": "on_event",
+        "event": "DAMAGE_PRE_HIT"
+      },
+      "when": {
+        "kind": "call",
+        "fn": "and",
+        "args": [
+          {
+            "kind": "call",
+            "fn": "greater_equal",
+            "args": [
+              {
+                "kind": "ref",
+                "scope": "build",
+                "path": "charms.storm.count"
+              },
+              {
+                "kind": "literal",
+                "value": 3,
+                "unit": "count"
+              }
+            ]
+          },
+          {
+            "kind": "call",
+            "fn": "has_tag",
+            "args": [
+              {
+                "kind": "ref",
+                "scope": "event",
+                "path": "skill.tags"
+              },
+              {
+                "kind": "literal",
+                "value": "lightning",
+                "unit": "none"
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "op": "modify_stat",
+          "stat": "damage",
+          "who": "event",
+          "math": "multiply",
+          "value": {
+            "kind": "literal",
+            "value": 1.15,
+            "unit": "ratio"
+          },
+          "bucket": "distinct_multiplier",
+          "stage": "pre_hit",
+          "snapshot": "hit"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "status": "draft",
+    "confidence": "unknown",
+    "evidence": [
+      {
+        "kind": "synthetic_fixture",
+        "note": "Concept example, not actual D4 value."
+      }
+    ]
+  }
+}

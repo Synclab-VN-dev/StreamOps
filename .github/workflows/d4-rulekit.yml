@@ -1,0 +1,90 @@
+name: D4 Rulekit (G1 Contract)
+on:
+  push:
+    branches:
+      - feat/107-d4-rulekit
+    paths:
+      - 'utility/d4-rulekit/**'
+      - '.github/workflows/d4-rulekit.yml'
+  pull_request:
+    paths:
+      - 'utility/d4-rulekit/**'
+      - '.github/workflows/d4-rulekit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  schema-contract:
+    name: Schema, contract and packaged CLI
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install isolated package with test dependencies
+        run: python -m pip install -e 'utility/d4-rulekit[dev]'
+
+      - name: Python compile and schema self-check
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/d4-rulekit
+          python -m compileall -q utility/d4-rulekit/src/d4_rulekit
+          d4-rulekit schema-check --report artifacts/d4-rulekit/schema-check.json
+
+      - name: Strict fixture contract validation (positive and negative)
+        shell: bash
+        run: |
+          set -euo pipefail
+          d4-rulekit validate utility/d4-rulekit/fixtures/valid/*.json \
+            --report artifacts/d4-rulekit/positive.json
+          set +e
+          d4-rulekit validate utility/d4-rulekit/fixtures/invalid/*.json \
+            --report artifacts/d4-rulekit/negative.json
+          rc=$?
+          set -e
+          if [ "$rc" -ne 1 ]; then
+            echo "Expected invalid DSL fixture exit 1, got $rc"
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = json.loads(Path("artifacts/d4-rulekit/positive.json").read_text())
+          n = json.loads(Path("artifacts/d4-rulekit/negative.json").read_text())
+          assert p["count"] == 4 and p["status"] == "PASS", p
+          assert n["count"] == 4 and n["status"] == "FAIL", n
+          assert all(row["status"] == "FAIL" for row in n["results"]), n
+          PY
+
+      - name: Contract unit and CLI integration tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q utility/d4-rulekit/tests \
+            --junitxml=artifacts/d4-rulekit/junit.xml
+
+      - name: Build wheel and verify installed package outside repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m build --wheel utility/d4-rulekit --outdir "$RUNNER_TEMP/rulekit-wheels"
+          python -m venv "$RUNNER_TEMP/rulekit-venv"
+          "$RUNNER_TEMP/rulekit-venv/bin/python" -m pip install "$RUNNER_TEMP"/rulekit-wheels/*.whl
+          ( cd "$RUNNER_TEMP" && "$RUNNER_TEMP/rulekit-venv/bin/d4-rulekit" schema-check )
+          "$RUNNER_TEMP/rulekit-venv/bin/d4-rulekit" validate \
+            "$GITHUB_WORKSPACE/utility/d4-rulekit/fixtures/valid/skill.json"
+
+      - name: Upload deterministic reports (including failure evidence)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d4-rulekit-g1-evidence
+          path: artifacts/d4-rulekit/
+          if-no-files-found: error
+          retention-days: 30
