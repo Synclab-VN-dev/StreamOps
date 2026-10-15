@@ -26,3 +26,24 @@ No #107 schema/operator changes, no #113 modifications and no merge/release appr
 ### Owner-pinned Maxroll patch policy
 
 In Golden-record integrity mode, a capture can declare `versionEvidence.status=OWNER_PINNED_GAME_BUILD` with `gamePatch=3.2.1`, `gameBuild=73552`, `appVersion=null`, and `ownerBaselineEvidence=https://github.com/Synclab-VN-dev/StreamOps/issues/107#issuecomment-6203600278`. This only waives the separate app-semver requirement; it **does not waive complete and independently captured build inputs, immutable manifest hash, independent review or source attribution**. CI validates record shape, never self-certifies genuine Maxroll evidence or numeric formula parity.
+
+## F2 research-only formula catalog
+
+- Machine-readable: `f2-formula-catalog.json`, maintained separately from F1 synthetic fixture and approved-Golden registry.
+- F2 source: https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6204088473
+- Owner pin: **Maxroll 3.2.1.73552**, Rogue Penetrating Shot Endgame variant #3, same F1 input SHA.
+- Inventory denominator: **50 visible stats** in this fixture (Summary 2; Core 5; Resistances 8; Offensive 20; Defensive 7; Utility 7; PvP 1). This dataset has **9 explicitly cataloged individual metric rows**, not 50 verified formulas. The six reported resistance component raw/display observations remain evidence in the F2 issue report; exact canonical inventory ID mapping and causal formulas are still pending.
+- Each catalog record stores **source-graded reported raw/display values** separately from potential formula hypotheses, with unknown contributor/dependency/order fields. Fields not established by F2 are empty/UNKNOWN, not inferred as zero.
+- Weapon Damage, Weapon Speed, Attack Speed Bonus are labeled **bounded evidence from previously tested disposable vectors**; not a causal replay on the pinned published Rogue fixture. Additive All Damage has bounded evidence, but its multiplier side remains unverified.
+- Toughness mean and negative Critical Strike Chance arithmetic are **single-fixture explanations only**; not engine formulas. Negative raw Crit Chance remains negative as observed; no imagined clamp.
+- Raw CDP artifacts remain local on Dev F; repository values are based on sanitized agent evidence and await independent inspection. `approvedGoldenCount=0`; no full metric or formula parity.
+- No new Rule DSL operators or changes to #107, #113 or #115; #108 owns approved Golden parity, #109 rule registry, #110 Graph output, #111 offense-only simulator.
+
+Offline gate:
+
+```bash
+python utility/d4-maxroll-reference/check_f2.py utility/d4-maxroll-reference/f2-formula-catalog.json --report artifacts/d4-maxroll-f2-catalog.json
+python -m unittest discover -s utility/d4-maxroll-reference/tests -p 'test_*.py' -v
+```
+
+`PASS_RESEARCH_CATALOG_ONLY` means structural/provenance integrity **only**, not that Maxroll expected has been matched or all 50 formulas are solved. Wrong patch, absent source, fabricated Golden/parity, unsupported formula promotion or fake 100% coverage fail closed.
