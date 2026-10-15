@@ -15,6 +15,17 @@ jobs:
           python-version: '3.12'
       - name: Validate synthetic candidate (not a golden)
         run: python utility/d4-maxroll-reference/check.py utility/d4-maxroll-reference/examples-synthetic.json --report artifacts/d4-maxroll-candidate.json
+      - name: Validate pinned F2 research catalog (NOT Golden parity)
+        run: |
+          python utility/d4-maxroll-reference/check_f2.py utility/d4-maxroll-reference/f2-formula-catalog.json --report artifacts/d4-maxroll-f2-catalog.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path("artifacts/d4-maxroll-f2-catalog.json").read_text())
+          assert result["status"] == "PASS_RESEARCH_CATALOG_ONLY", result
+          assert result["catalogedMetrics"] == 9 and result["visibleFixtureMetrics"] == 50, result
+          assert result["approvedGoldenCount"] == 0 and result["maxrollParity"] == "NOT_TESTED", result
+          PY
       - name: Negative and integrity tests
         run: python -m unittest discover -s utility/d4-maxroll-reference/tests -p 'test_*.py' -v
       - name: Upload evidence
@@ -22,4 +33,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: d4-maxroll-reference-contract-evidence
-          path: artifacts/d4-maxroll-candidate.json
+          path: |
+            artifacts/d4-maxroll-candidate.json
+            artifacts/d4-maxroll-f2-catalog.json
