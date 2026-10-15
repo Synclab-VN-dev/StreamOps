@@ -76,7 +76,7 @@ Not game-verified coefficients or a substitute for independent calculation golde
 Unlike the prose above, this document is machine-checked against all 15 action discriminators
 in `rule-v1.schema.json`, the complete phase enum, evidence registry and bounded
 reference vectors. The model's tie-break order is an **engineering convention**,
-not a proven Blizzard internal event order.
+not verified as Maxroll runtime event order.
 
 The current baseline is patch 3.2.3 build 73883. Blizzard's patch notes certify patch identity,
 not a universal damage algorithm; numerical vectors are labeled historical or synthetic.
@@ -86,12 +86,12 @@ Run:
 ```bash
 python -m d4_rulekit.contract_check \
   --contract utility/d4-rulekit/contracts/execution-v1.json \
-  --references utility/d4-rulekit/references/3.2.3/ci03-reference-vectors.json \
+  --references utility/d4-rulekit/references/3.2.1.73552/ci03-reference-vectors.json \
   --report artifacts/d4-rulekit/ci03-contract.json
 ```
 
 **Important:** a CI-03 PASS proves the declarative contract consistency and explicitly sourced
-example behavior only. No arbitrary 3.2.3 skill damage, snapshot, DoT, proc or DPS accuracy is
+example behavior only. No arbitrary 3.2.1 skill damage, snapshot, DoT, proc or DPS accuracy is
 claimed. Such mechanics must remain UNVERIFIED/UNKNOWN until #108 G2/G3 and #109 rule evidence.
 New semantic policy is a substantial addition to the previously approved PR #112 schema
 candidate and requires a renewed Owner review before freezing or merging.
