@@ -1,0 +1,66 @@
+name: D4 Offensive Design (Issue 106)
+on:
+  push:
+    branches:
+      - feat/106-offense-mechanics-design
+    paths:
+      - 'utility/d4-offense-design/**'
+      - '.github/workflows/d4-offense-design.yml'
+  pull_request:
+    paths:
+      - 'utility/d4-offense-design/**'
+      - '.github/workflows/d4-offense-design.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  design-gates:
+    name: CI-01 inventory, CI-02 synthetic vectors, CI-03 promotion guards
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile and run standalone design gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/d4-offense-design
+          python -m py_compile utility/d4-offense-design/check.py
+          python utility/d4-offense-design/check.py \
+            --report artifacts/d4-offense-design/ci-gates.json
+      - name: Assert nonpromotion and gate status
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("artifacts/d4-offense-design/ci-gates.json").read_text())
+          assert data["status"] == "PASS", data
+          assert set(data["gates"]) == {"CI-01", "CI-02", "CI-03"}
+          assert all(g["status"] == "PASS" for g in data["gates"].values()), data
+          assert data["ownerDesignApproval"] == "PENDING_MAN_01"
+          assert data["independentGameAccuracy"] == "NOT_VERIFIED"
+          assert data["counts"]["globalCoverageDenominator"] == "UNKNOWN"
+          assert data["counts"]["globalCoveragePercent"] is None
+          PY
+      - name: Independent negative regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover \
+            -s utility/d4-offense-design/tests -p 'test_*.py' -v \
+            2>&1 | tee artifacts/d4-offense-design/unit.log
+      - name: Collect artifact, even if a test fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d4-offense-design-106-evidence
+          path: artifacts/d4-offense-design/
+          if-no-files-found: warn
+          retention-days: 30
