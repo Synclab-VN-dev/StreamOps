@@ -16,3 +16,18 @@ class TestF2(unittest.TestCase):
         self.assertEqual(report["catalogedMetrics"], 9)
         self.assertEqual(report["visibleFixtureMetrics"], 50)
         self.assertEqual(report["approvedGoldenCount"], 0)
+
+    def test_wrong_patch_fails(self):
+        altered = json.loads(json.dumps(DATA))
+        altered["baseline"]["gamePatch"] = "3.2.3"
+        self.assertEqual(validate(altered)["status"], "FAIL")
+
+    def test_false_approval_fails(self):
+        altered = json.loads(json.dumps(DATA))
+        altered["parity"]["approvedGoldenCount"] = 1
+        self.assertEqual(validate(altered)["status"], "FAIL")
+
+    def test_wrong_denominator_fails(self):
+        altered = json.loads(json.dumps(DATA))
+        altered["inventory"]["visibleTotal"] = 9
+        self.assertEqual(validate(altered)["status"], "FAIL")
