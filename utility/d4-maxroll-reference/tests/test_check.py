@@ -66,4 +66,46 @@ class TestCaptureContract(unittest.TestCase):
         data['fixtureOrigin'] = 'STREAMOPS_ENGINE_OUTPUT'
         self.assertEqual(validate(data, golden=True)['status'], 'FAIL')
 
+    def test_owner_pinned_maxroll_patch_allows_app_semver_unknown_only_for_record_integrity(self):
+        data = copy.deepcopy(EXAMPLE)
+        data['versionEvidence'].update(
+            status='OWNER_PINNED_GAME_BUILD',
+            appVersion=None,
+            gamePatch='3.2.1',
+            gameBuild='73552',
+            ownerBaselineEvidence='https://github.com/Synclab-VN-dev/StreamOps/issues/107#issuecomment-6203600278'
+        )
+        data['fixture']['inputCompleteness'] = 'COMPLETE'
+        data['referenceApproval'] = 'INDEPENDENTLY_REVIEWED'
+        data['referenceManifestSha256'] = 'a' * 64
+        data['fixtureOrigin'] = 'CAPTURED_MAXROLL_INDEPENDENTLY'
+        out = validate(data, golden=True)
+        self.assertEqual(out['status'], 'PASS_GOLDEN_RECORD_INTEGRITY')
+        self.assertEqual(out['maxrollParity'], 'NOT_TESTED')
+
+    def test_owner_pinned_patch_wrong_build_fails_closed(self):
+        data = copy.deepcopy(EXAMPLE)
+        data['versionEvidence'].update(
+            status='OWNER_PINNED_GAME_BUILD', appVersion=None,
+            gamePatch='3.2.3', gameBuild='73883',
+            ownerBaselineEvidence='https://github.com/Synclab-VN-dev/StreamOps/issues/107#issuecomment-6203600278'
+        )
+        data['fixture']['inputCompleteness'] = 'COMPLETE'
+        data['referenceApproval'] = 'INDEPENDENTLY_REVIEWED'
+        data['referenceManifestSha256'] = 'a' * 64
+        data['fixtureOrigin'] = 'CAPTURED_MAXROLL_INDEPENDENTLY'
+        self.assertEqual(validate(data, golden=True)['status'], 'FAIL')
+
+    def test_owner_pinned_baseline_requires_evidence(self):
+        data = copy.deepcopy(EXAMPLE)
+        data['versionEvidence'].update(
+            status='OWNER_PINNED_GAME_BUILD', appVersion=None,
+            gamePatch='3.2.1', gameBuild='73552',
+        )
+        data['fixture']['inputCompleteness'] = 'COMPLETE'
+        data['referenceApproval'] = 'INDEPENDENTLY_REVIEWED'
+        data['referenceManifestSha256'] = 'a' * 64
+        data['fixtureOrigin'] = 'CAPTURED_MAXROLL_INDEPENDENTLY'
+        self.assertEqual(validate(data, golden=True)['status'], 'FAIL')
+
 if __name__ == '__main__': unittest.main()
