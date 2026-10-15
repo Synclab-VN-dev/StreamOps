@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feat/107-d4-rulekit
+      - feat/107-maxroll-3-2-1-rebaseline
     paths:
       - 'utility/d4-rulekit/**'
       - '.github/workflows/d4-rulekit.yml'
@@ -62,19 +63,22 @@ jobs:
           assert all(row["status"] == "FAIL" for row in n["results"]), n
           PY
 
-      - name: CI-03 sourced execution contract consistency and golden reference vectors
+      - name: CI-03 Maxroll 3.2.1.73552 pinned contract (parity remains BLOCKED)
         shell: bash
         run: |
           set -euo pipefail
           python -m d4_rulekit.contract_check \
             --contract utility/d4-rulekit/contracts/execution-v1.json \
-            --references utility/d4-rulekit/references/3.2.3/ci03-reference-vectors.json \
+            --references utility/d4-rulekit/references/3.2.1.73552/ci03-reference-vectors.json \
             --report artifacts/d4-rulekit/ci03-contract.json
           python - <<'PY'
           import json
           from pathlib import Path
           report = json.loads(Path("artifacts/d4-rulekit/ci03-contract.json").read_text())
-          assert report["status"] == "PASS" and report["referenceCount"] >= 4, report
+          assert report["status"] == "PASS" and report["referenceCount"] == 0, report
+          assert report["oracle"] == "MAXROLL_ONLY" and report["baselinePatch"] == "3.2.1", report
+          assert report["baselineBuild"] == "73552" and report["candidateVisibleMetricCount"] == 50, report
+          assert report["maxrollParity"] == "BLOCKED_NO_APPROVED_GOLDEN", report
           assert report["gameAccuracy"] == "NOT_VERIFIED_BY_CI03", report
           PY
 
