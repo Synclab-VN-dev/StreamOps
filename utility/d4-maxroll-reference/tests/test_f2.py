@@ -31,3 +31,13 @@ class TestF2(unittest.TestCase):
         altered = json.loads(json.dumps(DATA))
         altered["inventory"]["visibleTotal"] = 9
         self.assertEqual(validate(altered)["status"], "FAIL")
+
+    def test_duplicate_metric_fails(self):
+        d = json.loads(json.dumps(DATA))
+        d["metrics"].append(d["metrics"][0].copy())
+        self.assertEqual(validate(d)["status"], "FAIL")
+
+    def test_unverified_formula_fails(self):
+        d = json.loads(json.dumps(DATA))
+        d["metrics"][0]["formulaStatus"] = "VERIFIED"
+        self.assertEqual(validate(d)["status"], "FAIL")
