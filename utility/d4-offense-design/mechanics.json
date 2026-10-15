@@ -1,0 +1,306 @@
+{
+  "inventoryVersion": "0.1.0",
+  "issue": 106,
+  "scope": "OFFENSIVE_DESIGN_ONLY_NO_SIMULATOR",
+  "patchPolicy": {
+    "designReference": "3.2.3",
+    "maxrollObserved": "3.2.1.73552",
+    "crossPatchPromotion": "BLOCKED",
+    "missingMechanic": "UNKNOWN_NO_NUMERIC_FALLBACK"
+  },
+  "sources": [
+    {
+      "id": "blizzard-patch-3-2-3",
+      "kind": "OFFICIAL_PATCH_ID",
+      "patch": "3.2.3",
+      "url": "https://news.blizzard.com/en-us/article/24295395/diablo-iv-patch-notes",
+      "scope": "Patch identity only, not a universal damage formula"
+    },
+    {
+      "id": "blizzard-buckets-historical",
+      "kind": "OFFICIAL_HISTORICAL",
+      "patch": "1.2.0",
+      "url": "https://news.blizzard.com/en-us/article/24014289/master-your-power-in-season-of-blood",
+      "scope": "Historical Vulnerable bucket example; not guaranteed for 3.x"
+    },
+    {
+      "id": "blizzard-gear-2026",
+      "kind": "OFFICIAL_RULE_SPECIFIC",
+      "patch": "3.2.3",
+      "url": "https://news.blizzard.com/en-us/article/24267729/prepare-for-the-reckoning-lord-of-hatred-draws-near",
+      "scope": "Eligible gear multipliers additive with themselves; cannot generalize to all aspects"
+    },
+    {
+      "id": "maxroll-p1r",
+      "kind": "AGENT_REPORTED_RUNTIME_TRACE",
+      "patch": "3.2.1.73552",
+      "url": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6185793075",
+      "scope": "Single-profile breakpoint and values; supporting local raw files gitignored and not reviewed independently"
+    },
+    {
+      "id": "maxroll-p1v",
+      "kind": "AGENT_REPORTED_CONTROLLED_VECTORS",
+      "patch": "3.2.1.73552",
+      "url": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6186278085",
+      "scope": "Tested bow/crossbow and skill ranks, raw/intermediate gaps; not universal"
+    },
+    {
+      "id": "maxroll-p1v2",
+      "kind": "AGENT_REPORTED_CONTROLLED_VECTORS",
+      "patch": "3.2.1.73552",
+      "url": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6190723270",
+      "scope": "All Damage additive +30/60%, Necromancer main hand 0/100%; multiplier fixture invalid"
+    },
+    {
+      "id": "synthetic-design-106",
+      "kind": "SYNTHETIC_DESIGN",
+      "patch": null,
+      "url": "https://github.com/Synclab-VN-dev/StreamOps/issues/106",
+      "scope": "Synthetic arithmetic and ordering conventions, not real-game verification"
+    }
+  ],
+  "mechanics": [
+    {
+      "id": "weapon-base",
+      "group": "direct",
+      "status": "VERIFIED_VECTOR_SCOPED",
+      "patch": "3.2.1.73552",
+      "sourceIds": [
+        "maxroll-p1v"
+      ],
+      "designMeaning": "Distinguish raw average weapon damage and displayed speed-scaled headline; tested bow/crossbow only.",
+      "gap": "Unknown weapon-specific nonzero modifiers and offhand aggregation.",
+      "downstream": "#110"
+    },
+    {
+      "id": "headline-primary-stat",
+      "group": "direct",
+      "status": "RUNTIME_OBSERVED",
+      "patch": "3.2.1.73552",
+      "sourceIds": [
+        "maxroll-p1r"
+      ],
+      "designMeaning": "Raw primary stat enters class factor before final display formatting.",
+      "gap": "Single class/fixture and no independent cross-class causal vectors.",
+      "downstream": "#110"
+    },
+    {
+      "id": "all-damage-additive",
+      "group": "buckets",
+      "status": "VERIFIED_VECTOR_SCOPED",
+      "patch": "3.2.1.73552",
+      "sourceIds": [
+        "maxroll-p1v2"
+      ],
+      "designMeaning": "One-variable +30%/+60% additive modifiers changed headline raw as 1+ratio.",
+      "gap": "Skill raw not captured; not a universal additive bucket rule.",
+      "downstream": "#108"
+    },
+    {
+      "id": "all-damage-multiplicative",
+      "group": "buckets",
+      "status": "BLOCKED_INVALID_FIXTURE",
+      "patch": "3.2.1.73552",
+      "sourceIds": [
+        "maxroll-p1v2"
+      ],
+      "designMeaning": "Modifier label x12/x20 displayed but did not activate in canonical state.",
+      "gap": "Requires valid active one-variable multiplicative fixture; cannot infer zero effect.",
+      "downstream": "#108"
+    },
+    {
+      "id": "gear-multiplier-specific",
+      "group": "buckets",
+      "status": "OFFICIAL_RULE_SPECIFIC",
+      "patch": "3.2.3",
+      "sourceIds": [
+        "blizzard-gear-2026"
+      ],
+      "designMeaning": "Eligible gear-damage multipliers combine additively with each other.",
+      "gap": "Applicability limited; not every aspect/item modifier.",
+      "downstream": "#109"
+    },
+    {
+      "id": "mainhand-shield-bonus",
+      "group": "direct",
+      "status": "VERIFIED_VECTOR_SCOPED",
+      "patch": "3.2.1.73552",
+      "sourceIds": [
+        "maxroll-p1v2"
+      ],
+      "designMeaning": "Necromancer axe+shield bonus raw 0→1 doubled tested headline, raw and base weapon UI.",
+      "gap": "Only one nonzero magnitude and one class/slot combination.",
+      "downstream": "#110"
+    },
+    {
+      "id": "skill-rank-coefficient",
+      "group": "skill",
+      "status": "VERIFIED_VECTOR_SCOPED",
+      "patch": "3.2.1.73552",
+      "sourceIds": [
+        "maxroll-p1v",
+        "maxroll-p1r"
+      ],
+      "designMeaning": "Penetrating Shot ranks 1/2/3 yielded sampled 150/165/180% coefficients.",
+      "gap": "Do not transfer coefficients to other skills, builds or patches.",
+      "downstream": "#109"
+    },
+    {
+      "id": "skill-event-damage",
+      "group": "skill",
+      "status": "VERIFIED_VECTOR_SCOPED",
+      "patch": "3.2.1.73552",
+      "sourceIds": [
+        "maxroll-p1v",
+        "maxroll-p1v2"
+      ],
+      "designMeaning": "Penetrating Shot UI damage responds to rank/weapon; payload raw separately observed on original fixture.",
+      "gap": "Cross-fixture formula bridge and tooltip formatter not fully verified.",
+      "downstream": "#111"
+    },
+    {
+      "id": "skill-tooltip-rounding",
+      "group": "skill",
+      "status": "SOURCE_OBSERVED",
+      "patch": "3.2.1.73552",
+      "sourceIds": [
+        "maxroll-p1v2"
+      ],
+      "designMeaning": "Positive skill UI 5692 vs source-derived 5692.62375 is consistent with truncation.",
+      "gap": "Exact formatter source and historical runtime raw absent; not a universal rule.",
+      "downstream": "#108"
+    },
+    {
+      "id": "crit-chance",
+      "group": "critical",
+      "status": "UNKNOWN",
+      "patch": "3.2.1.73552",
+      "sourceIds": [
+        "maxroll-p1r"
+      ],
+      "designMeaning": "Runtime ComputeCritChance returned anomalous negative -0.9376805 in one build.",
+      "gap": "Investigate origin/conditions, not a reusable mechanic or game-accurate numeric claim.",
+      "downstream": "#108"
+    },
+    {
+      "id": "crit-damage",
+      "group": "critical",
+      "status": "RUNTIME_OBSERVED",
+      "patch": "3.2.1.73552",
+      "sourceIds": [
+        "maxroll-p1r"
+      ],
+      "designMeaning": "One source branch reported a built-in 1.5 factor and raw 0.5 bonus.",
+      "gap": "Conditional crit chance/cap and target mitigation not verified.",
+      "downstream": "#108"
+    },
+    {
+      "id": "vulnerable-historical",
+      "group": "critical",
+      "status": "HISTORICAL_ONLY",
+      "patch": "1.2.0",
+      "sourceIds": [
+        "blizzard-buckets-historical"
+      ],
+      "designMeaning": "A documented historical additive x baseline worked example.",
+      "gap": "No promotion to patch 3.2.3 without rule evidence.",
+      "downstream": "#109"
+    },
+    {
+      "id": "multiple-hits",
+      "group": "skill",
+      "status": "SYNTHETIC_ONLY",
+      "patch": null,
+      "sourceIds": [
+        "synthetic-design-106"
+      ],
+      "designMeaning": "Event graph must track hit count, target, per-hit chance and damage attribution.",
+      "gap": "Projectile collision and real-game hit probabilities unknown.",
+      "downstream": "#111"
+    },
+    {
+      "id": "proc-trigger-chain",
+      "group": "trigger",
+      "status": "SYNTHETIC_ONLY",
+      "patch": null,
+      "sourceIds": [
+        "synthetic-design-106"
+      ],
+      "designMeaning": "Expected proc contribution is distinct from deterministic hit event; recursion/cycle bounded.",
+      "gap": "Lucky Hit, trigger inheritance and ICD unverified.",
+      "downstream": "#111"
+    },
+    {
+      "id": "dot-and-periodic",
+      "group": "periodic",
+      "status": "UNKNOWN",
+      "patch": "3.2.1.73552",
+      "sourceIds": [
+        "maxroll-p1r"
+      ],
+      "designMeaning": "Design separate periodic events, ticks and duration/snapshot scopes.",
+      "gap": "No passive runtime hits for dotdps and no oracle for tested fixture.",
+      "downstream": "#111"
+    },
+    {
+      "id": "buff-stack-uptime",
+      "group": "state",
+      "status": "SYNTHETIC_ONLY",
+      "patch": null,
+      "sourceIds": [
+        "synthetic-design-106"
+      ],
+      "designMeaning": "Stacks/caps, state expiration and expected uptime must be explicit.",
+      "gap": "Patch-specific snapshot/order, stack decay and real uptime unverified.",
+      "downstream": "#111"
+    },
+    {
+      "id": "cast-resource-cooldown",
+      "group": "timing",
+      "status": "UNKNOWN",
+      "patch": null,
+      "sourceIds": [
+        "synthetic-design-106"
+      ],
+      "designMeaning": "Track animation/cast window, resource feasibility, cooldown and intended rotation.",
+      "gap": "No sustained-skill-DPS Maxroll oracle; may model with disclosed assumptions.",
+      "downstream": "#111"
+    },
+    {
+      "id": "snapshot-and-order",
+      "group": "timing",
+      "status": "SYNTHETIC_ONLY",
+      "patch": null,
+      "sourceIds": [
+        "synthetic-design-106"
+      ],
+      "designMeaning": "Engine ordering convention deterministic, snapshot type explicit per event.",
+      "gap": "Same-timestamp rules and Blizzard-specific snapshot semantics unverified.",
+      "downstream": "#108"
+    },
+    {
+      "id": "mitigation-immunity",
+      "group": "target",
+      "status": "SYNTHETIC_ONLY",
+      "patch": null,
+      "sourceIds": [
+        "synthetic-design-106"
+      ],
+      "designMeaning": "Target-specific defenses/immunity distinguished from attacker output.",
+      "gap": "Patch-specific armor/resistance/overpower formulas unknown.",
+      "downstream": "#111"
+    },
+    {
+      "id": "summons-and-aoe",
+      "group": "target",
+      "status": "UNKNOWN",
+      "patch": null,
+      "sourceIds": [
+        "synthetic-design-106"
+      ],
+      "designMeaning": "Separate summon/target/hit streams and target-count scenario.",
+      "gap": "Summon AI, inheritance, target selection and area hit distribution unverified.",
+      "downstream": "#111"
+    }
+  ]
+}
