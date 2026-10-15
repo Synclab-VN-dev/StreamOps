@@ -35,6 +35,45 @@ class DesignGateTests(unittest.TestCase):
         entry["patch"] = "3.2.1.73552"
         self.assertTrue(check_inventory(data))
 
+    def test_runtime_claim_must_match_trace_patch(self):
+        data = copy.deepcopy(self.inventory)
+        source = next(s for s in data["sources"] if s["id"] == "maxroll-p1v2")
+        source["patch"] = "3.2.3"
+        self.assertTrue(any("matching trace source and patch" in e
+                            for e in check_inventory(data)))
+
+    def test_official_promotion_of_agent_report_rejected(self):
+        data = copy.deepcopy(self.inventory)
+        item = next(m for m in data["mechanics"]
+                    if m["id"] == "all-damage-additive")
+        item["status"] = "OFFICIAL_RULE_SPECIFIC"
+        item["patch"] = "3.2.3"
+        self.assertTrue(any("matching official source and patch" in e
+                            for e in check_inventory(data)))
+
+    def test_official_source_must_match_mechanic_patch(self):
+        data = copy.deepcopy(self.inventory)
+        source = next(s for s in data["sources"] if s["id"] == "blizzard-gear-2026")
+        source["patch"] = "1.2.0"
+        self.assertTrue(any("matching official source and patch" in e
+                            for e in check_inventory(data)))
+
+    def test_historical_promotion_of_synthetic_source_rejected(self):
+        data = copy.deepcopy(self.inventory)
+        item = next(m for m in data["mechanics"]
+                    if m["id"] == "vulnerable-historical")
+        item["sourceIds"] = ["synthetic-design-106"]
+        self.assertTrue(any("matching historical source and patch" in e
+                            for e in check_inventory(data)))
+
+    def test_patch_guard_requires_both_versions(self):
+        data = copy.deepcopy(self.vectors)
+        entry = next(v for v in data["vectors"]
+                     if v["id"] == "patch-mismatch-blocked")
+        del entry["inputs"]["baseline"]
+        self.assertTrue(any("missing patch or baseline" in e
+                            for e in check_vectors(data)))
+
     def test_unknown_numeric_fallback_rejected(self):
         data = copy.deepcopy(self.inventory)
         data["patchPolicy"]["missingMechanic"] = "ASSUME_ZERO"
