@@ -1,0 +1,23 @@
+{
+  "referenceSetVersion": "2.0.0",
+  "oracle": "MAXROLL_ONLY",
+  "baseline": "3.2.1.73552",
+  "gamePatch": "3.2.1",
+  "gameBuild": "73552",
+  "sourceId": "maxroll-f1-rogue-3-2-1-73552",
+  "fixtureUrl": "https://maxroll.gg/d4/planner/1g1any0x#3",
+  "fixtureFingerprint": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+  "sourceEvidence": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6196291714",
+  "candidateVisibleMetricCount": 50,
+  "approvedGoldenCount": 0,
+  "referenceStatus": "CANDIDATE_ONLY_INPUT_PARTIAL",
+  "maxrollParity": "BLOCKED_NO_APPROVED_GOLDEN",
+  "vectors": [],
+  "metadata": {
+    "appVersion": "UNKNOWN_ALLOWED_BY_OWNER",
+    "buildInputStatus": "PARTIAL",
+    "runtimeRawObservedCount": 0,
+    "formulaCausallyVerifiedCount": 0,
+    "note": "This manifest is NOT a Golden; no numeric reference is promoted. 50 UI values remain local and await independently auditable evidence."
+  }
+}
