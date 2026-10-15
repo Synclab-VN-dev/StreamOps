@@ -38,12 +38,124 @@
     "allRowsIndependentReview": "PENDING"
   },
   "f2Source": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6204088473",
-  "metrics": [],
+  "metrics": [
+    {
+      "id": "summary.weapon_damage",
+      "group": "summary",
+      "label": "Weapon Damage",
+      "rawValue": "52050.754872000005",
+      "rawOrigin": "MAXROLL_CDP_AGENT_REPORT",
+      "rawUnit": "UNVERIFIED",
+      "displayValue": "52,051",
+      "formatPolicy": "OBSERVED_SAMPLE_ONLY",
+      "evidenceGrade": "CAUSAL_BOUNDED_REUSED_VECTORS",
+      "formulaStatus": "UNKNOWN",
+      "formulaCandidate": null,
+      "inputs": [],
+      "effects": [],
+      "dependencies": [],
+      "ordering": "UNKNOWN",
+      "evidenceId": "F2_106",
+      "goldenStatus": "NOT_APPROVED"
+    },
+    {
+      "id": "summary.toughness",
+      "group": "summary",
+      "label": "Toughness",
+      "rawValue": "2885756.723201841",
+      "rawOrigin": "MAXROLL_CDP_AGENT_REPORT",
+      "rawUnit": "UNVERIFIED",
+      "displayValue": "2,885,757",
+      "formatPolicy": "OBSERVED_SAMPLE_ONLY",
+      "evidenceGrade": "RUNTIME_REPORTED",
+      "formulaStatus": "UNKNOWN",
+      "formulaCandidate": {
+        "expression": "mean(six runtime type toughness values)",
+        "status": "SINGLE_FIXTURE_EQUALITY_NOT_CAUSAL"
+      },
+      "inputs": [],
+      "effects": [],
+      "dependencies": [],
+      "ordering": "UNKNOWN",
+      "evidenceId": "F2_106",
+      "goldenStatus": "NOT_APPROVED"
+    },
+    {
+      "id": "offensive.all_damage",
+      "group": "offensive",
+      "label": "All Damage",
+      "rawValue": "5.878875622400002",
+      "rawOrigin": "MAXROLL_CDP_AGENT_REPORT",
+      "rawUnit": "UNVERIFIED",
+      "displayValue": "587.9%",
+      "formatPolicy": "OBSERVED_SAMPLE_ONLY",
+      "evidenceGrade": "ADDITIVE_BOUNDED_MULTIPLICATIVE_UNVERIFIED",
+      "formulaStatus": "UNKNOWN",
+      "formulaCandidate": null,
+      "inputs": [],
+      "effects": [],
+      "dependencies": [],
+      "ordering": "UNKNOWN",
+      "evidenceId": "F2_106",
+      "goldenStatus": "NOT_APPROVED",
+      "unresolved": [
+        "Multiplicative branch not causally verified; prior UI fixture inactive"
+      ]
+    },
+    {
+      "id": "offensive.critical_strike_chance",
+      "group": "offensive",
+      "label": "Critical Strike Chance",
+      "rawValue": "-0.9376805",
+      "rawOrigin": "MAXROLL_CDP_AGENT_REPORT",
+      "rawUnit": "UNVERIFIED",
+      "displayValue": "-93.8%",
+      "formatPolicy": "OBSERVED_SAMPLE_ONLY",
+      "evidenceGrade": "RUNTIME_REPORTED",
+      "formulaStatus": "UNKNOWN",
+      "formulaCandidate": {
+        "expression": "0.05 + (-1 + 0.0123195)",
+        "status": "ONE_FIXTURE_ARITHMETIC_EXPLANATION_NOT_CAUSAL"
+      },
+      "inputs": [],
+      "effects": [],
+      "dependencies": [],
+      "ordering": "UNKNOWN",
+      "evidenceId": "F2_106",
+      "goldenStatus": "NOT_APPROVED"
+    },
+    {
+      "id": "offensive.critical_strike_damage",
+      "group": "offensive",
+      "label": "Critical Strike Damage",
+      "rawValue": "0.5",
+      "rawOrigin": "MAXROLL_CDP_AGENT_REPORT",
+      "rawUnit": "UNVERIFIED",
+      "displayValue": "50.0%",
+      "formatPolicy": "OBSERVED_SAMPLE_ONLY",
+      "evidenceGrade": "RUNTIME_REPORTED",
+      "formulaStatus": "UNKNOWN",
+      "formulaCandidate": null,
+      "inputs": [],
+      "effects": [],
+      "dependencies": [],
+      "ordering": "UNKNOWN",
+      "evidenceId": "F2_106",
+      "goldenStatus": "NOT_APPROVED"
+    }
+  ],
   "parity": {
     "approvedGoldenCount": 0,
     "maxrollParity": "NOT_TESTED",
     "rawArtifactsIndependentReview": "PENDING",
     "numericFallback": "FORBIDDEN",
     "scope": "FIXTURE_ONLY"
+  },
+  "evidenceRegistry": {
+    "F2_106": {
+      "url": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6204088473",
+      "kind": "AGENT_SANITIZED_REPORT",
+      "rawTraceIndependentlyReviewed": false
+    }
   }
 }
