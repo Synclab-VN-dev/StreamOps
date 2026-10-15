@@ -103,14 +103,27 @@ def check_inventory(document):
             fail(errors, item.get("patch") == "3.2.1.73552",
                  "runtime evidence wrongly promoted across patches: " + str(mid))
             fail(errors, isinstance(links, list) and any(
-                lookup.get(x, {}).get("kind", "").startswith("AGENT_REPORTED") for x in links
-            ), "runtime claim lacks actual trace reference: " + str(mid))
+                lookup.get(x, {}).get("kind", "").startswith("AGENT_REPORTED")
+                and lookup.get(x, {}).get("patch") == item.get("patch")
+                for x in links
+            ), "runtime claim lacks matching trace source and patch: " + str(mid))
+        if status == "OFFICIAL_RULE_SPECIFIC":
+            fail(errors, isinstance(item.get("patch"), str) and
+                 isinstance(links, list) and any(
+                     lookup.get(x, {}).get("kind") == "OFFICIAL_RULE_SPECIFIC"
+                     and lookup.get(x, {}).get("patch") == item.get("patch")
+                     for x in links
+                 ), "official claim lacks matching official source and patch: " + str(mid))
         if status == "SYNTHETIC_ONLY":
             fail(errors, item.get("patch") is None and "synthetic-design-106" in (links or []),
                  "synthetic item promoted as game policy: " + str(mid))
         if status == "HISTORICAL_ONLY":
-            fail(errors, item.get("patch") not in {None, "3.2.3"},
-                 "historical mechanics wrongly tagged 3.2.3: " + str(mid))
+            fail(errors, item.get("patch") not in {None, policy.get("designReference")}
+                 and isinstance(links, list) and any(
+                     lookup.get(x, {}).get("kind") == "OFFICIAL_HISTORICAL"
+                     and lookup.get(x, {}).get("patch") == item.get("patch")
+                     for x in links
+                 ), "historical claim lacks matching historical source and patch: " + str(mid))
     fail(errors, groups >= REQUIRED_GROUPS, "missing mechanic taxonomy groups")
     return errors
 
@@ -166,8 +179,13 @@ def calculate(op, data):
         guard = data["guard"]
         if guard not in GUARD_RESULTS:
             raise ValueError("unknown fail-closed guard")
-        if guard == "PATCH_MISMATCH" and data.get("patch") == data.get("baseline"):
-            raise ValueError("patch guard has matching versions")
+        if guard == "PATCH_MISMATCH":
+            if not isinstance(data.get("patch"), str) or not data["patch"] or (
+                not isinstance(data.get("baseline"), str) or not data["baseline"]
+            ):
+                raise ValueError("patch guard missing patch or baseline")
+            if data["patch"] == data["baseline"]:
+                raise ValueError("patch guard has matching versions")
         return None
     raise ValueError("unsupported vector op " + str(op))
 
