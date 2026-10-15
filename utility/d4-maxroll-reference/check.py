@@ -25,7 +25,7 @@ def validate(obj: Any, *, golden: bool = False) -> dict:
     v = obj.get("versionEvidence") or {}
     need(isinstance(v, dict), "versionEvidence must be object")
     if not isinstance(v, dict): v = {}
-    need(v.get("status") in ("VERIFIED", "UNVERIFIED"), "missing explicit version status")
+    need(v.get("status") in ("VERIFIED", "UNVERIFIED", "OWNER_PINNED_GAME_BUILD"), "missing explicit version status")
     need(isinstance(v.get("capturedAtUtc"), str) and v.get("capturedAtUtc", "").endswith("Z"), "missing UTC capture timestamp")
     need(isinstance(v.get("url"), str) and v.get("url", "").startswith("https://maxroll.gg/d4/planner/"), "missing Maxroll fixture URL")
     for key in ("appVersion", "gamePatch", "gameBuild"):
@@ -78,14 +78,21 @@ def validate(obj: Any, *, golden: bool = False) -> dict:
     need(obj.get("totalVisibleMetrics") == sum(counts.values()), "totalVisibleMetrics != enumerated count")
     # A capture is not a claim that every game's metric exists in the known set.
     need(obj.get("globalGameCoverage") is None, "globalGameCoverage must remain null")
-    if v.get("status") != "VERIFIED" or not all(v.get(k) for k in ("appVersion", "gamePatch", "gameBuild")):
+    if v.get("status") not in ("VERIFIED", "OWNER_PINNED_GAME_BUILD") or not all(v.get(k) for k in ("gamePatch", "gameBuild")):
         warnings.append("version NOT independently pinned")
     if f.get("inputCompleteness") != "COMPLETE": warnings.append("fixture inputs PARTIAL")
     if any(row.get("formulaStatus") != "CAUSALLY_VERIFIED" for g in groups or [] if isinstance(g, dict) for row in g.get("metrics", []) if isinstance(row, dict)):
         warnings.append("one or more formulas NOT causally verified (normal F1)")
     if golden:
         # Golden promotion is a separate step: even syntax-correct captured UI is only a candidate.
-        need(v.get("status") == "VERIFIED" and all(v.get(k) for k in ("appVersion", "gamePatch", "gameBuild")), "golden requires verified exact Maxroll version/build")
+        owner_pinned = (v.get("status") == "OWNER_PINNED_GAME_BUILD" and
+                        v.get("ownerBaselineEvidence") ==
+                        "https://github.com/Synclab-VN-dev/StreamOps/issues/107#issuecomment-6203600278")
+        app_verified = v.get("status") == "VERIFIED" and bool(v.get("appVersion"))
+        need(v.get("gamePatch") == "3.2.1" and v.get("gameBuild") == "73552",
+             "golden must use Owner-pinned Maxroll 3.2.1.73552")
+        need((owner_pinned or app_verified) and all(v.get(k) for k in ("gamePatch", "gameBuild")),
+             "golden requires independently verified app version OR explicit Owner-pinned game build evidence")
         need(f.get("inputCompleteness") == "COMPLETE", "golden requires complete fixture inputs")
         need(obj.get("referenceApproval") == "INDEPENDENTLY_REVIEWED", "golden requires independent review record")
         need(isinstance(obj.get("referenceManifestSha256"), str) and bool(SHA.fullmatch(obj.get("referenceManifestSha256", ""))), "golden requires immutable manifest hash")
