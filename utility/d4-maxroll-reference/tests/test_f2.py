@@ -41,3 +41,18 @@ class TestF2(unittest.TestCase):
         d = json.loads(json.dumps(DATA))
         d["metrics"][0]["formulaStatus"] = "VERIFIED"
         self.assertEqual(validate(d)["status"], "FAIL")
+
+    def test_raw_value_origin_fails(self):
+        d = json.loads(json.dumps(DATA))
+        d["metrics"][0]["rawOrigin"] = "DERIVED_BY_ENGINE"
+        self.assertEqual(validate(d)["status"], "FAIL")
+
+    def test_input_completeness_fails(self):
+        d = json.loads(json.dumps(DATA))
+        d["fixture"]["inputCompleteness"] = "COMPLETE"
+        self.assertEqual(validate(d)["status"], "FAIL")
+
+    def test_fictitious_dependencies_fail(self):
+        d = json.loads(json.dumps(DATA))
+        d["metrics"][0]["dependencies"] = ["made-up-rule"]
+        self.assertEqual(validate(d)["status"], "FAIL")
