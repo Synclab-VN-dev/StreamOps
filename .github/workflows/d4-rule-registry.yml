@@ -56,6 +56,8 @@ jobs:
             --report artifacts/d4-rule-registry/synthetic-provenance-proposals.json
           python utility/d4-rule-registry/review_policy.py \
             --report artifacts/d4-rule-registry/ci02-read-only-policy.json
+          python utility/d4-rule-registry/select_rules.py \
+            --report artifacts/d4-rule-registry/read-only-rule-selection.json
           python - <<'PY'
           import json
           from pathlib import Path
@@ -68,6 +70,13 @@ jobs:
           assert c["sourceBounded"]==27 and c["sourcePartial"]==23
           assert c["fullParity"]=="BLOCKED" and r["publishStatus"]=="NOT_APPROVED"
           assert all(x["activeRule"] is None and x["calculatedValue"] is None for x in r["metrics"])
+          selection=json.loads(Path("artifacts/d4-rule-registry/read-only-rule-selection.json").read_text())
+          assert selection["status"]=="BLOCKED_NO_APPROVED_EXECUTABLE_RULES"
+          assert len(selection["metrics"])==50
+          assert selection["coverage"]["activeRules"]==0
+          assert selection["coverage"]["missing"]==49 and selection["coverage"]["candidateUnverified"]==1
+          assert not selection["executableRules"] and selection["simulationContext"] is None
+          assert all(row["value"] is None for row in selection["metrics"])
           guard=json.loads(Path("artifacts/d4-rule-registry/ci02-read-only-policy.json").read_text())
           assert guard["status"]=="PASS_CI02_READ_ONLY_POLICY_GUARDS_ONLY"
           assert guard["sourcePinnedCount"]==1 and guard["activeRules"]==0

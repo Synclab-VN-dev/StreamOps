@@ -151,3 +151,21 @@ not that a real owner-approved snapshot was tested. Publication remains blocked
 until an approved real Golden, independently verified G1–G4, recorded Owner
 approval and a separately approved publish workflow exist. Keep CI-02's full
 live-publish acceptance pending.
+
+## Read-only rule-selection interface (pre-#110)
+
+`select_rules.py` outputs an **internal debug report** (NOT approved serialized
+BE API / FormulaGraphResult) for the exact pinned Rogue fixture fingerprint,
+patch and class. Every visible metric is enumerated, deterministically sorted
+and linked to the pinned immutable registry source and snapshot hash. Current
+outputs contain 49 UNKNOWN and 1 Fire UNVERIFIED, always `value=null`,
+`executableRules=[]` and no simulationContext or expected Maxroll Golden.
+
+    python utility/d4-rule-registry/select_rules.py --report artifacts/109-selected.json
+
+Bad patch, class, fixture hash, additional unknown fields, fake promotion and
+source-catalog drift fail closed. There is **no rule execution and no invented
+rounding, units or scores** in this tool. #110 must validate real input coverage
+before evaluating a formula and must never treat a staged Fire candidate as an
+approved operational rule. A real public transport schema requires its own
+Owner approval.
