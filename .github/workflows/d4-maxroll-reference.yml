@@ -26,6 +26,18 @@ jobs:
           assert result["catalogedMetrics"] == 9 and result["visibleFixtureMetrics"] == 50, result
           assert result["approvedGoldenCount"] == 0 and result["maxrollParity"] == "NOT_TESTED", result
           PY
+      - name: Validate all-50 F8 source inventory (not verified formulas)
+        run: |
+          python utility/d4-maxroll-reference/check_f8.py utility/d4-maxroll-reference/f8-character-metric-catalog.json --report artifacts/d4-maxroll-f8-inventory.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("artifacts/d4-maxroll-f8-inventory.json").read_text())
+          assert report["status"] == "PASS_SOURCE_INVENTORY_ONLY", report
+          assert report["catalogedMetricIds"] == 50, report
+          assert report["proposedFormulaStatusCounts"] == {"BOUNDED_VERIFIED": 27, "PARTIAL": 23}, report
+          assert report["independentGraphParity"] == "NOT_RUN" and report["approvedGoldenCount"] == 0, report
+          PY
       - name: Negative and integrity tests
         run: python -m unittest discover -s utility/d4-maxroll-reference/tests -p 'test_*.py' -v
       - name: Upload evidence
@@ -36,3 +48,4 @@ jobs:
           path: |
             artifacts/d4-maxroll-candidate.json
             artifacts/d4-maxroll-f2-catalog.json
+            artifacts/d4-maxroll-f8-inventory.json
