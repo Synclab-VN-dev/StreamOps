@@ -50,3 +50,18 @@ production graph semantic coverage for all 15 DSL action operators.
 
 The rest of #110 (tags, event edges, cap/ICD, resolver, actual Maxroll 50 stat
 computation, simulationContext) remains pending.
+
+## Three-family synthetic composition integrated with source Graph
+
+`demo_graph.py` packages a 50-ID **unknown** source Graph together with a
+separate three-family synthetic DSL execution subgraph under a new internal
+`syntheticOutputOnly` field. Mutating a synthetic DSL value or condition
+deterministically changes the composed graph SHA while preserving 0/50 actual
+Maxroll computed metrics and null `simulationContext`. This is evidence that
+the **synthetic CI-01 composition** mechanism is pluggable without changing
+engine code; it does not establish production full-DSL engine semantics or any
+real Maxroll parity.
+
+    python utility/d4-formula-graph/demo_graph.py --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json --synthetic utility/d4-formula-graph/fixtures/synthetic-three-families.json --report artifacts/110-composed.json
+
+No public transport contract has been introduced or approved.

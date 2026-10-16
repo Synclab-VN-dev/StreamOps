@@ -40,6 +40,7 @@ jobs:
           python utility/d4-formula-graph/graph.py --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json --report artifacts/d4-formula-graph/alpha.json
           python utility/d4-formula-graph/graph.py --overlay utility/d4-formula-graph/fixtures/synthetic-beta.json --report artifacts/d4-formula-graph/beta.json
           python utility/d4-formula-graph/synthetic_compiler.py --fixture utility/d4-formula-graph/fixtures/synthetic-three-families.json --report artifacts/d4-formula-graph/three-families.json
+          python utility/d4-formula-graph/demo_graph.py --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json --synthetic utility/d4-formula-graph/fixtures/synthetic-three-families.json --report artifacts/d4-formula-graph/composed.json
           python - <<'PY'
           import json
           from pathlib import Path
@@ -50,6 +51,12 @@ jobs:
           assert f["stats"]["synthetic.damageBonus"]==30
           assert f["skills"]["synthetic.projectile"]["projectile_count"]==2
           assert f["activeMaxrollFormulaCount"]==0 and not f["publishAllowed"]
+          c=json.loads(Path('artifacts/d4-formula-graph/composed.json').read_text())
+          assert c["status"]=="PASS_SYNTHETIC_COMPOSITION_GRAPH_ONLY_REAL_MAXROLL_BLOCKED"
+          assert len(c["syntheticMechanicNodes"])==3 and c["realCharacterComputed"]==0
+          assert len(c["characterMetrics"])==50 and c["unknownCharacterMetrics"]==50
+          assert c["syntheticOutputOnly"]["stats"]["synthetic.damageBonus"]==30
+          assert c["simulationContext"] is None and c["realParity"]=="BLOCKED_NOT_RUN"
           for d in (a,b):
               assert d['status']=='BLOCKED_NO_VERIFIED_MAXROLL_RULES'
               assert len(d['characterMetrics'])==50 and d['coverage']['computed']==0
