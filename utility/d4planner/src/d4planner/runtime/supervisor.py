@@ -67,6 +67,7 @@ class Supervisor:
         block_marker: bool = False,
         controller_profile: ControllerProfile | None = None,
         uat_attach_only: bool = False,
+        uat_start_nvda: bool = False,
     ):
         self.paths = paths
         self.runtime = runtime
@@ -76,8 +77,11 @@ class Supervisor:
         if hasattr(self.runtime, "task_isolated"):
             self.runtime.task_isolated = isolated
         self.uat_attach_only = bool(uat_attach_only)
-        if self.uat_attach_only and not self.isolated:
-            raise ValueError("UAT attach-only requires isolated mode")
+        self.uat_start_nvda = bool(uat_start_nvda)
+        if self.uat_attach_only and self.uat_start_nvda:
+            raise ValueError("UAT modes are mutually exclusive")
+        if (self.uat_attach_only or self.uat_start_nvda) and not self.isolated:
+            raise ValueError("UAT modes require isolated mode")
         self.poll_interval = poll_interval
         self.health_poll_interval = health_poll_interval
         self.game_start_timeout = game_start_timeout
@@ -101,6 +105,7 @@ class Supervisor:
         self.status.extras["runtime"] = {
             "isolated": self.isolated,
             "uatAttachOnly": self.uat_attach_only,
+            "uatStartNvda": self.uat_start_nvda,
         }
         self.status.extras["inputMarker"] = {
             "key": "F11",
@@ -306,10 +311,21 @@ class Supervisor:
             else:
                 self.status.extras["userPathManaged"] = False
 
-            # Acceptance attach-only may not install/restart an NVDA add-on.
-            # Require the existing add-on to be ready; fail closed otherwise.
+            # A #119 attach session may start only a *missing* NVDA. Verify
+            # Steam and Diablo IV are already attached before any NVDA launch,
+            # preventing side-effects when the game isn't actually ready.
+            if self.uat_start_nvda:
+                steam_before = self.runtime.steam_process()
+                game_before = self.runtime.game_process()
+                if not steam_before or not game_before:
+                    raise RuntimeBlocked("UAT NVDA start requires existing Steam and Diablo IV; no process launched")
+                console_before = self.runtime.active_console_session_id()
+                if console_before is None or game_before.session_id != console_before:
+                    raise RuntimeBlocked("UAT NVDA start requires Diablo IV in active console session; no process launched")
+
+            # Both UAT attach modes refuse add-on installation/restart.
             addon_changed = (
-                False if self.uat_attach_only
+                False if (self.uat_attach_only or self.uat_start_nvda)
                 else self.runtime.ensure_addon_runtime()
             )
             if not self.runtime.addon_installed():
@@ -328,7 +344,7 @@ class Supervisor:
                 self.status.extras["nvdaRestartReason"] = "add-on updated"
             else:
                 nvda = (
-                    existing_nvda if self.uat_attach_only
+                    existing_nvda if (self.uat_attach_only or (self.uat_start_nvda and existing_nvda))
                     else self.runtime.ensure_nvda_running()
                 )
                 if existing_nvda is None and not self.uat_attach_only:
@@ -375,7 +391,7 @@ class Supervisor:
             )
 
             steam = self.runtime.steam_process()
-            if self.isolated and steam and not self.uat_attach_only:
+            if self.isolated and steam and not (self.uat_attach_only or self.uat_start_nvda):
                 self.status.steam = steam
                 self.transition(
                     RuntimeState.RESTART_REQUIRED,
@@ -414,9 +430,9 @@ class Supervisor:
                     data={"pid": game.pid},
                 )
             else:
-                if self.uat_attach_only:
+                if self.uat_attach_only or self.uat_start_nvda:
                     raise RuntimeBlocked(
-                        "UAT attach-only requires existing Diablo IV; no game launch"
+                        "UAT attachment requires existing Diablo IV; no game launch"
                     )
                 if steam and not self._steam_priority_allows_launch(steam):
                     priority = getattr(steam, "priority_class", None) or "unknown"
