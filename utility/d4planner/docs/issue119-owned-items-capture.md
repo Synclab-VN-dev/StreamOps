@@ -139,9 +139,10 @@ stop with BLOCKED and collect evidence. The old `--uat-attach-only` behavior
 remains strict and unchanged. Requires `--isolated` + its own HomeDir.
 
 **Runner:** `scripts/acceptance/issue119-prepare.ps1` sets up an isolated
-`%LOCALAPPDATA%\d4planner-issue119-pr120\uat-venv` (with existing
-system site packages, no-deps/no-build-isolation editable install of PR
-source) and starts the UAT-only supervisor with `--speech`, `xbox16`,
+`%LOCALAPPDATA%\d4planner-issue119-pr120\uat-venv` with existing
+system site packages and a **venv-local `.pth` reference** to the pinned PR
+source (no pip, network fetch or global Python install). It starts the
+UAT-only supervisor with `--speech`, `xbox16`,
 `--isolated --uat-start-nvda`. It runs the existing read-only Preflight
 immediately and produces a ZIP, including setup stdout/stderr/exit codes.
 It never installs the changed CLI into production's global Python. It
@@ -171,7 +172,7 @@ missing NVDA; the new mode is additive and leaves strict mode intact.
 Mocked E2E tests cover missing/existing NVDA, missing game/Steam and console
 session mismatch, no forbidden process mutation, profile active, CLI and
 scheduled-task flag forwarding. CI Windows AST and fail-closed Prepare test
-plus isolated venv install smoke are separately required before Real-A run.
+plus isolated venv source-resolution smoke are separately required before Real-A run.
 Until then and until A returns live status/capture evidence, improvement
 on actual A is **not yet verified**. Real-A P0 capture coverage remains
 BLOCKED; the owner does not need to repeat previously PASS P0-01..P0-06.
@@ -189,3 +190,7 @@ Tested locally on synthetic SQLite with CPython 3.13: **5/5 unittest PASS**,
 so Real-A and runner-validation gates remain PENDING/BLOCKED until evidence.
 
 Source: #119; existing dependencies #59 / #69 / #87 / #95.
+
+### UAT Prepare script revision evidence
+
+First Windows CI execution found a PowerShell automatic variable collision: assigning `$home` failed because `$HOME` is read-only. Renaming it to `$uatHome` was validated by the next Windows CI, where S0-01..03 PASS and S0-04 correctly BLOCKED without Steam/Game (evidence ZIP exported). The next CI discovered the fresh Python venv lacks setuptools build backend; `pip install --no-build-isolation -e` failed. Revised setup replaces pip entirely with a **venv-local `.pth` source path**. This keeps the isolated interpreter and scheduled task on the same PR code without accessing the network or changing global packages. CI validates actual module origin and CLI/daemon help. Live Windows A start is still **not yet verified** until Owner returns real evidence.
