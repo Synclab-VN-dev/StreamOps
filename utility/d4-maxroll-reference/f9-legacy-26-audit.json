@@ -1,0 +1,2888 @@
+{
+  "auditVersion": "1.0.0",
+  "auditScope": "LEGACY_26_SOURCE_EVIDENCE_REPLAY_NOT_GRAPH_PARITY",
+  "referencePatch": "3.2.1.73552",
+  "classId": "rogue",
+  "immutableEvidence": {
+    "f4Commit": "3ae928e5701d2de9ac995973b39e9b91d789f4bb",
+    "f4BlobSha": "5f5a04ebec5073d32151d3ea2cdc6ac54c6e9b17",
+    "f4MatrixPath": "evidence/StreamOps-106/F4-rogue-50/rogue-50-f4-verification-matrix.json",
+    "f5Commit": "8fdf59a988b0425e789248a5f1898ef67b27314d",
+    "f5BlobSha": "2d1ce8120663a883b3fd923344dca48ec6b955a5",
+    "f5ReportPath": "evidence/StreamOps-106/F5-rogue-gap-closure/rogue-50-f5-gap-evidence.json",
+    "currentCatalog": "f8-character-metric-catalog.json"
+  },
+  "classification": {
+    "metricCount": 26,
+    "fullyVerified": 0,
+    "boundedControlledF4": 22,
+    "boundedF4F5": 3,
+    "observedInvariantNonCausal": 1,
+    "f4NumericDeltas": 209,
+    "f5TooltipVectors": 33,
+    "graphParityPass": 0,
+    "approvedGoldenCount": 0
+  },
+  "mathPolicy": {
+    "floatAbsEpsilon": 1e-8,
+    "displayTooltipRoundingHalfStepPp": 0.05,
+    "notes": "Check arithmetic/internal consistency of archived source only; Maxroll tooltip input rounding produces intervals, not exact Graph golden comparisons. Tolerances defined before CI replay."
+  },
+  "metrics": [
+    {
+      "metricId": "maxroll.heroDetails.900",
+      "label": "Weapon Damage",
+      "group": "summary",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "((EffectiveMin + EffectiveDelta/2) * (1 + MainHandDamagePercent) * (1 + Dexterity*1.25*0.001) * (1 + Damage_Percent_All_From_Skills)) * Attacks_Per_Second_Total",
+      "sourceRuntimeExpression": "dps",
+      "sourceDependencies": [
+        "dps"
+      ],
+      "sourceFunctionNodes": [],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "BOUNDED_TESTED_INPUTS_ONLY",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "bow-multipliers-equip",
+          "before": 0,
+          "after": 3795.0825,
+          "reportedDelta": 3795.0825
+        },
+        {
+          "id": "bow-stats-equip",
+          "before": 0,
+          "after": 3795.0825,
+          "reportedDelta": 3795.0825
+        },
+        {
+          "id": "bow-stats-flat-weapon-damage",
+          "before": 3795.0825,
+          "after": 4174.590749999999,
+          "reportedDelta": 379.5082499999994
+        },
+        {
+          "id": "bow-extra-equip",
+          "before": 0,
+          "after": 3795.0825,
+          "reportedDelta": 3795.0825
+        },
+        {
+          "id": "bow-extra-all-stats",
+          "before": 3795.0825,
+          "after": 4658.5825,
+          "reportedDelta": 863.5000000000005
+        },
+        {
+          "id": "unique-pattern-equip",
+          "before": 0,
+          "after": 1915.704,
+          "reportedDelta": 1915.704
+        },
+        {
+          "id": "unique-kings-grace-equip",
+          "before": 0,
+          "after": 1897.54125,
+          "reportedDelta": 1897.54125
+        },
+        {
+          "id": "unique-insight-crossbow-equip",
+          "before": 0,
+          "after": 5831.973,
+          "reportedDelta": 5831.973
+        },
+        {
+          "id": "unique-insight-bow-equip",
+          "before": 0,
+          "after": 5937.133125,
+          "reportedDelta": 5937.133125
+        },
+        {
+          "id": "unique-zephyr-bow-equip",
+          "before": 0,
+          "after": 3795.0825,
+          "reportedDelta": 3795.0825
+        },
+        {
+          "id": "unique-zephyr-crossbow-equip",
+          "before": 0,
+          "after": 3796.2911249999997,
+          "reportedDelta": 3796.2911249999997
+        },
+        {
+          "id": "unique-broodmother-equip",
+          "before": 0,
+          "after": 1898.6399999999996,
+          "reportedDelta": 1898.6399999999996
+        },
+        {
+          "id": "unique-infinity-bow-equip",
+          "before": 0,
+          "after": 4174.590749999999,
+          "reportedDelta": 4174.590749999999
+        },
+        {
+          "id": "unique-shard-verathiel-equip",
+          "before": 0,
+          "after": 3170.124375,
+          "reportedDelta": 3170.124375
+        },
+        {
+          "id": "unique-haunted-crossbow-equip",
+          "before": 0,
+          "after": 3796.2911249999997,
+          "reportedDelta": 3796.2911249999997
+        },
+        {
+          "id": "unique-rustbitten-equip",
+          "before": 0,
+          "after": 2114.64,
+          "reportedDelta": 2114.64
+        }
+      ],
+      "f4VectorDeclaredCount": 16,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.279",
+      "label": "Level",
+      "group": "core",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "Level",
+      "sourceRuntimeExpression": "Level",
+      "sourceDependencies": [
+        "Level"
+      ],
+      "sourceFunctionNodes": [],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "level-60",
+          "before": 70,
+          "after": 60,
+          "reportedDelta": -10
+        },
+        {
+          "id": "level-50",
+          "before": 60,
+          "after": 50,
+          "reportedDelta": -10
+        }
+      ],
+      "f4VectorDeclaredCount": 2,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.108",
+      "label": "Strength",
+      "group": "core",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "Floor(Strength_Total)",
+      "sourceRuntimeExpression": "Floor(Strength_Total)",
+      "sourceDependencies": [
+        "Strength_Total"
+      ],
+      "sourceFunctionNodes": [
+        "Floor"
+      ],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "level-60",
+          "before": 76,
+          "after": 66,
+          "reportedDelta": -10
+        },
+        {
+          "id": "level-50",
+          "before": 66,
+          "after": 56,
+          "reportedDelta": -10
+        },
+        {
+          "id": "bow-extra-all-stats",
+          "before": 76,
+          "after": 276,
+          "reportedDelta": 200
+        },
+        {
+          "id": "unique-pattern-equip",
+          "before": 76,
+          "after": 83,
+          "reportedDelta": 7
+        },
+        {
+          "id": "unique-insight-crossbow-equip",
+          "before": 76,
+          "after": 436,
+          "reportedDelta": 360
+        },
+        {
+          "id": "unique-insight-bow-equip",
+          "before": 76,
+          "after": 436,
+          "reportedDelta": 360
+        },
+        {
+          "id": "unique-shard-verathiel-equip",
+          "before": 76,
+          "after": 176,
+          "reportedDelta": 100
+        },
+        {
+          "id": "unique-rustbitten-equip",
+          "before": 76,
+          "after": 176,
+          "reportedDelta": 100
+        }
+      ],
+      "f4VectorDeclaredCount": 8,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.109",
+      "label": "Intelligence",
+      "group": "core",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "Floor(Intelligence_Total)",
+      "sourceRuntimeExpression": "Floor(Intelligence_Total)",
+      "sourceDependencies": [
+        "Intelligence_Total"
+      ],
+      "sourceFunctionNodes": [
+        "Floor"
+      ],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "level-60",
+          "before": 76,
+          "after": 66,
+          "reportedDelta": -10
+        },
+        {
+          "id": "level-50",
+          "before": 66,
+          "after": 56,
+          "reportedDelta": -10
+        },
+        {
+          "id": "bow-extra-all-stats",
+          "before": 76,
+          "after": 276,
+          "reportedDelta": 200
+        },
+        {
+          "id": "unique-pattern-equip",
+          "before": 76,
+          "after": 83,
+          "reportedDelta": 7
+        },
+        {
+          "id": "unique-insight-crossbow-equip",
+          "before": 76,
+          "after": 436,
+          "reportedDelta": 360
+        },
+        {
+          "id": "unique-insight-bow-equip",
+          "before": 76,
+          "after": 436,
+          "reportedDelta": 360
+        },
+        {
+          "id": "unique-shard-verathiel-equip",
+          "before": 76,
+          "after": 176,
+          "reportedDelta": 100
+        },
+        {
+          "id": "unique-rustbitten-equip",
+          "before": 76,
+          "after": 176,
+          "reportedDelta": 100
+        }
+      ],
+      "f4VectorDeclaredCount": 8,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.110",
+      "label": "Willpower",
+      "group": "core",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "Floor(Willpower_Total)",
+      "sourceRuntimeExpression": "Floor(Willpower_Total)",
+      "sourceDependencies": [
+        "Willpower_Total"
+      ],
+      "sourceFunctionNodes": [
+        "Floor"
+      ],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "level-60",
+          "before": 77,
+          "after": 67,
+          "reportedDelta": -10
+        },
+        {
+          "id": "level-50",
+          "before": 67,
+          "after": 57,
+          "reportedDelta": -10
+        },
+        {
+          "id": "bow-extra-all-stats",
+          "before": 77,
+          "after": 277,
+          "reportedDelta": 200
+        },
+        {
+          "id": "unique-pattern-equip",
+          "before": 77,
+          "after": 84,
+          "reportedDelta": 7
+        },
+        {
+          "id": "unique-insight-crossbow-equip",
+          "before": 77,
+          "after": 437,
+          "reportedDelta": 360
+        },
+        {
+          "id": "unique-insight-bow-equip",
+          "before": 77,
+          "after": 437,
+          "reportedDelta": 360
+        },
+        {
+          "id": "unique-shard-verathiel-equip",
+          "before": 77,
+          "after": 177,
+          "reportedDelta": 100
+        },
+        {
+          "id": "unique-rustbitten-equip",
+          "before": 77,
+          "after": 177,
+          "reportedDelta": 100
+        }
+      ],
+      "f4VectorDeclaredCount": 8,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.111",
+      "label": "Dexterity",
+      "group": "core",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "Floor(Dexterity_Total)",
+      "sourceRuntimeExpression": "Floor(Dexterity_Total)",
+      "sourceDependencies": [
+        "Dexterity_Total"
+      ],
+      "sourceFunctionNodes": [
+        "Floor"
+      ],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "BOUNDED_TESTED_INPUTS_ONLY",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "level-60",
+          "before": 79,
+          "after": 69,
+          "reportedDelta": -10
+        },
+        {
+          "id": "level-50",
+          "before": 69,
+          "after": 59,
+          "reportedDelta": -10
+        },
+        {
+          "id": "bow-extra-all-stats",
+          "before": 79,
+          "after": 279,
+          "reportedDelta": 200
+        },
+        {
+          "id": "helm-extra-dexterity",
+          "before": 79,
+          "after": 200,
+          "reportedDelta": 121
+        },
+        {
+          "id": "unique-pattern-equip",
+          "before": 79,
+          "after": 86,
+          "reportedDelta": 7
+        },
+        {
+          "id": "unique-insight-crossbow-equip",
+          "before": 79,
+          "after": 439,
+          "reportedDelta": 360
+        },
+        {
+          "id": "unique-insight-bow-equip",
+          "before": 79,
+          "after": 439,
+          "reportedDelta": 360
+        },
+        {
+          "id": "unique-shard-verathiel-equip",
+          "before": 79,
+          "after": 179,
+          "reportedDelta": 100
+        },
+        {
+          "id": "unique-rustbitten-equip",
+          "before": 79,
+          "after": 179,
+          "reportedDelta": 100
+        }
+      ],
+      "f4VectorDeclaredCount": 9,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.480",
+      "label": "Armor",
+      "group": "resistances",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "Armor_Total = (Armor + Core_Stat_Armor_Bonus + Armor_Bonus) * (1 + Armor_Percent)",
+      "sourceRuntimeExpression": "Armor_Total",
+      "sourceDependencies": [
+        "Armor_Total"
+      ],
+      "sourceFunctionNodes": [],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "level-60",
+          "before": 152,
+          "after": 132,
+          "reportedDelta": -20
+        },
+        {
+          "id": "level-50",
+          "before": 132,
+          "after": 112,
+          "reportedDelta": -20
+        },
+        {
+          "id": "bow-extra-all-stats",
+          "before": 152,
+          "after": 552,
+          "reportedDelta": 400
+        },
+        {
+          "id": "gloves-offense-equip",
+          "before": 152,
+          "after": 953,
+          "reportedDelta": 801
+        },
+        {
+          "id": "gloves-extra-equip",
+          "before": 152,
+          "after": 953,
+          "reportedDelta": 801
+        },
+        {
+          "id": "helm-resist-a-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "helm-resist-b-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "helm-resist-c-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "helm-extra-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "helm-utility-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "helm-utility-b-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "helm-defense-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "helm-defense-flat-armor",
+          "before": 1755,
+          "after": 2980,
+          "reportedDelta": 1225
+        },
+        {
+          "id": "helm-defense-b-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "unique-pattern-equip",
+          "before": 152,
+          "after": 167.20000000000002,
+          "reportedDelta": 15.200000000000017
+        },
+        {
+          "id": "unique-insight-crossbow-equip",
+          "before": 152,
+          "after": 872,
+          "reportedDelta": 720
+        },
+        {
+          "id": "unique-insight-bow-equip",
+          "before": 152,
+          "after": 872,
+          "reportedDelta": 720
+        },
+        {
+          "id": "unique-lore-equip",
+          "before": 152,
+          "after": 4255,
+          "reportedDelta": 4103
+        },
+        {
+          "id": "unique-heir-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "unique-leoric-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "pants-capacity-dodge-equip",
+          "before": 152,
+          "after": 2156,
+          "reportedDelta": 2004
+        },
+        {
+          "id": "pants-barrier-equip",
+          "before": 152,
+          "after": 2156,
+          "reportedDelta": 2004
+        },
+        {
+          "id": "unique-eyes-in-dark-equip",
+          "before": 152,
+          "after": 2156,
+          "reportedDelta": 2004
+        },
+        {
+          "id": "unique-shard-verathiel-equip",
+          "before": 152,
+          "after": 352,
+          "reportedDelta": 200
+        },
+        {
+          "id": "unique-rustbitten-equip",
+          "before": 152,
+          "after": 352,
+          "reportedDelta": 200
+        },
+        {
+          "id": "unique-shrouded-gift-equip",
+          "before": 152,
+          "after": 2156,
+          "reportedDelta": 2004
+        },
+        {
+          "id": "conditional-thorns-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        }
+      ],
+      "f4VectorDeclaredCount": 27,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.93",
+      "label": "Base Ranged Weapon Damage",
+      "group": "offensive",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "(ComputeArsenal2HRangedWeaponMinAttack()+ComputeArsenal2HRangedWeaponMaxAttack())/2",
+      "sourceRuntimeExpression": "(ComputeArsenal2HRangedWeaponMinAttack()+ComputeArsenal2HRangedWeaponMaxAttack())/2",
+      "sourceDependencies": [],
+      "sourceFunctionNodes": [
+        "ComputeArsenal2HRangedWeaponMinAttack",
+        "ComputeArsenal2HRangedWeaponMaxAttack"
+      ],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "BOUNDED_TESTED_INPUTS_ONLY",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "bow-multipliers-equip",
+          "before": 0,
+          "after": 3140,
+          "reportedDelta": 3140
+        },
+        {
+          "id": "bow-stats-equip",
+          "before": 0,
+          "after": 3140,
+          "reportedDelta": 3140
+        },
+        {
+          "id": "bow-stats-flat-weapon-damage",
+          "before": 3140,
+          "after": 3454,
+          "reportedDelta": 314
+        },
+        {
+          "id": "bow-extra-equip",
+          "before": 0,
+          "after": 3140,
+          "reportedDelta": 3140
+        },
+        {
+          "id": "unique-insight-crossbow-equip",
+          "before": 0,
+          "after": 4184,
+          "reportedDelta": 4184
+        },
+        {
+          "id": "unique-insight-bow-equip",
+          "before": 0,
+          "after": 3485,
+          "reportedDelta": 3485
+        },
+        {
+          "id": "unique-zephyr-bow-equip",
+          "before": 0,
+          "after": 3140,
+          "reportedDelta": 3140
+        },
+        {
+          "id": "unique-zephyr-crossbow-equip",
+          "before": 0,
+          "after": 3839,
+          "reportedDelta": 3839
+        },
+        {
+          "id": "unique-infinity-bow-equip",
+          "before": 0,
+          "after": 3454,
+          "reportedDelta": 3454
+        },
+        {
+          "id": "unique-haunted-crossbow-equip",
+          "before": 0,
+          "after": 3839,
+          "reportedDelta": 3839
+        }
+      ],
+      "f4VectorDeclaredCount": 10,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.46",
+      "label": "Base Dual Wielded Weapon Damage",
+      "group": "offensive",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "(ComputeArsenalDualWieldWeaponMinAttack()+ComputeArsenalDualWieldWeaponMaxAttack())/2",
+      "sourceRuntimeExpression": "(ComputeArsenalDualWieldWeaponMinAttack()+ComputeArsenalDualWieldWeaponMaxAttack())/2",
+      "sourceDependencies": [],
+      "sourceFunctionNodes": [
+        "ComputeArsenalDualWieldWeaponMinAttack",
+        "ComputeArsenalDualWieldWeaponMaxAttack"
+      ],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "unique-pattern-equip",
+          "before": 0,
+          "after": 1440,
+          "reportedDelta": 1440
+        },
+        {
+          "id": "unique-kings-grace-equip",
+          "before": 0,
+          "after": 1570,
+          "reportedDelta": 1570
+        },
+        {
+          "id": "unique-broodmother-equip",
+          "before": 0,
+          "after": 1440,
+          "reportedDelta": 1440
+        },
+        {
+          "id": "unique-shard-verathiel-equip",
+          "before": 0,
+          "after": 1570,
+          "reportedDelta": 1570
+        },
+        {
+          "id": "unique-rustbitten-equip",
+          "before": 0,
+          "after": 1440,
+          "reportedDelta": 1440
+        }
+      ],
+      "f4VectorDeclaredCount": 5,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.114",
+      "label": "Weapon Speed",
+      "group": "offensive",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "1+Weapon_Speed_Percent_Bonus-Weapon_Speed_Percent_Reduction",
+      "sourceRuntimeExpression": "1+Weapon_Speed_Percent_Bonus-Weapon_Speed_Percent_Reduction",
+      "sourceDependencies": [
+        "Weapon_Speed_Percent_Bonus",
+        "Weapon_Speed_Percent_Reduction"
+      ],
+      "sourceFunctionNodes": [],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "BOUNDED_TESTED_INPUTS_ONLY",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "bow-multipliers-equip",
+          "before": 1,
+          "after": 1.1,
+          "reportedDelta": 0.10000000000000009
+        },
+        {
+          "id": "bow-stats-equip",
+          "before": 1,
+          "after": 1.1,
+          "reportedDelta": 0.10000000000000009
+        },
+        {
+          "id": "bow-extra-equip",
+          "before": 1,
+          "after": 1.1,
+          "reportedDelta": 0.10000000000000009
+        },
+        {
+          "id": "unique-pattern-equip",
+          "before": 1,
+          "after": 1.2,
+          "reportedDelta": 0.19999999999999996
+        },
+        {
+          "id": "unique-kings-grace-equip",
+          "before": 1,
+          "after": 1.1,
+          "reportedDelta": 0.10000000000000009
+        },
+        {
+          "id": "unique-insight-crossbow-equip",
+          "before": 1,
+          "after": 0.9,
+          "reportedDelta": -0.09999999999999998
+        },
+        {
+          "id": "unique-insight-bow-equip",
+          "before": 1,
+          "after": 1.1,
+          "reportedDelta": 0.10000000000000009
+        },
+        {
+          "id": "unique-zephyr-bow-equip",
+          "before": 1,
+          "after": 1.1,
+          "reportedDelta": 0.10000000000000009
+        },
+        {
+          "id": "unique-zephyr-crossbow-equip",
+          "before": 1,
+          "after": 0.9,
+          "reportedDelta": -0.09999999999999998
+        },
+        {
+          "id": "unique-broodmother-equip",
+          "before": 1,
+          "after": 1.2,
+          "reportedDelta": 0.19999999999999996
+        },
+        {
+          "id": "unique-infinity-bow-equip",
+          "before": 1,
+          "after": 1.1,
+          "reportedDelta": 0.10000000000000009
+        },
+        {
+          "id": "unique-shard-verathiel-equip",
+          "before": 1,
+          "after": 1.1,
+          "reportedDelta": 0.10000000000000009
+        },
+        {
+          "id": "unique-haunted-crossbow-equip",
+          "before": 1,
+          "after": 0.9,
+          "reportedDelta": -0.09999999999999998
+        },
+        {
+          "id": "unique-rustbitten-equip",
+          "before": 1,
+          "after": 1.2,
+          "reportedDelta": 0.19999999999999996
+        }
+      ],
+      "f4VectorDeclaredCount": 14,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.3",
+      "label": "Attack Speed Bonus",
+      "group": "offensive",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "Min(1,Attack_Speed_Percent_Bonus-Attack_Speed_Percent_Reduction)+Min(1,Cast_Speed_Percent_Temp_Bonus-Cast_Speed_Percent_Temp_Reduction)",
+      "sourceRuntimeExpression": "Min(1,Attack_Speed_Percent_Bonus-Attack_Speed_Percent_Reduction)+Min(1,Cast_Speed_Percent_Temp_Bonus-Cast_Speed_Percent_Temp_Reduction)",
+      "sourceDependencies": [
+        "Attack_Speed_Percent_Bonus",
+        "Attack_Speed_Percent_Reduction",
+        "Cast_Speed_Percent_Temp_Bonus",
+        "Cast_Speed_Percent_Temp_Reduction"
+      ],
+      "sourceFunctionNodes": [
+        "Min"
+      ],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "BOUNDED_TESTED_INPUTS_ONLY",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "bow-stats-attack-speed",
+          "before": 0,
+          "after": 0.2,
+          "reportedDelta": 0.2
+        },
+        {
+          "id": "gloves-extra-attack-speed",
+          "before": 0,
+          "after": 0.1,
+          "reportedDelta": 0.1
+        },
+        {
+          "id": "unique-insight-crossbow-equip",
+          "before": 0,
+          "after": 0.35,
+          "reportedDelta": 0.35
+        },
+        {
+          "id": "unique-insight-bow-equip",
+          "before": 0,
+          "after": 0.35,
+          "reportedDelta": 0.35
+        },
+        {
+          "id": "unique-zephyr-bow-equip",
+          "before": 0,
+          "after": 0.25,
+          "reportedDelta": 0.25
+        },
+        {
+          "id": "unique-zephyr-crossbow-equip",
+          "before": 0,
+          "after": 0.25,
+          "reportedDelta": 0.25
+        },
+        {
+          "id": "unique-leoric-equip",
+          "before": 0,
+          "after": 0.1,
+          "reportedDelta": 0.1
+        },
+        {
+          "id": "unique-rustbitten-equip",
+          "before": 0,
+          "after": 0.1,
+          "reportedDelta": 0.1
+        }
+      ],
+      "f4VectorDeclaredCount": 8,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.4",
+      "label": "Critical Strike Chance",
+      "group": "offensive",
+      "evidenceKind": "F4_F5_BOUNDED_MIXED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "PARTIAL",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "Crit_Percent_Base + Crit_Percent_Bonus",
+      "sourceRuntimeExpression": "ComputeCritChance()",
+      "sourceDependencies": [],
+      "sourceFunctionNodes": [
+        "ComputeCritChance"
+      ],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Positive/base contributions are discriminated, including published negative raw observation; negative clamp branch was not safely perturbed."
+      ],
+      "f5Unresolved": [
+        "No generic completeness beyond patch 3.2.1.73552 and recorded branches is claimed."
+      ],
+      "f4SourceVectors": [
+        {
+          "id": "level-60",
+          "before": 0.0519,
+          "after": 0.05165,
+          "reportedDelta": -0.0002500000000000002
+        },
+        {
+          "id": "level-50",
+          "before": 0.05165,
+          "after": 0.0514,
+          "reportedDelta": -0.0002500000000000002
+        },
+        {
+          "id": "bow-stats-crit-chance",
+          "before": 0.0519,
+          "after": 0.1519,
+          "reportedDelta": 0.1
+        },
+        {
+          "id": "bow-extra-all-stats",
+          "before": 0.0519,
+          "after": 0.056900000000000006,
+          "reportedDelta": 0.0050000000000000044
+        },
+        {
+          "id": "gloves-offense-crit-chance",
+          "before": 0.0519,
+          "after": 0.13690000000000002,
+          "reportedDelta": 0.08500000000000002
+        },
+        {
+          "id": "unique-pattern-equip",
+          "before": 0.0519,
+          "after": 0.25209000000000004,
+          "reportedDelta": 0.20019000000000003
+        },
+        {
+          "id": "unique-insight-crossbow-equip",
+          "before": 0.0519,
+          "after": 0.5209,
+          "reportedDelta": 0.46900000000000003
+        },
+        {
+          "id": "unique-insight-bow-equip",
+          "before": 0.0519,
+          "after": 0.5209,
+          "reportedDelta": 0.46900000000000003
+        },
+        {
+          "id": "unique-shard-verathiel-equip",
+          "before": 0.0519,
+          "after": 0.054400000000000004,
+          "reportedDelta": 0.0025000000000000022
+        },
+        {
+          "id": "unique-rustbitten-equip",
+          "before": 0.0519,
+          "after": 0.054400000000000004,
+          "reportedDelta": 0.0025000000000000022
+        }
+      ],
+      "f4VectorDeclaredCount": 10,
+      "f5IncrementalEvidence": {
+        "verificationMode": "F4_CONTROLLED_POSITIVE_PLUS_F5_NEGATIVE_BRANCH",
+        "causalSubtestStatus": "BOUNDED_VERIFIED",
+        "observedFixtureCount": 9,
+        "reason": "F4 controlled positive inputs plus two independent negative fixtures (-0.9376805 and -0.935625) prove the Character Stats row does not clamp at zero."
+      },
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.1",
+      "label": "All Damage",
+      "group": "offensive",
+      "evidenceKind": "F4_F5_BOUNDED_MIXED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "PARTIAL",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "(1+Damage_Percent_All_From_Skills)*(1+Multiplicative_Damage_Percent_All_From_Skills)-1",
+      "sourceRuntimeExpression": "(1+Damage_Percent_All_From_Skills)*(1+Multiplicative_Damage_Percent_All_From_Skills)-1",
+      "sourceDependencies": [
+        "Damage_Percent_All_From_Skills",
+        "Multiplicative_Damage_Percent_All_From_Skills"
+      ],
+      "sourceFunctionNodes": [],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Two independent displayed contributions were observed, but zero baseline makes additive versus multiplicative bucket ordering non-discriminating."
+      ],
+      "f5Unresolved": [
+        "No generic completeness beyond patch 3.2.1.73552 and recorded branches is claimed."
+      ],
+      "f4SourceVectors": [
+        {
+          "id": "unique-heir-equip",
+          "before": 0,
+          "after": 0.1499999999999999,
+          "reportedDelta": 0.1499999999999999
+        },
+        {
+          "id": "unique-shard-verathiel-equip",
+          "before": 0,
+          "after": 0.5,
+          "reportedDelta": 0.5
+        }
+      ],
+      "f4VectorDeclaredCount": 2,
+      "f5IncrementalEvidence": {
+        "verificationMode": "F4_CONTROLLED_SOURCES_PLUS_F5_NONZERO_BUCKET_ORDER",
+        "causalSubtestStatus": "BOUNDED_VERIFIED",
+        "observedFixtureCount": 9,
+        "reason": "F4 direct sources establish causality; nine non-zero profiles discriminate multiplicative operation order against tooltip source factors."
+      },
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.58",
+      "label": "Maximum Life",
+      "group": "defensive",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "PlayerHealthMax()",
+      "sourceRuntimeExpression": "PlayerHealthMax()",
+      "sourceDependencies": [],
+      "sourceFunctionNodes": [
+        "PlayerHealthMax"
+      ],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "level-60",
+          "before": 1526.3204999999998,
+          "after": 859.9970000000001,
+          "reportedDelta": -666.3234999999997
+        },
+        {
+          "id": "level-50",
+          "before": 859.9970000000001,
+          "after": 484.56045000000006,
+          "reportedDelta": -375.43655
+        },
+        {
+          "id": "bow-extra-maximum-life-percent",
+          "before": 1526.3204999999998,
+          "after": 1770.5317799999996,
+          "reportedDelta": 244.21127999999976
+        },
+        {
+          "id": "helm-defense-maximum-life",
+          "before": 1526.3204999999998,
+          "after": 2976.3205,
+          "reportedDelta": 1450
+        },
+        {
+          "id": "unique-infinity-bow-equip",
+          "before": 1526.3204999999998,
+          "after": 5926.3205,
+          "reportedDelta": 4400
+        },
+        {
+          "id": "unique-rustbitten-equip",
+          "before": 1526.3204999999998,
+          "after": 2976.3205,
+          "reportedDelta": 1450
+        }
+      ],
+      "f4VectorDeclaredCount": 6,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.180",
+      "label": "Healing Received",
+      "group": "defensive",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "Bonus_Healing_Received_Percent+Core_Stat_Bonus_Healing_Received_Percent",
+      "sourceRuntimeExpression": "Bonus_Healing_Received_Percent+Core_Stat_Bonus_Healing_Received_Percent",
+      "sourceDependencies": [
+        "Bonus_Healing_Received_Percent",
+        "Core_Stat_Bonus_Healing_Received_Percent"
+      ],
+      "sourceFunctionNodes": [],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "level-60",
+          "before": 0.026949884500000004,
+          "after": 0.023449899500000003,
+          "reportedDelta": -0.0034999850000000006
+        },
+        {
+          "id": "level-50",
+          "before": 0.023449899500000003,
+          "after": 0.019949914500000002,
+          "reportedDelta": -0.0034999850000000006
+        },
+        {
+          "id": "bow-extra-all-stats",
+          "before": 0.026949884500000004,
+          "after": 0.0969495845,
+          "reportedDelta": 0.0699997
+        },
+        {
+          "id": "helm-utility-b-healing-received",
+          "before": 0.026949884500000004,
+          "after": 0.1769498845,
+          "reportedDelta": 0.15
+        },
+        {
+          "id": "unique-pattern-equip",
+          "before": 0.026949884500000004,
+          "after": 0.029644872950000005,
+          "reportedDelta": 0.0026949884500000014
+        },
+        {
+          "id": "unique-insight-crossbow-equip",
+          "before": 0.026949884500000004,
+          "after": 0.1529493445,
+          "reportedDelta": 0.12599946
+        },
+        {
+          "id": "unique-insight-bow-equip",
+          "before": 0.026949884500000004,
+          "after": 0.1529493445,
+          "reportedDelta": 0.12599946
+        },
+        {
+          "id": "unique-shard-verathiel-equip",
+          "before": 0.026949884500000004,
+          "after": 0.061949734500000006,
+          "reportedDelta": 0.03499985
+        },
+        {
+          "id": "unique-rustbitten-equip",
+          "before": 0.026949884500000004,
+          "after": 0.061949734500000006,
+          "reportedDelta": 0.03499985
+        }
+      ],
+      "f4VectorDeclaredCount": 9,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.431",
+      "label": "Armor",
+      "group": "defensive",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "Armor_Total = (Armor + Core_Stat_Armor_Bonus + Armor_Bonus) * (1 + Armor_Percent)",
+      "sourceRuntimeExpression": "Armor_Total",
+      "sourceDependencies": [
+        "Armor_Total"
+      ],
+      "sourceFunctionNodes": [],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "level-60",
+          "before": 152,
+          "after": 132,
+          "reportedDelta": -20
+        },
+        {
+          "id": "level-50",
+          "before": 132,
+          "after": 112,
+          "reportedDelta": -20
+        },
+        {
+          "id": "bow-extra-all-stats",
+          "before": 152,
+          "after": 552,
+          "reportedDelta": 400
+        },
+        {
+          "id": "gloves-offense-equip",
+          "before": 152,
+          "after": 953,
+          "reportedDelta": 801
+        },
+        {
+          "id": "gloves-extra-equip",
+          "before": 152,
+          "after": 953,
+          "reportedDelta": 801
+        },
+        {
+          "id": "helm-resist-a-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "helm-resist-b-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "helm-resist-c-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "helm-extra-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "helm-utility-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "helm-utility-b-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "helm-defense-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "helm-defense-flat-armor",
+          "before": 1755,
+          "after": 2980,
+          "reportedDelta": 1225
+        },
+        {
+          "id": "helm-defense-b-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "unique-pattern-equip",
+          "before": 152,
+          "after": 167.20000000000002,
+          "reportedDelta": 15.200000000000017
+        },
+        {
+          "id": "unique-insight-crossbow-equip",
+          "before": 152,
+          "after": 872,
+          "reportedDelta": 720
+        },
+        {
+          "id": "unique-insight-bow-equip",
+          "before": 152,
+          "after": 872,
+          "reportedDelta": 720
+        },
+        {
+          "id": "unique-lore-equip",
+          "before": 152,
+          "after": 4255,
+          "reportedDelta": 4103
+        },
+        {
+          "id": "unique-heir-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "unique-leoric-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        },
+        {
+          "id": "pants-capacity-dodge-equip",
+          "before": 152,
+          "after": 2156,
+          "reportedDelta": 2004
+        },
+        {
+          "id": "pants-barrier-equip",
+          "before": 152,
+          "after": 2156,
+          "reportedDelta": 2004
+        },
+        {
+          "id": "unique-eyes-in-dark-equip",
+          "before": 152,
+          "after": 2156,
+          "reportedDelta": 2004
+        },
+        {
+          "id": "unique-shard-verathiel-equip",
+          "before": 152,
+          "after": 352,
+          "reportedDelta": 200
+        },
+        {
+          "id": "unique-rustbitten-equip",
+          "before": 152,
+          "after": 352,
+          "reportedDelta": 200
+        },
+        {
+          "id": "unique-shrouded-gift-equip",
+          "before": 152,
+          "after": 2156,
+          "reportedDelta": 2004
+        },
+        {
+          "id": "conditional-thorns-equip",
+          "before": 152,
+          "after": 1755,
+          "reportedDelta": 1603
+        }
+      ],
+      "f4VectorDeclaredCount": 27,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.357",
+      "label": "All Damage Reduction",
+      "group": "defensive",
+      "evidenceKind": "F4_F5_BOUNDED_MIXED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "PARTIAL",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "Damage_Reduction",
+      "sourceRuntimeExpression": "Damage_Reduction",
+      "sourceDependencies": [
+        "Damage_Reduction"
+      ],
+      "sourceFunctionNodes": [],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Only one All Damage Reduction source was available."
+      ],
+      "f5Unresolved": [
+        "No generic completeness beyond patch 3.2.1.73552 and recorded branches is claimed."
+      ],
+      "f4SourceVectors": [
+        {
+          "id": "unique-lore-equip",
+          "before": 0,
+          "after": 0.09999999999999998,
+          "reportedDelta": 0.09999999999999998
+        }
+      ],
+      "f4VectorDeclaredCount": 1,
+      "f5IncrementalEvidence": {
+        "verificationMode": "F4_CONTROLLED_SOURCE_PLUS_F5_MULTI_SOURCE_ORDER",
+        "causalSubtestStatus": "BOUNDED_VERIFIED",
+        "observedFixtureCount": 9,
+        "reason": "F4 direct DR source plus F5 single- and multi-source profiles verify 1-product(1-r_i) stacking within observed scope."
+      },
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.104",
+      "label": "Barrier Bonus",
+      "group": "defensive",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "Barrier_Bonus_Percent",
+      "sourceRuntimeExpression": "Barrier_Bonus_Percent",
+      "sourceDependencies": [
+        "Barrier_Bonus_Percent"
+      ],
+      "sourceFunctionNodes": [],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "gloves-extra-barrier-generation",
+          "before": 0,
+          "after": 0.15,
+          "reportedDelta": 0.15
+        },
+        {
+          "id": "pants-barrier-barrier-generation",
+          "before": 0,
+          "after": 0.15,
+          "reportedDelta": 0.15
+        }
+      ],
+      "f4VectorDeclaredCount": 2,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.61",
+      "label": "Dodge Chance",
+      "group": "defensive",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "Min(1,(Cannot_Dodge>0?0:Dodge_Chance_Bonus)*(1-Dodge_Chance_Reduction_Percent)+Dodge_Chance_Bonus_Additive+Core_Stat_Dodge_Chance_Bonus)",
+      "sourceRuntimeExpression": "Min(1,(Cannot_Dodge>0?0:Dodge_Chance_Bonus)*(1-Dodge_Chance_Reduction_Percent)+Dodge_Chance_Bonus_Additive+Core_Stat_Dodge_Chance_Bonus)",
+      "sourceDependencies": [
+        "Cannot_Dodge",
+        "Dodge_Chance_Bonus",
+        "Dodge_Chance_Reduction_Percent",
+        "Dodge_Chance_Bonus_Additive",
+        "Core_Stat_Dodge_Chance_Bonus"
+      ],
+      "sourceFunctionNodes": [
+        "Min"
+      ],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "level-60",
+          "before": 0.004739373925,
+          "after": 0.004139453175,
+          "reportedDelta": -0.0005999207499999999
+        },
+        {
+          "id": "level-50",
+          "before": 0.004139453175,
+          "after": 0.0035395324250000002,
+          "reportedDelta": -0.0005999207499999999
+        },
+        {
+          "id": "bow-extra-all-stats",
+          "before": 0.004739373925,
+          "after": 0.016737788925,
+          "reportedDelta": 0.011998415
+        },
+        {
+          "id": "helm-extra-dexterity",
+          "before": 0.004739373925,
+          "after": 0.011998415,
+          "reportedDelta": 0.007259041075
+        },
+        {
+          "id": "unique-pattern-equip",
+          "before": 0.004739373925,
+          "after": 0.0052133113175,
+          "reportedDelta": 0.0004739373925000002
+        },
+        {
+          "id": "unique-insight-crossbow-equip",
+          "before": 0.004739373925,
+          "after": 0.026336520925000002,
+          "reportedDelta": 0.021597147000000004
+        },
+        {
+          "id": "unique-insight-bow-equip",
+          "before": 0.004739373925,
+          "after": 0.026336520925000002,
+          "reportedDelta": 0.021597147000000004
+        },
+        {
+          "id": "unique-zephyr-bow-equip",
+          "before": 0.004739373925,
+          "after": 0.254739373925,
+          "reportedDelta": 0.25
+        },
+        {
+          "id": "unique-zephyr-crossbow-equip",
+          "before": 0.004739373925,
+          "after": 0.254739373925,
+          "reportedDelta": 0.25
+        },
+        {
+          "id": "pants-capacity-dodge-dodge-chance",
+          "before": 0.004739373925,
+          "after": 0.08473937392499996,
+          "reportedDelta": 0.07999999999999996
+        },
+        {
+          "id": "unique-shard-verathiel-equip",
+          "before": 0.004739373925,
+          "after": 0.010738581425000001,
+          "reportedDelta": 0.005999207500000001
+        },
+        {
+          "id": "unique-rustbitten-equip",
+          "before": 0.004739373925,
+          "after": 0.010738581425000001,
+          "reportedDelta": 0.005999207500000001
+        }
+      ],
+      "f4VectorDeclaredCount": 12,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.81",
+      "label": "Maximum Energy",
+      "group": "utility",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "UIPrimaryResourceMax()",
+      "sourceRuntimeExpression": "UIPrimaryResourceMax()",
+      "sourceDependencies": [],
+      "sourceFunctionNodes": [
+        "UIPrimaryResourceMax"
+      ],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "helm-utility-maximum-resource",
+          "before": 100,
+          "after": 120,
+          "reportedDelta": 20
+        },
+        {
+          "id": "unique-lore-equip",
+          "before": 100,
+          "after": 125,
+          "reportedDelta": 25
+        },
+        {
+          "id": "unique-shard-verathiel-equip",
+          "before": 100,
+          "after": 120,
+          "reportedDelta": 20
+        }
+      ],
+      "f4VectorDeclaredCount": 3,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.286",
+      "label": "Energy Regeneration",
+      "group": "utility",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "Resource_Regen_Total(3)*(1+Resource_Gain_And_Regen_Bonus_Percent_All_Primary)*(1+Resource_Regen_All_Primary_Bonus_Percent)",
+      "sourceRuntimeExpression": "Resource_Regen_Total(3)*(1+Resource_Gain_And_Regen_Bonus_Percent_All_Primary)*(1+Resource_Regen_All_Primary_Bonus_Percent)",
+      "sourceDependencies": [
+        "Resource_Gain_And_Regen_Bonus_Percent_All_Primary",
+        "Resource_Regen_All_Primary_Bonus_Percent"
+      ],
+      "sourceFunctionNodes": [
+        "Resource_Regen_Total"
+      ],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "level-60",
+          "before": 8.0304,
+          "after": 8.0264,
+          "reportedDelta": -0.0039999999999995595
+        },
+        {
+          "id": "level-50",
+          "before": 8.0264,
+          "after": 8.0224,
+          "reportedDelta": -0.004000000000001336
+        },
+        {
+          "id": "bow-extra-all-stats",
+          "before": 8.0304,
+          "after": 8.1104,
+          "reportedDelta": 0.08000000000000007
+        },
+        {
+          "id": "helm-utility-b-energy-regeneration",
+          "before": 8.0304,
+          "after": 12.0456,
+          "reportedDelta": 4.0152
+        },
+        {
+          "id": "unique-pattern-equip",
+          "before": 8.0304,
+          "after": 8.03344,
+          "reportedDelta": 0.0030400000000003757
+        },
+        {
+          "id": "unique-insight-crossbow-equip",
+          "before": 8.0304,
+          "after": 38.8284,
+          "reportedDelta": 30.798000000000002
+        },
+        {
+          "id": "unique-insight-bow-equip",
+          "before": 8.0304,
+          "after": 38.8284,
+          "reportedDelta": 30.798000000000002
+        },
+        {
+          "id": "unique-shard-verathiel-equip",
+          "before": 8.0304,
+          "after": 8.0704,
+          "reportedDelta": 0.03999999999999915
+        },
+        {
+          "id": "unique-rustbitten-equip",
+          "before": 8.0304,
+          "after": 8.0704,
+          "reportedDelta": 0.03999999999999915
+        }
+      ],
+      "f4VectorDeclaredCount": 9,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.80",
+      "label": "Movement Speed",
+      "group": "utility",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "Movement_Scalar_Total",
+      "sourceRuntimeExpression": "Movement_Scalar_Total",
+      "sourceDependencies": [
+        "Movement_Scalar_Total"
+      ],
+      "sourceFunctionNodes": [],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "unique-zephyr-bow-equip",
+          "before": 1,
+          "after": 1.25,
+          "reportedDelta": 0.25
+        },
+        {
+          "id": "unique-zephyr-crossbow-equip",
+          "before": 1,
+          "after": 1.25,
+          "reportedDelta": 0.25
+        },
+        {
+          "id": "unique-lore-equip",
+          "before": 1,
+          "after": 1.15,
+          "reportedDelta": 0.1499999999999999
+        },
+        {
+          "id": "unique-heir-equip",
+          "before": 1,
+          "after": 1.24,
+          "reportedDelta": 0.24
+        },
+        {
+          "id": "unique-infinity-bow-equip",
+          "before": 1,
+          "after": 1.35,
+          "reportedDelta": 0.3500000000000001
+        },
+        {
+          "id": "unique-shrouded-gift-equip",
+          "before": 1,
+          "after": 1.24,
+          "reportedDelta": 0.24
+        }
+      ],
+      "f4VectorDeclaredCount": 6,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.92",
+      "label": "Cooldown Reduction",
+      "group": "utility",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "Min(0.75,Power_Cooldown_Reduction_Percent_All)",
+      "sourceRuntimeExpression": "Min(0.75,Power_Cooldown_Reduction_Percent_All)",
+      "sourceDependencies": [
+        "Power_Cooldown_Reduction_Percent_All"
+      ],
+      "sourceFunctionNodes": [
+        "Min"
+      ],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "helm-utility-cooldown-reduction",
+          "before": 0,
+          "after": 0.07999999999999996,
+          "reportedDelta": 0.07999999999999996
+        },
+        {
+          "id": "unique-eyes-in-dark-equip",
+          "before": 0,
+          "after": 0.07999999999999996,
+          "reportedDelta": 0.07999999999999996
+        }
+      ],
+      "f4VectorDeclaredCount": 2,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.181",
+      "label": "Lucky Hit Chance Bonus",
+      "group": "utility",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "Combat_Effect_Chance_Bonus",
+      "sourceRuntimeExpression": "Combat_Effect_Chance_Bonus",
+      "sourceDependencies": [
+        "Combat_Effect_Chance_Bonus"
+      ],
+      "sourceFunctionNodes": [],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "gloves-extra-lucky-hit",
+          "before": 0,
+          "after": 0.09,
+          "reportedDelta": 0.09
+        },
+        {
+          "id": "helm-defense-b-lucky-hit",
+          "before": 0,
+          "after": 0.09,
+          "reportedDelta": 0.09
+        },
+        {
+          "id": "unique-kings-grace-equip",
+          "before": 0,
+          "after": 0.5,
+          "reportedDelta": 0.5
+        }
+      ],
+      "f4VectorDeclaredCount": 3,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.367",
+      "label": "Experience Bonus",
+      "group": "utility",
+      "evidenceKind": "F4_BOUNDED_CONTROLLED",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "VERIFIED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "BOUNDED_ONLY",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "(1+Experience_Bonus_Percent)*(1+Multiplicative_Experience_Bonus_Percent)+-1",
+      "sourceRuntimeExpression": "(1+Experience_Bonus_Percent)*(1+Multiplicative_Experience_Bonus_Percent)+-1",
+      "sourceDependencies": [
+        "Experience_Bonus_Percent",
+        "Multiplicative_Experience_Bonus_Percent"
+      ],
+      "sourceFunctionNodes": [],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "Generic completeness beyond recorded inputs/branches is not claimed."
+      ],
+      "f5Unresolved": [],
+      "f4SourceVectors": [
+        {
+          "id": "difficulty-t2",
+          "before": 3,
+          "after": 4,
+          "reportedDelta": 1
+        },
+        {
+          "id": "difficulty-t4",
+          "before": 4,
+          "after": 6,
+          "reportedDelta": 2
+        }
+      ],
+      "f4VectorDeclaredCount": 2,
+      "f5IncrementalEvidence": null,
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    },
+    {
+      "metricId": "maxroll.heroDetails.70",
+      "label": "Damage Reduction",
+      "group": "pvp",
+      "evidenceKind": "F5_OBSERVED_INVARIANT_NONCAUSAL",
+      "formulaVerificationStatus": "BOUNDED_VERIFIED",
+      "fullFormulaVerified": false,
+      "maxrollGraphParity": "NOT_RUN",
+      "f4HistoricalStatus": "BLOCKED",
+      "f5HistoricalStatus": "VERIFIED",
+      "causalIsolation": "NOT_ESTABLISHED",
+      "f4SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+      "f5SourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208927560",
+      "sourceFormulaCandidate": "Class_Damage_Reduction_Percent_PvP",
+      "sourceRuntimeExpression": "Class_Damage_Reduction_Percent_PvP",
+      "sourceDependencies": [
+        "Class_Damage_Reduction_Percent_PvP"
+      ],
+      "sourceFunctionNodes": [],
+      "sourceOrdering": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+      "sourceContributionCompleteness": "PARTIAL",
+      "sourceUnresolved": [
+        "No discriminating UI-supported input for this metric was available in the isolated editable Rogue fixture; runtime expression remains source-observed only."
+      ],
+      "f5Unresolved": [
+        "No generic completeness beyond patch 3.2.1.73552 and recorded branches is claimed."
+      ],
+      "f4SourceVectors": [],
+      "f4VectorDeclaredCount": 0,
+      "f5IncrementalEvidence": {
+        "verificationMode": "PATCH_CONSTANT_VERIFIED_9_FIXTURES",
+        "causalSubtestStatus": "BOUNDED_VERIFIED",
+        "observedFixtureCount": 9,
+        "reason": "Nine independent Rogue fixtures return exact raw 0.9199219 and tooltip Base 92.0%; no configurable input exists in this patch-level metric."
+      },
+      "promotionDecision": "RETAIN_BOUNDED_SOURCE_ONLY",
+      "requiredForFullVerification": "Enumerate all applicable source families/conditions/helper order; controlled independent vectors and regression per supported patch/class; verify missing conditional branches and raw/display precision. Do not infer from this source audit."
+    }
+  ],
+  "f5RoundingVectors": {
+    "allDamage": [
+      {
+        "candidateId": "published-f1",
+        "inputs": [
+          {
+            "source": "Paragon",
+            "pct": 213.6,
+            "multiplicative": true
+          },
+          {
+            "source": "Seal",
+            "pct": 20,
+            "multiplicative": true
+          },
+          {
+            "source": "Paragon",
+            "pct": 21.9,
+            "multiplicative": true
+          },
+          {
+            "source": "Stats",
+            "pct": 50,
+            "multiplicative": true
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 5.8810112,
+        "sourceRaw": 5.878875622400002,
+        "reportAbsoluteError": 0.002135577599998051
+      },
+      {
+        "candidateId": "death-trap-s15",
+        "inputs": [
+          {
+            "source": "Paragon",
+            "pct": 243.1,
+            "multiplicative": true
+          },
+          {
+            "source": "Seal",
+            "pct": 20,
+            "multiplicative": true
+          },
+          {
+            "source": "Paragon",
+            "pct": 15.4,
+            "multiplicative": true
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 3.751248799999999,
+        "sourceRaw": 3.7512488,
+        "reportAbsoluteError": 8.881784197001252e-16
+      },
+      {
+        "candidateId": "dok-poison",
+        "inputs": [
+          {
+            "source": "Paragon",
+            "pct": 95,
+            "multiplicative": true
+          },
+          {
+            "source": "Paragon",
+            "pct": 15.4,
+            "multiplicative": true
+          },
+          {
+            "source": "Heir of Perdition",
+            "pct": 80,
+            "multiplicative": true
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 3.05054,
+        "sourceRaw": 3.05054,
+        "reportAbsoluteError": 0
+      },
+      {
+        "candidateId": "rapid-fire-cold",
+        "inputs": [
+          {
+            "source": "Paragon",
+            "pct": 186.6,
+            "multiplicative": true
+          },
+          {
+            "source": "Paragon",
+            "pct": 15.4,
+            "multiplicative": true
+          },
+          {
+            "source": "Heir of Perdition",
+            "pct": 80,
+            "multiplicative": true
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 4.953255199999999,
+        "sourceRaw": 4.952216600000002,
+        "reportAbsoluteError": 0.0010385999999975581
+      },
+      {
+        "candidateId": "roa-cdr",
+        "inputs": [
+          {
+            "source": "Paragon",
+            "pct": 90,
+            "multiplicative": true
+          },
+          {
+            "source": "Paragon",
+            "pct": 28.8,
+            "multiplicative": true
+          },
+          {
+            "source": "Vehement Brawler's Aspect",
+            "pct": 55,
+            "multiplicative": true
+          },
+          {
+            "source": "Tibault's Will",
+            "pct": 20,
+            "multiplicative": true
+          },
+          {
+            "source": "Danse Macabre",
+            "pct": 60,
+            "multiplicative": true
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 6.2828672,
+        "sourceRaw": 6.282098201600001,
+        "reportAbsoluteError": 0.0007689983999989991
+      },
+      {
+        "candidateId": "roa-community",
+        "inputs": [
+          {
+            "source": "Paragon",
+            "pct": 176.6,
+            "multiplicative": true
+          },
+          {
+            "source": "Paragon",
+            "pct": 15.4,
+            "multiplicative": true
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 2.1919639999999996,
+        "sourceRaw": 2.1913870000000006,
+        "reportAbsoluteError": 0.0005769999999989395
+      },
+      {
+        "candidateId": "demon-hunter-s15",
+        "inputs": [
+          {
+            "source": "Paragon",
+            "pct": 140,
+            "multiplicative": true
+          },
+          {
+            "source": "Seal",
+            "pct": 20,
+            "multiplicative": true
+          },
+          {
+            "source": "Sea Lord's Fine Gloves",
+            "pct": 78,
+            "multiplicative": true
+          },
+          {
+            "source": "Danse Macabre",
+            "pct": 60,
+            "multiplicative": true
+          },
+          {
+            "source": "Legacy of the Sightless",
+            "pct": 60,
+            "multiplicative": true
+          },
+          {
+            "source": "Stats",
+            "pct": 158.1,
+            "multiplicative": true
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 32.87197030400001,
+        "sourceRaw": 32.87525120000001,
+        "reportAbsoluteError": 0.0032808959999997
+      },
+      {
+        "candidateId": "death-trap-old",
+        "inputs": [
+          {
+            "source": "Paragon",
+            "pct": 130,
+            "multiplicative": true
+          },
+          {
+            "source": "Paragon",
+            "pct": 10.4,
+            "multiplicative": true
+          },
+          {
+            "source": "Heir of Perdition",
+            "pct": 60,
+            "multiplicative": true
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 3.0627200000000006,
+        "sourceRaw": 3.0627200000000014,
+        "reportAbsoluteError": 8.881784197001252e-16
+      },
+      {
+        "candidateId": "rain-arrows-old",
+        "inputs": [
+          {
+            "source": "Paragon",
+            "pct": 100,
+            "multiplicative": true
+          },
+          {
+            "source": "Paragon",
+            "pct": 21.9,
+            "multiplicative": true
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 1.4379999999999997,
+        "sourceRaw": 1.4376320000000002,
+        "reportAbsoluteError": 0.00036799999999947985
+      }
+    ],
+    "allDamageReduction": [
+      {
+        "candidateId": "published-f1",
+        "inputs": [
+          {
+            "source": "Chest Armor",
+            "pct": -15,
+            "multiplicative": true
+          },
+          {
+            "source": "Aspect of Debilitating Toxins",
+            "pct": -30,
+            "multiplicative": true
+          },
+          {
+            "source": "Stats",
+            "pct": -25,
+            "multiplicative": true
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 0.55375,
+        "sourceRaw": 0.55375,
+        "reportAbsoluteError": 0
+      },
+      {
+        "candidateId": "death-trap-s15",
+        "inputs": [
+          {
+            "source": "Stats",
+            "pct": 41.3,
+            "multiplicative": false
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 0.413,
+        "sourceRaw": 0.4125000000000001,
+        "reportAbsoluteError": 0.0004999999999998894
+      },
+      {
+        "candidateId": "dok-poison",
+        "inputs": [
+          {
+            "source": "Aspect of Debilitating Toxins",
+            "pct": 30,
+            "multiplicative": false
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 0.3,
+        "sourceRaw": 0.30000000000000004,
+        "reportAbsoluteError": 5.551115123125783e-17
+      },
+      {
+        "candidateId": "roa-cdr",
+        "inputs": [
+          {
+            "source": "Preparation",
+            "pct": 15,
+            "multiplicative": false
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 0.15,
+        "sourceRaw": 0.15000000000000002,
+        "reportAbsoluteError": 2.7755575615628914e-17
+      },
+      {
+        "candidateId": "roa-community",
+        "inputs": [
+          {
+            "source": "Aspect of Debilitating Toxins",
+            "pct": 30,
+            "multiplicative": false
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 0.3,
+        "sourceRaw": 0.30000000000000004,
+        "reportAbsoluteError": 5.551115123125783e-17
+      },
+      {
+        "candidateId": "demon-hunter-s15",
+        "inputs": [
+          {
+            "source": "Preparation",
+            "pct": -15,
+            "multiplicative": true
+          },
+          {
+            "source": "Mot",
+            "pct": -40,
+            "multiplicative": true
+          },
+          {
+            "source": "Applied Alchemy",
+            "pct": -30,
+            "multiplicative": true
+          },
+          {
+            "source": "Explosive",
+            "pct": -15,
+            "multiplicative": true
+          },
+          {
+            "source": "Dark Shroud",
+            "pct": -20,
+            "multiplicative": true
+          },
+          {
+            "source": "Legacy of the Sightless",
+            "pct": -30,
+            "multiplicative": true
+          },
+          {
+            "source": "Stats",
+            "pct": -79.1,
+            "multiplicative": true
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 0.964484212,
+        "sourceRaw": 0.9644204875,
+        "reportAbsoluteError": 0.0000637245000000286
+      }
+    ],
+    "criticalStrikeChance": [
+      {
+        "candidateId": "published-f1",
+        "inputs": [
+          {
+            "source": "Base",
+            "pct": 5,
+            "multiplicative": false
+          },
+          {
+            "source": "Stats",
+            "pct": -98.8,
+            "multiplicative": false
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": -0.938,
+        "sourceRaw": -0.9376804999999999,
+        "reportAbsoluteError": 0.0003195000000000281
+      },
+      {
+        "candidateId": "death-trap-s15",
+        "inputs": [
+          {
+            "source": "Base",
+            "pct": 5,
+            "multiplicative": false
+          },
+          {
+            "source": "Stats",
+            "pct": 34.7,
+            "multiplicative": false
+          },
+          {
+            "source": "Ranged Weapon",
+            "pct": 7.5,
+            "multiplicative": false
+          },
+          {
+            "source": "Mainhand",
+            "pct": 3.8,
+            "multiplicative": false
+          },
+          {
+            "source": "Offhand",
+            "pct": 3.8,
+            "multiplicative": false
+          },
+          {
+            "source": "Left Ring",
+            "pct": 6.3,
+            "multiplicative": false
+          },
+          {
+            "source": "Amulet",
+            "pct": 10.6,
+            "multiplicative": false
+          },
+          {
+            "source": "Paragon",
+            "pct": 3,
+            "multiplicative": false
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 0.747,
+        "sourceRaw": 0.7460168000000001,
+        "reportAbsoluteError": 0.0009831999999998509
+      },
+      {
+        "candidateId": "dok-poison",
+        "inputs": [
+          {
+            "source": "Base",
+            "pct": 5,
+            "multiplicative": false
+          },
+          {
+            "source": "Stats",
+            "pct": 1.6,
+            "multiplicative": false
+          },
+          {
+            "source": "Helm",
+            "pct": 15,
+            "multiplicative": false
+          },
+          {
+            "source": "Left Ring",
+            "pct": 15,
+            "multiplicative": false
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 0.366,
+        "sourceRaw": 0.3661,
+        "reportAbsoluteError": 0.00009999999999998899
+      },
+      {
+        "candidateId": "rapid-fire-cold",
+        "inputs": [
+          {
+            "source": "Base",
+            "pct": 5,
+            "multiplicative": false
+          },
+          {
+            "source": "Stats",
+            "pct": 2.5,
+            "multiplicative": false
+          },
+          {
+            "source": "Helm",
+            "pct": 12,
+            "multiplicative": false
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 0.195,
+        "sourceRaw": 0.194639,
+        "reportAbsoluteError": 0.0003610000000000002
+      },
+      {
+        "candidateId": "roa-cdr",
+        "inputs": [
+          {
+            "source": "Base",
+            "pct": 5,
+            "multiplicative": false
+          },
+          {
+            "source": "Stats",
+            "pct": 1.1,
+            "multiplicative": false
+          },
+          {
+            "source": "Ranged Weapon",
+            "pct": 10,
+            "multiplicative": false
+          },
+          {
+            "source": "Mainhand",
+            "pct": 5,
+            "multiplicative": false
+          },
+          {
+            "source": "Offhand",
+            "pct": 5,
+            "multiplicative": false
+          },
+          {
+            "source": "Gloves",
+            "pct": 10.6,
+            "multiplicative": false
+          },
+          {
+            "source": "Right Ring",
+            "pct": 6.3,
+            "multiplicative": false
+          },
+          {
+            "source": "Left Ring",
+            "pct": 6.3,
+            "multiplicative": false
+          },
+          {
+            "source": "Amulet",
+            "pct": 10.6,
+            "multiplicative": false
+          },
+          {
+            "source": "Critical Strike",
+            "pct": 5,
+            "multiplicative": false
+          },
+          {
+            "source": "Silhouette",
+            "pct": 5.8,
+            "multiplicative": false
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 0.7070000000000001,
+        "sourceRaw": 0.7067570825000002,
+        "reportAbsoluteError": 0.00024291749999982848
+      },
+      {
+        "candidateId": "roa-community",
+        "inputs": [
+          {
+            "source": "Base",
+            "pct": 5,
+            "multiplicative": false
+          },
+          {
+            "source": "Stats",
+            "pct": 1.4,
+            "multiplicative": false
+          },
+          {
+            "source": "Ranged Weapon",
+            "pct": 7.5,
+            "multiplicative": false
+          },
+          {
+            "source": "Mainhand",
+            "pct": 3.8,
+            "multiplicative": false
+          },
+          {
+            "source": "Offhand",
+            "pct": 3.8,
+            "multiplicative": false
+          },
+          {
+            "source": "Gloves",
+            "pct": 10.6,
+            "multiplicative": false
+          },
+          {
+            "source": "Right Ring",
+            "pct": 7.5,
+            "multiplicative": false
+          },
+          {
+            "source": "Left Ring",
+            "pct": 7.5,
+            "multiplicative": false
+          },
+          {
+            "source": "Amulet",
+            "pct": 10.6,
+            "multiplicative": false
+          },
+          {
+            "source": "Seal",
+            "pct": 10,
+            "multiplicative": false
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 0.677,
+        "sourceRaw": 0.676239,
+        "reportAbsoluteError": 0.0007610000000000117
+      },
+      {
+        "candidateId": "demon-hunter-s15",
+        "inputs": [
+          {
+            "source": "Base",
+            "pct": 5,
+            "multiplicative": false
+          },
+          {
+            "source": "Stats",
+            "pct": -98.6,
+            "multiplicative": false
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": -0.9359999999999999,
+        "sourceRaw": -0.9356249999999999,
+        "reportAbsoluteError": 0.0003750000000000142
+      },
+      {
+        "candidateId": "death-trap-old",
+        "inputs": [
+          {
+            "source": "Base",
+            "pct": 5,
+            "multiplicative": false
+          },
+          {
+            "source": "Stats",
+            "pct": 1.5,
+            "multiplicative": false
+          },
+          {
+            "source": "Helm",
+            "pct": 20,
+            "multiplicative": false
+          },
+          {
+            "source": "Offhand",
+            "pct": 11.6,
+            "multiplicative": false
+          },
+          {
+            "source": "Paragon",
+            "pct": 3,
+            "multiplicative": false
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 0.41100000000000003,
+        "sourceRaw": 0.4108040625,
+        "reportAbsoluteError": 0.00019593750000002075
+      },
+      {
+        "candidateId": "rain-arrows-old",
+        "inputs": [
+          {
+            "source": "Base",
+            "pct": 5,
+            "multiplicative": false
+          },
+          {
+            "source": "Stats",
+            "pct": 2.3,
+            "multiplicative": false
+          }
+        ],
+        "reportedExpectedFromRoundedTooltips": 0.07300000000000001,
+        "sourceRaw": 0.07280706237500001,
+        "reportAbsoluteError": 0.00019293762500000033
+      }
+    ],
+    "pvpDamageReduction": [
+      {
+        "candidateId": "published-f1",
+        "sourceRaw": 0.9199219,
+        "sourceDisplay": "92.0%"
+      },
+      {
+        "candidateId": "death-trap-s15",
+        "sourceRaw": 0.9199219,
+        "sourceDisplay": "92.0%"
+      },
+      {
+        "candidateId": "dok-poison",
+        "sourceRaw": 0.9199219,
+        "sourceDisplay": "92.0%"
+      },
+      {
+        "candidateId": "rapid-fire-cold",
+        "sourceRaw": 0.9199219,
+        "sourceDisplay": "92.0%"
+      },
+      {
+        "candidateId": "roa-cdr",
+        "sourceRaw": 0.9199219,
+        "sourceDisplay": "92.0%"
+      },
+      {
+        "candidateId": "roa-community",
+        "sourceRaw": 0.9199219,
+        "sourceDisplay": "92.0%"
+      },
+      {
+        "candidateId": "demon-hunter-s15",
+        "sourceRaw": 0.9199219,
+        "sourceDisplay": "92.0%"
+      },
+      {
+        "candidateId": "death-trap-old",
+        "sourceRaw": 0.9199219,
+        "sourceDisplay": "92.0%"
+      },
+      {
+        "candidateId": "rain-arrows-old",
+        "sourceRaw": 0.9199219,
+        "sourceDisplay": "92.0%"
+      }
+    ]
+  },
+  "approval": {
+    "formulaDesign": "PENDING_OWNER_MAN_01",
+    "referenceGolden": "NOT_APPROVED",
+    "merge": "NOT_AUTHORIZED"
+  }
+}
