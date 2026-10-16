@@ -84,6 +84,17 @@ class SourceMetricInventoryTests(unittest.TestCase):
     def test_no_auto_audit_grade(self):
         self.reject(lambda c: c["provenance"].__setitem__("sourceReview", "VERIFIED"))
 
+    def test_f4_dependency_missing_fails(self):
+        self.reject(lambda c: c["metrics"][0].__setitem__("f4ObservedDependencies", None))
+
+    def test_f4_historical_status_cannot_be_faked(self):
+        self.reject(lambda c: c["metrics"][0]["f4ObservedDependencies"]
+                    .__setitem__("f4HistoricalStatus", "PARTIAL"))
+
+    def test_f4_source_origin_not_golden(self):
+        self.reject(lambda c: c["metrics"][0]["f4ObservedDependencies"]
+                    .__setitem__("provenance", "APPROVED_GOLDEN"))
+
     def test_denominator_not_global(self):
         self.reject(lambda c: c["coverage"].__setitem__("denominator", 999))
 
