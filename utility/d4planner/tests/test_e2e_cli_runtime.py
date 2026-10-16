@@ -1261,3 +1261,137 @@ def test_uat_attach_only_missing_nvda_or_d4_fails_without_process_launch(tmp_pat
         assert not calls
         assert (read_json(paths.runtime_state) or {})["state"] == "BLOCKED"
         supervisor.store.close()
+
+
+
+@pytest.mark.parametrize("nvda_was_running", [False, True])
+def test_119_uat_start_nvda_orchestrates_missing_nvda_only(tmp_path, nvda_was_running):
+    """Attach to existing game/Steam, start only missing NVDA; never restart."""
+    from d4planner.controller import load_profile
+
+    paths = RuntimePaths(tmp_path / ("nvda-already-running" if nvda_was_running else "nvda-absent"))
+    runtime = E2ERuntime(paths)
+    if not nvda_was_running:
+        runtime._nvda = None
+    calls = []
+
+    def forbidden(name):
+        def rejected(*_args, **_kwargs):
+            calls.append(name)
+            raise AssertionError("Unexpected UAT mutation: " + name)
+        return rejected
+
+    runtime.ensure_addon_runtime = forbidden("update NVDA addon")
+    runtime.restart_nvda = forbidden("restart NVDA")
+    runtime.launch_game = forbidden("launch Diablo IV")
+    original_nvda = runtime._nvda
+
+    def start_missing_nvda(*, timeout=15.0):
+        calls.append("start missing NVDA")
+        assert runtime._nvda is None
+        runtime._nvda = ProcessInfo("nvda_noUIAccess", 401, session_id=1)
+        return runtime._nvda
+
+    runtime.ensure_nvda_running = start_missing_nvda
+    supervisor = Supervisor(
+        paths=paths, runtime=runtime,
+        path_manager=UserPathManager(paths, MemoryPathBackend(user_path="", machine_path="MACHINE")),
+        silent=False,
+        controller_profile=load_profile("xbox16"),
+        isolated=True, uat_start_nvda=True,
+        marker_capture=FakeMarkerCapture(),
+    )
+    try:
+        assert supervisor.bootstrap(start_marker=True) == RuntimeState.RUNNING
+        assert calls == ([] if nvda_was_running else ["start missing NVDA"])
+        assert runtime._nvda is (original_nvda if nvda_was_running else runtime._nvda)
+        assert supervisor.status.extras["runtime"]["uatStartNvda"] is True
+        assert supervisor.status.extras["nvdaStartedBySupervisor"] is (not nvda_was_running)
+        assert supervisor.status.extras["inputMarker"]["state"] == "ACTIVE"
+        assert supervisor.status.game.pid == 300
+        assert runtime._steam.pid == 200 and runtime._game.pid == 300
+        assert runtime.launch_calls == 0
+    finally:
+        if supervisor.store:
+            supervisor.store.close()
+
+
+@pytest.mark.parametrize("missing", ["steam", "game", "wrong-session"])
+def test_119_uat_start_nvda_preflights_game_before_nvda_launch(tmp_path, missing):
+    paths = RuntimePaths(tmp_path / missing)
+    runtime = E2ERuntime(paths)
+    runtime._nvda = None
+    if missing == "steam":
+        runtime._steam = None
+    elif missing == "game":
+        runtime._game = None
+    else:
+        runtime._game = ProcessInfo("Diablo IV", 300, session_id=2)
+    calls = []
+
+    def forbidden(name):
+        def rejected(*_args, **_kwargs):
+            calls.append(name)
+            raise AssertionError("Must not mutate processes: " + name)
+        return rejected
+
+    runtime.ensure_nvda_running = forbidden("start NVDA")
+    runtime.restart_nvda = forbidden("restart NVDA")
+    runtime.launch_game = forbidden("launch Diablo IV")
+    runtime.ensure_addon_runtime = forbidden("change addon")
+    supervisor = Supervisor(
+        paths=paths, runtime=runtime,
+        path_manager=UserPathManager(paths, MemoryPathBackend(user_path="", machine_path="MACHINE")),
+        isolated=True, uat_start_nvda=True,
+        marker_capture=FakeMarkerCapture(),
+    )
+    try:
+        assert supervisor.bootstrap(start_marker=True) == RuntimeState.BLOCKED
+        assert "requires" in supervisor.status.detail.lower()
+        assert calls == []
+        assert supervisor.status.extras["runtime"]["uatStartNvda"] is True
+    finally:
+        if supervisor.store:
+            supervisor.store.close()
+
+
+def test_119_uat_start_nvda_cli_contract_and_mutual_exclusion(tmp_path):
+    parser = cli.build_parser()
+    args = parser.parse_args(["start", "--isolated", "--uat-start-nvda", "-d",
+                              "--controller-profile", "xbox16", "--speech"])
+    assert args.uat_start_nvda is True
+    assert args.uat_attach_only is False
+    assert args.speech is True
+    paths = RuntimePaths(tmp_path / "not-started")
+    assert cli.command_start(paths, speech=True, isolated=False, detached=True,
+                             timeout=1, uat_start_nvda=True) == 4
+    assert cli.command_start(paths, speech=True, isolated=True, detached=True,
+                             timeout=1, uat_start_nvda=True, uat_attach_only=True) == 4
+    assert not paths.root.exists()
+
+
+def test_119_windows_scheduled_task_passes_uat_start_nvda_to_daemon(tmp_path):
+    from d4planner.runtime.windows import WindowsRuntime
+
+    paths = RuntimePaths(tmp_path / "scheduled")
+    runtime = WindowsRuntime(paths)
+    captured = []
+
+    runtime.require_windows = lambda: None
+    runtime.prepare_interactive_tasks = lambda: None
+    def reconcile(**kw):
+        captured.append(kw)
+        return "$prepared=$true"
+    runtime._task_reconcile_script = reconcile
+    class Result:
+        returncode = 0
+        stderr = ""
+    runtime._powershell = lambda ps: Result()
+    runtime.launch_supervisor_task(speech=True, isolated=True,
+                                   controller_profile="xbox16", uat_start_nvda=True)
+    assert len(captured) == 1
+    assert "--uat-start-nvda" in captured[0]["arguments"]
+    assert "--uat-attach-only" not in captured[0]["arguments"]
+    assert "--home" in captured[0]["arguments"]
+    assert "--speech" in captured[0]["arguments"]
+    assert "--controller-profile xbox16" in captured[0]["arguments"]
