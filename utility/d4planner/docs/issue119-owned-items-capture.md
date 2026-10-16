@@ -80,6 +80,48 @@ were observed, not that all 16 controls were pressed; \`PASS\` in
 The final API completeness gate will require Real-A proof of each context/tab,
 snapshot boundaries, ownership, duplicate items, and movement.
 
+## P0-06 blocked on 2026-10-17: status diagnostics revision
+
+Owner-supplied ZIP from baseline HEAD b0c9075470815588ea9ffca0e649f4b2e8708871
+contained **only report.json**, five PASS checks and P0-06 BLOCKED, without
+\`d4planner status --json\` stdout/stderr/exit code. Therefore the actual
+cause cannot be established from the first ZIP. It could be a missing CLI,
+CLI startup error or a stale / stopped supervisor (which deliberately returns
+a nonzero CLI exit code). Never assume a product failure from this evidence.
+
+The revised runner writes:
+- \`status-before.stdout.txt\`: exact JSON/raw stdout;
+- \`status-before.stderr.txt\`: exact CLI stderr;
+- \`status-before.invocation.json\`: command resolution, exit code and errors;
+- \`status-before.json\`: parsed status, **even when exit code=2 and JSON is valid**.
+
+\`P0-06 PASS\` now means CLI emitted a valid status JSON contract, **not**
+that the runtime is healthy; \`P0-07 PASS\` requires \`RUNNING\`, alive
+supervisor, effective capture lease and zero exit. Missing CLI/invalid JSON
+remains P0-06 BLOCKED. P0-07 is BLOCKED for stale/absent runtime.
+
+### How to repeat only the blocked Preflight (no gameplay changes)
+
+~~~powershell
+cd C:\Workspace\StreamOps-I119
+git status --porcelain     # should be empty; if not, STOP and inspect changes
+git fetch origin
+git switch --detach origin/feat/119-owned-items-cli
+git rev-parse HEAD
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\acceptance\issue119-probe.ps1 -Mode Preflight -ExpectedHead (git rev-parse HEAD)
+~~~
+
+Share the generated fresh ZIP; the script will not modify processes or game.
+If P0-07 BLOCKED, the JSON now identifies whether state is STOPPED, STALE,
+WAITING_FOR_GAME, etc. Do not auto-start/stop any service to pass a preflight.
+
+**Revision evidence (CI):** Windows runner syntax + missing-runtime BLOCKED
+smoke PASS; two additional Windows regression cases PASS:
+(a) valid status JSON and exit=2 -> P0-06 PASS, P0-07 BLOCKED with stderr/ZIP;
+(b) malformed JSON and exit=0 -> P0-06 BLOCKED with original stdout.
+The actual Windows A path has **not yet been verified**. Existing Python
+synthetic SQLite probe tests remain independent.
+
 ## Automated tests
 
 ~~~powershell
