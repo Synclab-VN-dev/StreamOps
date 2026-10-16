@@ -72,3 +72,23 @@ parity remain unverified. The staged DSL uses existing #107 `modify_stat` + expr
 CI fails closed for a changed source value, patch, level, tolerance or attempted
 raw-helper/cap/Golden promotion. The source vector is independent of a future
 Graph implementation but **is not itself an approved complete Golden fixture**.
+
+## Deterministic on-demand agent handoff
+
+`audit_agent.py` provides an offline, **non-generative evidence-to-candidate audit**:
+it reads the immutable #106 catalog, pinned reviewed F7.2 source vectors, and
+the candidate #107 DSL v1 expression. It constructs a **50-row review queue**
+without guessing the other 49 formulas. The one staged Fire AST must contain
+the exact source-bounded multipliers (`0.9`, `15`), references to
+`actor.resistance.fire.total` and `actor.level`, and the required source
+limitations. Numeric coefficient/binding tampering or fake Golden/Verified
+promotion fails closed.
+
+    python utility/d4-rule-registry/audit_agent.py --report artifacts/109-agent-audit.json
+
+Report state: G1 candidate DSL shape valid; G2 actor binding UNRESOLVED, G3
+only observed rounded display evidence, G4 50/50 ID coverage but just ONE
+DSL candidate, 0 active rules. This is not an LLM inference workflow or full
+agent-generated patch discovery. New candidate formula proposals must arrive
+with independent source evidence; agent must never fabricate expected values
+or promote its own formula prediction to Golden.

@@ -48,6 +48,8 @@ jobs:
             --report artifacts/d4-rule-registry/synthetic-rollback.json
           python utility/d4-rule-registry/research/check_fire_dr.py \
             --report artifacts/d4-rule-registry/fire-dr-f7-2-source-replay.json
+          python utility/d4-rule-registry/audit_agent.py \
+            --report artifacts/d4-rule-registry/agent-source-to-candidate.json
           python - <<'PY'
           import json
           from pathlib import Path
@@ -60,6 +62,13 @@ jobs:
           assert c["sourceBounded"]==27 and c["sourcePartial"]==23
           assert c["fullParity"]=="BLOCKED" and r["publishStatus"]=="NOT_APPROVED"
           assert all(x["activeRule"] is None and x["calculatedValue"] is None for x in r["metrics"])
+          a=json.loads(Path("artifacts/d4-rule-registry/agent-source-to-candidate.json").read_text())
+          assert a["status"]=="PASS_SOURCE_CANDIDATE_AUDIT_ONLY"
+          assert a["g1CandidateDsl"]==1 and a["g2VerifiedBindings"]==0
+          assert a["g3CompleteFormulas"]==0 and a["g4VisibleMetricIds"]==50
+          assert a["activeRules"]==0 and a["approvedGoldens"]==0
+          assert a["candidatePromotion"]=="NOT_ALLOWED" and a["maxrollParity"]=="BLOCKED_NOT_RUN"
+          assert len(a["reviewQueue"])==50
           f=json.loads(Path("artifacts/d4-rule-registry/fire-dr-f7-2-source-replay.json").read_text())
           assert f["status"]=="PASS_BOUNDED_RESEARCH_REPLAY_ONLY" and f["sourceMatch"]==5
           assert not f["approvedGolden"] and not f["promotableToActiveRule"]
