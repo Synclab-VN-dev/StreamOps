@@ -146,7 +146,13 @@ def check_candidate(record, metric_ids):
     dsl = record.get("dsl")
     if dsl is not None:
         require(isinstance(dsl, dict), "INVALID_RULE_DSL")
-        from d4_rulekit.schema_check import validate_rule
+        from d4_rulekit.schema_check import load_schema, validate_rule
+        known = {item["properties"]["op"]["const"]
+                 for item in load_schema()["$defs"]["action"]["oneOf"]}
+        for mechanic in dsl.get("mechanics", []):
+            for action in mechanic.get("actions", []):
+                if isinstance(action, dict) and action.get("op") not in known:
+                    raise RegistryError("SCHEMA_EXTENSION_REQUIRED: " + str(action.get("op")))
         errors = validate_rule(dsl)
         require(not errors, "G1_SCHEMA_FAIL: " + json.dumps(errors, sort_keys=True)[:500])
         require(dsl.get("schemaVersion") == "1.0.0"

@@ -142,7 +142,7 @@ class RegistryTests(unittest.TestCase):
                                   "actions":[{"op":"execute_python","code":"1+1"}]}],
                     "verification":{"status":"draft","confidence":"unknown",
                                     "evidence":[{"kind":"synthetic_fixture","note":"test"}]}}
-        with self.assertRaisesRegex(reg.RegistryError,"G1_SCHEMA_FAIL"):
+        with self.assertRaisesRegex(reg.RegistryError,"SCHEMA_EXTENSION_REQUIRED"):
             reg.check_candidate(c, self.ids)
 
     def test_synthetic_patch_cycle_reproducible_with_all_delta_kinds(self):
@@ -163,13 +163,30 @@ class RegistryTests(unittest.TestCase):
         with self.assertRaisesRegex(reg.RegistryError,"REAL_PATCH_MUTATION_FORBIDDEN"):
             reg.simulate_synthetic_patch_cycle(data)
 
+    def test_immutable_fire_source_candidate_without_executable_formula(self):
+        records = reg.load(HERE / "candidates.json")
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["metricId"], "maxroll.heroDetails.446")
+        self.assertEqual(records[0]["sourceCommit"],
+                         "918aa4b0e1845d34909a8b847a324b445e3805a7")
+        self.assertIsNone(records[0]["dsl"])
+        result = reg.snapshot(self.catalog, self.source_hash, self.policy, records)
+        fire = next(x for x in result["metrics"] if x["metricId"] == records[0]["metricId"])
+        self.assertEqual(fire["ruleStatus"], "CANDIDATE_UNVERIFIED")
+        self.assertIsNone(fire["activeRule"])
+        self.assertIsNone(fire["calculatedValue"])
+
     def test_cli_success_and_fail_closed_error_report(self):
         with tempfile.TemporaryDirectory() as td:
             good = Path(td) / "report.json"
             proc = subprocess.run([sys.executable, str(HERE/"registry.py"), "--report", str(good)],
                                   capture_output=True, text=True)
             self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
-            self.assertEqual(reg.load(good)["status"], "PASS_REGISTRY_STRUCTURE_ONLY")
+            report = reg.load(good)
+            self.assertEqual(report["status"], "PASS_REGISTRY_STRUCTURE_ONLY")
+            self.assertEqual(report["coverage"]["candidateUnverified"], 1)
+            self.assertEqual(report["coverage"]["unknownRuleCount"], 49)
+            self.assertEqual(report["coverage"]["activeRules"], 0)
             bad = Path(td) / "bad.json"
             proc = subprocess.run([sys.executable, str(HERE/"registry.py"), "--report", str(bad),
                                    "--catalog", str(HERE/"policy.json")],

@@ -15,7 +15,7 @@ It does not crawl Maxroll, modify any equipment/profile, publish anything, or ch
   None is full VERIFIED; Golden approved 0; real Graph-vs-Maxroll parity NOT_RUN.
 - Registry initial state: 50 UNKNOWN active rules, 0 numeric outputs. Candidate
   entries may carry research evidence but remain CANDIDATE_UNVERIFIED even when
-  their proposed DSL passes G1. The current candidates.json is empty.
+  their proposed DSL passes G1. candidates.json contains ONE evidence-linked bounded Fire Resistance display hypothesis from F7.2, WITHOUT executable DSL. It remains CANDIDATE_UNVERIFIED; the other 49 active rules remain UNKNOWN.
 
 ## Run locally (Python 3.12)
 

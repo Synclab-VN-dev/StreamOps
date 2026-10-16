@@ -54,7 +54,7 @@ jobs:
           assert r["status"]=="PASS_REGISTRY_STRUCTURE_ONLY"
           assert c["denominator"]==50 and c["identified"]==50
           assert c["fullyVerifiedFormulas"]==0 and c["approvedGolden"]==0
-          assert c["activeRules"]==0 and c["unknownRuleCount"]==50
+          assert c["activeRules"]==0 and c["unknownRuleCount"]==49 and c["candidateUnverified"]==1
           assert c["sourceBounded"]==27 and c["sourcePartial"]==23
           assert c["fullParity"]=="BLOCKED" and r["publishStatus"]=="NOT_APPROVED"
           assert all(x["activeRule"] is None and x["calculatedValue"] is None for x in r["metrics"])

@@ -1,1 +1,25 @@
-[]
+[
+  {
+    "id": "candidate.rogue.fire_resistance_dr_display_f7_2",
+    "metricId": "maxroll.heroDetails.446",
+    "gamePatch": "3.2.1",
+    "gameBuild": "73552",
+    "classId": "rogue",
+    "state": "CANDIDATE_UNVERIFIED",
+    "sourceKind": "MAXROLL_SOURCE_OBSERVATION",
+    "sourceUrl": "https://maxroll.gg/d4/planner/1g1any0x#3",
+    "sourceCommit": "918aa4b0e1845d34909a8b847a324b445e3805a7",
+    "sourceEvidence": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6212668905",
+    "researchGrade": "BOUNDED_VERIFIED",
+    "dependencies": [],
+    "dsl": null,
+    "goldenStatus": "NOT_APPROVED",
+    "verificationGates": {
+      "G1": "NOT_RUN",
+      "G2": "NOT_RUN",
+      "G3": "NOT_RUN",
+      "G4": "NOT_RUN"
+    },
+    "ownerReview": null
+  }
+]
