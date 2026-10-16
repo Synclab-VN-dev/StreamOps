@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from decimal import Decimal, InvalidOperation
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -58,6 +59,8 @@ def _rows(rows, name, errors, *, expected=False):
         if not isinstance(key, str) or not key or not isinstance(group, str):
             errors.append(name + ": missing metric ID/group")
             continue
+        if not key.startswith(group + "."):
+            errors.append(name + ": metric ID does not match group " + key)
         if key in keys:
             errors.append(name + ": duplicate metric ID " + key)
         keys.add(key)
@@ -103,6 +106,13 @@ def verify(fixture_doc, golden=MISSING, actual=MISSING, formulas=MISSING):
         blocks.append("GOLDEN_NOT_INDEPENDENTLY_APPROVED")
     if not golden.get("evidenceManifestSha256") or not SHA.fullmatch(str(golden["evidenceManifestSha256"])):
         blocks.append("INVALID_GOLDEN_MANIFEST")
+    # Ensure the captured metric payload has not changed since independent review.
+    payload = {"fixture": golden.get("fixture"), "metrics": golden.get("metrics"),
+               "vectors": golden.get("vectors")}
+    digest = hashlib.sha256(json.dumps(
+        payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    if golden.get("capturedPayloadSha256") != digest:
+        blocks.append("GOLDEN_CAPTURE_PAYLOAD_HASH_MISMATCH")
     if actual.get("source") != "FORMULA_GRAPH":
         blocks.append("ACTUAL_NOT_FROM_FORMULA_GRAPH")
     for key in ("graphSha256", "ruleSetSha256"):
@@ -141,14 +151,25 @@ def verify(fixture_doc, golden=MISSING, actual=MISSING, formulas=MISSING):
         if len(gold_vectors) < 2 or len(actual_vectors) != len(gold_vectors):
             blocks.append("INSUFFICIENT_INDEPENDENT_CHANGED_INPUT_VECTORS")
         fingerprints = set()
+        source_vector_ids = {v.get("id") for v in gold_vectors if isinstance(v, dict)}
+        if len(source_vector_ids) != len(gold_vectors):
+            blocks.append("DUPLICATE_GOLDEN_VECTOR_IDS")
+        for rule in rule_map.values():
+            refs = rule.get("independentVectorRefs", [])
+            if len(set(refs)) < 2 or not set(refs).issubset(source_vector_ids):
+                blocks.append("FORMULA_VECTOR_PROVENANCE_UNMATCHED_" + rule["id"])
         for i, (g, a) in enumerate(zip(gold_vectors, actual_vectors)):
             stamp = g.get("inputSnapshotSha256", "")
             if (not SHA.fullmatch(str(stamp)) or stamp == f.get("inputSnapshotSha256")
                     or stamp in fingerprints or stamp != a.get("inputSnapshotSha256")):
                 blocks.append("VECTOR_FINGERPRINT_MISMATCH_" + str(i))
             fingerprints.add(stamp)
-            if g.get("source") != "MAXROLL_BROWSER_CAPTURE":
-                blocks.append("VECTOR_EXPECTED_SOURCE_INVALID_" + str(i))
+            if (g.get("source") != "MAXROLL_BROWSER_CAPTURE"
+                    or g.get("inputCompleteness") != "COMPLETE"
+                    or not g.get("captureEvidenceRef")):
+                blocks.append("VECTOR_EXPECTED_SOURCE_OR_INPUT_INVALID_" + str(i))
+            if a.get("source") != "FORMULA_GRAPH":
+                blocks.append("VECTOR_ACTUAL_NOT_FROM_GRAPH_" + str(i))
             gx = _rows(g.get("metrics"), "golden-vector-" + str(i), blocks, expected=True)
             ax = _rows(a.get("metrics"), "actual-vector-" + str(i), blocks)
             if set(gx) != set(ax) or set(gx) != set(expected):
