@@ -17,8 +17,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Run synthetic comparator unit and negative tests (NOT Maxroll parity)
-        run: python -m unittest discover -s utility/d4-maxroll-parity/tests -p 'test_*.py' -v
       - name: Enforce fail-closed absent 50-row Golden and computed Graph output
         shell: bash
         run: |
@@ -40,6 +38,8 @@ jobs:
           assert "MISSING_ACTUAL_ARTIFACT" in report["blockers"], report
           assert "MISSING_FORMULAS_ARTIFACT" in report["blockers"], report
           PY
+      - name: Run synthetic comparator unit and negative tests (NOT Maxroll parity)
+        run: python -m unittest discover -s utility/d4-maxroll-parity/tests -p 'test_*.py' -v
       - name: Archive independent-golden readiness evidence
         if: always()
         uses: actions/upload-artifact@v4
