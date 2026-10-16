@@ -173,6 +173,38 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: 'Issue119 probe PowerShell syntax and fail-closed preflight'
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 120
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $script = (Resolve-Path ./scripts/acceptance/issue119-probe.ps1).Path
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $script, [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if (@($parseErrors).Count -ne 0) {
+            throw "Issue119 PowerShell parse errors: $(@($parseErrors) -join '; ')"
+          }
+          python -m py_compile ./scripts/acceptance/issue119_probe.py
+          if ($LASTEXITCODE -ne 0) { throw 'Issue119 probe py_compile failed' }
+          $evidence = Join-Path $env:RUNNER_TEMP 'issue119-preflight'
+          $PSNativeCommandUseErrorActionPreference = $false
+          & pwsh -NoProfile -File $script -Mode Preflight -EvidenceDir $evidence -ExpectedHead (git rev-parse HEAD)
+          $outcome = $LASTEXITCODE
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($outcome -ne 2) {
+            throw "Issue119 headless runner should BLOCKED=2, got $outcome"
+          }
+          $report = Get-Content (Join-Path $evidence 'report.json') -Raw | ConvertFrom-Json
+          if ($report.status -ne 'BLOCKED' -or @($report.problems).Count -lt 1) {
+            throw 'Issue119 headless preflight did not report a documented blocker'
+          }
+          if (-not (Test-Path "$evidence.zip")) {
+            throw 'Issue119 headless preflight did not export a ZIP'
+          }
+          $global:LASTEXITCODE = 0
+
       - name: Install D4Planner dev dependencies
         if: steps.changes.outputs.d4planner == 'true'
         run: python -m pip install -e 'utility/d4planner[dev]'
