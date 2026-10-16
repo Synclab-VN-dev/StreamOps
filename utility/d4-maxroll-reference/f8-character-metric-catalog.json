@@ -27,7 +27,10 @@
     "sourceSnapshots": "evidence/StreamOps-106/F5-rogue-gap-closure/rogue-50-f5-full50-snapshots.json",
     "sourceReview": "PROVISIONAL_UNTIL_PER_METRIC_AUDIT",
     "fireIndependentReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6212668905",
-    "taxonomyOwnerDecision": "2026-10-16 user approved three-state classification and 50-row research handoff"
+    "taxonomyOwnerDecision": "2026-10-16 user approved three-state classification and 50-row research handoff",
+    "sourceF4Commit": "3ae928e5701d2de9ac995973b39e9b91d789f4bb",
+    "sourceF4Matrix": "evidence/StreamOps-106/F4-rogue-50/rogue-50-f4-verification-matrix.json",
+    "sourceF4EvidenceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
   },
   "coverage": {
     "denominator": 50,
@@ -78,7 +81,29 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "((EffectiveMin + EffectiveDelta/2) * (1 + MainHandDamagePercent) * (1 + Dexterity*1.25*0.001) * (1 + Damage_Percent_All_From_Skills)) * Attacks_Per_Second_Total",
+        "runtimeExpression": "dps",
+        "directDependencies": [
+          "dps"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "computed context",
+          "all contributing metric families"
+        ],
+        "contributionCompleteness": "BOUNDED_TESTED_INPUTS_ONLY",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 16,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.901",
@@ -107,6 +132,28 @@
         "candidateExpression": "Average(GetToughness(0), GetToughness(1), GetToughness(2), GetToughness(3), GetToughness(4), GetToughness(5))",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "PARTIAL",
+        "f4VerificationStatus": "RUNTIME_SOURCE_OBSERVED_WITH_PARTIAL_CAUSAL_EVIDENCE",
+        "reportedFormulaCandidate": "Average(GetToughness(0), GetToughness(1), GetToughness(2), GetToughness(3), GetToughness(4), GetToughness(5))",
+        "runtimeExpression": "GetAverageToughness()",
+        "directDependencies": [],
+        "functionNodes": [
+          "GetAverageToughness"
+        ],
+        "contributorDomains": [
+          "computed context",
+          "all contributing metric families"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 35,
+        "unresolved": [
+          "Average relationship is source-observed and output responds to Life/Armor/Resistance, but GetToughness per-damage mitigation branches are not independently closed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -130,7 +177,31 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "Level",
+        "runtimeExpression": "Level",
+        "directDependencies": [
+          "Level"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "base class stats",
+          "level",
+          "equipment/charms",
+          "Paragon"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 2,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.108",
@@ -153,7 +224,33 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "Floor(Strength_Total)",
+        "runtimeExpression": "Floor(Strength_Total)",
+        "directDependencies": [
+          "Strength_Total"
+        ],
+        "functionNodes": [
+          "Floor"
+        ],
+        "contributorDomains": [
+          "base class stats",
+          "level",
+          "equipment/charms",
+          "Paragon"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 8,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.109",
@@ -176,7 +273,33 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "Floor(Intelligence_Total)",
+        "runtimeExpression": "Floor(Intelligence_Total)",
+        "directDependencies": [
+          "Intelligence_Total"
+        ],
+        "functionNodes": [
+          "Floor"
+        ],
+        "contributorDomains": [
+          "base class stats",
+          "level",
+          "equipment/charms",
+          "Paragon"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 8,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.110",
@@ -199,7 +322,33 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "Floor(Willpower_Total)",
+        "runtimeExpression": "Floor(Willpower_Total)",
+        "directDependencies": [
+          "Willpower_Total"
+        ],
+        "functionNodes": [
+          "Floor"
+        ],
+        "contributorDomains": [
+          "base class stats",
+          "level",
+          "equipment/charms",
+          "Paragon"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 8,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.111",
@@ -222,7 +371,33 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "Floor(Dexterity_Total)",
+        "runtimeExpression": "Floor(Dexterity_Total)",
+        "directDependencies": [
+          "Dexterity_Total"
+        ],
+        "functionNodes": [
+          "Floor"
+        ],
+        "contributorDomains": [
+          "base class stats",
+          "level",
+          "equipment/charms",
+          "Paragon"
+        ],
+        "contributionCompleteness": "BOUNDED_TESTED_INPUTS_ONLY",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 9,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.2036494626",
@@ -251,6 +426,30 @@
         "candidateExpression": "Average(GetToughness(0), GetToughness(1), GetToughness(2), GetToughness(3), GetToughness(4), GetToughness(5))",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "PARTIAL",
+        "f4VerificationStatus": "RUNTIME_SOURCE_OBSERVED_WITH_PARTIAL_CAUSAL_EVIDENCE",
+        "reportedFormulaCandidate": "Average(GetToughness(0), GetToughness(1), GetToughness(2), GetToughness(3), GetToughness(4), GetToughness(5))",
+        "runtimeExpression": "GetAverageToughness()",
+        "directDependencies": [],
+        "functionNodes": [
+          "GetAverageToughness"
+        ],
+        "contributorDomains": [
+          "equipment/charms/sockets",
+          "Intelligence",
+          "Paragon",
+          "world tier/context"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 35,
+        "unresolved": [
+          "Same bounded evidence as summary Toughness; per-type GetToughness helpers remain incomplete."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -274,7 +473,31 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "Armor_Total = (Armor + Core_Stat_Armor_Bonus + Armor_Bonus) * (1 + Armor_Percent)",
+        "runtimeExpression": "Armor_Total",
+        "directDependencies": [
+          "Armor_Total"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "equipment/charms/sockets",
+          "Intelligence",
+          "Paragon",
+          "world tier/context"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 27,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.439",
@@ -303,6 +526,30 @@
         "candidateExpression": "Resistance_Total(0)",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "PARTIAL",
+        "f4VerificationStatus": "RUNTIME_SOURCE_OBSERVED_WITH_PARTIAL_CAUSAL_EVIDENCE",
+        "reportedFormulaCandidate": "Resistance_Total(0)",
+        "runtimeExpression": "Resistance_Total(0)",
+        "directDependencies": [],
+        "functionNodes": [
+          "Resistance_Total"
+        ],
+        "contributorDomains": [
+          "equipment/charms/sockets",
+          "Intelligence",
+          "Paragon",
+          "world tier/context"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 10,
+        "unresolved": [
+          "Typed/all-resistance contributions respond causally, but Resistance_Total conversion, cap and difficulty branches are not fully exercised."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -349,6 +596,30 @@
         "candidateExpression": "Resistance_Total(1)",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "PARTIAL",
+        "f4VerificationStatus": "RUNTIME_SOURCE_OBSERVED_WITH_PARTIAL_CAUSAL_EVIDENCE",
+        "reportedFormulaCandidate": "Resistance_Total(1)",
+        "runtimeExpression": "Resistance_Total(1)",
+        "directDependencies": [],
+        "functionNodes": [
+          "Resistance_Total"
+        ],
+        "contributorDomains": [
+          "equipment/charms/sockets",
+          "Intelligence",
+          "Paragon",
+          "world tier/context"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 11,
+        "unresolved": [
+          "Typed/all-resistance contributions respond causally, but Resistance_Total conversion, cap and difficulty branches are not fully exercised."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -378,6 +649,30 @@
         "candidateExpression": "Resistance_Total(2)",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "PARTIAL",
+        "f4VerificationStatus": "RUNTIME_SOURCE_OBSERVED_WITH_PARTIAL_CAUSAL_EVIDENCE",
+        "reportedFormulaCandidate": "Resistance_Total(2)",
+        "runtimeExpression": "Resistance_Total(2)",
+        "directDependencies": [],
+        "functionNodes": [
+          "Resistance_Total"
+        ],
+        "contributorDomains": [
+          "equipment/charms/sockets",
+          "Intelligence",
+          "Paragon",
+          "world tier/context"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 11,
+        "unresolved": [
+          "Typed/all-resistance contributions respond causally, but Resistance_Total conversion, cap and difficulty branches are not fully exercised."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -407,6 +702,30 @@
         "candidateExpression": "Resistance_Total(3)",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "PARTIAL",
+        "f4VerificationStatus": "RUNTIME_SOURCE_OBSERVED_WITH_PARTIAL_CAUSAL_EVIDENCE",
+        "reportedFormulaCandidate": "Resistance_Total(3)",
+        "runtimeExpression": "Resistance_Total(3)",
+        "directDependencies": [],
+        "functionNodes": [
+          "Resistance_Total"
+        ],
+        "contributorDomains": [
+          "equipment/charms/sockets",
+          "Intelligence",
+          "Paragon",
+          "world tier/context"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 11,
+        "unresolved": [
+          "Typed/all-resistance contributions respond causally, but Resistance_Total conversion, cap and difficulty branches are not fully exercised."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -436,6 +755,30 @@
         "candidateExpression": "Resistance_Total(4)",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "PARTIAL",
+        "f4VerificationStatus": "RUNTIME_SOURCE_OBSERVED_WITH_PARTIAL_CAUSAL_EVIDENCE",
+        "reportedFormulaCandidate": "Resistance_Total(4)",
+        "runtimeExpression": "Resistance_Total(4)",
+        "directDependencies": [],
+        "functionNodes": [
+          "Resistance_Total"
+        ],
+        "contributorDomains": [
+          "equipment/charms/sockets",
+          "Intelligence",
+          "Paragon",
+          "world tier/context"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 11,
+        "unresolved": [
+          "Typed/all-resistance contributions respond causally, but Resistance_Total conversion, cap and difficulty branches are not fully exercised."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -465,6 +808,30 @@
         "candidateExpression": "Resistance_Total(5)",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "PARTIAL",
+        "f4VerificationStatus": "RUNTIME_SOURCE_OBSERVED_WITH_PARTIAL_CAUSAL_EVIDENCE",
+        "reportedFormulaCandidate": "Resistance_Total(5)",
+        "runtimeExpression": "Resistance_Total(5)",
+        "directDependencies": [],
+        "functionNodes": [
+          "Resistance_Total"
+        ],
+        "contributorDomains": [
+          "equipment/charms/sockets",
+          "Intelligence",
+          "Paragon",
+          "world tier/context"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 11,
+        "unresolved": [
+          "Typed/all-resistance contributions respond causally, but Resistance_Total conversion, cap and difficulty branches are not fully exercised."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -488,7 +855,34 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "(ComputeArsenal2HRangedWeaponMinAttack()+ComputeArsenal2HRangedWeaponMaxAttack())/2",
+        "runtimeExpression": "(ComputeArsenal2HRangedWeaponMinAttack()+ComputeArsenal2HRangedWeaponMaxAttack())/2",
+        "directDependencies": [],
+        "functionNodes": [
+          "ComputeArsenal2HRangedWeaponMinAttack",
+          "ComputeArsenal2HRangedWeaponMaxAttack"
+        ],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "BOUNDED_TESTED_INPUTS_ONLY",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 10,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.46",
@@ -511,7 +905,34 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "(ComputeArsenalDualWieldWeaponMinAttack()+ComputeArsenalDualWieldWeaponMaxAttack())/2",
+        "runtimeExpression": "(ComputeArsenalDualWieldWeaponMinAttack()+ComputeArsenalDualWieldWeaponMaxAttack())/2",
+        "directDependencies": [],
+        "functionNodes": [
+          "ComputeArsenalDualWieldWeaponMinAttack",
+          "ComputeArsenalDualWieldWeaponMaxAttack"
+        ],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 5,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.114",
@@ -534,7 +955,34 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "1+Weapon_Speed_Percent_Bonus-Weapon_Speed_Percent_Reduction",
+        "runtimeExpression": "1+Weapon_Speed_Percent_Bonus-Weapon_Speed_Percent_Reduction",
+        "directDependencies": [
+          "Weapon_Speed_Percent_Bonus",
+          "Weapon_Speed_Percent_Reduction"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "BOUNDED_TESTED_INPUTS_ONLY",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 14,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.3",
@@ -557,7 +1005,38 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "Min(1,Attack_Speed_Percent_Bonus-Attack_Speed_Percent_Reduction)+Min(1,Cast_Speed_Percent_Temp_Bonus-Cast_Speed_Percent_Temp_Reduction)",
+        "runtimeExpression": "Min(1,Attack_Speed_Percent_Bonus-Attack_Speed_Percent_Reduction)+Min(1,Cast_Speed_Percent_Temp_Bonus-Cast_Speed_Percent_Temp_Reduction)",
+        "directDependencies": [
+          "Attack_Speed_Percent_Bonus",
+          "Attack_Speed_Percent_Reduction",
+          "Cast_Speed_Percent_Temp_Bonus",
+          "Cast_Speed_Percent_Temp_Reduction"
+        ],
+        "functionNodes": [
+          "Min"
+        ],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "BOUNDED_TESTED_INPUTS_ONLY",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 8,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.4",
@@ -586,6 +1065,32 @@
         "candidateExpression": "Crit_Percent_Base + Crit_Percent_Bonus",
         "observedFixtureCount": 9,
         "verificationMode": "F4_CONTROLLED_POSITIVE_PLUS_F5_NEGATIVE_BRANCH"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "PARTIAL",
+        "f4VerificationStatus": "RUNTIME_SOURCE_OBSERVED_WITH_PARTIAL_CAUSAL_EVIDENCE",
+        "reportedFormulaCandidate": "Crit_Percent_Base + Crit_Percent_Bonus",
+        "runtimeExpression": "ComputeCritChance()",
+        "directDependencies": [],
+        "functionNodes": [
+          "ComputeCritChance"
+        ],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 10,
+        "unresolved": [
+          "Positive/base contributions are discriminated, including published negative raw observation; negative clamp branch was not safely perturbed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -615,6 +1120,33 @@
         "candidateExpression": "(1+Crit_Damage_Percent)*(1+Multiplicative_Crit_Damage_Percent)*1.5+-1",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "BLOCKED",
+        "f4VerificationStatus": "BLOCKED_CAUSAL_TEST",
+        "reportedFormulaCandidate": "(1+Crit_Damage_Percent)*(1+Multiplicative_Crit_Damage_Percent)*1.5+-1",
+        "runtimeExpression": "(1+Crit_Damage_Percent)*(1+Multiplicative_Crit_Damage_Percent)*1.5+-1",
+        "directDependencies": [
+          "Crit_Damage_Percent",
+          "Multiplicative_Crit_Damage_Percent"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 0,
+        "unresolved": [
+          "No discriminating UI-supported input for this metric was available in the isolated editable Rogue fixture; runtime expression remains source-observed only."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -644,6 +1176,33 @@
         "candidateExpression": "(1+Vulnerable_Health_Damage_Bonus)*(1+Multiplicative_Vulnerable_Health_Damage_Bonus)*1.2+-1",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "BLOCKED",
+        "f4VerificationStatus": "BLOCKED_CAUSAL_TEST",
+        "reportedFormulaCandidate": "(1+Vulnerable_Health_Damage_Bonus)*(1+Multiplicative_Vulnerable_Health_Damage_Bonus)*1.2+-1",
+        "runtimeExpression": "(1+Vulnerable_Health_Damage_Bonus)*(1+Multiplicative_Vulnerable_Health_Damage_Bonus)*1.2+-1",
+        "directDependencies": [
+          "Vulnerable_Health_Damage_Bonus",
+          "Multiplicative_Vulnerable_Health_Damage_Bonus"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 0,
+        "unresolved": [
+          "No discriminating UI-supported input for this metric was available in the isolated editable Rogue fixture; runtime expression remains source-observed only."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -673,6 +1232,33 @@
         "candidateExpression": "(1+Damage_Percent_All_From_Skills)*(1+Multiplicative_Damage_Percent_All_From_Skills)-1",
         "observedFixtureCount": 9,
         "verificationMode": "F4_CONTROLLED_SOURCES_PLUS_F5_NONZERO_BUCKET_ORDER"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "PARTIAL",
+        "f4VerificationStatus": "RUNTIME_SOURCE_OBSERVED_WITH_PARTIAL_CAUSAL_EVIDENCE",
+        "reportedFormulaCandidate": "(1+Damage_Percent_All_From_Skills)*(1+Multiplicative_Damage_Percent_All_From_Skills)-1",
+        "runtimeExpression": "(1+Damage_Percent_All_From_Skills)*(1+Multiplicative_Damage_Percent_All_From_Skills)-1",
+        "directDependencies": [
+          "Damage_Percent_All_From_Skills",
+          "Multiplicative_Damage_Percent_All_From_Skills"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 2,
+        "unresolved": [
+          "Two independent displayed contributions were observed, but zero baseline makes additive versus multiplicative bucket ordering non-discriminating."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -702,6 +1288,35 @@
         "candidateExpression": "(1+Damage_Type_Percent_Bonus(1)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(1))-1",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "BLOCKED",
+        "f4VerificationStatus": "BLOCKED_CAUSAL_TEST",
+        "reportedFormulaCandidate": "(1+Damage_Type_Percent_Bonus(1)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(1))-1",
+        "runtimeExpression": "(1+Damage_Type_Percent_Bonus(1)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(1))-1",
+        "directDependencies": [
+          "NonPhysical_Damage_Percent_Bonus"
+        ],
+        "functionNodes": [
+          "Damage_Type_Percent_Bonus",
+          "Multiplicative_Damage_Type_Percent_Bonus"
+        ],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 0,
+        "unresolved": [
+          "No discriminating UI-supported input for this metric was available in the isolated editable Rogue fixture; runtime expression remains source-observed only."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -731,6 +1346,35 @@
         "candidateExpression": "(1+Damage_Type_Percent_Bonus(2)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(2))-1",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "BLOCKED",
+        "f4VerificationStatus": "BLOCKED_CAUSAL_TEST",
+        "reportedFormulaCandidate": "(1+Damage_Type_Percent_Bonus(2)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(2))-1",
+        "runtimeExpression": "(1+Damage_Type_Percent_Bonus(2)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(2))-1",
+        "directDependencies": [
+          "NonPhysical_Damage_Percent_Bonus"
+        ],
+        "functionNodes": [
+          "Damage_Type_Percent_Bonus",
+          "Multiplicative_Damage_Type_Percent_Bonus"
+        ],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 0,
+        "unresolved": [
+          "No discriminating UI-supported input for this metric was available in the isolated editable Rogue fixture; runtime expression remains source-observed only."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -760,6 +1404,35 @@
         "candidateExpression": "(1+Damage_Type_Percent_Bonus(3)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(3))-1",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "BLOCKED",
+        "f4VerificationStatus": "BLOCKED_CAUSAL_TEST",
+        "reportedFormulaCandidate": "(1+Damage_Type_Percent_Bonus(3)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(3))-1",
+        "runtimeExpression": "(1+Damage_Type_Percent_Bonus(3)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(3))-1",
+        "directDependencies": [
+          "NonPhysical_Damage_Percent_Bonus"
+        ],
+        "functionNodes": [
+          "Damage_Type_Percent_Bonus",
+          "Multiplicative_Damage_Type_Percent_Bonus"
+        ],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 0,
+        "unresolved": [
+          "No discriminating UI-supported input for this metric was available in the isolated editable Rogue fixture; runtime expression remains source-observed only."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -789,6 +1462,35 @@
         "candidateExpression": "(1+Damage_Type_Percent_Bonus(6)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(6))-1",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "BLOCKED",
+        "f4VerificationStatus": "BLOCKED_CAUSAL_TEST",
+        "reportedFormulaCandidate": "(1+Damage_Type_Percent_Bonus(6)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(6))-1",
+        "runtimeExpression": "(1+Damage_Type_Percent_Bonus(6)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(6))-1",
+        "directDependencies": [
+          "NonPhysical_Damage_Percent_Bonus"
+        ],
+        "functionNodes": [
+          "Damage_Type_Percent_Bonus",
+          "Multiplicative_Damage_Type_Percent_Bonus"
+        ],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 0,
+        "unresolved": [
+          "No discriminating UI-supported input for this metric was available in the isolated editable Rogue fixture; runtime expression remains source-observed only."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -818,6 +1520,35 @@
         "candidateExpression": "(1+Damage_Type_Percent_Bonus(4)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(4))-1",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "PARTIAL",
+        "f4VerificationStatus": "RUNTIME_SOURCE_OBSERVED_WITH_PARTIAL_CAUSAL_EVIDENCE",
+        "reportedFormulaCandidate": "(1+Damage_Type_Percent_Bonus(4)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(4))-1",
+        "runtimeExpression": "(1+Damage_Type_Percent_Bonus(4)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(4))-1",
+        "directDependencies": [
+          "NonPhysical_Damage_Percent_Bonus"
+        ],
+        "functionNodes": [
+          "Damage_Type_Percent_Bonus",
+          "Multiplicative_Damage_Type_Percent_Bonus"
+        ],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 1,
+        "unresolved": [
+          "One positive source and one non-displaying multiplier source observed; insufficient independent positive inputs."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -847,6 +1578,35 @@
         "candidateExpression": "(1+Damage_Type_Percent_Bonus(5)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(5))-1",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "PARTIAL",
+        "f4VerificationStatus": "RUNTIME_SOURCE_OBSERVED_WITH_PARTIAL_CAUSAL_EVIDENCE",
+        "reportedFormulaCandidate": "(1+Damage_Type_Percent_Bonus(5)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(5))-1",
+        "runtimeExpression": "(1+Damage_Type_Percent_Bonus(5)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(5))-1",
+        "directDependencies": [
+          "NonPhysical_Damage_Percent_Bonus"
+        ],
+        "functionNodes": [
+          "Damage_Type_Percent_Bonus",
+          "Multiplicative_Damage_Type_Percent_Bonus"
+        ],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 1,
+        "unresolved": [
+          "One positive source and one non-displaying multiplier source observed; insufficient independent positive inputs."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -876,6 +1636,32 @@
         "candidateExpression": "Imbued_Skill_Damage_Percent_Bonus",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "BLOCKED",
+        "f4VerificationStatus": "BLOCKED_CAUSAL_TEST",
+        "reportedFormulaCandidate": "Imbued_Skill_Damage_Percent_Bonus",
+        "runtimeExpression": "Imbued_Skill_Damage_Percent_Bonus",
+        "directDependencies": [
+          "Imbued_Skill_Damage_Percent_Bonus"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 0,
+        "unresolved": [
+          "No discriminating UI-supported input for this metric was available in the isolated editable Rogue fixture; runtime expression remains source-observed only."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -905,6 +1691,33 @@
         "candidateExpression": "(1+Damage_Percent_Bonus_Vs_Elites)*(1+Multiplicative_Damage_Percent_Bonus_Vs_Elites)-1",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "BLOCKED",
+        "f4VerificationStatus": "BLOCKED_CAUSAL_TEST",
+        "reportedFormulaCandidate": "(1+Damage_Percent_Bonus_Vs_Elites)*(1+Multiplicative_Damage_Percent_Bonus_Vs_Elites)-1",
+        "runtimeExpression": "(1+Damage_Percent_Bonus_Vs_Elites)*(1+Multiplicative_Damage_Percent_Bonus_Vs_Elites)-1",
+        "directDependencies": [
+          "Damage_Percent_Bonus_Vs_Elites",
+          "Multiplicative_Damage_Percent_Bonus_Vs_Elites"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 0,
+        "unresolved": [
+          "No discriminating UI-supported input for this metric was available in the isolated editable Rogue fixture; runtime expression remains source-observed only."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -934,6 +1747,33 @@
         "candidateExpression": "Damage_Percent_Bonus_Vs_CC_All*(1+Multiplicative_Damage_Percent_Bonus_Vs_CC_All)",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "BLOCKED",
+        "f4VerificationStatus": "BLOCKED_CAUSAL_TEST",
+        "reportedFormulaCandidate": "Damage_Percent_Bonus_Vs_CC_All*(1+Multiplicative_Damage_Percent_Bonus_Vs_CC_All)",
+        "runtimeExpression": "Damage_Percent_Bonus_Vs_CC_All*(1+Multiplicative_Damage_Percent_Bonus_Vs_CC_All)",
+        "directDependencies": [
+          "Damage_Percent_Bonus_Vs_CC_All",
+          "Multiplicative_Damage_Percent_Bonus_Vs_CC_All"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 0,
+        "unresolved": [
+          "No discriminating UI-supported input for this metric was available in the isolated editable Rogue fixture; runtime expression remains source-observed only."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -963,6 +1803,33 @@
         "candidateExpression": "(1+Damage_Bonus_To_High_Health)*(1+Multiplicative_Damage_Bonus_To_High_Health)-1",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "PARTIAL",
+        "f4VerificationStatus": "RUNTIME_SOURCE_OBSERVED_WITH_PARTIAL_CAUSAL_EVIDENCE",
+        "reportedFormulaCandidate": "(1+Damage_Bonus_To_High_Health)*(1+Multiplicative_Damage_Bonus_To_High_Health)-1",
+        "runtimeExpression": "(1+Damage_Bonus_To_High_Health)*(1+Multiplicative_Damage_Bonus_To_High_Health)-1",
+        "directDependencies": [
+          "Damage_Bonus_To_High_Health",
+          "Multiplicative_Damage_Bonus_To_High_Health"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 1,
+        "unresolved": [
+          "Only one valid UI-supported positive source was available."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -992,6 +1859,32 @@
         "candidateExpression": "Damage_Percent_Bonus_Against_Dot_Type(4)",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "BLOCKED",
+        "f4VerificationStatus": "BLOCKED_CAUSAL_TEST",
+        "reportedFormulaCandidate": "Damage_Percent_Bonus_Against_Dot_Type(4)",
+        "runtimeExpression": "Damage_Percent_Bonus_Against_Dot_Type(4)",
+        "directDependencies": [],
+        "functionNodes": [
+          "Damage_Percent_Bonus_Against_Dot_Type"
+        ],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 0,
+        "unresolved": [
+          "No discriminating UI-supported input for this metric was available in the isolated editable Rogue fixture; runtime expression remains source-observed only."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -1021,6 +1914,35 @@
         "candidateExpression": "Thorns_Flat_Total*(1+(Fortified_Health>Hitpoints_Cur?Thorns_Percent_Bonus_While_Fortified:0))*(1+(Fortified_Health==Hitpoints_Cur?Thorns_Percent_Bonus_While_Fortified:0))",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "PARTIAL",
+        "f4VerificationStatus": "RUNTIME_SOURCE_OBSERVED_WITH_PARTIAL_CAUSAL_EVIDENCE",
+        "reportedFormulaCandidate": "Thorns_Flat_Total*(1+(Fortified_Health>Hitpoints_Cur?Thorns_Percent_Bonus_While_Fortified:0))*(1+(Fortified_Health==Hitpoints_Cur?Thorns_Percent_Bonus_While_Fortified:0))",
+        "runtimeExpression": "Thorns_Flat_Total*(1+(Fortified_Health>Hitpoints_Cur?Thorns_Percent_Bonus_While_Fortified:0))*(1+(Fortified_Health==Hitpoints_Cur?Thorns_Percent_Bonus_While_Fortified:0))",
+        "directDependencies": [
+          "Thorns_Flat_Total",
+          "Fortified_Health",
+          "Hitpoints_Cur",
+          "Thorns_Percent_Bonus_While_Fortified"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "weapons",
+          "equipment affixes/aspects",
+          "skills/passives",
+          "Paragon/glyphs",
+          "charms/seasonal effects",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 2,
+        "unresolved": [
+          "Flat Thorns responds, but Fortify branch is non-discriminating because no conditional Thorns source was available."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -1044,7 +1966,31 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "PlayerHealthMax()",
+        "runtimeExpression": "PlayerHealthMax()",
+        "directDependencies": [],
+        "functionNodes": [
+          "PlayerHealthMax"
+        ],
+        "contributorDomains": [
+          "base/level",
+          "equipment/affixes",
+          "Paragon",
+          "skills/conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 6,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.78",
@@ -1073,6 +2019,30 @@
         "candidateExpression": "Potion_Max_Doses_Total",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "PARTIAL",
+        "f4VerificationStatus": "RUNTIME_SOURCE_OBSERVED_WITH_PARTIAL_CAUSAL_EVIDENCE",
+        "reportedFormulaCandidate": "Potion_Max_Doses_Total",
+        "runtimeExpression": "Potion_Max_Doses_Total",
+        "directDependencies": [
+          "Potion_Max_Doses_Total"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "base/level",
+          "equipment/affixes",
+          "Paragon",
+          "skills/conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 1,
+        "unresolved": [
+          "Only one Potion Capacity source was available."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -1096,7 +2066,32 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "Bonus_Healing_Received_Percent+Core_Stat_Bonus_Healing_Received_Percent",
+        "runtimeExpression": "Bonus_Healing_Received_Percent+Core_Stat_Bonus_Healing_Received_Percent",
+        "directDependencies": [
+          "Bonus_Healing_Received_Percent",
+          "Core_Stat_Bonus_Healing_Received_Percent"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "base/level",
+          "equipment/affixes",
+          "Paragon",
+          "skills/conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 9,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.431",
@@ -1119,7 +2114,31 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "Armor_Total = (Armor + Core_Stat_Armor_Bonus + Armor_Bonus) * (1 + Armor_Percent)",
+        "runtimeExpression": "Armor_Total",
+        "directDependencies": [
+          "Armor_Total"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "base/level",
+          "equipment/affixes",
+          "Paragon",
+          "skills/conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 27,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.357",
@@ -1148,6 +2167,30 @@
         "candidateExpression": "Damage_Reduction",
         "observedFixtureCount": 9,
         "verificationMode": "F4_CONTROLLED_SOURCE_PLUS_F5_MULTI_SOURCE_ORDER"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "PARTIAL",
+        "f4VerificationStatus": "RUNTIME_SOURCE_OBSERVED_WITH_PARTIAL_CAUSAL_EVIDENCE",
+        "reportedFormulaCandidate": "Damage_Reduction",
+        "runtimeExpression": "Damage_Reduction",
+        "directDependencies": [
+          "Damage_Reduction"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "base/level",
+          "equipment/affixes",
+          "Paragon",
+          "skills/conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 1,
+        "unresolved": [
+          "Only one All Damage Reduction source was available."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -1171,7 +2214,31 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "Barrier_Bonus_Percent",
+        "runtimeExpression": "Barrier_Bonus_Percent",
+        "directDependencies": [
+          "Barrier_Bonus_Percent"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "base/level",
+          "equipment/affixes",
+          "Paragon",
+          "skills/conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 2,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.61",
@@ -1194,7 +2261,37 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "Min(1,(Cannot_Dodge>0?0:Dodge_Chance_Bonus)*(1-Dodge_Chance_Reduction_Percent)+Dodge_Chance_Bonus_Additive+Core_Stat_Dodge_Chance_Bonus)",
+        "runtimeExpression": "Min(1,(Cannot_Dodge>0?0:Dodge_Chance_Bonus)*(1-Dodge_Chance_Reduction_Percent)+Dodge_Chance_Bonus_Additive+Core_Stat_Dodge_Chance_Bonus)",
+        "directDependencies": [
+          "Cannot_Dodge",
+          "Dodge_Chance_Bonus",
+          "Dodge_Chance_Reduction_Percent",
+          "Dodge_Chance_Bonus_Additive",
+          "Core_Stat_Dodge_Chance_Bonus"
+        ],
+        "functionNodes": [
+          "Min"
+        ],
+        "contributorDomains": [
+          "base/level",
+          "equipment/affixes",
+          "Paragon",
+          "skills/conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 12,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.81",
@@ -1217,7 +2314,32 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "UIPrimaryResourceMax()",
+        "runtimeExpression": "UIPrimaryResourceMax()",
+        "directDependencies": [],
+        "functionNodes": [
+          "UIPrimaryResourceMax"
+        ],
+        "contributorDomains": [
+          "base resources",
+          "equipment",
+          "skills/passives",
+          "Paragon",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 3,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.286",
@@ -1240,7 +2362,35 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "Resource_Regen_Total(3)*(1+Resource_Gain_And_Regen_Bonus_Percent_All_Primary)*(1+Resource_Regen_All_Primary_Bonus_Percent)",
+        "runtimeExpression": "Resource_Regen_Total(3)*(1+Resource_Gain_And_Regen_Bonus_Percent_All_Primary)*(1+Resource_Regen_All_Primary_Bonus_Percent)",
+        "directDependencies": [
+          "Resource_Gain_And_Regen_Bonus_Percent_All_Primary",
+          "Resource_Regen_All_Primary_Bonus_Percent"
+        ],
+        "functionNodes": [
+          "Resource_Regen_Total"
+        ],
+        "contributorDomains": [
+          "base resources",
+          "equipment",
+          "skills/passives",
+          "Paragon",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 9,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.80",
@@ -1263,7 +2413,32 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "Movement_Scalar_Total",
+        "runtimeExpression": "Movement_Scalar_Total",
+        "directDependencies": [
+          "Movement_Scalar_Total"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "base resources",
+          "equipment",
+          "skills/passives",
+          "Paragon",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 6,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.92",
@@ -1286,7 +2461,34 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "Min(0.75,Power_Cooldown_Reduction_Percent_All)",
+        "runtimeExpression": "Min(0.75,Power_Cooldown_Reduction_Percent_All)",
+        "directDependencies": [
+          "Power_Cooldown_Reduction_Percent_All"
+        ],
+        "functionNodes": [
+          "Min"
+        ],
+        "contributorDomains": [
+          "base resources",
+          "equipment",
+          "skills/passives",
+          "Paragon",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 2,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.152",
@@ -1315,6 +2517,31 @@
         "candidateExpression": "Skill_Tag_Cooldown_Reduction_Percent(-210927526)",
         "observedFixtureCount": 9,
         "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "BLOCKED",
+        "f4VerificationStatus": "BLOCKED_CAUSAL_TEST",
+        "reportedFormulaCandidate": "Skill_Tag_Cooldown_Reduction_Percent(-210927526)",
+        "runtimeExpression": "Skill_Tag_Cooldown_Reduction_Percent(-210927526)",
+        "directDependencies": [],
+        "functionNodes": [
+          "Skill_Tag_Cooldown_Reduction_Percent"
+        ],
+        "contributorDomains": [
+          "base resources",
+          "equipment",
+          "skills/passives",
+          "Paragon",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 0,
+        "unresolved": [
+          "No discriminating UI-supported input for this metric was available in the isolated editable Rogue fixture; runtime expression remains source-observed only."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     },
     {
@@ -1338,7 +2565,32 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "Combat_Effect_Chance_Bonus",
+        "runtimeExpression": "Combat_Effect_Chance_Bonus",
+        "directDependencies": [
+          "Combat_Effect_Chance_Bonus"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "base resources",
+          "equipment",
+          "skills/passives",
+          "Paragon",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 3,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.367",
@@ -1361,7 +2613,33 @@
       ],
       "goldenStatus": "NOT_APPROVED",
       "maxrollGraphParity": "NOT_RUN",
-      "sourceReportedMechanic": null
+      "sourceReportedMechanic": null,
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "VERIFIED",
+        "f4VerificationStatus": "CAUSALLY_VERIFIED_BOUNDED",
+        "reportedFormulaCandidate": "(1+Experience_Bonus_Percent)*(1+Multiplicative_Experience_Bonus_Percent)+-1",
+        "runtimeExpression": "(1+Experience_Bonus_Percent)*(1+Multiplicative_Experience_Bonus_Percent)+-1",
+        "directDependencies": [
+          "Experience_Bonus_Percent",
+          "Multiplicative_Experience_Bonus_Percent"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "base resources",
+          "equipment",
+          "skills/passives",
+          "Paragon",
+          "conditional state"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 2,
+        "unresolved": [
+          "Generic completeness beyond recorded inputs/branches is not claimed."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.70",
@@ -1390,6 +2668,28 @@
         "candidateExpression": "Class_Damage_Reduction_Percent_PvP",
         "observedFixtureCount": 9,
         "verificationMode": "PATCH_CONSTANT_VERIFIED_9_FIXTURES"
+      },
+      "f4ObservedDependencies": {
+        "provenance": "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN",
+        "f4HistoricalStatus": "BLOCKED",
+        "f4VerificationStatus": "BLOCKED_CAUSAL_TEST",
+        "reportedFormulaCandidate": "Class_Damage_Reduction_Percent_PvP",
+        "runtimeExpression": "Class_Damage_Reduction_Percent_PvP",
+        "directDependencies": [
+          "Class_Damage_Reduction_Percent_PvP"
+        ],
+        "functionNodes": [],
+        "contributorDomains": [
+          "class/PvP baseline",
+          "damage reduction rules"
+        ],
+        "contributionCompleteness": "PARTIAL",
+        "operationOrder": "RUNTIME_EXPRESSION_ORDER_OBSERVED",
+        "discriminatingVectorCount": 0,
+        "unresolved": [
+          "No discriminating UI-supported input for this metric was available in the isolated editable Rogue fixture; runtime expression remains source-observed only."
+        ],
+        "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744"
       }
     }
   ]
