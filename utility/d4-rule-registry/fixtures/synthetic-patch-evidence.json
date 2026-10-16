@@ -1,0 +1,42 @@
+{
+  "manifestVersion": "1.0.0",
+  "sourceGitBlobSha1": "d5cc70811475eda18b06a7a7fbd4e58724d9ab59",
+  "sourceSha256": "74d7e394dd18798cb20c0938a2f98e94ea8adf03d01fb810540be2a73d4e6d82",
+  "synthetic": true,
+  "sourceKind": "synthetic_fixture",
+  "gameFormulaVerification": "NOT_VERIFIED",
+  "records": [
+    {
+      "metricId": "fake.direct",
+      "category": "buffed",
+      "sourcePointer": "fixtures/synthetic-patch-cycle.json#/new/rules/fake.direct",
+      "sourceKind": "synthetic_fixture",
+      "sourceGitBlobSha1": "d5cc70811475eda18b06a7a7fbd4e58724d9ab59",
+      "scope": "SYNTHETIC_ONLY"
+    },
+    {
+      "metricId": "fake.nerf",
+      "category": "nerfed",
+      "sourcePointer": "fixtures/synthetic-patch-cycle.json#/new/rules/fake.nerf",
+      "sourceKind": "synthetic_fixture",
+      "sourceGitBlobSha1": "d5cc70811475eda18b06a7a7fbd4e58724d9ab59",
+      "scope": "SYNTHETIC_ONLY"
+    },
+    {
+      "metricId": "fake.remove",
+      "category": "removed",
+      "sourcePointer": "fixtures/synthetic-patch-cycle.json#/new/rules/fake.remove",
+      "sourceKind": "synthetic_fixture",
+      "sourceGitBlobSha1": "d5cc70811475eda18b06a7a7fbd4e58724d9ab59",
+      "scope": "SYNTHETIC_ONLY"
+    },
+    {
+      "metricId": "fake.add",
+      "category": "added",
+      "sourcePointer": "fixtures/synthetic-patch-cycle.json#/new/rules/fake.add",
+      "sourceKind": "synthetic_fixture",
+      "sourceGitBlobSha1": "d5cc70811475eda18b06a7a7fbd4e58724d9ab59",
+      "scope": "SYNTHETIC_ONLY"
+    }
+  ]
+}

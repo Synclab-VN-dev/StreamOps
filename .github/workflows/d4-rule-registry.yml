@@ -52,6 +52,8 @@ jobs:
             --report artifacts/d4-rule-registry/agent-source-to-candidate.json
           python utility/d4-rule-registry/versioned_history.py \
             --report artifacts/d4-rule-registry/synthetic-hash-chain.json
+          python utility/d4-rule-registry/patch_proposal.py \
+            --report artifacts/d4-rule-registry/synthetic-provenance-proposals.json
           python - <<'PY'
           import json
           from pathlib import Path
@@ -64,6 +66,11 @@ jobs:
           assert c["sourceBounded"]==27 and c["sourcePartial"]==23
           assert c["fullParity"]=="BLOCKED" and r["publishStatus"]=="NOT_APPROVED"
           assert all(x["activeRule"] is None and x["calculatedValue"] is None for x in r["metrics"])
+          q=json.loads(Path("artifacts/d4-rule-registry/synthetic-provenance-proposals.json").read_text())
+          assert q["status"]=="PASS_SYNTHETIC_CANDIDATE_GENERATION_ONLY"
+          assert q["sourceChangeCoverage"]=={"changed":4,"sourced":4,"gameVerified":0}
+          assert {x["changeType"] for x in q["candidates"]}=={"buffed","nerfed","removed","added"}
+          assert not q["autoPublish"] and not q["schemaChanged"] and q["maxrollParity"]=="NOT_TESTED"
           h=json.loads(Path("artifacts/d4-rule-registry/synthetic-hash-chain.json").read_text())
           assert h["status"]=="PASS_SYNTHETIC_LEDGER_ONLY"
           assert h["oldRulesHash"]==h["rollbackRulesHash"]

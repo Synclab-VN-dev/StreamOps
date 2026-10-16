@@ -107,3 +107,20 @@ uploads the replay report.
 
 This exercise proves deterministic versioning mechanics, NOT a real patch
 migration or signed/approved production registry. No production publish exists.
+
+## CI-01 source-graded patch discovery and candidate diff
+
+`patch_proposal.py` reads an **immutable, synthetic-only** patch delta fixture
+and a separately maintained evidence manifest, both pinned with real Git blob
+SHA-1 and raw-file SHA-256. Produces 4 explicitly sourced candidates covering
+buff, nerf, removal, and new mechanic; reports changed/sourced denominators.
+It rejects missing/duplicate/stale/mismatched source pointers and cross-patch
+source mutation. This is deterministic offline candidate generation, not
+generative-AI reverse engineering. No executable game rule or active patch
+change; #107 DSL v1 remains unchanged. Production Maxroll patch evidence,
+G2/G3/G4 and Owner review would still be mandatory for publish.
+
+    python utility/d4-rule-registry/patch_proposal.py --report artifacts/109-proposals.json
+
+A PASS here proves **CI-01 with synthetic patch input only**, not that any new
+real game mechanics have been independently discovered or verified.
