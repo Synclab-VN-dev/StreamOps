@@ -260,6 +260,41 @@ jobs:
           }
           $global:LASTEXITCODE = 0
 
+      - name: 'Issue119 runner explicit HomeDir overrides stale SSH environment'
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 120
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runner = (Resolve-Path ./scripts/acceptance/issue119-probe.ps1).Path
+          $fakeDir = Join-Path $env:RUNNER_TEMP 'issue119-homedir-fake-cli'
+          New-Item -ItemType Directory -Force -Path $fakeDir | Out-Null
+          $fake = Join-Path $fakeDir 'd4planner.cmd'
+          @('@echo off','echo {"state":"WAITING_FOR_GAME","supervisorAlive":false,"captureEffective":false,"supervisorPid":123}',
+            'echo %D4PLANNER_HOME% 1>&2','exit /b 2') |
+            Set-Content -LiteralPath $fake -Encoding ascii
+          $oldPath = $env:PATH
+          $oldHome = $env:D4PLANNER_HOME
+          try {
+            $expected = Join-Path $env:RUNNER_TEMP 'issue119-expected-home'
+            $env:D4PLANNER_HOME = Join-Path $env:RUNNER_TEMP 'issue119-wrong-home'
+            $env:PATH = $fakeDir + ';' + $oldPath
+            $evidence = Join-Path $env:RUNNER_TEMP 'issue119-homedir-proof'
+            $PSNativeCommandUseErrorActionPreference = $false
+            & pwsh -NoProfile -File $runner -Mode Preflight -HomeDir $expected -EvidenceDir $evidence -ExpectedHead (git rev-parse HEAD)
+            if ($LASTEXITCODE -ne 2) { throw 'Missing runtime must BLOCKED=2' }
+            $report = Get-Content (Join-Path $evidence 'report.json') -Raw | ConvertFrom-Json
+            $invocation = Get-Content (Join-Path $evidence 'status-before.invocation.json') -Raw | ConvertFrom-Json
+            if ($report.checks.'P0-06'.result -ne 'PASS' -or
+                $report.checks.'P0-07'.result -ne 'BLOCKED' -or
+                $invocation.stderr.Trim() -ne $expected) {
+              throw 'Explicit HomeDir was not passed to the D4Planner status process'
+            }
+          } finally {
+            $env:PATH = $oldPath
+            $env:D4PLANNER_HOME = $oldHome
+          }
+          $global:LASTEXITCODE = 0
+
       - name: 'Issue119 isolated UAT Prepare syntax, fail-closed and venv smoke'
         if: github.event_name == 'pull_request' && github.event.pull_request.number == 120
         shell: pwsh
