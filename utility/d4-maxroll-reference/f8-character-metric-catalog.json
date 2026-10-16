@@ -77,7 +77,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.901",
@@ -99,7 +100,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "GetAverageToughness()",
+        "candidateExpression": "Average(GetToughness(0), GetToughness(1), GetToughness(2), GetToughness(3), GetToughness(4), GetToughness(5))",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.279",
@@ -121,7 +129,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.108",
@@ -143,7 +152,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.109",
@@ -165,7 +175,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.110",
@@ -187,7 +198,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.111",
@@ -209,7 +221,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.2036494626",
@@ -231,7 +244,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "GetAverageToughness()",
+        "candidateExpression": "Average(GetToughness(0), GetToughness(1), GetToughness(2), GetToughness(3), GetToughness(4), GetToughness(5))",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.480",
@@ -253,7 +273,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.439",
@@ -275,7 +296,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "Resistance_Total(0)",
+        "candidateExpression": "Resistance_Total(0)",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.446",
@@ -314,7 +342,14 @@
         "other class/levels and full source ordering not proven"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "Resistance_Total(1)",
+        "candidateExpression": "Resistance_Total(1)",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.453",
@@ -336,7 +371,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "Resistance_Total(2)",
+        "candidateExpression": "Resistance_Total(2)",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.460",
@@ -358,7 +400,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "Resistance_Total(3)",
+        "candidateExpression": "Resistance_Total(3)",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.467",
@@ -380,7 +429,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "Resistance_Total(4)",
+        "candidateExpression": "Resistance_Total(4)",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.474",
@@ -402,7 +458,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "Resistance_Total(5)",
+        "candidateExpression": "Resistance_Total(5)",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.93",
@@ -424,7 +487,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.46",
@@ -446,7 +510,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.114",
@@ -468,7 +533,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.3",
@@ -490,7 +556,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.4",
@@ -512,7 +579,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "ComputeCritChance()",
+        "candidateExpression": "Crit_Percent_Base + Crit_Percent_Bonus",
+        "observedFixtureCount": 9,
+        "verificationMode": "F4_CONTROLLED_POSITIVE_PLUS_F5_NEGATIVE_BRANCH"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.347",
@@ -534,7 +608,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "(1+Crit_Damage_Percent)*(1+Multiplicative_Crit_Damage_Percent)*1.5+-1",
+        "candidateExpression": "(1+Crit_Damage_Percent)*(1+Multiplicative_Crit_Damage_Percent)*1.5+-1",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.349",
@@ -556,7 +637,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "(1+Vulnerable_Health_Damage_Bonus)*(1+Multiplicative_Vulnerable_Health_Damage_Bonus)*1.2+-1",
+        "candidateExpression": "(1+Vulnerable_Health_Damage_Bonus)*(1+Multiplicative_Vulnerable_Health_Damage_Bonus)*1.2+-1",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.1",
@@ -578,7 +666,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "(1+Damage_Percent_All_From_Skills)*(1+Multiplicative_Damage_Percent_All_From_Skills)-1",
+        "candidateExpression": "(1+Damage_Percent_All_From_Skills)*(1+Multiplicative_Damage_Percent_All_From_Skills)-1",
+        "observedFixtureCount": 9,
+        "verificationMode": "F4_CONTROLLED_SOURCES_PLUS_F5_NONZERO_BUCKET_ORDER"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.49",
@@ -600,7 +695,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "(1+Damage_Type_Percent_Bonus(1)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(1))-1",
+        "candidateExpression": "(1+Damage_Type_Percent_Bonus(1)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(1))-1",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.50",
@@ -622,7 +724,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "(1+Damage_Type_Percent_Bonus(2)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(2))-1",
+        "candidateExpression": "(1+Damage_Type_Percent_Bonus(2)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(2))-1",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.51",
@@ -644,7 +753,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "(1+Damage_Type_Percent_Bonus(3)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(3))-1",
+        "candidateExpression": "(1+Damage_Type_Percent_Bonus(3)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(3))-1",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.52",
@@ -666,7 +782,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "(1+Damage_Type_Percent_Bonus(6)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(6))-1",
+        "candidateExpression": "(1+Damage_Type_Percent_Bonus(6)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(6))-1",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.71041540",
@@ -688,7 +811,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "(1+Damage_Type_Percent_Bonus(4)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(4))-1",
+        "candidateExpression": "(1+Damage_Type_Percent_Bonus(4)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(4))-1",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.53",
@@ -710,7 +840,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "(1+Damage_Type_Percent_Bonus(5)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(5))-1",
+        "candidateExpression": "(1+Damage_Type_Percent_Bonus(5)+NonPhysical_Damage_Percent_Bonus)*(1+Multiplicative_Damage_Type_Percent_Bonus(5))-1",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.251",
@@ -732,7 +869,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "Imbued_Skill_Damage_Percent_Bonus",
+        "candidateExpression": "Imbued_Skill_Damage_Percent_Bonus",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.2",
@@ -754,7 +898,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "(1+Damage_Percent_Bonus_Vs_Elites)*(1+Multiplicative_Damage_Percent_Bonus_Vs_Elites)-1",
+        "candidateExpression": "(1+Damage_Percent_Bonus_Vs_Elites)*(1+Multiplicative_Damage_Percent_Bonus_Vs_Elites)-1",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.25",
@@ -776,7 +927,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "Damage_Percent_Bonus_Vs_CC_All*(1+Multiplicative_Damage_Percent_Bonus_Vs_CC_All)",
+        "candidateExpression": "Damage_Percent_Bonus_Vs_CC_All*(1+Multiplicative_Damage_Percent_Bonus_Vs_CC_All)",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.56",
@@ -798,7 +956,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "(1+Damage_Bonus_To_High_Health)*(1+Multiplicative_Damage_Bonus_To_High_Health)-1",
+        "candidateExpression": "(1+Damage_Bonus_To_High_Health)*(1+Multiplicative_Damage_Bonus_To_High_Health)-1",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.166",
@@ -820,7 +985,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "Damage_Percent_Bonus_Against_Dot_Type(4)",
+        "candidateExpression": "Damage_Percent_Bonus_Against_Dot_Type(4)",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.299",
@@ -842,7 +1014,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "Thorns_Flat_Total*(1+(Fortified_Health>Hitpoints_Cur?Thorns_Percent_Bonus_While_Fortified:0))*(1+(Fortified_Health==Hitpoints_Cur?Thorns_Percent_Bonus_While_Fortified:0))",
+        "candidateExpression": "Thorns_Flat_Total*(1+(Fortified_Health>Hitpoints_Cur?Thorns_Percent_Bonus_While_Fortified:0))*(1+(Fortified_Health==Hitpoints_Cur?Thorns_Percent_Bonus_While_Fortified:0))",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.58",
@@ -864,7 +1043,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.78",
@@ -886,7 +1066,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "Potion_Max_Doses_Total",
+        "candidateExpression": "Potion_Max_Doses_Total",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.180",
@@ -908,7 +1095,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.431",
@@ -930,7 +1118,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.357",
@@ -952,7 +1141,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "Damage_Reduction",
+        "candidateExpression": "Damage_Reduction",
+        "observedFixtureCount": 9,
+        "verificationMode": "F4_CONTROLLED_SOURCE_PLUS_F5_MULTI_SOURCE_ORDER"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.104",
@@ -974,7 +1170,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.61",
@@ -996,7 +1193,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.81",
@@ -1018,7 +1216,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.286",
@@ -1040,7 +1239,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.80",
@@ -1062,7 +1262,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.92",
@@ -1084,7 +1285,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.152",
@@ -1106,7 +1308,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "Skill_Tag_Cooldown_Reduction_Percent(-210927526)",
+        "candidateExpression": "Skill_Tag_Cooldown_Reduction_Percent(-210927526)",
+        "observedFixtureCount": 9,
+        "verificationMode": "READ_ONLY_MULTI_FIXTURE_WITH_CONFOUNDED_INPUTS"
+      }
     },
     {
       "metricId": "maxroll.heroDetails.181",
@@ -1128,7 +1337,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.367",
@@ -1150,7 +1360,8 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": null
     },
     {
       "metricId": "maxroll.heroDetails.70",
@@ -1172,7 +1383,14 @@
         "complete causal formula/dependency/order/conditional branch audit remains pending"
       ],
       "goldenStatus": "NOT_APPROVED",
-      "maxrollGraphParity": "NOT_RUN"
+      "maxrollGraphParity": "NOT_RUN",
+      "sourceReportedMechanic": {
+        "kind": "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA",
+        "runtimeExpression": "Class_Damage_Reduction_Percent_PvP",
+        "candidateExpression": "Class_Damage_Reduction_Percent_PvP",
+        "observedFixtureCount": 9,
+        "verificationMode": "PATCH_CONSTANT_VERIFIED_9_FIXTURES"
+      }
     }
   ]
 }
