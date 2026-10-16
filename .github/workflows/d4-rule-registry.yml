@@ -50,6 +50,8 @@ jobs:
             --report artifacts/d4-rule-registry/fire-dr-f7-2-source-replay.json
           python utility/d4-rule-registry/audit_agent.py \
             --report artifacts/d4-rule-registry/agent-source-to-candidate.json
+          python utility/d4-rule-registry/versioned_history.py \
+            --report artifacts/d4-rule-registry/synthetic-hash-chain.json
           python - <<'PY'
           import json
           from pathlib import Path
@@ -62,6 +64,12 @@ jobs:
           assert c["sourceBounded"]==27 and c["sourcePartial"]==23
           assert c["fullParity"]=="BLOCKED" and r["publishStatus"]=="NOT_APPROVED"
           assert all(x["activeRule"] is None and x["calculatedValue"] is None for x in r["metrics"])
+          h=json.loads(Path("artifacts/d4-rule-registry/synthetic-hash-chain.json").read_text())
+          assert h["status"]=="PASS_SYNTHETIC_LEDGER_ONLY"
+          assert h["oldRulesHash"]==h["rollbackRulesHash"]
+          assert h["newRulesHash"]!=h["oldRulesHash"]
+          assert len(h["events"])==3 and not h["activePublish"]
+          assert h["events"][2]["parentEventHash"]==h["events"][1]["eventHash"]
           a=json.loads(Path("artifacts/d4-rule-registry/agent-source-to-candidate.json").read_text())
           assert a["status"]=="PASS_SOURCE_CANDIDATE_AUDIT_ONLY"
           assert a["g1CandidateDsl"]==1 and a["g2VerifiedBindings"]==0

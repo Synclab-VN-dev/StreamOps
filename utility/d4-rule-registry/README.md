@@ -92,3 +92,18 @@ DSL candidate, 0 active rules. This is not an LLM inference workflow or full
 agent-generated patch discovery. New candidate formula proposals must arrive
 with independent source evidence; agent must never fabricate expected values
 or promote its own formula prediction to Golden.
+
+## Append-only patch ledger / rollback
+
+`versioned_history.py` records a **synthetic-only** immutable 3-event hash
+chain: baseline, changed patch, and rollback to precisely the original rule
+data. Every event pins the previous event hash; the manifest pins full history.
+An independent `verify` pass rejects altered event contents, reordered events,
+broken parents, inaccurate added/removed/buffed/nerfed classifications, and
+any attempt to mark a record active. CI runs positive and negative tests and
+uploads the replay report.
+
+    python utility/d4-rule-registry/versioned_history.py --report artifacts/109-ledger.json
+
+This exercise proves deterministic versioning mechanics, NOT a real patch
+migration or signed/approved production registry. No production publish exists.
