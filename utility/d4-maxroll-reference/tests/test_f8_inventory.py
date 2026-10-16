@@ -71,6 +71,16 @@ class SourceMetricInventoryTests(unittest.TestCase):
     def test_no_silent_zero_of_unknown(self):
         self.reject(lambda c: c["policy"].__setitem__("unknownNeverZero", False))
 
+    def test_source_mechanics_not_promoted_to_rule_data(self):
+        self.reject(lambda c: next(m for m in c["metrics"] if
+                                    m["sourceReportedMechanic"] is not None)
+                    ["sourceReportedMechanic"].__setitem__("kind", "VERIFIED_RULE"))
+
+    def test_source_mechanics_not_silently_removed(self):
+        self.reject(lambda c: next(m for m in c["metrics"] if
+                                    m["sourceReportedMechanic"] is not None)
+                    .__setitem__("sourceReportedMechanic", None))
+
     def test_no_auto_audit_grade(self):
         self.reject(lambda c: c["provenance"].__setitem__("sourceReview", "VERIFIED"))
 
