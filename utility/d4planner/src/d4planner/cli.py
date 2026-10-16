@@ -590,8 +590,9 @@ def command_start(
     try:
         kwargs = dict(paths=paths, speech=speech, isolated=isolated,
                       block_marker=block_marker,
-                      uat_attach_only=uat_attach_only,
-                      uat_start_nvda=uat_start_nvda)
+                      uat_attach_only=uat_attach_only)
+        if uat_start_nvda:
+            kwargs["uat_start_nvda"] = True
         if profile is not None:
             kwargs["controller_profile"] = profile.alias
         pid = _spawn_daemon(**kwargs)
