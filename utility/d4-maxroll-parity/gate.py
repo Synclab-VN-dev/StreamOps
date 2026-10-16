@@ -194,7 +194,7 @@ def verify(fixture_doc, golden=MISSING, actual=MISSING, formulas=MISSING):
 
 
 def _report(errors, blocks, comparisons):
-    status = "FAIL" if errors else "BLOCKED" if blocks else "PASS"
+    status = "BLOCKED" if blocks else "FAIL" if errors else "PASS"
     return {"status": status, "gate": "MAXROLL_50_STAT_GRAPH_PARITY",
             "numeratorMatched": sum(x["result"] == "PASS" and x["vector"] == "baseline"
                                     for x in comparisons),
