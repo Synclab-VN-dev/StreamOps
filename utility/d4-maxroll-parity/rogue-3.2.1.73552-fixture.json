@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "1.0.0",
+  "oracle": "MAXROLL_ONLY",
+  "status": "PINNED_CAPTURE_SCOPE_NOT_GOLDEN",
+  "fixture": {
+    "id": "maxroll.d4planner.1g1any0x.variant3.endgame.3ae138cafe3a",
+    "url": "https://maxroll.gg/d4/planner/1g1any0x#3",
+    "classId": "rogue",
+    "level": 70,
+    "variant": "#3",
+    "gamePatch": "3.2.1",
+    "gameBuild": "73552",
+    "inputSnapshotSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+    "inputCompleteness": "PARTIAL",
+    "metricGroups": {
+      "summary": 2,
+      "core": 5,
+      "resistances": 8,
+      "offensive": 20,
+      "defensive": 7,
+      "utility": 7,
+      "pvp": 1
+    },
+    "metricDenominator": 50,
+    "source": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6196291714"
+  },
+  "baselineApproval": "https://github.com/Synclab-VN-dev/StreamOps/issues/107#issuecomment-6203600278",
+  "notes": "A metric denominator is not formula coverage. 50 actual golden rows, fully reproducible inputs, graph outputs and independent vectors are NOT yet available. Do not invent names, formulas or expected values."
+}

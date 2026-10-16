@@ -1,0 +1,256 @@
+{
+  "vectorSetVersion": "0.1.0",
+  "patch": "SYNTHETIC_UNVERSIONED",
+  "gameAccuracy": "NOT_GAME_VERIFIED",
+  "vectors": [
+    {
+      "id": "additive-empty",
+      "op": "additive_factor",
+      "inputs": {
+        "bonuses": []
+      },
+      "expected": "1",
+      "status": "PASS_SYNTHETIC"
+    },
+    {
+      "id": "additive-two",
+      "op": "additive_factor",
+      "inputs": {
+        "bonuses": [
+          "0.2",
+          "0.3"
+        ]
+      },
+      "expected": "1.5",
+      "status": "PASS_SYNTHETIC"
+    },
+    {
+      "id": "multipliers-two",
+      "op": "multiply_factors",
+      "inputs": {
+        "factors": [
+          "1.2",
+          "1.4"
+        ]
+      },
+      "expected": "1.68",
+      "status": "PASS_SYNTHETIC"
+    },
+    {
+      "id": "multipliers-zero-base",
+      "op": "multiply_factors",
+      "inputs": {
+        "factors": [
+          "0",
+          "1.4"
+        ]
+      },
+      "expected": "0",
+      "status": "PASS_SYNTHETIC"
+    },
+    {
+      "id": "crit-zero",
+      "op": "crit_expected",
+      "inputs": {
+        "base": "100",
+        "chance": "0",
+        "extra": "0.5",
+        "cap": "1"
+      },
+      "expected": "100",
+      "status": "PASS_SYNTHETIC"
+    },
+    {
+      "id": "crit-quarter",
+      "op": "crit_expected",
+      "inputs": {
+        "base": "100",
+        "chance": "0.25",
+        "extra": "0.5",
+        "cap": "1"
+      },
+      "expected": "112.5",
+      "status": "PASS_SYNTHETIC"
+    },
+    {
+      "id": "crit-over-cap",
+      "op": "crit_expected",
+      "inputs": {
+        "base": "100",
+        "chance": "1.4",
+        "extra": "0.5",
+        "cap": "1"
+      },
+      "expected": "150",
+      "status": "PASS_SYNTHETIC"
+    },
+    {
+      "id": "multihit-probability",
+      "op": "multihit_expected",
+      "inputs": {
+        "perHit": "120",
+        "hits": "3",
+        "hitChance": "0.75"
+      },
+      "expected": "270",
+      "status": "PASS_SYNTHETIC"
+    },
+    {
+      "id": "proc-zero",
+      "op": "proc_expected",
+      "inputs": {
+        "base": "80",
+        "triggerDamage": "40",
+        "chance": "0"
+      },
+      "expected": "80",
+      "status": "PASS_SYNTHETIC"
+    },
+    {
+      "id": "proc-quarter",
+      "op": "proc_expected",
+      "inputs": {
+        "base": "100",
+        "triggerDamage": "40",
+        "chance": "0.25"
+      },
+      "expected": "110",
+      "status": "PASS_SYNTHETIC"
+    },
+    {
+      "id": "proc-full",
+      "op": "proc_expected",
+      "inputs": {
+        "base": "80",
+        "triggerDamage": "40",
+        "chance": "1"
+      },
+      "expected": "120",
+      "status": "PASS_SYNTHETIC"
+    },
+    {
+      "id": "dot-four-ticks",
+      "op": "periodic_ticks",
+      "inputs": {
+        "damagePerTick": "12",
+        "ticks": "4"
+      },
+      "expected": "48",
+      "status": "PASS_SYNTHETIC"
+    },
+    {
+      "id": "duration-uptime",
+      "op": "duration_weighted",
+      "inputs": {
+        "base": "100",
+        "factor": "1.5",
+        "uptime": "0.4"
+      },
+      "expected": "120",
+      "status": "PASS_SYNTHETIC"
+    },
+    {
+      "id": "buff-stack-cap",
+      "op": "stack_factor",
+      "inputs": {
+        "stacks": "5",
+        "cap": "3",
+        "perStack": "0.1"
+      },
+      "expected": "1.3",
+      "status": "PASS_SYNTHETIC"
+    },
+    {
+      "id": "target-immune",
+      "op": "mitigated_damage",
+      "inputs": {
+        "base": "999",
+        "immune": true,
+        "mitigation": "0"
+      },
+      "expected": "0",
+      "status": "PASS_SYNTHETIC"
+    },
+    {
+      "id": "target-half-mitigated",
+      "op": "mitigated_damage",
+      "inputs": {
+        "base": "100",
+        "immune": false,
+        "mitigation": "0.5"
+      },
+      "expected": "50",
+      "status": "PASS_SYNTHETIC"
+    },
+    {
+      "id": "ordered-equal-timestamp",
+      "op": "event_order",
+      "inputs": {
+        "events": [
+          {
+            "id": "b",
+            "time": "0.5",
+            "phase": 2
+          },
+          {
+            "id": "z",
+            "time": "0.5",
+            "phase": 1
+          },
+          {
+            "id": "a",
+            "time": "0.4",
+            "phase": 4
+          }
+        ]
+      },
+      "expected": [
+        "a",
+        "z",
+        "b"
+      ],
+      "status": "PASS_SYNTHETIC"
+    },
+    {
+      "id": "cyclic-proc-blocked",
+      "op": "guard",
+      "inputs": {
+        "guard": "UNBOUNDED_TRIGGER_RECURSION",
+        "patch": "3.2.3"
+      },
+      "expected": null,
+      "status": "BLOCKED"
+    },
+    {
+      "id": "patch-mismatch-blocked",
+      "op": "guard",
+      "inputs": {
+        "guard": "PATCH_MISMATCH",
+        "patch": "3.2.1.73552",
+        "baseline": "3.2.3"
+      },
+      "expected": null,
+      "status": "BLOCKED"
+    },
+    {
+      "id": "unknown-snapshot",
+      "op": "guard",
+      "inputs": {
+        "guard": "UNKNOWN_SNAPSHOT",
+        "patch": "3.2.3"
+      },
+      "expected": null,
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "unsupported-dot-oracle",
+      "op": "guard",
+      "inputs": {
+        "guard": "MISSING_DPS_ORACLE",
+        "patch": "3.2.1.73552"
+      },
+      "expected": null,
+      "status": "UNVERIFIED"
+    }
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "fixtureSetVersion": "0.1.0",
+  "patch": "SYNTHETIC_UNVERSIONED",
+  "gameAccuracy": "NOT_GAME_VERIFIED",
+  "fixtures": [
+    {
+      "id": "direct-modifiers",
+      "family": "direct_skill",
+      "synthetic": true,
+      "scenario": "single-target",
+      "timeHorizonSeconds": 1,
+      "sourceIds": [
+        "synthetic-design-106"
+      ],
+      "input": {
+        "weaponAverage": "3450",
+        "rankCoefficient": "1.5",
+        "additive": "0.30",
+        "multipliers": [
+          "1.2"
+        ]
+      },
+      "expectedEventDamage": "8073",
+      "assumptions": [
+        "one guaranteed hit",
+        "no crit/vulnerable/mitigation/proc"
+      ]
+    },
+    {
+      "id": "proc-chain",
+      "family": "proc_trigger",
+      "synthetic": true,
+      "scenario": "single-target",
+      "timeHorizonSeconds": 1,
+      "sourceIds": [
+        "synthetic-design-106"
+      ],
+      "input": {
+        "baseDamage": "100",
+        "procChance": "0.25",
+        "triggerDamage": "40",
+        "maxDepth": 1
+      },
+      "expectedDamageMean": "110",
+      "assumptions": [
+        "synthetic independent proc probability",
+        "one direct event and at most one child",
+        "no cooldown"
+      ]
+    },
+    {
+      "id": "buff-stacks",
+      "family": "buff_stack",
+      "synthetic": true,
+      "scenario": "single-target",
+      "timeHorizonSeconds": 10,
+      "sourceIds": [
+        "synthetic-design-106"
+      ],
+      "input": {
+        "baseDamage": "80",
+        "hitsPerSecond": "2",
+        "stacks": 3,
+        "stackCap": 3,
+        "perStackRatio": "0.1",
+        "activeFraction": "0.5"
+      },
+      "expectedDamageTotal": "1840",
+      "assumptions": [
+        "simple expected uptime weighting",
+        "constant hit frequency",
+        "no duration boundary collisions"
+      ]
+    }
+  ]
+}

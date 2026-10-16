@@ -1,0 +1,45 @@
+{
+  "contractVersion": "1.0.0",
+  "source": "MAXROLL",
+  "fixtureOrigin": "SYNTHETIC_SCHEMA_EXAMPLE_NOT_A_GOLDEN",
+  "versionEvidence": {
+    "status": "UNVERIFIED",
+    "capturedAtUtc": "2026-10-15T00:00:00Z",
+    "url": "https://maxroll.gg/d4/planner/example",
+    "appVersion": null,
+    "gamePatch": null,
+    "gameBuild": null,
+    "method": "SYNTHETIC_EXAMPLE_NOT_REAL_BROWSER_EVIDENCE"
+  },
+  "fixture": {
+    "id": "synthetic.structure.only",
+    "classId": "synthetic_class",
+    "level": 1,
+    "buildFingerprint": "synthetic-not-a-real-build",
+    "inputSnapshotSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "inputCompleteness": "PARTIAL",
+    "missingInputs": ["all real inputs"]
+  },
+  "groups": [
+    {
+      "id": "core",
+      "visibleCount": 1,
+      "metrics": [
+        {
+          "id": "synthetic.core.example",
+          "label": "Example Stat (synthetic)",
+          "displayValue": "123",
+          "unit": "",
+          "evidenceStatus": "UNVERIFIED",
+          "rawOrigin": "NOT_OBSERVED",
+          "rawValue": null,
+          "evidenceRef": "synthetic-example-only",
+          "formulaStatus": "UNKNOWN"
+        }
+      ]
+    }
+  ],
+  "totalVisibleMetrics": 1,
+  "globalGameCoverage": null,
+  "referenceApproval": "NOT_APPROVED"
+}

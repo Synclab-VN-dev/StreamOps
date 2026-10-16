@@ -1,0 +1,49 @@
+name: D4 Maxroll 50-Stat Formula Graph Golden Gate (#108)
+on:
+  pull_request:
+    paths:
+      - 'utility/d4-maxroll-parity/**'
+      - '.github/workflows/d4-maxroll-parity.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-golden:
+    name: Independent Golden parity harness and negative cases
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Enforce fail-closed absent 50-row Golden and computed Graph output
+        shell: bash
+        run: |
+          set +e
+          python utility/d4-maxroll-parity/gate.py --fixture utility/d4-maxroll-parity/rogue-3.2.1.73552-fixture.json --report artifacts/maxroll-50-parity-readiness.json
+          rc=$?
+          set -e
+          if [ "$rc" -ne 2 ]; then
+            echo "FAIL: required BLOCKED=2 until independently captured 50 Golden/Graph/formula inputs exist; got $rc"
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("artifacts/maxroll-50-parity-readiness.json").read_text())
+          assert report["status"] == "BLOCKED", report
+          assert report["denominator"] == 50, report
+          assert "MISSING_GOLDEN_ARTIFACT" in report["blockers"], report
+          assert "MISSING_ACTUAL_ARTIFACT" in report["blockers"], report
+          assert "MISSING_FORMULAS_ARTIFACT" in report["blockers"], report
+          PY
+      - name: Run synthetic comparator unit and negative tests (NOT Maxroll parity)
+        run: python -m unittest discover -s utility/d4-maxroll-parity/tests -p 'test_*.py' -v
+      - name: Archive independent-golden readiness evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maxroll-50-stat-golden-parity-readiness
+          path: artifacts/maxroll-50-parity-readiness.json
+          if-no-files-found: error

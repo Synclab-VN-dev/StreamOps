@@ -1,0 +1,243 @@
+{
+  "catalogVersion": "1.0.0",
+  "oracle": "MAXROLL_ONLY",
+  "status": "F2_RESEARCH_CANDIDATES_NOT_GOLDEN",
+  "baseline": {
+    "gamePatch": "3.2.1",
+    "gameBuild": "73552",
+    "ownerPinned": true,
+    "source": "https://github.com/Synclab-VN-dev/StreamOps/issues/107#issuecomment-6203600278"
+  },
+  "fixture": {
+    "url": "https://maxroll.gg/d4/planner/1g1any0x#3",
+    "classId": "rogue",
+    "build": "Penetrating Shot Endgame",
+    "level": 70,
+    "variant": "#3",
+    "inputSnapshotSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+    "inputCompleteness": "PARTIAL",
+    "socketsResolved": 4,
+    "socketsTotal": 13,
+    "paragonStoredNodeIds": 269,
+    "paragonSpentPoints": 265,
+    "semanticParagonLabelsUnresolved": 7,
+    "conditionalState": "PARTIAL"
+  },
+  "inventory": {
+    "source": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6196291714",
+    "groups": {
+      "summary": 2,
+      "core": 5,
+      "resistances": 8,
+      "offensive": 20,
+      "defensive": 7,
+      "utility": 7,
+      "pvp": 1
+    },
+    "visibleTotal": 50,
+    "allRowsIndependentReview": "PENDING"
+  },
+  "f2Source": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6204088473",
+  "metrics": [
+    {
+      "id": "summary.weapon_damage",
+      "group": "summary",
+      "label": "Weapon Damage",
+      "rawValue": "52050.754872000005",
+      "rawOrigin": "MAXROLL_CDP_AGENT_REPORT",
+      "rawUnit": "UNVERIFIED",
+      "displayValue": "52,051",
+      "formatPolicy": "OBSERVED_SAMPLE_ONLY",
+      "evidenceGrade": "CAUSAL_BOUNDED_REUSED_VECTORS",
+      "formulaStatus": "UNKNOWN",
+      "formulaCandidate": null,
+      "inputs": [],
+      "effects": [],
+      "dependencies": [],
+      "ordering": "UNKNOWN",
+      "evidenceId": "F2_106",
+      "goldenStatus": "NOT_APPROVED"
+    },
+    {
+      "id": "summary.toughness",
+      "group": "summary",
+      "label": "Toughness",
+      "rawValue": "2885756.723201841",
+      "rawOrigin": "MAXROLL_CDP_AGENT_REPORT",
+      "rawUnit": "UNVERIFIED",
+      "displayValue": "2,885,757",
+      "formatPolicy": "OBSERVED_SAMPLE_ONLY",
+      "evidenceGrade": "RUNTIME_REPORTED",
+      "formulaStatus": "UNKNOWN",
+      "formulaCandidate": {
+        "expression": "mean(six runtime type toughness values)",
+        "status": "SINGLE_FIXTURE_EQUALITY_NOT_CAUSAL"
+      },
+      "inputs": [],
+      "effects": [],
+      "dependencies": [],
+      "ordering": "UNKNOWN",
+      "evidenceId": "F2_106",
+      "goldenStatus": "NOT_APPROVED"
+    },
+    {
+      "id": "offensive.all_damage",
+      "group": "offensive",
+      "label": "All Damage",
+      "rawValue": "5.878875622400002",
+      "rawOrigin": "MAXROLL_CDP_AGENT_REPORT",
+      "rawUnit": "UNVERIFIED",
+      "displayValue": "587.9%",
+      "formatPolicy": "OBSERVED_SAMPLE_ONLY",
+      "evidenceGrade": "ADDITIVE_BOUNDED_MULTIPLICATIVE_UNVERIFIED",
+      "formulaStatus": "UNKNOWN",
+      "formulaCandidate": null,
+      "inputs": [],
+      "effects": [],
+      "dependencies": [],
+      "ordering": "UNKNOWN",
+      "evidenceId": "F2_106",
+      "goldenStatus": "NOT_APPROVED",
+      "unresolved": [
+        "Multiplicative branch not causally verified; prior UI fixture inactive"
+      ]
+    },
+    {
+      "id": "offensive.critical_strike_chance",
+      "group": "offensive",
+      "label": "Critical Strike Chance",
+      "rawValue": "-0.9376805",
+      "rawOrigin": "MAXROLL_CDP_AGENT_REPORT",
+      "rawUnit": "UNVERIFIED",
+      "displayValue": "-93.8%",
+      "formatPolicy": "OBSERVED_SAMPLE_ONLY",
+      "evidenceGrade": "RUNTIME_REPORTED",
+      "formulaStatus": "UNKNOWN",
+      "formulaCandidate": {
+        "expression": "0.05 + (-1 + 0.0123195)",
+        "status": "ONE_FIXTURE_ARITHMETIC_EXPLANATION_NOT_CAUSAL"
+      },
+      "inputs": [],
+      "effects": [],
+      "dependencies": [],
+      "ordering": "UNKNOWN",
+      "evidenceId": "F2_106",
+      "goldenStatus": "NOT_APPROVED"
+    },
+    {
+      "id": "offensive.critical_strike_damage",
+      "group": "offensive",
+      "label": "Critical Strike Damage",
+      "rawValue": "0.5",
+      "rawOrigin": "MAXROLL_CDP_AGENT_REPORT",
+      "rawUnit": "UNVERIFIED",
+      "displayValue": "50.0%",
+      "formatPolicy": "OBSERVED_SAMPLE_ONLY",
+      "evidenceGrade": "RUNTIME_REPORTED",
+      "formulaStatus": "UNKNOWN",
+      "formulaCandidate": null,
+      "inputs": [],
+      "effects": [],
+      "dependencies": [],
+      "ordering": "UNKNOWN",
+      "evidenceId": "F2_106",
+      "goldenStatus": "NOT_APPROVED"
+    },
+    {
+      "id": "offensive.weapon_speed",
+      "group": "offensive",
+      "label": "Weapon Speed",
+      "rawValue": "1.2",
+      "rawOrigin": "MAXROLL_CDP_AGENT_REPORT",
+      "rawUnit": "UNVERIFIED",
+      "displayValue": "1.20",
+      "formatPolicy": "OBSERVED_SAMPLE_ONLY",
+      "evidenceGrade": "CAUSAL_BOUNDED_REUSED_VECTORS",
+      "formulaStatus": "UNKNOWN",
+      "formulaCandidate": null,
+      "inputs": [],
+      "effects": [],
+      "dependencies": [],
+      "ordering": "UNKNOWN",
+      "evidenceId": "F2_106",
+      "goldenStatus": "NOT_APPROVED",
+      "unresolved": [
+        "Unequal dual-wield speed aggregation not tested"
+      ]
+    },
+    {
+      "id": "offensive.attack_speed_bonus",
+      "group": "offensive",
+      "label": "Attack Speed Bonus",
+      "rawValue": "0.25",
+      "rawOrigin": "MAXROLL_CDP_AGENT_REPORT",
+      "rawUnit": "UNVERIFIED",
+      "displayValue": "25.0%",
+      "formatPolicy": "OBSERVED_SAMPLE_ONLY",
+      "evidenceGrade": "CAUSAL_BOUNDED_REUSED_VECTORS",
+      "formulaStatus": "UNKNOWN",
+      "formulaCandidate": null,
+      "inputs": [],
+      "effects": [],
+      "dependencies": [],
+      "ordering": "UNKNOWN",
+      "evidenceId": "F2_106",
+      "goldenStatus": "NOT_APPROVED",
+      "unresolved": [
+        "Skill event rate and sustained DPS depend on #111 simulation"
+      ]
+    },
+    {
+      "id": "defensive.maximum_life",
+      "group": "defensive",
+      "label": "Maximum Life",
+      "rawValue": "71496.99842999999",
+      "rawOrigin": "MAXROLL_CDP_AGENT_REPORT",
+      "rawUnit": "UNVERIFIED",
+      "displayValue": "71,497",
+      "formatPolicy": "OBSERVED_SAMPLE_ONLY",
+      "evidenceGrade": "RUNTIME_REPORTED",
+      "formulaStatus": "UNKNOWN",
+      "formulaCandidate": null,
+      "inputs": [],
+      "effects": [],
+      "dependencies": [],
+      "ordering": "UNKNOWN",
+      "evidenceId": "F2_106",
+      "goldenStatus": "NOT_APPROVED"
+    },
+    {
+      "id": "defensive.armor",
+      "group": "defensive",
+      "label": "Armor",
+      "rawValue": "21650.214",
+      "rawOrigin": "MAXROLL_CDP_AGENT_REPORT",
+      "rawUnit": "UNVERIFIED",
+      "displayValue": "21,650",
+      "formatPolicy": "OBSERVED_SAMPLE_ONLY",
+      "evidenceGrade": "RUNTIME_REPORTED",
+      "formulaStatus": "UNKNOWN",
+      "formulaCandidate": null,
+      "inputs": [],
+      "effects": [],
+      "dependencies": [],
+      "ordering": "UNKNOWN",
+      "evidenceId": "F2_106",
+      "goldenStatus": "NOT_APPROVED"
+    }
+  ],
+  "parity": {
+    "approvedGoldenCount": 0,
+    "maxrollParity": "NOT_TESTED",
+    "rawArtifactsIndependentReview": "PENDING",
+    "numericFallback": "FORBIDDEN",
+    "scope": "FIXTURE_ONLY"
+  },
+  "evidenceRegistry": {
+    "F2_106": {
+      "url": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6204088473",
+      "kind": "AGENT_SANITIZED_REPORT",
+      "rawTraceIndependentlyReviewed": false
+    }
+  }
+}

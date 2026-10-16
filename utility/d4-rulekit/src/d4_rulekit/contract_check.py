@@ -1,202 +1,173 @@
-"""CI-03 machine-checkable contract and sourced reference regression.
-
-This is NOT the game simulator or G2/G3/DPS verifier. No external network access.
-"""
+"""#107 CI-03: Maxroll-only structural contract gate. NOT a game formula evaluator."""
 from __future__ import annotations
 
 import argparse
-from decimal import Decimal
 import json
 from pathlib import Path
+import re
 import sys
 from typing import Any
 
 from d4_rulekit.schema_check import load_schema
 
+PATCH = "3.2.1"
+BUILD = "73552"
+BASELINE = PATCH + "." + BUILD
+SOURCE_ID = "maxroll-f1-rogue-3-2-1-73552"
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
-def _error(errors: list[str], condition: bool, label: str) -> None:
+
+def _require(errors: list[str], condition: bool, message: str) -> None:
     if not condition:
-        errors.append(label)
+        errors.append(message)
 
 
 def check_contract(document: Any) -> list[str]:
-    """Check consistency with the *actual* Rule DSL schema, never a copied operator list."""
     errors: list[str] = []
     if not isinstance(document, dict):
         return ["contract must be a JSON object"]
+
     schema = load_schema()
     known_ops = {
         variant["properties"]["op"]["const"]
         for variant in schema["$defs"]["action"]["oneOf"]
     }
-    actual_ops = document.get("operators")
-    _error(errors, document.get("contractVersion") == "1.0.0", "contractVersion mismatch")
-    _error(errors, document.get("ruleSchemaVersion") == "1.0.0", "rule schema version mismatch")
-    _error(errors, isinstance(actual_ops, dict), "operators not a map")
-    if isinstance(actual_ops, dict):
-        _error(errors, set(actual_ops) == known_ops, "operators mismatch schema action discriminators")
-        allowed_classes = set(document.get("eventModel", {}).get("actionCategories", []))
-        for op, payload in actual_ops.items():
-            _error(errors, isinstance(payload, dict) and payload.get("class") in allowed_classes,
-                   f"operator {op}: unknown action class")
-            _error(errors, isinstance(payload, dict) and bool(payload.get("semantics")),
-                   f"operator {op}: missing semantics")
-            _error(errors, isinstance(payload, dict) and payload.get("gameBehavior") ==
-                   "requires_verified_rule_data", f"operator {op}: missing evidence guard")
-        _error(errors, actual_ops.get("modify_stat", {}).get("class") !=
-               actual_ops.get("deal_damage", {}).get("class"),
-               "modifier and damage event MUST be different action classes")
+    _require(errors, document.get("contractVersion") == "1.0.0", "contractVersion mismatch")
+    _require(errors, document.get("ruleSchemaVersion") == "1.0.0", "rule schema version mismatch")
+    ops = document.get("operators")
+    _require(errors, isinstance(ops, dict), "operators not a map")
+    if isinstance(ops, dict):
+        _require(errors, set(ops) == known_ops, "operators mismatch schema action discriminators")
+        classes = set(document.get("eventModel", {}).get("actionCategories", []))
+        for op, payload in ops.items():
+            _require(errors, isinstance(payload, dict), f"operator {op}: malformed")
+            if not isinstance(payload, dict):
+                continue
+            _require(errors, payload.get("class") in classes, f"operator {op}: invalid class")
+            _require(errors, bool(payload.get("semantics")), f"operator {op}: semantics missing")
+            _require(errors, payload.get("gameBehavior") == "requires_verified_rule_data",
+                     f"operator {op}: unsourced behavior default")
+        if isinstance(ops.get("modify_stat"), dict) and isinstance(ops.get("deal_damage"), dict):
+            _require(errors, ops["modify_stat"]["class"] != ops["deal_damage"]["class"],
+                     "modifier and damage event MUST be different action classes")
 
     known_phases = set(schema["$defs"]["mechanic"]["properties"]["phase"]["enum"])
-    phases = document.get("phaseOrder", [])
-    _error(errors, isinstance(phases, list) and len(phases) == len(known_phases) and
-           len(set(phases)) == len(phases) and set(phases) == known_phases,
-           "phaseOrder must include every schema phase exactly once")
+    phases = document.get("phaseOrder")
+    _require(errors, isinstance(phases, list) and len(phases) == len(known_phases) and
+             len(set(phases)) == len(phases) and set(phases) == known_phases,
+             "phase order mismatch")
 
-    event_model = document.get("eventModel", {})
-    if not isinstance(event_model, dict):
-        return errors + ["eventModel must be a map"]
-    _error(errors, event_model.get("orderingEvidence") ==
-           "ENGINE_DETERMINISM_ONLY_NOT_BLIZZARD_INTERNAL_ORDER",
-           "ordering convention must not claim Blizzard event accuracy")
-    _error(errors, event_model.get("collisionPolicy") ==
-           "modify_stat_does_not_emit_damage;deal_damage_schedules_damage_event",
-           "missing non-collision contract")
-    _error(errors, event_model.get("priorityConflict") ==
-           "REJECT_EQUAL_PRIORITY_INCOMPATIBLE_OVERRIDE",
-           "override conflicts must fail closed")
-    _error(errors, "DENY_UNDECLARED_RECURSION" in event_model.get("recursion", ""),
-           "recursive triggering must deny by default")
-    _error(errors, event_model.get("triggeredInheritance") == "EXPLICIT_PER_RULE_ELSE_UNVERIFIED",
-           "trigger inheritance must not silently default")
-    _error(errors, event_model.get("snapshotTiming") == "EXPLICIT_PER_RULE_ELSE_UNVERIFIED",
-           "snapshot timing must not silently default")
-    distinct = event_model.get("distinctEvents", [])
-    _error(errors, isinstance(distinct, list) and
-           {"SKILL_CAST", "SKILL_TRIGGERED", "DAMAGE_HIT", "PERIODIC_TICK"} <= set(distinct),
-           "cast, triggered, hit and tick events must remain distinct")
+    event = document.get("eventModel")
+    _require(errors, isinstance(event, dict), "event model missing")
+    if isinstance(event, dict):
+        _require(errors, event.get("orderingEvidence") == "ENGINE_DETERMINISM_ONLY_NOT_MAXROLL_VERIFIED",
+                 "event ordering not verified by Maxroll")
+        _require(errors, event.get("collisionPolicy") ==
+                 "modify_stat_does_not_emit_damage;deal_damage_schedules_damage_event",
+                 "modifier and damage must remain distinct")
+        _require(errors, event.get("priorityConflict") == "REJECT_EQUAL_PRIORITY_INCOMPATIBLE_OVERRIDE",
+                 "conflicting overrides must fail closed")
+        _require(errors, "DENY_UNDECLARED_RECURSION" in event.get("recursion", ""),
+                 "unbounded recursion")
+        _require(errors, event.get("triggeredInheritance") == "EXPLICIT_PER_RULE_ELSE_UNVERIFIED",
+                 "unsupported trigger inheritance default")
+        _require(errors, event.get("snapshotTiming") == "EXPLICIT_PER_RULE_ELSE_UNVERIFIED",
+                 "unsupported snapshot default")
+        _require(errors, {"SKILL_CAST", "SKILL_TRIGGERED", "DAMAGE_HIT", "PERIODIC_TICK"}
+                 <= set(event.get("distinctEvents", [])), "event identities missing")
 
-    refs = document.get("provenance", {}).get("sourceRegistry", [])
-    refs_valid = isinstance(refs, list) and all(isinstance(x, dict) for x in refs)
-    _error(errors, refs_valid, "provenance registry invalid")
-    source_ids = set()
-    if refs_valid:
-        source_ids = {x.get("id") for x in refs}
-        _error(errors, len(source_ids) == len(refs), "duplicate source IDs")
-        for ref in refs:
-            _error(errors, ref.get("kind") == "official" and
-                   isinstance(ref.get("url"), str) and
-                   ref["url"].startswith("https://news.blizzard.com/en-us/article/") and
-                   bool(ref.get("claim")) and bool(ref.get("scope")),
-                   f"invalid evidence record {ref.get('id')}")
-    _error(errors, document.get("patchBaseline", {}).get("gameVersion") == "3.2.3",
-           "patch baseline mismatch")
-    _error(errors, document.get("patchBaseline", {}).get("sourceId") in source_ids,
-           "patch baseline missing source evidence")
+    baseline = document.get("patchBaseline", {})
+    _require(errors, isinstance(baseline, dict), "patch baseline missing")
+    if isinstance(baseline, dict):
+        _require(errors, baseline.get("gameVersion") == PATCH and baseline.get("buildNumber") == BUILD,
+                 "owner pinned Maxroll baseline mismatch")
+        _require(errors, baseline.get("sourceId") == SOURCE_ID, "baseline source mismatch")
+        _require(errors, baseline.get("policy") == "exact_patch_rule_selection",
+                 "exact patch selection required")
+        _require(errors, baseline.get("authority") == "OWNER_APPROVED_MAXROLL_BASELINE_2026_10_16",
+                 "baseline approval missing")
 
-    policies = document.get("aggregationPolicies")
-    _error(errors, isinstance(policies, dict), "aggregationPolicies must be a map")
-    if isinstance(policies, dict):
-        _error(errors, policies.get("gear_damage_multiplier", {}).get("kind") ==
-               "sum_then_factor", "gear multipliers must use sourced additive grouping")
-        for key, value in policies.items():
-            _error(errors, isinstance(value, dict) and
-                   value.get("kind") in {"sum_then_factor", "product_of_factors",
-                                        "additive_times_baseline"},
-                   f"unsupported aggregation: {key}")
-            ids = value.get("sourceIds", []) if isinstance(value, dict) else []
-            _error(errors, bool(ids) and all(r in source_ids for r in ids),
-                   f"aggregation {key} lacks source")
-            if key.startswith("historical_"):
-                _error(errors, value.get("status") == "HISTORICAL_ONLY_DO_NOT_APPLY_TO_3_2_3",
-                       f"historical policy incorrectly promoted: {key}")
-    interactions = document.get("interactions", {})
-    if isinstance(interactions, dict):
-        item = interactions.get("storm_shephard_2p_5p", {})
-        _error(errors, item.get("mode") == "coexist_not_override" and
-               item.get("sourceIds") == ["blizzard-storm-3-0-4"],
-               "Storm Shephard effect requires specific sourced coexistence policy")
-        _error(errors, interactions.get("generic_stack", {}).get("mode") ==
-               "REQUIRES_RULE_EVIDENCE", "generic stack must not invent a default")
-    else:
-        errors.append("interactions must be a map")
+    registry = document.get("provenance", {}).get("sourceRegistry")
+    _require(errors, isinstance(registry, list) and bool(registry), "source registry missing")
+    if isinstance(registry, list):
+        ids = [v.get("id") for v in registry if isinstance(v, dict)]
+        _require(errors, len(ids) == len(registry) and len(ids) == len(set(ids)),
+                 "duplicate/malformed sources")
+        for item in registry:
+            if not isinstance(item, dict):
+                continue
+            _require(errors, item.get("kind") == "maxroll_ui_observation" and
+                     item.get("id") == SOURCE_ID and
+                     item.get("gameVersion") == PATCH and item.get("buildNumber") == BUILD and
+                     isinstance(item.get("url"), str) and
+                     item["url"].startswith("https://maxroll.gg/d4/planner/") and
+                     item.get("status") == "UI_OBSERVED_ONLY" and
+                     item.get("formulaEvidence") == "NONE_F1_READ_ONLY" and
+                     bool(item.get("captureEvidence")),
+                     "source must be bounded Maxroll F1 UI observation (not official formula)")
 
-    unknown = document.get("unknownPolicy", {})
-    _error(errors, isinstance(unknown, dict) and
-           unknown.get("missingEvidence") == "UNVERIFIED" and
-           unknown.get("unverifiedSnapshot") == "UNVERIFIED" and
-           unknown.get("unverifiedProcInheritance") == "UNVERIFIED" and
-           unknown.get("numericFallback") == "FORBIDDEN" and
-           unknown.get("ambiguousOverride") == "CONTRACT_FAIL",
-           "unknown mechanic fallback must be fail-closed")
+    _require(errors, document.get("aggregationPolicies") == {},
+             "active calculation formula requires separate Maxroll causal evidence; no synthetic/legacy promotions")
+    _require(errors, document.get("interactions") ==
+             {"generic_stack": {"mode": "REQUIRES_RULE_EVIDENCE", "status": "UNVERIFIED"}},
+             "unverified legacy interactions must not be active")
+
+    policy = document.get("referencePolicy")
+    _require(errors, isinstance(policy, dict), "Maxroll reference policy missing")
+    if isinstance(policy, dict):
+        _require(errors, policy.get("oracle") == "MAXROLL_ONLY", "oracle must be Maxroll")
+        _require(errors, policy.get("pinnedGamePatch") == PATCH and
+                 policy.get("pinnedGameBuild") == BUILD, "Maxroll policy patch mismatch")
+        _require(errors, policy.get("approvedGoldenCount") == 0 and
+                 policy.get("maxrollParity") == "BLOCKED_PENDING_COMPLETE_INPUT_AND_INDEPENDENT_GOLDEN",
+                 "fake golden/parity promotion")
+        _require(errors, policy.get("historicalSources") == "NOT_ACTIVE" and
+                 policy.get("numericFallback") == "FORBIDDEN", "historical source or numeric fallback enabled")
+
+    unknown = document.get("unknownPolicy")
+    _require(errors, isinstance(unknown, dict) and
+             unknown.get("missingEvidence") == "UNVERIFIED" and
+             unknown.get("ambiguousOverride") == "CONTRACT_FAIL" and
+             unknown.get("unverifiedSnapshot") == "UNVERIFIED" and
+             unknown.get("unverifiedProcInheritance") == "UNVERIFIED" and
+             unknown.get("numericFallback") == "FORBIDDEN",
+             "fail closed unknown policy violated")
     return sorted(set(errors))
 
 
-def evaluate_reference(vector: dict, contract: dict) -> tuple[str, str | None]:
-    """Reference *contract* arithmetic, not actual in-game DPS calculation."""
-    kind = vector["testType"]
-    if kind == "unverified":
-        return "UNVERIFIED", None
-    if kind == "aggregation":
-        policy = contract["aggregationPolicies"][vector["policyId"]]
-        if policy["kind"] != "sum_then_factor" or vector["patch"] != "3.2.3":
-            raise ValueError("unsupported patch/policy for this fixture")
-        factor = Decimal(1) + sum((Decimal(x) for x in vector["values"]), Decimal(0))
-        return "PASS_CONTRACT_ONLY", str(factor)
-    if kind == "historical_arithmetic":
-        policy = contract["aggregationPolicies"][vector["policyId"]]
-        if policy["kind"] != "additive_times_baseline" or vector["patch"] != "1.2.0":
-            raise ValueError("historical fixture must not be interpreted for 3.x")
-        factor = (Decimal(1) + Decimal(vector["additive"])) * (
-            Decimal(1) + Decimal(vector["baseline"]))
-        return "PASS_HISTORICAL_ONLY", str(factor)
-    if kind == "interaction":
-        item = contract["interactions"][vector["interactionId"]]
-        if item["mode"] != "coexist_not_override" or vector["patch"] != "3.0.4":
-            raise ValueError("unverified interaction applicability")
-        if sorted(vector["activeBonuses"]) != sorted(vector["expectedActive"]):
-            raise ValueError("expected coexistence mismatch")
-        return "PASS_RULE_SPECIFIC", None
-    raise ValueError("unsupported testType; cannot produce numerical result")
+def evaluate_reference(vector: dict, contract: dict):
+    """Fail closed. A candidate Maxroll UI value is not an approved numeric formula."""
+    raise ValueError("numeric Maxroll references require independently reviewed golden and #108 parity gate")
 
 
 def check_references(document: Any, contract: dict) -> list[str]:
-    errors = []
-    if not isinstance(document, dict) or document.get("baseline") != "3.2.3":
-        return ["reference baseline mismatch"]
-    if document.get("referenceSetVersion") != "1.0.0":
-        return ["referenceSetVersion invalid"]
-    vectors = document.get("vectors", [])
-    if not isinstance(vectors, list) or len(vectors) < 4:
-        return ["reference vector matrix incomplete"]
-    names = [v.get("caseId") for v in vectors if isinstance(v, dict)]
-    if len(set(names)) != len(vectors):
-        errors.append("duplicate or malformed reference case")
-    sources = {x["id"] for x in contract["provenance"]["sourceRegistry"]}
-    for vector in vectors:
-        if not isinstance(vector, dict):
-            errors.append("malformed reference case")
-            continue
-        case = vector.get("caseId", "<unknown>")
-        if not vector.get("sourceIds") or not set(vector["sourceIds"]) <= sources:
-            errors.append(f"{case}: missing independent source")
-        try:
-            status, value = evaluate_reference(vector, contract)
-            if status != vector.get("expectedStatus"):
-                errors.append(f"{case}: expected status mismatch")
-            expected = vector.get("expectedFactor")
-            if expected is not None:
-                if value is None or Decimal(value) != Decimal(expected):
-                    errors.append(f"{case}: expected factor mismatch")
-            elif value is not None:
-                errors.append(f"{case}: a nonnumeric case generated a factor")
-            if status == "UNVERIFIED" and value is not None:
-                errors.append(f"{case}: unverified case leaked numeric result")
-            if vector["testType"] == "aggregation":
-                if not str(vector.get("coefficientsProvenance", "")).startswith("SYNTHETIC"):
-                    errors.append(f"{case}: illustrative coefficients misrepresented")
-        except (KeyError, ValueError, TypeError, ArithmeticError) as exc:
-            errors.append(f"{case}: {exc}")
+    errors: list[str] = []
+    if not isinstance(document, dict):
+        return ["reference manifest must be object"]
+    _require(errors, document.get("referenceSetVersion") == "2.0.0",
+             "reference version mismatch")
+    _require(errors, document.get("oracle") == "MAXROLL_ONLY", "reference is not Maxroll")
+    _require(errors, document.get("baseline") == BASELINE and
+             document.get("gamePatch") == PATCH and document.get("gameBuild") == BUILD,
+             "reference patch/build mismatch")
+    _require(errors, document.get("sourceId") == SOURCE_ID, "reference source mismatch")
+    _require(errors, document.get("sourceEvidence") ==
+             "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6196291714",
+             "independent capture evidence missing")
+    _require(errors, document.get("fixtureUrl") == "https://maxroll.gg/d4/planner/1g1any0x#3",
+             "fixture URL mismatch")
+    fingerprint = document.get("fixtureFingerprint")
+    _require(errors, isinstance(fingerprint, str) and bool(_SHA256.fullmatch(fingerprint)),
+             "invalid fixture fingerprint")
+    _require(errors, document.get("candidateVisibleMetricCount") == 50 and
+             document.get("candidateVisibleMetricCount") ==
+             contract.get("referencePolicy", {}).get("candidateMetrics"),
+             "captured fixture count mismatch")
+    _require(errors, document.get("approvedGoldenCount") == 0 and
+             document.get("referenceStatus") == "CANDIDATE_ONLY_INPUT_PARTIAL" and
+             document.get("maxrollParity") == "BLOCKED_NO_APPROVED_GOLDEN" and
+             document.get("vectors") == [],
+             "unreviewed candidate was promoted into active Maxroll golden")
     return sorted(set(errors))
 
 
@@ -205,23 +176,28 @@ def report_files(contract_path: Path, references_path: Path) -> dict:
         contract = json.loads(contract_path.read_text(encoding="utf-8"))
         references = json.loads(references_path.read_text(encoding="utf-8"))
     except (OSError, ValueError, UnicodeError) as exc:
-        return {"gate": "CI-03", "status": "BLOCKED", "errors": [str(exc)]}
+        return {"status": "BLOCKED", "errors": [str(exc)], "maxrollParity": "NOT_TESTED"}
     errors = check_contract(contract)
     if not errors:
         errors += check_references(references, contract)
     return {
-        "gate": "CI-03_EXECUTION_CONTRACT_NOT_GAME_SIMULATION",
+        "gate": "CI-03_EXECUTION_CONTRACT_ONLY",
         "status": "PASS" if not errors else "FAIL",
         "contractVersion": contract.get("contractVersion"),
         "baselinePatch": contract.get("patchBaseline", {}).get("gameVersion"),
+        "baselineBuild": contract.get("patchBaseline", {}).get("buildNumber"),
+        "oracle": "MAXROLL_ONLY",
         "sourceCount": len(contract.get("provenance", {}).get("sourceRegistry", [])),
+        "candidateVisibleMetricCount": references.get("candidateVisibleMetricCount"),
+        "approvedGoldenCount": references.get("approvedGoldenCount"),
         "referenceCount": len(references.get("vectors", [])),
-        "errors": errors,
+        "maxrollParity": "BLOCKED_NO_APPROVED_GOLDEN",
         "gameAccuracy": "NOT_VERIFIED_BY_CI03",
+        "errors": sorted(set(errors)),
     }
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="d4-rulekit-execution-check")
     parser.add_argument("--contract", type=Path, required=True)
     parser.add_argument("--references", type=Path, required=True)
