@@ -46,6 +46,8 @@ jobs:
           python utility/d4-rule-registry/registry.py \
             --synthetic-patch-cycle utility/d4-rule-registry/fixtures/synthetic-patch-cycle.json \
             --report artifacts/d4-rule-registry/synthetic-rollback.json
+          python utility/d4-rule-registry/research/check_fire_dr.py \
+            --report artifacts/d4-rule-registry/fire-dr-f7-2-source-replay.json
           python - <<'PY'
           import json
           from pathlib import Path
@@ -58,6 +60,10 @@ jobs:
           assert c["sourceBounded"]==27 and c["sourcePartial"]==23
           assert c["fullParity"]=="BLOCKED" and r["publishStatus"]=="NOT_APPROVED"
           assert all(x["activeRule"] is None and x["calculatedValue"] is None for x in r["metrics"])
+          f=json.loads(Path("artifacts/d4-rule-registry/fire-dr-f7-2-source-replay.json").read_text())
+          assert f["status"]=="PASS_BOUNDED_RESEARCH_REPLAY_ONLY" and f["sourceMatch"]==5
+          assert not f["approvedGolden"] and not f["promotableToActiveRule"]
+          assert f["graphParity"]=="BLOCKED_NOT_RUN"
           p=json.loads(Path("artifacts/d4-rule-registry/synthetic-rollback.json").read_text())
           assert p["status"]=="PASS_SYNTHETIC_ONLY" and p["restoredExactly"]
           assert p["oldHash"]==p["rollbackHash"] and not p["activePublish"]

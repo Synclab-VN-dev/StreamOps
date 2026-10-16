@@ -1,0 +1,45 @@
+{
+  "fixtureVersion": "f7.2-v1",
+  "sourceKind": "INDEPENDENTLY_REVIEWED_MAXROLL_DISPLAY_SOURCE_ONLY",
+  "metricId": "maxroll.heroDetails.446",
+  "oracle": "MAXROLL_ONLY",
+  "patch": "3.2.1.73552",
+  "classId": "rogue",
+  "sourceCommit": "918aa4b0e1845d34909a8b847a324b445e3805a7",
+  "sourceReview": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6212668905",
+  "candidate": "DR_display_percent = 90 * R / (R + 15 * Level)",
+  "status": "BOUNDED_VERIFIED_DISPLAY_ONLY",
+  "exactRawHelperVerified": false,
+  "explicitCapVerified": false,
+  "sourceInputsKnownFully": false,
+  "approvedGolden": false,
+  "graphParity": "NOT_RUN",
+  "displayTolerancePercentagePoints": "0.05",
+  "vectors": [
+    {
+      "level": 50,
+      "R": 22,
+      "maxrollDisplayPercent": "2.6"
+    },
+    {
+      "level": 50,
+      "R": 422,
+      "maxrollDisplayPercent": "32.4"
+    },
+    {
+      "level": 50,
+      "R": 2822,
+      "maxrollDisplayPercent": "71.1"
+    },
+    {
+      "level": 50,
+      "R": 3222,
+      "maxrollDisplayPercent": "73.0"
+    },
+    {
+      "level": 50,
+      "R": 3544,
+      "maxrollDisplayPercent": "74.3"
+    }
+  ]
+}

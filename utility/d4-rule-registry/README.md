@@ -56,3 +56,19 @@ about a real Diablo IV patch; never promote its values.
 - Any agent proposes candidate data via PR only; no auto-publish or unreviewed
   source update. Owner reviews the consolidated Epic #117, not individual PRs
   unless a genuine contract/design checkpoint is needed.
+
+## F7.2 independently reviewed source-only display replay
+
+The **single** staged Fire Resistance candidate links independent F7.2 source
+evidence (5 controlled R points at Rogue level 50). Offline Decimal arithmetic
+checks the bounded display relation **90*R/(R+15*Level)** within predeclared
+0.05 percentage points. This is a source research replay, **not** a verified
+complete stat formula: resistance aggregation, unrounded helper, explicit cap,
+other classes/branches, fully reproducible character inputs and #108 Golden
+parity remain unverified. Neither candidate nor the source fixture is active.
+
+    python utility/d4-rule-registry/research/check_fire_dr.py --report artifacts/109-fire-dr.json
+
+CI fails closed for a changed source value, patch, level, tolerance or attempted
+raw-helper/cap/Golden promotion. The source vector is independent of a future
+Graph implementation but **is not itself an approved complete Golden fixture**.
