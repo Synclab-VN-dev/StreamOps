@@ -124,3 +124,30 @@ G2/G3/G4 and Owner review would still be mandatory for publish.
 
 A PASS here proves **CI-01 with synthetic patch input only**, not that any new
 real game mechanics have been independently discovered or verified.
+
+## CI-02 read-only provenance and immutability guard
+
+`review_policy.py` performs independent **source binding review** beyond a
+syntactically plausible 40-character commit: the sole staged Fire candidate
+must match the exact #106 independently reviewed source URL, issue evidence,
+commit, patch/class, evidence research grade, the existing DSL v1 G1 gate,
+and all four unrun G1–G4 promotion statuses. Extra unregistered rule sources,
+forced G1/G2/G3/G4 `PASS`, claimed Golden or Owner signoff, stale versions,
+and any policy attempt to auto-publish are rejected before output.
+
+`fixtures/synthetic-approved-lock.json` represents an **approved-like
+SIMULATION ONLY**. Its immutable content hash is independently pinned inside
+`review_policy.py`. Testing any attempted rewrite (including identical
+payloads, misleading approval metadata, new hash, wrong key) is rejected.
+It is explicitly **not an actual owner-approved Maxroll ruleset**; no
+production-publish operation or real owner-approved snapshot exists. The
+review function never writes to an approved store.
+
+    python utility/d4-rule-registry/review_policy.py --report artifacts/109-policy.json
+
+`PASS_CI02_READ_ONLY_POLICY_GUARDS_ONLY` means automated CI-02 safety checks
+are in place for **staged data and an immutable synthetic approval fixture**,
+not that a real owner-approved snapshot was tested. Publication remains blocked
+until an approved real Golden, independently verified G1–G4, recorded Owner
+approval and a separately approved publish workflow exist. Keep CI-02's full
+live-publish acceptance pending.

@@ -1,0 +1,17 @@
+{
+  "fixtureKind": "SYNTHETIC_ONLY",
+  "approvalKind": "SIMULATED_APPROVAL_NOT_REAL",
+  "registryVersion": "1.0.0",
+  "patch": "synthetic-old",
+  "classId": "rogue",
+  "sourceCommit": "synthetic.fixture.reference",
+  "lockedRules": {
+    "fake.direct": 1,
+    "fake.nerf": 5,
+    "fake.remove": 4,
+    "fake.stable": 7
+  },
+  "ruleVerification": "SYNTHETIC_TEST_ONLY",
+  "realGoldenCount": 0,
+  "publishedToProduction": false
+}

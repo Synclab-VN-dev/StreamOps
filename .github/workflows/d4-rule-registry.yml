@@ -54,6 +54,8 @@ jobs:
             --report artifacts/d4-rule-registry/synthetic-hash-chain.json
           python utility/d4-rule-registry/patch_proposal.py \
             --report artifacts/d4-rule-registry/synthetic-provenance-proposals.json
+          python utility/d4-rule-registry/review_policy.py \
+            --report artifacts/d4-rule-registry/ci02-read-only-policy.json
           python - <<'PY'
           import json
           from pathlib import Path
@@ -66,6 +68,15 @@ jobs:
           assert c["sourceBounded"]==27 and c["sourcePartial"]==23
           assert c["fullParity"]=="BLOCKED" and r["publishStatus"]=="NOT_APPROVED"
           assert all(x["activeRule"] is None and x["calculatedValue"] is None for x in r["metrics"])
+          guard=json.loads(Path("artifacts/d4-rule-registry/ci02-read-only-policy.json").read_text())
+          assert guard["status"]=="PASS_CI02_READ_ONLY_POLICY_GUARDS_ONLY"
+          assert guard["sourcePinnedCount"]==1 and guard["activeRules"]==0
+          assert guard["g2Semantics"]=="NOT_VERIFIED"
+          assert guard["g3IndependentGolden"]=="NOT_AVAILABLE"
+          assert guard["g4FullCharacterStats"]=="NOT_VERIFIED"
+          assert guard["syntheticImmutableOverwriteGate"]=="ENFORCED"
+          assert not guard["realApprovedSnapshotExists"] and not guard["realPublishTested"]
+          assert not guard["publishAllowed"] and not guard["writeAttempted"]
           q=json.loads(Path("artifacts/d4-rule-registry/synthetic-provenance-proposals.json").read_text())
           assert q["status"]=="PASS_SYNTHETIC_CANDIDATE_GENERATION_ONLY"
           assert q["sourceChangeCoverage"]=={"changed":4,"sourced":4,"gameVerified":0}
