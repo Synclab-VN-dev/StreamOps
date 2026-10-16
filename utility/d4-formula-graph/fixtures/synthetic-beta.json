@@ -1,0 +1,22 @@
+{
+  "mode": "SYNTHETIC_OVERLAY_ONLY",
+  "gamePatch": "3.2.1",
+  "gameBuild": "73552",
+  "classId": "rogue",
+  "sourceFixtureFingerprint": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+  "variant": "synthetic.beta",
+  "equipment": {
+    "mainHand": "synthetic.weapon.b",
+    "ring1": "synthetic.ring.b"
+  },
+  "skills": {
+    "synthetic.projectile": 5
+  },
+  "charms": {
+    "synthetic.set": 2
+  },
+  "context": {
+    "target": "synthetic.dummy",
+    "condition": "unknown"
+  }
+}

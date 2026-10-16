@@ -1,0 +1,60 @@
+name: D4 Formula Graph Source/Unknown Gate (Issue 110)
+on:
+  push:
+    branches:
+      - feat/110-formula-graph-internal-gates
+    paths:
+      - 'utility/d4-formula-graph/**'
+      - 'utility/d4-maxroll-reference/f8-character-metric-catalog.json'
+      - '.github/workflows/d4-formula-graph.yml'
+  pull_request:
+    paths:
+      - 'utility/d4-formula-graph/**'
+      - 'utility/d4-maxroll-reference/f8-character-metric-catalog.json'
+      - '.github/workflows/d4-formula-graph.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  graph-source-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile and unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/d4-formula-graph
+          python -m compileall -q utility/d4-formula-graph
+          python -m unittest discover -s utility/d4-formula-graph/tests -p 'test_*.py' -v 2>&1 | tee artifacts/d4-formula-graph/test.log
+      - name: Prove both exact-source synthetic variant graphs block unverified formulas
+        shell: bash
+        run: |
+          set -euo pipefail
+          python utility/d4-formula-graph/graph.py --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json --report artifacts/d4-formula-graph/alpha.json
+          python utility/d4-formula-graph/graph.py --overlay utility/d4-formula-graph/fixtures/synthetic-beta.json --report artifacts/d4-formula-graph/beta.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          a=json.loads(Path('artifacts/d4-formula-graph/alpha.json').read_text())
+          b=json.loads(Path('artifacts/d4-formula-graph/beta.json').read_text())
+          for d in (a,b):
+              assert d['status']=='BLOCKED_NO_VERIFIED_MAXROLL_RULES'
+              assert len(d['characterMetrics'])==50 and d['coverage']['computed']==0
+              assert d['coverage']['unknown']==50
+              assert not d['expectedMaxrollValuesIncluded']
+              assert d['simulationContext'] is None and not d['runExecutableCandidates']
+          assert a['graphSha256']!=b['graphSha256']
+          PY
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d4-formula-graph-110-internal-evidence
+          path: artifacts/d4-formula-graph/
+          if-no-files-found: error
+          retention-days: 30
