@@ -292,8 +292,13 @@ jobs:
           python -m venv --system-site-packages $venv
           if ($LASTEXITCODE -ne 0) { throw 'UAT venv creation failed' }
           $py = Join-Path $venv 'Scripts/python.exe'
-          & $py -m pip install --no-deps --no-build-isolation -e ./utility/d4planner
-          if ($LASTEXITCODE -ne 0) { throw 'UAT isolated editable install failed' }
+          $source = (Resolve-Path ./utility/d4planner/src).Path
+          $pth = Join-Path $venv 'Lib/site-packages/d4planner-pr120.pth'
+          Set-Content -LiteralPath $pth -Value $source -Encoding utf8
+          $loaded = (& $py -c 'import d4planner;print(d4planner.__file__)' | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or !$loaded.StartsWith($source, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "UAT venv loaded wrong D4Planner module: $loaded"
+          }
           $help = (& $py -m d4planner.cli start --help | Out-String)
           if ($LASTEXITCODE -ne 0 -or !$help.Contains('--uat-start-nvda')) {
             throw 'UAT venv does not resolve new CLI flag'
