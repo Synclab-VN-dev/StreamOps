@@ -122,6 +122,60 @@ smoke PASS; two additional Windows regression cases PASS:
 The actual Windows A path has **not yet been verified**. Existing Python
 synthetic SQLite probe tests remain independent.
 
+## UAT NVDA orchestration revision (Owner approval 2026-10-17)
+
+**Root cause:** prior owner command used strict `--uat-attach-only` on an A
+host where Steam (PID 4496) and Diablo IV (PID 6036) existed but NVDA was
+STOPPED. That existing safety mode intentionally refuses to start NVDA.
+Removing the flag without other changes would trigger a separate isolated
+Steam-PATH precondition, so that is not a safe workaround.
+
+**New additive CLI mode `--uat-start-nvda`:** isolated UAT attaches only
+to an existing Steam + Diablo IV in the active console session; starts NVDA
+through the existing interactive Scheduled Task **only if missing**. It
+never restarts running NVDA, Steam or Diablo IV; never changes/installs NVDA
+add-on or launches the game. If an existing NVDA add-on is outdated/missing,
+stop with BLOCKED and collect evidence. The old `--uat-attach-only` behavior
+remains strict and unchanged. Requires `--isolated` + its own HomeDir.
+
+**Runner:** `scripts/acceptance/issue119-prepare.ps1` sets up an isolated
+`%LOCALAPPDATA%\d4planner-issue119-pr120\uat-venv` (with existing
+system site packages, no-deps/no-build-isolation editable install of PR
+source) and starts the UAT-only supervisor with `--speech`, `xbox16`,
+`--isolated --uat-start-nvda`. It runs the existing read-only Preflight
+immediately and produces a ZIP, including setup stdout/stderr/exit codes.
+It never installs the changed CLI into production's global Python. It
+checks existing Steam/Game, pinned HEAD and isolation first. It refuses
+to mutate a running test supervisor (no implicit restart).
+
+~~~powershell
+cd C:\Workspace\StreamOps-I119
+git status --porcelain
+git fetch origin
+git switch --detach origin/feat/119-owned-items-cli
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\acceptance\issue119-prepare.ps1 -ExpectedHead (git rev-parse HEAD)
+~~~
+
+Only after this one-shot Prepare reports PASS:
+
+~~~powershell
+$home = Join-Path $env:LOCALAPPDATA 'd4planner-issue119-pr120'
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\acceptance\issue119-probe.ps1 -Mode Capture -HomeDir $home -ExpectedHead (git rev-parse HEAD)
+~~~
+
+Failure: send **only the Prepare ZIP** and do not stop/start production
+runtime, Steam, NVDA or Diablo IV to force PASS.
+
+**Revision improvement:** Previous isolated attach mode could never start
+missing NVDA; the new mode is additive and leaves strict mode intact.
+Mocked E2E tests cover missing/existing NVDA, missing game/Steam and console
+session mismatch, no forbidden process mutation, profile active, CLI and
+scheduled-task flag forwarding. CI Windows AST and fail-closed Prepare test
+plus isolated venv install smoke are separately required before Real-A run.
+Until then and until A returns live status/capture evidence, improvement
+on actual A is **not yet verified**. Real-A P0 capture coverage remains
+BLOCKED; the owner does not need to repeat previously PASS P0-01..P0-06.
+
 ## Automated tests
 
 ~~~powershell
