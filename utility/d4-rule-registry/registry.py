@@ -77,9 +77,22 @@ def read_pinned_catalog(path=CATALOG):
                 "UNKNOWN_METRIC_GROUP")
         require(isinstance(m.get("label"), str) and bool(m["label"]), "MISSING_LABEL")
         require(m.get("formulaVerificationStatus") in VALID_GRADES, "INVALID_RESEARCH_GRADE")
+        # #106 F7.2 reports one bounded Fire-DR display-curve hypothesis.
+        # It is source-only, never an executable rule or approved Golden.
+        hypothesis = m.get("formulaCandidate")
+        if m["metricId"] == "maxroll.heroDetails.446":
+            require(isinstance(hypothesis, dict)
+                    and hypothesis.get("testedPatch") == "3.2.1.73552"
+                    and hypothesis.get("testedClass") == "rogue"
+                    and hypothesis.get("observedDisplayMatches") == 67
+                    and hypothesis.get("verifiedExactHelper") is False
+                    and hypothesis.get("provenExplicitCap") is False,
+                    "UNAPPROVED_FIRE_HYPOTHESIS_PROMOTION")
+        else:
+            require(hypothesis is None, "UNAPPROVED_METRIC_FORMULA")
         require(m.get("goldenStatus") == "NOT_APPROVED"
-                and m.get("maxrollGraphParity") == "NOT_RUN"
-                and m.get("formulaCandidate") is None, "FALSE_GOLDEN_OR_RULE")
+                and m.get("maxrollGraphParity") == "NOT_RUN",
+                "FALSE_GOLDEN_OR_RULE")
         require(bool(m.get("openGaps")), "HIDDEN_METRIC_GAP")
         groups[m["group"]] += 1
         grades[m["formulaVerificationStatus"]] += 1
