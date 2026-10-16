@@ -1,5 +1,6 @@
 """Synthetic TEST-ONLY vectors validate the comparator, never Maxroll accuracy."""
 import copy
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -30,11 +31,14 @@ def fake_data():
               "evidenceManifestSha256": "a" * 64, "metrics": rows("expected"),
               "vectors": [{"id": key, "inputSnapshotSha256": sha,
                            "source": "MAXROLL_BROWSER_CAPTURE",
+                           "inputCompleteness": "COMPLETE",
+                           "captureEvidenceRef": "test-only",
                            "metrics": rows("expected", delta)}
                           for key, sha, delta in (("v1", "b"*64, 3), ("v2", "c"*64, 7))]}
     actual = {"fixture": context, "source": "FORMULA_GRAPH", "graphSha256": "d" * 64,
               "ruleSetSha256": "e" * 64, "metrics": rows("actual"),
               "vectors": [{"id": key, "inputSnapshotSha256": sha,
+                           "source": "FORMULA_GRAPH",
                            "metrics": rows("actual", delta)}
                           for key, sha, delta in (("v1", "b"*64, 3), ("v2", "c"*64, 7))]}
     rules = {"patchBuild": "3.2.1.73552",
@@ -42,6 +46,9 @@ def fake_data():
                           "expressionRef": "test:formula-only",
                           "independentVectorRefs": ["v1", "v2"]}
                          for r in golden["metrics"]]}
+    payload = {k: golden[k] for k in ("fixture", "metrics", "vectors")}
+    golden["capturedPayloadSha256"] = hashlib.sha256(json.dumps(
+        payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return f, golden, actual, rules
 
 
@@ -134,6 +141,21 @@ class TestGate(unittest.TestCase):
         self.assertEqual(compare_metric(e, a)[0], "FAIL")
         a["raw"] = "1.2"
         self.assertEqual(compare_metric(e, a)[0], "PASS")
+
+    def test_mutated_golden_payload_is_blocked(self):
+        c = fake_data()
+        c[1]["metrics"][0]["display"] = "MUTATED"
+        self.assertEqual(verify(*c)["status"], "BLOCKED")
+
+    def test_vector_without_independent_capture_is_blocked(self):
+        c = fake_data()
+        c[1]["vectors"][0]["inputCompleteness"] = "PARTIAL"
+        self.assertEqual(verify(*c)["status"], "BLOCKED")
+
+    def test_unmatched_formula_vector_refs_blocked(self):
+        c = fake_data()
+        c[3]["metrics"][0]["independentVectorRefs"] = ["v1", "made-up"]
+        self.assertEqual(verify(*c)["status"], "BLOCKED")
 
     def test_source_no_raw_does_not_invent_precision(self):
         e = {"display": "1.2", "rawOrigin": "NOT_OBSERVED", "raw": None}
