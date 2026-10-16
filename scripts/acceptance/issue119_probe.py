@@ -13,7 +13,6 @@ from pathlib import Path
 import re
 import sqlite3
 import sys
-from urllib.parse import quote
 
 ITEM_TYPES = ("Helm", "Chest Armor", "Gloves", "Pants", "Boots", "Wand", "Focus", "Ring", "Amulet", "Sword")
 ITEM_POWER = re.compile(r"^(\d[\d,]*) Item Power$")
@@ -32,7 +31,7 @@ def read_json(path: Path) -> dict:
 def reader(path: Path) -> sqlite3.Connection:
     if not path.is_file():
         raise RuntimeError(f"canonical events.db missing: {path}")
-    uri = f"file:{quote(str(path.resolve()), safe='/:')}?mode=ro"
+    uri = path.resolve().as_uri() + "?mode=ro"
     db = sqlite3.connect(uri, uri=True, timeout=3.0)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA query_only=ON")
