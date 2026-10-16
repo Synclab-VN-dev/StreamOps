@@ -205,6 +205,61 @@ jobs:
           }
           $global:LASTEXITCODE = 0
 
+      - name: 'Issue119 runner regression - valid JSON exit2 versus invalid JSON'
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 120
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $script = (Resolve-Path ./scripts/acceptance/issue119-probe.ps1).Path
+          $fakeDir = Join-Path $env:RUNNER_TEMP 'issue119-fake-cli'
+          New-Item -ItemType Directory -Force -Path $fakeDir | Out-Null
+          $fake = Join-Path $fakeDir 'd4planner.cmd'
+          $previousPath = $env:PATH
+          $env:PATH = $fakeDir + ';' + $previousPath
+          try {
+            # Valid status JSON, but nonzero runtime exit: P0-06 must PASS,
+            # P0-07 must BLOCKED. Original runner misreported P0-06 and
+            # never persisted the exact status output.
+            @(
+              '@echo off'
+              'echo {"state":"RUNNING","supervisorAlive":false,"captureEffective":false,"supervisorPid":123}'
+              'echo synthetic stale supervisor 1>&2'
+              'exit /b 2'
+            ) | Set-Content -LiteralPath $fake -Encoding ascii
+            $goodJsonEvidence = Join-Path $env:RUNNER_TEMP 'issue119-valid-json-exit2'
+            $PSNativeCommandUseErrorActionPreference = $false
+            & pwsh -NoProfile -File $script -Mode Preflight -EvidenceDir $goodJsonEvidence -ExpectedHead (git rev-parse HEAD)
+            $goodJsonExit = $LASTEXITCODE
+            if ($goodJsonExit -ne 2) { throw "Expected BLOCKED=2 for stale runtime, got $goodJsonExit" }
+            $report = Get-Content (Join-Path $goodJsonEvidence 'report.json') -Raw | ConvertFrom-Json
+            $invocation = Get-Content (Join-Path $goodJsonEvidence 'status-before.invocation.json') -Raw | ConvertFrom-Json
+            if ($report.checks.'P0-06'.result -ne 'PASS' -or $report.checks.'P0-07'.result -ne 'BLOCKED' -or
+                $invocation.exitCode -ne 2 -or $invocation.stderr -notmatch 'synthetic stale supervisor') {
+              throw "Misclassified a valid JSON, exit 2 as missing CLI or lost stderr"
+            }
+            if (!(Test-Path "$goodJsonEvidence.zip") -or !(Test-Path (Join-Path $goodJsonEvidence 'status-before.json'))) {
+              throw 'Valid-JSON negative smoke did not persist ZIP and parsed status'
+            }
+
+            # Malformed stdout with exit=0: now specifically P0-06 BLOCKED
+            # and persist exact stdout for diagnosis.
+            @('@echo off', 'echo not-json', 'exit /b 0') |
+              Set-Content -LiteralPath $fake -Encoding ascii
+            $invalidEvidence = Join-Path $env:RUNNER_TEMP 'issue119-invalid-json'
+            & pwsh -NoProfile -File $script -Mode Preflight -EvidenceDir $invalidEvidence -ExpectedHead (git rev-parse HEAD)
+            $invalidExit = $LASTEXITCODE
+            if ($invalidExit -ne 2) { throw "Expected BLOCKED=2 for malformed status JSON, got $invalidExit" }
+            $invalidReport = Get-Content (Join-Path $invalidEvidence 'report.json') -Raw | ConvertFrom-Json
+            $badRaw = Get-Content (Join-Path $invalidEvidence 'status-before.stdout.txt') -Raw
+            if ($invalidReport.checks.'P0-06'.result -ne 'BLOCKED' -or $badRaw -notmatch 'not-json') {
+              throw 'Malformed JSON did not fail closed with raw stdout evidence'
+            }
+          } finally {
+            $env:PATH = $previousPath
+            $PSNativeCommandUseErrorActionPreference = $true
+          }
+          $global:LASTEXITCODE = 0
+
       - name: Install D4Planner dev dependencies
         if: steps.changes.outputs.d4planner == 'true'
         run: python -m pip install -e 'utility/d4planner[dev]'
