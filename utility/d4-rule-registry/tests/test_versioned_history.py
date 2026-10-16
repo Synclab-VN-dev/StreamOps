@@ -37,7 +37,9 @@ class LedgerTests(unittest.TestCase):
 
     def test_rewritten_hash_cannot_hide_unreconciled_delta(self):
         m=copy.deepcopy(self.ledger)
-        m["events"][1]["rules"]["fake.direct"]=999
+        # Flip the original buff into a nerf while preserving event integrity;
+        # the independently frozen diff must still reject the changed meaning.
+        m["events"][1]["rules"]["fake.direct"]=0
         m["events"][1]["eventHash"]=reg.sha256({k:v for k,v in m["events"][1].items()
                                                if k!="eventHash"})
         m["events"][2]["parentEventHash"]=m["events"][1]["eventHash"]
