@@ -47,3 +47,40 @@ python -m unittest discover -s utility/d4-maxroll-reference/tests -p 'test_*.py'
 ```
 
 `PASS_RESEARCH_CATALOG_ONLY` means structural/provenance integrity **only**, not that Maxroll expected has been matched or all 50 formulas are solved. Wrong patch, absent source, fabricated Golden/parity, unsupported formula promotion or fake 100% coverage fail closed.
+
+
+## F8 — 50-ID source inventory & formula-verification taxonomy (Owner approved 2026-10-16)
+
+**Scope:** F8 is an _evidence inventory_, not the implementation of #110, an approved #108 Golden, or full formula coverage. F2's original 9 source-grade rows remain untouched. F8 imports the *50 exact Maxroll metric IDs* from F5's independently archived source report and one F5 published-f1 raw/display snapshot. Raw/display numbers are explicitly labeled **agent-reported source observations, not independently approved expected Goldens**.
+
+| Evidence/source | Immutable anchor |
+|---|---|
+| Canonical F5 ID/legacy-status map | \`Synclab-VN-dev/synclab-agent@8fdf59a988b0425e789248a5f1898ef67b27314d\` — \`rogue-50-f5-gap-evidence.json\`, \`all50Status\` |
+| Raw/display example | Same commit, \`rogue-50-f5-full50-snapshots.json\`, candidate \`published-f1\` |
+| F7/F7.1/F7.2 bounded causal Fire DR research | [#106 F7.2 independent review](https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6212668905) |
+| Taxonomy proposal & full 50-row mapping | [#106 50-status handoff](https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6215051801) |
+
+**User-approved metric-level formula labels**, _separate from_ \`maxrollGraphParity\`:
+- \`PARTIAL\`: incomplete causal inputs/ordering/branch proof; never interpret as zero or a valid DPS operand.
+- \`BOUNDED_VERIFIED\`: source-backed observed/causal behavior restricted to explicit patch/fixture/inputs/precision. Not necessarily whole stat formula.
+- \`VERIFIED\`: within an explicitly pinned support scope, every applicable input/helper/order/cap/condition branch has independent numeric evidence and regression tests. None of the 50 qualifies yet.
+- \`BLOCKED\`: reserved for *branch/gate reason*, never a fourth metric-level label. The numeric validation status in #108 is independent (\`PASS/FAIL/BLOCKED/UNVERIFIED/NOT_APPLICABLE\`).
+
+**F8 snapshot:** 0 VERIFIED; 27 BOUNDED_VERIFIED (26 F5 legacy VERIFIED conservatively *regraded, not fully re-audited* + one F7.2 Fire Resistance); 23 PARTIAL. This is a **provisional working classification**. The 26 old rows must undergo a per-metric evidence/branch audit before any higher confidence or \`VERIFIED\` promotion. F7.2 only validated rounded Rogue Resistance→DR candidate displays (67 recorded observations across L50/60/70, not 67 independent experiments), not exact unrounded helper or 90% cap. 0 approved Golden; 0/50 #108 Graph parity actual comparisons performed. Older 26 VERIFIED/24 PARTIAL source grades are preserved side by side.
+
+**Input limitations:** Published Rogue variant has partial build reconstruction (4/13 sockets, seven unresolved Paragon labels, conditional state gaps). The catalog retains \`knownInputs/applicableEffects/dependencies=[]\` and \`orderStatus=UNKNOWN\` where no causal source-specific mapping is established; those are **gaps for follow-up**, not assertions that an item has no contributions. A source-reported output from incomplete inputs cannot establish a complete reproducible Formula Graph Golden.
+
+Run offline:
+\`\`\`bash
+python utility/d4-maxroll-reference/check_f8.py utility/d4-maxroll-reference/f8-character-metric-catalog.json --report artifacts/d4-maxroll-f8-inventory.json
+python -m unittest discover -s utility/d4-maxroll-reference/tests -p 'test_*.py' -v
+\`\`\`
+
+\`PASS_SOURCE_INVENTORY_ONLY\` means 50 unique IDs, preserved history, no unsupported status promotion, correct patch/fixture provenance and fail-closed incomplete-coverage policy. It **does not** mean 50 formula solutions or Maxroll parity. Dedicated negative tests cover dropped/duplicate/changed IDs, wrong groups, wrong patch, fake Goldens and formula helper/cap promotions.
+
+**Handoff:**
+- **#108:** use the 50-ID denominator only for the *pinned F5 fixture*, and collect **independently reviewed, input-COMPLETE** Golden expected values. Reject a partial F1 source fixture for complete parity. Source status is not Graph-vs-Maxroll parity status.
+- **#109:** turn *supported, independently reviewed* hypotheses into patch-pinned candidate DSL rule data with evidence grades; unknown inputs stay unresolved. Do not convert this inventory into an active Rule Registry automatically.
+- **#110:** use IDs/groups/open gaps to design \`FormulaGraphResult\` output and contribution traces. Do not treat F8 source-reported raw/display as independently calculated Graph results or silently fill unknown metrics with zero.
+- **#111:** consumes #110 resolved stats + simulation context; no stat aggregation duplicated and no unsupported verified DPS.
+- **#106 next evidence work:** independently audit the 26 legacy bounded rows, and obtain targeted causal dependency evidence only when it changes a required rule. Do not run 23-stat broad browser research or modify #107 schema. Merge/release still require separate authorization.
