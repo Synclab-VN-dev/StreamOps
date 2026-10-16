@@ -90,3 +90,24 @@ python -m unittest discover -s utility/d4-maxroll-reference/tests -p 'test_*.py'
 F8 also joins **50/50 exact metric IDs** against the earlier F4 `rogue-50-f4-verification-matrix.json` at immutable private evidence commit `3ae928e5701d2de9ac995973b39e9b91d789f4bb` (independently reviewed on [#106](https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744)). For every metric, `f4ObservedDependencies` includes **source-reported** direct runtime dependencies, function nodes, source candidate expression, operation-order observation, source contribution completeness, remaining gaps and discriminating vector count. F4 historical grades **22 bounded VERIFIED / 16 PARTIAL / 12 BLOCKED** are preserved and checked in CI; F5 history is preserved separately.
 
 These records are **research dependency hints, not independently implemented/verified #110 graph nodes or complete game rules**. F4 causal tests used an isolated disposable Rogue, not the incomplete published build. The 22 former F4 VERIFED rows have bounded transition evidence; the additional F5-prompted rows and 9-build PvP observed invariant are *not* automatically complete causal formulas. The remaining per-metric full-branch audit is still pending, and no source report is a substitute for independently reviewed input-complete #108 Golden data.
+
+## F9 — offline retrospective audit of 26 old VERIFIED rows (Owner delegated automation, 2026-10-16)
+
+**Result scope:** `f9-legacy-26-audit.json` replays the archived F4/F5 input records without needing Dev F or a live browser. It **does not** promote any whole formula to `VERIFIED`, and it is not #108 Maxroll-to-Graph parity.
+
+- **22** F4 controlled-change evidence rows; the interventions prove bounded responsiveness, not isolated completeness of all effects or helper branches.
+- **3** F4+F5 source rows (Critical Strike Chance, All Damage, All Damage Reduction) with bounded positive interventions and additional cross-profile tooltip-derived arithmetic.
+- **1** PvP Damage Reduction row is a **9-fixture observed invariant**, not a causal mechanic verification. It is explicitly `causalIsolation=NOT_ESTABLISHED`.
+
+CI replays **209 source-reported F4 before/after/delta triples** and **33 F5 reference observations**, including **24** recomputed tooltip-based expectations + raw-value checks inside *predeclared* ±0.05 percentage-point rounding intervals for each reported tooltip contribution; the remaining **9** are noncausal PvP invariant observations. Every metric keeps explicit unresolved formula scope and source lineage (F4 commit `3ae928e5701d2de9ac995973b39e9b91d789f4bb`; F5 commit `8fdf59a988b0425e789248a5f1898ef67b27314d`).
+
+Run offline, from repository root:
+
+```bash
+python utility/d4-maxroll-reference/check_f9.py utility/d4-maxroll-reference/f9-legacy-26-audit.json --catalog utility/d4-maxroll-reference/f8-character-metric-catalog.json --report artifacts/d4-maxroll-f9-legacy-audit.json
+python -m unittest discover -s utility/d4-maxroll-reference/tests -p 'test_*.py' -v
+```
+
+`PASS_BOUNDED_SOURCE_AUDIT_ONLY` means archived arithmetic is internally consistent, F8's 26 historically bounded IDs are reconciled, provenance/status invariants hold, and a PvP observation is not conflated with causal verification. It **cannot** certify the authenticity or exact game-wide completeness of the source observations, execute unknown helper internals, repair F1's incomplete equipment/Paragon/conditions, create #108 independent approved Goldens, or claim a #110 actual numeric parity. Those are separate acceptance gates.
+
+**Ownership:** ChatGPT + CI perform this offline re-audit. Dev F is necessary only for targeted missing physical/browser-side causal observations that cannot be reproduced or proven by existing evidence; no additional browser research is authorized under F9. Owner reviews only #106 formula/mechanics design and any changed contract, plus a separate future merge decision. PR #113's legacy design reference patch `3.2.3/73883` is historical relative to the now-selected Maxroll `3.2.1.73552`; its synthetic design CI PASS does not override the active Maxroll baseline. Do not silently reuse the old patch as active #108/#109/#110 reference.
