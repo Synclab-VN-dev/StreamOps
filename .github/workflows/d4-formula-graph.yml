@@ -24,6 +24,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install approved #107 schema validator
+        run: python -m pip install -e 'utility/d4-rulekit[dev]'
       - name: Compile and unit tests
         shell: bash
         run: |
@@ -37,11 +39,17 @@ jobs:
           set -euo pipefail
           python utility/d4-formula-graph/graph.py --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json --report artifacts/d4-formula-graph/alpha.json
           python utility/d4-formula-graph/graph.py --overlay utility/d4-formula-graph/fixtures/synthetic-beta.json --report artifacts/d4-formula-graph/beta.json
+          python utility/d4-formula-graph/synthetic_compiler.py --fixture utility/d4-formula-graph/fixtures/synthetic-three-families.json --report artifacts/d4-formula-graph/three-families.json
           python - <<'PY'
           import json
           from pathlib import Path
           a=json.loads(Path('artifacts/d4-formula-graph/alpha.json').read_text())
           b=json.loads(Path('artifacts/d4-formula-graph/beta.json').read_text())
+          f=json.loads(Path('artifacts/d4-formula-graph/three-families.json').read_text())
+          assert f["status"]=="PASS_SYNTHETIC_G1_THREE_FAMILY_COMPOSITION_ONLY"
+          assert f["stats"]["synthetic.damageBonus"]==30
+          assert f["skills"]["synthetic.projectile"]["projectile_count"]==2
+          assert f["activeMaxrollFormulaCount"]==0 and not f["publishAllowed"]
           for d in (a,b):
               assert d['status']=='BLOCKED_NO_VERIFIED_MAXROLL_RULES'
               assert len(d['characterMetrics'])==50 and d['coverage']['computed']==0

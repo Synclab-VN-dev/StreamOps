@@ -34,3 +34,19 @@ Next implementation needs #109 verified **active** rules, typed contributors/
 units/conditions, #107 action interpretation, real complete build input and
 independently sourced changed-input Maxroll vectors. Never turn UNKNOWN into
 zero, and do not tick #110's full Formula Graph acceptance from this smoke.
+
+## CI-01 synthetic DSL v1 execution/composition (bounded)
+
+A focused `synthetic_compiler.py` stage composes exactly three **G1 schema
+valid** #107 source families: active skill projectile count, conditional
+legendary aspect and charm-set count threshold. It uses typed Expression AST
+allowlist with no arbitrary code execution, explicit input refs, deterministic
+stage sorting and strict fail-closed rejection for unsupported mechanics.
+Independently frozen synthetic fixture expects projectile count 2 and damage
+bonus 30 fake units. It is NOT a real game formula, Maxroll Goldens or
+production graph semantic coverage for all 15 DSL action operators.
+
+    python utility/d4-formula-graph/synthetic_compiler.py --fixture utility/d4-formula-graph/fixtures/synthetic-three-families.json --report artifacts/110-three-families.json
+
+The rest of #110 (tags, event edges, cap/ICD, resolver, actual Maxroll 50 stat
+computation, simulationContext) remains pending.
