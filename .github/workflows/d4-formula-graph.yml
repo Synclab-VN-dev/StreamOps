@@ -41,6 +41,15 @@ jobs:
           python utility/d4-formula-graph/graph.py --overlay utility/d4-formula-graph/fixtures/synthetic-beta.json --report artifacts/d4-formula-graph/beta.json
           python utility/d4-formula-graph/synthetic_compiler.py --fixture utility/d4-formula-graph/fixtures/synthetic-three-families.json --report artifacts/d4-formula-graph/three-families.json
           python utility/d4-formula-graph/demo_graph.py --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json --synthetic utility/d4-formula-graph/fixtures/synthetic-three-families.json --report artifacts/d4-formula-graph/composed.json
+          # #108 real parity MUST return exit 2 / BLOCKED, not fake success.
+          set +e
+          python utility/d4-maxroll-parity/gate.py \
+            --fixture utility/d4-maxroll-parity/rogue-3.2.1.73552-fixture.json \
+            --actual artifacts/d4-formula-graph/composed.json \
+            --report artifacts/d4-formula-graph/real-parity-negative.json
+          rc=$?
+          set -e
+          test "$rc" -eq 2
           python - <<'PY'
           import json
           from pathlib import Path
@@ -51,6 +60,8 @@ jobs:
           assert f["stats"]["synthetic.damageBonus"]==30
           assert f["skills"]["synthetic.projectile"]["projectile_count"]==2
           assert f["activeMaxrollFormulaCount"]==0 and not f["publishAllowed"]
+          real=json.loads(Path('artifacts/d4-formula-graph/real-parity-negative.json').read_text())
+          assert real["status"]=="BLOCKED"
           c=json.loads(Path('artifacts/d4-formula-graph/composed.json').read_text())
           assert c["status"]=="PASS_SYNTHETIC_COMPOSITION_GRAPH_ONLY_REAL_MAXROLL_BLOCKED"
           assert len(c["syntheticMechanicNodes"])==3 and c["realCharacterComputed"]==0

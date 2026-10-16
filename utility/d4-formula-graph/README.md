@@ -65,3 +65,12 @@ real Maxroll parity.
     python utility/d4-formula-graph/demo_graph.py --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json --synthetic utility/d4-formula-graph/fixtures/synthetic-three-families.json --report artifacts/110-composed.json
 
 No public transport contract has been introduced or approved.
+
+## #108 real Maxroll parity negative integration
+
+The #110 CI invokes the actual pinned #108 validator on #110's synthetic
+composed artifact **without inventing approved Golden/formulas**. The gate
+**must exit 2 and report BLOCKED**. This makes the absence of real Formula Graph
+and input-complete independent Maxroll reference a hard prerequisite, despite
+all structural/synthetic graph tests being green. No unchanged reference is
+overwritten and no fake expected value is produced.
