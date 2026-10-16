@@ -63,6 +63,9 @@ def validate(obj):
           "source evidence pin changed")
     check(provenance.get("sourceReview") == "PROVISIONAL_UNTIL_PER_METRIC_AUDIT",
           "unapproved audit promotion")
+    check(provenance.get("sourceF4Commit") ==
+          "3ae928e5701d2de9ac995973b39e9b91d789f4bb",
+          "F4 dependency source pin changed")
     coverage = obj.get("coverage") or {}
     check(coverage.get("denominator") == 50 and
           coverage.get("metricRowsCataloged") == 50, "bad denominator")
@@ -89,6 +92,7 @@ def validate(obj):
     legacy = Counter()
     per_group = Counter()
     source_mechanic_count = 0
+    f4_counts = Counter()
     for m in metrics:
         if not isinstance(m, dict):
             errors.append("malformed metric"); continue
@@ -140,6 +144,28 @@ def validate(obj):
                   isinstance(source_mechanic.get("candidateExpression"), str) and
                   isinstance(source_mechanic.get("verificationMode"), str),
                   f"{mid}: unreviewed source mechanic misrepresented")
+        f4 = m.get("f4ObservedDependencies")
+        check(isinstance(f4, dict), f"{mid}: missing F4 dependency trace")
+        if isinstance(f4, dict):
+            old_f4 = f4.get("f4HistoricalStatus")
+            f4_counts[old_f4] += 1
+            check(old_f4 in {"VERIFIED", "PARTIAL", "BLOCKED"},
+                  f"{mid}: invalid F4 history")
+            check(f4.get("provenance") ==
+                  "F4_DISPOSABLE_ROGUE_FIXTURE_SOURCE_OBSERVED_NOT_GOLDEN" and
+                  f4.get("sourceReview") ==
+                  "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6208057744",
+                  f"{mid}: unsupported F4 source promotion")
+            check(isinstance(f4.get("runtimeExpression"), (str, type(None))) and
+                  isinstance(f4.get("reportedFormulaCandidate"), (str, type(None))) and
+                  isinstance(f4.get("directDependencies"), list) and
+                  isinstance(f4.get("functionNodes"), list) and
+                  isinstance(f4.get("contributorDomains"), list) and
+                  isinstance(f4.get("unresolved"), list) and
+                  isinstance(f4.get("discriminatingVectorCount"), int),
+                  f"{mid}: missing F4 dependency evidence")
+            if m.get("legacyEvidenceBasis") == "PRESERVED_F4_BOUNDED_EVIDENCE":
+                check(old_f4 == "VERIFIED", f"{mid}: lost F4 bounded path proof")
         candidate = m.get("formulaCandidate")
         if suffix == "446":
             check(isinstance(candidate, dict) and
@@ -153,6 +179,8 @@ def validate(obj):
         else:
             check(candidate is None, f"{mid}: unsupported formula candidate")
     check(source_mechanic_count == 28, "F5 candidate inventory lost")
+    check(f4_counts == {"VERIFIED": 22, "PARTIAL": 16, "BLOCKED": 12},
+          "F4 historical coverage changed")
     check(legacy == {"VERIFIED": 26, "PARTIAL": 24}, "F5 history changed")
     check(statuses == {"BOUNDED_VERIFIED": 27, "PARTIAL": 23},
           "taxonomy counts changed")
@@ -169,6 +197,8 @@ def validate(obj):
         "approvedGoldenCount": 0,
         "independentPerMetricAudit": "PENDING_FOR_26_LEGACY_BOUNDED",
         "sourceMechanicAnnotationsNotVerified": source_mechanic_count,
+        "sourceF4DependencyRowsNotGolden": sum(f4_counts.values()),
+        "f4LegacyEvidenceCounts": dict(f4_counts),
     }
 
 
