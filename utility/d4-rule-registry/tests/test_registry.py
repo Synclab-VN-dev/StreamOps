@@ -169,7 +169,9 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(records[0]["metricId"], "maxroll.heroDetails.446")
         self.assertEqual(records[0]["sourceCommit"],
                          "918aa4b0e1845d34909a8b847a324b445e3805a7")
-        self.assertIsNone(records[0]["dsl"])
+        self.assertIsNotNone(records[0]["dsl"])
+        self.assertEqual(records[0]["dsl"]["verification"]["status"],"unverified")
+        reg.check_candidate(records[0], self.ids)
         result = reg.snapshot(self.catalog, self.source_hash, self.policy, records)
         fire = next(x for x in result["metrics"] if x["metricId"] == records[0]["metricId"])
         self.assertEqual(fire["ruleStatus"], "CANDIDATE_UNVERIFIED")

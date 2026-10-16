@@ -15,7 +15,7 @@ It does not crawl Maxroll, modify any equipment/profile, publish anything, or ch
   None is full VERIFIED; Golden approved 0; real Graph-vs-Maxroll parity NOT_RUN.
 - Registry initial state: 50 UNKNOWN active rules, 0 numeric outputs. Candidate
   entries may carry research evidence but remain CANDIDATE_UNVERIFIED even when
-  their proposed DSL passes G1. candidates.json contains ONE evidence-linked bounded Fire Resistance display hypothesis from F7.2, WITHOUT executable DSL. It remains CANDIDATE_UNVERIFIED; the other 49 active rules remain UNKNOWN.
+  their proposed DSL passes G1. candidates.json contains ONE evidence-linked bounded Fire Resistance display hypothesis from F7.2, with a schema-valid *staged DSL expression* that is NOT executable/active: its input binding R is UNKNOWN and complete resistance aggregation, caps, conditions and Golden parity are not proved. It remains CANDIDATE_UNVERIFIED; the other 49 active rules remain UNKNOWN.
 
 ## Run locally (Python 3.12)
 
@@ -65,7 +65,7 @@ checks the bounded display relation **90*R/(R+15*Level)** within predeclared
 0.05 percentage points. This is a source research replay, **not** a verified
 complete stat formula: resistance aggregation, unrounded helper, explicit cap,
 other classes/branches, fully reproducible character inputs and #108 Golden
-parity remain unverified. Neither candidate nor the source fixture is active.
+parity remain unverified. The staged DSL uses existing #107 `modify_stat` + expression AST operators only and is never executed by #109. G1 syntax PASS is not G2 input binding, G3 numeric evidence or G4 coverage PASS. Neither candidate nor the source fixture is active.
 
     python utility/d4-rule-registry/research/check_fire_dr.py --report artifacts/109-fire-dr.json
 
