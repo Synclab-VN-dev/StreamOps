@@ -53,7 +53,14 @@ try {
   $py=Join-Path $venv 'Scripts/python.exe'
   if(!(Test-Path $py -PathType Leaf)){Native 'venv-create' $Python @('-m','venv','--system-site-packages',$venv)}
   Gate 'S0-06' (Test-Path $py -PathType Leaf) 'Isolated UAT Python ready'
-  Native 'venv-install' $py @('-m','pip','install','--no-deps','--no-build-isolation','-e',(Join-Path $root 'utility/d4planner'))
+  # No pip, no network, no global package mutation: teach only the UAT
+  # venv to import the pinned checked-out PR source via site-packages .pth.
+  $source=(Resolve-Path (Join-Path $root 'utility/d4planner/src')).Path
+  $pth=Join-Path $venv 'Lib/site-packages/d4planner-pr120.pth'
+  Set-Content -LiteralPath $pth -Value $source -Encoding utf8
+  Native 'module-source' $py @('-c','import d4planner;print(d4planner.__file__)')
+  $actualModule=[string](Get-Content (Join-Path $EvidenceDir 'module-source.stdout.txt') -Raw)
+  Gate 'S0-06a' ($actualModule.Trim().StartsWith($source,[StringComparison]::OrdinalIgnoreCase)) "Only the PR source is imported: $($actualModule.Trim())"
   Native 'cli-help' $py @('-m','d4planner.cli','start','--help')
   $helpText=Get-Content (Join-Path $EvidenceDir 'cli-help.stdout.txt') -Raw
   Gate 'S0-07' ($helpText.Contains('--uat-start-nvda')) 'PR120 CLI resolves in UAT venv'
