@@ -34,14 +34,14 @@ try {
   $head=(& git -C $root rev-parse HEAD | Out-String).Trim()
   $report.head=$head
   Gate 'S0-02' ($head -eq $ExpectedHead -and $head -match '^[a-f0-9]{40}$') "Exact PR HEAD pinned: $head"
-  $home=[IO.Path]::GetFullPath($HomeDir).TrimEnd('\')
+  $uatHome=[IO.Path]::GetFullPath($HomeDir).TrimEnd('\')
   $prod=[IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'd4planner')).TrimEnd('\')
-  Gate 'S0-03' (-not [string]::Equals($home,$prod,[StringComparison]::OrdinalIgnoreCase)) 'Isolated home differs from production'
+  Gate 'S0-03' (-not [string]::Equals($uatHome,$prod,[StringComparison]::OrdinalIgnoreCase)) 'Isolated home differs from production'
   $steam=@(Get-Process -Name steam -ErrorAction SilentlyContinue)
   $game=@(Get-Process -Name 'Diablo IV' -ErrorAction SilentlyContinue)
   Gate 'S0-04' ($steam.Count -gt 0 -and $game.Count -gt 0) "Already-running Steam=$($steam.Count), DiabloIV=$($game.Count)"
-  $env:D4PLANNER_HOME=$home
-  $stateFile=Join-Path $home 'state/runtime.json'
+  $env:D4PLANNER_HOME=$uatHome
+  $stateFile=Join-Path $uatHome 'state/runtime.json'
   if(Test-Path -LiteralPath $stateFile){
     $prior=Get-Content $stateFile -Raw|ConvertFrom-Json
     if($prior.supervisorPid){
@@ -49,7 +49,7 @@ try {
       Gate 'S0-05' ($null -eq $running) "No live supervisor at previous PID $($prior.supervisorPid)"
     }
   }
-  $venv=Join-Path $home 'uat-venv'
+  $venv=Join-Path $uatHome 'uat-venv'
   $py=Join-Path $venv 'Scripts/python.exe'
   if(!(Test-Path $py -PathType Leaf)){Native 'venv-create' $Python @('-m','venv','--system-site-packages',$venv)}
   Gate 'S0-06' (Test-Path $py -PathType Leaf) 'Isolated UAT Python ready'
@@ -61,7 +61,7 @@ try {
   Native 'uat-start' $py @('-m','d4planner.cli','start','-d','--isolated','--uat-start-nvda','--controller-profile','xbox16','--speech')
   $out=Join-Path $EvidenceDir 'preflight'
   New-Item -ItemType Directory -Force -Path $out|Out-Null
-  & pwsh -NoProfile -ExecutionPolicy Bypass -File $probe -Mode Preflight -HomeDir $home -EvidenceDir $out -ExpectedHead $ExpectedHead
+  & pwsh -NoProfile -ExecutionPolicy Bypass -File $probe -Mode Preflight -HomeDir $uatHome -EvidenceDir $out -ExpectedHead $ExpectedHead
   Gate 'S0-08' ($LASTEXITCODE -eq 0) 'P0 real-A preflight PASS'
   $report.status='PASS'
 }catch{
