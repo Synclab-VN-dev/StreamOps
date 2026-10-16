@@ -1,0 +1,135 @@
+[
+  {
+    "id": "candidate.rogue.fire_resistance_dr_display_f7_2",
+    "metricId": "maxroll.heroDetails.446",
+    "gamePatch": "3.2.1",
+    "gameBuild": "73552",
+    "classId": "rogue",
+    "state": "CANDIDATE_UNVERIFIED",
+    "sourceKind": "MAXROLL_SOURCE_OBSERVATION",
+    "sourceUrl": "https://maxroll.gg/d4/planner/1g1any0x#3",
+    "sourceCommit": "918aa4b0e1845d34909a8b847a324b445e3805a7",
+    "sourceEvidence": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6212668905",
+    "researchGrade": "BOUNDED_VERIFIED",
+    "dependencies": [],
+    "dsl": {
+      "schemaVersion": "1.0.0",
+      "ruleId": "candidate.rogue.fire_resistance_dr_display_f7_2",
+      "name": "F7.2 DISPLAY-only Fire DR curve — unverified input binding",
+      "game": {
+        "gameVersion": "3.2.1",
+        "buildNumber": "73552",
+        "realm": "both"
+      },
+      "source": {
+        "kind": "global_rule",
+        "gameId": "maxroll.source_display_rogue_fire_dr_f7_2"
+      },
+      "applicability": {
+        "classes": [
+          "rogue"
+        ],
+        "minCharacterLevel": 50,
+        "maxCharacterLevel": 70
+      },
+      "mechanics": [
+        {
+          "id": "source.fire_dr_display_hypothesis",
+          "description": "Bounded on Rogue L50/L60/L70 display values. Resistance R aggregation, helper and cap not verified; NOT active gameplay rule.",
+          "phase": "pre_build",
+          "trigger": {
+            "kind": "always"
+          },
+          "actions": [
+            {
+              "op": "modify_stat",
+              "stat": "resistance.fire.dr_candidate",
+              "who": "actor",
+              "math": "set",
+              "value": {
+                "kind": "call",
+                "fn": "divide",
+                "args": [
+                  {
+                    "kind": "call",
+                    "fn": "multiply",
+                    "args": [
+                      {
+                        "kind": "literal",
+                        "value": 0.9,
+                        "unit": "ratio"
+                      },
+                      {
+                        "kind": "ref",
+                        "scope": "actor",
+                        "path": "resistance.fire.total"
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "call",
+                    "fn": "add",
+                    "args": [
+                      {
+                        "kind": "ref",
+                        "scope": "actor",
+                        "path": "resistance.fire.total"
+                      },
+                      {
+                        "kind": "call",
+                        "fn": "multiply",
+                        "args": [
+                          {
+                            "kind": "literal",
+                            "value": 15,
+                            "unit": "none"
+                          },
+                          {
+                            "kind": "ref",
+                            "scope": "actor",
+                            "path": "level"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "stage": "base",
+              "snapshot": "dynamic"
+            }
+          ],
+          "affects": [
+            "defense"
+          ]
+        }
+      ],
+      "verification": {
+        "status": "unverified",
+        "confidence": "medium",
+        "evidence": [
+          {
+            "kind": "calculator_test",
+            "url": "https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6212668905",
+            "gameVersion": "3.2.1",
+            "note": "Rogue F7.2 bounded display comparison 5 L50 controlled R values, 67 legacy display rows; source input binding and raw helper unverified."
+          }
+        ],
+        "knownLimitations": [
+          "Source R computed from full equipment/conditions is not independently reconstructed",
+          "actor.resistance.fire.total is a candidate binding path; not implemented/validated by #110",
+          "Raw ComputeResistanceDamageReduction helper and explicit cap implementation unknown",
+          "Not a Maxroll independently approved input-complete Golden or actual Graph result"
+        ]
+      }
+    },
+    "goldenStatus": "NOT_APPROVED",
+    "verificationGates": {
+      "G1": "NOT_RUN",
+      "G2": "NOT_RUN",
+      "G3": "NOT_RUN",
+      "G4": "NOT_RUN"
+    },
+    "ownerReview": null
+  }
+]

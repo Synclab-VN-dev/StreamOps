@@ -1,0 +1,130 @@
+name: D4 Maxroll Rule Registry (Issue 109)
+on:
+  push:
+    branches:
+      - feat/109-maxroll-rule-registry
+    paths:
+      - 'utility/d4-rule-registry/**'
+      - 'utility/d4-maxroll-reference/f8-character-metric-catalog.json'
+      - 'utility/d4-rulekit/**'
+      - '.github/workflows/d4-rule-registry.yml'
+  pull_request:
+    paths:
+      - 'utility/d4-rule-registry/**'
+      - 'utility/d4-maxroll-reference/f8-character-metric-catalog.json'
+      - 'utility/d4-rulekit/**'
+      - '.github/workflows/d4-rule-registry.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  registry-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install approved #107 G1 rule schema validator and test dependencies
+        run: python -m pip install -e 'utility/d4-rulekit[dev]'
+      - name: Compile, test inventory/provenance, G1/G2, fail-closed and patch lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/d4-rule-registry
+          python -m compileall -q utility/d4-rule-registry
+          python -m unittest discover -s utility/d4-rule-registry/tests -p 'test_*.py' -v 2>&1 | tee artifacts/d4-rule-registry/tests.log
+      - name: Produce frozen registry snapshot and synthetic rollback report
+        shell: bash
+        run: |
+          set -euo pipefail
+          python utility/d4-rule-registry/registry.py \
+            --report artifacts/d4-rule-registry/snapshot.json
+          python utility/d4-rule-registry/registry.py \
+            --synthetic-patch-cycle utility/d4-rule-registry/fixtures/synthetic-patch-cycle.json \
+            --report artifacts/d4-rule-registry/synthetic-rollback.json
+          python utility/d4-rule-registry/research/check_fire_dr.py \
+            --report artifacts/d4-rule-registry/fire-dr-f7-2-source-replay.json
+          python utility/d4-rule-registry/audit_agent.py \
+            --report artifacts/d4-rule-registry/agent-source-to-candidate.json
+          python utility/d4-rule-registry/versioned_history.py \
+            --report artifacts/d4-rule-registry/synthetic-hash-chain.json
+          python utility/d4-rule-registry/patch_proposal.py \
+            --report artifacts/d4-rule-registry/synthetic-provenance-proposals.json
+          python utility/d4-rule-registry/review_policy.py \
+            --report artifacts/d4-rule-registry/ci02-read-only-policy.json
+          python utility/d4-rule-registry/select_rules.py \
+            --report artifacts/d4-rule-registry/read-only-rule-selection.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path("artifacts/d4-rule-registry/snapshot.json").read_text())
+          c=r["coverage"]
+          assert r["status"]=="PASS_REGISTRY_STRUCTURE_ONLY"
+          assert c["denominator"]==50 and c["identified"]==50
+          assert c["fullyVerifiedFormulas"]==0 and c["approvedGolden"]==0
+          assert c["activeRules"]==0 and c["unknownRuleCount"]==49 and c["candidateUnverified"]==1
+          assert c["sourceBounded"]==27 and c["sourcePartial"]==23
+          assert c["fullParity"]=="BLOCKED" and r["publishStatus"]=="NOT_APPROVED"
+          assert all(x["activeRule"] is None and x["calculatedValue"] is None for x in r["metrics"])
+          selection=json.loads(Path("artifacts/d4-rule-registry/read-only-rule-selection.json").read_text())
+          assert selection["status"]=="BLOCKED_NO_APPROVED_EXECUTABLE_RULES"
+          assert len(selection["metrics"])==50
+          assert selection["coverage"]["activeRules"]==0
+          assert selection["coverage"]["missing"]==49 and selection["coverage"]["candidateUnverified"]==1
+          assert not selection["executableRules"] and selection["simulationContext"] is None
+          assert all(row["value"] is None for row in selection["metrics"])
+          guard=json.loads(Path("artifacts/d4-rule-registry/ci02-read-only-policy.json").read_text())
+          assert guard["status"]=="PASS_CI02_READ_ONLY_POLICY_GUARDS_ONLY"
+          assert guard["sourcePinnedCount"]==1 and guard["activeRules"]==0
+          assert guard["g2Semantics"]=="NOT_VERIFIED"
+          assert guard["g3IndependentGolden"]=="NOT_AVAILABLE"
+          assert guard["g4FullCharacterStats"]=="NOT_VERIFIED"
+          assert guard["syntheticImmutableOverwriteGate"]=="ENFORCED"
+          assert not guard["realApprovedSnapshotExists"] and not guard["realPublishTested"]
+          assert not guard["publishAllowed"] and not guard["writeAttempted"]
+          q=json.loads(Path("artifacts/d4-rule-registry/synthetic-provenance-proposals.json").read_text())
+          assert q["status"]=="PASS_SYNTHETIC_CANDIDATE_GENERATION_ONLY"
+          assert q["sourceChangeCoverage"]=={"changed":4,"sourced":4,"gameVerified":0}
+          assert {x["changeType"] for x in q["candidates"]}=={"buffed","nerfed","removed","added"}
+          assert not q["autoPublish"] and not q["schemaChanged"] and q["maxrollParity"]=="NOT_TESTED"
+          h=json.loads(Path("artifacts/d4-rule-registry/synthetic-hash-chain.json").read_text())
+          assert h["status"]=="PASS_SYNTHETIC_LEDGER_ONLY"
+          assert h["oldRulesHash"]==h["rollbackRulesHash"]
+          assert h["newRulesHash"]!=h["oldRulesHash"]
+          assert len(h["events"])==3 and not h["activePublish"]
+          assert h["events"][2]["parentEventHash"]==h["events"][1]["eventHash"]
+          a=json.loads(Path("artifacts/d4-rule-registry/agent-source-to-candidate.json").read_text())
+          assert a["status"]=="PASS_SOURCE_CANDIDATE_AUDIT_ONLY"
+          assert a["g1CandidateDsl"]==1 and a["g2VerifiedBindings"]==0
+          assert a["g3CompleteFormulas"]==0 and a["g4VisibleMetricIds"]==50
+          assert a["activeRules"]==0 and a["approvedGoldens"]==0
+          assert a["candidatePromotion"]=="NOT_ALLOWED" and a["maxrollParity"]=="BLOCKED_NOT_RUN"
+          assert len(a["reviewQueue"])==50
+          f=json.loads(Path("artifacts/d4-rule-registry/fire-dr-f7-2-source-replay.json").read_text())
+          assert f["status"]=="PASS_BOUNDED_RESEARCH_REPLAY_ONLY" and f["sourceMatch"]==5
+          assert not f["approvedGolden"] and not f["promotableToActiveRule"]
+          assert f["graphParity"]=="BLOCKED_NOT_RUN"
+          p=json.loads(Path("artifacts/d4-rule-registry/synthetic-rollback.json").read_text())
+          assert p["status"]=="PASS_SYNTHETIC_ONLY" and p["restoredExactly"]
+          assert p["oldHash"]==p["rollbackHash"] and not p["activePublish"]
+          PY
+      - name: Re-run existing #106 source pin integrity and #107 schema gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python utility/d4-maxroll-reference/check_f8.py \
+            utility/d4-maxroll-reference/f8-character-metric-catalog.json \
+            --report artifacts/d4-rule-registry/source-f8.json
+          d4-rulekit schema-check --report artifacts/d4-rule-registry/rulekit-g1.json
+      - name: Upload immutable CI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d4-rule-registry-109-evidence
+          path: artifacts/d4-rule-registry/
+          if-no-files-found: warn
+          retention-days: 30
