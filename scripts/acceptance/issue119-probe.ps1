@@ -29,6 +29,46 @@ function RunProbe([string[]]$ProbeArgs) {
     & $Python $probe @ProbeArgs
     if ($LASTEXITCODE -ne 0) { throw "issue119_probe.py exited $LASTEXITCODE ($($ProbeArgs -join ' '))" }
 }
+function Invoke-D4PlannerStatus([string]$Prefix) {
+    # Preserve stdout, stderr and process exit independently, even when CLI returns
+    # nonzero for a stale supervisor. A nonzero exit with valid JSON is a RUNTIME
+    # BLOCKED (P0-07), not a missing-CLI / JSON-contract failure (P0-06).
+    $stdoutFile = Join-Path $EvidenceDir ($Prefix + '.stdout.txt')
+    $stderrFile = Join-Path $EvidenceDir ($Prefix + '.stderr.txt')
+    $metadataFile = Join-Path $EvidenceDir ($Prefix + '.invocation.json')
+    $command = Get-Command -Name d4planner -ErrorAction SilentlyContinue
+    $commandPath = if ($null -ne $command) { [string]$command.Source } else { $null }
+    $exitCode = $null
+    $launchError = $null
+    $previousNativePreference = $PSNativeCommandUseErrorActionPreference
+    try {
+        $PSNativeCommandUseErrorActionPreference = $false
+        if ($null -eq $command) {
+            $launchError = 'd4planner command not found on PATH'
+        } else {
+            & d4planner status --json 1> $stdoutFile 2> $stderrFile
+            $exitCode = $LASTEXITCODE
+        }
+    } catch {
+        $launchError = $_.Exception.Message
+    } finally {
+        $PSNativeCommandUseErrorActionPreference = $previousNativePreference
+    }
+    if (!(Test-Path -LiteralPath $stdoutFile)) { '' | Set-Content -LiteralPath $stdoutFile -Encoding utf8 }
+    if (!(Test-Path -LiteralPath $stderrFile)) { '' | Set-Content -LiteralPath $stderrFile -Encoding utf8 }
+    $out = Get-Content -LiteralPath $stdoutFile -Raw -Encoding utf8
+    $err = Get-Content -LiteralPath $stderrFile -Raw -Encoding utf8
+    $result = [ordered]@{
+        command = 'd4planner status --json'
+        resolvedCommand = $commandPath
+        exitCode = $exitCode
+        exception = $launchError
+        stdout = $out
+        stderr = $err
+    }
+    $result | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $metadataFile -Encoding utf8
+    return [pscustomobject]$result
+}
 try {
     Check 'P0-01' (Test-Path -LiteralPath $probe -PathType Leaf) 'Probe source exists in checked-out PR worktree'
     $head = (& git -C $repoRoot rev-parse HEAD 2>&1 | Out-String).Trim()
@@ -39,11 +79,22 @@ try {
     Check 'P0-04' ($branch -eq 'feat/119-owned-items-cli' -or ($ExpectedHead -and $head -eq $ExpectedHead)) "PR branch or pinned detached HEAD: $branch"
     & $Python --version
     Check 'P0-05' ($LASTEXITCODE -eq 0) "Python entrypoint: $Python"
-    $statusText = (& d4planner status --json 2>&1 | Out-String)
-    Check 'P0-06' ($LASTEXITCODE -eq 0) 'Existing D4Planner CLI status is available'
-    $status = $statusText | ConvertFrom-Json
+    $invocation = Invoke-D4PlannerStatus -Prefix 'status-before'
+    $status = $null
+    try {
+        if ($invocation.stdout) { $status = $invocation.stdout | ConvertFrom-Json -ErrorAction Stop }
+    } catch {
+        $report.problems += 'status JSON parse: ' + $_.Exception.Message
+    }
+    $validStatus = $null -ne $status -and $status -is [psobject] -and
+        $null -ne $status.PSObject.Properties['state'] -and
+        $null -ne $status.PSObject.Properties['supervisorAlive'] -and
+        $null -ne $status.PSObject.Properties['captureEffective']
+    Check 'P0-06' $validStatus ("D4Planner JSON contract; exit=$($invocation.exitCode); executable=$($invocation.resolvedCommand); exception=$($invocation.exception); stderr=$($invocation.stderr)")
     $status | ConvertTo-Json -Depth 32 | Set-Content -LiteralPath (Join-Path $EvidenceDir 'status-before.json') -Encoding utf8
-    Check 'P0-07' ($status.supervisorAlive -eq $true -and $status.captureEffective -eq $true -and $status.state -eq 'RUNNING') 'Existing supervisor RUNNING and speech capture lease effective'
+    $runtimeReady = ($invocation.exitCode -eq 0 -and $status.supervisorAlive -eq $true -and
+        $status.captureEffective -eq $true -and $status.state -eq 'RUNNING')
+    Check 'P0-07' $runtimeReady ("Require RUNNING/alive/capture lease/CLI exit=0; observed state=$($status.state), alive=$($status.supervisorAlive), captureEffective=$($status.captureEffective), exit=$($invocation.exitCode), supervisorPid=$($status.supervisorPid)")
     $input = $status.extras.inputMarker
     $layoutOk = $null -ne $input -and $input.state -eq 'ACTIVE' -and $input.layoutId -eq 'xbox-steaminput-18-v1' -and $input.configuredDigitalCount -eq 16
     Check 'P0-08' $layoutOk 'All 16 configured controller marker keys ACTIVE (not all keyboard keys)'
@@ -68,9 +119,12 @@ try {
             Read-Host "Press ENTER when $($stage.id) navigation is FINISHED"
             RunProbe @('finish','--home',$HomeDir,'--baseline',$base,'--outdir',$out)
         }
-        $afterText = (& d4planner status --json 2>&1 | Out-String)
-        if ($LASTEXITCODE -eq 0) {
-            $afterText | Set-Content -LiteralPath (Join-Path $EvidenceDir 'status-after.json') -Encoding utf8
+        $endInvocation = Invoke-D4PlannerStatus -Prefix 'status-after'
+        try {
+            $endStatus = $endInvocation.stdout | ConvertFrom-Json -ErrorAction Stop
+            $endStatus | ConvertTo-Json -Depth 32 | Set-Content -LiteralPath (Join-Path $EvidenceDir 'status-after.json') -Encoding utf8
+        } catch {
+            $report.problems += 'Post-capture status unavailable: ' + $_.Exception.Message
         }
         $report.status = 'PENDING_REAL_A_REVIEW'
     }
