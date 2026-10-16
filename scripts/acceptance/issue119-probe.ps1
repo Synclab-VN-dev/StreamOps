@@ -25,9 +25,9 @@ function Check([string]$Id, [bool]$Pass, [string]$Detail) {
     Write-Host "[$($report.checks[$Id].result)] $Id - $Detail"
     if (!$Pass) { throw ($Id + ": " + $Detail) }
 }
-function RunProbe([string[]]$Args) {
-    & $Python $probe @Args
-    if ($LASTEXITCODE -ne 0) { throw "issue119_probe.py exited $LASTEXITCODE ($($Args -join ' '))" }
+function RunProbe([string[]]$ProbeArgs) {
+    & $Python $probe @ProbeArgs
+    if ($LASTEXITCODE -ne 0) { throw "issue119_probe.py exited $LASTEXITCODE ($($ProbeArgs -join ' '))" }
 }
 try {
     Check 'P0-01' (Test-Path -LiteralPath $probe -PathType Leaf) 'Probe source exists in checked-out PR worktree'
