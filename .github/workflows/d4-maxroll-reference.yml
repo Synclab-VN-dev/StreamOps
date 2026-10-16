@@ -38,6 +38,19 @@ jobs:
           assert report["proposedFormulaStatusCounts"] == {"BOUNDED_VERIFIED": 27, "PARTIAL": 23}, report
           assert report["independentGraphParity"] == "NOT_RUN" and report["approvedGoldenCount"] == 0, report
           PY
+      - name: Validate F9 legacy 26 bounded-source audit (NOT formula parity)
+        run: |
+          python utility/d4-maxroll-reference/check_f9.py utility/d4-maxroll-reference/f9-legacy-26-audit.json --catalog utility/d4-maxroll-reference/f8-character-metric-catalog.json --report artifacts/d4-maxroll-f9-legacy-audit.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("artifacts/d4-maxroll-f9-legacy-audit.json").read_text())
+          assert r["status"] == "PASS_BOUNDED_SOURCE_AUDIT_ONLY", r
+          assert r["legacyMetricsAudited"] == 26 and r["f4ArithmeticDeltasChecked"] == 209, r
+          assert r["f5TooltipArithmeticChecked"] == 24 and r["f5RawWithinTooltipRoundingInterval"] == 24, r
+          assert r["pvpInvarianceObservations"] == 9, r
+          assert r["fullyVerified"] == 0 and r["maxrollGraphParity"] == "NOT_RUN", r
+          PY
       - name: Negative and integrity tests
         run: python -m unittest discover -s utility/d4-maxroll-reference/tests -p 'test_*.py' -v
       - name: Upload evidence
@@ -49,3 +62,4 @@ jobs:
             artifacts/d4-maxroll-candidate.json
             artifacts/d4-maxroll-f2-catalog.json
             artifacts/d4-maxroll-f8-inventory.json
+            artifacts/d4-maxroll-f9-legacy-audit.json
