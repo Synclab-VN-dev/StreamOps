@@ -73,7 +73,7 @@ def build(source_bytes, evidence):
                  "DUPLICATE_OR_UNKNOWN_SOURCE")
         seen.add(mid)
         _require(row["category"]==changed[mid]
-                 and row["sourcePointer"]=="fixtures/synthetic-patch-cycle.json#/new/rules/"+mid
+                 and row["sourcePointer"]=="fixtures/synthetic-patch-cycle.json#/"+("old" if changed[mid]=="removed" else "new")+"/rules/"+mid
                  and row["sourceKind"]=="synthetic_fixture"
                  and row["sourceGitBlobSha1"]==SOURCE_BLOB
                  and row["scope"]=="SYNTHETIC_ONLY",
@@ -82,7 +82,7 @@ def build(source_bytes, evidence):
     candidates=[{
         "id":"synthetic."+mid, "metricId":mid, "changeType":changed[mid],
         "oldValue":old.get(mid),"newValue":new.get(mid),
-        "sourcePointer":"fixtures/synthetic-patch-cycle.json#/new/rules/"+mid,
+        "sourcePointer":"fixtures/synthetic-patch-cycle.json#/"+("old" if changed[mid]=="removed" else "new")+"/rules/"+mid,
         "sourceGitBlobSha1":SOURCE_BLOB,"patch":fixture["new"]["patch"],
         "schemaVersion":"1.0.0","state":"SYNTHETIC_CANDIDATE_UNVERIFIED",
         "verificationGates":dict(GATES),"active":False,

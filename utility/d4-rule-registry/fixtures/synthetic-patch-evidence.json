@@ -25,7 +25,7 @@
     {
       "metricId": "fake.remove",
       "category": "removed",
-      "sourcePointer": "fixtures/synthetic-patch-cycle.json#/new/rules/fake.remove",
+      "sourcePointer": "fixtures/synthetic-patch-cycle.json#/old/rules/fake.remove",
       "sourceKind": "synthetic_fixture",
       "sourceGitBlobSha1": "d5cc70811475eda18b06a7a7fbd4e58724d9ab59",
       "scope": "SYNTHETIC_ONLY"

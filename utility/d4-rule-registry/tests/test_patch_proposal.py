@@ -29,6 +29,8 @@ class PatchProposalTests(unittest.TestCase):
         self.assertEqual(result["reportSha256"],
                          reg.sha256({k:v for k,v in result.items() if k!="reportSha256"}))
         self.assertEqual(result,p.build(self.source,self.evidence))
+        self.assertEqual(next(x for x in result["candidates"] if x["metricId"]=="fake.remove")["sourcePointer"],
+                         "fixtures/synthetic-patch-cycle.json#/old/rules/fake.remove")
         self.assertTrue(all(not x["active"] and x["schemaVersion"]=="1.0.0"
                             and x["verificationGates"]["G3"]=="NOT_RUN" for x in result["candidates"]))
         self.assertFalse(result["autoPublish"])
