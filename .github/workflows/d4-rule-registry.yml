@@ -1,0 +1,80 @@
+name: D4 Maxroll Rule Registry (Issue 109)
+on:
+  push:
+    branches:
+      - feat/109-maxroll-rule-registry
+    paths:
+      - 'utility/d4-rule-registry/**'
+      - 'utility/d4-maxroll-reference/f8-character-metric-catalog.json'
+      - 'utility/d4-rulekit/**'
+      - '.github/workflows/d4-rule-registry.yml'
+  pull_request:
+    paths:
+      - 'utility/d4-rule-registry/**'
+      - 'utility/d4-maxroll-reference/f8-character-metric-catalog.json'
+      - 'utility/d4-rulekit/**'
+      - '.github/workflows/d4-rule-registry.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  registry-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install approved #107 G1 rule schema validator and test dependencies
+        run: python -m pip install -e 'utility/d4-rulekit[dev]'
+      - name: Compile, test inventory/provenance, G1/G2, fail-closed and patch lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/d4-rule-registry
+          python -m compileall -q utility/d4-rule-registry
+          python -m unittest discover -s utility/d4-rule-registry/tests -p 'test_*.py' -v 2>&1 | tee artifacts/d4-rule-registry/tests.log
+      - name: Produce frozen registry snapshot and synthetic rollback report
+        shell: bash
+        run: |
+          set -euo pipefail
+          python utility/d4-rule-registry/registry.py \
+            --report artifacts/d4-rule-registry/snapshot.json
+          python utility/d4-rule-registry/registry.py \
+            --synthetic-patch-cycle utility/d4-rule-registry/fixtures/synthetic-patch-cycle.json \
+            --report artifacts/d4-rule-registry/synthetic-rollback.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path("artifacts/d4-rule-registry/snapshot.json").read_text())
+          c=r["coverage"]
+          assert r["status"]=="PASS_REGISTRY_STRUCTURE_ONLY"
+          assert c["denominator"]==50 and c["identified"]==50
+          assert c["fullyVerifiedFormulas"]==0 and c["approvedGolden"]==0
+          assert c["activeRules"]==0 and c["unknownRuleCount"]==50
+          assert c["sourceBounded"]==27 and c["sourcePartial"]==23
+          assert c["fullParity"]=="BLOCKED" and r["publishStatus"]=="NOT_APPROVED"
+          assert all(x["activeRule"] is None and x["calculatedValue"] is None for x in r["metrics"])
+          p=json.loads(Path("artifacts/d4-rule-registry/synthetic-rollback.json").read_text())
+          assert p["status"]=="PASS_SYNTHETIC_ONLY" and p["restoredExactly"]
+          assert p["oldHash"]==p["rollbackHash"] and not p["activePublish"]
+          PY
+      - name: Re-run existing #106 source pin integrity and #107 schema gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python utility/d4-maxroll-reference/check_f8.py \
+            utility/d4-maxroll-reference/f8-character-metric-catalog.json \
+            --report artifacts/d4-rule-registry/source-f8.json
+          d4-rulekit schema-check --report artifacts/d4-rule-registry/rulekit-g1.json
+      - name: Upload immutable CI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d4-rule-registry-109-evidence
+          path: artifacts/d4-rule-registry/
+          if-no-files-found: warn
+          retention-days: 30
