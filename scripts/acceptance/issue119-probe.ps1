@@ -12,6 +12,10 @@ $ErrorActionPreference = 'Stop'
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = (Resolve-Path (Join-Path $scriptRoot '../..')).Path
 $probe = Join-Path $scriptRoot 'issue119_probe.py'
+# The runner's -HomeDir is authoritative for both the Python SQLite probe
+# and the D4Planner status CLI, even when invoked from a fresh SSH session.
+$HomeDir = [IO.Path]::GetFullPath($HomeDir)
+$env:D4PLANNER_HOME = $HomeDir
 $head = ''
 $report = [ordered]@{ issue = 119; mode = $Mode; status = 'BLOCKED'; checks = [ordered]@{}; head = ''; evidenceDir = ''; problems = @() }
 if ([string]::IsNullOrWhiteSpace($EvidenceDir)) {
