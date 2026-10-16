@@ -21,10 +21,10 @@ EXPECTED = {
     for group, suffixes in GROUP_IDS.items()
     for suffix in suffixes.split()
 }
-F5_VERIFIED = {
-    "900 279 108 109 110 111 480 93 46 114 3 4 1 58 180 431 357 104 61 81 286 80 92 181 367 70".split()[i]
-    for i in range(26)
-}
+F5_VERIFIED = set(
+    "900 279 108 109 110 111 480 93 46 114 3 4 1 58 180 431 357 104 61 "
+    "81 286 80 92 181 367 70".split()
+)
 SHA = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -88,6 +88,7 @@ def validate(obj):
     statuses = Counter()
     legacy = Counter()
     per_group = Counter()
+    source_mechanic_count = 0
     for m in metrics:
         if not isinstance(m, dict):
             errors.append("malformed metric"); continue
@@ -129,6 +130,16 @@ def validate(obj):
               f"{mid}: unsupported golden/parity promotion")
         check(isinstance(m.get("openGaps"), list) and bool(m.get("openGaps")),
               f"{mid}: unresolved branches hidden")
+        source_mechanic = m.get("sourceReportedMechanic")
+        if source_mechanic is not None:
+            source_mechanic_count += 1
+            check(isinstance(source_mechanic, dict) and
+                  source_mechanic.get("kind") ==
+                  "F5_AGENT_HYPOTHESIS_NOT_RULE_DATA" and
+                  isinstance(source_mechanic.get("runtimeExpression"), str) and
+                  isinstance(source_mechanic.get("candidateExpression"), str) and
+                  isinstance(source_mechanic.get("verificationMode"), str),
+                  f"{mid}: unreviewed source mechanic misrepresented")
         candidate = m.get("formulaCandidate")
         if suffix == "446":
             check(isinstance(candidate, dict) and
@@ -141,6 +152,7 @@ def validate(obj):
                   "Fire DR hypothesis promoted beyond F7.2 evidence")
         else:
             check(candidate is None, f"{mid}: unsupported formula candidate")
+    check(source_mechanic_count == 28, "F5 candidate inventory lost")
     check(legacy == {"VERIFIED": 26, "PARTIAL": 24}, "F5 history changed")
     check(statuses == {"BOUNDED_VERIFIED": 27, "PARTIAL": 23},
           "taxonomy counts changed")
@@ -155,7 +167,8 @@ def validate(obj):
         "groupCounts": dict(per_group),
         "independentGraphParity": "NOT_RUN",
         "approvedGoldenCount": 0,
-        "independentPerMetricAudit": "PENDING_FOR_26_LEGACY_BOUND ED".replace(" ", ""),
+        "independentPerMetricAudit": "PENDING_FOR_26_LEGACY_BOUNDED",
+        "sourceMechanicAnnotationsNotVerified": source_mechanic_count,
     }
 
 
