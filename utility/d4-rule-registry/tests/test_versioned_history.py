@@ -41,6 +41,9 @@ class LedgerTests(unittest.TestCase):
         m["events"][1]["eventHash"]=reg.sha256({k:v for k,v in m["events"][1].items()
                                                if k!="eventHash"})
         m["events"][2]["parentEventHash"]=m["events"][1]["eventHash"]
+        # Deliberately recompute ALL ordinary integrity fields to expose the
+        # independent semantic added/buffed/nerfed diff gate, not the hash gate.
+        m["newRulesHash"]=reg.sha256(m["events"][1]["rules"])
         m["events"][2]["eventHash"]=reg.sha256({k:v for k,v in m["events"][2].items()
                                                if k!="eventHash"})
         m["manifestHash"]=reg.sha256({k:v for k,v in m.items() if k!="manifestHash"})
