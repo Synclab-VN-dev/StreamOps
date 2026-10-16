@@ -1,0 +1,13 @@
+{
+  "registryVersion": "1.0.0",
+  "oracle": "MAXROLL_ONLY",
+  "gamePatch": "3.2.1",
+  "gameBuild": "73552",
+  "classId": "rogue",
+  "sourceCatalogGitBlob": "ebf17a0e64e249448609145b89753fec3709ae7d",
+  "sourceCommit": "8fdf59a988b0425e789248a5f1898ef67b27314d",
+  "activeRulePolicy": "VERIFIED_G1_G2_G3_G4_OWNER_REVIEW_ONLY",
+  "numericUnknownFallback": "FORBIDDEN",
+  "autoPublish": false,
+  "approvedGoldenCount": 0
+}

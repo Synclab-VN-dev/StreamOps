@@ -1,0 +1,21 @@
+{
+  "synthetic": true,
+  "old": {
+    "patch": "synthetic-old",
+    "rules": {
+      "fake.direct": 1,
+      "fake.nerf": 5,
+      "fake.remove": 4,
+      "fake.stable": 7
+    }
+  },
+  "new": {
+    "patch": "synthetic-new",
+    "rules": {
+      "fake.direct": 2,
+      "fake.nerf": 3,
+      "fake.add": 9,
+      "fake.stable": 7
+    }
+  }
+}
