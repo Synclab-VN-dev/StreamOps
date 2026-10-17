@@ -112,3 +112,26 @@ The four family names are public sanitized status metadata. No private
 source metrics, screenshots, dynamic truth guesses or Maxroll Golden values
 were committed to this PR. Full simulator dynamic-state semantics and actual
 rule execution require independent verification and an approved transport.
+
+## CI-02 mutation matrix — entirely synthetic, real class rules still pending
+
+`synthetic_mutations.py` runs six separately asserted changed-build input
+vectors against the *same* G1 DSL three-family compositor, without engine code
+changes: remove item, add unrelated item, switch variant, change rune count,
+change charm-set count, and change skill rank. It supports a tiny bounded
+internal `build` AST allowlist for `equals`, `contains` and `and` to
+exercise generic source selection. All rule docs remain explicitly synthetic;
+no change to the approved #107 DSL schema and no product Maxroll formula is
+executed. The separate synthetic expected table intentionally detects test
+fixture drift, not gameplay balance drift.
+
+```bash
+python utility/d4-formula-graph/synthetic_mutations.py \
+  --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json \
+  --fixture utility/d4-formula-graph/fixtures/synthetic-three-families.json \
+  --report artifacts/110-build-mutations.json
+```
+
+Full CI-02 across *real* item/skill/variant/rune rule families still requires
+an approved actual rule registry/semantic model. A six-vector synthetic PASS
+cannot be represented as 50/50 source-verified formula coverage.

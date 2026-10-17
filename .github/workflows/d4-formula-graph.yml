@@ -49,6 +49,10 @@ jobs:
             --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json \
             --scenario utility/d4-formula-graph/fixtures/synthetic-known-scenario.json \
             --report artifacts/d4-formula-graph/scenario-synthetic.json
+          python utility/d4-formula-graph/synthetic_mutations.py \
+            --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json \
+            --fixture utility/d4-formula-graph/fixtures/synthetic-three-families.json \
+            --report artifacts/d4-formula-graph/synthetic-mutations.json
           # #108 real parity MUST return exit 2 / BLOCKED, not fake success.
           set +e
           python utility/d4-maxroll-parity/gate.py \
@@ -76,6 +80,12 @@ jobs:
           assert len(c["characterMetrics"])==50 and c["unknownCharacterMetrics"]==50
           assert c["syntheticOutputOnly"]["stats"]["synthetic.damageBonus"]==30
           assert c["simulationContext"] is None and c["realParity"]=="BLOCKED_NOT_RUN"
+          mutations=json.loads(Path('artifacts/d4-formula-graph/synthetic-mutations.json').read_text())
+          assert mutations["status"]=="PASS_SYNTHETIC_CI02_MUTATIONS_ONLY"
+          assert mutations["testCaseCount"]==6
+          assert len({x["changedInput"] for x in mutations["cases"]})==5
+          assert all(x["beforeGraphSha256"]!=x["afterGraphSha256"] for x in mutations["cases"])
+          assert all(x["maxrollMetricsComputed"]==0 for x in mutations["cases"])
           src=json.loads(Path('artifacts/d4-formula-graph/scenario-unknown.json').read_text())
           fake=json.loads(Path('artifacts/d4-formula-graph/scenario-synthetic.json').read_text())
           assert src["status"]=="BLOCKED_NO_VERIFIED_MAXROLL_RULES"

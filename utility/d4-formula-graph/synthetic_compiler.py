@@ -21,7 +21,7 @@ def evaluate(ast,env):
     kind=ast.get("kind")
     if kind=="literal":
         v=ast.get("value")
-        graph.reject(type(v) in (int,float,bool),"UNSUPPORTED_LITERAL")
+        graph.reject(type(v) in (int,float,bool,str),"UNSUPPORTED_LITERAL")
         return v
     if kind=="ref":
         graph.reject(ast.get("scope")=="build" and ast.get("path") in env,
@@ -29,12 +29,22 @@ def evaluate(ast,env):
         return env[ast["path"]]
     graph.reject(kind=="call","UNSUPPORTED_AST_KIND")
     fn,args=ast.get("fn"),ast.get("args",[])
-    graph.reject(fn in {"greater_equal","add","multiply"} and len(args)==2,
-                 "UNSUPPORTED_FUNCTION_OR_ARITY")
+    graph.reject(fn in {"greater_equal","add","multiply","equals","contains","and"}
+                 and len(args)==2,"UNSUPPORTED_FUNCTION_OR_ARITY")
     a,b=evaluate(args[0],env),evaluate(args[1],env)
     if fn=="greater_equal":return number(a)>=number(b)
     if fn=="add":return number(a)+number(b)
-    return number(a)*number(b)
+    if fn=="multiply":return number(a)*number(b)
+    if fn=="equals":
+        graph.reject(type(a)==type(b) and type(a) in (str,int,bool),
+                     "SYNTHETIC_EQUALS_TYPE_MISMATCH")
+        return a==b
+    if fn=="contains":
+        graph.reject(type(a)==list and type(b)==str and all(type(v)==str for v in a),
+                     "SYNTHETIC_CONTAINS_TYPE_MISMATCH")
+        return b in a
+    graph.reject(type(a)==bool and type(b)==bool,"SYNTHETIC_AND_REQUIRES_BOOL")
+    return a and b
 
 def compose(doc):
     graph.reject(isinstance(doc,dict) and
@@ -44,11 +54,17 @@ def compose(doc):
     graph.reject((doc["gamePatch"],doc["gameBuild"],doc["classId"])==
                  ("3.2.1","73552","rogue"),"WRONG_SYNTHETIC_PATCH")
     env=doc["input"]
-    graph.reject(isinstance(env,dict) and
-                 set(env)=={"aspectEquipped","charmCount","skillRank"} and
-                 type(env["aspectEquipped"])==bool and
-                 type(env["charmCount"])==int and env["charmCount"]>=0 and
-                 type(env["skillRank"])==int and env["skillRank"]>=0,
+    graph.reject(type(env)==dict and
+                 set(env)=={"equippedItems","variant","runeCount","charmCount","skillRank"}
+                 and type(env["equippedItems"])==list
+                 and len(env["equippedItems"])<=16
+                 and all(type(x)==str and x.startswith("synthetic.item.")
+                         for x in env["equippedItems"])
+                 and env["equippedItems"]==sorted(set(env["equippedItems"]))
+                 and env["variant"] in {"synthetic.alpha","synthetic.beta"}
+                 and type(env["charmCount"])==int and 0<=env["charmCount"]<=10
+                 and type(env["runeCount"])==int and 0<=env["runeCount"]<=10
+                 and type(env["skillRank"])==int and 0<=env["skillRank"]<=10,
                  "INVALID_SYNTHETIC_INPUT")
     stats=doc["stats"];skills=doc["skills"]
     graph.reject(isinstance(stats,dict) and set(stats)=={"synthetic.damageBonus"}

@@ -28,7 +28,7 @@ class ThreeFamilies(unittest.TestCase):
 
     def test_conditional_aspect_and_charm_threshold(self):
         f=copy.deepcopy(self.src)
-        f["input"]["aspectEquipped"]=False
+        f["input"]["equippedItems"]=[]
         f["input"]["charmCount"]=1
         x=engine.compose(f)
         self.assertEqual(x["stats"]["synthetic.damageBonus"],0)
@@ -70,3 +70,51 @@ class ThreeFamilies(unittest.TestCase):
         f=copy.deepcopy(self.src)
         f["input"]["charmCount"]=-1
         with self.assertRaisesRegex(g.GraphError,"INVALID_SYNTHETIC_INPUT"):engine.compose(f)
+
+
+    def test_ci02_item_variant_rune_charm_and_rank_are_data_driven(self):
+        reference=engine.compose(self.src)
+        cases=[
+            ("remove_item","equippedItems",[],10,2),
+            ("add_other_item","equippedItems",["synthetic.item.other"],10,2),
+            ("variant_beta","variant","synthetic.beta",30,1),
+            ("remove_rune","runeCount",0,20,2),
+            ("remove_charm_set","charmCount",1,20,2),
+            ("rank_up","skillRank",2,30,3),
+        ]
+        for case,key,value,expected_bonus,expected_projectile in cases:
+            with self.subTest(case=case):
+                other=copy.deepcopy(self.src)
+                other["input"][key]=value
+                out=engine.compose(other)
+                self.assertEqual(out["stats"]["synthetic.damageBonus"],expected_bonus)
+                self.assertEqual(out["skills"]["synthetic.projectile"]["projectile_count"],
+                                 expected_projectile)
+                self.assertNotEqual(reference["manifestSha256"],out["manifestSha256"])
+                self.assertEqual(out["activeMaxrollFormulaCount"],0)
+                self.assertEqual(out["maxrollParity"],"BLOCKED_NOT_RUN")
+
+    def test_ci02_bad_item_list_variant_rune_and_rank_fail_closed(self):
+        for key,value in [
+            ("equippedItems",["synthetic.item.aspect-a","synthetic.item.aspect-a"]),
+            ("equippedItems",["actual.user_item"]),
+            ("equippedItems",["synthetic.item.z","synthetic.item.a"]),
+            ("variant","ChargeBolt"),
+            ("variant","synthetic.gamma"),
+            ("runeCount",-1),
+            ("runeCount",True),
+            ("skillRank",2.5),
+            ("skillRank",999),
+        ]:
+            d=copy.deepcopy(self.src)
+            d["input"][key]=value
+            with self.subTest(key=key,value=value):
+                with self.assertRaisesRegex(g.GraphError,"INVALID_SYNTHETIC_INPUT"):
+                    engine.compose(d)
+
+    def test_ci02_unsupported_source_dsl_expression_stays_blocked(self):
+        d=copy.deepcopy(self.src)
+        d["rules"][0]["mechanics"][0]["actions"][0]["value"]={
+            "kind":"call","fn":"lookup","args":[{"kind":"literal","value":"a"}]}
+        with self.assertRaisesRegex(g.GraphError,"UNSUPPORTED_FUNCTION_OR_ARITY"):
+            engine.compose(d)

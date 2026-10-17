@@ -4,9 +4,13 @@
   "gameBuild": "73552",
   "classId": "rogue",
   "input": {
-    "aspectEquipped": true,
+    "equippedItems": [
+      "synthetic.item.aspect-a"
+    ],
+    "variant": "synthetic.alpha",
+    "runeCount": 1,
     "charmCount": 2,
-    "skillRank": 3
+    "skillRank": 1
   },
   "stats": {
     "synthetic.damageBonus": 0
@@ -47,12 +51,28 @@
               "property": "projectile_count",
               "math": "add",
               "value": {
-                "kind": "literal",
-                "value": 1
+                "kind": "ref",
+                "scope": "build",
+                "path": "skillRank"
               },
               "stage": "pre_transform"
             }
-          ]
+          ],
+          "when": {
+            "kind": "call",
+            "fn": "equals",
+            "args": [
+              {
+                "kind": "ref",
+                "scope": "build",
+                "path": "variant"
+              },
+              {
+                "kind": "literal",
+                "value": "synthetic.alpha"
+              }
+            ]
+          }
         }
       ],
       "verification": {
@@ -87,9 +107,19 @@
             "kind": "always"
           },
           "when": {
-            "kind": "ref",
-            "scope": "build",
-            "path": "aspectEquipped"
+            "kind": "call",
+            "fn": "contains",
+            "args": [
+              {
+                "kind": "ref",
+                "scope": "build",
+                "path": "equippedItems"
+              },
+              {
+                "kind": "literal",
+                "value": "synthetic.item.aspect-a"
+              }
+            ]
           },
           "actions": [
             {
@@ -139,16 +169,37 @@
           },
           "when": {
             "kind": "call",
-            "fn": "greater_equal",
+            "fn": "and",
             "args": [
               {
-                "kind": "ref",
-                "scope": "build",
-                "path": "charmCount"
+                "kind": "call",
+                "fn": "greater_equal",
+                "args": [
+                  {
+                    "kind": "ref",
+                    "scope": "build",
+                    "path": "charmCount"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": 2
+                  }
+                ]
               },
               {
-                "kind": "literal",
-                "value": 2
+                "kind": "call",
+                "fn": "greater_equal",
+                "args": [
+                  {
+                    "kind": "ref",
+                    "scope": "build",
+                    "path": "runeCount"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": 1
+                  }
+                ]
               }
             ]
           },
