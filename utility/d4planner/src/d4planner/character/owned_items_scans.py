@@ -374,23 +374,32 @@ def current(db: sqlite3.Connection, locations: set[str], rarity: str | None) -> 
 
 
 def coverage(db: sqlite3.Connection) -> tuple[dict[str, Any],list[dict[str, Any]]]:
-    """Return only certified complete scans, grouped by character scope.
+    """Latest attempted scan governs coverage; older scans stay audit-only.
 
-    A caller with UNKNOWN current character identity must not reinterpret a
-    complete historical scan as the current active character inventory.
+    An interrupted rescan cannot leave a stale COMPLETE badge on the same
+    tab simply because an earlier historical scan succeeded.
     """
     if not db.execute("SELECT 1 FROM sqlite_master WHERE name='owned_grid_scans'").fetchone():
         return {},[]
-    records=[dict(row) for row in db.execute("""SELECT * FROM owned_grid_scans
-        WHERE status='COMPLETE' ORDER BY completed_at DESC,scan_id""")]
+    rows=[dict(row) for row in db.execute(
+        "SELECT rowid AS scan_order,* FROM owned_grid_scans ORDER BY rowid DESC")]
     result: dict[str, Any]={}
-    for scan in records:
-        char=scan["character_id"]
-        result.setdefault(char,[]).append({
+    seen: set[tuple[str,str,int | None]] = set()
+    latest=[]
+    for scan in rows:
+        key=(scan["character_id"],scan["container"],scan["tab"])
+        if key in seen:
+            continue
+        seen.add(key)
+        latest.append(scan)
+        verified=scan["status"]=="COMPLETE"
+        result.setdefault(scan["character_id"],[]).append({
             "scanId":scan["scan_id"],"type":scan["container"],"tab":scan["tab"],
-            "status":"SCANNED","lastScanAt":scan["completed_at"],
-            "expectedSlots":scan["expected_slots"]})
-    return result,records
+            "status":"SCANNED" if verified else "PARTIAL",
+            "lastScanAt":scan["completed_at"] if verified else None,
+            "expectedSlots":scan["expected_slots"],
+            "detail":scan["status"]})
+    return result,latest
 
 
 def history(db: sqlite3.Connection) -> list[dict[str, Any]]:
