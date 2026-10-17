@@ -57,6 +57,16 @@ class CaptureGraphTest(unittest.TestCase):
             vv=deepcopy(w);vv["slots"]=vv["slots"][1:];v=deepcopy(s);v["sockets"]=v["sockets"][1:]
             # Slot addition/removal must mutate both independently captured source views.
             mutations.append((v,vv,"equipment/"))
+            # Captured charm slot is part of the equipped set: removal must
+            # remove its contributors and sockets without producing a fake stat.
+            charm=next((x["slotId"] for x in w["slots"]
+                        if x["itemId"].startswith("Talisman_Charm_")),None)
+            if charm:
+                v=deepcopy(s);v["sockets"]=[x for x in v["sockets"]
+                                           if x["slotId"]!=charm]
+                vv=deepcopy(w);vv["slots"]=[x for x in vv["slots"]
+                                           if x["slotId"]!=charm]
+                mutations.append((v,vv,"equipment/"+charm+"/"))
             for v,rolls,prefix in mutations:
                 with self.subTest(fixture=s["fixtureId"],prefix=prefix):
                     a=g.build(v,rolls,index,self.rules)
