@@ -295,55 +295,6 @@ jobs:
           }
           $global:LASTEXITCODE = 0
 
-      - name: 'Issue119 isolated UAT Prepare syntax, fail-closed and venv smoke'
-        if: github.event_name == 'pull_request' && github.event.pull_request.number == 120
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $prep = (Resolve-Path ./scripts/acceptance/issue119-prepare.ps1).Path
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            $prep, [ref]$tokens, [ref]$errors) | Out-Null
-          if (@($errors).Count -ne 0) {
-            throw "Issue119 Prepare PowerShell syntax error: $(@($errors) -join '; ')"
-          }
-          # Windows CI must not be a gaming machine: assert the safe negative
-          # entrypoint doesn't install/restart anything before Steam+D4 checks.
-          if (Get-Process -Name steam,'Diablo IV' -ErrorAction SilentlyContinue) {
-            throw 'CI machine unexpectedly has a game or Steam process'
-          }
-          $evidence = Join-Path $env:RUNNER_TEMP 'issue119-prepare-negative'
-          $PSNativeCommandUseErrorActionPreference = $false
-          & pwsh -NoProfile -File $prep -ExpectedHead (git rev-parse HEAD) -EvidenceDir $evidence
-          $exitCode = $LASTEXITCODE
-          if ($exitCode -ne 2) { throw "Prepare headless must BLOCKED=2, got $exitCode" }
-          $report = Get-Content (Join-Path $evidence 'prepare-report.json') -Raw | ConvertFrom-Json
-          if ($report.status -ne 'BLOCKED' -or $report.checks.'S0-04'.result -ne 'BLOCKED') {
-            throw 'Prepare must fail before touching missing NVDA, Steam or game'
-          }
-          if (!(Test-Path "$evidence.zip")) { throw 'Prepare failed to export negative evidence ZIP' }
-          $venv = Join-Path $env:RUNNER_TEMP 'issue119-pr120-venv'
-          python -m venv --system-site-packages $venv
-          if ($LASTEXITCODE -ne 0) { throw 'UAT venv creation failed' }
-          $py = Join-Path $venv 'Scripts/python.exe'
-          $source = (Resolve-Path ./utility/d4planner/src).Path
-          $pth = Join-Path $venv 'Lib/site-packages/d4planner-pr120.pth'
-          Set-Content -LiteralPath $pth -Value $source -Encoding utf8
-          $loaded = (& $py -c 'import d4planner;print(d4planner.__file__)' | Out-String).Trim()
-          if ($LASTEXITCODE -ne 0 -or !$loaded.StartsWith($source, [StringComparison]::OrdinalIgnoreCase)) {
-            throw "UAT venv loaded wrong D4Planner module: $loaded"
-          }
-          $help = (& $py -m d4planner.cli start --help | Out-String)
-          if ($LASTEXITCODE -ne 0 -or !$help.Contains('--uat-start-nvda')) {
-            throw 'UAT venv does not resolve new CLI flag'
-          }
-          $daemon = (& $py -m d4planner.daemon --help | Out-String)
-          if ($LASTEXITCODE -ne 0 -or !$daemon.Contains('--uat-start-nvda')) {
-            throw 'UAT venv does not resolve new scheduled daemon flag'
-          }
-          $global:LASTEXITCODE = 0
-
       - name: Install D4Planner dev dependencies
         if: steps.changes.outputs.d4planner == 'true'
         run: python -m pip install -e 'utility/d4planner[dev]'
