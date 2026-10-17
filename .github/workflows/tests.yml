@@ -173,6 +173,157 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: 'Issue119 probe PowerShell syntax and fail-closed preflight'
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 120
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $script = (Resolve-Path ./scripts/acceptance/issue119-probe.ps1).Path
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $script, [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if (@($parseErrors).Count -ne 0) {
+            throw "Issue119 PowerShell parse errors: $(@($parseErrors) -join '; ')"
+          }
+          python -m py_compile ./scripts/acceptance/issue119_probe.py
+          if ($LASTEXITCODE -ne 0) { throw 'Issue119 probe py_compile failed' }
+          $evidence = Join-Path $env:RUNNER_TEMP 'issue119-preflight'
+          $PSNativeCommandUseErrorActionPreference = $false
+          & pwsh -NoProfile -File $script -Mode Preflight -EvidenceDir $evidence -ExpectedHead (git rev-parse HEAD)
+          $outcome = $LASTEXITCODE
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($outcome -ne 2) {
+            throw "Issue119 headless runner should BLOCKED=2, got $outcome"
+          }
+          $report = Get-Content (Join-Path $evidence 'report.json') -Raw | ConvertFrom-Json
+          if ($report.status -ne 'BLOCKED' -or @($report.problems).Count -lt 1) {
+            throw 'Issue119 headless preflight did not report a documented blocker'
+          }
+          if (-not (Test-Path "$evidence.zip")) {
+            throw 'Issue119 headless preflight did not export a ZIP'
+          }
+          $global:LASTEXITCODE = 0
+
+      - name: 'Issue119 runner regression - valid JSON exit2 versus invalid JSON'
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 120
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $script = (Resolve-Path ./scripts/acceptance/issue119-probe.ps1).Path
+          $fakeDir = Join-Path $env:RUNNER_TEMP 'issue119-fake-cli'
+          New-Item -ItemType Directory -Force -Path $fakeDir | Out-Null
+          $fake = Join-Path $fakeDir 'd4planner.cmd'
+          $previousPath = $env:PATH
+          $env:PATH = $fakeDir + ';' + $previousPath
+          try {
+            # Valid status JSON, but nonzero runtime exit: P0-06 must PASS,
+            # P0-07 must BLOCKED. Original runner misreported P0-06 and
+            # never persisted the exact status output.
+            @(
+              '@echo off'
+              'echo {"state":"RUNNING","supervisorAlive":false,"captureEffective":false,"supervisorPid":123}'
+              'echo synthetic stale supervisor 1>&2'
+              'exit /b 2'
+            ) | Set-Content -LiteralPath $fake -Encoding ascii
+            $goodJsonEvidence = Join-Path $env:RUNNER_TEMP 'issue119-valid-json-exit2'
+            $PSNativeCommandUseErrorActionPreference = $false
+            & pwsh -NoProfile -File $script -Mode Preflight -EvidenceDir $goodJsonEvidence -ExpectedHead (git rev-parse HEAD)
+            $goodJsonExit = $LASTEXITCODE
+            if ($goodJsonExit -ne 2) { throw "Expected BLOCKED=2 for stale runtime, got $goodJsonExit" }
+            $report = Get-Content (Join-Path $goodJsonEvidence 'report.json') -Raw | ConvertFrom-Json
+            $invocation = Get-Content (Join-Path $goodJsonEvidence 'status-before.invocation.json') -Raw | ConvertFrom-Json
+            if ($report.checks.'P0-06'.result -ne 'PASS' -or $report.checks.'P0-07'.result -ne 'BLOCKED' -or
+                $invocation.exitCode -ne 2 -or $invocation.stderr -notmatch 'synthetic stale supervisor') {
+              throw "Misclassified a valid JSON, exit 2 as missing CLI or lost stderr"
+            }
+            if (!(Test-Path "$goodJsonEvidence.zip") -or !(Test-Path (Join-Path $goodJsonEvidence 'status-before.json'))) {
+              throw 'Valid-JSON negative smoke did not persist ZIP and parsed status'
+            }
+
+            # Malformed stdout with exit=0: now specifically P0-06 BLOCKED
+            # and persist exact stdout for diagnosis.
+            @('@echo off', 'echo not-json', 'exit /b 0') |
+              Set-Content -LiteralPath $fake -Encoding ascii
+            $invalidEvidence = Join-Path $env:RUNNER_TEMP 'issue119-invalid-json'
+            & pwsh -NoProfile -File $script -Mode Preflight -EvidenceDir $invalidEvidence -ExpectedHead (git rev-parse HEAD)
+            $invalidExit = $LASTEXITCODE
+            if ($invalidExit -ne 2) { throw "Expected BLOCKED=2 for malformed status JSON, got $invalidExit" }
+            $invalidReport = Get-Content (Join-Path $invalidEvidence 'report.json') -Raw | ConvertFrom-Json
+            $badRaw = Get-Content (Join-Path $invalidEvidence 'status-before.stdout.txt') -Raw
+            if ($invalidReport.checks.'P0-06'.result -ne 'BLOCKED' -or $badRaw -notmatch 'not-json') {
+              throw 'Malformed JSON did not fail closed with raw stdout evidence'
+            }
+          } finally {
+            $env:PATH = $previousPath
+            $PSNativeCommandUseErrorActionPreference = $true
+          }
+          $global:LASTEXITCODE = 0
+
+      - name: 'Issue119 runner explicit HomeDir overrides stale SSH environment'
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 120
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runner = (Resolve-Path ./scripts/acceptance/issue119-probe.ps1).Path
+          $fakeDir = Join-Path $env:RUNNER_TEMP 'issue119-homedir-fake-cli'
+          New-Item -ItemType Directory -Force -Path $fakeDir | Out-Null
+          $fake = Join-Path $fakeDir 'd4planner.cmd'
+          @('@echo off','echo {"state":"WAITING_FOR_GAME","supervisorAlive":false,"captureEffective":false,"supervisorPid":123}',
+            'echo %D4PLANNER_HOME% 1>&2','exit /b 2') |
+            Set-Content -LiteralPath $fake -Encoding ascii
+          $oldPath = $env:PATH
+          $oldHome = $env:D4PLANNER_HOME
+          try {
+            $expected = Join-Path $env:RUNNER_TEMP 'issue119-expected-home'
+            $env:D4PLANNER_HOME = Join-Path $env:RUNNER_TEMP 'issue119-wrong-home'
+            $env:PATH = $fakeDir + ';' + $oldPath
+            $evidence = Join-Path $env:RUNNER_TEMP 'issue119-homedir-proof'
+            $PSNativeCommandUseErrorActionPreference = $false
+            & pwsh -NoProfile -File $runner -Mode Preflight -HomeDir $expected -EvidenceDir $evidence -ExpectedHead (git rev-parse HEAD)
+            if ($LASTEXITCODE -ne 2) { throw 'Missing runtime must BLOCKED=2' }
+            $report = Get-Content (Join-Path $evidence 'report.json') -Raw | ConvertFrom-Json
+            $invocation = Get-Content (Join-Path $evidence 'status-before.invocation.json') -Raw | ConvertFrom-Json
+            if ($report.checks.'P0-06'.result -ne 'PASS' -or
+                $report.checks.'P0-07'.result -ne 'BLOCKED' -or
+                $invocation.stderr.Trim() -ne $expected) {
+              throw 'Explicit HomeDir was not passed to the D4Planner status process'
+            }
+          } finally {
+            $env:PATH = $oldPath
+            $env:D4PLANNER_HOME = $oldHome
+          }
+          $global:LASTEXITCODE = 0
+
+      - name: 'Issue119 Items UAT runner syntax and fail-closed snapshot smoke'
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 120
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = (Resolve-Path ./scripts/acceptance/issue119-items-uat.ps1).Path
+          $tokens = $null; $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            $path, [ref]$tokens, [ref]$errors
+          )
+          if ($errors.Count) {
+            throw "Issue119 items runner PowerShell parse failed: $($errors | Out-String)"
+          }
+          $empty = Join-Path $env:RUNNER_TEMP 'i119-items-uat-empty-home'
+          New-Item -ItemType Directory -Force -Path $empty | Out-Null
+          $ev = Join-Path $env:RUNNER_TEMP 'i119-items-uat-negative'
+          $PSNativeCommandUseErrorActionPreference = $false
+          & pwsh -NoProfile -File $path -ExpectedHead (git rev-parse HEAD) -HomeDir $empty -EvidenceDir $ev
+          $code = $LASTEXITCODE
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($code -ne 2) { throw "Expected BLOCKED=2 without source DB, got $code" }
+          $report = Get-Content (Join-Path $ev 'report.json') -Raw | ConvertFrom-Json
+          if ($report.status -ne 'BLOCKED' -or
+              $report.checks.EVENTS.result -ne 'BLOCKED' -or
+              !(Test-Path "$ev.zip")) {
+            throw 'Issue119 items runner failed to preserve BLOCKED reason/ZIP'
+          }
+          $global:LASTEXITCODE = 0
+
       - name: Install D4Planner dev dependencies
         if: steps.changes.outputs.d4planner == 'true'
         run: python -m pip install -e 'utility/d4planner[dev]'
@@ -188,6 +339,128 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Issue87 UT-04 failed' }
           python -m pytest -q utility/d4planner/tests/test_e2e_cli_runtime.py -k 'test_e2e03_xbox16_session1_one_hook_end_to_end_to_sqlite or test_e2e11_stop_unhooks_then_mode_switch_without_stale_capture'
           if ($LASTEXITCODE -ne 0) { throw 'Issue87 E2E-03/11 failed' }
+      - name: 'Issue119 Items UAT isolated snapshot positive smoke'
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 120
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $fakeHome = Join-Path $env:RUNNER_TEMP 'i119-items-uat-synthetic-source'
+          $state = Join-Path $fakeHome 'state'
+          New-Item -ItemType Directory -Force -Path $state | Out-Null
+          @'
+          from pathlib import Path
+          import json, sqlite3, sys
+          p = Path(sys.argv[1]); p.parent.mkdir(parents=True, exist_ok=True)
+          with sqlite3.connect(p) as db:
+              db.execute('CREATE TABLE event_log(id INTEGER PRIMARY KEY,session_id TEXT,event_seq INTEGER,timestamp TEXT,type TEXT,data_json TEXT)')
+              for i, t in enumerate(['STASH','CHEST 1','TEST RING','Legendary Ring','900 Item Power','CHEST 2','CHARACTER'],1):
+                  db.execute('INSERT INTO event_log VALUES(?,?,?,?,?,?)',
+                             (i,'ci-synthetic',i,'2026-10-17T10:00:00+07:00','speech.raw',json.dumps({'text':t})))
+          '@ | Set-Content (Join-Path $env:RUNNER_TEMP 'i119-positive-fixture.py') -Encoding utf8
+          python (Join-Path $env:RUNNER_TEMP 'i119-positive-fixture.py') (Join-Path $state 'events.db')
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot build isolated SQLite input fixture' }
+          $before = (Get-FileHash (Join-Path $state 'events.db') -Algorithm SHA256).Hash
+          $runner = (Resolve-Path './scripts/acceptance/issue119-items-uat.ps1').Path
+          $ev = Join-Path $env:RUNNER_TEMP 'i119-items-uat-synthetic-pass'
+          $PSNativeCommandUseErrorActionPreference = $false
+          & pwsh -NoProfile -File $runner -ExpectedHead (git rev-parse HEAD) -HomeDir $fakeHome -EvidenceDir $ev
+          $code = $LASTEXITCODE
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($code -ne 0) { throw "Items UAT positive smoke failed exit=$code" }
+          $report = Get-Content (Join-Path $ev 'report.json') -Raw | ConvertFrom-Json
+          $candidate = Get-Content (Join-Path $ev 'CANDIDATES.stdout.json') -Raw | ConvertFrom-Json
+          $after = (Get-FileHash (Join-Path $state 'events.db') -Algorithm SHA256).Hash
+          if ($report.status -ne 'PASS_SNAPSHOT_CLI_PARTIAL_OWNERSHIP' -or
+              $candidate.observedTotal -lt 1 -or
+              $candidate.items[0].ownershipStatus -ne 'NOT_CONFIRMED' -or
+              $before -ne $after -or !(Test-Path "$ev.zip")) {
+            throw 'Items UAT snapshot positive smoke output/safety contract mismatch'
+          }
+          $global:LASTEXITCODE = 0
+
+      - name: 'Issue119 Items UAT targeted Resume, SKIP and failure classification'
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 120
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $fakeHome = Join-Path $env:RUNNER_TEMP 'i119-items-uat-synthetic-source'
+          $runner = (Resolve-Path './scripts/acceptance/issue119-items-uat.ps1').Path
+          $ev = Join-Path $env:RUNNER_TEMP 'i119-items-uat-resume'
+          $PSNativeCommandUseErrorActionPreference = $false
+          & pwsh -NoProfile -File $runner -ExpectedHead (git rev-parse HEAD) -HomeDir $fakeHome -EvidenceDir $ev -Mode Resume -Cases FILTER
+          $code = $LASTEXITCODE
+          $PSNativeCommandUseErrorActionPreference = $true
+          $r = Get-Content (Join-Path $ev 'report.json') -Raw | ConvertFrom-Json
+          if ($code -ne 0 -or $r.status -ne 'PASS_SNAPSHOT_CLI_PARTIAL_OWNERSHIP' -or
+              $r.checks.FILTER.result -ne 'PASS' -or
+              $r.checks.LIST.result -ne 'SKIP' -or
+              $r.checks.EXPORT.result -ne 'SKIP' -or
+              $r.summary.SKIP -lt 4 -or !(Test-Path "$ev.zip")) {
+            throw 'Issue119 targeted resume expected FILTER PASS and unrelated SKIP'
+          }
+          $negative = Join-Path $env:RUNNER_TEMP 'i119-items-uat-invalid-case'
+          $PSNativeCommandUseErrorActionPreference = $false
+          & pwsh -NoProfile -File $runner -ExpectedHead (git rev-parse HEAD) -HomeDir $fakeHome -EvidenceDir $negative -Mode Resume -Cases INVALID
+          $code = $LASTEXITCODE
+          $PSNativeCommandUseErrorActionPreference = $true
+          $r = Get-Content (Join-Path $negative 'report.json') -Raw | ConvertFrom-Json
+          if ($code -ne 2 -or $r.status -ne 'BLOCKED' -or $r.problems.Count -lt 1 -or
+              !(Test-Path "$negative.zip")) {
+            throw 'Issue119 invalid resume request must fail closed with report/ZIP'
+          }
+          $global:LASTEXITCODE = 0
+
+      - name: 'Issue119 UAT Product FAIL and isolated snapshot cleanup smoke'
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 120
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $badHome = Join-Path $env:RUNNER_TEMP 'i119-invalid-projection-home'
+          $state = Join-Path $badHome 'state'
+          New-Item -ItemType Directory -Force $state | Out-Null
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'i119-items-uat-synthetic-source/state/events.db') (Join-Path $state 'events.db')
+          $fixture = Join-Path $env:RUNNER_TEMP 'i119-corrupt-projection.py'
+          @'
+          import json, sqlite3, sys
+          from pathlib import Path
+          from d4planner.character.owned_items import OwnedItemsRepository, _initial
+          root = Path(sys.argv[1]); target = root/'character.db'
+          with sqlite3.connect(target) as db:
+              OwnedItemsRepository._schema(db)
+              db.execute("INSERT INTO owned_item_checkpoint VALUES(1,?,?)",
+                         (7,json.dumps(_initial())))
+              # Deliberate impossible source projection: SQL stash but payload inventory.
+              item = {"name":"synthetic mismatch",
+                      "location":{"type":"inventory","tab":None,"slot":None},
+                      "sourceSessionId":"ci","sourceEventSeqStart":1,
+                      "sourceEventSeqEnd":3,
+                      "ownershipStatus":"NOT_CONFIRMED","pickedUpAt":None}
+              db.execute("""
+                  INSERT INTO owned_item_observation
+                  (source_session_id,source_seq_start,source_seq_end,
+                   location_type,item_name,rarity,observed_at,observation_json)
+                  VALUES(?,?,?,?,?,?,?,?)
+                  """,("ci",1,3,"stash","synthetic mismatch","Legendary",
+                        "2026-10-17T10:00:00+07:00",json.dumps(item)))
+          '@ | Set-Content $fixture -Encoding utf8
+          python $fixture $state
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot set up invalid projection fixture' }
+          $runner = (Resolve-Path './scripts/acceptance/issue119-items-uat.ps1').Path
+          $ev = Join-Path $env:RUNNER_TEMP 'i119-product-fail-smoke'
+          $PSNativeCommandUseErrorActionPreference = $false
+          & pwsh -NoProfile -File $runner -ExpectedHead (git rev-parse HEAD) -HomeDir $badHome -EvidenceDir $ev -Mode Resume -Cases FILTER
+          $code = $LASTEXITCODE
+          $PSNativeCommandUseErrorActionPreference = $true
+          $r = Get-Content (Join-Path $ev 'report.json') -Raw | ConvertFrom-Json
+          if ($code -ne 1 -or $r.status -ne 'FAIL' -or
+              $r.checks.FILTER_LOCATION.result -ne 'FAIL' -or
+              $r.cleanup.snapshotCopyRemoved -ne $true -or
+              (Test-Path (Join-Path $ev 'snapshot-home')) -or
+              !(Test-Path "$ev.zip")) {
+            throw 'UAT must classify invalid projection as product FAIL=1 and remove only snapshot'
+          }
+          $global:LASTEXITCODE = 0
+
       - name: Compile D4Planner runtime
         if: steps.changes.outputs.d4planner == 'true'
         run: python -m compileall -q utility/d4planner

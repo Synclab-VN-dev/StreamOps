@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -15,6 +16,7 @@ from typing import Any, Iterator
 
 from .character.equipment.projector import EquipmentProjector
 from .character.repository import EquipmentRepository
+from .character.owned_items import OwnedItemsRepository
 from .character.service import CharacterService
 from .runtime.diagnostics import MemoryDiagnosticsSink
 from .runtime.events.repository import EventLogReader
@@ -872,6 +874,107 @@ def command_character_equipment(paths: RuntimePaths, *, raw_json: bool) -> int:
     return 0
 
 
+
+def command_items(
+    paths: RuntimePaths,
+    *,
+    action: str | None,
+    raw_json: bool = False,
+    location: str = "all",
+    rarity: str | None = None,
+    include_unverified: bool = False,
+    output: Path | None = None,
+    output_format: str = "jsonl",
+) -> int:
+    """Query materialized observations; never infer pickup or full scans."""
+    valid = {"equipment", "inventory", "stash", "unknown", "all"}
+    locations = {entry.strip().casefold() for entry in location.split(",")}
+    if not locations or "" in locations or not locations.issubset(valid):
+        print(f"Invalid --location: {location!r}. Allowed: {', '.join(sorted(valid))}", file=sys.stderr)
+        return 2
+    if "all" in locations and len(locations) > 1:
+        print("--location all cannot be combined with other locations", file=sys.stderr)
+        return 2
+
+    repo = OwnedItemsRepository(paths.character_db, paths.events_db)
+    try:
+        if action == "history":
+            history = repo.history()
+            print(json.dumps({"schemaVersion": 1, "observations": history},
+                             ensure_ascii=False, indent=2))
+            return 0
+        if action == "export":
+            if output is None or output_format != "jsonl":
+                print("items export requires --format jsonl --output PATH", file=sys.stderr)
+                return 2
+            if output.exists():
+                print(f"Refusing to overwrite existing file: {output}", file=sys.stderr)
+                return 2
+            from uuid import uuid4
+            output.parent.mkdir(parents=True, exist_ok=True)
+            temp = output.with_name(f".{output.name}.{uuid4().hex}.tmp")
+            try:
+                with temp.open("w", encoding="utf-8", newline="\n") as stream:
+                    for observation in repo.history():
+                        stream.write(json.dumps(observation, ensure_ascii=False) + "\n")
+                os.replace(temp, output)
+            finally:
+                temp.unlink(missing_ok=True)
+            print(f"Exported observed item history to {output}")
+            return 0
+
+        snapshot = repo.listing(locations=locations, rarity=rarity,
+                                include_unverified=include_unverified)
+        if action == "status":
+            runtime = read_json(paths.runtime_state) or {}
+            capture = read_json(paths.capture_state) or {}
+            state = runtime.get("state")
+            try:
+                lease_valid = bool(capture.get("enabled")) and float(capture.get("leaseUntilUnix") or 0) > time.time()
+            except (TypeError, ValueError):
+                lease_valid = False
+            freshness = ("ACTIVE" if state == "RUNNING" and lease_valid
+                         else "STALE" if state else "UNKNOWN")
+            payload = {
+                "schemaVersion": 1, "character": snapshot["character"],
+                "coverage": snapshot["coverage"],
+                "observedTotal": snapshot["observedTotal"],
+                "captureHealth": {
+                    "runtimeState": state, "freshness": freshness,
+                    "canonicalEventsPresent": paths.events_db.is_file(),
+                    "lastError": runtime.get("lastError"),
+                },
+                "warning": "Only HIGH-confidence equipped items are confirmed; tooltips are not proof of ownership.",
+            }
+            if raw_json:
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+            else:
+                print(f"Owned item coverage: {payload['coverage']['overall']}")
+                print(f"Unverified tooltip observations: {payload['coverage']['observationCandidates']}")
+                print("Stash tabs spoken:", ", ".join(str(t["tab"]) for t in payload["coverage"]["stash"]["tabs"]) or "none")
+            return 0
+
+        if raw_json:
+            print(json.dumps(snapshot, ensure_ascii=False, indent=2))
+            return 0
+        if not snapshot["items"]:
+            print("No confirmed owned items in materialized state.")
+        for item in snapshot["items"]:
+            where = item["location"]["type"]
+            if item["location"].get("slot"):
+                where += "/" + str(item["location"]["slot"])
+            print(f"{where:<18} {item['name']}  {item.get('itemPower') or '?'}  "
+                  f"{item['ownershipStatus']}")
+        print(f"Coverage: {snapshot['coverage']['overall']}; "
+              f"unverified observations: {snapshot['coverage']['observationCandidates']}")
+        if not include_unverified:
+            print("Use --include-unverified to inspect candidate tooltips (not confirmed owned).")
+        return 0
+    except (OSError, sqlite3.Error, ValueError, TypeError) as exc:
+        print(f"items blocked: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+
+
 def _read_jsonl_events(path: Path) -> list[dict[str, Any]]:
     data = path.read_bytes()
     if data.startswith((b"\xff\xfe", b"\xfe\xff")):
@@ -1139,6 +1242,21 @@ def build_parser() -> argparse.ArgumentParser:
     replay.add_argument("path", type=Path)
     replay.add_argument("--trace", action="store_true")
 
+    items = sub.add_parser("items")
+    items.add_argument("--json", action="store_true")
+    items.add_argument("--location", default="all")
+    items.add_argument("--rarity")
+    items.add_argument("--include-unverified", action="store_true",
+                       help="include observed tooltips without ownership proof")
+    items_sub = items.add_subparsers(dest="items_action")
+    item_status = items_sub.add_parser("status")
+    item_status.add_argument("--json", action="store_true")
+    item_history = items_sub.add_parser("history")
+    item_history.add_argument("--json", action="store_true")
+    item_export = items_sub.add_parser("export")
+    item_export.add_argument("--format", choices=("jsonl",), default="jsonl")
+    item_export.add_argument("--output", type=Path, required=True)
+
     path = sub.add_parser("path")
     path.add_argument("action", choices=("status", "restore"))
 
@@ -1212,6 +1330,14 @@ def main(argv: list[str] | None = None) -> int:
         if getattr(args, "equipment_action", None) == "replay":
             return command_character_equipment_replay(args.path, trace=args.trace)
         return command_character_equipment(paths, raw_json=args.json)
+    if args.command == "items":
+        return command_items(
+            paths, action=args.items_action, raw_json=getattr(args, "json", False),
+            location=args.location, rarity=args.rarity,
+            include_unverified=args.include_unverified,
+            output=getattr(args, "output", None),
+            output_format=getattr(args, "format", "jsonl"),
+        )
     if args.command == "path":
         return command_path(paths, args.action)
     return 2

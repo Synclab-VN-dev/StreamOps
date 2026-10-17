@@ -1,0 +1,274 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Synclab-VN-dev/StreamOps/blob/feat/119-owned-items-cli/utility/d4planner/docs/owned-items-v1.schema.json",
+  "title": "D4Planner owned items v1 snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "character",
+    "coverage",
+    "observedTotal",
+    "items"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "character": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "identityConfidence"
+      ],
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "identityConfidence": {
+          "enum": [
+            "UNKNOWN",
+            "LOW",
+            "MEDIUM",
+            "HIGH"
+          ]
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "overall",
+        "equipment",
+        "inventory",
+        "stash"
+      ],
+      "properties": {
+        "overall": {
+          "$ref": "#/$defs/coverage"
+        },
+        "equipment": {
+          "$ref": "#/$defs/coverage"
+        },
+        "inventory": {
+          "$ref": "#/$defs/coverage"
+        },
+        "stash": {
+          "type": "object",
+          "required": [
+            "overall",
+            "tabs"
+          ],
+          "properties": {
+            "overall": {
+              "$ref": "#/$defs/coverage"
+            },
+            "tabs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "tab",
+                  "status"
+                ],
+                "properties": {
+                  "tab": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "status": {
+                    "$ref": "#/$defs/coverage"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "lastEventAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observationCandidates": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warning": {
+          "type": "string"
+        }
+      }
+    },
+    "observedTotal": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/item"
+      }
+    }
+  },
+  "$defs": {
+    "coverage": {
+      "enum": [
+        "NOT_SCANNED",
+        "PARTIAL",
+        "SCANNED",
+        "COMPLETE",
+        "UNKNOWN",
+        "STALE"
+      ]
+    },
+    "item": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "itemType",
+        "itemPower",
+        "rarity",
+        "location",
+        "ownershipStatus",
+        "observationConfidence",
+        "firstSeenAt",
+        "lastSeenAt",
+        "sourceSessionId",
+        "sourceEventSeqStart",
+        "sourceEventSeqEnd"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "itemType": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "itemPower": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "rarity": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ancestral": {
+          "type": "boolean"
+        },
+        "favorite": {
+          "type": "boolean"
+        },
+        "location": {
+          "type": "object",
+          "required": [
+            "type",
+            "tab",
+            "slot"
+          ],
+          "properties": {
+            "type": {
+              "enum": [
+                "equipment",
+                "inventory",
+                "stash",
+                "unknown"
+              ]
+            },
+            "tab": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "slot": {
+              "type": [
+                "string",
+                "integer",
+                "null"
+              ]
+            }
+          }
+        },
+        "ownershipStatus": {
+          "enum": [
+            "CONFIRMED",
+            "NOT_CONFIRMED"
+          ]
+        },
+        "observationConfidence": {
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH"
+          ]
+        },
+        "firstSeenAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lastSeenAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pickedUpAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceSessionId": {
+          "type": "string"
+        },
+        "sourceEventSeqStart": {
+          "type": "integer"
+        },
+        "sourceEventSeqEnd": {
+          "type": "integer"
+        },
+        "baseStats": {
+          "type": "array"
+        },
+        "affixes": {
+          "type": "array"
+        },
+        "effectsRaw": {
+          "type": "array"
+        },
+        "metadataRaw": {
+          "type": "array"
+        },
+        "rawSpeech": {
+          "type": "array"
+        },
+        "locationHints": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}
