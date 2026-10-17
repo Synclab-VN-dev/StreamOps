@@ -65,6 +65,14 @@ jobs:
             --inventory utility/d4-formula-graph/fixtures/dev01-visible-inventory.json \
             --rules utility/d4-formula-graph/fixtures/candidate-source-level.json \
             --report artifacts/d4-formula-graph/dev01-candidate-actual.json
+          # Development comparator tests use in-process SYNTHETIC_TEST_ONLY references;
+          # never bring Golden expected into public repository or normal CI.
+          python utility/d4-formula-graph/development_parity_smoke.py \
+            --report-dir artifacts/d4-formula-graph
+          python utility/d4-formula-graph/affix_candidate_trial.py \
+            --witness utility/d4-formula-graph/fixtures/dev00-affix-source-witness.json \
+            --hypothesis utility/d4-formula-graph/fixtures/dev00-affix-interaction-hypothesis.json \
+            --report artifacts/d4-formula-graph/dev00-affix-hypothesis.json
           # #108 real parity MUST return exit 2 / BLOCKED, not fake success.
           set +e
           python utility/d4-maxroll-parity/gate.py \
@@ -92,6 +100,19 @@ jobs:
           assert len(c["characterMetrics"])==50 and c["unknownCharacterMetrics"]==50
           assert c["syntheticOutputOnly"]["stats"]["synthetic.damageBonus"]==30
           assert c["simulationContext"] is None and c["realParity"]=="BLOCKED_NOT_RUN"
+          affix=json.loads(Path('artifacts/d4-formula-graph/dev00-affix-hypothesis.json').read_text())
+          assert affix["status"]=="HYPOTHETICAL_ONLY_NOT_GAME_FORMULA"
+          assert affix["trialValueNotStatActual"]==100
+          assert affix["maxrollMetricActual"] is None
+          assert not affix["realFormulaVerified"] and not affix["publishAllowed"]
+          for name,count,unique in [("dev00",50,50),("dev01",49,47)]:
+              p=Path('artifacts/d4-formula-graph/'+name+'-synthetic-dev-diff.json')
+              result=json.loads(p.read_text())
+              assert result["referenceMode"]=="SYNTHETIC_TEST_ONLY"
+              assert result["sourceRows"]==count and result["uniqueMetricIds"]==unique
+              assert result["matchedUnverifiedRows"]==1 and result["blockedRows"]==count-1
+              assert result["fullMaxrollParity"]=="BLOCKED_NOT_RUN"
+              assert not result["approvedGolden"] and not result["holdoutEvaluated"]
           dev0=json.loads(Path('artifacts/d4-formula-graph/dev00-candidate-actual.json').read_text())
           dev1=json.loads(Path('artifacts/d4-formula-graph/dev01-candidate-actual.json').read_text())
           assert (dev0["sourceRowCount"],dev0["uniqueMetricCount"]) == (50,50)

@@ -88,6 +88,34 @@ class DevParity(unittest.TestCase):
         a["graphSha256"]=graph.digest({k:v for k,v in a.items() if k!="graphSha256"})
         with self.assertRaisesRegex(graph.GraphError,"UNKNOWN_METRIC_MUST_BE_NULL"):
             development_parity.compare(a,e,test_only=True)
+    def test_f3_legacy_capture_id_synthetic_source_route(self):
+        a=self.basis()[0]
+        legacyFixture=graph.read_json(ROOT/"fixtures"/"dev00-visible-inventory.json")
+        legacySource=graph.read_json(ROOT/"fixtures"/"dev00-source-sanitized.json")
+        a=golden_candidate_eval.build(legacySource,legacyFixture,self.rules)
+        e={
+            "schemaVersion":1,
+            "artifact":"rogue-50-maxroll-golden-candidate",
+            "origin":"SYNTHETIC_TEST_ONLY",
+            "referenceApproval":"NOT_APPROVED",
+            "fixture":{"id":"maxroll.d4planner.1g1any0x.variant3.endgame.3ae138cafe3a",
+                       "gamePatch":"3.2.1","gameBuild":"73552"},
+            "metrics":[
+                {"metricId":r["metricId"],"group":r["group"],
+                 "originalMaxrollLabel":r["label"],
+                 "expectedRawValue":70 if r["metricId"]==golden_candidate_eval.LEVEL_ID else 1,
+                 "expectedDisplayValue":"70" if r["metricId"]==golden_candidate_eval.LEVEL_ID else "1",
+                 "rawOrigin":"MAXROLL_CDP_RUNTIME_DIRECT",
+                 "displayOrigin":"MAXROLL_BROWSER_UI_DIRECT",
+                 "inputFingerprintSha256":a["sourceInputFingerprint"],
+                 "patch":a["gamePatch"]}
+                for r in a["characterMetrics"]
+            ],
+        }
+        out=development_parity.compare(a,e,test_only=True)
+        self.assertEqual(out["sourceRows"],50)
+        self.assertEqual(out["matchedUnverifiedRows"],1)
+        self.assertEqual(out["blockedRows"],49)
     def test_synthetic_expected_cannot_pass_real_compare(self):
         a,e=self.basis()
         with self.assertRaisesRegex(graph.GraphError,"INVALID_EXPECTED_SOURCE"):

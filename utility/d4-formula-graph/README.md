@@ -198,3 +198,43 @@ partial scenario conditions do not prevent an unconditional Level value,
 but any condition-dependent formulas must preserve UNKNOWN, not default 0.
 No game-stat formula fidelity, full #108 parity, simulator or publishing
 is implied by these 1/50 and 1/47 narrowly computed source-input branches.
+
+## #108 development-only parity and affix hypothesis evidence
+
+**New code in PR #121, not production:**
+- `development_parity.py` independently compares actual Graph output from
+  `golden_candidate_eval.py` with frozen Maxroll DEVELOPMENT expected supplied
+  **only** as a separate offline argument. The calculation engine cannot read
+  Golden. For real fixtures use the private F-GOLDEN-01
+  `development/<DEV-ID>/expected-maxroll.json` as `--development-expected`
+  in an authorized offline environment; no expected copied to this PR.
+  Legacy F3 Rogue and current Sorcerer schemas are independently decoded.
+  Reports preserve the **visible UI row count** and **unique metric ID count**,
+  reject inconsistent duplicate values, stale patch/input SHA, forged Actual
+  manifest and mismatched membership. Candidate matches remain
+  `MATCH_UNVERIFIED_CANDIDATE`; unknown are `BLOCKED_UNKNOWN_FORMULA`,
+  not full parity PASS; HOLDOUT partition rejected.
+- `development_parity_smoke.py` uses explicitly **synthetic TEST_ONLY**
+  reference values in memory for CI and never stores those mock expected
+  files. The resulting CI reports have `referenceMode=SYNTHETIC_TEST_ONLY`;
+  no developer should present these as Maxroll parity.
+- `affix_candidate_trial.py` extracts real observed item affix roll witnesses,
+  runs a **purely hypothetical A+B interaction** as a candidate trace and
+  applies synthetic coefficient data. This proves source extraction, change
+  propagation and strict UNKNOWN behavior; the hypothetical +100 test units
+  are **NOT** a real Dexterity/Maxroll number, have no confirmed item-to-stat
+  mapping, never populate Graph Actual, and cannot promote verified game rules.
+  The input witness is a tiny sanitized subset from original DEV-00 capture,
+  not a complete equipment or affix inventory.
+- The formula support gap remains: only real build-input Level has a tentative
+  numeric Actual (1/50 Rogue, 1/47 Sorcerer), 0 fully verified real formulas,
+  0 full Maxroll parity, 0 production rules and no #111 output.
+
+Example source-backed partial numeric source tracing:
+
+```bash
+python utility/d4-formula-graph/affix_candidate_trial.py \
+  --witness utility/d4-formula-graph/fixtures/dev00-affix-source-witness.json \
+  --hypothesis utility/d4-formula-graph/fixtures/dev00-affix-interaction-hypothesis.json \
+  --report artifacts/110-affix-hypothesis.json
+```
