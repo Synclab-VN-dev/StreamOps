@@ -89,6 +89,10 @@ class GridEvidenceTests(unittest.TestCase):
             self.assertEqual(rows[0]["location"],{"type":"inventory","tab":None,"slot":0})
             self.assertEqual(rows[0]["ownershipStatus"],"CONFIRMED")
             self.assertEqual(rows[0]["characterId"],"sorc-1")
+            checkpoint=db.execute("SELECT last_event_rowid,session_id,last_event_seq FROM owned_grid_checkpoint WHERE id=1").fetchone()
+            self.assertEqual(checkpoint["session_id"],self.session)
+            self.assertEqual(checkpoint["last_event_seq"],self.seq)
+            self.assertGreater(checkpoint["last_event_rowid"],0)
         self.assertEqual(len([h for h in repo.history() if h.get("kind")=="SCAN"]),1)
         self.assertEqual(repo.sync(),0)
 
