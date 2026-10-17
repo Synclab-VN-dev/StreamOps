@@ -313,6 +313,30 @@ jobs:
           assert not r['productionRulePromoted'] and not r['holdoutUsed']
           assert r['status']==('TARGET_MET' if r['verifiedUniqueMetricIds']==20 else 'IN_PROGRESS')
           PY
+      - name: Reconcile 20 unique Rogue targets against independent Golden Test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python utility/d4-formula-graph/target20_progress.py \
+            --source utility/d4-formula-graph/fixtures/dev00-source-sanitized.json \
+            --inventory utility/d4-formula-graph/fixtures/dev00-visible-inventory.json \
+            --rules utility/d4-formula-graph/fixtures/candidate-source-level.json \
+            --manifest utility/d4-formula-graph/fixtures/golden-target-20.json \
+            --level-golden utility/d4-formula-graph/fixtures/golden-dev/dev00-level.json \
+            --report artifacts/d4-formula-graph/target20-rogue-golden-progress.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("artifacts/d4-formula-graph/target20-rogue-golden-progress.json")
+          r=json.loads(p.read_text())
+          assert r['target']==20 and len(r['records'])==20
+          assert r['verifiedUniqueMetricIds']==1 and r['blockedMetricIds']==19
+          assert r['failedMetricIds']==0 and r['remainingToTarget']==19
+          assert not r['productionRulePromoted'] and not r['holdoutOpened']
+          assert [x['metricId'] for x in r['records'] if x['state']=='VERIFIED']==[
+                  'maxroll.heroDetails.279']
+          print("TARGET_20_BASELINE=PASS scope=Rogue_DEV-00 verified=1 blocked=19")
+          PY
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
