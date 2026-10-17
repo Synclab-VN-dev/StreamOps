@@ -268,7 +268,16 @@ class GridEvidenceTests(unittest.TestCase):
                 self.assertEqual(len(physical),2)
                 self.assertEqual({x["location"]["tab"] for x in physical},{1,2})
                 self.assertEqual({x["trackingToken"] for x in physical},{"track-A","track-B"})
-            self.assertEqual(len([x for x in self.repo().history() if x.get("kind")=="MOVE"]),1)
+            history=invoke("history","--json")["observations"]
+            self.assertEqual(len([x for x in history if x.get("kind")=="MOVE"]),1)
+            output=self.root/"verified-owned-history.jsonl"
+            out=StringIO()
+            with redirect_stdout(out):
+                rc=main(["items","export","--format","jsonl","--output",str(output)])
+            self.assertEqual(rc,0)
+            written=[json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(written,history)
+            self.assertEqual(len([x for x in written if x.get("kind")=="MOVE"]),1)
         finally:
             if old is None: os.environ.pop("D4PLANNER_HOME",None)
             else: os.environ["D4PLANNER_HOME"]=old
