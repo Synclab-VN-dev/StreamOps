@@ -6,7 +6,9 @@ param(
     [string]$ExpectedHead = '',
     [string]$Python = 'python',
     [string]$HomeDir = $(if ($env:D4PLANNER_HOME) { $env:D4PLANNER_HOME } else { Join-Path $env:LOCALAPPDATA 'd4planner' }),
-    [string]$EvidenceDir = ''
+    [string]$EvidenceDir = '',
+    [ValidateSet('All','Resume')][string]$Mode = 'All',
+    [string[]]$Cases = @()
 )
 $ErrorActionPreference = 'Stop'
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -19,12 +21,28 @@ $sourceDir = Join-Path $repoRoot 'utility/d4planner/src'
 $oldHome = $env:D4PLANNER_HOME
 $oldPath = $env:PYTHONPATH
 $oldEncoding = $env:PYTHONIOENCODING
-$report = [ordered]@{issue=119; pr=120; head=''; status='BLOCKED'; sourceHome=$HomeDir; snapshotHome=$copyHome; checks=[ordered]@{}; problems=@()}
+$caseNames = @('LIST','CANDIDATES','STATUS','HISTORY','FILTER','EXPORT','IDEMPOTENT')
+$script:failureKind = 'ENVIRONMENT'
+$report = [ordered]@{issue=119; pr=120; head=''; mode=$Mode; selectedCases=@($Cases);
+    status='BLOCKED'; sourceHome=$HomeDir; snapshotHome=$copyHome;
+    checks=[ordered]@{}; problems=@(); snapshotHashes=[ordered]@{}}
+function Want([string]$Name) {
+    return $Mode -eq 'All' -or $Cases -contains $Name
+}
+function Skip([string]$Name) {
+    if (!$report.checks.Contains($Name)) {
+        $report.checks[$Name] = @{result='SKIP'; detail='Not selected in targeted resume';
+                                  expected='Not executed'; actual='Not executed'}
+    }
+}
 New-Item -ItemType Directory -Force -Path (Join-Path $copyHome 'state') | Out-Null
-function Check([string]$Name, [bool]$Pass, [string]$Message) {
-    $report.checks[$Name] = @{result=$(if($Pass){'PASS'}else{'BLOCKED'}); detail=$Message}
-    Write-Host "[$($report.checks[$Name].result)] $Name $Message"
-    if (!$Pass) { throw "$Name - $Message" }
+function Check([string]$Name, [bool]$Pass, [string]$Message, [string]$Kind='ENVIRONMENT') {
+    $result = if ($Pass) { 'PASS' } elseif ($Kind -eq 'PRODUCT') { 'FAIL' } else { 'BLOCKED' }
+    $report.checks[$Name] = @{
+        result=$result; detail=$Message; expected='PASS'; actual=$result; classification=$Kind
+    }
+    Write-Host "[$result] $Name $Message"
+    if (!$Pass) { $script:failureKind = $Kind; throw "$Name - $Message" }
 }
 function InvokeCli([string]$Name, [string[]]$CliArguments) {
     $stdout = Join-Path $EvidenceDir "$Name.stdout.json"
@@ -41,12 +59,16 @@ function InvokeCli([string]$Name, [string[]]$CliArguments) {
     if (Test-Path -LiteralPath $stderr) {
         $errText = (@(Get-Content -LiteralPath $stderr -Encoding utf8) -join ' ')
     }
-    Check $Name ($code -eq 0) "exit=$code; stderr=$errText; log=$stderr"
+    Check $Name ($code -eq 0) "exit=$code; stderr=$errText; log=$stderr" "PRODUCT"
     $raw = Get-Content -LiteralPath $stdout -Raw -Encoding utf8
     $json = $raw | ConvertFrom-Json -ErrorAction Stop
     return $json
 }
 try {
+    if ($Mode -eq 'Resume' -and ($Cases.Count -eq 0 -or
+        @($Cases | Where-Object { $_ -notin $caseNames }).Count -gt 0)) {
+        throw 'Resume requires -Cases with valid names: LIST,CANDIDATES,STATUS,HISTORY,FILTER,EXPORT,IDEMPOTENT'
+    }
     $head = (& git -C $repoRoot rev-parse HEAD 2>&1 | Out-String).Trim()
     $report.head = $head
     Check 'HEAD' ($LASTEXITCODE -eq 0 -and $head -match '^[0-9a-f]{40}$' -and
@@ -75,6 +97,7 @@ with sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True, timeout=1
             $target = Join-Path $copyHome "state/$dbName"
             & $Python $backupScript $source $target
             Check "SNAPSHOT_$dbName" ($LASTEXITCODE -eq 0 -and (Test-Path $target)) "SQLite backup completed"
+            $report.snapshotHashes[$dbName] = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
         } else {
             Check "SNAPSHOT_$dbName" ($dbName -eq 'character.db') 'character.db missing: empty projection expected'
         }
@@ -82,42 +105,77 @@ with sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True, timeout=1
     $env:D4PLANNER_HOME = $copyHome
     $env:PYTHONPATH = if ($oldPath) { "$sourceDir;$oldPath" } else { $sourceDir }
     $env:PYTHONIOENCODING = 'utf-8'
-    $baseline = InvokeCli 'LIST' @('items','--json')
-    Check 'LIST_SCHEMA' ($baseline.schemaVersion -eq 1 -and $null -ne $baseline.coverage -and
-        $null -ne $baseline.items -and $baseline.observedTotal -eq @($baseline.items).Count) 'Default confirmed-only list and coverage JSON'
-    $candidates = InvokeCli 'CANDIDATES' @('items','--json','--include-unverified')
-    Check 'CANDIDATE_POLICY' ($candidates.observedTotal -ge $baseline.observedTotal -and
-        @($candidates.items | Where-Object { $_.ownershipStatus -eq 'NOT_CONFIRMED' -and $_.pickedUpAt }).Count -eq 0) 'Unconfirmed observations never invent pickedUpAt'
-    $status = InvokeCli 'STATUS' @('items','status','--json')
-    Check 'STATUS_SCHEMA' ($null -ne $status.coverage.stash.tabs -and $status.coverage.overall -in @('PARTIAL','NOT_SCANNED')) 'Stash tabs PARTIAL/NOT_SCANNED, no fake completeness'
-    $history = InvokeCli 'HISTORY' @('items','history','--json')
-    Check 'HISTORY_SCHEMA' ($history.schemaVersion -eq 1 -and $null -ne $history.observations) 'Append-only source-provenance observations'
-    $filtered = InvokeCli 'FILTER' @('items','--json','--include-unverified','--location','stash')
-    Check 'FILTER_LOCATION' (@($filtered.items | Where-Object {$_.location.type -ne 'stash'}).Count -eq 0) 'Stash filter only'
-    $export = Join-Path $EvidenceDir 'items-history.jsonl'
-    $exportOut = Join-Path $EvidenceDir 'EXPORT.stdout.txt'
-    $exportErr = Join-Path $EvidenceDir 'EXPORT.stderr.txt'
-    $previousPref = $PSNativeCommandUseErrorActionPreference
-    try {
-        $PSNativeCommandUseErrorActionPreference = $false
-        & $Python -m d4planner.cli items export --format jsonl --output $export 1> $exportOut 2> $exportErr
-        $code = $LASTEXITCODE
-    } finally {
-        $PSNativeCommandUseErrorActionPreference = $previousPref
-    }
-    Check 'EXPORT' ($code -eq 0 -and (Test-Path $export)) 'JSONL generated on isolated snapshot'
-    $lines = @(Get-Content -LiteralPath $export -Encoding utf8 | Where-Object { $_.Trim() })
-    Check 'EXPORT_COUNT' ($lines.Count -eq @($history.observations).Count) 'Exported lines equal observed history'
-    $after = InvokeCli 'IDEMPOTENT' @('items','--json','--include-unverified')
-    Check 'IDEMPOTENT_SCHEMA' ($after.observedTotal -eq $candidates.observedTotal) 'No new candidates on rerun of same copied source'
+    # All cases operate only on fresh SQLite online backups, not the live
+    # runtime DB. Targeted Resume skips unrelated groups rather than rerunning
+    # the entire owner UAT; prerequisites are executed when necessary.
+    $baseline = $null
+    if ((Want 'LIST') -or (Want 'CANDIDATES') -or (Want 'IDEMPOTENT')) {
+        $baseline = InvokeCli 'LIST' @('items','--json')
+        Check 'LIST_SCHEMA' ($baseline.schemaVersion -eq 1 -and $null -ne $baseline.coverage -and
+            $null -ne $baseline.items -and $baseline.observedTotal -eq @($baseline.items).Count) 'Default confirmed-only list and coverage JSON' 'PRODUCT'
+    } else { Skip 'LIST'; Skip 'LIST_SCHEMA' }
+
+    $candidates = $null
+    if ((Want 'CANDIDATES') -or (Want 'IDEMPOTENT')) {
+        $candidates = InvokeCli 'CANDIDATES' @('items','--json','--include-unverified')
+        Check 'CANDIDATE_POLICY' ($candidates.observedTotal -ge $baseline.observedTotal -and
+            @($candidates.items | Where-Object { $_.ownershipStatus -eq 'NOT_CONFIRMED' -and $_.pickedUpAt }).Count -eq 0) 'Unconfirmed observations never invent pickedUpAt' 'PRODUCT'
+    } else { Skip 'CANDIDATES'; Skip 'CANDIDATE_POLICY' }
+
+    if (Want 'STATUS') {
+        $status = InvokeCli 'STATUS' @('items','status','--json')
+        Check 'STATUS_SCHEMA' ($null -ne $status.coverage.stash.tabs -and
+            $status.coverage.overall -in @('PARTIAL','NOT_SCANNED') -and
+            $null -ne $status.captureHealth.freshness) 'Coverage/freshness contract does not claim false completeness' 'PRODUCT'
+    } else { Skip 'STATUS'; Skip 'STATUS_SCHEMA' }
+
+    $history = $null
+    if ((Want 'HISTORY') -or (Want 'EXPORT')) {
+        $history = InvokeCli 'HISTORY' @('items','history','--json')
+        Check 'HISTORY_SCHEMA' ($history.schemaVersion -eq 1 -and $null -ne $history.observations) 'Append-only source-provenance observations' 'PRODUCT'
+    } else { Skip 'HISTORY'; Skip 'HISTORY_SCHEMA' }
+
+    if (Want 'FILTER') {
+        $filtered = InvokeCli 'FILTER' @('items','--json','--include-unverified','--location','stash')
+        Check 'FILTER_LOCATION' (@($filtered.items | Where-Object {$_.location.type -ne 'stash'}).Count -eq 0) 'Stash filter only' 'PRODUCT'
+    } else { Skip 'FILTER'; Skip 'FILTER_LOCATION' }
+
+    if (Want 'EXPORT') {
+        $export = Join-Path $EvidenceDir 'items-history.jsonl'
+        $exportOut = Join-Path $EvidenceDir 'EXPORT.stdout.txt'
+        $exportErr = Join-Path $EvidenceDir 'EXPORT.stderr.txt'
+        $previousPref = $PSNativeCommandUseErrorActionPreference
+        try {
+            $PSNativeCommandUseErrorActionPreference = $false
+            & $Python -m d4planner.cli items export --format jsonl --output $export 1> $exportOut 2> $exportErr
+            $code = $LASTEXITCODE
+        } finally {
+            $PSNativeCommandUseErrorActionPreference = $previousPref
+        }
+        Check 'EXPORT' ($code -eq 0 -and (Test-Path $export)) "exit=$code; JSONL generated on isolated snapshot" 'PRODUCT'
+        $lines = @(Get-Content -LiteralPath $export -Encoding utf8 | Where-Object { $_.Trim() })
+        Check 'EXPORT_COUNT' ($lines.Count -eq @($history.observations).Count) 'Exported lines equal observed history' 'PRODUCT'
+    } else { Skip 'EXPORT'; Skip 'EXPORT_COUNT' }
+
+    if (Want 'IDEMPOTENT') {
+        $after = InvokeCli 'IDEMPOTENT' @('items','--json','--include-unverified')
+        Check 'IDEMPOTENT_SCHEMA' ($after.observedTotal -eq $candidates.observedTotal) 'No new candidates on rerun of same copied source' 'PRODUCT'
+    } else { Skip 'IDEMPOTENT'; Skip 'IDEMPOTENT_SCHEMA' }
     $report.status = 'PASS_SNAPSHOT_CLI_PARTIAL_OWNERSHIP'
 } catch {
     $report.problems += $_.Exception.Message
+    $report.status = if ($script:failureKind -eq 'PRODUCT') { 'FAIL' } else { 'BLOCKED' }
     Write-Warning $_.Exception.Message
 } finally {
     $env:D4PLANNER_HOME = $oldHome
     $env:PYTHONPATH = $oldPath
     $env:PYTHONIOENCODING = $oldEncoding
+    foreach ($item in @('LIST','LIST_SCHEMA','CANDIDATES','CANDIDATE_POLICY','STATUS',
+        'STATUS_SCHEMA','HISTORY','HISTORY_SCHEMA','FILTER','FILTER_LOCATION',
+        'EXPORT','EXPORT_COUNT','IDEMPOTENT','IDEMPOTENT_SCHEMA')) { Skip $item }
+    $counts = [ordered]@{PASS=0;FAIL=0;BLOCKED=0;SKIP=0}
+    foreach ($check in $report.checks.Values) { $counts[$check.result]++ }
+    $report['summary'] = $counts
     $report | ConvertTo-Json -Depth 15 | Set-Content -LiteralPath (Join-Path $EvidenceDir 'report.json') -Encoding utf8
     # DB snapshot may include raw speech/private game text; explicitly do not
     # ship copied DBs, and do not include the snapshot-home directory in ZIP.
@@ -129,5 +187,6 @@ with sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True, timeout=1
     Write-Host "Issue #119 items UAT evidence: $archive"
     Write-Host "Status: $($report.status). Live D4Planner/Steam/Game/NVDA unchanged."
 }
+if ($report.status -eq 'FAIL') { exit 1 }
 if ($report.status -ne 'PASS_SNAPSHOT_CLI_PARTIAL_OWNERSHIP') { exit 2 }
 exit 0
