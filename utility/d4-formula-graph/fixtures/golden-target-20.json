@@ -46,48 +46,6 @@
       "blockerHint": "requires Dexterity_Total from base, equipment and paragon"
     },
     {
-      "metricId": "maxroll.heroDetails.480",
-      "label": "Armor",
-      "priority": "P0",
-      "blockerHint": "requires Armor_Total and source-grade resistance/armor semantics"
-    },
-    {
-      "metricId": "maxroll.heroDetails.439",
-      "label": "Physical Resistance",
-      "priority": "P1",
-      "blockerHint": "requires Resistance_Total(0)"
-    },
-    {
-      "metricId": "maxroll.heroDetails.446",
-      "label": "Fire Resistance",
-      "priority": "P1",
-      "blockerHint": "requires Resistance_Total(1)"
-    },
-    {
-      "metricId": "maxroll.heroDetails.453",
-      "label": "Lightning Resistance",
-      "priority": "P1",
-      "blockerHint": "requires Resistance_Total(2)"
-    },
-    {
-      "metricId": "maxroll.heroDetails.460",
-      "label": "Cold Resistance",
-      "priority": "P1",
-      "blockerHint": "requires Resistance_Total(3)"
-    },
-    {
-      "metricId": "maxroll.heroDetails.467",
-      "label": "Poison Resistance",
-      "priority": "P1",
-      "blockerHint": "requires Resistance_Total(4)"
-    },
-    {
-      "metricId": "maxroll.heroDetails.474",
-      "label": "Shadow Resistance",
-      "priority": "P1",
-      "blockerHint": "requires Resistance_Total(5)"
-    },
-    {
       "metricId": "maxroll.heroDetails.114",
       "label": "Weapon Speed",
       "priority": "P0",
@@ -118,10 +76,46 @@
       "blockerHint": "requires additive/multiplicative vulnerable buckets"
     },
     {
-      "metricId": "maxroll.heroDetails.58",
-      "label": "Maximum Life",
+      "metricId": "maxroll.heroDetails.1",
+      "label": "All Damage",
       "priority": "P1",
-      "blockerHint": "requires PlayerHealthMax() mechanics"
+      "blockerHint": "Requires independent source-derived runtime contributor(s): Damage_Percent_All_From_Skills, Multiplicative_Damage_Percent_All_From_Skills"
+    },
+    {
+      "metricId": "maxroll.heroDetails.2",
+      "label": "Damage vs Elites",
+      "priority": "P1",
+      "blockerHint": "Requires independent source-derived runtime contributor(s): Damage_Percent_Bonus_Vs_Elites, Multiplicative_Damage_Percent_Bonus_Vs_Elites"
+    },
+    {
+      "metricId": "maxroll.heroDetails.25",
+      "label": "Damage vs Crowd Controlled",
+      "priority": "P1",
+      "blockerHint": "Requires independent source-derived runtime contributor(s): Damage_Percent_Bonus_Vs_CC_All, Multiplicative_Damage_Percent_Bonus_Vs_CC_All"
+    },
+    {
+      "metricId": "maxroll.heroDetails.56",
+      "label": "Damage vs Healthy",
+      "priority": "P1",
+      "blockerHint": "Requires independent source-derived runtime contributor(s): Damage_Bonus_To_High_Health, Multiplicative_Damage_Bonus_To_High_Health"
+    },
+    {
+      "metricId": "maxroll.heroDetails.78",
+      "label": "Potion Capacity",
+      "priority": "P0",
+      "blockerHint": "Requires independent source-derived runtime contributor(s): Potion_Max_Doses_Total"
+    },
+    {
+      "metricId": "maxroll.heroDetails.180",
+      "label": "Healing Received",
+      "priority": "P1",
+      "blockerHint": "Requires independent source-derived runtime contributor(s): Bonus_Healing_Received_Percent, Core_Stat_Bonus_Healing_Received_Percent"
+    },
+    {
+      "metricId": "maxroll.heroDetails.431",
+      "label": "Armor",
+      "priority": "P0",
+      "blockerHint": "Requires independent source-derived runtime contributor(s): Armor_Total"
     },
     {
       "metricId": "maxroll.heroDetails.80",
@@ -134,6 +128,13 @@
       "label": "Cooldown Reduction",
       "priority": "P0",
       "blockerHint": "requires Power_Cooldown_Reduction_Percent_All with cap"
+    },
+    {
+      "metricId": "maxroll.heroDetails.181",
+      "label": "Lucky Hit Chance Bonus",
+      "priority": "P0",
+      "blockerHint": "Requires independent source-derived runtime contributor(s): Combat_Effect_Chance_Bonus"
     }
-  ]
+  ],
+  "canonicalTargetManifest": "utility/d4-formula-graph/fixtures/milestone20-source-targets.json"
 }
