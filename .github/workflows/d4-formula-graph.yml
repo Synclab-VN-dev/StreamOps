@@ -33,6 +33,11 @@ jobs:
           mkdir -p artifacts/d4-formula-graph
           python -m compileall -q utility/d4-formula-graph
           python -m unittest discover -s utility/d4-formula-graph/tests -p 'test_*.py' -v 2>&1 | tee artifacts/d4-formula-graph/test.log
+          python utility/d4-formula-graph/ci_collection_guard.py \
+            --tests-dir utility/d4-formula-graph/tests \
+            --unit-log artifacts/d4-formula-graph/test.log \
+            --report artifacts/d4-formula-graph/ci-complete-collection-gate.json \
+            --minimum 90
       - name: Prove both exact-source synthetic variant graphs block unverified formulas
         shell: bash
         run: |
@@ -129,6 +134,24 @@ jobs:
               assert sum(v['visible'] for v in x['groupCoverage'].values())==rows
               assert x['fullCapturedFixtureParity']=='BLOCKED_NOT_VERIFIED'
               assert not x['ownerApprovedGolden'] and not x['publishAllowed']
+          PY
+          # Full human readable graph explanation from independent frozen inventory.
+          for fixture in dev00 dev01; do
+            python utility/d4-formula-graph/explain_source_graph.py \
+              --source-graph artifacts/d4-formula-graph/${fixture}-source-graph.json \
+              --coverage artifacts/d4-formula-graph/${fixture}-g4-visible-coverage.json \
+              --output artifacts/d4-formula-graph/${fixture}-source-explanation.md
+          done
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          guard=json.loads(Path('artifacts/d4-formula-graph/ci-complete-collection-gate.json').read_text())
+          assert guard['status']=='PASS_COMPLETE_COLLECTION_NO_SKIPPED_TESTS'
+          assert guard['executed']==guard['discovered'] and guard['skipped']==0
+          for fid,rows in [('dev00',50),('dev01',49)]:
+              t=Path('artifacts/d4-formula-graph/'+fid+'-source-explanation.md').read_text()
+              assert t.count('| `maxroll.heroDetails.')==rows
+              assert 'Formula verified: **0**' in t and 'Golden parity: **BLOCKED**' in t
           PY
           # #108 real parity MUST return exit 2 / BLOCKED, not fake success.
           set +e
