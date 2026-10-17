@@ -25,7 +25,7 @@ class ExplanationE2E(unittest.TestCase):
     def test_readable_explanation_covers_all_source_metrics_in_two_classes(self):
         for actual,audit in self.cases:
             text=explain_source_graph.explain(actual,audit)
-            self.assertEqual(text.count("| \`maxroll.heroDetails."),audit["visibleMetricRows"])
+            self.assertEqual(text.count("| `maxroll.heroDetails."),audit["visibleMetricRows"])
             self.assertIn("Formula verified: **0**",text)
             self.assertIn("Golden parity: **BLOCKED**",text)
             self.assertIn("HOLDOUT expected: **NOT OPENED**",text)

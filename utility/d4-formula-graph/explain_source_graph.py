@@ -40,8 +40,8 @@ def explain(actual,audit):
         "",
         f"- Fixture: **{actual['fixtureId']}** / class **{actual['classId']}**",
         f"- Patch: **{actual['gamePatch']}**",
-        f"- Graph SHA-256: \`{actual['graphSha256']}\`",
-        f"- Source input fingerprint: \`{actual['fixtureInputFingerprint']}\`",
+        f"- Graph SHA-256: `{actual['graphSha256']}`",
+        f"- Source input fingerprint: `{actual['fixtureInputFingerprint']}`",
         f"- Captured source nodes: **{actual['sourceNodeCount']}**; "
         f"observed affix/aspect roll records: **{actual['unmappedObservedRolls']}**",
         f"- Visible UI metric rows: **{audit['visibleMetricRows']}**; "
@@ -66,7 +66,7 @@ def explain(actual,audit):
                    "|---|---|---|---|---|"])
     for x in rows:
         reason=x["sourceReason"] or "UNPROVEN_RUNTIME_CONTRIBUTOR"
-        result.append(f"| {x['group']} | \`{x['metricId']}\` | {x['label']} "
+        result.append(f"| {x['group']} | `{x['metricId']}` | {x['label']} "
                       f"| {x['state']} | {reason} |")
     result.extend(["",
         "## Source graph provenance and limitations", "",
