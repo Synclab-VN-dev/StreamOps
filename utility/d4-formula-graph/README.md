@@ -135,3 +135,19 @@ python utility/d4-formula-graph/synthetic_mutations.py \
 Full CI-02 across *real* item/skill/variant/rune rule families still requires
 an approved actual rule registry/semantic model. A six-vector synthetic PASS
 cannot be represented as 50/50 source-verified formula coverage.
+
+## #109 → #110 registry selection consumer (internal, read-only)
+
+`registry_selection_bridge.py` parses an externally generated #109
+`select_rules.py` artifact and checks all 50 source IDs/groups, exact
+catalog fingerprint, patch/class, all hashed selection fields, null
+`executableRule`/`value`, no approved Goldens or public publish path.
+The single Fire candidate remains `UNVERIFIED`, the other 49 remain
+`UNKNOWN` (or all 50 UNKNOWN if the candidate is missing).
+**No numeric stat can be activated from this staging source.**
+
+The regression synthesizes the #109 selection interface because #109 Draft
+PR #118 is **not merged** into #110; it does NOT falsely claim a live
+cross-PR executable integration. Once Owner authorizes branch integration,
+the exact real #109 selection artifact can be supplied to the same CLI.
+This does not change #107 DSL or public Graph transport.
