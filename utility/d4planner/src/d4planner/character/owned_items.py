@@ -12,11 +12,20 @@ import re
 import sqlite3
 from typing import Any, Iterator
 
-from .equipment.parser import is_item_anchor, normalize, parse_item
+from .equipment.parser import is_item_anchor, normalize, parse_item, parse_type
 
 CHEST = re.compile(r"^CHEST\s+(\d+)$", re.IGNORECASE)
 POWER = re.compile(r"^[\d,]+ Item Power$")
 MAX_SEGMENT = 100
+ADDITIONAL_OBSERVED_TYPES = frozenset({"Charm", "Staff", "Horadric Seal"})
+
+def is_owned_item_anchor(name: str, kind: str, power: str) -> bool:
+    if is_item_anchor(name, kind, power):
+        return True
+    if not normalize(name) or not POWER.fullmatch(normalize(power)):
+        return False
+    parsed = parse_type(kind)
+    return parsed is not None and parsed[2] in ADDITIONAL_OBSERVED_TYPES
 
 
 def _connect(path: Path, *, read_only: bool = False) -> sqlite3.Connection:
@@ -54,6 +63,9 @@ def _make_observation(active: dict[str, Any]) -> dict[str, Any]:
     try:
         item = parse_item(lines)
         data = item.as_dict()
+        if normalize(lines[1]) == 'Set Charm':
+            data['item_type'] = 'Charm'
+            data['rarity'] = 'Set'
     except (ValueError, IndexError, TypeError):
         data = {"name": normalize(lines[0]), "item_type": normalize(lines[1]),
                 "item_power": None, "base_stats": [], "affixes": [],
@@ -151,7 +163,7 @@ def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) ->
     anchor = False
     if len(recent) == 2:
         name, item_type = recent[0], recent[1]
-        anchor = is_item_anchor(name["text"], item_type["text"], line)
+        anchor = is_owned_item_anchor(name["text"], item_type["text"], line)
     if anchor:
         if active is not None:
             # The next name/type were already appended to previous tooltip.
