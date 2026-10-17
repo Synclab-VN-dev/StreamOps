@@ -133,7 +133,8 @@ def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) ->
         # anchor first so a scan cell can resolve its original observation ID.
         if row["type"] in (owned_items_scans.BEGIN,owned_items_scans.CELL,
                            owned_items_scans.END,owned_items_scans.ACTION,
-                           owned_items_scans.MOVE):
+                           owned_items_scans.MOVE,owned_items_scans.EQUIP,
+                           owned_items_scans.UNEQUIP,owned_items_scans.REMOVE):
             _save_active(db,state)
             state["active"] = None
             state["recent"] = []
