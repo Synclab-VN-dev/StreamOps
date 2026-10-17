@@ -292,6 +292,27 @@ jobs:
           assert observed=={"rogue":"maxroll.heroDetails.279",
                             "sorcerer":"maxroll.heroDetails.279"}
           PY
+      - name: M20 real-Golden distinct-stat readiness and missing-contributor coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python utility/d4-formula-graph/target20_readiness.py \
+            --targets utility/d4-formula-graph/fixtures/milestone20-source-targets.json \
+            --actual artifacts/d4-formula-graph/dev00-candidate-actual.json \
+            --verification artifacts/d4-formula-graph/dev00-scoped-real-golden-verification.json \
+            --report artifacts/d4-formula-graph/dev00-milestone20-readiness.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('artifacts/d4-formula-graph/dev00-milestone20-readiness.json').read_text())
+          assert r['targetUniqueMetricIds']==20 and len(r['metrics'])==20
+          assert 1<=r['verifiedUniqueMetricIds']<=20
+          assert r['verifiedUniqueMetricIds']+r['remainingUniqueMetricIds']==20
+          assert r['verifiedUniqueMetricIds']==sum(x['status']=='VERIFIED' for x in r['metrics'])
+          assert not r['goldenExpectedInjectedIntoGraph']
+          assert not r['productionRulePromoted'] and not r['holdoutUsed']
+          assert r['status']==('TARGET_MET' if r['verifiedUniqueMetricIds']==20 else 'IN_PROGRESS')
+          PY
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
