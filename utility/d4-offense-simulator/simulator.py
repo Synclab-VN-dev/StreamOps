@@ -4,7 +4,7 @@ class Blocked(ValueError):pass
 def need(ok,msg):
     if not ok:raise Blocked(msg)
 def digest(x):
-    return hashlib.sha256(json.dumps(x,sort_keys=True,separators=(",",":"),allow_nan=False).encode()).hexdigest()
+    return hashlib.sha256(json.dumps(x,sort_keys=True,separators=(",",":"),ensure_ascii=False,allow_nan=False).encode()).hexdigest()
 KEYS={"mode","power","rate","critChance","critMultiplier","procChance",
       "procMultiplier","procIcd","cooldown","resource","cost","regen","cap",
       "uptime","horizon","seed","rank","rankBonus"}
@@ -63,7 +63,13 @@ def require_graph(graph,offensive_metric_ids):
     conditional=graph.get("scenarioStates",{})
     unknown=[x for x,v in conditional.items() if v=="UNKNOWN"]
     stale_patch=graph.get("gamePatch")!="3.2.1.73552"
-    invalid_checksum=not isinstance(graph.get("graphSha256"),str) or len(graph["graphSha256"])!=64
+    actual_sha=graph.get("graphSha256")
+    try:
+        expected_sha=digest({k:v for k,v in graph.items() if k!="graphSha256"})
+        invalid_checksum=(not isinstance(actual_sha,str) or
+                          len(actual_sha)!=64 or actual_sha!=expected_sha)
+    except (ValueError,TypeError,OverflowError):
+        invalid_checksum=True
     blocked=bool(unresolved or unknown or stale_patch or invalid_checksum
                  or not graph.get("publishAllowed"))
     return {"status":"BLOCKED" if blocked else "ELIGIBILITY_ONLY_NOT_DPS",
