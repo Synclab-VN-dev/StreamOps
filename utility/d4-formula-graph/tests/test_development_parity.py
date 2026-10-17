@@ -41,6 +41,7 @@ class DevParity(unittest.TestCase):
         self.assertEqual(r["uniqueMetricIds"],47)
         self.assertEqual(r["candidateComputedUnique"],1)
         self.assertEqual(r["matchedUnverifiedRows"],1)
+        self.assertGreaterEqual(r["displayMatchedUnverifiedRows"],1)
         self.assertEqual(r["mismatchedUnverifiedRows"],0)
         self.assertEqual(r["blockedRows"],48)
         self.assertEqual(r["status"],"DEVELOPMENT_PARTIAL_BLOCKED")
