@@ -21,8 +21,9 @@ class GridEvidenceTests(unittest.TestCase):
         self.dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.dir.cleanup)
         self.root=Path(self.dir.name)
-        self.src=self.root/"events.db"
-        self.dst=self.root/"character.db"
+        (self.root/"state").mkdir()
+        self.src=self.root/"state"/"events.db"
+        self.dst=self.root/"state"/"character.db"
         with closing(sqlite3.connect(self.src)) as db,db:
             db.execute("""CREATE TABLE event_log(
               id INTEGER PRIMARY KEY,session_id TEXT,event_seq INTEGER,
@@ -206,6 +207,71 @@ class GridEvidenceTests(unittest.TestCase):
         self.assertEqual(removal[0]["reason"],"salvage")
         self.assertEqual(self.repo().sync(),0)
         self.assertEqual(len([h for h in self.repo().history() if h.get("kind")=="REMOVAL"]),1)
+
+    def test_mixed_cli_sqlite_e2e_two_stash_tabs_duplicate_and_move(self):
+        # One canonical source session: duplicate rings, inventory,
+        # equipment (legacy confirmed), two certified stash tabs, explicit move.
+        from contextlib import redirect_stdout
+        from io import StringIO
+        import os
+        from d4planner.cli import main
+        first=self.item("DUPLICATE RING")
+        second=self.item("DUPLICATE RING")
+        self.scan("inventory-before","inventory",[(first,"track-A")])
+        self.scan("stash1","stash",[(second,"track-B")],tab=1)
+        self.scan("stash2-before","stash",[None],tab=2)
+        self.event(gates.ACTION,{"source":gates.SOURCE,"observer":"grid-observer-v1",
+            "operation":"move","confirmed":True,"trackingToken":"track-A",
+            "characterId":"sorc-1"})
+        action=self.seq
+        self.scan("inventory-after","inventory",[None])
+        self.scan("stash2-after","stash",[(first,"track-A")],tab=2)
+        self.event(gates.MOVE,{"source":gates.SOURCE,
+            "sourceBefore":"inventory-before","destinationBefore":"stash2-before",
+            "sourceAfter":"inventory-after","destinationAfter":"stash2-after",
+            "sourceSlot":0,"destinationSlot":0,"trackingToken":"track-A",
+            "actionSeq":action})
+        # Preserve equipment compatibility while querying same SQLite database.
+        self.repo().sync()
+        with self.db() as db, db:
+            db.execute("""CREATE TABLE equipment_current(
+                id INTEGER PRIMARY KEY,slot_family TEXT,slot_index INTEGER,
+                item_name TEXT,item_type TEXT,item_power INTEGER,item_json TEXT,
+                observed_at TEXT,source_session_id TEXT,source_event_seq_start INTEGER,
+                source_event_seq_end INTEGER,confidence TEXT)""")
+            db.execute("""INSERT INTO equipment_current VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       (1,"helm",0,"CONFIRMED HELM","Helm",900,
+                        json.dumps({"rarity":"Legendary"}),
+                        "2026-10-17T16:00:00+07:00",self.session,1,4,"HIGH"))
+        old=os.environ.get("D4PLANNER_HOME")
+        os.environ["D4PLANNER_HOME"]=str(self.root)
+        try:
+            def invoke(*args):
+                output=StringIO()
+                with redirect_stdout(output):
+                    rc=main(["items",*args])
+                self.assertEqual(rc,0)
+                return json.loads(output.getvalue())
+            listed=invoke("--json")
+            self.assertEqual([x["name"] for x in listed["items"]],["CONFIRMED HELM"])
+            self.assertEqual(listed["coverage"]["overall"],"PARTIAL")
+            scoped=listed["coverage"]["verifiedScopes"]["sorc-1"]
+            self.assertEqual({(x["type"],x["tab"]) for x in scoped},
+                             {("inventory",None),("stash",1),("stash",2)})
+            # Raw speech candidates are explicit opt-in, even for certified
+            # character-scoped observations.
+            candidates=invoke("--json","--include-unverified")
+            self.assertEqual(len([x for x in candidates["items"]
+                                  if x["ownershipStatus"]=="NOT_CONFIRMED"]),2)
+            with self.db() as db:
+                physical=gates.current(db,{"all"},None)
+                self.assertEqual(len(physical),2)
+                self.assertEqual({x["location"]["tab"] for x in physical},{1,2})
+                self.assertEqual({x["trackingToken"] for x in physical},{"track-A","track-B"})
+            self.assertEqual(len([x for x in self.repo().history() if x.get("kind")=="MOVE"]),1)
+        finally:
+            if old is None: os.environ.pop("D4PLANNER_HOME",None)
+            else: os.environ["D4PLANNER_HOME"]=old
 
     def test_no_move_from_identical_names_or_missing_action_or_cross_character(self):
         obs=self.item()
