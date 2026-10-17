@@ -89,10 +89,16 @@ def audit(targets,actual,verification_reports):
         guard(scope not in scopes,"DUPLICATE_GOLDEN_VERIFICATION_REPORT")
         scopes.add(scope)
         rows=report.get("metrics",[])
-        guard(type(rows)==list and
-              report.get("verifiedScoped")==sum(r.get("status")=="VERIFIED" for r in rows) and
-              report.get("status")=="PASS_SCOPED" if rows and all(r.get("status")=="VERIFIED" for r in rows)
-              else report.get("status")!="PASS_SCOPED",
+        guard(type(rows)==list,"INVALID_GOLDEN_REPORT_ROWS")
+        passed=sum(r.get("status")=="VERIFIED" for r in rows)
+        failed=sum(r.get("status")=="FAIL" for r in rows)
+        blocked=len(rows)-passed-failed
+        state=("PASS_SCOPED" if passed==len(rows) and rows else
+               "FAIL_GOLDEN" if failed else "BLOCKED_UNCOMPUTED")
+        guard(report.get("verifiedScoped")==passed and
+              report.get("failures")==failed and
+              report.get("blocked")==blocked and
+              report.get("status")==state,
               "FAKE_VERIFIED_REPORT_COUNT_OR_STATUS")
         for row in rows:
             mid=row.get("metricId")
