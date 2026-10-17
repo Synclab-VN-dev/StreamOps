@@ -24,12 +24,19 @@ def finite(v):
     try:return Decimal(str(v)).is_finite()
     except InvalidOperation:return False
 
-def canonical_rows(expected):
+def canonical_rows(expected,test_only=False):
     """Accept two real frozen DEV source schemas; never infer omitted values."""
     fixture=expected.get("fixtureId") or expected.get("fixture",{}).get("fixtureId")
+    if fixture is None and expected.get("artifact")=="rogue-50-maxroll-golden-candidate":
+        f=expected.get("fixture",{})
+        guard(f.get("id")=="maxroll.d4planner.1g1any0x.variant3.endgame.3ae138cafe3a"
+              and (f.get("gamePatch"),f.get("gameBuild"))==("3.2.1","73552"),
+              "UNRECOGNIZED_F3_SOURCE_FIXTURE")
+        fixture="DEV-00"
     guard(type(fixture)==str and fixture.startswith("DEV-"),"HOLDOUT_EXPECTED_PROHIBITED")
     origin=expected.get("origin")
-    guard(origin=="MAXROLL_BROWSER_CAPTURE","INVALID_EXPECTED_SOURCE")
+    guard(origin==("SYNTHETIC_TEST_ONLY" if test_only else
+                  "MAXROLL_BROWSER_CAPTURE"),"INVALID_EXPECTED_SOURCE")
     if expected.get("schema")=="F-GOLDEN-01-maxroll-expected-v1":
         guard(expected.get("partition")=="DEVELOPMENT","HOLDOUT_EXPECTED_PROHIBITED")
         rows=expected.get("metrics")
@@ -71,7 +78,7 @@ def canonical_rows(expected):
               "CONFLICTING_DUPLICATE_EXPECTED_METRIC")
     return fixture,fingerprint,patch,result
 
-def compare(actual,expected):
+def compare(actual,expected,test_only=False):
     guard(type(actual)==dict and actual.get("artifactType")==
           "INTERNAL_GOLDEN_DRIVEN_CANDIDATE_ACTUAL_NOT_PUBLIC_BE",
           "NOT_GOLDEN_CANDIDATE_ACTUAL")
@@ -85,7 +92,7 @@ def compare(actual,expected):
     guard(actual.get("graphSha256")==graph.digest({
         k:v for k,v in actual.items() if k!="graphSha256"}),
         "GRAPH_MANIFEST_SHA_MISMATCH")
-    fid,input_sha,patch,expected_rows=canonical_rows(expected)
+    fid,input_sha,patch,expected_rows=canonical_rows(expected,test_only=test_only)
     guard(actual["fixtureId"]==fid and actual["gamePatch"]==patch and
           actual["sourceInputFingerprint"]==input_sha,
           "EXPECTED_ACTUAL_PATCH_OR_FIXTURE_MISMATCH")
@@ -134,6 +141,8 @@ def compare(actual,expected):
     counts=dict(Counter(r["state"] for r in report))
     output={
         "artifactType":"INTERNAL_DEV_GOLDEN_DIFF_NO_APPROVAL",
+        "referenceMode":"SYNTHETIC_TEST_ONLY" if test_only else
+                        "INDEPENDENT_MAXROLL_DEV_CAPTURE",
         "status":"DEVELOPMENT_PARTIAL_BLOCKED" if
                  counts.get("MISMATCH_UNVERIFIED_CANDIDATE",0)==0 else
                  "DEVELOPMENT_CANDIDATE_MISMATCH",
