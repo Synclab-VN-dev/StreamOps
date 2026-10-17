@@ -130,7 +130,7 @@
     {
       "metricId": "maxroll.heroDetails.4",
       "label": "Critical Strike Chance",
-      "sourceExpression": "Crit_Percent_Base + Crit_Percent_Bonus",
+      "sourceExpression": "ComputeCritChance()",
       "f3EvidenceClass": "RUNTIME_SOURCE_OBSERVED",
       "reportedRuntimeDependencies": [],
       "runtimeFunctionCalls": [
@@ -254,7 +254,7 @@
     {
       "metricId": "maxroll.heroDetails.431",
       "label": "Armor",
-      "sourceExpression": "Armor_Total = (Armor + Core_Stat_Armor_Bonus + Armor_Bonus) * (1 + Armor_Percent)",
+      "sourceExpression": "Armor_Total",
       "f3EvidenceClass": "RUNTIME_SOURCE_OBSERVED",
       "reportedRuntimeDependencies": [
         "Armor_Total"
