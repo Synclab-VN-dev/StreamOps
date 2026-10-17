@@ -151,3 +151,50 @@ PR #118 is **not merged** into #110; it does NOT falsely claim a live
 cross-PR executable integration. Once Owner authorizes branch integration,
 the exact real #109 selection artifact can be supplied to the same CLI.
 This does not change #107 DSL or public Graph transport.
+
+## First real-source INPUT-derived metric candidate — F-GOLDEN-01 development set
+
+`golden_candidate_eval.py` is an **isolated test-only candidate** evaluator.
+It consumes Maxroll-source input data and a **separately sanitized visible
+metric inventory**, never the source's expected Character Stat outputs or any
+holdout expected values. It permits only #107-G1-schema-valid unverified
+`global_rule`/`class_mechanic` to set the **Level** stat via an actual
+`build.level` reference; it refuses fabricated literal values, stale patch,
+wrong class/fixture, extra/unexpected source rule mechanics, false VERIFIED,
+mixed expected values, unsupported formulas and missing inventory rows.
+
+This is the first **real captured-input-to-actual evaluation**, not a fake
+Maxroll formula nor a full Character Stat calculation. The source Level field
+is observed in two independently captured Development builds, and is NOT
+taken from the golden expected files. Other stat outputs remain null/UNKNOWN.
+A successful Level actual is still `CANDIDATE_COMPUTED_UNVERIFIED` until
+independent parity and Owner Golden policy allow further claims.
+
+Critical cross-class UI distinction from F-GOLDEN-01:
+- Rogue DEV-00 = **50 visible rows / 50 unique metric IDs**.
+- Sorcerer DEV-01 = **49 visible rows / 47 unique metric IDs**. The metric
+  IDs for Toughness and Armor each appear in two different UI sections with
+  equal observed values. Coverage should preserve all 49 UI row placements
+  while computing a single actual value per unique ID; do not report 49 unique
+  stat computations or silently discard duplicate display positions.
+- Necromancer HOLDOUT-01 metric inventory reports 48 UI rows / 46 unique
+  IDs, but no expected HOLDOUT values were accessed or used by this module.
+
+```bash
+python utility/d4-formula-graph/golden_candidate_eval.py \
+  --source utility/d4-formula-graph/fixtures/dev01-source-sanitized.json \
+  --inventory utility/d4-formula-graph/fixtures/dev01-visible-inventory.json \
+  --rules utility/d4-formula-graph/fixtures/candidate-source-level.json \
+  --report artifacts/110-dev01-actual.json
+```
+
+CI fixtures contain only the small *source-input* Level field and
+independently captured public metric ID/group/label inventory, no source raw
+Character Stats values, no hidden/private HOLDOUT expected values. For full
+external offline evaluation, provide the intact authorized private source
+`development/DEV-00/input.json` or `DEV-01/input.json` to `--source`;
+the two captured source wrappers are independently checked. The current
+partial scenario conditions do not prevent an unconditional Level value,
+but any condition-dependent formulas must preserve UNKNOWN, not default 0.
+No game-stat formula fidelity, full #108 parity, simulator or publishing
+is implied by these 1/50 and 1/47 narrowly computed source-input branches.

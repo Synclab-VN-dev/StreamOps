@@ -53,6 +53,18 @@ jobs:
             --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json \
             --fixture utility/d4-formula-graph/fixtures/synthetic-three-families.json \
             --report artifacts/d4-formula-graph/synthetic-mutations.json
+          # Two genuine Maxroll development fixture *input-derived* Level candidates.
+          # Inventories contain IDs/groups/labels only; no Golden expected/raw.
+          python utility/d4-formula-graph/golden_candidate_eval.py \
+            --source utility/d4-formula-graph/fixtures/dev00-source-sanitized.json \
+            --inventory utility/d4-formula-graph/fixtures/dev00-visible-inventory.json \
+            --rules utility/d4-formula-graph/fixtures/candidate-source-level.json \
+            --report artifacts/d4-formula-graph/dev00-candidate-actual.json
+          python utility/d4-formula-graph/golden_candidate_eval.py \
+            --source utility/d4-formula-graph/fixtures/dev01-source-sanitized.json \
+            --inventory utility/d4-formula-graph/fixtures/dev01-visible-inventory.json \
+            --rules utility/d4-formula-graph/fixtures/candidate-source-level.json \
+            --report artifacts/d4-formula-graph/dev01-candidate-actual.json
           # #108 real parity MUST return exit 2 / BLOCKED, not fake success.
           set +e
           python utility/d4-maxroll-parity/gate.py \
@@ -80,6 +92,21 @@ jobs:
           assert len(c["characterMetrics"])==50 and c["unknownCharacterMetrics"]==50
           assert c["syntheticOutputOnly"]["stats"]["synthetic.damageBonus"]==30
           assert c["simulationContext"] is None and c["realParity"]=="BLOCKED_NOT_RUN"
+          dev0=json.loads(Path('artifacts/d4-formula-graph/dev00-candidate-actual.json').read_text())
+          dev1=json.loads(Path('artifacts/d4-formula-graph/dev01-candidate-actual.json').read_text())
+          assert (dev0["sourceRowCount"],dev0["uniqueMetricCount"]) == (50,50)
+          assert (dev1["sourceRowCount"],dev1["uniqueMetricCount"]) == (49,47)
+          for actual in (dev0,dev1):
+              assert actual["computedUniqueMetricCount"]==1
+              assert actual["computedDisplayRowCount"]==1
+              assert actual["verifiedMetrics"]==0 and actual["approvedGoldens"]==0
+              assert actual["maxrollParity"]=="NOT_RUN" and not actual["publishAllowed"]
+              assert not actual["sourceExpectedImported"]
+              assert next(x["raw"] for x in actual["characterMetrics"]
+                          if x["metricId"]=="maxroll.heroDetails.279")==70
+              assert all(x["raw"] is None or
+                         x["metricId"]=="maxroll.heroDetails.279"
+                         for x in actual["characterMetrics"])
           mutations=json.loads(Path('artifacts/d4-formula-graph/synthetic-mutations.json').read_text())
           assert mutations["status"]=="PASS_SYNTHETIC_CI02_MUTATIONS_ONLY"
           assert mutations["testCaseCount"]==6

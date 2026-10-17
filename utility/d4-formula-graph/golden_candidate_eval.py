@@ -148,6 +148,8 @@ def evaluate_rule(rule,fixture,env,inventory):
     mid=action["stat"]
     graph.reject(mid in inventory,"CANDIDATE_METRIC_NOT_IN_FIXTURE")
     graph.reject(mid==LEVEL_ID,"CANDIDATE_FORMULA_NOT_SOURCE_SUPPORTED")
+    graph.reject(action["value"]=={"kind":"ref","scope":"build","path":"level"},
+                 "CANDIDATE_SOURCE_VALUE_MUST_BE_REF_LEVEL")
     value=evaluate_value(action["value"],env)
     graph.reject(type(value)==int and 1<=value<=100,
                  "INVALID_LEVEL_FORMULA_RESULT")
