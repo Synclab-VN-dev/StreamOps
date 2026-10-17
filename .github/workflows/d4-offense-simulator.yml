@@ -64,6 +64,8 @@ jobs:
           assert report['deterministicEvidenceSha256']==second['deterministicEvidenceSha256']
           assert all(x['expected']==x['actual'] and x['elapsedMs']>=0
                      and x['graphBodyTamperGate']=='BLOCKED'
+                     and x['unsupportedCriticalMetricGate']=='BLOCKED'
+                     and x['absentCriticalMetricGate']=='BLOCKED'
                      for x in report['cases'])
           assert all(x['caseStatus']=='PASS_REAL_SOURCE_FAIL_CLOSED_NOT_GAME_DPS'
                      and x['realDps'] is None
