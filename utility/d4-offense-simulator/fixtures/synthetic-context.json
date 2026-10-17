@@ -1,0 +1,20 @@
+{
+  "mode": "SYNTHETIC_ONLY",
+  "power": 100,
+  "rate": 2,
+  "critChance": 0.25,
+  "critMultiplier": 1.5,
+  "procChance": 0.2,
+  "procMultiplier": 0.6,
+  "procIcd": 0.5,
+  "cooldown": 0.25,
+  "resource": 100,
+  "cost": 5,
+  "regen": 1,
+  "cap": 100,
+  "uptime": 1,
+  "horizon": 10,
+  "seed": 20261017,
+  "rank": 2,
+  "rankBonus": 0.1
+}
