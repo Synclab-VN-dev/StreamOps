@@ -152,6 +152,61 @@ class GridEvidenceTests(unittest.TestCase):
         self.assertEqual(self.repo().sync(),0)
         self.assertEqual(len([x for x in self.repo().history() if x.get("kind")=="MOVE"]),1)
 
+    def test_equip_and_unequip_require_explicit_action_provenance(self):
+        obs=self.item("EQUIPMENT RING")
+        self.scan("bag-before","inventory",[(obs,"ring-one")])
+        self.scan("gear-before","equipment",[None])
+        self.event(gates.ACTION,{"source":gates.SOURCE,"observer":"grid-observer-v1",
+           "operation":"equip","confirmed":True,"trackingToken":"ring-one",
+           "characterId":"sorc-1"})
+        action=self.seq
+        self.scan("bag-after","inventory",[None])
+        self.scan("gear-after","equipment",[(obs,"ring-one")])
+        self.event(gates.EQUIP,{"source":gates.SOURCE,
+            "sourceBefore":"bag-before","destinationBefore":"gear-before",
+            "sourceAfter":"bag-after","destinationAfter":"gear-after",
+            "sourceSlot":0,"destinationSlot":0,
+            "trackingToken":"ring-one","actionSeq":action})
+        history=self.repo().history()
+        self.assertEqual(len([h for h in history if h.get("kind")=="EQUIP"]),1)
+        with self.db() as db:
+            gear=gates.current(db,{"equipment"},None)
+            self.assertEqual(len(gear),1)
+            self.assertEqual(gear[0]["characterId"],"sorc-1")
+        # Identical speech, button label, or an invented action seq must not
+        # create an UNEQUIP transition without four certified scans.
+        self.event("speech.raw",{"text":"UNEQUIPPED"})
+        self.event(gates.UNEQUIP,{"source":gates.SOURCE,
+            "sourceBefore":"gear-after","destinationBefore":"bag-after",
+            "sourceAfter":"bag-before","destinationAfter":"gear-before",
+            "sourceSlot":0,"destinationSlot":0,"trackingToken":"ring-one",
+            "actionSeq":action})
+        self.assertEqual(len([h for h in self.repo().history() if h.get("kind")=="UNEQUIP"]),0)
+
+    def test_removal_requires_two_full_scans_action_and_explicit_reason(self):
+        obs=self.item("UNIQUE RING")
+        self.scan("before-remove","inventory",[(obs,"physical-id")])
+        # No action: disappearing from a partial scan is not a removal.
+        self.scan("incomplete-remove","inventory",[None],expected=2)
+        self.event(gates.REMOVE,{"source":gates.SOURCE,"sourceBefore":"before-remove",
+            "sourceAfter":"incomplete-remove","sourceSlot":0,
+            "trackingToken":"physical-id","actionSeq":123})
+        self.assertEqual(len([x for x in self.repo().history() if x.get("kind")=="REMOVAL"]),0)
+        self.event(gates.ACTION,{"source":gates.SOURCE,"observer":"grid-observer-v1",
+            "operation":"remove","confirmed":True,"reason":"salvage",
+            "trackingToken":"physical-id","characterId":"sorc-1"})
+        action=self.seq
+        self.scan("after-remove","inventory",[None])
+        self.event(gates.REMOVE,{"source":gates.SOURCE,"sourceBefore":"before-remove",
+            "sourceAfter":"after-remove","sourceSlot":0,
+            "trackingToken":"physical-id","actionSeq":action})
+        result=self.repo().history()
+        removal=[h for h in result if h.get("kind")=="REMOVAL"]
+        self.assertEqual(len(removal),1)
+        self.assertEqual(removal[0]["reason"],"salvage")
+        self.assertEqual(self.repo().sync(),0)
+        self.assertEqual(len([h for h in self.repo().history() if h.get("kind")=="REMOVAL"]),1)
+
     def test_no_move_from_identical_names_or_missing_action_or_cross_character(self):
         obs=self.item()
         self.scan("s-before","inventory",[(obs,"a")])
