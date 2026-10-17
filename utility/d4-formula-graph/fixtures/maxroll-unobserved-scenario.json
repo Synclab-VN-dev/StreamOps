@@ -1,0 +1,29 @@
+{
+  "mode": "MAXROLL_STATIC_UNOBSERVED",
+  "gamePatch": "3.2.1",
+  "gameBuild": "73552",
+  "classId": "rogue",
+  "sourceFixtureFingerprint": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+  "fields": {
+    "conditional.currentTargetDebuffs": {
+      "state": "UNKNOWN",
+      "value": null,
+      "evidenceStatus": "NOT_OBSERVED_IN_STATIC_PLANNER"
+    },
+    "conditional.procAndUptime": {
+      "state": "UNKNOWN",
+      "value": null,
+      "evidenceStatus": "NOT_OBSERVED_IN_STATIC_PLANNER"
+    },
+    "conditional.transientStacks": {
+      "state": "UNKNOWN",
+      "value": null,
+      "evidenceStatus": "NOT_OBSERVED_IN_STATIC_PLANNER"
+    },
+    "conditional.snapshotSceneTime": {
+      "state": "UNKNOWN",
+      "value": null,
+      "evidenceStatus": "NOT_OBSERVED_IN_STATIC_PLANNER"
+    }
+  }
+}

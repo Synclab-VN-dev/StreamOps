@@ -74,3 +74,41 @@ composed artifact **without inventing approved Golden/formulas**. The gate
 and input-complete independent Maxroll reference a hard prerequisite, despite
 all structural/synthetic graph tests being green. No unchanged reference is
 overwritten and no fake expected value is produced.
+
+## F-INPUT-01 — Four missing combat-scenario truth groups (source-safe)
+
+The [#110 independently reviewed Dev F evidence](https://github.com/Synclab-VN-dev/StreamOps/issues/110#issuecomment-6227720834)
+shows **13/13 sockets and all 50 source display/raw rows**, but source-input
+reproducibility is still `PARTIAL` due to four unobserved *runtime* conditions:
+target debuffs, proc/uptime, transient stacks, scene/snapshot time. The 23→5
+closure happened previously in F3; only 5→4 (Preparation specialty UI label)
+is new for F-INPUT-01. Do not falsely call static context complete.
+
+`scenario_state.py` is a bounded **internal schema only**, not a serialized
+public #110 API change. It pins exact patch/class/F1 fingerprint and requires
+all four input families. Unobserved source mode means
+`state=UNKNOWN, value=null, evidenceStatus=NOT_OBSERVED_IN_STATIC_PLANNER`
+for each family; no implicit false/0. Only `SYNTHETIC_SCENARIO_TEST_ONLY`
+allows KNOWN values and enforces typed structures (boolean target/proc,
+integer stacks, finite ratio/times, snapshot no later than current time).
+No real runtime-known values are accepted or promoted. An AST-like *test-only*
+predicate evaluator uses three-valued TRUE/FALSE/UNKNOWN logic with explicit
+safe short-circuit rules. It is NOT the approved #107 DSL evaluator.
+
+`scenario_graph.py` adds four labelled internal state nodes and a condition
+trace, with unknowns explicitly blocking conditional effects. The real
+Maxroll 50 Character Stat outputs stay `raw/display=null`, and all formula,
+Golden, simulationContext and parity claims stay BLOCKED; even four complete
+**synthetic test values** cannot promote real numeric calculation.
+
+```bash
+python utility/d4-formula-graph/scenario_graph.py \
+  --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json \
+  --scenario utility/d4-formula-graph/fixtures/maxroll-unobserved-scenario.json \
+  --report artifacts/110-scenario-unknown.json
+```
+
+The four family names are public sanitized status metadata. No private
+source metrics, screenshots, dynamic truth guesses or Maxroll Golden values
+were committed to this PR. Full simulator dynamic-state semantics and actual
+rule execution require independent verification and an approved transport.

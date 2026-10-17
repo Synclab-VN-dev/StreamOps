@@ -41,6 +41,14 @@ jobs:
           python utility/d4-formula-graph/graph.py --overlay utility/d4-formula-graph/fixtures/synthetic-beta.json --report artifacts/d4-formula-graph/beta.json
           python utility/d4-formula-graph/synthetic_compiler.py --fixture utility/d4-formula-graph/fixtures/synthetic-three-families.json --report artifacts/d4-formula-graph/three-families.json
           python utility/d4-formula-graph/demo_graph.py --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json --synthetic utility/d4-formula-graph/fixtures/synthetic-three-families.json --report artifacts/d4-formula-graph/composed.json
+          python utility/d4-formula-graph/scenario_graph.py \
+            --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json \
+            --scenario utility/d4-formula-graph/fixtures/maxroll-unobserved-scenario.json \
+            --report artifacts/d4-formula-graph/scenario-unknown.json
+          python utility/d4-formula-graph/scenario_graph.py \
+            --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json \
+            --scenario utility/d4-formula-graph/fixtures/synthetic-known-scenario.json \
+            --report artifacts/d4-formula-graph/scenario-synthetic.json
           # #108 real parity MUST return exit 2 / BLOCKED, not fake success.
           set +e
           python utility/d4-maxroll-parity/gate.py \
@@ -68,6 +76,20 @@ jobs:
           assert len(c["characterMetrics"])==50 and c["unknownCharacterMetrics"]==50
           assert c["syntheticOutputOnly"]["stats"]["synthetic.damageBonus"]==30
           assert c["simulationContext"] is None and c["realParity"]=="BLOCKED_NOT_RUN"
+          src=json.loads(Path('artifacts/d4-formula-graph/scenario-unknown.json').read_text())
+          fake=json.loads(Path('artifacts/d4-formula-graph/scenario-synthetic.json').read_text())
+          assert src["status"]=="BLOCKED_NO_VERIFIED_MAXROLL_RULES"
+          assert src["scenarioTruthCoverage"]=={"unknown":4,"knownSynthetic":0,"knownReal":0}
+          assert all(x["result"]=="UNKNOWN" for x in src["conditionTrace"])
+          assert src["graphSha256"]!=fake["graphSha256"]
+          assert src["sourceGraphSha256"]==fake["sourceGraphSha256"]
+          assert fake["scenarioTruthCoverage"]["knownSynthetic"]==4
+          for v in (src,fake):
+              assert len(v["scenarioNodes"])==4 and len(v["characterMetrics"])==50
+              assert v["characterMetricsComputed"]==0 and v["characterMetricsUnknown"]==50
+              assert all(x["raw"] is None and x["display"] is None for x in v["characterMetrics"])
+              assert v["simulationContext"] is None and not v["publishAllowed"]
+              assert v["realMaxrollParity"]=="BLOCKED_NOT_RUN"
           for d in (a,b):
               assert d['status']=='BLOCKED_NO_VERIFIED_MAXROLL_RULES'
               assert len(d['characterMetrics'])==50 and d['coverage']['computed']==0
