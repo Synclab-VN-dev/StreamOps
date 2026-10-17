@@ -16,7 +16,7 @@
         "Level"
       ],
       "runtimeFunctions": [],
-      "sourceContributionCompleteness": "PARTIAL"
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
     },
     {
       "metricId": "maxroll.heroDetails.108",
@@ -29,7 +29,7 @@
       "runtimeFunctions": [
         "Floor"
       ],
-      "sourceContributionCompleteness": "PARTIAL"
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
     },
     {
       "metricId": "maxroll.heroDetails.109",
@@ -42,7 +42,7 @@
       "runtimeFunctions": [
         "Floor"
       ],
-      "sourceContributionCompleteness": "PARTIAL"
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
     },
     {
       "metricId": "maxroll.heroDetails.110",
@@ -55,7 +55,7 @@
       "runtimeFunctions": [
         "Floor"
       ],
-      "sourceContributionCompleteness": "PARTIAL"
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
     },
     {
       "metricId": "maxroll.heroDetails.111",
@@ -68,84 +68,7 @@
       "runtimeFunctions": [
         "Floor"
       ],
-      "sourceContributionCompleteness": "BOUNDED_TESTED_INPUTS_ONLY"
-    },
-    {
-      "metricId": "maxroll.heroDetails.480",
-      "label": "Armor",
-      "sourceExpression": "Armor_Total",
-      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
-      "intermediateVariables": [
-        "Armor_Total"
-      ],
-      "runtimeFunctions": [],
-      "sourceContributionCompleteness": "PARTIAL"
-    },
-    {
-      "metricId": "maxroll.heroDetails.439",
-      "label": "Physical Resistance",
-      "sourceExpression": "Resistance_Total(0)",
-      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
-      "intermediateVariables": [],
-      "runtimeFunctions": [
-        "Resistance_Total"
-      ],
-      "sourceContributionCompleteness": "PARTIAL"
-    },
-    {
-      "metricId": "maxroll.heroDetails.446",
-      "label": "Fire Resistance",
-      "sourceExpression": "Resistance_Total(1)",
-      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
-      "intermediateVariables": [],
-      "runtimeFunctions": [
-        "Resistance_Total"
-      ],
-      "sourceContributionCompleteness": "PARTIAL"
-    },
-    {
-      "metricId": "maxroll.heroDetails.453",
-      "label": "Lightning Resistance",
-      "sourceExpression": "Resistance_Total(2)",
-      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
-      "intermediateVariables": [],
-      "runtimeFunctions": [
-        "Resistance_Total"
-      ],
-      "sourceContributionCompleteness": "PARTIAL"
-    },
-    {
-      "metricId": "maxroll.heroDetails.460",
-      "label": "Cold Resistance",
-      "sourceExpression": "Resistance_Total(3)",
-      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
-      "intermediateVariables": [],
-      "runtimeFunctions": [
-        "Resistance_Total"
-      ],
-      "sourceContributionCompleteness": "PARTIAL"
-    },
-    {
-      "metricId": "maxroll.heroDetails.467",
-      "label": "Poison Resistance",
-      "sourceExpression": "Resistance_Total(4)",
-      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
-      "intermediateVariables": [],
-      "runtimeFunctions": [
-        "Resistance_Total"
-      ],
-      "sourceContributionCompleteness": "PARTIAL"
-    },
-    {
-      "metricId": "maxroll.heroDetails.474",
-      "label": "Shadow Resistance",
-      "sourceExpression": "Resistance_Total(5)",
-      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
-      "intermediateVariables": [],
-      "runtimeFunctions": [
-        "Resistance_Total"
-      ],
-      "sourceContributionCompleteness": "PARTIAL"
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
     },
     {
       "metricId": "maxroll.heroDetails.114",
@@ -157,7 +80,7 @@
         "Weapon_Speed_Percent_Reduction"
       ],
       "runtimeFunctions": [],
-      "sourceContributionCompleteness": "BOUNDED_TESTED_INPUTS_ONLY"
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
     },
     {
       "metricId": "maxroll.heroDetails.3",
@@ -173,18 +96,18 @@
       "runtimeFunctions": [
         "Min"
       ],
-      "sourceContributionCompleteness": "BOUNDED_TESTED_INPUTS_ONLY"
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
     },
     {
       "metricId": "maxroll.heroDetails.4",
       "label": "Critical Strike Chance",
-      "sourceExpression": "ComputeCritChance()",
+      "sourceExpression": "Crit_Percent_Base + Crit_Percent_Bonus",
       "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
       "intermediateVariables": [],
       "runtimeFunctions": [
         "ComputeCritChance"
       ],
-      "sourceContributionCompleteness": "PARTIAL"
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
     },
     {
       "metricId": "maxroll.heroDetails.347",
@@ -196,7 +119,7 @@
         "Multiplicative_Crit_Damage_Percent"
       ],
       "runtimeFunctions": [],
-      "sourceContributionCompleteness": "PARTIAL"
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
     },
     {
       "metricId": "maxroll.heroDetails.349",
@@ -208,18 +131,89 @@
         "Multiplicative_Vulnerable_Health_Damage_Bonus"
       ],
       "runtimeFunctions": [],
-      "sourceContributionCompleteness": "PARTIAL"
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
     },
     {
-      "metricId": "maxroll.heroDetails.58",
-      "label": "Maximum Life",
-      "sourceExpression": "PlayerHealthMax()",
+      "metricId": "maxroll.heroDetails.1",
+      "label": "All Damage",
+      "sourceExpression": "(1+Damage_Percent_All_From_Skills)*(1+Multiplicative_Damage_Percent_All_From_Skills)-1",
       "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
-      "intermediateVariables": [],
-      "runtimeFunctions": [
-        "PlayerHealthMax"
+      "intermediateVariables": [
+        "Damage_Percent_All_From_Skills",
+        "Multiplicative_Damage_Percent_All_From_Skills"
       ],
-      "sourceContributionCompleteness": "PARTIAL"
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.2",
+      "label": "Damage vs Elites",
+      "sourceExpression": "(1+Damage_Percent_Bonus_Vs_Elites)*(1+Multiplicative_Damage_Percent_Bonus_Vs_Elites)-1",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Damage_Percent_Bonus_Vs_Elites",
+        "Multiplicative_Damage_Percent_Bonus_Vs_Elites"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.25",
+      "label": "Damage vs Crowd Controlled",
+      "sourceExpression": "Damage_Percent_Bonus_Vs_CC_All*(1+Multiplicative_Damage_Percent_Bonus_Vs_CC_All)",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Damage_Percent_Bonus_Vs_CC_All",
+        "Multiplicative_Damage_Percent_Bonus_Vs_CC_All"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.56",
+      "label": "Damage vs Healthy",
+      "sourceExpression": "(1+Damage_Bonus_To_High_Health)*(1+Multiplicative_Damage_Bonus_To_High_Health)-1",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Damage_Bonus_To_High_Health",
+        "Multiplicative_Damage_Bonus_To_High_Health"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.78",
+      "label": "Potion Capacity",
+      "sourceExpression": "Potion_Max_Doses_Total",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Potion_Max_Doses_Total"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.180",
+      "label": "Healing Received",
+      "sourceExpression": "Bonus_Healing_Received_Percent+Core_Stat_Bonus_Healing_Received_Percent",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Bonus_Healing_Received_Percent",
+        "Core_Stat_Bonus_Healing_Received_Percent"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.431",
+      "label": "Armor",
+      "sourceExpression": "Armor_Total = (Armor + Core_Stat_Armor_Bonus + Armor_Bonus) * (1 + Armor_Percent)",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Armor_Total"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
     },
     {
       "metricId": "maxroll.heroDetails.80",
@@ -230,7 +224,7 @@
         "Movement_Scalar_Total"
       ],
       "runtimeFunctions": [],
-      "sourceContributionCompleteness": "PARTIAL"
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
     },
     {
       "metricId": "maxroll.heroDetails.92",
@@ -243,7 +237,19 @@
       "runtimeFunctions": [
         "Min"
       ],
-      "sourceContributionCompleteness": "PARTIAL"
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.181",
+      "label": "Lucky Hit Chance Bonus",
+      "sourceExpression": "Combat_Effect_Chance_Bonus",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Combat_Effect_Chance_Bonus"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
     }
-  ]
+  ],
+  "canonicalTargetManifest": "utility/d4-formula-graph/fixtures/milestone20-source-targets.json"
 }
