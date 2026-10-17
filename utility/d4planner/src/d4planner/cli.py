@@ -118,7 +118,7 @@ def _state(paths: RuntimePaths) -> dict[str, Any]:
 def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool,
                   block_marker: bool = False,
                   controller_profile: str | None = None,
-                  uat_attach_only: bool = False, uat_start_nvda: bool = False) -> int:
+                  uat_attach_only: bool = False) -> int:
     if os.name == "nt":
         previous = read_json(paths.runtime_state) or {}
         previous_pid = previous.get("supervisorPid")
@@ -128,8 +128,6 @@ def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool,
             kwargs["controller_profile"] = controller_profile
         if uat_attach_only:
             kwargs["uat_attach_only"] = True
-        if uat_start_nvda:
-            kwargs["uat_start_nvda"] = True
         runtime.launch_supervisor_task(**kwargs)
         deadline = time.monotonic() + 15.0
         while time.monotonic() < deadline:
@@ -151,8 +149,6 @@ def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool,
         cmd.extend(["--controller-profile", controller_profile])
     if uat_attach_only:
         cmd.append("--uat-attach-only")
-    if uat_start_nvda:
-        cmd.append("--uat-start-nvda")
     kwargs: dict[str, Any] = {
         "stdin": subprocess.DEVNULL,
         "stdout": subprocess.DEVNULL,
@@ -529,18 +525,17 @@ def command_start(
     block_marker: bool = False,
     controller_profile: str | None = None,
     uat_attach_only: bool = False,
-    uat_start_nvda: bool = False,
 ) -> int:
     try:
         profile = load_profile(controller_profile) if controller_profile else None
     except ProfileValidationError as exc:
         print(str(exc), file=sys.stderr)
         return 4
-    if (uat_attach_only or uat_start_nvda) and not isolated:
-        print("--uat-attach-only / --uat-start-nvda requires --isolated", file=sys.stderr)
-        return 4
-    if uat_attach_only and uat_start_nvda:
-        print("--uat-start-nvda cannot be combined with --uat-attach-only", file=sys.stderr)
+    if uat_attach_only and not isolated:
+        print(
+            "--uat-attach-only requires --isolated",
+            file=sys.stderr,
+        )
         return 4
     paths.ensure()
     previous = _state(paths)
@@ -591,8 +586,6 @@ def command_start(
         kwargs = dict(paths=paths, speech=speech, isolated=isolated,
                       block_marker=block_marker,
                       uat_attach_only=uat_attach_only)
-        if uat_start_nvda:
-            kwargs["uat_start_nvda"] = True
         if profile is not None:
             kwargs["controller_profile"] = profile.alias
         pid = _spawn_daemon(**kwargs)
@@ -1103,10 +1096,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=argparse.SUPPRESS,
     )
-    start.add_argument(
-        "--uat-start-nvda", action="store_true",
-        help="UAT isolated: attach to existing Steam/Diablo IV, start NVDA if absent; never restart existing processes",
-    )
     start.add_argument("--timeout", type=float, default=120.0)
 
     status = sub.add_parser("status")
@@ -1181,7 +1170,6 @@ def main(argv: list[str] | None = None) -> int:
             block_marker=args.block,
             controller_profile=args.controller_profile,
             uat_attach_only=args.uat_attach_only,
-            uat_start_nvda=args.uat_start_nvda,
         )
     if args.command == "controller":
         if args.controller_command == "profiles":
