@@ -415,8 +415,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $home = Join-Path $env:RUNNER_TEMP 'i119-invalid-projection-home'
-          $state = Join-Path $home 'state'
+          $badHome = Join-Path $env:RUNNER_TEMP 'i119-invalid-projection-home'
+          $state = Join-Path $badHome 'state'
           New-Item -ItemType Directory -Force $state | Out-Null
           Copy-Item (Join-Path $env:RUNNER_TEMP 'i119-items-uat-synthetic-source/state/events.db') (Join-Path $state 'events.db')
           $fixture = Join-Path $env:RUNNER_TEMP 'i119-corrupt-projection.py'
@@ -446,7 +446,7 @@ jobs:
           $runner = (Resolve-Path './scripts/acceptance/issue119-items-uat.ps1').Path
           $ev = Join-Path $env:RUNNER_TEMP 'i119-product-fail-smoke'
           $PSNativeCommandUseErrorActionPreference = $false
-          & pwsh -NoProfile -File $runner -ExpectedHead (git rev-parse HEAD) -HomeDir $home -EvidenceDir $ev -Mode Resume -Cases FILTER
+          & pwsh -NoProfile -File $runner -ExpectedHead (git rev-parse HEAD) -HomeDir $badHome -EvidenceDir $ev -Mode Resume -Cases FILTER
           $code = $LASTEXITCODE
           $PSNativeCommandUseErrorActionPreference = $true
           $r = Get-Content (Join-Path $ev 'report.json') -Raw | ConvertFrom-Json
