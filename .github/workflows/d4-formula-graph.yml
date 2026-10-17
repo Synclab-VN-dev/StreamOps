@@ -109,6 +109,27 @@ jobs:
           # Two different live-origin Maxroll DEVELOPMENT inputs, internal graph only.
           python utility/d4-formula-graph/dev_source_graph_smoke.py \
             --output artifacts/d4-formula-graph
+          # #108 G4 auditable full captured visible-row denominators; never parity PASS.
+          for fixture in dev00 dev01; do
+            python utility/d4-formula-graph/g4_source_audit.py \
+              --inventory utility/d4-formula-graph/fixtures/${fixture}-visible-inventory.json \
+              --source-graph artifacts/d4-formula-graph/${fixture}-source-graph.json \
+              --report artifacts/d4-formula-graph/${fixture}-g4-visible-coverage.json
+          done
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for name,rows,unique,unknown in [('dev00',50,50,49),('dev01',49,47,48)]:
+              p=Path('artifacts/d4-formula-graph')/(name+'-g4-visible-coverage.json')
+              x=json.loads(p.read_text())
+              assert x['visibleMetricRows']==rows and x['distinctMetricIds']==unique
+              assert x['unknownFormulaRows']==unknown and x['unverifiedComputedRows']==1
+              assert x['missingActualRows']==0 and x['staleActualRows']==0
+              assert sum(x['totals'].values())==rows
+              assert sum(v['visible'] for v in x['groupCoverage'].values())==rows
+              assert x['fullCapturedFixtureParity']=='BLOCKED_NOT_VERIFIED'
+              assert not x['ownerApprovedGolden'] and not x['publishAllowed']
+          PY
           # #108 real parity MUST return exit 2 / BLOCKED, not fake success.
           set +e
           python utility/d4-maxroll-parity/gate.py \
