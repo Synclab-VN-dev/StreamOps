@@ -123,7 +123,10 @@ class GridEvidenceTests(unittest.TestCase):
                                        "suppressed":True})
         repo=self.repo()
         result=repo.listing(locations={"all"})
-        self.assertEqual(result["coverage"]["verifiedScopes"],{})
+        scoped=result["coverage"]["verifiedScopes"]["sorc-1"]
+        self.assertEqual(len(scoped),1)
+        self.assertEqual(scoped[0]["status"],"PARTIAL")
+        self.assertEqual(scoped[0]["detail"],"INCOMPLETE")
         with self.db() as db:
             self.assertEqual(gates.current(db,{"all"},None),[])
             self.assertEqual(db.execute("SELECT status FROM owned_grid_scans WHERE scan_id='missing-cell'").fetchone()[0],
