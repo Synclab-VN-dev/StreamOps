@@ -6,6 +6,7 @@ slot identity, movement, or complete scans. This reader never mutates events.db.
 from __future__ import annotations
 
 import json
+from contextlib import closing
 from pathlib import Path
 import re
 import sqlite3
@@ -214,7 +215,7 @@ class OwnedItemsRepository:
         if not self.events_db.is_file():
             return 0
         processed = 0
-        with _connect(self.character_db) as dest, _connect(self.events_db, read_only=True) as src:
+        with closing(_connect(self.character_db)) as dest, closing(_connect(self.events_db, read_only=True)) as src:
             self._schema(dest)
             cursor = dest.execute(
                 "SELECT last_event_rowid,state_json FROM owned_item_checkpoint WHERE id=1"
