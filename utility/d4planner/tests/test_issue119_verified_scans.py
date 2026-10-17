@@ -96,9 +96,6 @@ class GridEvidenceTests(unittest.TestCase):
         second=self.item("SAME RING")
         self.scan("tab-one","stash",[(first,"token-1")],tab=1)
         self.scan("tab-two","stash",[(second,"token-2")],tab=2)
-        with self.db() as db:
-            # The projection only exists after sync
-            pass
         result=self.repo().listing(locations={"stash"})
         self.assertEqual(result["items"],[])  # No current-character proof.
         self.assertEqual(len(result["coverage"]["verifiedScopes"]["sorc-1"]),2)
@@ -168,7 +165,8 @@ class GridEvidenceTests(unittest.TestCase):
         self.assertFalse([x for x in self.repo().history() if x.get("kind")=="MOVE"])
         self.scan("other-character","stash",[(obs,"a")],tab=1,character="other-character")
         with self.db() as db:
-            self.assertEqual(len(gates.current(db,{"all"},None)),0) if False else None
+            self.assertEqual(len(gates.current(db,{"stash"},None)),2)
+            self.assertFalse(db.execute("SELECT 1 FROM owned_grid_history WHERE kind='MOVE'").fetchone())
         self.assertEqual(self.repo().sync(),0)
 
 
