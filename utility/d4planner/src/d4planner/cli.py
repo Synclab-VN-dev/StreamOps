@@ -914,9 +914,9 @@ def command_items(
             output.parent.mkdir(parents=True, exist_ok=True)
             temp = output.with_name(f".{output.name}.{uuid4().hex}.tmp")
             try:
-                with temp.open("w", encoding="utf-8", newline="\\n") as stream:
+                with temp.open("w", encoding="utf-8", newline="\n") as stream:
                     for observation in repo.history():
-                        stream.write(json.dumps(observation, ensure_ascii=False) + "\\n")
+                        stream.write(json.dumps(observation, ensure_ascii=False) + "\n")
                 os.replace(temp, output)
             finally:
                 temp.unlink(missing_ok=True)
