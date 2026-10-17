@@ -105,7 +105,7 @@ class DevelopmentCandidate(unittest.TestCase):
                 if change=="expected_literal":
                     # literal is schema-valid but forbidden as a source-backed rule.
                     with self.assertRaisesRegex(graph.GraphError,
-                                                "CANDIDATE_FORMULA_NOT_SOURCE_SUPPORTED|UNSUPPORTED"):
+                                                "CANDIDATE_SOURCE_VALUE_MUST_BE_REF_LEVEL"):
                         # A hardcoded known value is not allowed for level.
                         evaluator.build(src,idx,rr)
                 else:
