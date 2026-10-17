@@ -13,11 +13,12 @@ import sqlite3
 from typing import Any, Iterator
 
 from .equipment.parser import is_item_anchor, normalize, parse_item, parse_type
+from . import owned_items_scans
 
 CHEST = re.compile(r"^CHEST\s+(\d+)$", re.IGNORECASE)
 POWER = re.compile(r"^[\d,]+ Item Power$")
 MAX_SEGMENT = 100
-PROJECTION_VERSION = 2  # v2 replays anchors previously missed (Charm, Staff, Seal)
+PROJECTION_VERSION = 3  # v3 additionally consumes strict canonical scan evidence
 ADDITIONAL_OBSERVED_TYPES = frozenset({"Charm", "Staff", "Horadric Seal"})
 
 def is_owned_item_anchor(name: str, kind: str, power: str) -> bool:
@@ -127,6 +128,16 @@ def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) ->
         _reset_session(state, session)
     state["lastSeenAt"] = str(row["timestamp"])
     if row["type"] != "speech.raw":
+        # Structured producer events are separate from speech; they cannot be
+        # inferred from marker keys or tooltip text. Flush any completed raw
+        # anchor first so a scan cell can resolve its original observation ID.
+        if row["type"] in (owned_items_scans.BEGIN,owned_items_scans.CELL,
+                           owned_items_scans.END,owned_items_scans.ACTION,
+                           owned_items_scans.MOVE):
+            _save_active(db,state)
+            state["active"] = None
+            state["recent"] = []
+            owned_items_scans.consume(db,row)
         return
     try:
         data = json.loads(row["data_json"])
@@ -225,6 +236,7 @@ class OwnedItemsRepository:
                  state_json TEXT NOT NULL);
             """
         )
+        owned_items_scans.schema(db)
 
     def sync(self, *, limit: int | None = None) -> int:
         """Catch up by canonical row ID. Transactional batch checkpoint.
@@ -357,6 +369,10 @@ class OwnedItemsRepository:
                     state = json.loads(checkpoint[0])
                     last = state.get("lastSeenAt")
                     tabs.update(state.get("tabHints", []))
+            # Current physical character cannot be assumed from raw speech,
+            # so completed scan snapshots are exposed by explicit character
+            # scope, never silently mixed into default active-character items.
+            scoped, _ = owned_items_scans.coverage(db) if db else ({},[])
             items.sort(key=lambda x: (x["location"]["type"], x["name"].casefold(),
                                      str(x["sourceSessionId"]), x["sourceEventSeqStart"]))
             return {
@@ -371,6 +387,7 @@ class OwnedItemsRepository:
                     "lastEventAt": last,
                     "lastScanAt": None,
                     "observationCandidates": count,
+                    "verifiedScopes": scoped,
                     "warning": "Tooltips do not prove ownership, a tab's selected index, slot identity, or full scan.",
                 },
                 "observedTotal": len(items),
@@ -394,7 +411,8 @@ class OwnedItemsRepository:
         try:
             if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='owned_item_observation'").fetchone():
                 return []
-            return [json.loads(r[0]) for r in db.execute(
+            observations=[json.loads(r[0]) for r in db.execute(
                 "SELECT observation_json FROM owned_item_observation ORDER BY observation_id")]
+            return observations + owned_items_scans.history(db)
         finally:
             db.close()
