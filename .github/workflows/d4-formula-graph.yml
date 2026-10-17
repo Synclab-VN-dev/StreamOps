@@ -260,6 +260,38 @@ jobs:
               assert d['simulationContext'] is None and not d['runExecutableCandidates']
           assert a['graphSha256']!=b['graphSha256']
           PY
+      - name: Verify genuinely captured per-class Golden sample against independent actual
+        shell: bash
+        run: |
+          set -euo pipefail
+          for fixture in dev00 dev01; do
+            python utility/d4-formula-graph/scoped_golden_verifier.py \
+              --source utility/d4-formula-graph/fixtures/${fixture}-source-sanitized.json \
+              --inventory utility/d4-formula-graph/fixtures/${fixture}-visible-inventory.json \
+              --rules utility/d4-formula-graph/fixtures/candidate-source-level.json \
+              --golden utility/d4-formula-graph/fixtures/golden-dev/${fixture}-level.json \
+              --report artifacts/d4-formula-graph/${fixture}-scoped-real-golden-verification.json
+          done
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          observed={}
+          for fid,cls in [("dev00","rogue"),("dev01","sorcerer")]:
+              d=json.loads(Path(f"artifacts/d4-formula-graph/{fid}-scoped-real-golden-verification.json").read_text())
+              assert d["status"]=="PASS_SCOPED" and d["classId"]==cls
+              assert d["verifiedScoped"]==1 and len(d["metrics"])==1
+              assert d["metrics"][0]["status"]=="VERIFIED"
+              assert d["metrics"][0]["testResult"]=="PASS"
+              assert d["metrics"][0]["actualRaw"]==70
+              assert d["metrics"][0]["expectedRaw"]==70
+              assert d["metrics"][0]["actualDisplay"]=="70"
+              assert d["metrics"][0]["expectedDisplay"]=="70"
+              assert not d["fullCharacterStatsParity"]
+              assert not d["productionRulePromoted"] and not d["holdoutUsed"]
+              observed[cls]=d["metrics"][0]["metricId"]
+          assert observed=={"rogue":"maxroll.heroDetails.279",
+                            "sorcerer":"maxroll.heroDetails.279"}
+          PY
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
