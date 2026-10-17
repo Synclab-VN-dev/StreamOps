@@ -131,6 +131,32 @@ class GridEvidenceTests(unittest.TestCase):
             self.assertFalse(db.execute("SELECT 1 FROM owned_grid_scans WHERE scan_id='unverified-tab'").fetchone())
         self.assertEqual(repo.sync(),0)
 
+    def test_duplicate_cell_and_gap_event_cannot_certify_coverage(self):
+        obs=self.item("SOME RING")
+        proof={"selectedContainerVerified":True,"allSlotsAddressable":True,
+               "emptySlotsVisible":True,"captureGapFree":True,
+               "observer":"grid-observer-v1"}
+        self.event(gates.BEGIN,{"source":gates.SOURCE,"scanId":"repeated-slot",
+            "container":"stash","tab":1,"characterId":"sorc-1",
+            "expectedSlots":1,"proof":proof})
+        for _ in range(2):
+            self.event(gates.CELL,{"source":gates.SOURCE,"scanId":"repeated-slot",
+                "slot":0,"empty":False,"observationId":obs,
+                "trackingToken":"token"})
+        self.event(gates.END,{"source":gates.SOURCE,"scanId":"repeated-slot",
+            "expectedSlots":1,"captureGapFree":True})
+        self.scan("reported-gap","inventory",[(obs,"unique-token")],gap_free=False)
+        self.repo().listing(locations={"all"})
+        with self.db() as db:
+            self.assertEqual(db.execute(
+                "SELECT status FROM owned_grid_scans WHERE scan_id='repeated-slot'"
+            ).fetchone()[0],"INVALID")
+            self.assertEqual(db.execute(
+                "SELECT status FROM owned_grid_scans WHERE scan_id='reported-gap'"
+            ).fetchone()[0],"INVALID")
+            self.assertEqual(gates.current(db,{"all"},None),[])
+            self.assertEqual(len(gates.history(db)),0)
+
     def test_move_requires_four_complete_scans_and_separate_verified_action(self):
         obs=self.item()
         self.scan("source-before","inventory",[(obs,"physical-A")])
