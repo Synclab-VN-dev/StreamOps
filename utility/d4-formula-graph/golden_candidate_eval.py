@@ -175,7 +175,9 @@ def build(source,fixture,rules):
         id_=item["metricId"];found=id_ in computed
         rows.append({**item,"rowKey":item["group"].lower().replace(" ","_")+"/"+id_,
                      "status":"CANDIDATE_COMPUTED_UNVERIFIED" if found else "UNKNOWN",
-                     "raw":computed.get(id_),"display":None,"computed":found,
+                     "raw":computed.get(id_),
+                     "display":str(computed[id_]) if found and id_==LEVEL_ID else None,
+                     "computed":found,
                      "trace":traces.get(id_,[]),
                      "reason":"TEST_ONLY_NOT_INDEPENDENTLY_VERIFIED" if found else
                               "NO_EXECUTABLE_CANDIDATE_RULE"})
