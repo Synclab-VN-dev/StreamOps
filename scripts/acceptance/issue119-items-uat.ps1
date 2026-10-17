@@ -37,7 +37,8 @@ function InvokeCli([string]$Name, [string[]]$Args) {
     } finally {
         $PSNativeCommandUseErrorActionPreference = $previousPref
     }
-    Check $Name ($code -eq 0) "exit=$code; stderr=$stderr"
+    $errText = if (Test-Path $stderr) { (Get-Content -LiteralPath $stderr -Raw -Encoding utf8).Trim() } else { '' }
+    Check $Name ($code -eq 0) "exit=$code; stderr=$errText; log=$stderr"
     $raw = Get-Content -LiteralPath $stdout -Raw -Encoding utf8
     $json = $raw | ConvertFrom-Json -ErrorAction Stop
     return $json
