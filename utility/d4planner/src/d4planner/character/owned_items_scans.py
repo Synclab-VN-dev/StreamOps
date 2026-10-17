@@ -46,6 +46,10 @@ def schema(db: sqlite3.Connection) -> None:
           session_id TEXT NOT NULL, event_seq INTEGER NOT NULL,
           kind TEXT NOT NULL, data_json TEXT NOT NULL,
           UNIQUE(session_id,event_seq,kind));
+        CREATE TABLE IF NOT EXISTS owned_grid_checkpoint(
+          id INTEGER PRIMARY KEY CHECK(id=1),
+          last_event_rowid INTEGER NOT NULL, session_id TEXT NOT NULL,
+          last_event_seq INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS owned_grid_actions(
           session_id TEXT NOT NULL, event_seq INTEGER NOT NULL,
           data_json TEXT NOT NULL, PRIMARY KEY(session_id,event_seq));
@@ -93,6 +97,13 @@ def consume(db: sqlite3.Connection, row: sqlite3.Row) -> None:
     event = row["type"]
     if event not in (BEGIN, CELL, END, ACTION, MOVE, EQUIP, UNEQUIP, REMOVE):
         return
+    # Independent structured-evidence cursor. It commits in the same batch
+    # transaction as observations and the canonical read checkpoint.
+    db.execute("""INSERT INTO owned_grid_checkpoint(
+        id,last_event_rowid,session_id,last_event_seq) VALUES(1,?,?,?)
+        ON CONFLICT(id) DO UPDATE SET last_event_rowid=excluded.last_event_rowid,
+        session_id=excluded.session_id,last_event_seq=excluded.last_event_seq""",
+        (int(row["id"]),str(row["session_id"]),int(row["event_seq"])))
     try:
         p = json.loads(row["data_json"])
     except (ValueError, TypeError):
