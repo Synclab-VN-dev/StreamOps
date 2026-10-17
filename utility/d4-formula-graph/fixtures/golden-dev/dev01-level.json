@@ -1,0 +1,25 @@
+{
+  "schema": "scoped-maxroll-golden-v1",
+  "fixtureId": "DEV-01",
+  "classId": "sorcerer",
+  "patch": "3.2.1.73552",
+  "partition": "DEVELOPMENT",
+  "inputSha256": "2d1af402d8b45a83bdb8d19c87c0bd39ddc7e17b076abf7c49535c60c51de746",
+  "runtimeSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+  "source": {
+    "repository": "Synclab-VN-dev/synclab-agent",
+    "commit": "bb4c5cc6b2135583eb708f0a3f374060675b6c0b",
+    "path": "evidence/StreamOps-108/F-GOLDEN-01/20261017-batch-01/development/DEV-01/expected-maxroll.json",
+    "gitBlobSha": "320dbcd246b524690742df691081e00fb9dc3b9a"
+  },
+  "metrics": [
+    {
+      "id": "maxroll.heroDetails.279",
+      "group": "Core Stats",
+      "label": "Level",
+      "raw": 70,
+      "display": "70",
+      "tolerance": 0
+    }
+  ]
+}
