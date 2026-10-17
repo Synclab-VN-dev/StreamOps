@@ -1,0 +1,112 @@
+{
+  "schema": "F3_BOUNDED_RESEARCH_FORMULAS_V1",
+  "origin": "F3_BROWSER_RUNTIME_EXPRESSION_OBSERVED_NOT_FULL_FORMULA_VERIFIED",
+  "sourceCommit": "1a4ecec",
+  "sourceEvidencePath": "evidence/StreamOps-106/F3-rogue-50/rogue-50-formula-evidence.json",
+  "patch": "3.2.1.73552",
+  "classId": "rogue",
+  "mode": "RESEARCH_CANDIDATE_SANDBOX_ONLY",
+  "formulas": [
+    {
+      "metricId": "maxroll.heroDetails.111",
+      "label": "Dexterity",
+      "f3Expression": "Floor(Dexterity_Total)",
+      "f3EvidenceStatus": "CAUSALLY_VERIFIED_BOUNDED",
+      "dependencyNames": [
+        "Dexterity_Total"
+      ],
+      "ast": {
+        "op": "floor",
+        "args": [
+          {
+            "ref": "Dexterity_Total"
+          }
+        ]
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.114",
+      "label": "Weapon Speed",
+      "f3Expression": "1+Weapon_Speed_Percent_Bonus-Weapon_Speed_Percent_Reduction",
+      "f3EvidenceStatus": "CAUSALLY_VERIFIED_BOUNDED",
+      "dependencyNames": [
+        "Weapon_Speed_Percent_Bonus",
+        "Weapon_Speed_Percent_Reduction"
+      ],
+      "ast": {
+        "op": "subtract",
+        "args": [
+          {
+            "op": "add",
+            "args": [
+              {
+                "const": 1
+              },
+              {
+                "ref": "Weapon_Speed_Percent_Bonus"
+              }
+            ]
+          },
+          {
+            "ref": "Weapon_Speed_Percent_Reduction"
+          }
+        ]
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.3",
+      "label": "Attack Speed Bonus",
+      "f3Expression": "Min(1,Attack_Speed_Percent_Bonus-Attack_Speed_Percent_Reduction)+Min(1,Cast_Speed_Percent_Temp_Bonus-Cast_Speed_Percent_Temp_Reduction)",
+      "f3EvidenceStatus": "CAUSALLY_VERIFIED_BOUNDED",
+      "dependencyNames": [
+        "Attack_Speed_Percent_Bonus",
+        "Attack_Speed_Percent_Reduction",
+        "Cast_Speed_Percent_Temp_Bonus",
+        "Cast_Speed_Percent_Temp_Reduction"
+      ],
+      "ast": {
+        "op": "add",
+        "args": [
+          {
+            "op": "min",
+            "args": [
+              {
+                "const": 1
+              },
+              {
+                "op": "subtract",
+                "args": [
+                  {
+                    "ref": "Attack_Speed_Percent_Bonus"
+                  },
+                  {
+                    "ref": "Attack_Speed_Percent_Reduction"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "op": "min",
+            "args": [
+              {
+                "const": 1
+              },
+              {
+                "op": "subtract",
+                "args": [
+                  {
+                    "ref": "Cast_Speed_Percent_Temp_Bonus"
+                  },
+                  {
+                    "ref": "Cast_Speed_Percent_Temp_Reduction"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
