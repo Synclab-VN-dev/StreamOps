@@ -106,6 +106,9 @@ jobs:
           assert result['computedMetricValues']==0 and result['statFormulaMappingVerified']==0
           Path('artifacts/d4-formula-graph/f3-roll-dependency-gap.json').write_text(json.dumps(result,sort_keys=True,indent=2))
           PY
+          # Two different live-origin Maxroll DEVELOPMENT inputs, internal graph only.
+          python utility/d4-formula-graph/dev_source_graph_smoke.py \
+            --output artifacts/d4-formula-graph
           # #108 real parity MUST return exit 2 / BLOCKED, not fake success.
           set +e
           python utility/d4-maxroll-parity/gate.py \
@@ -144,6 +147,14 @@ jobs:
           assert all(x['trialOnly'] is None and x['characterStatActual'] is None
                      and x['status']=='UNKNOWN_MISSING_F3_INTERMEDIATE_VARIABLES'
                      for x in f3['results'])
+          for name,rows,unique,rolls in (("dev00",50,50,85),("dev01",49,47,40)):
+              full=json.loads(Path('artifacts/d4-formula-graph/'+name+'-source-graph.json').read_text())
+              change=json.loads(Path('artifacts/d4-formula-graph/'+name+'-source-graph-diff.json').read_text())
+              assert full["visibleMetricRows"]==rows and full["uniqueMetricIds"]==unique
+              assert full["unmappedObservedRolls"]==rolls
+              assert full["candidateComputedUnique"]==1 and full["fullVerifiedStatCount"]==0
+              assert not full["publishAllowed"] and not full["sourceGoldenExpectedLoaded"]
+              assert change["sourceChanges"]["changed"] and change["verifiedGameMetricDelta"]==0
           bridge=json.loads(Path('artifacts/d4-formula-graph/f3-roll-dependency-gap.json').read_text())
           assert bridge['observedRolls']==85 and bridge['f3Formulas']==3
           assert len(bridge['unmappedIntermediateDependencies'])==7

@@ -53,7 +53,7 @@ class CaptureGraphTest(unittest.TestCase):
             v=deepcopy(s);v["variant"]+=".test";mutations.append((v,w,"build/variant"))
             v=deepcopy(s);k=next(iter(v["skillRanks"]));v["skillRanks"][k]+=1;mutations.append((v,w,"skill-rank/"+k))
             v=deepcopy(s);v["sockets"][0]["values"].append("Rune_Synthetic_Only");mutations.append((v,w,"sockets/"+v["sockets"][0]["slotId"]))
-            v=deepcopy(s);v["paragonBoards"][0]["glyphLevel"]+=1;mutations.append((v,w,"paragon/"))
+            v=deepcopy(s);v["paragonBoards"][0]["glyphLevel"]=(v["paragonBoards"][0]["glyphLevel"]-1 if v["paragonBoards"][0]["glyphLevel"]>0 else 1);mutations.append((v,w,"paragon/"))
             vv=deepcopy(w);vv["slots"]=vv["slots"][1:];v=deepcopy(s);v["sockets"]=v["sockets"][1:]
             # Slot addition/removal must mutate both independently captured source views.
             mutations.append((v,vv,"equipment/"))

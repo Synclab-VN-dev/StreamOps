@@ -282,3 +282,23 @@ independent source evidence before these calculations can yield Actual values.
 It cannot promote any bounded expression to a verified metric merely because
 its synthetic arithmetic tests passed. CI uploads
 `f3-roll-dependency-gap.json` to evidence artifacts.
+
+## Source-aware graph smoke on two actual Maxroll development build snapshots
+
+`dev_source_graph.py` projects independently captured DEV-00 Rogue and
+DEV-01 Sorcerer build inputs into **internal, read-only** provenance nodes:
+equipment affix/aspect/tempering, gem/rune sockets, selected variant,
+skillbar, ranked skills, paragon boards/glyphs and class mechanics. It uses
+`slot/group/arrayIndex/nid` for repeated roll IDs and preserves every
+visible metric `(group, metricId)`, including multi-group duplicate IDs.
+Only Level is a source-derived numeric **candidate**; all unrelated metric
+values and four runtime combat context families remain UNKNOWN.
+Neither source expected Golden nor HOLDOUT is loaded.
+
+An independent `dev_source_graph_smoke.py` creates a stable build graph for
+each of the two different classes and changes one captured source roll.
+CI archives per-fixture source graph JSON and structural diff, tracking
+both row/unique denominators, checksum, a single changed contributor, and
+zero verified-game-metric increases. This proves provenance-aware structural
+graph mutation and separation from Golden expected, **not real effect
+arithmetic/verified gameplay mechanics**.
