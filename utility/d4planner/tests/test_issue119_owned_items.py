@@ -172,6 +172,17 @@ class OwnedItemsTests(unittest.TestCase):
             if old is None: os.environ.pop("D4PLANNER_HOME", None)
             else: os.environ["D4PLANNER_HOME"] = old
 
+    def test_multiple_incremental_readers_are_idempotent(self):
+        from concurrent.futures import ThreadPoolExecutor
+        self.fixture()
+        def inspect(_):
+            repo = self.repo()
+            return repo.listing(locations={"all"}, include_unverified=True)
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            responses = list(pool.map(inspect, range(6)))
+        self.assertEqual([x["observedTotal"] for x in responses], [4] * 6)
+        self.assertEqual(len(self.repo().history()), 4)
+
     def test_unrecognized_tooltip_or_command_never_create_false_item(self):
         self.speech("STASH","CHEST 1","Take","Equip","EQUIPPED",
                     "AN ITEM","Legendary Ring","not item power","CHEST 2")
