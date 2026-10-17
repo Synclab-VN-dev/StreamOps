@@ -82,14 +82,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--home", type=Path, default=None)
     parser.add_argument("--uat-attach-only", action="store_true",
                         help="Attach to already-running Steam/NVDA/D4 without process restart")
-    parser.add_argument("--uat-start-nvda", action="store_true",
-                        help="Attach to existing Steam/D4 and start only missing NVDA")
     parser.add_argument("--game-start-timeout", type=float, default=90.0)
     args = parser.parse_args(argv)
-    if (args.uat_attach_only or args.uat_start_nvda) and (not args.isolated or args.home is None):
-        parser.error("--uat-attach-only / --uat-start-nvda requires --home and --isolated")
-    if args.uat_attach_only and args.uat_start_nvda:
-        parser.error("--uat-start-nvda cannot be combined with --uat-attach-only")
+    if args.uat_attach_only and (not args.isolated or args.home is None):
+        parser.error("--uat-attach-only requires --home and --isolated")
     try:
         profile = load_profile(args.controller_profile) if args.controller_profile else None
     except ProfileValidationError as exc:
@@ -113,7 +109,6 @@ def main(argv: list[str] | None = None) -> int:
             block_marker=args.block,
             controller_profile=profile,
             uat_attach_only=args.uat_attach_only,
-            uat_start_nvda=args.uat_start_nvda,
             game_start_timeout=args.game_start_timeout,
         )
         return supervisor.run()
