@@ -122,61 +122,6 @@ smoke PASS; two additional Windows regression cases PASS:
 The actual Windows A path has **not yet been verified**. Existing Python
 synthetic SQLite probe tests remain independent.
 
-## UAT NVDA orchestration revision (Owner approval 2026-10-17)
-
-**Root cause:** prior owner command used strict `--uat-attach-only` on an A
-host where Steam (PID 4496) and Diablo IV (PID 6036) existed but NVDA was
-STOPPED. That existing safety mode intentionally refuses to start NVDA.
-Removing the flag without other changes would trigger a separate isolated
-Steam-PATH precondition, so that is not a safe workaround.
-
-**New additive CLI mode `--uat-start-nvda`:** isolated UAT attaches only
-to an existing Steam + Diablo IV in the active console session; starts NVDA
-through the existing interactive Scheduled Task **only if missing**. It
-never restarts running NVDA, Steam or Diablo IV; never changes/installs NVDA
-add-on or launches the game. If an existing NVDA add-on is outdated/missing,
-stop with BLOCKED and collect evidence. The old `--uat-attach-only` behavior
-remains strict and unchanged. Requires `--isolated` + its own HomeDir.
-
-**Runner:** `scripts/acceptance/issue119-prepare.ps1` sets up an isolated
-`%LOCALAPPDATA%\d4planner-issue119-pr120\uat-venv` with existing
-system site packages and a **venv-local `.pth` reference** to the pinned PR
-source (no pip, network fetch or global Python install). It starts the
-UAT-only supervisor with `--speech`, `xbox16`,
-`--isolated --uat-start-nvda`. It runs the existing read-only Preflight
-immediately and produces a ZIP, including setup stdout/stderr/exit codes.
-It never installs the changed CLI into production's global Python. It
-checks existing Steam/Game, pinned HEAD and isolation first. It refuses
-to mutate a running test supervisor (no implicit restart).
-
-~~~powershell
-cd C:\Workspace\StreamOps-I119
-git status --porcelain
-git fetch origin
-git switch --detach origin/feat/119-owned-items-cli
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\acceptance\issue119-prepare.ps1 -ExpectedHead (git rev-parse HEAD)
-~~~
-
-Only after this one-shot Prepare reports PASS:
-
-~~~powershell
-$home = Join-Path $env:LOCALAPPDATA 'd4planner-issue119-pr120'
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\acceptance\issue119-probe.ps1 -Mode Capture -HomeDir $home -ExpectedHead (git rev-parse HEAD)
-~~~
-
-Failure: send **only the Prepare ZIP** and do not stop/start production
-runtime, Steam, NVDA or Diablo IV to force PASS.
-
-**Revision improvement:** Previous isolated attach mode could never start
-missing NVDA; the new mode is additive and leaves strict mode intact.
-Mocked E2E tests cover missing/existing NVDA, missing game/Steam and console
-session mismatch, no forbidden process mutation, profile active, CLI and
-scheduled-task flag forwarding. CI Windows AST and fail-closed Prepare test
-plus isolated venv source-resolution smoke are separately required before Real-A run.
-Until then and until A returns live status/capture evidence, improvement
-on actual A is **not yet verified**. Real-A P0 capture coverage remains
-BLOCKED; the owner does not need to repeat previously PASS P0-01..P0-06.
-
 ## Automated tests
 
 ~~~powershell
@@ -191,6 +136,53 @@ so Real-A and runner-validation gates remain PENDING/BLOCKED until evidence.
 
 Source: #119; existing dependencies #59 / #69 / #87 / #95.
 
-### UAT Prepare script revision evidence
 
-First Windows CI execution found a PowerShell automatic variable collision: assigning `$home` failed because `$HOME` is read-only. Renaming it to `$uatHome` was validated by the next Windows CI, where S0-01..03 PASS and S0-04 correctly BLOCKED without Steam/Game (evidence ZIP exported). The next CI discovered the fresh Python venv lacks setuptools build backend; `pip install --no-build-isolation -e` failed. Revised setup replaces pip entirely with a **venv-local `.pth` source path**. This keeps the isolated interpreter and scheduled task on the same PR code without accessing the network or changing global packages. CI validates actual module origin and CLI/daemon help. Live Windows A start is still **not yet verified** until Owner returns real evidence.
+## Owner rollback 2026-10-17: keep the original start flow
+
+The extra `--uat-start-nvda` flag and the `issue119-prepare.ps1` helper
+were removed after the owner confirmed the already supported startup flow.
+**No new D4Planner startup CLI contract is required for #119.**
+
+Use the installed D4Planner CLI on Windows A in its existing (non-UAT)
+production HomeDir:
+
+~~~powershell
+Remove-Item Env:\D4PLANNER_HOME -ErrorAction SilentlyContinue
+d4planner start -d --controller-profile xbox16
+d4planner status
+d4planner logs -f --raw --from-end
+~~~
+
+The regular start command already starts missing NVDA and attaches to a
+running Diablo IV process, subject to its existing add-on, Tolk, Steam PATH
+and interactive-console safety gates. `--controller-profile xbox16` is the
+existing controller configuration for 16 digital keys, OBSERVE (not BLOCK)
+unless `--block` is explicitly supplied. The supervisor's default
+`silent` option does **not** disable raw NVDA capture.
+
+**Safety:** this normal start can reconcile existing NVDA add-on/helper tasks,
+or report `RESTART_REQUIRED` when Steam PATH is stale; do not force any
+process restart, stop, or merge as part of read-only #119 evidence.
+If it is already running with a different mode/profile, do not stop it
+just to switch modes: report the status for decision.
+
+The separate #119 Preflight/Capture runner remains a **read-only** probe;
+its explicit `-HomeDir` is authoritative for the status CLI environment as
+well as its event SQLite database. The pinned Windows CI regression verified
+that a stale caller `D4PLANNER_HOME` cannot silently redirect this probe.
+
+### UAT revision improvement / rollback record
+
+- **Before:** newly added `--uat-start-nvda` duplicated the already present
+  NVDA bootstrap ability, adding unnecessary CLI/scheduled-task/supervisor
+  changes and a multi-step UAT installer.
+- **After:** reverted all new launch-mode code/tests and deleted Prepare,
+  keeping the original `d4planner start -d --controller-profile xbox16`
+  contract. Restored prior #119 probe and its original validations, except
+  for the independent explicit-HomeDir environment correction.
+- **Evidence:** Windows regression for explicit `-HomeDir` and earlier
+  P0-06 valid-JSON/nonzero exit behavior passed before rollback. The final
+  rollback HEAD must pass its own CI; real A startup remains **not yet
+  verified**, and capture/inventory ownership evidence remains BLOCKED.
+- **Operator scope:** only run the existing normal CLI and report status;
+  no need to re-run previously PASS P0-01..P0-06 solely due to this rollback.
