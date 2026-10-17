@@ -944,8 +944,7 @@ class WindowsRuntime:
     def launch_supervisor_task(self, *, speech: bool, isolated: bool,
                                block_marker: bool = False,
                                controller_profile: str | None = None,
-                               uat_attach_only: bool = False,
-                               uat_start_nvda: bool = False) -> None:
+                               uat_attach_only: bool = False) -> None:
         """Launch the long-lived supervisor outside the caller's SSH job."""
         self.require_windows()
         self.task_isolated = bool(isolated)
@@ -965,12 +964,12 @@ class WindowsRuntime:
         if isolated:
             home = str(self.paths.root.resolve()).replace('"', '\\"')
             arguments.extend(["--home", f'"{home}"'])
-        if uat_attach_only and uat_start_nvda:
-            raise RuntimeBlocked("UAT launch modes are mutually exclusive")
-        if uat_attach_only or uat_start_nvda:
+        if uat_attach_only:
             if not isolated:
-                raise RuntimeBlocked("UAT launch requires isolated mode")
-            arguments.append("--uat-attach-only" if uat_attach_only else "--uat-start-nvda")
+                raise RuntimeBlocked(
+                    "UAT attach-only requires isolated mode"
+                )
+            arguments.append("--uat-attach-only")
         argument_text = " ".join(arguments).replace("'", "''")
         task_name = self.task_name("D4Planner-Supervisor", isolated=isolated)
         ps = self._task_reconcile_script(
