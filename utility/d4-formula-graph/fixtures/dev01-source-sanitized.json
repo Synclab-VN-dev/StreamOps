@@ -1,0 +1,12 @@
+{
+  "activeProfile": {
+    "level": 70,
+    "class": 0
+  },
+  "level": 70,
+  "patch": "3.2.1.73552",
+  "fingerprints": {
+    "fullInputSha256": "2d1af402d8b45a83bdb8d19c87c0bd39ddc7e17b076abf7c49535c60c51de746"
+  },
+  "completeness": "PARTIAL"
+}

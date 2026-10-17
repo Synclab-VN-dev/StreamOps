@@ -1,0 +1,15 @@
+{
+  "fixture": {
+    "class": "Rogue",
+    "gameVersion": "3.2.1.73552",
+    "level": 70
+  },
+  "currentReadOnlyPublicProfile": {
+    "level": 70,
+    "class": 3
+  },
+  "fingerprints": {
+    "f1InputSnapshotSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07"
+  },
+  "inputCompleteness": "PARTIAL"
+}

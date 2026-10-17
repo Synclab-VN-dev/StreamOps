@@ -1,0 +1,49 @@
+[
+  {
+    "schemaVersion": "1.0.0",
+    "ruleId": "maxroll.candidate.character.level",
+    "name": "Source level from Target Build (test only)",
+    "game": {
+      "gameVersion": "3.2.1",
+      "buildNumber": "73552",
+      "realm": "both"
+    },
+    "source": {
+      "kind": "global_rule",
+      "gameId": "maxroll.candidate.character.level"
+    },
+    "mechanics": [
+      {
+        "id": "levelFromBuild",
+        "phase": "pre_build",
+        "trigger": {
+          "kind": "always"
+        },
+        "actions": [
+          {
+            "op": "modify_stat",
+            "stat": "maxroll.heroDetails.279",
+            "who": "actor",
+            "math": "set",
+            "value": {
+              "kind": "ref",
+              "scope": "build",
+              "path": "level"
+            },
+            "stage": "base"
+          }
+        ]
+      }
+    ],
+    "verification": {
+      "status": "unverified",
+      "confidence": "unknown",
+      "evidence": [
+        {
+          "kind": "synthetic_fixture",
+          "note": "Test-only candidate sourced from independent build input level; never a verified gameplay formula."
+        }
+      ]
+    }
+  }
+]
