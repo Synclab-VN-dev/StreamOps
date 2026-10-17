@@ -1,0 +1,82 @@
+name: D4 Offense Simulator Sandbox (Issue 111)
+on:
+  push:
+    branches: [feat/111-offense-simulator-sandbox]
+    paths: ['utility/d4-offense-simulator/**', '.github/workflows/d4-offense-simulator.yml']
+  pull_request:
+    paths: ['utility/d4-offense-simulator/**', '.github/workflows/d4-offense-simulator.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Checkout pinned upstream #110 candidate without merging it
+        uses: actions/checkout@v4
+        with:
+          ref: 2b2b38defca182e0034a0d9907e1f828254bba0f
+          path: upstream-graph
+          persist-credentials: false
+      - name: Install frozen #107 schema validator from #110 checkout
+        run: python -m pip install -e 'upstream-graph/utility/d4-rulekit'
+      - name: Synthetic exact vectors, seeded convergence and real input fail closed
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/d4-offense-simulator
+          python -m compileall -q utility/d4-offense-simulator
+          python -m unittest discover -s utility/d4-offense-simulator/tests -p 'test_*.py' -v 2>&1 | tee artifacts/d4-offense-simulator/tests.log
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'utility/d4-offense-simulator')
+          from simulator import simulate
+          p=json.loads(Path('utility/d4-offense-simulator/fixtures/synthetic-context.json').read_text())
+          r=simulate(p)
+          assert r['syntheticDps']>0 and r['realDps'] is None and not r['publishAllowed']
+          Path('artifacts/d4-offense-simulator/sandbox-events.json').write_text(json.dumps(r,sort_keys=True,indent=2))
+          PY
+      - name: Cross-PR 2-fixture actual source graph regression (UNKNOWN must BLOCK)
+        run: |
+          set -euo pipefail
+          python utility/d4-offense-simulator/graph_integration.py \
+            --source-root upstream-graph \
+            --report artifacts/d4-offense-simulator/real-source-graph-replay.json
+          python utility/d4-offense-simulator/graph_integration.py \
+            --source-root upstream-graph \
+            --report artifacts/d4-offense-simulator/real-source-graph-replay-second.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report=json.loads(Path('artifacts/d4-offense-simulator/real-source-graph-replay.json').read_text())
+          assert report['fixtureCount']==2 and report['totalVisibleMetricRows']==99
+          assert report['totalDistinctIdsAcrossBuilds']==97
+          assert report['allRealDpsBlocked'] and not report['holdoutOpened']
+          second=json.loads(Path('artifacts/d4-offense-simulator/real-source-graph-replay-second.json').read_text())
+          assert report['expectedVsActualAllCasesMatch']
+          assert second['expectedVsActualAllCasesMatch']
+          assert report['syntheticSandboxSeed']==20261017
+          assert report['graphSourceCommit']=='2b2b38defca182e0034a0d9907e1f828254bba0f'
+          assert report['deterministicEvidenceSha256']==second['deterministicEvidenceSha256']
+          assert all(x['expected']==x['actual'] and x['elapsedMs']>=0
+                     and x['graphBodyTamperGate']=='BLOCKED'
+                     and x['unsupportedCriticalMetricGate']=='BLOCKED'
+                     and x['absentCriticalMetricGate']=='BLOCKED'
+                     for x in report['cases'])
+          assert all(x['caseStatus']=='PASS_REAL_SOURCE_FAIL_CLOSED_NOT_GAME_DPS'
+                     and x['realDps'] is None
+                     and x['patchMismatchGate']=='BLOCKED'
+                     and x['graphHashTamperGate']=='BLOCKED'
+                     for x in report['cases'])
+          PY
+      - name: Evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d4-offense-simulator-111-sandbox-evidence
+          path: artifacts/d4-offense-simulator/
+          if-no-files-found: error
