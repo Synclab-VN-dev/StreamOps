@@ -7,7 +7,7 @@ permitted ONLY for explicitly synthetic test vectors, never as game truth.
 """
 from __future__ import annotations
 
-import copy
+import math
 from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parent))
@@ -87,7 +87,7 @@ def validate(data):
                          "INVALID_SCENARIO_TYPED_VALUE")
         # prevent nan/inf passed from Python even if they match numeric predicates
         graph.reject(all(type(v)==bool or
-                         (type(v) in (int,float) and graph.math.isfinite(v))
+                         (type(v) in (int,float) and math.isfinite(v))
                          for v in value.values()), "SCENARIO_NONFINITE_NUMBER")
         if field==FIELDS[3]:
             graph.reject(value["snapshotSeconds"]<=value["elapsedSeconds"],

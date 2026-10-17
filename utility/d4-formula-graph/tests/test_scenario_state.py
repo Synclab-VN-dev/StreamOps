@@ -155,7 +155,7 @@ class ScenarioTruthTests(unittest.TestCase):
             bad=copy.deepcopy(self.unknown)
             bad["gamePatch"]="3.2.2"
             wrong=Path(tmp)/"wrong.json";wrong.write_text(json.dumps(bad))
-            p=subprocess.run(cmd[:4]+[str(wrong)]+cmd[5:],
+            p=subprocess.run(cmd[:5]+[str(wrong)]+cmd[6:],
                              capture_output=True,text=True)
             self.assertEqual(p.returncode,2)
             self.assertEqual(json.loads(out.read_text())["status"],"BLOCKED")
