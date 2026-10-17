@@ -16,6 +16,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Checkout pinned upstream #110 candidate without merging it
+        uses: actions/checkout@v4
+        with:
+          ref: f658f2b2a547cea98bd4475c50ba659718016118
+          path: upstream-graph
+          persist-credentials: false
+      - name: Install frozen #107 schema validator from #110 checkout
+        run: python -m pip install -e 'upstream-graph/utility/d4-rulekit'
       - name: Synthetic exact vectors, seeded convergence and real input fail closed
         run: |
           set -euo pipefail
@@ -31,6 +39,25 @@ jobs:
           r=simulate(p)
           assert r['syntheticDps']>0 and r['realDps'] is None and not r['publishAllowed']
           Path('artifacts/d4-offense-simulator/sandbox-events.json').write_text(json.dumps(r,sort_keys=True,indent=2))
+          PY
+      - name: Cross-PR 2-fixture actual source graph regression (UNKNOWN must BLOCK)
+        run: |
+          set -euo pipefail
+          python utility/d4-offense-simulator/graph_integration.py \
+            --source-root upstream-graph \
+            --report artifacts/d4-offense-simulator/real-source-graph-replay.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report=json.loads(Path('artifacts/d4-offense-simulator/real-source-graph-replay.json').read_text())
+          assert report['fixtureCount']==2 and report['totalVisibleMetricRows']==99
+          assert report['totalDistinctIdsAcrossBuilds']==97
+          assert report['allRealDpsBlocked'] and not report['holdoutOpened']
+          assert all(x['caseStatus']=='PASS_REAL_SOURCE_FAIL_CLOSED_NOT_GAME_DPS'
+                     and x['realDps'] is None
+                     and x['patchMismatchGate']=='BLOCKED'
+                     and x['graphHashTamperGate']=='BLOCKED'
+                     for x in report['cases'])
           PY
       - name: Evidence
         if: always()
