@@ -183,6 +183,14 @@ class OwnedItemsTests(unittest.TestCase):
         self.assertEqual([x["observedTotal"] for x in responses], [4] * 6)
         self.assertEqual(len(self.repo().history()), 4)
 
+    def test_unicode_item_survives_canonical_json_projection(self):
+        self.speech("CHARACTER", "NHẪN SẤM SÉT", "Legendary Ring",
+                    "900 Item Power", "CHARACTER")
+        snapshot = self.repo().listing(locations={"all"}, include_unverified=True)
+        self.assertEqual(snapshot["observedTotal"], 1)
+        self.assertEqual(snapshot["items"][0]["name"], "NHẪN SẤM SÉT")
+        self.assertIn("NHẪN SẤM SÉT", json.dumps(snapshot, ensure_ascii=False))
+
     def test_unrecognized_tooltip_or_command_never_create_false_item(self):
         self.speech("STASH","CHEST 1","Take","Equip","EQUIPPED",
                     "AN ITEM","Legendary Ring","not item power","CHEST 2")
