@@ -50,7 +50,7 @@ class DevelopmentCandidate(unittest.TestCase):
         self.assertNotEqual(a["graphSha256"],c["graphSha256"])
         v=next(x for x in c["characterMetrics"] if x["metricId"]==evaluator.LEVEL_ID)
         self.assertEqual(v["raw"],71)
-        self.assertIsNone(v["display"])
+        self.assertEqual(v["display"],"71")
     def test_duplicate_metric_id_across_groups_preserves_two_rows(self):
         _,index,_,_=self.cases[1]
         ids=[x for x in index["metrics"] if x["metricId"]=="maxroll.heroDetails.431"]
