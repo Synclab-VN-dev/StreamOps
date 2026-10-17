@@ -4,7 +4,7 @@ Synthetic, source-informed fixtures; REAL-A ownership requires separate proof.
 """
 from __future__ import annotations
 
-from contextlib import redirect_stdout, redirect_stderr
+from contextlib import redirect_stdout, redirect_stderr, closing
 from io import StringIO
 import json
 from pathlib import Path
@@ -24,7 +24,7 @@ class OwnedItemsTests(unittest.TestCase):
         (self.home / "state").mkdir()
         self.event_db = self.home / "state/events.db"
         self.char_db = self.home / "state/character.db"
-        with sqlite3.connect(self.event_db) as db:
+        with closing(sqlite3.connect(self.event_db)) as db, db:
             db.execute("""CREATE TABLE event_log(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT NOT NULL, event_seq INTEGER NOT NULL,
@@ -34,7 +34,7 @@ class OwnedItemsTests(unittest.TestCase):
         self.seq = 0
 
     def speech(self, *lines, session="s-one"):
-        with sqlite3.connect(self.event_db) as db:
+        with closing(sqlite3.connect(self.event_db)) as db, db:
             for line in lines:
                 self.seq += 1
                 db.execute(
@@ -43,7 +43,7 @@ class OwnedItemsTests(unittest.TestCase):
                      "speech.raw",json.dumps({"text":line},ensure_ascii=False)))
 
     def input(self, line="Take"):
-        with sqlite3.connect(self.event_db) as db:
+        with closing(sqlite3.connect(self.event_db)) as db, db:
             self.seq += 1
             db.execute(
                 "INSERT INTO event_log(session_id,event_seq,timestamp,type,data_json) VALUES(?,?,?,?,?)",
@@ -94,7 +94,7 @@ class OwnedItemsTests(unittest.TestCase):
         self.assertEqual(repo.sync(), 0)
         self.assertEqual(repo.history(), original)
         # A new session has an independent local event_seq (canonical row ID is global).
-        with sqlite3.connect(self.event_db) as db:
+        with closing(sqlite3.connect(self.event_db)) as db, db:
             for i,text in enumerate(["STASH","CHEST 1","ANOTHER ITEM","Legendary Helm",
                                       "850 Item Power","CHEST 2"], 1):
                 db.execute("INSERT INTO event_log(session_id,event_seq,timestamp,type,data_json) VALUES(?,?,?,?,?)",
@@ -146,7 +146,7 @@ class OwnedItemsTests(unittest.TestCase):
         self.assertEqual(repo.history(),[])
 
     def test_high_confidence_equipment_retains_legacy_projection(self):
-        with sqlite3.connect(self.char_db) as db:
+        with closing(sqlite3.connect(self.char_db)) as db, db:
             db.execute("""CREATE TABLE equipment_current(
                id INTEGER PRIMARY KEY, slot_family TEXT, slot_index INTEGER,
                item_name TEXT,item_type TEXT,item_power INTEGER,item_json TEXT,
