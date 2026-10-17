@@ -1,0 +1,249 @@
+{
+  "schema": "f3-source-observed-target20-dependencies-v1",
+  "classId": "rogue",
+  "gamePatch": "3.2.1.73552",
+  "fixtureId": "DEV-00",
+  "sourceCommit": "1a4ecec",
+  "sourceEvidencePath": "evidence/StreamOps-106/F3-rogue-50/rogue-50-formula-evidence.json",
+  "truthGrade": "OBSERVED_RUNTIME_FORMULA_NOT_INDEPENDENT_MAXROLL_GOLDEN_VERIFIED",
+  "formulas": [
+    {
+      "metricId": "maxroll.heroDetails.279",
+      "label": "Level",
+      "sourceExpression": "Level",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Level"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "PARTIAL"
+    },
+    {
+      "metricId": "maxroll.heroDetails.108",
+      "label": "Strength",
+      "sourceExpression": "Floor(Strength_Total)",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Strength_Total"
+      ],
+      "runtimeFunctions": [
+        "Floor"
+      ],
+      "sourceContributionCompleteness": "PARTIAL"
+    },
+    {
+      "metricId": "maxroll.heroDetails.109",
+      "label": "Intelligence",
+      "sourceExpression": "Floor(Intelligence_Total)",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Intelligence_Total"
+      ],
+      "runtimeFunctions": [
+        "Floor"
+      ],
+      "sourceContributionCompleteness": "PARTIAL"
+    },
+    {
+      "metricId": "maxroll.heroDetails.110",
+      "label": "Willpower",
+      "sourceExpression": "Floor(Willpower_Total)",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Willpower_Total"
+      ],
+      "runtimeFunctions": [
+        "Floor"
+      ],
+      "sourceContributionCompleteness": "PARTIAL"
+    },
+    {
+      "metricId": "maxroll.heroDetails.111",
+      "label": "Dexterity",
+      "sourceExpression": "Floor(Dexterity_Total)",
+      "sourceEvidenceStatus": "CAUSALLY_VERIFIED_BOUNDED",
+      "intermediateVariables": [
+        "Dexterity_Total"
+      ],
+      "runtimeFunctions": [
+        "Floor"
+      ],
+      "sourceContributionCompleteness": "BOUNDED_TESTED_INPUTS_ONLY"
+    },
+    {
+      "metricId": "maxroll.heroDetails.480",
+      "label": "Armor",
+      "sourceExpression": "Armor_Total",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Armor_Total"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "PARTIAL"
+    },
+    {
+      "metricId": "maxroll.heroDetails.439",
+      "label": "Physical Resistance",
+      "sourceExpression": "Resistance_Total(0)",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [],
+      "runtimeFunctions": [
+        "Resistance_Total"
+      ],
+      "sourceContributionCompleteness": "PARTIAL"
+    },
+    {
+      "metricId": "maxroll.heroDetails.446",
+      "label": "Fire Resistance",
+      "sourceExpression": "Resistance_Total(1)",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [],
+      "runtimeFunctions": [
+        "Resistance_Total"
+      ],
+      "sourceContributionCompleteness": "PARTIAL"
+    },
+    {
+      "metricId": "maxroll.heroDetails.453",
+      "label": "Lightning Resistance",
+      "sourceExpression": "Resistance_Total(2)",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [],
+      "runtimeFunctions": [
+        "Resistance_Total"
+      ],
+      "sourceContributionCompleteness": "PARTIAL"
+    },
+    {
+      "metricId": "maxroll.heroDetails.460",
+      "label": "Cold Resistance",
+      "sourceExpression": "Resistance_Total(3)",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [],
+      "runtimeFunctions": [
+        "Resistance_Total"
+      ],
+      "sourceContributionCompleteness": "PARTIAL"
+    },
+    {
+      "metricId": "maxroll.heroDetails.467",
+      "label": "Poison Resistance",
+      "sourceExpression": "Resistance_Total(4)",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [],
+      "runtimeFunctions": [
+        "Resistance_Total"
+      ],
+      "sourceContributionCompleteness": "PARTIAL"
+    },
+    {
+      "metricId": "maxroll.heroDetails.474",
+      "label": "Shadow Resistance",
+      "sourceExpression": "Resistance_Total(5)",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [],
+      "runtimeFunctions": [
+        "Resistance_Total"
+      ],
+      "sourceContributionCompleteness": "PARTIAL"
+    },
+    {
+      "metricId": "maxroll.heroDetails.114",
+      "label": "Weapon Speed",
+      "sourceExpression": "1+Weapon_Speed_Percent_Bonus-Weapon_Speed_Percent_Reduction",
+      "sourceEvidenceStatus": "CAUSALLY_VERIFIED_BOUNDED",
+      "intermediateVariables": [
+        "Weapon_Speed_Percent_Bonus",
+        "Weapon_Speed_Percent_Reduction"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "BOUNDED_TESTED_INPUTS_ONLY"
+    },
+    {
+      "metricId": "maxroll.heroDetails.3",
+      "label": "Attack Speed Bonus",
+      "sourceExpression": "Min(1,Attack_Speed_Percent_Bonus-Attack_Speed_Percent_Reduction)+Min(1,Cast_Speed_Percent_Temp_Bonus-Cast_Speed_Percent_Temp_Reduction)",
+      "sourceEvidenceStatus": "CAUSALLY_VERIFIED_BOUNDED",
+      "intermediateVariables": [
+        "Attack_Speed_Percent_Bonus",
+        "Attack_Speed_Percent_Reduction",
+        "Cast_Speed_Percent_Temp_Bonus",
+        "Cast_Speed_Percent_Temp_Reduction"
+      ],
+      "runtimeFunctions": [
+        "Min"
+      ],
+      "sourceContributionCompleteness": "BOUNDED_TESTED_INPUTS_ONLY"
+    },
+    {
+      "metricId": "maxroll.heroDetails.4",
+      "label": "Critical Strike Chance",
+      "sourceExpression": "ComputeCritChance()",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [],
+      "runtimeFunctions": [
+        "ComputeCritChance"
+      ],
+      "sourceContributionCompleteness": "PARTIAL"
+    },
+    {
+      "metricId": "maxroll.heroDetails.347",
+      "label": "Critical Strike Damage",
+      "sourceExpression": "(1+Crit_Damage_Percent)*(1+Multiplicative_Crit_Damage_Percent)*1.5+-1",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Crit_Damage_Percent",
+        "Multiplicative_Crit_Damage_Percent"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "PARTIAL"
+    },
+    {
+      "metricId": "maxroll.heroDetails.349",
+      "label": "Vulnerable Damage",
+      "sourceExpression": "(1+Vulnerable_Health_Damage_Bonus)*(1+Multiplicative_Vulnerable_Health_Damage_Bonus)*1.2+-1",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Vulnerable_Health_Damage_Bonus",
+        "Multiplicative_Vulnerable_Health_Damage_Bonus"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "PARTIAL"
+    },
+    {
+      "metricId": "maxroll.heroDetails.58",
+      "label": "Maximum Life",
+      "sourceExpression": "PlayerHealthMax()",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [],
+      "runtimeFunctions": [
+        "PlayerHealthMax"
+      ],
+      "sourceContributionCompleteness": "PARTIAL"
+    },
+    {
+      "metricId": "maxroll.heroDetails.80",
+      "label": "Movement Speed",
+      "sourceExpression": "Movement_Scalar_Total",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Movement_Scalar_Total"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "PARTIAL"
+    },
+    {
+      "metricId": "maxroll.heroDetails.92",
+      "label": "Cooldown Reduction",
+      "sourceExpression": "Min(0.75,Power_Cooldown_Reduction_Percent_All)",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Power_Cooldown_Reduction_Percent_All"
+      ],
+      "runtimeFunctions": [
+        "Min"
+      ],
+      "sourceContributionCompleteness": "PARTIAL"
+    }
+  ]
+}
