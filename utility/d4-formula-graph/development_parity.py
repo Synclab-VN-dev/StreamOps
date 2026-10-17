@@ -63,11 +63,15 @@ def canonical_rows(expected,test_only=False):
                  "displayOrigin":x["displayOrigin"]} for x in rows]
         fingerprint=expected["metrics"][0].get("inputFingerprintSha256")
         patch=expected["metrics"][0].get("patch")
+    required_raw_origin=("SYNTHETIC_TEST_ONLY" if test_only
+                         else "MAXROLL_CDP_RUNTIME_DIRECT")
+    required_display_origin=("SYNTHETIC_TEST_ONLY" if test_only
+                             else "MAXROLL_BROWSER_UI_DIRECT")
     guard(all(type(x["metricId"])==str and type(x["group"])==str and
               type(x["label"])==str and type(x["display"])==str and
               finite(x["raw"]) and
-              x["rawOrigin"]=="MAXROLL_CDP_RUNTIME_DIRECT" and
-              x["displayOrigin"]=="MAXROLL_BROWSER_UI_DIRECT" for x in result),
+              x["rawOrigin"]==required_raw_origin and
+              x["displayOrigin"]==required_display_origin for x in result),
           "EXPECTED_MUST_BE_INDEPENDENTLY_OBSERVED")
     guard(len({key(x) for x in result})==len(result),"DUPLICATE_EXPECTED_DISPLAY_ROW")
     duplicates={}

@@ -21,8 +21,8 @@ def synthetic_expected(actual):
             "metricId":r["metricId"],"group":r["group"],"label":r["label"],
             "raw":70 if r["metricId"]==ev.LEVEL_ID else 1,
             "display":"70" if r["metricId"]==ev.LEVEL_ID else "1",
-            "provenance":{"raw":"MAXROLL_CDP_RUNTIME_DIRECT",
-                          "display":"MAXROLL_BROWSER_UI_DIRECT"},
+            "provenance":{"raw":"SYNTHETIC_TEST_ONLY",
+                          "display":"SYNTHETIC_TEST_ONLY"},
         } for r in actual["characterMetrics"]],
     }
 

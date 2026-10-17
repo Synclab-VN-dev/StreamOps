@@ -29,8 +29,8 @@ class DevParity(unittest.TestCase):
                 "metricId":x["metricId"],"group":x["group"],"label":x["label"],
                 "raw":70 if x["metricId"]==golden_candidate_eval.LEVEL_ID else 1,
                 "display":"70" if x["metricId"]==golden_candidate_eval.LEVEL_ID else "1",
-                "provenance":{"raw":"MAXROLL_CDP_RUNTIME_DIRECT",
-                              "display":"MAXROLL_BROWSER_UI_DIRECT"}
+                "provenance":{"raw":"SYNTHETIC_TEST_ONLY",
+                              "display":"SYNTHETIC_TEST_ONLY"}
             } for x in a["characterMetrics"]]
         }
         return a,expected
@@ -105,8 +105,8 @@ class DevParity(unittest.TestCase):
                  "originalMaxrollLabel":r["label"],
                  "expectedRawValue":70 if r["metricId"]==golden_candidate_eval.LEVEL_ID else 1,
                  "expectedDisplayValue":"70" if r["metricId"]==golden_candidate_eval.LEVEL_ID else "1",
-                 "rawOrigin":"MAXROLL_CDP_RUNTIME_DIRECT",
-                 "displayOrigin":"MAXROLL_BROWSER_UI_DIRECT",
+                 "rawOrigin":"SYNTHETIC_TEST_ONLY",
+                 "displayOrigin":"SYNTHETIC_TEST_ONLY",
                  "inputFingerprintSha256":a["sourceInputFingerprint"],
                  "patch":a["gamePatch"]}
                 for r in a["characterMetrics"]
