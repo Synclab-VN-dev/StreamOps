@@ -178,6 +178,7 @@ jobs:
           assert (dev1["sourceRowCount"],dev1["uniqueMetricCount"]) == (49,47)
           for actual in (dev0,dev1):
               assert actual["computedUniqueMetricCount"]==1
+              assert next(r["display"] for r in actual["characterMetrics"] if r["metricId"]=="maxroll.heroDetails.279")=="70"
               assert actual["computedDisplayRowCount"]==1
               assert actual["verifiedMetrics"]==0 and actual["approvedGoldens"]==0
               assert actual["maxrollParity"]=="NOT_RUN" and not actual["publishAllowed"]
