@@ -27,6 +27,8 @@ def is_owned_item_anchor(name: str, kind: str, power: str) -> bool:
         return True
     if not normalize(name) or not POWER.fullmatch(normalize(power)):
         return False
+    if normalize(kind) == "Set Charm":
+        return True
     parsed = parse_type(kind)
     return parsed is not None and parsed[2] in ADDITIONAL_OBSERVED_TYPES
 
