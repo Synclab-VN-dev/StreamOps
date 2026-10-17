@@ -131,6 +131,21 @@ class GridEvidenceTests(unittest.TestCase):
             self.assertFalse(db.execute("SELECT 1 FROM owned_grid_scans WHERE scan_id='unverified-tab'").fetchone())
         self.assertEqual(repo.sync(),0)
 
+    def test_new_partial_rescan_downgrades_historical_complete_coverage(self):
+        obs=self.item()
+        self.scan("complete-old","stash",[(obs,"A")],tab=3)
+        self.scan("newer-incomplete","stash",[None],tab=3,expected=2)
+        coverage=self.repo().listing(locations={"stash"})["coverage"]["verifiedScopes"]["sorc-1"]
+        self.assertEqual(len(coverage),1)
+        self.assertEqual(coverage[0]["scanId"],"newer-incomplete")
+        self.assertEqual(coverage[0]["status"],"PARTIAL")
+        self.assertIsNone(coverage[0]["lastScanAt"])
+        with self.db() as db:
+            old=gates.current(db,{"stash"},None)
+            # Never infer physical deletion from the failed second scan.
+            self.assertEqual(len(old),1)
+            self.assertEqual(old[0]["name"],"TWIN RING")
+
     def test_duplicate_cell_and_gap_event_cannot_certify_coverage(self):
         obs=self.item("SOME RING")
         proof={"selectedContainerVerified":True,"allSlotsAddressable":True,
