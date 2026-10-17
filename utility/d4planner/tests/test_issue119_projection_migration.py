@@ -44,7 +44,8 @@ class ProjectionMigration(unittest.TestCase):
                     db.execute("INSERT INTO event_log VALUES(?,?,?,?,?,?)",(i,"s1",i,"2026-10-17T10:00:00+07:00","speech.raw",json.dumps({"text":txt})))
             repo=OwnedItemsRepository(target,events)
             self.assertEqual(repo.sync(limit=3),3)
-            self.assertEqual(len(repo.history()),0)
+            with closing(sqlite3.connect(target)) as check:
+                self.assertEqual(check.execute("SELECT COUNT(*) FROM owned_item_observation").fetchone()[0],0)
             self.assertEqual(repo.sync(),2)
             self.assertEqual(len(repo.history()),1)
             self.assertEqual(repo.sync(),0)
