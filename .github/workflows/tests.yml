@@ -339,6 +339,45 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Issue87 UT-04 failed' }
           python -m pytest -q utility/d4planner/tests/test_e2e_cli_runtime.py -k 'test_e2e03_xbox16_session1_one_hook_end_to_end_to_sqlite or test_e2e11_stop_unhooks_then_mode_switch_without_stale_capture'
           if ($LASTEXITCODE -ne 0) { throw 'Issue87 E2E-03/11 failed' }
+      - name: 'Issue119 Items UAT isolated snapshot positive smoke'
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 120
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $fakeHome = Join-Path $env:RUNNER_TEMP 'i119-items-uat-synthetic-source'
+          $state = Join-Path $fakeHome 'state'
+          New-Item -ItemType Directory -Force -Path $state | Out-Null
+          @'
+          from pathlib import Path
+          import json, sqlite3, sys
+          p = Path(sys.argv[1]); p.parent.mkdir(parents=True, exist_ok=True)
+          with sqlite3.connect(p) as db:
+              db.execute('CREATE TABLE event_log(id INTEGER PRIMARY KEY,session_id TEXT,event_seq INTEGER,timestamp TEXT,type TEXT,data_json TEXT)')
+              for i, t in enumerate(['STASH','CHEST 1','TEST RING','Legendary Ring','900 Item Power','CHEST 2','CHARACTER'],1):
+                  db.execute('INSERT INTO event_log VALUES(?,?,?,?,?,?)',
+                             (i,'ci-synthetic',i,'2026-10-17T10:00:00+07:00','speech.raw',json.dumps({'text':t})))
+          '@ | Set-Content (Join-Path $env:RUNNER_TEMP 'i119-positive-fixture.py') -Encoding utf8
+          python (Join-Path $env:RUNNER_TEMP 'i119-positive-fixture.py') (Join-Path $state 'events.db')
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot build isolated SQLite input fixture' }
+          $before = (Get-FileHash (Join-Path $state 'events.db') -Algorithm SHA256).Hash
+          $runner = (Resolve-Path './scripts/acceptance/issue119-items-uat.ps1').Path
+          $ev = Join-Path $env:RUNNER_TEMP 'i119-items-uat-synthetic-pass'
+          $PSNativeCommandUseErrorActionPreference = $false
+          & pwsh -NoProfile -File $runner -ExpectedHead (git rev-parse HEAD) -HomeDir $fakeHome -EvidenceDir $ev
+          $code = $LASTEXITCODE
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($code -ne 0) { throw "Items UAT positive smoke failed exit=$code" }
+          $report = Get-Content (Join-Path $ev 'report.json') -Raw | ConvertFrom-Json
+          $candidate = Get-Content (Join-Path $ev 'CANDIDATES.stdout.json') -Raw | ConvertFrom-Json
+          $after = (Get-FileHash (Join-Path $state 'events.db') -Algorithm SHA256).Hash
+          if ($report.status -ne 'PASS_SNAPSHOT_CLI_PARTIAL_OWNERSHIP' -or
+              $candidate.observedTotal -lt 1 -or
+              $candidate.items[0].ownershipStatus -ne 'NOT_CONFIRMED' -or
+              $before -ne $after -or !(Test-Path "$ev.zip")) {
+            throw 'Items UAT snapshot positive smoke output/safety contract mismatch'
+          }
+          $global:LASTEXITCODE = 0
+
       - name: Compile D4Planner runtime
         if: steps.changes.outputs.d4planner == 'true'
         run: python -m compileall -q utility/d4planner
