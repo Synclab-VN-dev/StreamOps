@@ -28,7 +28,7 @@ def reject_expected(value,depth=0):
     graph.reject(depth<=80,"SOURCE_INPUT_EXCESSIVE_NESTING")
     if isinstance(value,dict):
         for key,v in value.items():
-            graph.reject(key not in FORBIDDEN and not str(key).lower().startswith("expected"),
+            graph.reject((key=="expectedF1InputFingerprintSha256" and depth==1 and type(v)==str and bool(HEX.fullmatch(v))) or (key not in FORBIDDEN and not str(key).lower().startswith("expected")),
                          "GOLDEN_EXPECTED_IN_GRAPH_INPUT")
             reject_expected(v,depth+1)
     elif isinstance(value,list):
