@@ -243,9 +243,7 @@ git status --porcelain     # must be empty; stop if files differ
 git fetch origin
 git switch --detach origin/feat/119-owned-items-cli
 
-pwsh -NoProfile -ExecutionPolicy Bypass -File \
-  .\scripts\acceptance\issue119-items-uat.ps1 \
-  -ExpectedHead (git rev-parse HEAD)
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\acceptance\issue119-items-uat.ps1 -ExpectedHead (git rev-parse HEAD)
 ~~~
 
 The PowerShell runner uses Python's **online SQLite backup API** to create
