@@ -17,6 +17,7 @@ from .equipment.parser import is_item_anchor, normalize, parse_item, parse_type
 CHEST = re.compile(r"^CHEST\s+(\d+)$", re.IGNORECASE)
 POWER = re.compile(r"^[\d,]+ Item Power$")
 MAX_SEGMENT = 100
+PROJECTION_VERSION = 2  # v2 replays anchors previously missed (Charm, Staff, Seal)
 ADDITIONAL_OBSERVED_TYPES = frozenset({"Charm", "Staff", "Horadric Seal"})
 
 def is_owned_item_anchor(name: str, kind: str, power: str) -> bool:
@@ -43,7 +44,7 @@ def _connect(path: Path, *, read_only: bool = False) -> sqlite3.Connection:
 
 
 def _initial() -> dict[str, Any]:
-    return {"session": None, "context": "unknown", "tabHints": [], "recent": [],
+    return {"projectionVersion": PROJECTION_VERSION, "session": None, "context": "unknown", "tabHints": [], "recent": [],
             "active": None, "lastSeenAt": None}
 
 
@@ -80,6 +81,7 @@ def _make_observation(active: dict[str, Any]) -> dict[str, Any]:
         "favorite": bool(data.get("favorite", False)),
         "location": active["location"],
         "locationHints": {"spokenChestTabs": active["tabHints"]},
+        "identityConfidence": "UNKNOWN",
         "baseStats": data.get("base_stats", []),
         "affixes": data.get("affixes", []),
         "effectsRaw": data.get("effects_raw", []),
@@ -234,6 +236,13 @@ class OwnedItemsRepository:
             ).fetchone()
             last = int(cursor["last_event_rowid"]) if cursor else 0
             state = json.loads(cursor["state_json"]) if cursor else _initial()
+            # Derived candidates are replayable; existing equipment and raw
+            # canonical event records must never be changed by a migration.
+            if state.get("projectionVersion") != PROJECTION_VERSION:
+                with dest:
+                    dest.execute("DELETE FROM owned_item_observation")
+                    dest.execute("DELETE FROM owned_item_checkpoint WHERE id=1")
+                last, state = 0, _initial()
             while True:
                 batch_size = min(500, max(0, limit - processed)) if limit is not None else 500
                 if batch_size == 0:
