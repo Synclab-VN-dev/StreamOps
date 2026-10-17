@@ -44,6 +44,20 @@ class SimulatorTests(unittest.TestCase):
                     ("seed",-1),("resource",1000),("uptime",2)):
             d=deepcopy(self.d);d[k]=v
             with self.subTest(k=k),self.assertRaises(s.Blocked):s.simulate(d)
+    def test_stale_patch_and_missing_identity_rejected(self):
+        graph={"artifactType":"DEVELOPMENT_SOURCE_GRAPH_NOT_PUBLIC_BE",
+               "graphSha256":"0"*64,"gamePatch":"3.2.3",
+               "publishAllowed":False,"sourceStatActual":[],
+               "scenarioStates":{}}
+        out=s.require_graph(graph,["maxroll.heroDetails.3"])
+        self.assertEqual(out["status"],"BLOCKED")
+        self.assertTrue(out["stalePatch"])
+        self.assertIsNone(out["realDps"])
+        graph["gamePatch"]="3.2.1.73552"
+        graph["graphSha256"]=None
+        out=s.require_graph(graph,["maxroll.heroDetails.3"])
+        self.assertTrue(out["invalidGraphIdentity"])
+        self.assertEqual(out["status"],"BLOCKED")
     def test_unknown_critical_graph_blocks_and_never_recomputes(self):
         g={"artifactType":"DEVELOPMENT_SOURCE_GRAPH_NOT_PUBLIC_BE",
            "graphSha256":"0"*64,"publishAllowed":False,
