@@ -60,6 +60,13 @@ def run(formula_catalog,bindings,fixture="DEV-00"):
         require(not bindings["values"],"REAL_VARIABLE_VALUES_NOT_PROVEN_FROM_SOURCE")
     formulas=formula_catalog.get("formulas")
     require(type(formulas)==list and 0<len(formulas)<=10,"INVALID_F3_FORMULAS")
+    union_deps=set()
+    for f in formulas:
+        require(type(f)==dict and type(f.get("dependencyNames"))==list,
+                "INVALID_F3_FORMULA_DEPENDENCIES")
+        union_deps.update(f["dependencyNames"])
+    require(set(bindings["values"])<=union_deps,
+            "UNRECOGNIZED_F3_SYNTHETIC_VARIABLE")
     results=[];seen=set()
     for f in formulas:
         require(type(f)==dict and set(f)=={"metricId","label","f3Expression","f3EvidenceStatus","dependencyNames","ast"} and
@@ -74,8 +81,6 @@ def run(formula_catalog,bindings,fixture="DEV-00"):
         deps=set(f["dependencyNames"]);observed=walk(f["ast"],deps)
         require(deps==observed,"F3_FORMULA_DEPENDENCY_SET_MISMATCH")
         current=bindings["values"]
-        require(set(current)<=deps or bindings["mode"]=="SOURCE_UNKNOWN",
-                "UNRECOGNIZED_F3_SYNTHETIC_VARIABLE")
         for key,value in current.items():
             require(type(value) in (float,int) and math.isfinite(value),
                     "NONFINITE_SYNTHETIC_TEST_VALUE")
