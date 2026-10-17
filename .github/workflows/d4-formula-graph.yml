@@ -91,7 +91,7 @@ jobs:
           r=f.run(d,{"mode":"SOURCE_UNKNOWN","values":{}})
           assert len(r['results'])==3 and r['realMaxrollActualComputed']==0
           assert all(x['characterStatActual'] is None and x['missingRuntimeVariables'] for x in r['results'])
-          Path('artifacts/d4-formula-graph/f3-dependency-unknown.json').write_text(json.dumps(r,indent=2,sort_keys=True)+'\\n')
+          Path('artifacts/d4-formula-graph/f3-dependency-unknown.json').write_text(json.dumps(r,indent=2,sort_keys=True)+'\n')
           PY
           # #108 real parity MUST return exit 2 / BLOCKED, not fake success.
           set +e
