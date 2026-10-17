@@ -102,6 +102,30 @@ def run(source_root:Path)->dict[str,Any]:
         require(falsified_gate["status"]=="BLOCKED" and
                 falsified_gate["invalidGraphIdentity"],
                 "GRAPH_BODY_TAMPERING_NOT_DETECTED")
+        unsupported=deepcopy(observed)
+        critical=next(x for x in unsupported["sourceStatActual"]
+                      if x["metricId"]=="maxroll.heroDetails.3")
+        critical["status"]="UNSUPPORTED"
+        critical["reason"]="SOURCE_CAPTURE_DOES_NOT_PROVE_EFFECT_SEMANTICS"
+        unsupported["graphSha256"]=graph.digest({
+             k:v for k,v in unsupported.items() if k!="graphSha256"})
+        guard_unsupported=simulator.require_graph(
+            unsupported,["maxroll.heroDetails.3"])
+        require(guard_unsupported["status"]=="BLOCKED" and
+                "maxroll.heroDetails.3" in guard_unsupported["unverifiedRequiredMetrics"]
+                and guard_unsupported["realDps"] is None,
+                "UNSUPPORTED_CRITICAL_STAT_NOT_BLOCKED")
+        missing=deepcopy(observed)
+        missing["sourceStatActual"]=[x for x in missing["sourceStatActual"]
+                                     if x["metricId"]!="maxroll.heroDetails.3"]
+        missing["graphSha256"]=graph.digest({
+             k:v for k,v in missing.items() if k!="graphSha256"})
+        guard_missing=simulator.require_graph(
+            missing,["maxroll.heroDetails.3"])
+        require(guard_missing["status"]=="BLOCKED" and
+                guard_missing["realDps"] is None and
+                "maxroll.heroDetails.3" in guard_missing["unverifiedRequiredMetrics"],
+                "ABSENT_CRITICAL_STAT_NOT_BLOCKED")
         reports.append({
           "expected":{"sourceRows":expected_rows,
                       "distinctMetricIds":expected_ids,
@@ -121,6 +145,8 @@ def run(source_root:Path)->dict[str,Any]:
           "graphPassedStatsWithoutRecomputation":True,
           "sourceDelta":change["sourceChanges"],
           "patchMismatchGate":"BLOCKED",
+          "unsupportedCriticalMetricGate":"BLOCKED",
+          "absentCriticalMetricGate":"BLOCKED",
           "graphBodyTamperGate":"BLOCKED",
           "graphHashTamperGate":"BLOCKED",
           "unknownCombatState":gate["unknownScenarioTruths"],
