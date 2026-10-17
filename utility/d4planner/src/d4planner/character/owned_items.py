@@ -21,6 +21,8 @@ PROJECTION_VERSION = 2  # v2 replays anchors previously missed (Charm, Staff, Se
 ADDITIONAL_OBSERVED_TYPES = frozenset({"Charm", "Staff", "Horadric Seal"})
 
 def is_owned_item_anchor(name: str, kind: str, power: str) -> bool:
+    if normalize(name).upper() in ("TAKE", "STORE", "EQUIP", "UNEQUIP", "EQUIPPED", "DROP", "STASH", "CHARACTER", "BLANK"):
+        return False
     if is_item_anchor(name, kind, power):
         return True
     if not normalize(name) or not POWER.fullmatch(normalize(power)):
