@@ -73,6 +73,26 @@ jobs:
             --witness utility/d4-formula-graph/fixtures/dev00-affix-source-witness.json \
             --hypothesis utility/d4-formula-graph/fixtures/dev00-affix-interaction-hypothesis.json \
             --report artifacts/d4-formula-graph/dev00-affix-hypothesis.json
+          # Source-derived full item-roll witness: no Golden values / no inferred mapping.
+          python utility/d4-formula-graph/source_roll_index.py \
+            --source utility/d4-formula-graph/fixtures/dev00-source-rolls.json \
+            --report artifacts/d4-formula-graph/dev00-roll-index.json
+          python utility/d4-formula-graph/source_roll_index.py \
+            --source utility/d4-formula-graph/fixtures/dev01-source-rolls.json \
+            --report artifacts/d4-formula-graph/dev01-roll-index.json
+          # Actual F3 runtime formulas, but no source-confirmed intermediate values:
+          # result MUST stay UNKNOWN, numeric trial results only in explicit unit tests.
+          python - <<'PY'
+          import json, sys
+          from pathlib import Path
+          sys.path.insert(0,'utility/d4-formula-graph')
+          import f3_dependency_eval as f
+          d=json.loads(Path('utility/d4-formula-graph/fixtures/f3-bounded-formula-ast.json').read_text())
+          r=f.run(d,{"mode":"SOURCE_UNKNOWN","values":{}})
+          assert len(r['results'])==3 and r['realMaxrollActualComputed']==0
+          assert all(x['characterStatActual'] is None and x['missingRuntimeVariables'] for x in r['results'])
+          Path('artifacts/d4-formula-graph/f3-dependency-unknown.json').write_text(json.dumps(r,indent=2,sort_keys=True)+'\\n')
+          PY
           # #108 real parity MUST return exit 2 / BLOCKED, not fake success.
           set +e
           python utility/d4-maxroll-parity/gate.py \
@@ -100,6 +120,17 @@ jobs:
           assert len(c["characterMetrics"])==50 and c["unknownCharacterMetrics"]==50
           assert c["syntheticOutputOnly"]["stats"]["synthetic.damageBonus"]==30
           assert c["simulationContext"] is None and c["realParity"]=="BLOCKED_NOT_RUN"
+          for fid,slots,rolls in [('dev00',18,85),('dev01',17,40)]:
+              i=json.loads(Path('artifacts/d4-formula-graph/'+fid+'-roll-index.json').read_text())
+              assert i['slotCount']==slots and i['rollCount']==rolls
+              assert i['mappedStatCount']==0 and i['computedRealStatsFromAffixes']==0
+              assert not i['publishAllowed']
+              assert len(i['contributors'])==rolls
+          f3=json.loads(Path('artifacts/d4-formula-graph/f3-dependency-unknown.json').read_text())
+          assert f3['formulaFullVerified']==0 and f3['realMaxrollActualComputed']==0
+          assert all(x['trialOnly'] is None and x['characterStatActual'] is None
+                     and x['status']=='UNKNOWN_MISSING_F3_INTERMEDIATE_VARIABLES'
+                     for x in f3['results'])
           affix=json.loads(Path('artifacts/d4-formula-graph/dev00-affix-hypothesis.json').read_text())
           assert affix["status"]=="HYPOTHETICAL_ONLY_NOT_GAME_FORMULA"
           assert affix["trialValueNotStatActual"]==100

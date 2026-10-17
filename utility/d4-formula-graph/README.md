@@ -238,3 +238,36 @@ python utility/d4-formula-graph/affix_candidate_trial.py \
   --hypothesis utility/d4-formula-graph/fixtures/dev00-affix-interaction-hypothesis.json \
   --report artifacts/110-affix-hypothesis.json
 ```
+
+## DEV-00/DEV-01 full source roll index and F3 bounded runtime formulas (P0)
+
+`source_roll_index.py` indexes *all currently resolved equipment source roll*
+slots from two independently recorded DEVELOPMENT fixtures: **DEV-00 18 slots /
+85 explicit, tempered or aspect NID roll records**; **DEV-01 17 slots /
+40 roll records**. These are from F-GOLDEN-01
+`Synclab-VN-dev/synclab-agent@bb4c5cc6b2135583eb708f0a3f374060675b6c0b`.
+Source witness JSON deliberately includes only observed public build item
+identities, roll NIDs, values, stable slot/position and provenance, not private
+Maxroll Expected or any raw/display metric. Many NIDs repeat across slots:
+contributor identity is `slot/sourceGroup/rollIndex/nid`, never just NID.
+`metricMappingStatus=UNKNOWN` on all roll records; there is no invented
+NID→stat mapping or automatic summing. `computedRealStatsFromAffixes=0`.
+
+`f3_dependency_eval.py` compiles three **actual F3 source-observed bounded**
+runtime expressions (Rogue Dexterity, Weapon Speed and Attack Speed Bonus):
+Floor/Addition/Subtraction/Min AST with explicit dependency names and
+numeric type checking. These expressions were observed in
+`Synclab-VN-dev/synclab-agent@1a4ecec` F3 50-formula evidence,
+and are **not full verified formula semantics**. All three remain
+`UNKNOWN_MISSING_F3_INTERMEDIATE_VARIABLES` for real DEV-00 because
+`Dexterity_Total`, weapon-speed and attack-speed intermediate attributes
+are not independently derived from captured item NIDs, skills and Paragon.
+There is no automatic default-0. Tests can supply explicitly
+`SYNTHETIC_TEST_ONLY` numbers to check arithmetic and caps, but
+`characterStatActual` stays null, formula verification 0 and parity
+NOT_RUN even in test mode. These are research candidates, NOT production
+G1–G4 verified gameplay rules.
+
+The above indexes/unknown formula evidence are exercised and archived in
+CI; they make the contributor discovery gap measurable without filling
+missing stat actuals from Maxroll expected or guessed coefficients.
