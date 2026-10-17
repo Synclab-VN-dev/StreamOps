@@ -410,6 +410,55 @@ jobs:
           }
           $global:LASTEXITCODE = 0
 
+      - name: 'Issue119 UAT Product FAIL and isolated snapshot cleanup smoke'
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 120
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $home = Join-Path $env:RUNNER_TEMP 'i119-invalid-projection-home'
+          $state = Join-Path $home 'state'
+          New-Item -ItemType Directory -Force $state | Out-Null
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'i119-items-uat-synthetic-source/state/events.db') (Join-Path $state 'events.db')
+          $fixture = Join-Path $env:RUNNER_TEMP 'i119-corrupt-projection.py'
+          @'
+          import json, sqlite3, sys
+          from pathlib import Path
+          from d4planner.character.owned_items import OwnedItemsRepository, _initial
+          root = Path(sys.argv[1]); target = root/'character.db'
+          with sqlite3.connect(target) as db:
+              OwnedItemsRepository._schema(db)
+              db.execute("INSERT INTO owned_item_checkpoint VALUES(1,?,?)",
+                         (7,json.dumps(_initial())))
+              # Deliberate impossible source projection: SQL stash but payload inventory.
+              item = {"name":"synthetic mismatch",
+                      "location":{"type":"inventory","tab":None,"slot":None},
+                      "ownershipStatus":"NOT_CONFIRMED","pickedUpAt":None}
+              db.execute("""
+                  INSERT INTO owned_item_observation
+                  (source_session_id,source_seq_start,source_seq_end,
+                   location_type,item_name,rarity,observed_at,observation_json)
+                  VALUES(?,?,?,?,?,?,?,?)
+                  """,("ci",1,3,"stash","synthetic mismatch","Legendary",
+                        "2026-10-17T10:00:00+07:00",json.dumps(item)))
+          '@ | Set-Content $fixture -Encoding utf8
+          python $fixture $state
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot set up invalid projection fixture' }
+          $runner = (Resolve-Path './scripts/acceptance/issue119-items-uat.ps1').Path
+          $ev = Join-Path $env:RUNNER_TEMP 'i119-product-fail-smoke'
+          $PSNativeCommandUseErrorActionPreference = $false
+          & pwsh -NoProfile -File $runner -ExpectedHead (git rev-parse HEAD) -HomeDir $home -EvidenceDir $ev -Mode Resume -Cases FILTER
+          $code = $LASTEXITCODE
+          $PSNativeCommandUseErrorActionPreference = $true
+          $r = Get-Content (Join-Path $ev 'report.json') -Raw | ConvertFrom-Json
+          if ($code -ne 1 -or $r.status -ne 'FAIL' -or
+              $r.checks.FILTER_LOCATION.result -ne 'FAIL' -or
+              $r.cleanup.snapshotCopyRemoved -ne $true -or
+              (Test-Path (Join-Path $ev 'snapshot-home')) -or
+              !(Test-Path "$ev.zip")) {
+            throw 'UAT must classify invalid projection as product FAIL=1 and remove only snapshot'
+          }
+          $global:LASTEXITCODE = 0
+
       - name: Compile D4Planner runtime
         if: steps.changes.outputs.d4planner == 'true'
         run: python -m compileall -q utility/d4planner
