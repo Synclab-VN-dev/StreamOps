@@ -19,7 +19,7 @@ HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE))
 import simulator
 
-GRAPH_SHA="f658f2b2a547cea98bd4475c50ba659718016118"
+GRAPH_SHA="2b2b38defca182e0034a0d9907e1f828254bba0f"
 GRAPH_HOME=Path(os.environ.get("D4_SOURCE_GRAPH_ROOT","")).resolve()
 
 def require(ok:bool,why:str):
