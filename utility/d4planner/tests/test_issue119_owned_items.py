@@ -138,6 +138,17 @@ class OwnedItemsTests(unittest.TestCase):
         self.assertEqual(code,2)
         self.assertEqual(self.event_db.read_bytes(),before)
 
+    def test_real_a_charm_and_seal_rarity_filter(self):
+        self.speech("CHARACTER", "SET CHARM", "Set Charm", "850 Item Power",
+                    "RARE CHARM", "Rare Charm", "800 Item Power",
+                    "HORADRIC OBJECT", "Legendary Horadric Seal", "900 Item Power",
+                    "CHARACTER")
+        repo = self.repo()
+        self.assertEqual(repo.listing(locations={"all"}, include_unverified=True)["observedTotal"], 3)
+        self.assertEqual(repo.listing(locations={"all"}, rarity="Set", include_unverified=True)["observedTotal"], 1)
+        self.assertEqual(repo.listing(locations={"all"}, rarity="Rare", include_unverified=True)["observedTotal"], 1)
+        self.assertEqual(repo.listing(locations={"all"}, rarity="Legendary", include_unverified=True)["observedTotal"], 1)
+
     def test_unrecognized_tooltip_or_command_never_create_false_item(self):
         self.speech("STASH","CHEST 1","Take","Equip","EQUIPPED",
                     "AN ITEM","Legendary Ring","not item power","CHEST 2")
