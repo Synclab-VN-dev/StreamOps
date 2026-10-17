@@ -46,6 +46,9 @@ jobs:
           python utility/d4-offense-simulator/graph_integration.py \
             --source-root upstream-graph \
             --report artifacts/d4-offense-simulator/real-source-graph-replay.json
+          python utility/d4-offense-simulator/graph_integration.py \
+            --source-root upstream-graph \
+            --report artifacts/d4-offense-simulator/real-source-graph-replay-second.json
           python - <<'PY'
           import json
           from pathlib import Path
@@ -53,6 +56,15 @@ jobs:
           assert report['fixtureCount']==2 and report['totalVisibleMetricRows']==99
           assert report['totalDistinctIdsAcrossBuilds']==97
           assert report['allRealDpsBlocked'] and not report['holdoutOpened']
+          second=json.loads(Path('artifacts/d4-offense-simulator/real-source-graph-replay-second.json').read_text())
+          assert report['expectedVsActualAllCasesMatch']
+          assert second['expectedVsActualAllCasesMatch']
+          assert report['syntheticSandboxSeed']==20261017
+          assert report['graphSourceCommit']=='f658f2b2a547cea98bd4475c50ba659718016118'
+          assert report['deterministicEvidenceSha256']==second['deterministicEvidenceSha256']
+          assert all(x['expected']==x['actual'] and x['elapsedMs']>=0
+                     and x['graphBodyTamperGate']=='BLOCKED'
+                     for x in report['cases'])
           assert all(x['caseStatus']=='PASS_REAL_SOURCE_FAIL_CLOSED_NOT_GAME_DPS'
                      and x['realDps'] is None
                      and x['patchMismatchGate']=='BLOCKED'
