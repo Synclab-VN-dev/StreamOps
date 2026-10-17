@@ -26,13 +26,13 @@ function Check([string]$Name, [bool]$Pass, [string]$Message) {
     Write-Host "[$($report.checks[$Name].result)] $Name $Message"
     if (!$Pass) { throw "$Name - $Message" }
 }
-function InvokeCli([string]$Name, [string[]]$Args) {
+function InvokeCli([string]$Name, [string[]]$CliArguments) {
     $stdout = Join-Path $EvidenceDir "$Name.stdout.json"
     $stderr = Join-Path $EvidenceDir "$Name.stderr.txt"
     $previousPref = $PSNativeCommandUseErrorActionPreference
     try {
         $PSNativeCommandUseErrorActionPreference = $false
-        & $Python -m d4planner.cli @Args 1> $stdout 2> $stderr
+        & $Python -m d4planner.cli @CliArguments 1> $stdout 2> $stderr
         $code = $LASTEXITCODE
     } finally {
         $PSNativeCommandUseErrorActionPreference = $previousPref
