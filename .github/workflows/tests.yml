@@ -295,6 +295,35 @@ jobs:
           }
           $global:LASTEXITCODE = 0
 
+      - name: 'Issue119 Items UAT runner syntax and fail-closed snapshot smoke'
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 120
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = (Resolve-Path ./scripts/acceptance/issue119-items-uat.ps1).Path
+          $tokens = $null; $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            $path, [ref]$tokens, [ref]$errors
+          )
+          if ($errors.Count) {
+            throw "Issue119 items runner PowerShell parse failed: $($errors | Out-String)"
+          }
+          $empty = Join-Path $env:RUNNER_TEMP 'i119-items-uat-empty-home'
+          New-Item -ItemType Directory -Force -Path $empty | Out-Null
+          $ev = Join-Path $env:RUNNER_TEMP 'i119-items-uat-negative'
+          $PSNativeCommandUseErrorActionPreference = $false
+          & pwsh -NoProfile -File $path -ExpectedHead (git rev-parse HEAD) -HomeDir $empty -EvidenceDir $ev
+          $code = $LASTEXITCODE
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($code -ne 2) { throw "Expected BLOCKED=2 without source DB, got $code" }
+          $report = Get-Content (Join-Path $ev 'report.json') -Raw | ConvertFrom-Json
+          if ($report.status -ne 'BLOCKED' -or
+              $report.checks.EVENTS.result -ne 'BLOCKED' -or
+              !(Test-Path "$ev.zip")) {
+            throw 'Issue119 items runner failed to preserve BLOCKED reason/ZIP'
+          }
+          $global:LASTEXITCODE = 0
+
       - name: Install D4Planner dev dependencies
         if: steps.changes.outputs.d4planner == 'true'
         run: python -m pip install -e 'utility/d4planner[dev]'
