@@ -62,9 +62,13 @@ def require_graph(graph,offensive_metric_ids):
                 known[mid].get("status")!="VERIFIED_INDEPENDENT_MAXROLL_PARITY"]
     conditional=graph.get("scenarioStates",{})
     unknown=[x for x,v in conditional.items() if v=="UNKNOWN"]
-    blocked=bool(unresolved or unknown or not graph.get("publishAllowed"))
+    stale_patch=graph.get("gamePatch")!="3.2.1.73552"
+    invalid_checksum=not isinstance(graph.get("graphSha256"),str) or len(graph["graphSha256"])!=64
+    blocked=bool(unresolved or unknown or stale_patch or invalid_checksum
+                 or not graph.get("publishAllowed"))
     return {"status":"BLOCKED" if blocked else "ELIGIBILITY_ONLY_NOT_DPS",
             "unverifiedRequiredMetrics":unresolved,"unknownScenarioTruths":unknown,
+            "stalePatch":stale_patch,"invalidGraphIdentity":invalid_checksum,
             "graphSha256":graph.get("graphSha256"),"realDps":None,
             "syntheticDps":None,"statRecalculation":False,
             "completeCharacterStatParity":False,"publishAllowed":False}
