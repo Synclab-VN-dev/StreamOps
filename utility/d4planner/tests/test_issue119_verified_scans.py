@@ -164,6 +164,7 @@ class GridEvidenceTests(unittest.TestCase):
         self.event(gates.MOVE,p)
         self.assertFalse([x for x in self.repo().history() if x.get("kind")=="MOVE"])
         self.scan("other-character","stash",[(obs,"a")],tab=1,character="other-character")
+        self.repo().sync()  # Materialize appended source before inspecting its DB
         with self.db() as db:
             self.assertEqual(len(gates.current(db,{"stash"},None)),2)
             self.assertFalse(db.execute("SELECT 1 FROM owned_grid_history WHERE kind='MOVE'").fetchone())
