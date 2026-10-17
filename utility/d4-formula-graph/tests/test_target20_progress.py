@@ -77,6 +77,24 @@ class Target20Scope(unittest.TestCase):
                 target.load_private_capture(f,self.manifest,{
                     "gamePatch":"3.2.1.73552",
                     "sourceInputFingerprint":self.inv["inputFingerprintSha256"]})
+    def test_single_canonical_20_targets_and_observed_f3_expressions(self):
+        canonical=graph.read_json(BASE/"fixtures"/"milestone20-source-targets.json")
+        source=graph.read_json(BASE/"fixtures"/"f3-target20-source-map.json")
+        target_ids=[x["metricId"] for x in self.manifest["metrics"]]
+        canonical_ids=[x["metricId"] for x in canonical["metricSources"]]
+        source_ids=[x["metricId"] for x in source["formulas"]]
+        self.assertEqual(target_ids,canonical_ids)
+        self.assertEqual(target_ids,source_ids)
+        for a,b in zip(canonical["metricSources"],source["formulas"]):
+            self.assertEqual((a["sourceExpression"],a["label"]),
+                             (b["sourceExpression"],b["label"]))
+        self.assertEqual(next(x["sourceExpression"] for x in source["formulas"]
+                             if x["metricId"]=="maxroll.heroDetails.4"),
+                         "ComputeCritChance()")
+        self.assertEqual(next(x["sourceExpression"] for x in source["formulas"]
+                             if x["metricId"]=="maxroll.heroDetails.431"),
+                         "Armor_Total")
+
     def test_captured_expected_cannot_be_smuggled_into_formula_input(self):
         s=copy.deepcopy(self.source);s["expectedRawValue"]=70
         with self.assertRaises(graph.GraphError): self.output(source=s)
