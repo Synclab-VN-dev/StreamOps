@@ -170,6 +170,22 @@ with sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True, timeout=1
     $env:D4PLANNER_HOME = $oldHome
     $env:PYTHONPATH = $oldPath
     $env:PYTHONIOENCODING = $oldEncoding
+    # The snapshot contains potentially sensitive NVDA speech and live game
+    # state. Remove ONLY the isolated temporary copy; never remove live DBs.
+    $cleanupOk = $true
+    try {
+        if (Test-Path -LiteralPath $copyHome) {
+            Remove-Item -LiteralPath $copyHome -Recurse -Force -ErrorAction Stop
+        }
+        $cleanupOk = !(Test-Path -LiteralPath $copyHome)
+    } catch {
+        $cleanupOk = $false
+        $report.problems += "snapshot cleanup failed: $($_.Exception.Message)"
+    }
+    $report['cleanup'] = @{snapshotCopyRemoved=$cleanupOk; sourceHomeUnchangedByRunner=$true}
+    if (!$cleanupOk -and $report.status -eq 'PASS_SNAPSHOT_CLI_PARTIAL_OWNERSHIP') {
+        $report.status = 'BLOCKED'
+    }
     foreach ($item in @('LIST','LIST_SCHEMA','CANDIDATES','CANDIDATE_POLICY','STATUS',
         'STATUS_SCHEMA','HISTORY','HISTORY_SCHEMA','FILTER','FILTER_LOCATION',
         'EXPORT','EXPORT_COUNT','IDEMPOTENT','IDEMPOTENT_SCHEMA')) { Skip $item }
