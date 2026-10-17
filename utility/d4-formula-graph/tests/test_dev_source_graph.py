@@ -78,6 +78,17 @@ class CaptureGraphTest(unittest.TestCase):
             if op=="unknownstate":v["sourceTruths"]="KNOWN_ZERO"
             with self.subTest(op=op),self.assertRaises(graph.GraphError):
                 g.build(v,w,index,self.rules)
+    def test_visible_inventory_missing_group_and_label_all_fail_closed(self):
+        for s,w,index in self.cases:
+            self.assertEqual(g.inventory_blob(index),g.INVENTORY_BLOBS[s["fixtureId"]])
+            for mode in ("drop","swap_group","change_label","duplicate"):
+                changed=deepcopy(index)
+                if mode=="drop":changed["metrics"].pop(-1)
+                elif mode=="swap_group":changed["metrics"][0]["group"]+="Changed"
+                elif mode=="change_label":changed["metrics"][0]["label"]+=" Changed"
+                else:changed["metrics"].append(deepcopy(changed["metrics"][0]))
+                with self.subTest(fixture=s["fixtureId"],mode=mode),self.assertRaises(graph.GraphError):
+                    g.build(s,w,changed,self.rules)
     def test_cross_class_or_mutated_patch_diff_blocks(self):
         a=g.build(*self.cases[0],self.rules)
         b=g.build(*self.cases[1],self.rules)

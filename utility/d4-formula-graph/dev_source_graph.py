@@ -7,6 +7,7 @@ This module does NOT define the public FormulaGraphResult contract.
 """
 from __future__ import annotations
 from collections import Counter
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -16,6 +17,17 @@ import golden_candidate_eval as actual
 import source_roll_index as rolls
 
 ALLOWED_CLASSES={"DEV-00":"rogue","DEV-01":"sorcerer"}
+# Independently captured full visible-row sidecars (source inventory only, NOT Golden expected).
+# Use frozen Git blob identity to ensure no hidden/dropped/rewritten Maxroll UI row
+# is silently treated as a complete fixture.
+INVENTORY_BLOBS={"DEV-00":"326568feb5159af5e74f65fbdf4628591c014677",
+                 "DEV-01":"dcabe1550451b29d1aac6bb991a37c974f84924e"}
+INVENTORY_COUNTS={"DEV-00":(50,50),"DEV-01":(49,47)}
+
+def inventory_blob(index):
+    raw=(json.dumps(index,ensure_ascii=False,indent=2)+"\n").encode("utf-8")
+    return hashlib.sha1(b"blob "+str(len(raw)).encode("ascii")+b"\0"+raw).hexdigest()
+
 DYNAMIC_UNKNOWN=("targetDebuffs","procUptime","transientStacks","snapshotSceneTime")
 
 def demand(cond,reason):graph.reject(cond,reason)
@@ -77,6 +89,11 @@ def validate(s,w,index):
     demand(len({(x["group"].casefold(),x["metricId"])
                 for x in index["metrics"]})==len(index["metrics"]),
            "DUPLICATED_VISIBLE_ROW_POSITION")
+    rows=index["metrics"]
+    demand((len(rows),len({r["metricId"] for r in rows}))==
+           INVENTORY_COUNTS[fid],"INCOMPLETE_VISIBLE_SOURCE_METRIC_DENOMINATOR")
+    demand(inventory_blob(index)==INVENTORY_BLOBS[fid],
+           "FROZEN_MAXROLL_SOURCE_INVENTORY_CHANGED")
     actual.metadata_fixture(index)
 
 def build(s,w,index,rules):
