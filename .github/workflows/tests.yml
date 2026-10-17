@@ -378,6 +378,38 @@ jobs:
           }
           $global:LASTEXITCODE = 0
 
+      - name: 'Issue119 Items UAT targeted Resume, SKIP and failure classification'
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 120
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $fakeHome = Join-Path $env:RUNNER_TEMP 'i119-items-uat-synthetic-source'
+          $runner = (Resolve-Path './scripts/acceptance/issue119-items-uat.ps1').Path
+          $ev = Join-Path $env:RUNNER_TEMP 'i119-items-uat-resume'
+          $PSNativeCommandUseErrorActionPreference = $false
+          & pwsh -NoProfile -File $runner -ExpectedHead (git rev-parse HEAD) -HomeDir $fakeHome -EvidenceDir $ev -Mode Resume -Cases FILTER
+          $code = $LASTEXITCODE
+          $PSNativeCommandUseErrorActionPreference = $true
+          $r = Get-Content (Join-Path $ev 'report.json') -Raw | ConvertFrom-Json
+          if ($code -ne 0 -or $r.status -ne 'PASS_SNAPSHOT_CLI_PARTIAL_OWNERSHIP' -or
+              $r.checks.FILTER.result -ne 'PASS' -or
+              $r.checks.LIST.result -ne 'SKIP' -or
+              $r.checks.EXPORT.result -ne 'SKIP' -or
+              $r.summary.SKIP -lt 4 -or !(Test-Path "$ev.zip")) {
+            throw 'Issue119 targeted resume expected FILTER PASS and unrelated SKIP'
+          }
+          $negative = Join-Path $env:RUNNER_TEMP 'i119-items-uat-invalid-case'
+          $PSNativeCommandUseErrorActionPreference = $false
+          & pwsh -NoProfile -File $runner -ExpectedHead (git rev-parse HEAD) -HomeDir $fakeHome -EvidenceDir $negative -Mode Resume -Cases INVALID
+          $code = $LASTEXITCODE
+          $PSNativeCommandUseErrorActionPreference = $true
+          $r = Get-Content (Join-Path $negative 'report.json') -Raw | ConvertFrom-Json
+          if ($code -ne 2 -or $r.status -ne 'BLOCKED' -or $r.problems.Count -lt 1 -or
+              !(Test-Path "$negative.zip")) {
+            throw 'Issue119 invalid resume request must fail closed with report/ZIP'
+          }
+          $global:LASTEXITCODE = 0
+
       - name: Compile D4Planner runtime
         if: steps.changes.outputs.d4planner == 'true'
         run: python -m compileall -q utility/d4planner
