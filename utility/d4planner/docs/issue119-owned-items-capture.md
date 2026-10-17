@@ -186,3 +186,83 @@ that a stale caller `D4PLANNER_HOME` cannot silently redirect this probe.
   verified**, and capture/inventory ownership evidence remains BLOCKED.
 - **Operator scope:** only run the existing normal CLI and report status;
   no need to re-run previously PASS P0-01..P0-06 solely due to this rollback.
+
+
+## PR #120 implementation slice — `d4planner items` + isolated UAT
+
+The existing `d4planner start -d --controller-profile xbox16 --block`
+entrypoint is unchanged. The new implementation reads canonical
+`state/events.db` incrementally by global SQLite event row ID and
+materializes observations in the **existing** `state/character.db`.
+The checkpoint and observed-item history commit atomically per 500-event
+batch. Future queries read only events after that checkpoint (initial
+bootstrap requires reading historical events once). Canonical
+`events.db` is opened in read-only/query-only mode.
+
+Queries (after installation on the desired environment):
+
+~~~powershell
+d4planner items
+d4planner items --json
+d4planner items --location inventory,stash --include-unverified --json
+d4planner items --rarity Unique --include-unverified --json
+d4planner items status --json
+d4planner items history --json
+d4planner items export --format jsonl --output .\observed-items.jsonl
+~~~
+
+**Ownership semantics:**
+
+- `items` defaults to **confirmed** HIGH-confidence equipped records from
+  the existing equipment projector. It does NOT claim to list every physical
+  item in the inventory or stash.
+- `--include-unverified` also exposes every observed tooltip candidate, with
+  `ownershipStatus=NOT_CONFIRMED`, `pickedUpAt=null`, observation ID
+  `obs:<session>:<sourceSeqStart>` and raw source lines.
+- `STASH` and `CHARACTER` text provide only a best-effort contextual
+  observation `location.type`. `CHEST n` is preserved in
+  `locationHints.spokenChestTabs`, **NOT** automatically assigned to
+  `location.tab`, since a single tab-list speech burst may mention all tabs
+  without selecting any. Slots remain unknown.
+- Equal names/fingerprints from two tooltip sequences are kept as independent
+  observations; neither proves two owned physical items.
+- All unverified scan/tab coverage remains `PARTIAL`/`NOT_SCANNED`.
+  `SCANNED`/`COMPLETE`, pickup, move, removal and character GUID require
+  evidence which Real-A #119 has not yet provided.
+- `history` is append-only observations (not an invented transition ledger).
+  Export refuses to overwrite an existing path. No HTTP, WebSocket, FE, or
+  gameplay automation was added.
+
+### Owner UAT — snapshot only (one command)
+
+Use the separate PR worktree (not the production repository) on A:
+
+~~~powershell
+cd C:\Workspace\StreamOps-I119
+git status --porcelain     # must be empty; stop if files differ
+git fetch origin
+git switch --detach origin/feat/119-owned-items-cli
+
+pwsh -NoProfile -ExecutionPolicy Bypass -File \
+  .\scripts\acceptance\issue119-items-uat.ps1 \
+  -ExpectedHead (git rev-parse HEAD)
+~~~
+
+The PowerShell runner uses Python's **online SQLite backup API** to create
+an isolated snapshot under `%TEMP%`; it does not modify the active
+D4Planner databases or processes. It runs the PR's new CLI module from its
+worktree using `PYTHONPATH`, validates default list, unverified opt-in,
+coverage, filters, append-only observation history, JSONL export and
+idempotency. It preserves command outputs and exit codes, and ZIPs evidence.
+`PASS_SNAPSHOT_CLI_PARTIAL_OWNERSHIP` is a successful **CLI mechanics**
+check, *not* Real-A proof of complete owned inventory.
+
+**Validation and limits:** The fixture-driven pytest checks include
+same-name rings, multi-tab labels, uncertainty, incremental resume,
+case-insensitive rarity filter and export; Windows UAT syntax / fail-closed
+smoke are CI-gated. The snapshot happy path on real A remains pending
+the Owner's generated ZIP. The earlier Real-A 2026-10-17 ZIP has no missing
+eventSeq and 131 **unverified anchors** across 3 stages, but it does not
+prove exhaustive inventory/stash enumeration or all 16 physical buttons.
+After Real-A UAT evidence arrives, update ticket #119 acceptance
+individually. Never mark partial ownership as complete.
