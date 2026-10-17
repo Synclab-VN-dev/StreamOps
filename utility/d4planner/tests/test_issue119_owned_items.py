@@ -149,6 +149,29 @@ class OwnedItemsTests(unittest.TestCase):
         self.assertEqual(repo.listing(locations={"all"}, rarity="Rare", include_unverified=True)["observedTotal"], 1)
         self.assertEqual(repo.listing(locations={"all"}, rarity="Legendary", include_unverified=True)["observedTotal"], 1)
 
+    def test_status_does_not_conflate_stale_with_complete(self):
+        (self.home / "state" / "runtime.json").write_text(
+            json.dumps({"state": "WAITING_FOR_GAME", "lastError": "capture stale"}),
+            encoding="utf-8")
+        (self.home / "state" / "capture.json").write_text(
+            json.dumps({"enabled": False, "leaseUntilUnix": 0}), encoding="utf-8")
+        import os
+        from contextlib import redirect_stdout
+        from io import StringIO
+        old = os.environ.get("D4PLANNER_HOME")
+        os.environ["D4PLANNER_HOME"] = str(self.home)
+        try:
+            out = StringIO()
+            with redirect_stdout(out):
+                self.assertEqual(main(["items", "status", "--json"]), 0)
+            status = json.loads(out.getvalue())
+            self.assertEqual(status["captureHealth"]["freshness"], "STALE")
+            self.assertEqual(status["captureHealth"]["lastError"], "capture stale")
+            self.assertNotEqual(status["coverage"]["overall"], "COMPLETE")
+        finally:
+            if old is None: os.environ.pop("D4PLANNER_HOME", None)
+            else: os.environ["D4PLANNER_HOME"] = old
+
     def test_unrecognized_tooltip_or_command_never_create_false_item(self):
         self.speech("STASH","CHEST 1","Take","Equip","EQUIPPED",
                     "AN ITEM","Legendary Ring","not item power","CHEST 2")
