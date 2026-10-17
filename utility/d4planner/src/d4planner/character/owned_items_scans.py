@@ -42,6 +42,9 @@ def schema(db: sqlite3.Connection) -> None:
           session_id TEXT NOT NULL, event_seq INTEGER NOT NULL,
           kind TEXT NOT NULL, data_json TEXT NOT NULL,
           UNIQUE(session_id,event_seq,kind));
+        CREATE TABLE IF NOT EXISTS owned_grid_actions(
+          session_id TEXT NOT NULL, event_seq INTEGER NOT NULL,
+          data_json TEXT NOT NULL, PRIMARY KEY(session_id,event_seq));
         CREATE INDEX IF NOT EXISTS ix_owned_grid_current_scope
           ON owned_grid_current(character_id,container,tab_key);
     """)
@@ -84,7 +87,7 @@ def consume(db: sqlite3.Connection, row: sqlite3.Row) -> None:
     Called in the SAME batch transaction as the owned-item checkpoint.
     """
     event = row["type"]
-    if event not in (BEGIN, CELL, END, MOVE):
+    if event not in (BEGIN, CELL, END, ACTION, MOVE):
         return
     try:
         p = json.loads(row["data_json"])
@@ -95,6 +98,15 @@ def consume(db: sqlite3.Connection, row: sqlite3.Row) -> None:
 
     session, seq = str(row["session_id"]), int(row["event_seq"])
     scan_id = p.get("scanId")
+    if event == ACTION:
+        if (p.get("operation") == "move" and p.get("confirmed") is True
+            and isinstance(p.get("characterId"),str)
+            and isinstance(p.get("trackingToken"),str)
+            and p.get("observer") == "grid-observer-v1"):
+            db.execute("""INSERT OR IGNORE INTO owned_grid_actions(
+               session_id,event_seq,data_json) VALUES(?,?,?)""",
+               (session,seq,json.dumps(p,ensure_ascii=False)))
+        return
     if event == BEGIN:
         if not _valid_begin(p):
             return
@@ -246,9 +258,9 @@ def _consume_move(db: sqlite3.Connection, row: sqlite3.Row, p: dict[str, Any]) -
         return
     # ACTION is separately recorded in canonical event log and tied to a
     # durable source/destination intent, NOT a standalone keyboard key.
-    action=db.execute("""SELECT data_json FROM event_log
-        WHERE session_id=? AND event_seq=? AND type=?""",
-        (row["session_id"],action_seq,ACTION)).fetchone()
+    action=db.execute("""SELECT data_json FROM owned_grid_actions
+        WHERE session_id=? AND event_seq=?""",
+        (row["session_id"],action_seq)).fetchone()
     if not action:
         return
     try:
