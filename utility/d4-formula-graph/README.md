@@ -271,3 +271,14 @@ G1–G4 verified gameplay rules.
 The above indexes/unknown formula evidence are exercised and archived in
 CI; they make the contributor discovery gap measurable without filling
 missing stat actuals from Maxroll expected or guessed coefficients.
+
+`f3_source_bridge.py` connects the complete DEV-00 source-roll index to
+the three F3 bounded formulas **without guessing contributor semantics**.
+It reports the exact **7 distinct missing runtime intermediate variables**
+for 3 target metrics even though 85 real source roll records are present.
+This is a deliberately actionable mapping coverage report for #109/#110:
+the next work must establish effect/affix NID→runtime variable rule with
+independent source evidence before these calculations can yield Actual values.
+It cannot promote any bounded expression to a verified metric merely because
+its synthetic arithmetic tests passed. CI uploads
+`f3-roll-dependency-gap.json` to evidence artifacts.

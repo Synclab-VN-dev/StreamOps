@@ -93,6 +93,19 @@ jobs:
           assert all(x['characterStatActual'] is None and x['missingRuntimeVariables'] for x in r['results'])
           Path('artifacts/d4-formula-graph/f3-dependency-unknown.json').write_text(json.dumps(r,indent=2,sort_keys=True)+'\n')
           PY
+          # Audit which F3 runtime variables lack approved captured affix mapping.
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'utility/d4-formula-graph')
+          import f3_source_bridge as m
+          source=json.loads(Path('utility/d4-formula-graph/fixtures/dev00-source-rolls.json').read_text())
+          f3=json.loads(Path('utility/d4-formula-graph/fixtures/f3-bounded-formula-ast.json').read_text())
+          result=m.bridge(source,f3)
+          assert result['observedRolls']==85
+          assert result['computedMetricValues']==0 and result['statFormulaMappingVerified']==0
+          Path('artifacts/d4-formula-graph/f3-roll-dependency-gap.json').write_text(json.dumps(result,sort_keys=True,indent=2))
+          PY
           # #108 real parity MUST return exit 2 / BLOCKED, not fake success.
           set +e
           python utility/d4-maxroll-parity/gate.py \
@@ -131,6 +144,10 @@ jobs:
           assert all(x['trialOnly'] is None and x['characterStatActual'] is None
                      and x['status']=='UNKNOWN_MISSING_F3_INTERMEDIATE_VARIABLES'
                      for x in f3['results'])
+          bridge=json.loads(Path('artifacts/d4-formula-graph/f3-roll-dependency-gap.json').read_text())
+          assert bridge['observedRolls']==85 and bridge['f3Formulas']==3
+          assert len(bridge['unmappedIntermediateDependencies'])==7
+          assert bridge['computedMetricValues']==0 and not bridge['holdoutExpectedLoaded']
           affix=json.loads(Path('artifacts/d4-formula-graph/dev00-affix-hypothesis.json').read_text())
           assert affix["status"]=="HYPOTHETICAL_ONLY_NOT_GAME_FORMULA"
           assert affix["trialValueNotStatActual"]==100
