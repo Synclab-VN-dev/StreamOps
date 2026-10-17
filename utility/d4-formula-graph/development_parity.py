@@ -123,11 +123,20 @@ def compare(actual,expected,test_only=False):
         else:
             guard(item["status"]=="CANDIDATE_COMPUTED_UNVERIFIED" and
                   finite(item["raw"]) and
-                  item["display"] is None and len(item["trace"])>0,
-                  "FALSE_VERIFIED_OR_DISPLAY_READY")
+                  (item["display"] is None or type(item["display"])==str)
+                  and len(item["trace"])>0,
+                  "FALSE_VERIFIED_OR_FORMAT")
             delta=Decimal(str(item["raw"]))-Decimal(str(exp["raw"]))
             raw_diff=str(delta)
             st="MATCH_UNVERIFIED_CANDIDATE" if delta==0 else "MISMATCH_UNVERIFIED_CANDIDATE"
+        if not item["computed"]:
+            display_state="BLOCKED_UNKNOWN_FORMULA"
+        elif item["display"] is None:
+            display_state="BLOCKED_FORMAT_UNVERIFIED"
+        elif item["display"]==exp["display"]:
+            display_state="MATCH_UNVERIFIED_DISPLAY"
+        else:
+            display_state="MISMATCH_UNVERIFIED_DISPLAY"
         if item["metricId"] in projection:
             prev=projection[item["metricId"]]
             guard(prev==(item["raw"],item["status"],tuple(
@@ -140,9 +149,24 @@ def compare(actual,expected,test_only=False):
                        "label":exp["label"],"state":st,
                        "expectedRaw":exp["raw"],"actualRaw":item["raw"],
                        "rawDiff":raw_diff,"expectedDisplay":exp["display"],
-                       "actualDisplay":None,"displayState":"NOT_EVALUATED",
+                       "actualDisplay":item["display"],"displayState":display_state,
                        "trace":item["trace"]})
     counts=dict(Counter(r["state"] for r in report))
+    display_counts=Counter(r["displayState"] for r in report)
+    groups={}
+    for r in report:
+        group=groups.setdefault(r["group"],{"visible":0,"matchedUnverifiedRaw":0,
+               "mismatchedUnverifiedRaw":0,"unknown":0,"displayMatchedUnverified":0,
+               "displayMismatchedUnverified":0,"formatBlocked":0})
+        group["visible"]+=1
+        if r["state"]=="MATCH_UNVERIFIED_CANDIDATE":group["matchedUnverifiedRaw"]+=1
+        elif r["state"]=="MISMATCH_UNVERIFIED_CANDIDATE":group["mismatchedUnverifiedRaw"]+=1
+        else:group["unknown"]+=1
+        if r["displayState"]=="MATCH_UNVERIFIED_DISPLAY":group["displayMatchedUnverified"]+=1
+        elif r["displayState"]=="MISMATCH_UNVERIFIED_DISPLAY":group["displayMismatchedUnverified"]+=1
+        elif r["displayState"]=="BLOCKED_FORMAT_UNVERIFIED":group["formatBlocked"]+=1
+    guard(sum(x["visible"] for x in groups.values())==len(report),
+          "GROUP_VISIBLE_DENOMINATOR_MISMATCH")
     output={
         "artifactType":"INTERNAL_DEV_GOLDEN_DIFF_NO_APPROVAL",
         "referenceMode":"SYNTHETIC_TEST_ONLY" if test_only else
@@ -159,6 +183,11 @@ def compare(actual,expected,test_only=False):
         "matchedUnverifiedRows":counts.get("MATCH_UNVERIFIED_CANDIDATE",0),
         "mismatchedUnverifiedRows":counts.get("MISMATCH_UNVERIFIED_CANDIDATE",0),
         "blockedRows":counts.get("BLOCKED_UNKNOWN_FORMULA",0),
+        "displayMatchedUnverifiedRows":display_counts["MATCH_UNVERIFIED_DISPLAY"],
+        "displayMismatchedUnverifiedRows":display_counts["MISMATCH_UNVERIFIED_DISPLAY"],
+        "displayBlockedRows":display_counts["BLOCKED_FORMAT_UNVERIFIED"]+
+                             display_counts["BLOCKED_UNKNOWN_FORMULA"],
+        "groupCoverage":dict(sorted(groups.items())),
         "allMetricsVerified":False,"approvedGolden":False,
         "holdoutEvaluated":False,"fullMaxrollParity":"BLOCKED_NOT_RUN",
         "details":report,
