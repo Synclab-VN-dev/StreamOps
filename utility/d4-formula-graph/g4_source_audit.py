@@ -15,7 +15,7 @@ import graph
 import dev_source_graph
 
 def require(x,why):graph.reject(x,why)
-STATES=("CANDIDATE_UNVERIFIED","UNKNOWN","MISSING_GRAPH_ROW",
+STATES=("MATCHED_VERIFIED","MISMATCHED_VERIFIED","CANDIDATE_UNVERIFIED","UNKNOWN","MISSING_GRAPH_ROW",
         "STALE_SOURCE","UNSUPPORTED","UNAVAILABLE","NOT_APPLICABLE")
 EVIDENCE_STATES={"UNSUPPORTED","UNAVAILABLE","NOT_APPLICABLE"}
 
@@ -112,7 +112,8 @@ def analyze(reference,actual):
        "staleActualRows":totals["STALE_SOURCE"],
        "unknownFormulaRows":totals["UNKNOWN"],
        "unverifiedComputedRows":totals["CANDIDATE_UNVERIFIED"],
-       "verifiedMatchedRows":0,"verifiedMismatchedRows":0,
+       "verifiedMatchedRows":totals["MATCHED_VERIFIED"],
+       "verifiedMismatchedRows":totals["MISMATCHED_VERIFIED"],
        "goldenReferenceLoaded":False,"ownerApprovedGolden":False,
        "fullCapturedFixtureParity":"BLOCKED_NOT_VERIFIED",
        "status":"BLOCKED_G4_INDEPENDENT_GOLDEN_OR_FORMULAS_MISSING",
