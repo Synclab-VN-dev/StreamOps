@@ -926,10 +926,24 @@ def command_items(
         snapshot = repo.listing(locations=locations, rarity=rarity,
                                 include_unverified=include_unverified)
         if action == "status":
+            runtime = read_json(paths.runtime_state) or {}
+            capture = read_json(paths.capture_state) or {}
+            state = runtime.get("state")
+            try:
+                lease_valid = bool(capture.get("enabled")) and float(capture.get("leaseUntilUnix") or 0) > time.time()
+            except (TypeError, ValueError):
+                lease_valid = False
+            freshness = ("ACTIVE" if state == "RUNNING" and lease_valid
+                         else "STALE" if state else "UNKNOWN")
             payload = {
                 "schemaVersion": 1, "character": snapshot["character"],
                 "coverage": snapshot["coverage"],
                 "observedTotal": snapshot["observedTotal"],
+                "captureHealth": {
+                    "runtimeState": state, "freshness": freshness,
+                    "canonicalEventsPresent": paths.events_db.is_file(),
+                    "lastError": runtime.get("lastError"),
+                },
                 "warning": "Only HIGH-confidence equipped items are confirmed; tooltips are not proof of ownership.",
             }
             if raw_json:
