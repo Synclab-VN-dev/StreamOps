@@ -40,10 +40,12 @@ def _connect(path: Path, *, read_only: bool = False) -> sqlite3.Connection:
         db = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
         db.execute("PRAGMA query_only=ON")
     else:
-        db = sqlite3.connect(path, timeout=5)
-        db.execute("PRAGMA journal_mode=WAL")
+        # The existing character repository owns WAL configuration. Reissuing
+        # journal_mode=WAL on every concurrent reader/writer needs a schema
+        # lock and can fail immediately on Windows despite busy_timeout.
+        db = sqlite3.connect(path, timeout=15)
     db.row_factory = sqlite3.Row
-    db.execute("PRAGMA busy_timeout=5000")
+    db.execute("PRAGMA busy_timeout=15000")
     return db
 
 
