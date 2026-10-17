@@ -432,6 +432,8 @@ jobs:
               # Deliberate impossible source projection: SQL stash but payload inventory.
               item = {"name":"synthetic mismatch",
                       "location":{"type":"inventory","tab":None,"slot":None},
+                      "sourceSessionId":"ci","sourceEventSeqStart":1,
+                      "sourceEventSeqEnd":3,
                       "ownershipStatus":"NOT_CONFIRMED","pickedUpAt":None}
               db.execute("""
                   INSERT INTO owned_item_observation
