@@ -1,0 +1,738 @@
+{
+  "schema": "SOURCE_ROLL_WITNESS_V1",
+  "source": "MAXROLL_PUBLIC_PLANNER_CAPTURE_NOT_GOLDEN",
+  "fixtureId": "DEV-00",
+  "partition": "DEVELOPMENT",
+  "classId": "rogue",
+  "patch": "3.2.1.73552",
+  "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+  "captureRef": "Synclab-VN-dev/synclab-agent@bb4c5cc6b2135583eb708f0a3f374060675b6c0b",
+  "scope": "ALL_RESOLVED_EQUIPMENT_SLOTS_ONLY",
+  "slots": [
+    {
+      "slotId": "4",
+      "itemId": "Helm_Legendary_Generic_053",
+      "itemIndex": 495,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 1873221,
+            "values": [
+              6
+            ]
+          },
+          {
+            "nid": 1829560,
+            "values": [
+              0.1
+            ]
+          },
+          {
+            "nid": 1829592,
+            "values": [
+              1812.5
+            ]
+          },
+          {
+            "nid": 1829562,
+            "values": [
+              151.25
+            ]
+          }
+        ],
+        "tempered": [
+          {
+            "nid": 1862295,
+            "values": [
+              2250
+            ]
+          }
+        ],
+        "aspects": [
+          {
+            "nid": 1184010,
+            "values": [
+              30
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "slotId": "5",
+      "itemId": "Runeword_Enigma",
+      "itemIndex": 593,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2676297,
+            "values": [
+              0.7000000000000001
+            ]
+          },
+          {
+            "nid": 2676293,
+            "values": [
+              2
+            ]
+          },
+          {
+            "nid": 2686419,
+            "values": [
+              0.15
+            ]
+          },
+          {
+            "nid": 2676294,
+            "values": [
+              0.5625
+            ]
+          },
+          {
+            "nid": 1829554,
+            "values": [
+              1531
+            ]
+          },
+          {
+            "nid": 2676305,
+            "values": []
+          }
+        ],
+        "tempered": [
+          {
+            "nid": 1862295,
+            "values": [
+              2250
+            ]
+          }
+        ],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "10",
+      "itemId": "2HBow_Unique_Rogue_100",
+      "itemIndex": 400,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 1829590,
+            "values": [
+              1.05
+            ]
+          },
+          {
+            "nid": 1439773,
+            "values": [
+              195
+            ]
+          },
+          {
+            "nid": 2605602,
+            "values": [
+              5500
+            ]
+          },
+          {
+            "nid": 762720,
+            "values": [
+              9
+            ]
+          },
+          {
+            "nid": 2602155,
+            "values": [
+              450
+            ]
+          },
+          {
+            "nid": 2620573,
+            "values": [
+              392
+            ]
+          }
+        ],
+        "tempered": [
+          {
+            "nid": 2616441,
+            "values": [
+              0.30000000000000004
+            ]
+          }
+        ],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "11",
+      "itemId": "1HDagger_Unique_Rogue_003_x2",
+      "itemIndex": 401,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2580867,
+            "values": [
+              78
+            ]
+          },
+          {
+            "nid": 1829590,
+            "values": [
+              0.525
+            ]
+          },
+          {
+            "nid": 2605602,
+            "values": [
+              2750
+            ]
+          },
+          {
+            "nid": 2602155,
+            "values": [
+              225
+            ]
+          },
+          {
+            "nid": 762517,
+            "values": [
+              3
+            ]
+          }
+        ],
+        "tempered": [
+          {
+            "nid": 2616441,
+            "values": [
+              0.15000000000000002
+            ]
+          }
+        ],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "12",
+      "itemId": "1HDagger_Legendary_Generic_005",
+      "itemIndex": 402,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 1829590,
+            "values": [
+              0.6
+            ]
+          },
+          {
+            "nid": 2605602,
+            "values": [
+              2750
+            ]
+          },
+          {
+            "nid": 1829588,
+            "values": [
+              0.125
+            ]
+          },
+          {
+            "nid": 2602155,
+            "values": [
+              225
+            ]
+          }
+        ],
+        "tempered": [
+          {
+            "nid": 1936582,
+            "values": [
+              3600
+            ]
+          }
+        ],
+        "aspects": [
+          {
+            "nid": 578880,
+            "values": [
+              60
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "slotId": "13",
+      "itemId": "Gloves_Unique_Generic_002",
+      "itemIndex": 403,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 578831,
+            "values": [
+              390,
+              1
+            ]
+          },
+          {
+            "nid": 2602170,
+            "values": [
+              0.56
+            ]
+          },
+          {
+            "nid": 2602168,
+            "values": [
+              0.75
+            ]
+          },
+          {
+            "nid": 2602184,
+            "values": [
+              0.3
+            ]
+          },
+          {
+            "nid": 2602155,
+            "values": [
+              225
+            ]
+          }
+        ],
+        "tempered": [
+          {
+            "nid": 2616441,
+            "values": [
+              0.15000000000000002
+            ]
+          }
+        ],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "14",
+      "itemId": "Pants_Unique_Generic_102",
+      "itemIndex": 500,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 1559366,
+            "values": [
+              26
+            ]
+          },
+          {
+            "nid": 1829592,
+            "values": [
+              2175
+            ]
+          },
+          {
+            "nid": 2615143,
+            "values": [
+              3062
+            ]
+          },
+          {
+            "nid": 1829562,
+            "values": [
+              151.25
+            ]
+          },
+          {
+            "nid": 1834296,
+            "values": [
+              500
+            ]
+          }
+        ],
+        "tempered": [
+          {
+            "nid": 1862295,
+            "values": [
+              2250
+            ]
+          }
+        ],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "15",
+      "itemId": "Boots_Legendary_Generic_053",
+      "itemIndex": 405,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2540910,
+            "values": [
+              3
+            ]
+          },
+          {
+            "nid": 1829592,
+            "values": [
+              2175
+            ]
+          },
+          {
+            "nid": 1829554,
+            "values": [
+              1531
+            ]
+          },
+          {
+            "nid": 1829562,
+            "values": [
+              151.25
+            ]
+          }
+        ],
+        "tempered": [
+          {
+            "nid": 1862314,
+            "values": [
+              0.5
+            ]
+          }
+        ],
+        "aspects": [
+          {
+            "nid": 2580483,
+            "values": [
+              12.5
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "slotId": "16",
+      "itemId": "Ring_Legendary_Generic_027",
+      "itemIndex": 406,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 1829590,
+            "values": [
+              0.6
+            ]
+          },
+          {
+            "nid": 1834112,
+            "values": [
+              0.17500000000000002
+            ]
+          },
+          {
+            "nid": 1829556,
+            "values": [
+              0.125
+            ]
+          },
+          {
+            "nid": 1829592,
+            "values": [
+              1812.5
+            ]
+          }
+        ],
+        "tempered": [
+          {
+            "nid": 1862350,
+            "values": [
+              18
+            ]
+          }
+        ],
+        "aspects": [
+          {
+            "nid": 1186380,
+            "values": [
+              60
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "slotId": "17",
+      "itemId": "Ring_Legendary_Generic_027",
+      "itemIndex": 407,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 1834112,
+            "values": [
+              0.28
+            ]
+          },
+          {
+            "nid": 1829590,
+            "values": [
+              0.375
+            ]
+          },
+          {
+            "nid": 1829556,
+            "values": [
+              0.125
+            ]
+          },
+          {
+            "nid": 1829592,
+            "values": [
+              1812.5
+            ]
+          }
+        ],
+        "tempered": [
+          {
+            "nid": 2611706,
+            "values": [
+              0.09
+            ]
+          }
+        ],
+        "aspects": [
+          {
+            "nid": 2541747,
+            "values": [
+              60
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "slotId": "18",
+      "itemId": "Amulet_Legendary_Generic_001",
+      "itemIndex": 408,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2602170,
+            "values": [
+              0.49000000000000005
+            ]
+          },
+          {
+            "nid": 2602168,
+            "values": [
+              0.75
+            ]
+          },
+          {
+            "nid": 2602184,
+            "values": [
+              0.3
+            ]
+          },
+          {
+            "nid": 2571274,
+            "values": [
+              3
+            ]
+          }
+        ],
+        "tempered": [
+          {
+            "nid": 2611706,
+            "values": [
+              0.09
+            ]
+          }
+        ],
+        "aspects": [
+          {
+            "nid": 2542658,
+            "values": [
+              0.9750000000000001
+            ]
+          },
+          {
+            "nid": 2582877,
+            "values": [
+              30.75
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "slotId": "20",
+      "itemId": "Talisman_Seal_Legendary",
+      "itemIndex": 409,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2602778,
+            "values": [
+              0.08
+            ]
+          },
+          {
+            "nid": 2546431,
+            "values": [
+              0.2
+            ]
+          },
+          {
+            "nid": 2609197,
+            "values": [
+              1
+            ]
+          }
+        ],
+        "tempered": [],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "21",
+      "itemId": "Talisman_Charm_Set_Rogue_05_04",
+      "itemIndex": 410,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2546087,
+            "values": [
+              3000
+            ]
+          },
+          {
+            "nid": 2619810,
+            "values": [
+              3
+            ]
+          }
+        ],
+        "tempered": [],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "22",
+      "itemId": "Talisman_Charm_Set_Rogue_05_01",
+      "itemIndex": 411,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2546087,
+            "values": [
+              3000
+            ]
+          },
+          {
+            "nid": 2545754,
+            "values": [
+              3
+            ]
+          }
+        ],
+        "tempered": [],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "23",
+      "itemId": "Talisman_Charm_Set_Rogue_05_05",
+      "itemIndex": 412,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2546085,
+            "values": [
+              3000
+            ]
+          },
+          {
+            "nid": 2545754,
+            "values": [
+              3
+            ]
+          }
+        ],
+        "tempered": [],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "24",
+      "itemId": "Talisman_Charm_Set_Rogue_05_02",
+      "itemIndex": 413,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2546085,
+            "values": [
+              3000
+            ]
+          },
+          {
+            "nid": 2619810,
+            "values": [
+              3
+            ]
+          }
+        ],
+        "tempered": [],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "25",
+      "itemId": "Talisman_Charm_Set_Rogue_05_03",
+      "itemIndex": 414,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2546089,
+            "values": [
+              3000
+            ]
+          },
+          {
+            "nid": 2545754,
+            "values": [
+              3
+            ]
+          }
+        ],
+        "tempered": [],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "26",
+      "itemId": "Talisman_Charm_Unique_1HDagger_Unique_Generic_001",
+      "itemIndex": 415,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2538879,
+            "values": [
+              120
+            ]
+          },
+          {
+            "nid": 2589206,
+            "values": [
+              3
+            ]
+          },
+          {
+            "nid": 2546093,
+            "values": [
+              3000
+            ]
+          }
+        ],
+        "tempered": [],
+        "aspects": []
+      }
+    }
+  ],
+  "conditionalContext": "UNKNOWN_NOT_DEFAULTED"
+}

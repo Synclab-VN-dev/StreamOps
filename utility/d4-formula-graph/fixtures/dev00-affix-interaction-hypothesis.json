@@ -1,0 +1,10 @@
+{
+  "mode": "HYPOTHESIS_TEST_ONLY",
+  "metricId": "maxroll.heroDetails.111",
+  "numeratorNid": 1829560,
+  "multiplierNid": 1873221,
+  "numeratorRollIndex": 0,
+  "numeratorScale": 100,
+  "multiplierIfPresent": 10,
+  "unit": "HYPOTHETICAL_NOT_GAME_UNIT"
+}

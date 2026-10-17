@@ -1,0 +1,311 @@
+{
+  "schema": "openstream-maxroll-target20-v1",
+  "milestone": "M20_GOLDEN_VERIFIED_UNIQUE_METRIC_IDS",
+  "targetUniqueMetricIds": 20,
+  "source": {
+    "repository": "Synclab-VN-dev/synclab-agent",
+    "commit": "1a4ecec",
+    "path": "evidence/StreamOps-106/F3-rogue-50/rogue-50-formula-evidence.json",
+    "sourcePatch": "3.2.1.73552"
+  },
+  "scopes": [
+    {
+      "classId": "rogue",
+      "fixtureId": "DEV-00",
+      "gamePatch": "3.2.1.73552"
+    },
+    {
+      "classId": "sorcerer",
+      "fixtureId": "DEV-01",
+      "gamePatch": "3.2.1.73552",
+      "supportPolicy": "OPT_IN_AFTER_CLASS_SPECIFIC_GOLDEN_PASS"
+    }
+  ],
+  "metricSources": [
+    {
+      "metricId": "maxroll.heroDetails.279",
+      "label": "Level",
+      "sourceExpression": "Level",
+      "f3EvidenceClass": "RUNTIME_SOURCE_OBSERVED",
+      "reportedRuntimeDependencies": [
+        "Level"
+      ],
+      "runtimeFunctionCalls": [],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    },
+    {
+      "metricId": "maxroll.heroDetails.108",
+      "label": "Strength",
+      "sourceExpression": "Floor(Strength_Total)",
+      "f3EvidenceClass": "RUNTIME_SOURCE_OBSERVED",
+      "reportedRuntimeDependencies": [
+        "Strength_Total"
+      ],
+      "runtimeFunctionCalls": [
+        "Floor"
+      ],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    },
+    {
+      "metricId": "maxroll.heroDetails.109",
+      "label": "Intelligence",
+      "sourceExpression": "Floor(Intelligence_Total)",
+      "f3EvidenceClass": "RUNTIME_SOURCE_OBSERVED",
+      "reportedRuntimeDependencies": [
+        "Intelligence_Total"
+      ],
+      "runtimeFunctionCalls": [
+        "Floor"
+      ],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    },
+    {
+      "metricId": "maxroll.heroDetails.110",
+      "label": "Willpower",
+      "sourceExpression": "Floor(Willpower_Total)",
+      "f3EvidenceClass": "RUNTIME_SOURCE_OBSERVED",
+      "reportedRuntimeDependencies": [
+        "Willpower_Total"
+      ],
+      "runtimeFunctionCalls": [
+        "Floor"
+      ],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    },
+    {
+      "metricId": "maxroll.heroDetails.111",
+      "label": "Dexterity",
+      "sourceExpression": "Floor(Dexterity_Total)",
+      "f3EvidenceClass": "CAUSALLY_VERIFIED_BOUNDED",
+      "reportedRuntimeDependencies": [
+        "Dexterity_Total"
+      ],
+      "runtimeFunctionCalls": [
+        "Floor"
+      ],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    },
+    {
+      "metricId": "maxroll.heroDetails.114",
+      "label": "Weapon Speed",
+      "sourceExpression": "1+Weapon_Speed_Percent_Bonus-Weapon_Speed_Percent_Reduction",
+      "f3EvidenceClass": "CAUSALLY_VERIFIED_BOUNDED",
+      "reportedRuntimeDependencies": [
+        "Weapon_Speed_Percent_Bonus",
+        "Weapon_Speed_Percent_Reduction"
+      ],
+      "runtimeFunctionCalls": [],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    },
+    {
+      "metricId": "maxroll.heroDetails.3",
+      "label": "Attack Speed Bonus",
+      "sourceExpression": "Min(1,Attack_Speed_Percent_Bonus-Attack_Speed_Percent_Reduction)+Min(1,Cast_Speed_Percent_Temp_Bonus-Cast_Speed_Percent_Temp_Reduction)",
+      "f3EvidenceClass": "CAUSALLY_VERIFIED_BOUNDED",
+      "reportedRuntimeDependencies": [
+        "Attack_Speed_Percent_Bonus",
+        "Attack_Speed_Percent_Reduction",
+        "Cast_Speed_Percent_Temp_Bonus",
+        "Cast_Speed_Percent_Temp_Reduction"
+      ],
+      "runtimeFunctionCalls": [
+        "Min"
+      ],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    },
+    {
+      "metricId": "maxroll.heroDetails.4",
+      "label": "Critical Strike Chance",
+      "sourceExpression": "ComputeCritChance()",
+      "f3EvidenceClass": "RUNTIME_SOURCE_OBSERVED",
+      "reportedRuntimeDependencies": [],
+      "runtimeFunctionCalls": [
+        "ComputeCritChance"
+      ],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    },
+    {
+      "metricId": "maxroll.heroDetails.347",
+      "label": "Critical Strike Damage",
+      "sourceExpression": "(1+Crit_Damage_Percent)*(1+Multiplicative_Crit_Damage_Percent)*1.5+-1",
+      "f3EvidenceClass": "RUNTIME_SOURCE_OBSERVED",
+      "reportedRuntimeDependencies": [
+        "Crit_Damage_Percent",
+        "Multiplicative_Crit_Damage_Percent"
+      ],
+      "runtimeFunctionCalls": [],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    },
+    {
+      "metricId": "maxroll.heroDetails.349",
+      "label": "Vulnerable Damage",
+      "sourceExpression": "(1+Vulnerable_Health_Damage_Bonus)*(1+Multiplicative_Vulnerable_Health_Damage_Bonus)*1.2+-1",
+      "f3EvidenceClass": "RUNTIME_SOURCE_OBSERVED",
+      "reportedRuntimeDependencies": [
+        "Vulnerable_Health_Damage_Bonus",
+        "Multiplicative_Vulnerable_Health_Damage_Bonus"
+      ],
+      "runtimeFunctionCalls": [],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    },
+    {
+      "metricId": "maxroll.heroDetails.1",
+      "label": "All Damage",
+      "sourceExpression": "(1+Damage_Percent_All_From_Skills)*(1+Multiplicative_Damage_Percent_All_From_Skills)-1",
+      "f3EvidenceClass": "RUNTIME_SOURCE_OBSERVED",
+      "reportedRuntimeDependencies": [
+        "Damage_Percent_All_From_Skills",
+        "Multiplicative_Damage_Percent_All_From_Skills"
+      ],
+      "runtimeFunctionCalls": [],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    },
+    {
+      "metricId": "maxroll.heroDetails.2",
+      "label": "Damage vs Elites",
+      "sourceExpression": "(1+Damage_Percent_Bonus_Vs_Elites)*(1+Multiplicative_Damage_Percent_Bonus_Vs_Elites)-1",
+      "f3EvidenceClass": "RUNTIME_SOURCE_OBSERVED",
+      "reportedRuntimeDependencies": [
+        "Damage_Percent_Bonus_Vs_Elites",
+        "Multiplicative_Damage_Percent_Bonus_Vs_Elites"
+      ],
+      "runtimeFunctionCalls": [],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    },
+    {
+      "metricId": "maxroll.heroDetails.25",
+      "label": "Damage vs Crowd Controlled",
+      "sourceExpression": "Damage_Percent_Bonus_Vs_CC_All*(1+Multiplicative_Damage_Percent_Bonus_Vs_CC_All)",
+      "f3EvidenceClass": "RUNTIME_SOURCE_OBSERVED",
+      "reportedRuntimeDependencies": [
+        "Damage_Percent_Bonus_Vs_CC_All",
+        "Multiplicative_Damage_Percent_Bonus_Vs_CC_All"
+      ],
+      "runtimeFunctionCalls": [],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    },
+    {
+      "metricId": "maxroll.heroDetails.56",
+      "label": "Damage vs Healthy",
+      "sourceExpression": "(1+Damage_Bonus_To_High_Health)*(1+Multiplicative_Damage_Bonus_To_High_Health)-1",
+      "f3EvidenceClass": "RUNTIME_SOURCE_OBSERVED",
+      "reportedRuntimeDependencies": [
+        "Damage_Bonus_To_High_Health",
+        "Multiplicative_Damage_Bonus_To_High_Health"
+      ],
+      "runtimeFunctionCalls": [],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    },
+    {
+      "metricId": "maxroll.heroDetails.78",
+      "label": "Potion Capacity",
+      "sourceExpression": "Potion_Max_Doses_Total",
+      "f3EvidenceClass": "RUNTIME_SOURCE_OBSERVED",
+      "reportedRuntimeDependencies": [
+        "Potion_Max_Doses_Total"
+      ],
+      "runtimeFunctionCalls": [],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    },
+    {
+      "metricId": "maxroll.heroDetails.180",
+      "label": "Healing Received",
+      "sourceExpression": "Bonus_Healing_Received_Percent+Core_Stat_Bonus_Healing_Received_Percent",
+      "f3EvidenceClass": "RUNTIME_SOURCE_OBSERVED",
+      "reportedRuntimeDependencies": [
+        "Bonus_Healing_Received_Percent",
+        "Core_Stat_Bonus_Healing_Received_Percent"
+      ],
+      "runtimeFunctionCalls": [],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    },
+    {
+      "metricId": "maxroll.heroDetails.431",
+      "label": "Armor",
+      "sourceExpression": "Armor_Total",
+      "f3EvidenceClass": "RUNTIME_SOURCE_OBSERVED",
+      "reportedRuntimeDependencies": [
+        "Armor_Total"
+      ],
+      "runtimeFunctionCalls": [],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    },
+    {
+      "metricId": "maxroll.heroDetails.80",
+      "label": "Movement Speed",
+      "sourceExpression": "Movement_Scalar_Total",
+      "f3EvidenceClass": "RUNTIME_SOURCE_OBSERVED",
+      "reportedRuntimeDependencies": [
+        "Movement_Scalar_Total"
+      ],
+      "runtimeFunctionCalls": [],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    },
+    {
+      "metricId": "maxroll.heroDetails.92",
+      "label": "Cooldown Reduction",
+      "sourceExpression": "Min(0.75,Power_Cooldown_Reduction_Percent_All)",
+      "f3EvidenceClass": "RUNTIME_SOURCE_OBSERVED",
+      "reportedRuntimeDependencies": [
+        "Power_Cooldown_Reduction_Percent_All"
+      ],
+      "runtimeFunctionCalls": [
+        "Min"
+      ],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    },
+    {
+      "metricId": "maxroll.heroDetails.181",
+      "label": "Lucky Hit Chance Bonus",
+      "sourceExpression": "Combat_Effect_Chance_Bonus",
+      "f3EvidenceClass": "RUNTIME_SOURCE_OBSERVED",
+      "reportedRuntimeDependencies": [
+        "Combat_Effect_Chance_Bonus"
+      ],
+      "runtimeFunctionCalls": [],
+      "grade": "CANDIDATE_SOURCE_EXPRESSION_NOT_COMPUTED",
+      "classScope": "rogue",
+      "fixtureScope": "DEV-00"
+    }
+  ],
+  "verifiedOnlyFrom": "SCOPED_GOLDEN_FORMULA_VERIFICATION_CI_PASS",
+  "targetAlreadyVerified": 1
+}

@@ -1,0 +1,347 @@
+name: D4 Formula Graph Source/Unknown Gate (Issue 110)
+on:
+  push:
+    branches:
+      - feat/110-formula-graph-internal-gates
+    paths:
+      - 'utility/d4-formula-graph/**'
+      - 'utility/d4-maxroll-reference/f8-character-metric-catalog.json'
+      - '.github/workflows/d4-formula-graph.yml'
+  pull_request:
+    paths:
+      - 'utility/d4-formula-graph/**'
+      - 'utility/d4-maxroll-reference/f8-character-metric-catalog.json'
+      - '.github/workflows/d4-formula-graph.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  graph-source-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install approved #107 schema validator
+        run: python -m pip install -e 'utility/d4-rulekit[dev]'
+      - name: Compile and unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/d4-formula-graph
+          python -m compileall -q utility/d4-formula-graph
+          python -m unittest discover -s utility/d4-formula-graph/tests -p 'test_*.py' -v 2>&1 | tee artifacts/d4-formula-graph/test.log
+          python utility/d4-formula-graph/ci_collection_guard.py \
+            --tests-dir utility/d4-formula-graph/tests \
+            --unit-log artifacts/d4-formula-graph/test.log \
+            --report artifacts/d4-formula-graph/ci-complete-collection-gate.json \
+            --minimum 90
+      - name: Prove both exact-source synthetic variant graphs block unverified formulas
+        shell: bash
+        run: |
+          set -euo pipefail
+          python utility/d4-formula-graph/graph.py --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json --report artifacts/d4-formula-graph/alpha.json
+          python utility/d4-formula-graph/graph.py --overlay utility/d4-formula-graph/fixtures/synthetic-beta.json --report artifacts/d4-formula-graph/beta.json
+          python utility/d4-formula-graph/synthetic_compiler.py --fixture utility/d4-formula-graph/fixtures/synthetic-three-families.json --report artifacts/d4-formula-graph/three-families.json
+          python utility/d4-formula-graph/demo_graph.py --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json --synthetic utility/d4-formula-graph/fixtures/synthetic-three-families.json --report artifacts/d4-formula-graph/composed.json
+          python utility/d4-formula-graph/scenario_graph.py \
+            --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json \
+            --scenario utility/d4-formula-graph/fixtures/maxroll-unobserved-scenario.json \
+            --report artifacts/d4-formula-graph/scenario-unknown.json
+          python utility/d4-formula-graph/scenario_graph.py \
+            --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json \
+            --scenario utility/d4-formula-graph/fixtures/synthetic-known-scenario.json \
+            --report artifacts/d4-formula-graph/scenario-synthetic.json
+          python utility/d4-formula-graph/synthetic_mutations.py \
+            --overlay utility/d4-formula-graph/fixtures/synthetic-alpha.json \
+            --fixture utility/d4-formula-graph/fixtures/synthetic-three-families.json \
+            --report artifacts/d4-formula-graph/synthetic-mutations.json
+          # Two genuine Maxroll development fixture *input-derived* Level candidates.
+          # Inventories contain IDs/groups/labels only; no Golden expected/raw.
+          python utility/d4-formula-graph/golden_candidate_eval.py \
+            --source utility/d4-formula-graph/fixtures/dev00-source-sanitized.json \
+            --inventory utility/d4-formula-graph/fixtures/dev00-visible-inventory.json \
+            --rules utility/d4-formula-graph/fixtures/candidate-source-level.json \
+            --report artifacts/d4-formula-graph/dev00-candidate-actual.json
+          python utility/d4-formula-graph/golden_candidate_eval.py \
+            --source utility/d4-formula-graph/fixtures/dev01-source-sanitized.json \
+            --inventory utility/d4-formula-graph/fixtures/dev01-visible-inventory.json \
+            --rules utility/d4-formula-graph/fixtures/candidate-source-level.json \
+            --report artifacts/d4-formula-graph/dev01-candidate-actual.json
+          # Development comparator tests use in-process SYNTHETIC_TEST_ONLY references;
+          # never bring Golden expected into public repository or normal CI.
+          python utility/d4-formula-graph/development_parity_smoke.py \
+            --report-dir artifacts/d4-formula-graph
+          python utility/d4-formula-graph/affix_candidate_trial.py \
+            --witness utility/d4-formula-graph/fixtures/dev00-affix-source-witness.json \
+            --hypothesis utility/d4-formula-graph/fixtures/dev00-affix-interaction-hypothesis.json \
+            --report artifacts/d4-formula-graph/dev00-affix-hypothesis.json
+          # Source-derived full item-roll witness: no Golden values / no inferred mapping.
+          python utility/d4-formula-graph/source_roll_index.py \
+            --source utility/d4-formula-graph/fixtures/dev00-source-rolls.json \
+            --report artifacts/d4-formula-graph/dev00-roll-index.json
+          python utility/d4-formula-graph/source_roll_index.py \
+            --source utility/d4-formula-graph/fixtures/dev01-source-rolls.json \
+            --report artifacts/d4-formula-graph/dev01-roll-index.json
+          # Actual F3 runtime formulas, but no source-confirmed intermediate values:
+          # result MUST stay UNKNOWN, numeric trial results only in explicit unit tests.
+          python - <<'PY'
+          import json, sys
+          from pathlib import Path
+          sys.path.insert(0,'utility/d4-formula-graph')
+          import f3_dependency_eval as f
+          d=json.loads(Path('utility/d4-formula-graph/fixtures/f3-bounded-formula-ast.json').read_text())
+          r=f.run(d,{"mode":"SOURCE_UNKNOWN","values":{}})
+          assert len(r['results'])==3 and r['realMaxrollActualComputed']==0
+          assert all(x['characterStatActual'] is None and x['missingRuntimeVariables'] for x in r['results'])
+          Path('artifacts/d4-formula-graph/f3-dependency-unknown.json').write_text(json.dumps(r,indent=2,sort_keys=True)+'\n')
+          PY
+          # Audit which F3 runtime variables lack approved captured affix mapping.
+          python - <<'PY'
+          import json,sys
+          from pathlib import Path
+          sys.path.insert(0,'utility/d4-formula-graph')
+          import f3_source_bridge as m
+          source=json.loads(Path('utility/d4-formula-graph/fixtures/dev00-source-rolls.json').read_text())
+          f3=json.loads(Path('utility/d4-formula-graph/fixtures/f3-bounded-formula-ast.json').read_text())
+          result=m.bridge(source,f3)
+          assert result['observedRolls']==85
+          assert result['computedMetricValues']==0 and result['statFormulaMappingVerified']==0
+          Path('artifacts/d4-formula-graph/f3-roll-dependency-gap.json').write_text(json.dumps(result,sort_keys=True,indent=2))
+          PY
+          # Two different live-origin Maxroll DEVELOPMENT inputs, internal graph only.
+          python utility/d4-formula-graph/dev_source_graph_smoke.py \
+            --output artifacts/d4-formula-graph
+          # #108 G4 auditable full captured visible-row denominators; never parity PASS.
+          for fixture in dev00 dev01; do
+            python utility/d4-formula-graph/g4_source_audit.py \
+              --inventory utility/d4-formula-graph/fixtures/${fixture}-visible-inventory.json \
+              --source-graph artifacts/d4-formula-graph/${fixture}-source-graph.json \
+              --report artifacts/d4-formula-graph/${fixture}-g4-visible-coverage.json
+          done
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for name,rows,unique,unknown in [('dev00',50,50,49),('dev01',49,47,48)]:
+              p=Path('artifacts/d4-formula-graph')/(name+'-g4-visible-coverage.json')
+              x=json.loads(p.read_text())
+              assert x['visibleMetricRows']==rows and x['distinctMetricIds']==unique
+              assert x['unknownFormulaRows']==unknown and x['unverifiedComputedRows']==1
+              assert x['missingActualRows']==0 and x['staleActualRows']==0
+              assert sum(x['totals'].values())==rows
+              assert sum(v['visible'] for v in x['groupCoverage'].values())==rows
+              assert x['fullCapturedFixtureParity']=='BLOCKED_NOT_VERIFIED'
+              assert not x['ownerApprovedGolden'] and not x['publishAllowed']
+          PY
+          # Full human readable graph explanation from independent frozen inventory.
+          for fixture in dev00 dev01; do
+            python utility/d4-formula-graph/explain_source_graph.py \
+              --source-graph artifacts/d4-formula-graph/${fixture}-source-graph.json \
+              --coverage artifacts/d4-formula-graph/${fixture}-g4-visible-coverage.json \
+              --output artifacts/d4-formula-graph/${fixture}-source-explanation.md
+          done
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          guard=json.loads(Path('artifacts/d4-formula-graph/ci-complete-collection-gate.json').read_text())
+          assert guard['status']=='PASS_COMPLETE_COLLECTION_NO_SKIPPED_TESTS'
+          assert guard['executed']==guard['discovered'] and guard['skipped']==0
+          for fid,rows in [('dev00',50),('dev01',49)]:
+              t=Path('artifacts/d4-formula-graph/'+fid+'-source-explanation.md').read_text()
+              assert t.count('| `maxroll.heroDetails.')==rows
+              assert 'Formula verified: **0**' in t and 'Golden parity: **BLOCKED**' in t
+          PY
+          # #108 real parity MUST return exit 2 / BLOCKED, not fake success.
+          set +e
+          python utility/d4-maxroll-parity/gate.py \
+            --fixture utility/d4-maxroll-parity/rogue-3.2.1.73552-fixture.json \
+            --actual artifacts/d4-formula-graph/composed.json \
+            --report artifacts/d4-formula-graph/real-parity-negative.json
+          rc=$?
+          set -e
+          test "$rc" -eq 2
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          a=json.loads(Path('artifacts/d4-formula-graph/alpha.json').read_text())
+          b=json.loads(Path('artifacts/d4-formula-graph/beta.json').read_text())
+          f=json.loads(Path('artifacts/d4-formula-graph/three-families.json').read_text())
+          assert f["status"]=="PASS_SYNTHETIC_G1_THREE_FAMILY_COMPOSITION_ONLY"
+          assert f["stats"]["synthetic.damageBonus"]==30
+          assert f["skills"]["synthetic.projectile"]["projectile_count"]==2
+          assert f["activeMaxrollFormulaCount"]==0 and not f["publishAllowed"]
+          real=json.loads(Path('artifacts/d4-formula-graph/real-parity-negative.json').read_text())
+          assert real["status"]=="BLOCKED"
+          c=json.loads(Path('artifacts/d4-formula-graph/composed.json').read_text())
+          assert c["status"]=="PASS_SYNTHETIC_COMPOSITION_GRAPH_ONLY_REAL_MAXROLL_BLOCKED"
+          assert len(c["syntheticMechanicNodes"])==3 and c["realCharacterComputed"]==0
+          assert len(c["characterMetrics"])==50 and c["unknownCharacterMetrics"]==50
+          assert c["syntheticOutputOnly"]["stats"]["synthetic.damageBonus"]==30
+          assert c["simulationContext"] is None and c["realParity"]=="BLOCKED_NOT_RUN"
+          for fid,slots,rolls in [('dev00',18,85),('dev01',17,40)]:
+              i=json.loads(Path('artifacts/d4-formula-graph/'+fid+'-roll-index.json').read_text())
+              assert i['slotCount']==slots and i['rollCount']==rolls
+              assert i['mappedStatCount']==0 and i['computedRealStatsFromAffixes']==0
+              assert not i['publishAllowed']
+              assert len(i['contributors'])==rolls
+          f3=json.loads(Path('artifacts/d4-formula-graph/f3-dependency-unknown.json').read_text())
+          assert f3['formulaFullVerified']==0 and f3['realMaxrollActualComputed']==0
+          assert all(x['trialOnly'] is None and x['characterStatActual'] is None
+                     and x['status']=='UNKNOWN_MISSING_F3_INTERMEDIATE_VARIABLES'
+                     for x in f3['results'])
+          for name,rows,unique,rolls in (("dev00",50,50,85),("dev01",49,47,40)):
+              full=json.loads(Path('artifacts/d4-formula-graph/'+name+'-source-graph.json').read_text())
+              change=json.loads(Path('artifacts/d4-formula-graph/'+name+'-source-graph-diff.json').read_text())
+              assert full["visibleMetricRows"]==rows and full["uniqueMetricIds"]==unique
+              assert full["unmappedObservedRolls"]==rolls
+              assert full["candidateComputedUnique"]==1 and full["fullVerifiedStatCount"]==0
+              assert not full["publishAllowed"] and not full["sourceGoldenExpectedLoaded"]
+              assert change["sourceChanges"]["changed"] and change["verifiedGameMetricDelta"]==0
+          bridge=json.loads(Path('artifacts/d4-formula-graph/f3-roll-dependency-gap.json').read_text())
+          assert bridge['observedRolls']==85 and bridge['f3Formulas']==3
+          assert len(bridge['unmappedIntermediateDependencies'])==7
+          assert bridge['computedMetricValues']==0 and not bridge['holdoutExpectedLoaded']
+          affix=json.loads(Path('artifacts/d4-formula-graph/dev00-affix-hypothesis.json').read_text())
+          assert affix["status"]=="HYPOTHETICAL_ONLY_NOT_GAME_FORMULA"
+          assert affix["trialValueNotStatActual"]==100
+          assert affix["maxrollMetricActual"] is None
+          assert not affix["realFormulaVerified"] and not affix["publishAllowed"]
+          for name,count,unique in [("dev00",50,50),("dev01",49,47)]:
+              p=Path('artifacts/d4-formula-graph/'+name+'-synthetic-dev-diff.json')
+              result=json.loads(p.read_text())
+              assert result["referenceMode"]=="SYNTHETIC_TEST_ONLY"
+              assert result["sourceRows"]==count and result["uniqueMetricIds"]==unique
+              assert result["matchedUnverifiedRows"]==1 and result["blockedRows"]==count-1
+              assert result["fullMaxrollParity"]=="BLOCKED_NOT_RUN"
+              assert not result["approvedGolden"] and not result["holdoutEvaluated"]
+          dev0=json.loads(Path('artifacts/d4-formula-graph/dev00-candidate-actual.json').read_text())
+          dev1=json.loads(Path('artifacts/d4-formula-graph/dev01-candidate-actual.json').read_text())
+          assert (dev0["sourceRowCount"],dev0["uniqueMetricCount"]) == (50,50)
+          assert (dev1["sourceRowCount"],dev1["uniqueMetricCount"]) == (49,47)
+          for actual in (dev0,dev1):
+              assert actual["computedUniqueMetricCount"]==1
+              assert next(r["display"] for r in actual["characterMetrics"] if r["metricId"]=="maxroll.heroDetails.279")=="70"
+              assert actual["computedDisplayRowCount"]==1
+              assert actual["verifiedMetrics"]==0 and actual["approvedGoldens"]==0
+              assert actual["maxrollParity"]=="NOT_RUN" and not actual["publishAllowed"]
+              assert not actual["sourceExpectedImported"]
+              assert next(x["raw"] for x in actual["characterMetrics"]
+                          if x["metricId"]=="maxroll.heroDetails.279")==70
+              assert all(x["raw"] is None or
+                         x["metricId"]=="maxroll.heroDetails.279"
+                         for x in actual["characterMetrics"])
+          mutations=json.loads(Path('artifacts/d4-formula-graph/synthetic-mutations.json').read_text())
+          assert mutations["status"]=="PASS_SYNTHETIC_CI02_MUTATIONS_ONLY"
+          assert mutations["testCaseCount"]==6
+          assert len({x["changedInput"] for x in mutations["cases"]})==5
+          assert all(x["beforeGraphSha256"]!=x["afterGraphSha256"] for x in mutations["cases"])
+          assert all(x["maxrollMetricsComputed"]==0 for x in mutations["cases"])
+          src=json.loads(Path('artifacts/d4-formula-graph/scenario-unknown.json').read_text())
+          fake=json.loads(Path('artifacts/d4-formula-graph/scenario-synthetic.json').read_text())
+          assert src["status"]=="BLOCKED_NO_VERIFIED_MAXROLL_RULES"
+          assert src["scenarioTruthCoverage"]=={"unknown":4,"knownSynthetic":0,"knownReal":0}
+          assert all(x["result"]=="UNKNOWN" for x in src["conditionTrace"])
+          assert src["graphSha256"]!=fake["graphSha256"]
+          assert src["sourceGraphSha256"]==fake["sourceGraphSha256"]
+          assert fake["scenarioTruthCoverage"]["knownSynthetic"]==4
+          for v in (src,fake):
+              assert len(v["scenarioNodes"])==4 and len(v["characterMetrics"])==50
+              assert v["characterMetricsComputed"]==0 and v["characterMetricsUnknown"]==50
+              assert all(x["raw"] is None and x["display"] is None for x in v["characterMetrics"])
+              assert v["simulationContext"] is None and not v["publishAllowed"]
+              assert v["realMaxrollParity"]=="BLOCKED_NOT_RUN"
+          for d in (a,b):
+              assert d['status']=='BLOCKED_NO_VERIFIED_MAXROLL_RULES'
+              assert len(d['characterMetrics'])==50 and d['coverage']['computed']==0
+              assert d['coverage']['unknown']==50
+              assert not d['expectedMaxrollValuesIncluded']
+              assert d['simulationContext'] is None and not d['runExecutableCandidates']
+          assert a['graphSha256']!=b['graphSha256']
+          PY
+      - name: Verify genuinely captured per-class Golden sample against independent actual
+        shell: bash
+        run: |
+          set -euo pipefail
+          for fixture in dev00 dev01; do
+            python utility/d4-formula-graph/scoped_golden_verifier.py \
+              --source utility/d4-formula-graph/fixtures/${fixture}-source-sanitized.json \
+              --inventory utility/d4-formula-graph/fixtures/${fixture}-visible-inventory.json \
+              --rules utility/d4-formula-graph/fixtures/candidate-source-level.json \
+              --golden utility/d4-formula-graph/fixtures/golden-dev/${fixture}-level.json \
+              --report artifacts/d4-formula-graph/${fixture}-scoped-real-golden-verification.json
+          done
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          observed={}
+          for fid,cls in [("dev00","rogue"),("dev01","sorcerer")]:
+              d=json.loads(Path(f"artifacts/d4-formula-graph/{fid}-scoped-real-golden-verification.json").read_text())
+              assert d["status"]=="PASS_SCOPED" and d["classId"]==cls
+              assert d["verifiedScoped"]==1 and len(d["metrics"])==1
+              assert d["metrics"][0]["status"]=="VERIFIED"
+              assert d["metrics"][0]["testResult"]=="PASS"
+              assert d["metrics"][0]["actualRaw"]==70
+              assert d["metrics"][0]["expectedRaw"]==70
+              assert d["metrics"][0]["actualDisplay"]=="70"
+              assert d["metrics"][0]["expectedDisplay"]=="70"
+              assert not d["fullCharacterStatsParity"]
+              assert not d["productionRulePromoted"] and not d["holdoutUsed"]
+              observed[cls]=d["metrics"][0]["metricId"]
+          assert observed=={"rogue":"maxroll.heroDetails.279",
+                            "sorcerer":"maxroll.heroDetails.279"}
+          PY
+      - name: M20 real-Golden distinct-stat readiness and missing-contributor coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python utility/d4-formula-graph/target20_readiness.py \
+            --targets utility/d4-formula-graph/fixtures/milestone20-source-targets.json \
+            --actual artifacts/d4-formula-graph/dev00-candidate-actual.json \
+            --verification artifacts/d4-formula-graph/dev00-scoped-real-golden-verification.json \
+            --report artifacts/d4-formula-graph/dev00-milestone20-readiness.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('artifacts/d4-formula-graph/dev00-milestone20-readiness.json').read_text())
+          assert r['targetUniqueMetricIds']==20 and len(r['metrics'])==20
+          assert 1<=r['verifiedUniqueMetricIds']<=20
+          assert r['verifiedUniqueMetricIds']+r['remainingUniqueMetricIds']==20
+          assert r['verifiedUniqueMetricIds']==sum(x['status']=='VERIFIED' for x in r['metrics'])
+          assert not r['goldenExpectedInjectedIntoGraph']
+          assert not r['productionRulePromoted'] and not r['holdoutUsed']
+          assert r['status']==('TARGET_MET' if r['verifiedUniqueMetricIds']==20 else 'IN_PROGRESS')
+          PY
+      - name: Reconcile 20 unique Rogue targets against independent Golden Test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python utility/d4-formula-graph/target20_progress.py \
+            --source utility/d4-formula-graph/fixtures/dev00-source-sanitized.json \
+            --inventory utility/d4-formula-graph/fixtures/dev00-visible-inventory.json \
+            --rules utility/d4-formula-graph/fixtures/candidate-source-level.json \
+            --manifest utility/d4-formula-graph/fixtures/golden-target-20.json \
+            --level-golden utility/d4-formula-graph/fixtures/golden-dev/dev00-level.json \
+            --report artifacts/d4-formula-graph/target20-rogue-golden-progress.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("artifacts/d4-formula-graph/target20-rogue-golden-progress.json")
+          r=json.loads(p.read_text())
+          assert r['target']==20 and len(r['records'])==20
+          assert r['verifiedUniqueMetricIds']==1 and r['blockedMetricIds']==19
+          assert r['failedMetricIds']==0 and r['remainingToTarget']==19
+          assert not r['productionRulePromoted'] and not r['holdoutOpened']
+          assert [x['metricId'] for x in r['records'] if x['state']=='VERIFIED']==[
+                  'maxroll.heroDetails.279']
+          print("TARGET_20_BASELINE=PASS scope=Rogue_DEV-00 verified=1 blocked=19")
+          PY
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d4-formula-graph-110-internal-evidence
+          path: artifacts/d4-formula-graph/
+          if-no-files-found: error
+          retention-days: 30

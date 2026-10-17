@@ -1,0 +1,140 @@
+{
+  "schema": "maxroll-stat-verification-target-v1",
+  "ticket": 105,
+  "owner": "ChatGPT+CI",
+  "goalUniqueMetricIds": 20,
+  "initialFixture": "DEV-00",
+  "initialClassId": "rogue",
+  "patch": "3.2.1.73552",
+  "immutableSourceInventory": "utility/d4-formula-graph/fixtures/dev00-visible-inventory.json",
+  "research": {
+    "repository": "Synclab-VN-dev/synclab-agent",
+    "sourceCommit": "1a4ecec",
+    "sourceFile": "evidence/StreamOps-106/F3-rogue-50/rogue-50-formula-evidence.json"
+  },
+  "scoping": "A metric is VERIFIED only in explicitly PASSing (metricId,class,fixture,patch,input-fingerprint) scope. Never infer global support, never count classes twice.",
+  "goldenIsolation": "Golden Expected must be loaded after independent Actual. Do not copy raw expected values from private capture to this public manifest.",
+  "metrics": [
+    {
+      "metricId": "maxroll.heroDetails.279",
+      "label": "Level",
+      "priority": "P0",
+      "blockerHint": "source build.level already verifies"
+    },
+    {
+      "metricId": "maxroll.heroDetails.108",
+      "label": "Strength",
+      "priority": "P0",
+      "blockerHint": "requires Strength_Total from base, equipment and paragon"
+    },
+    {
+      "metricId": "maxroll.heroDetails.109",
+      "label": "Intelligence",
+      "priority": "P0",
+      "blockerHint": "requires Intelligence_Total from base, equipment and paragon"
+    },
+    {
+      "metricId": "maxroll.heroDetails.110",
+      "label": "Willpower",
+      "priority": "P0",
+      "blockerHint": "requires Willpower_Total from base, equipment and paragon"
+    },
+    {
+      "metricId": "maxroll.heroDetails.111",
+      "label": "Dexterity",
+      "priority": "P0",
+      "blockerHint": "requires Dexterity_Total from base, equipment and paragon"
+    },
+    {
+      "metricId": "maxroll.heroDetails.114",
+      "label": "Weapon Speed",
+      "priority": "P0",
+      "blockerHint": "requires speed bonus/reduction intermediates"
+    },
+    {
+      "metricId": "maxroll.heroDetails.3",
+      "label": "Attack Speed Bonus",
+      "priority": "P0",
+      "blockerHint": "requires 4 speed intermediates and stacking"
+    },
+    {
+      "metricId": "maxroll.heroDetails.4",
+      "label": "Critical Strike Chance",
+      "priority": "P1",
+      "blockerHint": "requires ComputeCritChance() semantics"
+    },
+    {
+      "metricId": "maxroll.heroDetails.347",
+      "label": "Critical Strike Damage",
+      "priority": "P1",
+      "blockerHint": "requires additive/multiplicative crit buckets"
+    },
+    {
+      "metricId": "maxroll.heroDetails.349",
+      "label": "Vulnerable Damage",
+      "priority": "P1",
+      "blockerHint": "requires additive/multiplicative vulnerable buckets"
+    },
+    {
+      "metricId": "maxroll.heroDetails.1",
+      "label": "All Damage",
+      "priority": "P1",
+      "blockerHint": "Requires independent source-derived runtime contributor(s): Damage_Percent_All_From_Skills, Multiplicative_Damage_Percent_All_From_Skills"
+    },
+    {
+      "metricId": "maxroll.heroDetails.2",
+      "label": "Damage vs Elites",
+      "priority": "P1",
+      "blockerHint": "Requires independent source-derived runtime contributor(s): Damage_Percent_Bonus_Vs_Elites, Multiplicative_Damage_Percent_Bonus_Vs_Elites"
+    },
+    {
+      "metricId": "maxroll.heroDetails.25",
+      "label": "Damage vs Crowd Controlled",
+      "priority": "P1",
+      "blockerHint": "Requires independent source-derived runtime contributor(s): Damage_Percent_Bonus_Vs_CC_All, Multiplicative_Damage_Percent_Bonus_Vs_CC_All"
+    },
+    {
+      "metricId": "maxroll.heroDetails.56",
+      "label": "Damage vs Healthy",
+      "priority": "P1",
+      "blockerHint": "Requires independent source-derived runtime contributor(s): Damage_Bonus_To_High_Health, Multiplicative_Damage_Bonus_To_High_Health"
+    },
+    {
+      "metricId": "maxroll.heroDetails.78",
+      "label": "Potion Capacity",
+      "priority": "P0",
+      "blockerHint": "Requires independent source-derived runtime contributor(s): Potion_Max_Doses_Total"
+    },
+    {
+      "metricId": "maxroll.heroDetails.180",
+      "label": "Healing Received",
+      "priority": "P1",
+      "blockerHint": "Requires independent source-derived runtime contributor(s): Bonus_Healing_Received_Percent, Core_Stat_Bonus_Healing_Received_Percent"
+    },
+    {
+      "metricId": "maxroll.heroDetails.431",
+      "label": "Armor",
+      "priority": "P0",
+      "blockerHint": "Requires independent source-derived runtime contributor(s): Armor_Total"
+    },
+    {
+      "metricId": "maxroll.heroDetails.80",
+      "label": "Movement Speed",
+      "priority": "P0",
+      "blockerHint": "requires Movement_Scalar_Total with caps"
+    },
+    {
+      "metricId": "maxroll.heroDetails.92",
+      "label": "Cooldown Reduction",
+      "priority": "P0",
+      "blockerHint": "requires Power_Cooldown_Reduction_Percent_All with cap"
+    },
+    {
+      "metricId": "maxroll.heroDetails.181",
+      "label": "Lucky Hit Chance Bonus",
+      "priority": "P0",
+      "blockerHint": "Requires independent source-derived runtime contributor(s): Combat_Effect_Chance_Bonus"
+    }
+  ],
+  "canonicalTargetManifest": "utility/d4-formula-graph/fixtures/milestone20-source-targets.json"
+}

@@ -1,0 +1,255 @@
+{
+  "schema": "f3-source-observed-target20-dependencies-v1",
+  "classId": "rogue",
+  "gamePatch": "3.2.1.73552",
+  "fixtureId": "DEV-00",
+  "sourceCommit": "1a4ecec",
+  "sourceEvidencePath": "evidence/StreamOps-106/F3-rogue-50/rogue-50-formula-evidence.json",
+  "truthGrade": "OBSERVED_RUNTIME_FORMULA_NOT_INDEPENDENT_MAXROLL_GOLDEN_VERIFIED",
+  "formulas": [
+    {
+      "metricId": "maxroll.heroDetails.279",
+      "label": "Level",
+      "sourceExpression": "Level",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Level"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.108",
+      "label": "Strength",
+      "sourceExpression": "Floor(Strength_Total)",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Strength_Total"
+      ],
+      "runtimeFunctions": [
+        "Floor"
+      ],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.109",
+      "label": "Intelligence",
+      "sourceExpression": "Floor(Intelligence_Total)",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Intelligence_Total"
+      ],
+      "runtimeFunctions": [
+        "Floor"
+      ],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.110",
+      "label": "Willpower",
+      "sourceExpression": "Floor(Willpower_Total)",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Willpower_Total"
+      ],
+      "runtimeFunctions": [
+        "Floor"
+      ],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.111",
+      "label": "Dexterity",
+      "sourceExpression": "Floor(Dexterity_Total)",
+      "sourceEvidenceStatus": "CAUSALLY_VERIFIED_BOUNDED",
+      "intermediateVariables": [
+        "Dexterity_Total"
+      ],
+      "runtimeFunctions": [
+        "Floor"
+      ],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.114",
+      "label": "Weapon Speed",
+      "sourceExpression": "1+Weapon_Speed_Percent_Bonus-Weapon_Speed_Percent_Reduction",
+      "sourceEvidenceStatus": "CAUSALLY_VERIFIED_BOUNDED",
+      "intermediateVariables": [
+        "Weapon_Speed_Percent_Bonus",
+        "Weapon_Speed_Percent_Reduction"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.3",
+      "label": "Attack Speed Bonus",
+      "sourceExpression": "Min(1,Attack_Speed_Percent_Bonus-Attack_Speed_Percent_Reduction)+Min(1,Cast_Speed_Percent_Temp_Bonus-Cast_Speed_Percent_Temp_Reduction)",
+      "sourceEvidenceStatus": "CAUSALLY_VERIFIED_BOUNDED",
+      "intermediateVariables": [
+        "Attack_Speed_Percent_Bonus",
+        "Attack_Speed_Percent_Reduction",
+        "Cast_Speed_Percent_Temp_Bonus",
+        "Cast_Speed_Percent_Temp_Reduction"
+      ],
+      "runtimeFunctions": [
+        "Min"
+      ],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.4",
+      "label": "Critical Strike Chance",
+      "sourceExpression": "ComputeCritChance()",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [],
+      "runtimeFunctions": [
+        "ComputeCritChance"
+      ],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.347",
+      "label": "Critical Strike Damage",
+      "sourceExpression": "(1+Crit_Damage_Percent)*(1+Multiplicative_Crit_Damage_Percent)*1.5+-1",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Crit_Damage_Percent",
+        "Multiplicative_Crit_Damage_Percent"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.349",
+      "label": "Vulnerable Damage",
+      "sourceExpression": "(1+Vulnerable_Health_Damage_Bonus)*(1+Multiplicative_Vulnerable_Health_Damage_Bonus)*1.2+-1",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Vulnerable_Health_Damage_Bonus",
+        "Multiplicative_Vulnerable_Health_Damage_Bonus"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.1",
+      "label": "All Damage",
+      "sourceExpression": "(1+Damage_Percent_All_From_Skills)*(1+Multiplicative_Damage_Percent_All_From_Skills)-1",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Damage_Percent_All_From_Skills",
+        "Multiplicative_Damage_Percent_All_From_Skills"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.2",
+      "label": "Damage vs Elites",
+      "sourceExpression": "(1+Damage_Percent_Bonus_Vs_Elites)*(1+Multiplicative_Damage_Percent_Bonus_Vs_Elites)-1",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Damage_Percent_Bonus_Vs_Elites",
+        "Multiplicative_Damage_Percent_Bonus_Vs_Elites"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.25",
+      "label": "Damage vs Crowd Controlled",
+      "sourceExpression": "Damage_Percent_Bonus_Vs_CC_All*(1+Multiplicative_Damage_Percent_Bonus_Vs_CC_All)",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Damage_Percent_Bonus_Vs_CC_All",
+        "Multiplicative_Damage_Percent_Bonus_Vs_CC_All"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.56",
+      "label": "Damage vs Healthy",
+      "sourceExpression": "(1+Damage_Bonus_To_High_Health)*(1+Multiplicative_Damage_Bonus_To_High_Health)-1",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Damage_Bonus_To_High_Health",
+        "Multiplicative_Damage_Bonus_To_High_Health"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.78",
+      "label": "Potion Capacity",
+      "sourceExpression": "Potion_Max_Doses_Total",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Potion_Max_Doses_Total"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.180",
+      "label": "Healing Received",
+      "sourceExpression": "Bonus_Healing_Received_Percent+Core_Stat_Bonus_Healing_Received_Percent",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Bonus_Healing_Received_Percent",
+        "Core_Stat_Bonus_Healing_Received_Percent"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.431",
+      "label": "Armor",
+      "sourceExpression": "Armor_Total",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Armor_Total"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.80",
+      "label": "Movement Speed",
+      "sourceExpression": "Movement_Scalar_Total",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Movement_Scalar_Total"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.92",
+      "label": "Cooldown Reduction",
+      "sourceExpression": "Min(0.75,Power_Cooldown_Reduction_Percent_All)",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Power_Cooldown_Reduction_Percent_All"
+      ],
+      "runtimeFunctions": [
+        "Min"
+      ],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    },
+    {
+      "metricId": "maxroll.heroDetails.181",
+      "label": "Lucky Hit Chance Bonus",
+      "sourceExpression": "Combat_Effect_Chance_Bonus",
+      "sourceEvidenceStatus": "RUNTIME_SOURCE_OBSERVED",
+      "intermediateVariables": [
+        "Combat_Effect_Chance_Bonus"
+      ],
+      "runtimeFunctions": [],
+      "sourceContributionCompleteness": "F3_BOUNDED_RESEARCH_NOT_GOLDEN_VERIFIED"
+    }
+  ],
+  "canonicalTargetManifest": "utility/d4-formula-graph/fixtures/milestone20-source-targets.json"
+}

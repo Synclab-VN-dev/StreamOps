@@ -1,0 +1,233 @@
+{
+  "synthetic": true,
+  "gamePatch": "3.2.1",
+  "gameBuild": "73552",
+  "classId": "rogue",
+  "input": {
+    "equippedItems": [
+      "synthetic.item.aspect-a"
+    ],
+    "variant": "synthetic.alpha",
+    "runeCount": 1,
+    "charmCount": 2,
+    "skillRank": 1
+  },
+  "stats": {
+    "synthetic.damageBonus": 0
+  },
+  "skills": {
+    "synthetic.projectile": {
+      "projectile_count": 1
+    }
+  },
+  "rules": [
+    {
+      "schemaVersion": "1.0.0",
+      "ruleId": "synthetic.projectile_count",
+      "name": "synthetic.projectile_count",
+      "game": {
+        "gameVersion": "3.2.1",
+        "buildNumber": "73552",
+        "realm": "both"
+      },
+      "source": {
+        "kind": "active_skill",
+        "gameId": "synthetic.projectile_count"
+      },
+      "mechanics": [
+        {
+          "id": "synthetic.projectile_count",
+          "phase": "pre_skill",
+          "trigger": {
+            "kind": "always"
+          },
+          "actions": [
+            {
+              "op": "modify_skill",
+              "skill": {
+                "kind": "id",
+                "id": "synthetic.projectile"
+              },
+              "property": "projectile_count",
+              "math": "add",
+              "value": {
+                "kind": "ref",
+                "scope": "build",
+                "path": "skillRank"
+              },
+              "stage": "pre_transform"
+            }
+          ],
+          "when": {
+            "kind": "call",
+            "fn": "equals",
+            "args": [
+              {
+                "kind": "ref",
+                "scope": "build",
+                "path": "variant"
+              },
+              {
+                "kind": "literal",
+                "value": "synthetic.alpha"
+              }
+            ]
+          }
+        }
+      ],
+      "verification": {
+        "status": "unverified",
+        "confidence": "unknown",
+        "evidence": [
+          {
+            "kind": "synthetic_fixture",
+            "note": "Synthetic only, never a Maxroll reference."
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "ruleId": "synthetic.aspect_conditional",
+      "name": "synthetic.aspect_conditional",
+      "game": {
+        "gameVersion": "3.2.1",
+        "buildNumber": "73552",
+        "realm": "both"
+      },
+      "source": {
+        "kind": "legendary_aspect",
+        "gameId": "synthetic.aspect_conditional"
+      },
+      "mechanics": [
+        {
+          "id": "synthetic.aspect_conditional",
+          "phase": "pre_build",
+          "trigger": {
+            "kind": "always"
+          },
+          "when": {
+            "kind": "call",
+            "fn": "contains",
+            "args": [
+              {
+                "kind": "ref",
+                "scope": "build",
+                "path": "equippedItems"
+              },
+              {
+                "kind": "literal",
+                "value": "synthetic.item.aspect-a"
+              }
+            ]
+          },
+          "actions": [
+            {
+              "op": "modify_stat",
+              "stat": "synthetic.damageBonus",
+              "who": "actor",
+              "math": "add",
+              "value": {
+                "kind": "literal",
+                "value": 20
+              },
+              "stage": "base"
+            }
+          ]
+        }
+      ],
+      "verification": {
+        "status": "unverified",
+        "confidence": "unknown",
+        "evidence": [
+          {
+            "kind": "synthetic_fixture",
+            "note": "Synthetic only, never a Maxroll reference."
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "ruleId": "synthetic.charm_threshold",
+      "name": "synthetic.charm_threshold",
+      "game": {
+        "gameVersion": "3.2.1",
+        "buildNumber": "73552",
+        "realm": "both"
+      },
+      "source": {
+        "kind": "charm_set_bonus",
+        "gameId": "synthetic.charm_threshold"
+      },
+      "mechanics": [
+        {
+          "id": "synthetic.charm_threshold",
+          "phase": "pre_build",
+          "trigger": {
+            "kind": "always"
+          },
+          "when": {
+            "kind": "call",
+            "fn": "and",
+            "args": [
+              {
+                "kind": "call",
+                "fn": "greater_equal",
+                "args": [
+                  {
+                    "kind": "ref",
+                    "scope": "build",
+                    "path": "charmCount"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "kind": "call",
+                "fn": "greater_equal",
+                "args": [
+                  {
+                    "kind": "ref",
+                    "scope": "build",
+                    "path": "runeCount"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": 1
+                  }
+                ]
+              }
+            ]
+          },
+          "actions": [
+            {
+              "op": "modify_stat",
+              "stat": "synthetic.damageBonus",
+              "who": "actor",
+              "math": "add",
+              "value": {
+                "kind": "literal",
+                "value": 10
+              },
+              "stage": "base"
+            }
+          ]
+        }
+      ],
+      "verification": {
+        "status": "unverified",
+        "confidence": "unknown",
+        "evidence": [
+          {
+            "kind": "synthetic_fixture",
+            "note": "Synthetic only, never a Maxroll reference."
+          }
+        ]
+      }
+    }
+  ]
+}

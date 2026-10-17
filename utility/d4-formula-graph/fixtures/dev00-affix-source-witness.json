@@ -1,0 +1,28 @@
+{
+  "fixtureId": "DEV-00",
+  "partition": "DEVELOPMENT",
+  "classId": "rogue",
+  "patch": "3.2.1.73552",
+  "sourceInputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+  "scope": "OBSERVED_EQUIPMENT_SUBSET_ONLY",
+  "items": [
+    {
+      "slotId": "4",
+      "itemId": "Helm_Legendary_Generic_053",
+      "explicits": [
+        {
+          "nid": 1873221,
+          "values": [
+            6
+          ]
+        },
+        {
+          "nid": 1829560,
+          "values": [
+            0.1
+          ]
+        }
+      ]
+    }
+  ]
+}

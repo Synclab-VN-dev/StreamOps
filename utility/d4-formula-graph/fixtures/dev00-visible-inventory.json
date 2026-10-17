@@ -1,0 +1,261 @@
+{
+  "schema": "candidate-fixture-index-v1",
+  "fixtureId": "DEV-00",
+  "partition": "DEVELOPMENT",
+  "classId": "rogue",
+  "gamePatch": "3.2.1.73552",
+  "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+  "runtimeSourceSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+  "metrics": [
+    {
+      "metricId": "maxroll.heroDetails.900",
+      "group": "summary",
+      "label": "Weapon Damage"
+    },
+    {
+      "metricId": "maxroll.heroDetails.901",
+      "group": "summary",
+      "label": "Toughness"
+    },
+    {
+      "metricId": "maxroll.heroDetails.279",
+      "group": "core",
+      "label": "Level"
+    },
+    {
+      "metricId": "maxroll.heroDetails.108",
+      "group": "core",
+      "label": "Strength"
+    },
+    {
+      "metricId": "maxroll.heroDetails.109",
+      "group": "core",
+      "label": "Intelligence"
+    },
+    {
+      "metricId": "maxroll.heroDetails.110",
+      "group": "core",
+      "label": "Willpower"
+    },
+    {
+      "metricId": "maxroll.heroDetails.111",
+      "group": "core",
+      "label": "Dexterity"
+    },
+    {
+      "metricId": "maxroll.heroDetails.2036494626",
+      "group": "resistances",
+      "label": "Toughness"
+    },
+    {
+      "metricId": "maxroll.heroDetails.480",
+      "group": "resistances",
+      "label": "Armor"
+    },
+    {
+      "metricId": "maxroll.heroDetails.439",
+      "group": "resistances",
+      "label": "Physical Resistance"
+    },
+    {
+      "metricId": "maxroll.heroDetails.446",
+      "group": "resistances",
+      "label": "Fire Resistance"
+    },
+    {
+      "metricId": "maxroll.heroDetails.453",
+      "group": "resistances",
+      "label": "Lightning Resistance"
+    },
+    {
+      "metricId": "maxroll.heroDetails.460",
+      "group": "resistances",
+      "label": "Cold Resistance"
+    },
+    {
+      "metricId": "maxroll.heroDetails.467",
+      "group": "resistances",
+      "label": "Poison Resistance"
+    },
+    {
+      "metricId": "maxroll.heroDetails.474",
+      "group": "resistances",
+      "label": "Shadow Resistance"
+    },
+    {
+      "metricId": "maxroll.heroDetails.93",
+      "group": "offensive",
+      "label": "Base Ranged Weapon Damage"
+    },
+    {
+      "metricId": "maxroll.heroDetails.46",
+      "group": "offensive",
+      "label": "Base Dual Wielded Weapon Damage"
+    },
+    {
+      "metricId": "maxroll.heroDetails.114",
+      "group": "offensive",
+      "label": "Weapon Speed"
+    },
+    {
+      "metricId": "maxroll.heroDetails.3",
+      "group": "offensive",
+      "label": "Attack Speed Bonus"
+    },
+    {
+      "metricId": "maxroll.heroDetails.4",
+      "group": "offensive",
+      "label": "Critical Strike Chance"
+    },
+    {
+      "metricId": "maxroll.heroDetails.347",
+      "group": "offensive",
+      "label": "Critical Strike Damage"
+    },
+    {
+      "metricId": "maxroll.heroDetails.349",
+      "group": "offensive",
+      "label": "Vulnerable Damage"
+    },
+    {
+      "metricId": "maxroll.heroDetails.1",
+      "group": "offensive",
+      "label": "All Damage"
+    },
+    {
+      "metricId": "maxroll.heroDetails.49",
+      "group": "offensive",
+      "label": "Damage with Fire"
+    },
+    {
+      "metricId": "maxroll.heroDetails.50",
+      "group": "offensive",
+      "label": "Damage with Lightning"
+    },
+    {
+      "metricId": "maxroll.heroDetails.51",
+      "group": "offensive",
+      "label": "Damage with Cold"
+    },
+    {
+      "metricId": "maxroll.heroDetails.52",
+      "group": "offensive",
+      "label": "Damage with Holy"
+    },
+    {
+      "metricId": "maxroll.heroDetails.71041540",
+      "group": "offensive",
+      "label": "Damage with Poison"
+    },
+    {
+      "metricId": "maxroll.heroDetails.53",
+      "group": "offensive",
+      "label": "Damage with Shadow"
+    },
+    {
+      "metricId": "maxroll.heroDetails.251",
+      "group": "offensive",
+      "label": "Damage with Imbued"
+    },
+    {
+      "metricId": "maxroll.heroDetails.2",
+      "group": "offensive",
+      "label": "Damage vs Elites"
+    },
+    {
+      "metricId": "maxroll.heroDetails.25",
+      "group": "offensive",
+      "label": "Damage vs Crowd Controlled"
+    },
+    {
+      "metricId": "maxroll.heroDetails.56",
+      "group": "offensive",
+      "label": "Damage vs Healthy"
+    },
+    {
+      "metricId": "maxroll.heroDetails.166",
+      "group": "offensive",
+      "label": "Damage vs Poisoned"
+    },
+    {
+      "metricId": "maxroll.heroDetails.299",
+      "group": "offensive",
+      "label": "Thorns"
+    },
+    {
+      "metricId": "maxroll.heroDetails.58",
+      "group": "defensive",
+      "label": "Maximum Life"
+    },
+    {
+      "metricId": "maxroll.heroDetails.78",
+      "group": "defensive",
+      "label": "Potion Capacity"
+    },
+    {
+      "metricId": "maxroll.heroDetails.180",
+      "group": "defensive",
+      "label": "Healing Received"
+    },
+    {
+      "metricId": "maxroll.heroDetails.431",
+      "group": "defensive",
+      "label": "Armor"
+    },
+    {
+      "metricId": "maxroll.heroDetails.357",
+      "group": "defensive",
+      "label": "All Damage Reduction"
+    },
+    {
+      "metricId": "maxroll.heroDetails.104",
+      "group": "defensive",
+      "label": "Barrier Bonus"
+    },
+    {
+      "metricId": "maxroll.heroDetails.61",
+      "group": "defensive",
+      "label": "Dodge Chance"
+    },
+    {
+      "metricId": "maxroll.heroDetails.81",
+      "group": "utility",
+      "label": "Maximum Energy"
+    },
+    {
+      "metricId": "maxroll.heroDetails.286",
+      "group": "utility",
+      "label": "Energy Regeneration"
+    },
+    {
+      "metricId": "maxroll.heroDetails.80",
+      "group": "utility",
+      "label": "Movement Speed"
+    },
+    {
+      "metricId": "maxroll.heroDetails.92",
+      "group": "utility",
+      "label": "Cooldown Reduction"
+    },
+    {
+      "metricId": "maxroll.heroDetails.152",
+      "group": "utility",
+      "label": "Imbuement Cooldown Reduction"
+    },
+    {
+      "metricId": "maxroll.heroDetails.181",
+      "group": "utility",
+      "label": "Lucky Hit Chance Bonus"
+    },
+    {
+      "metricId": "maxroll.heroDetails.367",
+      "group": "utility",
+      "label": "Experience Bonus"
+    },
+    {
+      "metricId": "maxroll.heroDetails.70",
+      "group": "pvp",
+      "label": "Damage Reduction"
+    }
+  ]
+}

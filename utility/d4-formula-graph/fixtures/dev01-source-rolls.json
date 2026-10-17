@@ -1,0 +1,445 @@
+{
+  "schema": "SOURCE_ROLL_WITNESS_V1",
+  "source": "MAXROLL_PUBLIC_PLANNER_CAPTURE_NOT_GOLDEN",
+  "fixtureId": "DEV-01",
+  "partition": "DEVELOPMENT",
+  "classId": "sorcerer",
+  "patch": "3.2.1.73552",
+  "inputFingerprintSha256": "2d1af402d8b45a83bdb8d19c87c0bd39ddc7e17b076abf7c49535c60c51de746",
+  "captureRef": "Synclab-VN-dev/synclab-agent@bb4c5cc6b2135583eb708f0a3f374060675b6c0b",
+  "scope": "ALL_RESOLVED_EQUIPMENT_SLOTS_ONLY",
+  "slots": [
+    {
+      "slotId": "4",
+      "itemId": "Helm_Unique_Generic_005",
+      "itemIndex": 1,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 583206,
+            "values": [
+              0.1
+            ]
+          },
+          {
+            "nid": 2662414,
+            "values": [
+              50,
+              0.5
+            ]
+          }
+        ],
+        "tempered": [],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "5",
+      "itemId": "Chest_Unique_Sorc_100_x2",
+      "itemIndex": 2,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2587857,
+            "values": [
+              1.2
+            ]
+          },
+          {
+            "nid": 1926998,
+            "values": [
+              4
+            ]
+          }
+        ],
+        "tempered": [],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "6",
+      "itemId": "1HFocus_Legendary_Generic_005",
+      "itemIndex": 7,
+      "fields": {
+        "explicits": [],
+        "tempered": [],
+        "aspects": [
+          {
+            "nid": 2574612,
+            "values": [
+              60
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "slotId": "7",
+      "itemId": "1HMace_Unique_Sorc_100",
+      "itemIndex": 6,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2463636,
+            "values": [
+              25
+            ]
+          },
+          {
+            "nid": 1829588,
+            "values": [
+              0.1
+            ]
+          }
+        ],
+        "tempered": [],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "13",
+      "itemId": "Gloves_Legendary_Generic_053",
+      "itemIndex": 3,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2602157,
+            "values": [
+              152
+            ]
+          },
+          {
+            "nid": 2602166,
+            "values": [
+              0.14
+            ]
+          },
+          {
+            "nid": 1829560,
+            "values": [
+              0.055
+            ]
+          },
+          {
+            "nid": 1928753,
+            "values": [
+              2
+            ]
+          }
+        ],
+        "tempered": [
+          {
+            "nid": 1923129,
+            "values": [
+              0.22
+            ]
+          }
+        ],
+        "aspects": [
+          {
+            "nid": 2147318,
+            "values": [
+              2
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "slotId": "14",
+      "itemId": "Pants_Unique_Sorc_100",
+      "itemIndex": 4,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 1224575,
+            "values": [
+              39
+            ]
+          },
+          {
+            "nid": 2615143,
+            "values": [
+              3125
+            ]
+          },
+          {
+            "nid": 1829592,
+            "values": [
+              1812.5
+            ]
+          },
+          {
+            "nid": 1829566,
+            "values": [
+              151.25
+            ]
+          },
+          {
+            "nid": 1829558,
+            "values": [
+              0.125
+            ]
+          }
+        ],
+        "tempered": [
+          {
+            "nid": 1862295,
+            "values": [
+              1875
+            ]
+          }
+        ],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "15",
+      "itemId": "Boots_Unique_Generic_001",
+      "itemIndex": 5,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 578824,
+            "values": [
+              15
+            ]
+          },
+          {
+            "nid": 1829598,
+            "values": [
+              0.42
+            ]
+          },
+          {
+            "nid": 1829566,
+            "values": [
+              123.75
+            ]
+          },
+          {
+            "nid": 1829592,
+            "values": [
+              1531.25
+            ]
+          },
+          {
+            "nid": 2540910,
+            "values": [
+              1
+            ]
+          },
+          {
+            "nid": 2497314,
+            "values": [
+              0.3125
+            ]
+          }
+        ],
+        "tempered": [],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "16",
+      "itemId": "Ring_Legendary_Generic_027",
+      "itemIndex": 10,
+      "fields": {
+        "explicits": [],
+        "tempered": [],
+        "aspects": [
+          {
+            "nid": 1965000,
+            "values": [
+              9
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "slotId": "17",
+      "itemId": "Ring_Legendary_Generic_027",
+      "itemIndex": 9,
+      "fields": {
+        "explicits": [],
+        "tempered": [],
+        "aspects": [
+          {
+            "nid": 2616416,
+            "values": [
+              10
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "slotId": "18",
+      "itemId": "Amulet_Unique_Sorc_101",
+      "itemIndex": 8,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 1862755,
+            "values": [
+              0.03
+            ]
+          },
+          {
+            "nid": 1928765,
+            "values": [
+              3
+            ]
+          }
+        ],
+        "tempered": [],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "20",
+      "itemId": "S15_Charm_Unique_Annihilus",
+      "itemIndex": 11,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2684206,
+            "values": [
+              0.15000000000000002
+            ]
+          },
+          {
+            "nid": 2684209,
+            "values": [
+              0.17
+            ]
+          },
+          {
+            "nid": 2684371,
+            "values": [
+              5
+            ]
+          },
+          {
+            "nid": 2684356,
+            "values": [
+              0.1
+            ]
+          },
+          {
+            "nid": 2620503,
+            "values": [
+              0.1
+            ]
+          }
+        ],
+        "tempered": [],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "21",
+      "itemId": "Talisman_Charm_Set_Sorc_04_05",
+      "itemIndex": 13,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2545810,
+            "values": [
+              3
+            ]
+          }
+        ],
+        "tempered": [],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "22",
+      "itemId": "Talisman_Charm_Set_Sorc_04_02",
+      "itemIndex": 15,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2619816,
+            "values": [
+              3
+            ]
+          }
+        ],
+        "tempered": [],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "23",
+      "itemId": "Talisman_Charm_Set_Sorc_04_03",
+      "itemIndex": 16,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2619816,
+            "values": [
+              3
+            ]
+          }
+        ],
+        "tempered": [],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "24",
+      "itemId": "Talisman_Charm_Unique_Amulet_Unique_Sorc_103_x2",
+      "itemIndex": 12,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2586396,
+            "values": [
+              16.666
+            ]
+          }
+        ],
+        "tempered": [],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "25",
+      "itemId": "Talisman_Charm_Set_Sorc_04_01",
+      "itemIndex": 14,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2545810,
+            "values": [
+              3
+            ]
+          }
+        ],
+        "tempered": [],
+        "aspects": []
+      }
+    },
+    {
+      "slotId": "26",
+      "itemId": "Talisman_Charm_Set_Sorc_04_04",
+      "itemIndex": 17,
+      "fields": {
+        "explicits": [
+          {
+            "nid": 2619814,
+            "values": [
+              3
+            ]
+          }
+        ],
+        "tempered": [],
+        "aspects": []
+      }
+    }
+  ],
+  "conditionalContext": "UNKNOWN_NOT_DEFAULTED"
+}

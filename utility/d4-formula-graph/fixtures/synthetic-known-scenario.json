@@ -1,0 +1,46 @@
+{
+  "mode": "SYNTHETIC_SCENARIO_TEST_ONLY",
+  "gamePatch": "3.2.1",
+  "gameBuild": "73552",
+  "classId": "rogue",
+  "sourceFixtureFingerprint": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+  "fields": {
+    "conditional.currentTargetDebuffs": {
+      "state": "KNOWN_SYNTHETIC",
+      "value": {
+        "vulnerable": true,
+        "weakened": false,
+        "poisoned": true,
+        "crowdControlled": false,
+        "healthy": false
+      },
+      "evidenceStatus": "SYNTHETIC_TEST_ONLY"
+    },
+    "conditional.procAndUptime": {
+      "state": "KNOWN_SYNTHETIC",
+      "value": {
+        "procActive": true,
+        "uptimeRatio": 0.5
+      },
+      "evidenceStatus": "SYNTHETIC_TEST_ONLY"
+    },
+    "conditional.transientStacks": {
+      "state": "KNOWN_SYNTHETIC",
+      "value": {
+        "ferocity": 1,
+        "resolve": 2,
+        "darkShroud": 3,
+        "blackSoulstoneSouls": 4
+      },
+      "evidenceStatus": "SYNTHETIC_TEST_ONLY"
+    },
+    "conditional.snapshotSceneTime": {
+      "state": "KNOWN_SYNTHETIC",
+      "value": {
+        "elapsedSeconds": 12,
+        "snapshotSeconds": 10
+      },
+      "evidenceStatus": "SYNTHETIC_TEST_ONLY"
+    }
+  }
+}
