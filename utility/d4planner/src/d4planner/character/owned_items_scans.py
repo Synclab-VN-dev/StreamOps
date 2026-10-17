@@ -15,7 +15,11 @@ BEGIN = "items.scan.begin"
 CELL = "items.scan.cell"
 END = "items.scan.end"
 MOVE = "items.move.verified"
+EQUIP = "items.equip.verified"
+UNEQUIP = "items.unequip.verified"
+REMOVE = "items.remove.verified"
 ACTION = "items.action.verified"
+MOVED = {MOVE: "move", EQUIP: "equip", UNEQUIP: "unequip"}
 
 
 def schema(db: sqlite3.Connection) -> None:
@@ -60,8 +64,8 @@ def _valid_begin(payload: dict[str, Any]) -> bool:
         and isinstance(payload.get("scanId"), str) and 1 <= len(payload["scanId"]) <= 128
         and isinstance(payload.get("characterId"), str) and bool(payload["characterId"].strip())
         and len(payload["characterId"]) <= 128
-        and container in ("inventory", "stash")
-        and ((container == "inventory" and tab is None)
+        and container in ("inventory", "stash", "equipment")
+        and ((container in ("inventory","equipment") and tab is None)
              or (container == "stash" and type(tab) is int and 1 <= tab <= 50))
         and type(payload.get("expectedSlots")) is int
         and 1 <= payload["expectedSlots"] <= 512
@@ -87,7 +91,7 @@ def consume(db: sqlite3.Connection, row: sqlite3.Row) -> None:
     Called in the SAME batch transaction as the owned-item checkpoint.
     """
     event = row["type"]
-    if event not in (BEGIN, CELL, END, ACTION, MOVE):
+    if event not in (BEGIN, CELL, END, ACTION, MOVE, EQUIP, UNEQUIP, REMOVE):
         return
     try:
         p = json.loads(row["data_json"])
@@ -99,7 +103,7 @@ def consume(db: sqlite3.Connection, row: sqlite3.Row) -> None:
     session, seq = str(row["session_id"]), int(row["event_seq"])
     scan_id = p.get("scanId")
     if event == ACTION:
-        if (p.get("operation") == "move" and p.get("confirmed") is True
+        if (p.get("operation") in ("move","equip","unequip","remove") and p.get("confirmed") is True
             and isinstance(p.get("characterId"),str)
             and isinstance(p.get("trackingToken"),str)
             and p.get("observer") == "grid-observer-v1"):
@@ -119,8 +123,11 @@ def consume(db: sqlite3.Connection, row: sqlite3.Row) -> None:
            p["expectedSlots"],seq,json.dumps(p,ensure_ascii=False)))
         return
 
-    if event == MOVE:
-        _consume_move(db,row,p)
+    if event in MOVED:
+        _consume_move(db,row,p,kind=MOVED[event])
+        return
+    if event == REMOVE:
+        _consume_remove(db,row,p)
         return
     if not isinstance(scan_id,str):
         return
@@ -207,7 +214,7 @@ def consume(db: sqlite3.Connection, row: sqlite3.Row) -> None:
                               "observedSlots":len(cells),"expectedSlots":scan["expected_slots"]})
 
 
-def _consume_move(db: sqlite3.Connection, row: sqlite3.Row, p: dict[str, Any]) -> None:
+def _consume_move(db: sqlite3.Connection, row: sqlite3.Row, p: dict[str, Any], *, kind: str) -> None:
     """Move only with four complete before/after scans and an action event.
 
     Never correlate two physically distinct items by matching name, power, or
@@ -268,16 +275,72 @@ def _consume_move(db: sqlite3.Connection, row: sqlite3.Row, p: dict[str, Any]) -
     except (ValueError,TypeError):
         return
     if (not isinstance(evidence,dict) or evidence.get("source")!=SOURCE
-        or evidence.get("operation")!="move" or evidence.get("trackingToken")!=token
+        or evidence.get("operation")!=kind or evidence.get("trackingToken")!=token
         or evidence.get("confirmed") is not True
         or evidence.get("characterId")!=sb["character_id"]
         or not max(sb["end_seq"],dbefore["end_seq"]) < action_seq < min(sa["begin_seq"],da["begin_seq"])):
         return
-    _record(db,row,"MOVE",{"trackingToken":token,"characterId":sb["character_id"],
+    _record(db,row,kind.upper(),{"trackingToken":token,"characterId":sb["character_id"],
          "sourceBefore":sb["scan_id"],"destinationBefore":dbefore["scan_id"],
          "sourceAfter":sa["scan_id"],"destinationAfter":da["scan_id"],
          "sourceSlot":source_slot,"destinationSlot":dest_slot,
          "actionSeq":action_seq,"at":row["timestamp"]})
+
+
+def _consume_remove(db: sqlite3.Connection, row: sqlite3.Row, p: dict[str, Any]) -> None:
+    """A verified removal requires a full before and after scan plus action.
+
+    Do not interpret disappearing from incomplete scans as salvaged/dropped.
+    """
+    first, last = p.get("sourceBefore"),p.get("sourceAfter")
+    if (not isinstance(first,str) or not isinstance(last,str) or first == last):
+        return
+    before=db.execute("SELECT * FROM owned_grid_scans WHERE scan_id=? AND status='COMPLETE'",
+                       (first,)).fetchone()
+    after=db.execute("SELECT * FROM owned_grid_scans WHERE scan_id=? AND status='COMPLETE'",
+                      (last,)).fetchone()
+    if before is None or after is None:
+        return
+    if (before["session_id"]!=row["session_id"] or after["session_id"]!=row["session_id"]
+        or before["character_id"]!=after["character_id"]
+        or (before["container"],before["tab"])!=(after["container"],after["tab"])
+        or before["end_seq"]>=after["begin_seq"]
+        or after["end_seq"]>=row["event_seq"]):
+        return
+    slot=p.get("sourceSlot")
+    token=p.get("trackingToken")
+    action_seq=p.get("actionSeq")
+    if (type(slot) is not int or type(action_seq) is not int
+        or not isinstance(token,str) or not token.strip()):
+        return
+    old=db.execute("SELECT * FROM owned_grid_cells WHERE scan_id=? AND slot_index=?",
+                   (first,slot)).fetchone()
+    new=db.execute("SELECT * FROM owned_grid_cells WHERE scan_id=? AND slot_index=?",
+                   (last,slot)).fetchone()
+    if not old or not new or old["tracking_token"]!=token or new["item_json"] is not None:
+        return
+    if not before["end_seq"]<action_seq<after["begin_seq"]:
+        return
+    action=db.execute("SELECT data_json FROM owned_grid_actions WHERE session_id=? AND event_seq=?",
+                      (row["session_id"],action_seq)).fetchone()
+    if not action:
+        return
+    try:
+        evidence=json.loads(action["data_json"])
+    except (TypeError,ValueError):
+        return
+    reason=evidence.get("reason")
+    if (evidence.get("source")!=SOURCE or evidence.get("observer")!="grid-observer-v1"
+        or evidence.get("confirmed") is not True
+        or evidence.get("operation")!="remove"
+        or evidence.get("characterId")!=before["character_id"]
+        or evidence.get("trackingToken")!=token
+        or reason not in ("sell","salvage","drop","destroy")):
+        return
+    _record(db,row,"REMOVAL",{"trackingToken":token,
+            "characterId":before["character_id"],"sourceBefore":first,
+            "sourceAfter":last,"sourceSlot":slot,
+            "actionSeq":action_seq,"reason":reason,"at":row["timestamp"]})
 
 
 def current(db: sqlite3.Connection, locations: set[str], rarity: str | None) -> list[dict[str, Any]]:
