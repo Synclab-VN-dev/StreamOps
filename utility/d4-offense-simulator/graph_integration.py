@@ -44,6 +44,11 @@ def run(source_root:Path)->dict[str,Any]:
     import dev_source_graph
     import graph
     rules=graph.read_json(graph_base/"fixtures"/"candidate-source-level.json")
+    synthetic_context=read(HERE/"fixtures"/"synthetic-context.json")
+    sandbox_trace=simulator.simulate(synthetic_context)
+    require(sandbox_trace["realDps"] is None and
+            sandbox_trace["publishAllowed"] is False,
+            "SYNTHETIC_SANDBOX_CANNOT_PROVE_GAME_DPS")
     reports=[]
     t0=time.perf_counter()
     for n,clas,expected_rows,expected_ids in (
@@ -89,7 +94,23 @@ def run(source_root:Path)->dict[str,Any]:
         require(guard_sha["invalidGraphIdentity"] and
                 guard_sha["status"]=="BLOCKED",
                 "GRAPH_HASH_TAMPERING_NOT_DETECTED")
+        # Hash tampering of even one metric body field must not be accepted.
+        falsified=deepcopy(observed)
+        falsified["sourceStatActual"][0]["status"]="VERIFIED_INDEPENDENT_MAXROLL_PARITY"
+        falsified_gate=simulator.require_graph(
+            falsified,["maxroll.heroDetails.3"])
+        require(falsified_gate["status"]=="BLOCKED" and
+                falsified_gate["invalidGraphIdentity"],
+                "GRAPH_BODY_TAMPERING_NOT_DETECTED")
         reports.append({
+          "expected":{"sourceRows":expected_rows,
+                      "distinctMetricIds":expected_ids,
+                      "requiredOffenseState":"BLOCKED",
+                      "realDps":None},
+          "actual":{"sourceRows":observed["visibleMetricRows"],
+                    "distinctMetricIds":observed["uniqueMetricIds"],
+                    "requiredOffenseState":gate["status"],
+                    "realDps":gate["realDps"]},
           "fixtureId":observed["fixtureId"],"classId":clas,
           "inputFingerprintSha256":observed["fixtureInputFingerprint"],
           "sourceGraphSha256":observed["graphSha256"],
@@ -100,6 +121,7 @@ def run(source_root:Path)->dict[str,Any]:
           "graphPassedStatsWithoutRecomputation":True,
           "sourceDelta":change["sourceChanges"],
           "patchMismatchGate":"BLOCKED",
+          "graphBodyTamperGate":"BLOCKED",
           "graphHashTamperGate":"BLOCKED",
           "unknownCombatState":gate["unknownScenarioTruths"],
           "elapsedMs":round(elapsed,3),
@@ -108,12 +130,27 @@ def run(source_root:Path)->dict[str,Any]:
     output={
       "artifactType":"CROSS_PR_TWO_CLASS_GRAPH_TO_OFFENSE_GATE",
       "graphSourceCommit":GRAPH_SHA,
+      "replayMode":"PINNED_DEVELOPMENT_OFFLINE_CI",
+      "syntheticSandboxSeed":synthetic_context["seed"],
+      "syntheticSandboxInputSha256":sandbox_trace["inputSha256"],
+      "syntheticSandboxReportedSeparately":True,
       "scope":"REAL_CAPTURED_DEVELOPMENT_INPUTS_UNKNOWN_METRICS",
       "cases":reports,"fixtureCount":len(reports),
       "durationMs":round((time.perf_counter()-t0)*1000,3),
       "totalVisibleMetricRows":sum(r["visibleMetricRows"] for r in reports),
       "totalDistinctIdsAcrossBuilds":sum(r["uniqueMetricIds"] for r in reports),
-      "allRealDpsBlocked":True,"gameplayGoldenParity":"NOT_RUN",
+      "allRealDpsBlocked":True,
+      "expectedVsActualAllCasesMatch":all(
+         r["expected"]==r["actual"] for r in reports),
+      "deterministicEvidenceSha256":simulator.digest({
+          "source":GRAPH_SHA,"seed":synthetic_context["seed"],
+          "cases":[{"fixture":r["fixtureId"],
+                    "graph":r["sourceGraphSha256"],
+                    "mutated":r["mutatedGraphSha256"],
+                    "delta":r["sourceDelta"],
+                    "expected":r["expected"],
+                    "actual":r["actual"]} for r in reports],
+      }),"gameplayGoldenParity":"NOT_RUN",
       "holdoutOpened":False,"publishAllowed":False,
     }
     output["sha256"]=simulator.digest(output)
