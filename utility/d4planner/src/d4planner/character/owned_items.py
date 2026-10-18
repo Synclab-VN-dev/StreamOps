@@ -100,7 +100,8 @@ def _make_observation(active: dict[str, Any]) -> dict[str, Any]:
                      and bag_evidence and action_evidence)
     marked_equipped = (active["location"]["type"] == "equipment"
                        and active.get("equippedMarker") and bag_evidence)
-    confirmed = bool(confirmed_bag or marked_equipped)
+    # EQUIPPED is a comparison tooltip marker, not a physical slot proof.
+    confirmed = bool(confirmed_bag)
     return {
         "id": "obs:" + active["session"] + ":" + str(active["start"]),
         "name": data["name"],
@@ -171,7 +172,7 @@ def _save_incomplete_equipped(db: sqlite3.Connection, state: dict[str, Any]) -> 
          candidate["timestamp"],
          json.dumps(obs, ensure_ascii=False, separators=(",", ":"))),
     )
-    item_current.record_equipped_hint(db, obs)
+    # Incomplete comparison belongs only in owned_item_observation audit.
 
 
 def _save_active(db: sqlite3.Connection, state: dict[str, Any]) -> None:
@@ -191,9 +192,8 @@ def _save_active(db: sqlite3.Connection, state: dict[str, Any]) -> None:
     # Materialize only corroborated Bag items; comparison equipment is owned
     # by EquipmentProjector and must never duplicate a selected inventory row.
     item_current.record_observation(db, obs)
-    if (obs["location"]["type"] == "equipment" and
-            obs.get("ownershipEvidence") == "equipped-marker-v1"):
-        item_current.record_equipped_hint(db, obs)
+    # Compared EQUIPPED speech is historical evidence, not an owned item.
+    # EquipmentProjector can confirm actual slot occupancy independently.
 
 
 def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) -> None:
