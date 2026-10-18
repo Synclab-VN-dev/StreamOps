@@ -34,17 +34,12 @@ class EquipmentRepository:
 
     def _init_schema(self):
         with self._connect() as db:
+            # Fresh DEV schema: no second equipment_current authority.
+            # Projector checkpoint is diagnostic compatibility only.
             db.executescript("""
-            CREATE TABLE IF NOT EXISTS equipment_current(
-              id INTEGER PRIMARY KEY, slot_family TEXT NOT NULL, slot_index INTEGER,
-              item_name TEXT NOT NULL, item_type TEXT NOT NULL, item_power INTEGER NOT NULL,
-              item_json TEXT NOT NULL, observed_at TEXT NOT NULL, source_session_id TEXT NOT NULL,
-              source_event_seq_start INTEGER NOT NULL, source_event_seq_end INTEGER NOT NULL,
-              confidence TEXT NOT NULL, item_fingerprint TEXT NOT NULL UNIQUE);
-            CREATE INDEX IF NOT EXISTS ix_equipment_slot ON equipment_current(slot_family, slot_index);
             CREATE TABLE IF NOT EXISTS projector_checkpoint(
-              consumer TEXT PRIMARY KEY, session_id TEXT NOT NULL, last_event_seq INTEGER NOT NULL,
-              updated_at TEXT NOT NULL);
+              consumer TEXT PRIMARY KEY, session_id TEXT NOT NULL,
+              last_event_seq INTEGER NOT NULL, updated_at TEXT NOT NULL);
             """)
             item_current.schema(db)
 
