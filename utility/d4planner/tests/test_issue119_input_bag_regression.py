@@ -184,17 +184,13 @@ class InputBagOwnershipTests(unittest.TestCase):
         pair()  # repeated speech, not another physical Staff
         repo = self.repo()
         self.assertGreater(repo.sync(session_id="real-a-20261018"), 0)
+        # Low-confidence comparison remains available as AUDIT only.
+        # It cannot create a second physical item_current row.
         all_items = snapshot(self.character)["items"]
-        staff = [x for x in all_items if x["name"] == "STAFF OF LAM ESEN"]
-        self.assertEqual(len(staff), 1)
-        self.assertEqual(staff[0]["location"], {
-            "type": "equipment", "slot": None, "tab": None})
-        self.assertIsNone(staff[0]["itemType"])
-        self.assertIsNone(staff[0]["itemPower"])
-        self.assertEqual(staff[0]["ownershipStatus"], "NOT_CONFIRMED")
-        self.assertEqual(staff[0]["presenceStatus"], "OBSERVED_ONLY")
-        self.assertEqual(staff[0]["ownershipEvidence"], "equipped-marker-name-only-v1")
-        self.assertIsNone(staff[0]["lastConfirmedAt"])
+        self.assertFalse(any(x["name"] == "STAFF OF LAM ESEN"
+                             for x in all_items))
+        self.assertTrue(any(x["name"] == "STAFF OF LAM ESEN"
+                            for x in self.repo().history()))
         inventory = snapshot(self.character, locations={"inventory"})["items"]
         self.assertEqual([x["name"] for x in inventory], ["HENRI'S PERQUISITION"])
         self.assertEqual(inventory[0]["ownershipStatus"], "CONFIRMED")
@@ -230,12 +226,13 @@ class InputBagOwnershipTests(unittest.TestCase):
                     "HENRI'S PERQUISITION", "Unique Focus", "850 Item Power",
                     "Equip", "Mark as Junk", "Drop")
         repo.sync(session_id="real-a-20261018")
-        staff = [x for x in snapshot(self.character)["items"]
-                 if x["name"] == "STAFF OF LAM ESEN"]
-        self.assertEqual(len(staff), 1)
-        self.assertEqual(staff[0]["itemType"], "Staff")
-        self.assertEqual(staff[0]["itemPower"], 850)
-        self.assertEqual(staff[0]["ownershipStatus"], "NOT_CONFIRMED")
+        self.assertFalse(any(x["name"] == "STAFF OF LAM ESEN"
+                             for x in snapshot(self.character)["items"]))
+        # A richer comparison tooltip only enriches historical evidence.
+        observations = [x for x in self.repo().history()
+                        if x["name"] == "STAFF OF LAM ESEN"]
+        self.assertTrue(observations)
+
 
 
     def test_real_a_1900_favorite_toggle_materializes_two_current_bag_items(self):
