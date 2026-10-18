@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from typing import Any, Protocol
 
 from ..repository import EquipmentRepository
@@ -257,14 +258,15 @@ class EquipmentProjector:
                     reason="high_observation_terminal_unequip",
                 )
 
-    def consume(self, event: dict[str, Any]) -> None:
+    def consume(self, event: dict[str, Any], *,
+                connection: sqlite3.Connection | None = None) -> None:
         if event.get("type") != "speech.raw":
             return
 
         seq = int(event.get("eventSeq") or 0)
         session = str(event.get("sessionId") or "")
         ts = str(event.get("timestamp") or "")
-        checkpoint = self.repository.checkpoint()
+        checkpoint = self.repository.checkpoint(connection=connection)
         if checkpoint and checkpoint[0] == session and seq <= checkpoint[1]:
             return
 
@@ -353,6 +355,7 @@ class EquipmentProjector:
             observation=observation,
             empty_slot_family=empty_slot_family,
             remove_item_fingerprint=remove_item_fingerprint,
+            connection=connection,
         )
 
         if observation is not None:
