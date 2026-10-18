@@ -255,6 +255,52 @@ def update_cursor(db: sqlite3.Connection, *, session: str,
     )
 
 
+def apply_verified_scan(db: sqlite3.Connection, scan: sqlite3.Row,
+                        cells: list[sqlite3.Row], event: sqlite3.Row) -> None:
+    """Project a completed, attested grid scan into item_current."""
+    owner = scan["character_id"]
+    container = scan["container"]
+    tab = scan["tab"] if container == "stash" else None
+    incoming = set()
+    for cell in cells:
+        if cell["item_json"] is None:
+            continue
+        item = json.loads(cell["item_json"])
+        token = cell["tracking_token"]
+        key = ("grid:" + owner + ":token:" + token if token else
+               "grid:" + owner + ":slot:" + container + ":" +
+               str(tab) + ":" + str(cell["slot_index"]))
+        incoming.add(key)
+        item["location"] = {"type": container, "slot": str(cell["slot_index"]),
+                            "tab": tab}
+        item["ownershipStatus"] = "CONFIRMED"
+        item["observationConfidence"] = "HIGH"
+        item["presenceStatus"] = "LAST_CONFIRMED"
+        item["lastConfirmedAt"] = event["timestamp"]
+        item["lastSeenAt"] = event["timestamp"]
+        item["sourceSessionId"] = event["session_id"]
+        item["sourceEventSeqEnd"] = event["event_seq"]
+        digest = hashlib.sha256(_json([owner, token, item.get("name"),
+                                       item.get("itemPower"), item.get("affixes")])
+                                .encode("utf-8")).hexdigest()
+        upsert(db, key, item, fingerprint=digest, scope=owner)
+    rows = db.execute(
+        "SELECT item_key,item_json FROM item_current WHERE character_scope=? "
+        "AND location=? AND COALESCE(tab,-1)=COALESCE(?,-1)",
+        (owner, container, tab)).fetchall()
+    for row in rows:
+        if row["item_key"] in incoming:
+            continue
+        item = json.loads(row["item_json"])
+        item["location"] = {"type": "unknown", "slot": None, "tab": None}
+        item["presenceStatus"] = "LOCATION_UNVERIFIED"
+        item["lastSeenAt"] = event["timestamp"]
+        item["sourceSessionId"] = event["session_id"]
+        item["sourceEventSeqEnd"] = event["event_seq"]
+        upsert(db, row["item_key"], item,
+               fingerprint=item.get("fingerprint") or "", scope=owner)
+
+
 def snapshot(path: Path, *, locations: set[str] | None = None,
              rarity: str | None = None, confirmed_only: bool = False) -> dict[str, Any]:
     """Read committed projection only; no CREATE, REPLAY, MIGRATION or writes."""
