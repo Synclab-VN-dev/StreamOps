@@ -5,6 +5,7 @@ slot identity, movement, or complete scans. This reader never mutates events.db.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from contextlib import closing
 from pathlib import Path
@@ -208,6 +209,92 @@ def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) ->
     del recent[:-2]
 
 
+def _canonical_text(value: Any) -> str:
+    return " ".join(str(value or "").casefold().split())
+
+
+def _candidate_facts(item: dict[str, Any]) -> dict[str, Any]:
+    """Only observed properties; shorter/partially scrolled tooltips are OK."""
+    facts: dict[str, Any] = {}
+    for row in item.get("baseStats") or []:
+        if isinstance(row, dict):
+            label = _canonical_text(row.get("kind") or row.get("stat"))
+            if label:
+                facts["base:" + label] = _canonical_text(
+                    row.get("raw") or row.get("value"))
+    for row in item.get("affixes") or []:
+        if isinstance(row, dict):
+            label = _canonical_text(row.get("stat"))
+            if label:
+                facts["affix:" + label] = _canonical_text(
+                    row.get("raw") or row.get("value"))
+    if item.get("effectsRaw"):
+        facts["effects"] = tuple(sorted(
+            _canonical_text(s) for s in item["effectsRaw"]))
+    return facts
+
+
+def _collapse_observation_fingerprints(
+    observations: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Group repeated readings, never infer physical ownership from a hash.
+
+    Use item identity fields as the bucket and compare known stat/effect facts.
+    Partial tooltips merge with a compatible more-complete capture. Conflicting
+    values stay separate. Equal physical items with identical stats may merge;
+    this is an explicit V1 fingerprint-only tradeoff, not proof of quantity.
+    """
+    buckets: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
+    for item in observations:
+        location = item.get("location") or {}
+        core = (
+            _canonical_text(location.get("type")),
+            location.get("tab"), location.get("slot"),
+            _canonical_text(item.get("name")),
+            _canonical_text(item.get("itemType")),
+            item.get("itemPower"),
+            _canonical_text(item.get("rarity")),
+            bool(item.get("ancestral")),
+        )
+        buckets.setdefault(core, []).append(item)
+
+    result: list[dict[str, Any]] = []
+    for core, records in buckets.items():
+        groups: list[dict[str, Any]] = []
+        # Complete evidence first: a shortened/scrolling tooltip is a subset.
+        for item in sorted(records, key=lambda v: -len(_candidate_facts(v))):
+            facts = _candidate_facts(item)
+            matches = [
+                group for group in groups
+                if all(k not in group["facts"] or group["facts"][k] == v
+                       for k, v in facts.items())
+                and (set(facts) <= set(group["facts"])
+                     or set(group["facts"]) <= set(facts))
+            ]
+            if matches:
+                group = max(matches, key=lambda g: sum(
+                    g["facts"].get(k) == v for k, v in facts.items()))
+                group["facts"].update(facts)
+                group["members"].append(item)
+            else:
+                groups.append({"facts": dict(facts), "members": [item]})
+        for group in groups:
+            members = group["members"]
+            representative = max(members, key=lambda v: len(_candidate_facts(v)))
+            digest = hashlib.sha256(json.dumps(
+                [core, sorted(group["facts"].items())],
+                ensure_ascii=False, separators=(",", ":"),
+            ).encode("utf-8")).hexdigest()
+            entry = dict(representative)
+            entry["id"] = "fingerprint:" + digest
+            entry["fingerprint"] = digest
+            entry["observationCount"] = len(members)
+            entry["firstSeenAt"] = min(m["firstSeenAt"] for m in members)
+            entry["lastSeenAt"] = max(m["lastSeenAt"] for m in members)
+            result.append(entry)
+    return result
+
+
 class OwnedItemsRepository:
     """A materialized, incremental projection; no event-history scan after sync."""
 
@@ -307,7 +394,9 @@ class OwnedItemsRepository:
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY observation_id"
-        return [json.loads(r[0]) for r in db.execute(sql, params)]
+        return _collapse_observation_fingerprints(
+            [json.loads(r[0]) for r in db.execute(sql, params)]
+        )
 
     def _equipped(self, db: sqlite3.Connection, rarity: str | None) -> list[dict[str, Any]]:
         # Reuse HIGH confidence equipment projection. Do not collapse ring
