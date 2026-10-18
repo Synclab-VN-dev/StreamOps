@@ -209,6 +209,38 @@ class UnifiedCurrentTests(unittest.TestCase):
             self.db, locations={"equipment"})["observedTotal"], 0)
 
 
+    def test_one_shot_uat_runner_passes_snapshot_and_fails_closed_head(self):
+        import importlib.util
+        import subprocess
+        repo_root = Path(__file__).resolve().parents[3]
+        script = repo_root / "scripts/acceptance/issue119_item_current_uat.py"
+        spec = importlib.util.spec_from_file_location("issue119_current_uat", script)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        rejected = module.run(repo_root, self.root, "incorrect-head",
+                              self.root / "blocked")
+        self.assertEqual(rejected["status"], "BLOCKED")
+        self.assertTrue((self.root / "blocked/report.json").is_file())
+
+        self.init()
+        with closing(sqlite3.connect(self.db)) as db, db:
+            db.row_factory = sqlite3.Row
+            item_current.upsert(db, "a", self.observe(), fingerprint="a")
+        head = subprocess.check_output(
+            ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+            text=True).strip()
+        accepted = module.run(repo_root, self.root, head, self.root / "positive")
+        self.assertEqual(accepted["status"], "PASS_SNAPSHOT_ONLY")
+        self.assertEqual(
+            [x["status"] for x in accepted["cases"] if x["id"].startswith("UC-03-")],
+            ["PASS", "PASS", "PASS"])
+        self.assertTrue((self.root / "positive/inventory.stdout.json").is_file())
+        self.assertFalse(any(x["id"] == "UC-07-REAL-A" and x["status"] == "PASS"
+                             for x in accepted["cases"]))
+
+
 
 if __name__ == "__main__":
     unittest.main()
