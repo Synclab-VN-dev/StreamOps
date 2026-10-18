@@ -82,10 +82,18 @@ def _make_observation(active: dict[str, Any]) -> dict[str, Any]:
         data = {"name": normalize(lines[0]), "item_type": normalize(lines[1]),
                 "item_power": None, "base_stats": [], "affixes": [],
                 "effects_raw": [], "metadata_raw": lines[2:], "raw_lines": lines}
-    normalized = {normalize(line).casefold() for line in lines[3:]}
+    # NVDA label for a favorite is "Unmark Item", whereas the same action
+    # position on an ordinary item reads "Mark as Junk". Non-breaking spaces
+    # also occur in actual controller speech (e.g. Hide Comparison).
+    normalized = {" ".join(normalize(line).casefold().split())
+                  for line in lines[3:]}
     bag_evidence = bool(active.get("characterBag"))
-    # The markers belong to the selected item, not the EQUIPPED comparison.
-    action_evidence = {"equip", "mark as junk", "drop"} <= normalized
+    # Action labels corroborate the selected Bag panel, not an executed action.
+    # Require Equip + Drop + the favorite/junk toggle in that same tooltip.
+    action_evidence = (
+        {"equip", "drop"} <= normalized
+        and bool(normalized & {"mark as junk", "unmark item"})
+    )
     confirmed_bag = (active["location"]["type"] == "inventory"
                      and bag_evidence and action_evidence)
     marked_equipped = (active["location"]["type"] == "equipment"
