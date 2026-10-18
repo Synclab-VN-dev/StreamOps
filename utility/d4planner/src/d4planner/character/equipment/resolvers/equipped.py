@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from ...models import EquipmentObservation
 from ..decision import Resolution, ResolutionKind
-from ..parser import fingerprint, parse_item
+from ..parser import fingerprint, parse_item, parse_type
+from ..slot_policy import DEFAULT_SLOT_TYPES
 from .base import BaseResolver, ResolverRequest
 
 
@@ -19,6 +20,15 @@ class EquippedResolver(BaseResolver):
             return "missing_slot_context"
         if not request.context.equipped_marker:
             return "missing_exact_equipped_marker"
+        # A slot header is contextual evidence, not proof that the next
+        # tooltip belongs to it. Reject a Staff under a stale Feet context.
+        if len(request.segment) < 2:
+            return "missing_item_type"
+        parsed = parse_type(request.segment[1].text)
+        if not parsed or not DEFAULT_SLOT_TYPES.allows(
+            request.context.slot, parsed[2]
+        ):
+            return "item_type_incompatible_with_slot"
         return None
 
     def build_resolution(self, request: ResolverRequest) -> Resolution:
