@@ -1,3 +1,29 @@
+# Contract CLI Item Current — thiết kế mới #119 / PR #120
+
+> Áp dụng cho nhánh triển khai đang kiểm thử, **chưa phải bản production**. Các lệnh V1 `items` và hướng dẫn nghiệm thu cũ bên dưới là lịch sử; không coi chúng là contract đích.
+
+**Nguồn dữ liệu:** `events.db/event_log` là canonical event. Chỉ **Engine** nhận event của session đang chạy, resolve Input/NVDA/verified scan rồi ghi `character.db/item_current` và metadata `item_projection_state`. Không dùng `equipment_current` hoặc `owned_grid_current` như nguồn current độc lập; bảng cũ được giữ cho migration/audit, không ghi current mới. Mọi thay đổi cần transaction và tăng revision sau commit.
+
+**CLI chỉ đọc DB hiện trạng, không chạy resolver, không đọc event gốc, không khởi động Engine:**
+
+~~~powershell
+d4planner item                              # One-shot: mọi item hiện biết
+d4planner item --attach                     # Theo dõi revision sau commit, Ctrl+C chỉ detach
+d4planner item --location inventory         # One-shot Inventory
+d4planner item --location equipment         # One-shot Equipment
+d4planner item --location stash             # One-shot Stash
+d4planner item --location inventory --attach
+d4planner item --json
+~~~
+
+**Session:** Scope của Engine để chọn input events mới sau start; **không** phải filter SQL của CLI. `item_current` vẫn tồn tại khi Engine stop/restart. Nếu chưa khởi động Engine mới để thực hiện migration, CLI có thể trả snapshot trống/NOT_SCANNED, **không được tự replay sự kiện cũ trên lệnh read**. `lastSeenAt`/coverage phải được hiểu là last-known, không khẳng định đang có đủ toàn bộ Item Inventory.
+
+**Safety/migration:** Không xóa `events.db`/`character.db` trên runtime đang chạy. Muốn nghiệm thu dữ liệu sạch phải stop test Engine, backup DB, chọn HomeDir UAT riêng và chỉ xóa dữ liệu test đã được anh cho phép. Các lần debug cũ và archive ZIP vẫn cần giữ. Script UAT mới phải kiểm tra đúng HEAD, HomeDir/PID và phân loại PASS/FAIL/BLOCKED.
+
+**Trạng thái:** Đây là mô tả thiết kế triển khai; chỉ đánh dấu acceptance UC-01..08 theo evidence CI và Real-A trên đúng HEAD. Không suy diễn PASS từ test fixture hoặc từ CI cũ.
+
+---
+
 # Issue #119: P0 real-A inventory/stash + mapped-key evidence probe
 
 This is a **read-only feasibility gate**, NOT the finished \`d4planner items\` CLI.
