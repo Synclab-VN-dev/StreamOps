@@ -12,6 +12,8 @@ from pathlib import Path
 import sqlite3
 from typing import Any
 
+from .current_reducer import CurrentItemIntent, CurrentItemReducer
+
 
 def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
@@ -170,6 +172,37 @@ def upsert(db: sqlite3.Connection, item_key: str, payload: dict[str, Any],
     return True
 
 
+class _SqliteItemPort:
+    """SQLite adapter; domain reducer imports neither SQLite nor NVDA."""
+
+    def __init__(self, db: sqlite3.Connection):
+        self.db = db
+
+    def upsert(self, intent: CurrentItemIntent) -> bool:
+        return upsert(self.db, intent.key, dict(intent.payload),
+                      fingerprint=intent.fingerprint, scope=intent.scope)
+
+    def invalidate_slot(self, slot: str, except_key: str,
+                        intent: CurrentItemIntent) -> None:
+        mark_location_unknown(
+            self.db, "location='equipment' AND slot=? AND item_key<>?",
+            (slot, except_key),
+            when=str(intent.payload.get("lastSeenAt") or ""),
+            session=str(intent.payload.get("sourceSessionId") or ""))
+
+    def limit_ring_positions(self, intent: CurrentItemIntent) -> None:
+        rows = self.db.execute(
+            """SELECT item_key FROM item_current
+               WHERE location='equipment' AND slot='ring'
+               ORDER BY last_seen_at DESC,revision DESC"""
+        ).fetchall()
+        for row in rows[2:]:
+            mark_location_unknown(
+                self.db, "item_key=?", (row[0],),
+                when=str(intent.payload.get("lastSeenAt") or ""),
+                session=str(intent.payload.get("sourceSessionId") or ""))
+
+
 def record_equipment(db: sqlite3.Connection, observation: Any) -> None:
     item = observation.item
     payload = equipment_payload(
@@ -177,23 +210,9 @@ def record_equipment(db: sqlite3.Connection, observation: Any) -> None:
         raw=item.as_dict(), slot=observation.slot_family,
         observed_at=observation.observed_at, session_id=observation.session_id,
         seq_start=observation.seq_start, seq_end=observation.seq_end)
-    key = "eq:" + observation.fingerprint
-    # A unique non-ring slot replaces an old item. An unequipped item should
-    # remain in inventory only if a separately verified transition proves it.
-    if observation.slot_family != "ring":
-        mark_location_unknown(db, "location='equipment' AND slot=? AND item_key<>?",
-                     (observation.slot_family, key),
-                     when=observation.observed_at, session=observation.session_id)
-    upsert(db, key, payload, fingerprint=observation.fingerprint)
-    if observation.slot_family == "ring":
-        rows = db.execute(
-            """SELECT item_key FROM item_current
-               WHERE location='equipment' AND slot='ring'
-               ORDER BY last_seen_at DESC,revision DESC"""
-        ).fetchall()
-        for row in rows[2:]:
-            mark_location_unknown(db, "item_key=?", (row[0],),
-                         when=observation.observed_at, session=observation.session_id)
+    CurrentItemReducer(_SqliteItemPort(db)).apply(CurrentItemIntent(
+        source="equipped-slot", key="eq:" + observation.fingerprint,
+        payload=payload, fingerprint=observation.fingerprint))
 
 
 def mark_location_unknown(db, where, params, when, session):
@@ -238,7 +257,9 @@ def record_observation(db: sqlite3.Connection, observation: dict[str, Any]) -> N
     payload = dict(observation)
     payload["presenceStatus"] = "LAST_CONFIRMED"
     payload["lastConfirmedAt"] = payload.get("lastSeenAt")
-    upsert(db, "bag:" + digest, payload, fingerprint=digest)
+    CurrentItemReducer(_SqliteItemPort(db)).apply(CurrentItemIntent(
+        source="bag-selected", key="bag:" + digest,
+        payload=payload, fingerprint=digest))
 
 
 def update_cursor(db: sqlite3.Connection, *, session: str,
@@ -279,7 +300,9 @@ def apply_verified_scan(db: sqlite3.Connection, scan: sqlite3.Row,
         digest = hashlib.sha256(_json([owner, token, item.get("name"),
                                        item.get("itemPower"), item.get("affixes")])
                                 .encode("utf-8")).hexdigest()
-        upsert(db, key, item, fingerprint=digest, scope=owner)
+        CurrentItemReducer(_SqliteItemPort(db)).apply(CurrentItemIntent(
+            source="verified-grid", key=key, payload=item,
+            fingerprint=digest, scope=owner))
     rows = db.execute(
         "SELECT item_key,item_json FROM item_current WHERE character_scope=? "
         "AND location=? AND COALESCE(tab,-1)=COALESCE(?,-1)",
