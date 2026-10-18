@@ -73,6 +73,32 @@ try {
     $w=Join-Path $env:RUNNER_TEMP 'd4planner-wheel'
     New-Item -ItemType Directory -Path $w -Force | Out-Null
     Invoke-CheckedCI python @('-m','pip','wheel','--no-deps','-w',$w,'utility/d4planner')
+    # Validate Issue119 PowerShell UAT entrypoints independently of pytest.
+    $harnesses=@('scripts/acceptance/issue119-probe.ps1',
+                 'scripts/acceptance/issue119-items-uat.ps1')
+    foreach($h in $harnesses) {
+      $tokens=$null; $parseErrors=$null
+      [void][System.Management.Automation.Language.Parser]::ParseFile(
+        (Resolve-Path $h).Path,[ref]$tokens,[ref]$parseErrors)
+      if(@($parseErrors).Count -gt 0) {throw "UAT syntax failed: $h"}
+    }
+    # Headless negative UAT must fail CLOSED, never claim a real-A PASS.
+    $emptyHome=Join-Path $env:RUNNER_TEMP 'i119-scoped-empty-home'
+    $evidence=Join-Path $env:RUNNER_TEMP 'i119-scoped-uat-evidence'
+    New-Item -ItemType Directory -Force -Path $emptyHome | Out-Null
+    $PSNativeCommandUseErrorActionPreference=$false
+    & pwsh -NoProfile -File 'scripts/acceptance/issue119-items-uat.ps1' `
+      -ExpectedHead (git rev-parse HEAD) -HomeDir $emptyHome -EvidenceDir $evidence
+    $blockedExit=$LASTEXITCODE
+    $PSNativeCommandUseErrorActionPreference=$true
+    $global:LASTEXITCODE=0
+    if($blockedExit -ne 2) {throw "Missing UAT DB should BLOCKED=2; got $blockedExit"}
+    $uat=Get-Content (Join-Path $evidence 'report.json') -Raw | ConvertFrom-Json
+    if($uat.status -ne 'BLOCKED' -or $uat.checks.EVENTS.result -ne 'BLOCKED') {
+      throw 'Issue119 UAT missing-events classification incorrect'
+    }
+    Write-Host 'Issue119 UAT syntax and fail-closed safety smoke PASS'
+
   }
   if($modules -contains 'StreamOpsServer' -or $modules -contains 'StreamOpsFE') {
     Invoke-CheckedCI python @('-m','pip','install','.[server,dev]')
