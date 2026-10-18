@@ -55,36 +55,44 @@ if($scope.Server) {$modules+='StreamOpsServer'}
 if($scope.FE) {$modules+='StreamOpsFE'}
 Write-Host "SCOPED MODULES: $($modules -join ', ')"
 $files | ForEach-Object {Write-Host "  $_"}
-function Checked([string]$cmd,[string[]]$args) {
-  & $cmd @args
-  if($LASTEXITCODE -ne 0) {throw "$cmd $($args -join ' ') failed, exit=$LASTEXITCODE"}
+function Invoke-CheckedCI([string]$cmd,[string[]]$argv) {
+  $script:invokedTests++
+  Write-Host "CI COMMAND: $cmd $($argv -join ' ')"
+  & $cmd @argv
+  if($LASTEXITCODE -ne 0) {throw "$cmd $($argv -join ' ') failed, exit=$LASTEXITCODE"}
 }
-$report=[ordered]@{base=$BaseSha;head=$HeadSha;modules=$modules;result='FAIL'}
+$script:invokedTests=0
+$report=[ordered]@{base=$BaseSha;head=$HeadSha;modules=$modules;result='FAIL';testCommands=0}
 try {
-  if($scope.D4) {
-    Checked python @('-m','pip','install','-e','utility/d4planner[dev]')
-    Checked python @('-m','pytest','-q','utility/d4planner/tests')
-    Checked python @('-m','d4planner.cli','controller','validate','xbox16')
-    Checked python @('utility/d4planner/tools/build_nvda_addon.py')
+  if($modules -contains 'D4Planner') {
+    Write-Host 'START D4PLANNER TESTS'
+    Invoke-CheckedCI python @('-m','pip','install','-e','utility/d4planner[dev]')
+    Invoke-CheckedCI python @('-m','pytest','-q','utility/d4planner/tests')
+    Invoke-CheckedCI python @('-m','d4planner.cli','controller','validate','xbox16')
+    Invoke-CheckedCI python @('utility/d4planner/tools/build_nvda_addon.py')
     $w=Join-Path $env:RUNNER_TEMP 'd4planner-wheel'
     New-Item -ItemType Directory -Path $w -Force | Out-Null
-    Checked python @('-m','pip','wheel','--no-deps','-w',$w,'utility/d4planner')
+    Invoke-CheckedCI python @('-m','pip','wheel','--no-deps','-w',$w,'utility/d4planner')
   }
-  if($scope.Server -or $scope.FE) {
-    Checked python @('-m','pip','install','.[server,dev]')
+  if($modules -contains 'StreamOpsServer' -or $modules -contains 'StreamOpsFE') {
+    Invoke-CheckedCI python @('-m','pip','install','.[server,dev]')
   }
-  if($scope.Server) {
-    Checked python @('-m','playwright','install','chromium')
-    Checked python @('-m','pytest','-q','streamops/server/tests')
-  } elseif($scope.FE) {
-    Checked python @('-m','playwright','install','chromium')
-    Checked python @('-m','pytest','-q',
+  if($modules -contains 'StreamOpsServer') {
+    Invoke-CheckedCI python @('-m','playwright','install','chromium')
+    Invoke-CheckedCI python @('-m','pytest','-q','streamops/server/tests')
+  } elseif($modules -contains 'StreamOpsFE') {
+    Invoke-CheckedCI python @('-m','playwright','install','chromium')
+    Invoke-CheckedCI python @('-m','pytest','-q',
       'streamops/server/tests/test_games_ui_contract.py',
       'streamops/server/tests/test_magicpath_visual_contract.py',
       'streamops/server/tests/e2e/test_games_ui.py',
       'streamops/server/tests/e2e/test_games_fe_be_integration.py',
       'streamops/server/tests/e2e/test_steam.py')
   }
+  if($modules.Count -gt 0 -and $script:invokedTests -eq 0) {
+    throw 'CI FALSE GREEN: module selected but no test command ran'
+  }
+  $report.testCommands=$script:invokedTests
   $report.result='PASS'
 } finally {
   if($env:RUNNER_TEMP) {
