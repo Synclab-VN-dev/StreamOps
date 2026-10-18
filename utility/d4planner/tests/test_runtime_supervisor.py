@@ -384,6 +384,65 @@ def test_raw_capture_is_promoted_to_unified_monotonic_stream(tmp_path):
     assert [row["eventSeq"] for row in rows] == list(range(1, len(rows) + 1))
 
 
+def test_live_supervisor_flush_materializes_favorite_bag_into_character_db(
+    tmp_path, monkeypatch
+):
+    """Real event-writer -> Engine resolver -> DB commit -> CLI snapshot chain.
+
+    Runs with FakeRuntime, no Windows A, NVDA, Game or Steam intervention.
+    """
+    from d4planner.runtime.events.model import EventDraft
+    from d4planner.character.item_current import snapshot
+
+    paths = RuntimePaths(tmp_path / "home")
+    runtime = FakeRuntime(
+        paths,
+        game=ProcessInfo("Diablo IV", 31, session_id=1),
+        steam=ProcessInfo("steam", 21, session_id=1),
+    )
+    supervisor = build_supervisor(tmp_path, runtime)
+    assert supervisor.bootstrap() == RuntimeState.RUNNING
+
+    def speech(text):
+        return EventDraft("speech.raw", {
+            "text": text, "process": "Diablo IV",
+            "windowTitle": "Diablo IV",
+        }, timestamp="2026-10-18T19:00:13+07:00")
+
+    marker = EventDraft("input.marker.raw", {
+        "source": "steamInput", "device": "keyboard",
+        "key": "F3", "virtualKey": 114,
+        "state": "down", "controlId": "START",
+        "process": "Diablo IV", "processId": 31,
+        "contextSource": "rawInput", "windowTitle": "Diablo IV",
+    }, timestamp="2026-10-18T19:00:13+07:00")
+    drafts = [marker] + [speech(s) for s in (
+        "CHARACTER", "Right analog stick click\u00a0Sort\u00a0Bag",
+        "EQUIPPED", "FRACTURED WINTERGLASS", "Unique Amulet",
+        "850 Item Power", "157 All Resist",
+        "[FAVORITED ITEM]. FEROCIOUS OCELOT&apos;S EYE",
+        "Legendary Amulet", "850 Item Power",
+        "+141 Intelligence +[125 - 149]",
+        "Bottom action button", "Equip", "Top action button",
+        "Hide\u00a0Comparison", "Left action button",
+        "Unmark\u00a0Item", "Left action button", "Hold", "Drop",
+    )]
+    monkeypatch.setattr(
+        supervisor, "_prepare_ingress",
+        lambda **kwargs: drafts)
+    assert supervisor._flush_ingress() == len(drafts)
+    actual = snapshot(paths.character_db)
+    assert actual["revision"] >= 1, actual
+    assert actual["lastCommittedAt"], actual
+    assert [entry["name"] for entry in actual["items"]
+            if entry["location"]["type"] == "inventory"] == [
+        "FEROCIOUS OCELOT'S EYE"
+    ]
+    assert "item resolver failure" not in (supervisor.status.last_error or "")
+    # The observer never needs to run the resolver itself.
+    assert snapshot(paths.character_db)["revision"] == actual["revision"]
+
+
 def test_runtime_event_sink_failure_is_isolated(tmp_path):
     paths = RuntimePaths(tmp_path / "home")
     runtime = FakeRuntime(
