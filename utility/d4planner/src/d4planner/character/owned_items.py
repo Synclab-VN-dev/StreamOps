@@ -286,7 +286,7 @@ def _collapse_observation_fingerprints(
                 ensure_ascii=False, separators=(",", ":"),
             ).encode("utf-8")).hexdigest()
             entry = dict(representative)
-            entry["id"] = "fingerprint:" + digest
+            # Preserve representative observation provenance in id; hash is separate.
             entry["fingerprint"] = digest
             entry["observationCount"] = len(members)
             entry["firstSeenAt"] = min(m["firstSeenAt"] for m in members)
