@@ -191,6 +191,24 @@ class UnifiedCurrentTests(unittest.TestCase):
         self.assertEqual(len(snapshots[1]["items"]), 1)
 
 
+    def test_equipment_slot_change_keeps_unknown_item_not_fake_removal(self):
+        self.init()
+        item = self.observe()
+        item["location"] = {"type": "equipment", "slot": "amulet", "tab": None}
+        with closing(sqlite3.connect(self.db)) as db, db:
+            db.row_factory = sqlite3.Row
+            item_current.upsert(db, "old-equip", item, fingerprint="old")
+            item_current.mark_location_unknown(
+                db, "location='equipment' AND slot=?", ("amulet",),
+                when="2026-10-18T10:01:00+07:00", session="s2")
+        snap = item_current.snapshot(self.db)
+        self.assertEqual(snap["observedTotal"], 1)
+        self.assertEqual(snap["items"][0]["location"]["type"], "unknown")
+        self.assertEqual(snap["items"][0]["presenceStatus"], "LOCATION_UNVERIFIED")
+        self.assertEqual(item_current.snapshot(
+            self.db, locations={"equipment"})["observedTotal"], 0)
+
+
 
 if __name__ == "__main__":
     unittest.main()
