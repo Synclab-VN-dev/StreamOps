@@ -236,6 +236,18 @@ def record_equipment(db: sqlite3.Connection, observation: Any) -> None:
                          when=observation.observed_at, session=observation.session_id)
 
 
+def mark_location_unknown(db, where, params, when, session):
+    rows = db.execute("SELECT item_key,item_json,fingerprint FROM item_current WHERE "
+                      + where, params).fetchall()
+    for row in rows:
+        item = json.loads(row["item_json"])
+        item["location"] = {"type":"unknown","tab":None,"slot":None}
+        item["presenceStatus"] = "LOCATION_UNVERIFIED"
+        item["lastSeenAt"] = when
+        item["sourceSessionId"] = session
+        upsert(db,row["item_key"],item,fingerprint=row["fingerprint"] or "")
+
+
 def remove_where(db: sqlite3.Connection, condition: str, args: tuple[Any, ...],
                  *, when: str, session: str) -> None:
     count = db.execute(
