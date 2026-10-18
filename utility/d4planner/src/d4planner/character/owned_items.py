@@ -289,8 +289,10 @@ def _collapse_observation_fingerprints(
             # Preserve representative observation provenance in id; hash is separate.
             entry["fingerprint"] = digest
             entry["observationCount"] = len(members)
-            entry["firstSeenAt"] = min(m["firstSeenAt"] for m in members)
-            entry["lastSeenAt"] = max(m["lastSeenAt"] for m in members)
+            first_seen = [m.get("firstSeenAt") for m in members if m.get("firstSeenAt")]
+            last_seen = [m.get("lastSeenAt") for m in members if m.get("lastSeenAt")]
+            entry["firstSeenAt"] = min(first_seen) if first_seen else None
+            entry["lastSeenAt"] = max(last_seen) if last_seen else None
             result.append(entry)
     return result
 
