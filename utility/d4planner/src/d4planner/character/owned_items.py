@@ -54,14 +54,16 @@ def _connect(path: Path, *, read_only: bool = False) -> sqlite3.Connection:
 def _initial() -> dict[str, Any]:
     return {"projectionVersion": PROJECTION_VERSION, "session": None, "context": "unknown", "tabHints": [], "recent": [],
             "active": None, "lastSeenAt": None, "characterInput": False,
-            "bagVisible": False, "equippedPrefix": None, "speechAfterEquipped": 0}
+            "bagVisible": False, "equippedPrefix": None, "speechAfterEquipped": 0,
+            "equippedName": None
 
 
 def _reset_session(state: dict[str, Any], session: str) -> None:
     state.update({"session": session, "context": "unknown",
                   "tabHints": [], "recent": [], "active": None,
                   "characterInput": False, "bagVisible": False,
-                  "equippedPrefix": None, "speechAfterEquipped": 0})
+                  "equippedPrefix": None, "speechAfterEquipped": 0,
+                  "equippedName": None})
 
 
 def _location(state: dict[str, Any]) -> dict[str, Any]:
@@ -128,6 +130,50 @@ def _make_observation(active: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _save_incomplete_equipped(db: sqlite3.Connection, state: dict[str, Any]) -> None:
+    """Keep an EQUIPPED/name pair when NVDA skips comparison type and power.
+
+    The next complete selected-Bag anchor is required, but does NOT prove
+    the compared item's physical slot, rarity, power or ownership.
+    """
+    candidate = state.get("equippedName")
+    if not candidate or not (state.get("characterInput") and state.get("bagVisible")):
+        return
+    raw = normalize(candidate["text"])
+    favorite = raw.startswith("[FAVORITED ITEM]. ")
+    name = raw[len("[FAVORITED ITEM]. "):] if favorite else raw
+    excluded = {"EQUIPPED", "CHARACTER", "EQUIPMENT", "STASH", "BLANK", "DROP"}
+    if (not name or name.upper() in excluded or
+            (not favorite and (not name.isupper() or len(name) < 4))):
+        return
+    prefix = int(state["equippedPrefix"])
+    obs = {
+        "id": "obs:" + state["session"] + ":" + str(prefix),
+        "name": name, "itemType": None, "itemPower": None,
+        "rarity": None, "ancestral": False, "favorite": favorite,
+        "location": {"type": "equipment", "tab": None, "slot": None},
+        "baseStats": [], "affixes": [], "effectsRaw": [],
+        "metadataRaw": [], "rawSpeech": ["EQUIPPED", raw],
+        "ownershipStatus": "NOT_CONFIRMED", "observationConfidence": "LOW",
+        "ownershipEvidence": "equipped-marker-name-only-v1",
+        "identityConfidence": "UNKNOWN", "pickedUpAt": None,
+        "firstSeenAt": candidate["timestamp"],
+        "lastSeenAt": candidate["timestamp"], "lastConfirmedAt": None,
+        "sourceSessionId": state["session"],
+        "sourceEventSeqStart": prefix, "sourceEventSeqEnd": candidate["seq"],
+    }
+    db.execute(
+        """INSERT OR IGNORE INTO owned_item_observation
+           (source_session_id,source_seq_start,source_seq_end,location_type,
+            item_name,rarity,observed_at,observation_json)
+           VALUES(?,?,?,?,?,?,?,?)""",
+        (state["session"], prefix, candidate["seq"], "equipment", name, None,
+         candidate["timestamp"],
+         json.dumps(obs, ensure_ascii=False, separators=(",", ":"))),
+    )
+    item_current.record_equipped_hint(db, obs)
+
+
 def _save_active(db: sqlite3.Connection, state: dict[str, Any]) -> None:
     active = state.get("active")
     if not active or len(active["lines"]) < 3:
@@ -145,6 +191,9 @@ def _save_active(db: sqlite3.Connection, state: dict[str, Any]) -> None:
     # Materialize only corroborated Bag items; comparison equipment is owned
     # by EquipmentProjector and must never duplicate a selected inventory row.
     item_current.record_observation(db, obs)
+    if (obs["location"]["type"] == "equipment" and
+            obs.get("ownershipEvidence") == "equipped-marker-v1"):
+        item_current.record_equipped_hint(db, obs)
 
 
 def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) -> None:
@@ -169,6 +218,7 @@ def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) ->
                 state["characterInput"] = True
                 state["bagVisible"] = False
                 state["equippedPrefix"] = None
+                state["equippedName"] = None
         return
     if row["type"] != "speech.raw":
         # Structured producer events are separate from speech; they cannot be
@@ -197,6 +247,9 @@ def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) ->
     upper = line.upper()
     if state.get("equippedPrefix") is not None and upper != "EQUIPPED":
         state["speechAfterEquipped"] += 1
+        if state["speechAfterEquipped"] == 1:
+            state["equippedName"] = {"text": line, "seq": seq,
+                                     "timestamp": str(row["timestamp"])}
     if "sort bag" in " ".join(line.casefold().split()):
         if state["context"] == "inventory" and state.get("characterInput"):
             state["bagVisible"] = True
@@ -207,6 +260,7 @@ def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) ->
         state["recent"] = []
         state["equippedPrefix"] = seq
         state["speechAfterEquipped"] = 0
+        state["equippedName"] = None
         return
     if upper == "STASH":
         _save_active(db, state)
@@ -215,6 +269,7 @@ def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) ->
         state["characterInput"] = False
         state["bagVisible"] = False
         state["equippedPrefix"] = None
+        state["equippedName"] = None
         state["tabHints"] = []
         state["recent"] = []
         return
@@ -225,6 +280,7 @@ def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) ->
         state["context"] = "inventory"
         state["bagVisible"] = False
         state["equippedPrefix"] = None
+        state["equippedName"] = None
         state["tabHints"] = []
         state["recent"] = []
         return
@@ -250,7 +306,10 @@ def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) ->
         marked_equipped = (state.get("equippedPrefix") is not None
                            and state["speechAfterEquipped"] == 3
                            and state["context"] == "inventory")
+        if not marked_equipped and state.get("equippedPrefix") is not None:
+            _save_incomplete_equipped(db, state)
         state["equippedPrefix"] = None
+        state["equippedName"] = None
         if active is not None:
             # The next name/type were already appended to previous tooltip.
             if len(active["lines"]) >= 2:
