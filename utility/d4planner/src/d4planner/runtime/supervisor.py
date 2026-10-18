@@ -645,24 +645,18 @@ class Supervisor:
         if committed_raw_offset is not None:
             self._raw_offset = committed_raw_offset
 
-        for unified in unified_events:
-            if unified.get("type") != "speech.raw":
-                continue
-            # Projection is downstream of the durable SQLite commit. A
-            # parser/state bug must never lose the raw evidence.
-            try:
-                self.equipment_projector.consume(unified)
-            except Exception as exc:
-                self.equipment_projector.record_error(unified, exc)
-                self.status.last_error = (
-                    f"equipment projector failure: {type(exc).__name__}: {exc}"
-                )
-
+        # One canonical session batch -> one SQLite transaction for both
+        # Equipment + Bag + verified-grid and projection cursor/revision.
+        # Source events were already durably stored in events.db above.
         try:
-            self.item_resolver.sync(session_id=self.status.session_id)
-        except (OSError, sqlite3.Error, ValueError, TypeError) as exc:
+            self.item_resolver.sync(
+                session_id=self.status.session_id,
+                equipment_projector=self.equipment_projector,
+            )
+        except Exception as exc:
+            self.equipment_projector.record_error(unified_events[-1], exc)
             self.status.last_error = (
-                f"item resolver failure: {type(exc).__name__}: {exc}"
+                f"unified item resolver failure: {type(exc).__name__}: {exc}"
             )
         self.status.last_event_at = str(unified_events[-1]["timestamp"])
         self._persist_status()
