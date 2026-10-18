@@ -257,6 +257,46 @@ def remove_where(db: sqlite3.Connection, condition: str, args: tuple[Any, ...],
         _revision(db, when, session)
 
 
+def record_equipped_hint(db: sqlite3.Connection, observation: dict[str, Any]) -> None:
+    """Preserve EQUIPPED comparison speech as an unverified, read-only current hint.
+
+    Without independently verified slot/action evidence, the item is NOT
+    confirmed physically equipped. Repeated NVDA reads do not imply copies.
+    """
+    if ((observation.get("location") or {}).get("type") != "equipment" or
+            observation.get("ownershipEvidence") not in
+            {"equipped-marker-v1", "equipped-marker-name-only-v1"}):
+        return
+    name = str(observation.get("name") or "").strip()
+    if not name:
+        return
+    if db.execute(
+        """SELECT 1 FROM item_current WHERE location='equipment'
+           AND ownership_status='CONFIRMED' AND name=? LIMIT 1""", (name,)
+    ).fetchone():
+        return  # stronger observation already present; no duplicate hint
+    digest = hashlib.sha256(name.casefold().encode("utf-8")).hexdigest()
+    key = "eq-hint:" + digest
+    payload = dict(observation)
+    existing = db.execute(
+        "SELECT item_json FROM item_current WHERE item_key=?", (key,)
+    ).fetchone()
+    if existing:
+        old = json.loads(existing[0])
+        # An incomplete re-read cannot wipe stronger typed tooltip evidence.
+        if old.get("itemPower") is not None and payload.get("itemPower") is None:
+            for field in ("itemType", "itemPower", "rarity", "ancestral",
+                          "baseStats", "affixes", "effectsRaw", "metadataRaw",
+                          "rawSpeech", "ownershipEvidence"):
+                payload[field] = old.get(field)
+    payload["location"] = {"type": "equipment", "slot": None, "tab": None}
+    payload["ownershipStatus"] = "NOT_CONFIRMED"
+    payload["observationConfidence"] = "LOW"
+    payload["presenceStatus"] = "OBSERVED_ONLY"
+    payload["lastConfirmedAt"] = None
+    upsert(db, key, payload, fingerprint=digest)
+
+
 def record_observation(db: sqlite3.Connection, observation: dict[str, Any]) -> None:
     # Owner's NVDA bag context + selected item actions can attest presence.
     # Equipped comparison markers are handled by the equipment projector;
