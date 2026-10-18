@@ -14,7 +14,7 @@ import sqlite3
 from typing import Any, Iterator
 
 from .equipment.parser import is_item_anchor, normalize, parse_item, parse_type
-from . import owned_items_scans
+from . import owned_items_scans, item_current
 
 CHEST = re.compile(r"^CHEST\s+(\d+)$", re.IGNORECASE)
 POWER = re.compile(r"^[\d,]+ Item Power$")
@@ -134,6 +134,9 @@ def _save_active(db: sqlite3.Connection, state: dict[str, Any]) -> None:
          obs["location"]["type"], obs["name"], obs["rarity"], obs["firstSeenAt"],
          json.dumps(obs, ensure_ascii=False, separators=(",", ":"))),
     )
+    # Materialize only corroborated Bag items; comparison equipment is owned
+    # by EquipmentProjector and must never duplicate a selected inventory row.
+    item_current.record_observation(db, obs)
 
 
 def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) -> None:
@@ -395,8 +398,10 @@ class OwnedItemsRepository:
             """
         )
         owned_items_scans.schema(db)
+        item_current.schema(db)
 
-    def sync(self, *, limit: int | None = None) -> int:
+    def sync(self, *, limit: int | None = None,
+             session_id: str | None = None) -> int:
         """Catch up by canonical row ID. Transactional batch checkpoint.
 
         Newly installed builds bootstrap from canonical source once. Further
@@ -423,11 +428,21 @@ class OwnedItemsRepository:
                 batch_size = min(500, max(0, limit - processed)) if limit is not None else 500
                 if batch_size == 0:
                     break
-                rows = src.execute(
-                    """SELECT id,session_id,event_seq,timestamp,type,data_json
-                       FROM event_log WHERE id>? ORDER BY id LIMIT ?""",
-                    (last, batch_size),
-                ).fetchall()
+                # Engine passes current session; older sessions must never be
+                # imported as new current-item evidence after restart.
+                if session_id is None:
+                    rows = src.execute(
+                        """SELECT id,session_id,event_seq,timestamp,type,data_json
+                           FROM event_log WHERE id>? ORDER BY id LIMIT ?""",
+                        (last, batch_size),
+                    ).fetchall()
+                else:
+                    rows = src.execute(
+                        """SELECT id,session_id,event_seq,timestamp,type,data_json
+                           FROM event_log WHERE id>? AND session_id=?
+                           ORDER BY id LIMIT ?""",
+                        (last, session_id, batch_size),
+                    ).fetchall()
                 if not rows:
                     break
                 with dest:
@@ -442,6 +457,10 @@ class OwnedItemsRepository:
                            state_json=excluded.state_json""",
                         (last, json.dumps(state, ensure_ascii=False)),
                     )
+                    if session_id is not None:
+                        item_current.update_cursor(
+                            dest, session=session_id, event_rowid=last,
+                            observed_at=state.get("lastSeenAt") or "")
                 if len(rows) < batch_size:
                     break
         return processed
