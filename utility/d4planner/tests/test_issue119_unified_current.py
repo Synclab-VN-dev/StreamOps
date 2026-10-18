@@ -163,6 +163,34 @@ class UnifiedCurrentTests(unittest.TestCase):
         self.assertEqual([x["name"] for x in items], ["OLD AMULET"])
         self.assertEqual(items[0]["location"]["type"], "equipment")
 
+    def test_attach_emits_only_committed_revision_changes(self):
+        self.init()
+        original = os.environ.get("D4PLANNER_HOME")
+        os.environ["D4PLANNER_HOME"] = str(self.root)
+        self.addCleanup(lambda: os.environ.pop("D4PLANNER_HOME", None)
+                        if original is None else os.environ.__setitem__(
+                            "D4PLANNER_HOME", original))
+        calls = [0]
+        def advance(_seconds):
+            calls[0] += 1
+            if calls[0] == 1:
+                with closing(sqlite3.connect(self.db)) as db, db:
+                    db.row_factory = sqlite3.Row
+                    item_current.upsert(
+                        db, "item-a", self.observe(), fingerprint="a")
+            else:
+                raise KeyboardInterrupt
+        output = StringIO()
+        with patch("d4planner.cli.time.sleep", side_effect=advance):
+            with redirect_stdout(output):
+                rc = main(["item", "--attach", "--json"])
+        self.assertEqual(rc, 0)
+        snapshots = [json.loads(line) for line in output.getvalue().splitlines()]
+        self.assertEqual([x["revision"] for x in snapshots], [0, 1])
+        self.assertEqual([x["observedTotal"] for x in snapshots], [0, 1])
+        self.assertEqual(len(snapshots[1]["items"]), 1)
+
+
 
 if __name__ == "__main__":
     unittest.main()
