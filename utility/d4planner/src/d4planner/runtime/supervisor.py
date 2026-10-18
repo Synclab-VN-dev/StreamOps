@@ -654,6 +654,12 @@ class Supervisor:
                     f"equipment projector failure: {type(exc).__name__}: {exc}"
                 )
 
+        try:
+            self.item_resolver.sync(session_id=self.status.session_id)
+        except (OSError, sqlite3.Error, ValueError, TypeError) as exc:
+            self.status.last_error = (
+                f"item resolver failure: {type(exc).__name__}: {exc}"
+            )
         self.status.last_event_at = str(unified_events[-1]["timestamp"])
         self._persist_status()
         return len(unified_events)
