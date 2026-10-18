@@ -137,7 +137,7 @@ def upsert(db: sqlite3.Connection, item_key: str, payload: dict[str, Any],
     # Comparison excludes observation timestamps: repeated tooltip is a no-op.
     def facts(item: dict[str, Any]) -> dict[str, Any]:
         return {k: v for k, v in item.items()
-                if k not in ("firstSeenAt", "lastSeenAt", "lastConfirmedAt",
+                if k not in ("id", "firstSeenAt", "lastSeenAt", "lastConfirmedAt",
                              "sourceSessionId", "sourceEventSeqStart",
                              "sourceEventSeqEnd", "revision")}
     if previous and facts(json.loads(previous[0])) == facts(payload):
