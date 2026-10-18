@@ -38,6 +38,13 @@ jobs:
             --unit-log artifacts/d4-formula-graph/test.log \
             --report artifacts/d4-formula-graph/ci-complete-collection-gate.json \
             --minimum 90
+      - name: Trace independent DEV-00 Paragon primary-stat input contributors
+        shell: bash
+        run: |
+          set -euo pipefail
+          python utility/d4-formula-graph/primary_paragon_source.py \
+            --source utility/d4-formula-graph/fixtures/dev00-paragon-tooltip-source.json \
+            --report artifacts/d4-formula-graph/dev00-paragon-primary-source.json
       - name: Prove both exact-source synthetic variant graphs block unverified formulas
         shell: bash
         run: |
