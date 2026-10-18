@@ -213,17 +213,24 @@ d4planner items export --format jsonl --output .\observed-items.jsonl
 
 **Ownership semantics:**
 
-- `items` defaults to **confirmed** HIGH-confidence equipped records from
-  the existing equipment projector. It does NOT claim to list every physical
-  item in the inventory or stash.
+- `items` defaults to confirmed HIGH-confidence equipped records and
+  **selected Inventory items** backed by a corroborated event sequence:
+  START/F3 DOWN -> CHARACTER -> Sort Bag -> selected item anchor (without
+  EQUIPPED prefix) -> action labels Equip, Mark as Junk and Drop. Such a
+  selected item is `CONFIRMED` with `ownershipEvidence=character-bag-actions-v1`.
+  This confirms one observed bag-item selection, **not** completeness of
+  Inventory slots, the character GUID, pickup date or a recent move.
 - `--include-unverified` shows fingerprint-grouped candidate tooltips in the
   **list** (one row for matching repeated reads, with `fingerprint` and
-  `observationCount`). Each candidate stays `NOT_CONFIRMED`, `pickedUpAt=null`;
-  its representative preserves the original observation ID
-  `obs:<session>:<sourceSeqStart>` and raw source lines. `items history` and
-  JSONL export retain **every** observation, including repeats.
-- `STASH` and `CHARACTER` text provide only a best-effort contextual
-  observation `location.type`. `CHEST n` is preserved in
+  `observationCount`). Incomplete or unsupported sequences stay
+  `NOT_CONFIRMED`, `pickedUpAt=null`; the representative preserves the
+  original observation ID `obs:<session>:<sourceSeqStart>` and raw speech.
+  `items history` and JSONL export retain **every** observation, including repeats.
+- `STASH` and `CHARACTER` text alone provide only a best-effort contextual
+  observation `location.type`. The standalone `EQUIPPED` immediately before
+  the name/type/power anchor classifies **that next** tooltip as equipment,
+  not Inventory. Bag actions confirm only the separately selected item with
+  the START/F3 and Sort Bag context. `CHEST n` is preserved in
   `locationHints.spokenChestTabs`, **NOT** automatically assigned to
   `location.tab`, since a single tab-list speech burst may mention all tabs
   without selecting any. Slots remain unknown.
@@ -232,8 +239,9 @@ d4planner items export --format jsonl --output .\observed-items.jsonl
   only in the list. Short/partial tooltip reads can match a more complete read.
   Conflicting observed stat values remain separate. Two truly identical physical
   items may collapse: this explicitly accepted V1 simplification does **not**
-  prove the physical item count or selected inventory slot. Equipment comparison
-  tooltips may still be misclassified as `inventory` until panel evidence exists.
+  prove the physical item count or selected inventory slot. If the
+  `EQUIPPED` marker or actions are absent in capture, the resolver stays
+  conservative and does not infer ownership from the name alone.
 - All unverified scan/tab coverage remains `PARTIAL`/`NOT_SCANNED`.
   `SCANNED`/`COMPLETE`, pickup, move, removal and character GUID require
   evidence which Real-A #119 has not yet provided.
@@ -272,3 +280,18 @@ eventSeq and 131 **unverified anchors** across 3 stages, but it does not
 prove exhaustive inventory/stash enumeration or all 16 physical buttons.
 After Real-A UAT evidence arrives, update ticket #119 acceptance
 individually. Never mark partial ownership as complete.
+
+### Real-A Character/Bag paired tooltip acceptance (2026-10-18)
+
+Golden regression: `test_issue119_input_bag_regression.py` replays the
+owner's START(F3) + CHARACTER + Sort Bag context, followed by two repeats of
+EQUIPPED / FEROCIOUS OCELOT'S EYE 850 (comparison) and
+OCELOT'S EYE OF NEBULOUS BREWS 850 (selected), ending in Equip, Mark as Junk,
+Drop. Expected `items --location inventory`: **exactly one**
+OCELOT'S EYE OF NEBULOUS BREWS, `CONFIRMED`, `observationCount=2`.
+The equipped comparison must never enter Inventory. Negative gates include
+missing START, missing Bag header or missing selected-item actions: no
+Inventory `CONFIRMED` result. Old `character.db` projection v3 is
+regenerated from the existing canonical `events.db` on first query at v4;
+**no deletion or gameplay restart required**. Real A manual confirmation
+remains separate from synthetic CI tests.
