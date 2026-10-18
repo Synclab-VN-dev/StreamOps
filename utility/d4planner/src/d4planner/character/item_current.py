@@ -86,8 +86,14 @@ def schema(db: sqlite3.Connection) -> None:
                 seq_start=legacy["source_event_seq_start"],
                 seq_end=legacy["source_event_seq_end"],
             )
-            upsert(db, "eq:" + legacy["item_fingerprint"], payload,
-                   fingerprint=legacy["item_fingerprint"])
+            # Older SQLite fixtures and installs may predate the fingerprint
+            # column; include physical legacy row/slot so twin rings survive.
+            legacy_fingerprint = legacy.get("item_fingerprint") or hashlib.sha256(
+                _json([legacy.get("id"), legacy.get("slot_family"),
+                       legacy.get("slot_index"), legacy.get("item_name")])
+                .encode("utf-8")).hexdigest()
+            upsert(db, "eq:" + legacy_fingerprint, payload,
+                   fingerprint=legacy_fingerprint)
 
 
 def _revision(db: sqlite3.Connection, when: str, session: str) -> int:
