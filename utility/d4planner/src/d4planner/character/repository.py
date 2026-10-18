@@ -43,13 +43,16 @@ class EquipmentRepository:
             """)
             item_current.schema(db)
 
-    def checkpoint(self) -> tuple[str, int] | None:
-        with self._connect() as db:
-            row = db.execute(
-                "SELECT session_id,last_event_seq FROM projector_checkpoint WHERE consumer=?",
-                (self.CONSUMER,),
-            ).fetchone()
-            return (str(row[0]), int(row[1])) if row else None
+    def checkpoint(self, connection: sqlite3.Connection | None = None) -> tuple[str, int] | None:
+        """Read checkpoint inside the caller's transaction when supplied."""
+        if connection is None:
+            with self._connect() as db:
+                return self.checkpoint(connection=db)
+        row = connection.execute(
+            "SELECT session_id,last_event_seq FROM projector_checkpoint WHERE consumer=?",
+            (self.CONSUMER,),
+        ).fetchone()
+        return (str(row[0]), int(row[1])) if row else None
 
     def commit_event(
         self,
@@ -60,31 +63,47 @@ class EquipmentRepository:
         observation: EquipmentObservation | None,
         empty_slot_family: str | None = None,
         remove_item_fingerprint: str | None = None,
+        connection: sqlite3.Connection | None = None,
     ):
-        with self._connect() as db:
-            db.execute("BEGIN IMMEDIATE")
-            # New current-state writes go EXCLUSIVELY to item_current.
-            # The old equipment_current table is migration/rollback history.
-            if empty_slot_family:
-                item_current.mark_location_unknown(
-                    db, "location='equipment' AND slot=?",
-                    (empty_slot_family,), when=updated_at, session=session_id)
-            if remove_item_fingerprint:
-                item_current.mark_location_unknown(
-                    db, "item_key=?",
-                    ("eq:" + remove_item_fingerprint,),
-                    when=updated_at, session=session_id)
-            if observation and observation.confidence == "HIGH":
-                item_current.record_equipment(db, observation)
-            db.execute(
-                """INSERT INTO projector_checkpoint(consumer,session_id,last_event_seq,updated_at)
-                   VALUES(?,?,?,?)
-                   ON CONFLICT(consumer) DO UPDATE SET
-                     session_id=excluded.session_id,
-                     last_event_seq=excluded.last_event_seq,
-                     updated_at=excluded.updated_at""",
-                (self.CONSUMER, session_id, event_seq, updated_at),
-            )
+        """One transaction with Bag + cursor when Engine passes a connection.
+
+        Existing standalone equipment replay keeps its own transaction.
+        The domain reducer remains the sole item_current write policy.
+        """
+        if connection is None:
+            with self._connect() as db:
+                db.execute("BEGIN IMMEDIATE")
+                self.commit_event(
+                    session_id=session_id, event_seq=event_seq,
+                    updated_at=updated_at, observation=observation,
+                    empty_slot_family=empty_slot_family,
+                    remove_item_fingerprint=remove_item_fingerprint,
+                    connection=db)
+            return
+
+        db = connection
+        # Empty slot and ring decisions are separately attested by the
+        # Equipment context state machine; only the reducer mutates current.
+        if empty_slot_family:
+            item_current.mark_location_unknown(
+                db, "location='equipment' AND slot=?",
+                (empty_slot_family,), when=updated_at, session=session_id)
+        if remove_item_fingerprint:
+            item_current.mark_location_unknown(
+                db, "item_key=?",
+                ("eq:" + remove_item_fingerprint,),
+                when=updated_at, session=session_id)
+        if observation and observation.confidence == "HIGH":
+            item_current.record_equipment(db, observation)
+        db.execute(
+            """INSERT INTO projector_checkpoint(consumer,session_id,last_event_seq,updated_at)
+               VALUES(?,?,?,?)
+               ON CONFLICT(consumer) DO UPDATE SET
+                 session_id=excluded.session_id,
+                 last_event_seq=excluded.last_event_seq,
+                 updated_at=excluded.updated_at""",
+            (self.CONSUMER, session_id, event_seq, updated_at),
+        )
 
     def list_equipment(self) -> list[dict[str, Any]]:
         """Legacy CLI adapter over the ONE unified current-item projection."""
