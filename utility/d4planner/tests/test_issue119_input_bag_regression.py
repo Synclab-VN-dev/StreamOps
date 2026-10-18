@@ -165,6 +165,79 @@ class InputBagOwnershipTests(unittest.TestCase):
         self.assertEqual(equipment[0]["name"], "A")
 
 
+    def test_real_a_2033_incomplete_staff_marker_persists_unconfirmed_hint(self):
+        """Exact 20:33 shape: EQUIPPED Staff name, then selected Henri Focus."""
+        self.start()
+        self.header()
+        def pair():
+            self.speech(
+                "EQUIPPED", "[FAVORITED ITEM]. STAFF OF LAM ESEN",
+                "[FAVORITED ITEM]. HENRI'S PERQUISITION",
+                "Unique Focus", "850 Item Power",
+                "1,494 Damage Per Second",
+                "Bottom action button", "Equip",
+                "Top action button", "Hide Comparison",
+                "Left action button", "Unmark Item",
+                "Left action button", "Hold", "Drop",
+            )
+        pair()
+        pair()  # repeated speech, not another physical Staff
+        repo = self.repo()
+        self.assertGreater(repo.sync(session_id="real-a-20261018"), 0)
+        all_items = snapshot(self.character)["items"]
+        staff = [x for x in all_items if x["name"] == "STAFF OF LAM ESEN"]
+        self.assertEqual(len(staff), 1)
+        self.assertEqual(staff[0]["location"], {
+            "type": "equipment", "slot": None, "tab": None})
+        self.assertIsNone(staff[0]["itemType"])
+        self.assertIsNone(staff[0]["itemPower"])
+        self.assertEqual(staff[0]["ownershipStatus"], "NOT_CONFIRMED")
+        self.assertEqual(staff[0]["presenceStatus"], "OBSERVED_ONLY")
+        self.assertEqual(staff[0]["ownershipEvidence"], "equipped-marker-name-only-v1")
+        self.assertIsNone(staff[0]["lastConfirmedAt"])
+        inventory = snapshot(self.character, locations={"inventory"})["items"]
+        self.assertEqual([x["name"] for x in inventory], ["HENRI'S PERQUISITION"])
+        self.assertEqual(inventory[0]["ownershipStatus"], "CONFIRMED")
+        revision = snapshot(self.character)["revision"]
+        self.assertEqual(repo.sync(session_id="real-a-20261018"), 0)
+        self.assertEqual(snapshot(self.character)["revision"], revision)
+
+    def test_equipped_marker_without_bag_selection_does_not_invent_staff(self):
+        self.start()
+        self.speech("CHARACTER", "EQUIPPED",
+                    "[FAVORITED ITEM]. STAFF OF LAM ESEN",
+                    "HENRI'S PERQUISITION", "Unique Focus", "850 Item Power",
+                    "Equip", "Unmark Item", "Drop")
+        repo = self.repo()
+        repo.sync(session_id="real-a-20261018")
+        self.assertFalse(any(x["name"] == "STAFF OF LAM ESEN"
+                             for x in snapshot(self.character)["items"]))
+
+    def test_full_equipped_staff_tooltip_enriches_provisional_row(self):
+        from d4planner.character.equipment.parser import is_item_anchor
+        self.assertTrue(is_item_anchor("STAFF OF LAM ESEN",
+                                       "Unique Staff", "850 Item Power"))
+        self.start()
+        self.header()
+        self.speech("EQUIPPED", "STAFF OF LAM ESEN",
+                    "HENRI'S PERQUISITION", "Unique Focus", "850 Item Power",
+                    "Equip", "Mark as Junk", "Drop")
+        repo = self.repo()
+        repo.sync(session_id="real-a-20261018")
+        self.speech("EQUIPPED", "STAFF OF LAM ESEN",
+                    "Unique Staff", "850 Item Power",
+                    "3,092 Damage Per Second",
+                    "HENRI'S PERQUISITION", "Unique Focus", "850 Item Power",
+                    "Equip", "Mark as Junk", "Drop")
+        repo.sync(session_id="real-a-20261018")
+        staff = [x for x in snapshot(self.character)["items"]
+                 if x["name"] == "STAFF OF LAM ESEN"]
+        self.assertEqual(len(staff), 1)
+        self.assertEqual(staff[0]["itemType"], "Staff")
+        self.assertEqual(staff[0]["itemPower"], 850)
+        self.assertEqual(staff[0]["ownershipStatus"], "NOT_CONFIRMED")
+
+
     def test_real_a_1900_favorite_toggle_materializes_two_current_bag_items(self):
         """Regression: actual 19:00 owner speech uses Unmark Item, not Mark as Junk."""
         self.start()
