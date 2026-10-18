@@ -1,8 +1,7 @@
-"""Unified persistent item-current projection for Issue #119.
+"""Unified persistent physical item projection for Issue #119.
 
 Only the Engine writes here. CLI readers open character.db read-only and never
-consult events.db or trigger a resolver. Historical equipment_current is a
-one-time migration INPUT, never an ongoing current-state writer.
+consult events.db or trigger a resolver. DEV projection v3 starts clean; historical observed candidates are audit-only.
 """
 from __future__ import annotations
 
@@ -61,63 +60,22 @@ def schema(db: sqlite3.Connection) -> None:
     );
     """)
 
-    # One-time, non-destructive migration: keep the legacy table for rollback
-    # and audit, but never write to it again after this schema is installed.
+    # DEV v3 starts clean. Historical projection tables are intentionally NOT
+    # imported into the new physical-item authority (owner-approved DEV reset).
+    # Never silently mix an existing v2 database into the new resolver.
     metadata = db.execute(
         "SELECT projection_version FROM item_projection_state WHERE id=1"
     ).fetchone()
-    if metadata and int(metadata[0]) >= 2:
-        return
     if metadata is None:
         db.execute(
-            "INSERT INTO item_projection_state(id,last_event_rowid,revision) VALUES(1,0,0)"
+            "INSERT INTO item_projection_state(id,last_event_rowid,revision,"
+            "projection_version) VALUES(1,0,0,3)"
         )
-    if metadata is None and _has_table(db, "equipment_current"):
-        rows = db.execute(
-            "SELECT * FROM equipment_current WHERE confidence='HIGH' ORDER BY id"
-        ).fetchall()
-        for row in rows:
-            legacy = dict(row)
-            data = json.loads(legacy["item_json"])
-            payload = equipment_payload(
-                name=legacy["item_name"],
-                item_type=legacy["item_type"],
-                item_power=legacy["item_power"],
-                raw=data,
-                slot=legacy["slot_family"],
-                observed_at=legacy["observed_at"],
-                session_id=legacy["source_session_id"],
-                seq_start=legacy["source_event_seq_start"],
-                seq_end=legacy["source_event_seq_end"],
-            )
-            # Older SQLite fixtures and installs may predate the fingerprint
-            # column; include physical legacy row/slot so twin rings survive.
-            legacy_fingerprint = legacy.get("item_fingerprint") or hashlib.sha256(
-                _json([legacy.get("id"), legacy.get("slot_family"),
-                       legacy.get("slot_index"), legacy.get("item_name")])
-                .encode("utf-8")).hexdigest()
-            upsert(db, "eq:" + legacy_fingerprint, payload,
-                   fingerprint=legacy_fingerprint)
-    if _has_table(db, "owned_grid_current"):
-        # Legacy attested grid snapshots are migrated once, not replayed as
-        # fresh events. Keep original physical token/scope when available.
-        for row in db.execute("SELECT * FROM owned_grid_current").fetchall():
-            old = dict(row)
-            payload = json.loads(old["item_json"])
-            if payload.get("ownershipStatus") != "CONFIRMED":
-                continue
-            token = payload.get("trackingToken")
-            key = ("grid:" + old["character_id"] + ":token:" + token
-                   if token else "grid:" + old["character_id"] +
-                   ":slot:" + old["container"] + ":" +
-                   str(old["tab_key"]) + ":" + str(old["slot_index"]))
-            digest = hashlib.sha256(_json([old["character_id"], token,
-                                          payload.get("name"), payload.get("affixes")])
-                                    .encode("utf-8")).hexdigest()
-            upsert(db, key, payload, fingerprint=digest,
-                   scope=old["character_id"])
-    db.execute("UPDATE item_projection_state SET projection_version=2 WHERE id=1")
-
+    elif int(metadata[0]) != 3:
+        raise RuntimeError(
+            "Incompatible D4Planner DEV character.db projection; use an "
+            "isolated clean PR120 HomeDir. No automatic data deletion."
+        )
 
 
 def _revision(db: sqlite3.Connection, when: str, session: str) -> int:
@@ -154,20 +112,14 @@ def equipment_payload(*, name: str, item_type: str, item_power: int,
 
 def upsert(db: sqlite3.Connection, item_key: str, payload: dict[str, Any],
            *, fingerprint: str, scope: str | None = None) -> bool:
-    """Persist a confirmed item or a strictly scoped provisional EQUIPPED hint."""
+    """Persist a physically confirmed item; reject comparison-only candidates."""
     location = payload.get("location") or {}
     where = location.get("type", "unknown")
     if where not in {"equipment", "inventory", "stash", "unknown"}:
         where = "unknown"
-    provisional = (
-        item_key.startswith("eq-hint:")
-        and payload.get("ownershipStatus") == "NOT_CONFIRMED"
-        and payload.get("presenceStatus") == "OBSERVED_ONLY"
-        and payload.get("ownershipEvidence") in
-        {"equipped-marker-v1", "equipped-marker-name-only-v1"}
-        and (payload.get("location") or {}).get("type") == "equipment"
-    )
-    if payload.get("ownershipStatus") != "CONFIRMED" and not provisional:
+    # Materialized current tracks physically confirmed items only.
+    # Comparison and name-only EQUIPPED hints remain in observation history.
+    if payload.get("ownershipStatus") != "CONFIRMED":
         return False
     previous = db.execute(
         "SELECT item_json FROM item_current WHERE item_key=?", (item_key,)
@@ -263,46 +215,6 @@ def remove_where(db: sqlite3.Connection, condition: str, args: tuple[Any, ...],
     ).rowcount
     if count:
         _revision(db, when, session)
-
-
-def record_equipped_hint(db: sqlite3.Connection, observation: dict[str, Any]) -> None:
-    """Preserve EQUIPPED comparison speech as an unverified, read-only current hint.
-
-    Without independently verified slot/action evidence, the item is NOT
-    confirmed physically equipped. Repeated NVDA reads do not imply copies.
-    """
-    if ((observation.get("location") or {}).get("type") != "equipment" or
-            observation.get("ownershipEvidence") not in
-            {"equipped-marker-v1", "equipped-marker-name-only-v1"}):
-        return
-    name = str(observation.get("name") or "").strip()
-    if not name:
-        return
-    if db.execute(
-        """SELECT 1 FROM item_current WHERE location='equipment'
-           AND ownership_status='CONFIRMED' AND name=? LIMIT 1""", (name,)
-    ).fetchone():
-        return  # stronger observation already present; no duplicate hint
-    digest = hashlib.sha256(name.casefold().encode("utf-8")).hexdigest()
-    key = "eq-hint:" + digest
-    payload = dict(observation)
-    existing = db.execute(
-        "SELECT item_json FROM item_current WHERE item_key=?", (key,)
-    ).fetchone()
-    if existing:
-        old = json.loads(existing[0])
-        # An incomplete re-read cannot wipe stronger typed tooltip evidence.
-        if old.get("itemPower") is not None and payload.get("itemPower") is None:
-            for field in ("itemType", "itemPower", "rarity", "ancestral",
-                          "baseStats", "affixes", "effectsRaw", "metadataRaw",
-                          "rawSpeech", "ownershipEvidence"):
-                payload[field] = old.get(field)
-    payload["location"] = {"type": "equipment", "slot": None, "tab": None}
-    payload["ownershipStatus"] = "NOT_CONFIRMED"
-    payload["observationConfidence"] = "LOW"
-    payload["presenceStatus"] = "OBSERVED_ONLY"
-    payload["lastConfirmedAt"] = None
-    upsert(db, key, payload, fingerprint=digest)
 
 
 def record_observation(db: sqlite3.Connection, observation: dict[str, Any]) -> None:
