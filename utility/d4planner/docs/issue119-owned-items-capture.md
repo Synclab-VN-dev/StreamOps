@@ -216,16 +216,24 @@ d4planner items export --format jsonl --output .\observed-items.jsonl
 - `items` defaults to **confirmed** HIGH-confidence equipped records from
   the existing equipment projector. It does NOT claim to list every physical
   item in the inventory or stash.
-- `--include-unverified` also exposes every observed tooltip candidate, with
-  `ownershipStatus=NOT_CONFIRMED`, `pickedUpAt=null`, observation ID
-  `obs:<session>:<sourceSeqStart>` and raw source lines.
+- `--include-unverified` shows fingerprint-grouped candidate tooltips in the
+  **list** (one row for matching repeated reads, with `fingerprint` and
+  `observationCount`). Each candidate stays `NOT_CONFIRMED`, `pickedUpAt=null`;
+  its representative preserves the original observation ID
+  `obs:<session>:<sourceSeqStart>` and raw source lines. `items history` and
+  JSONL export retain **every** observation, including repeats.
 - `STASH` and `CHARACTER` text provide only a best-effort contextual
   observation `location.type`. `CHEST n` is preserved in
   `locationHints.spokenChestTabs`, **NOT** automatically assigned to
   `location.tab`, since a single tab-list speech burst may mention all tabs
   without selecting any. Slots remain unknown.
-- Equal names/fingerprints from two tooltip sequences are kept as independent
-  observations; neither proves two owned physical items.
+- Matching observations (same normalized name/type/power/rarity/ancestral,
+  location and compatible parsed stats/effects) collapse by SHA-256 fingerprint
+  only in the list. Short/partial tooltip reads can match a more complete read.
+  Conflicting observed stat values remain separate. Two truly identical physical
+  items may collapse: this explicitly accepted V1 simplification does **not**
+  prove the physical item count or selected inventory slot. Equipment comparison
+  tooltips may still be misclassified as `inventory` until panel evidence exists.
 - All unverified scan/tab coverage remains `PARTIAL`/`NOT_SCANNED`.
   `SCANNED`/`COMPLETE`, pickup, move, removal and character GUID require
   evidence which Real-A #119 has not yet provided.
