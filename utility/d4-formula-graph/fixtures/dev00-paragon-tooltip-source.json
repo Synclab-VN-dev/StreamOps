@@ -1,0 +1,1636 @@
+{
+  "schema": "ROGUE_DEV00_PARAGON_TOOLTIP_SOURCE_V1",
+  "fixtureId": "DEV-00",
+  "classId": "rogue",
+  "patch": "3.2.1.73552",
+  "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+  "source": {
+    "repo": "Synclab-VN-dev/synclab-agent",
+    "commit": "bb4c5cc6b2135583eb708f0a3f374060675b6c0b",
+    "path": "evidence/StreamOps-106/F3-rogue-50/rogue-50-input-snapshot.json",
+    "gitBlobSha": "4d14854e0f0abfe234b2e58e270f47db1472b4ff"
+  },
+  "meaning": "UI_SOURCE_ONLY_NOT_FULL_PRIMARY_STAT_CONTRIBUTORS_OR_GOLDEN",
+  "nodes": [
+    {
+      "index": 0,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r1 d4t-gate d4t-active",
+      "tooltip": "Board Attachment Gate\n+5 Strength\n+5 Intelligence\n+5 Willpower\n+5 Dexterity"
+    },
+    {
+      "index": 1,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 2,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 3,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 4,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+30 Intelligence"
+    },
+    {
+      "index": 5,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+21% Damage"
+    },
+    {
+      "index": 6,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+32.0% Damage to Elites"
+    },
+    {
+      "index": 7,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+30 Strength"
+    },
+    {
+      "index": 8,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+30 Intelligence"
+    },
+    {
+      "index": 9,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nSkillful\n+20% Damage\n+10 Dexterity\nBonus: Another +10% Damage if requirements met:\n+493 / 210 Intelligence"
+    },
+    {
+      "index": 10,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nOutlaw\n+30.0% Damage to Elites\n+10 Dexterity\nBonus: Another +15.0% Damage to Elites if requirements met:\n+419 / 190 Strength"
+    },
+    {
+      "index": 11,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+30 Strength"
+    },
+    {
+      "index": 12,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+21% Damage"
+    },
+    {
+      "index": 13,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+21% Damage"
+    },
+    {
+      "index": 14,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+32.0% Damage to Elites"
+    },
+    {
+      "index": 15,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+32.0% Damage to Elites"
+    },
+    {
+      "index": 16,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Willpower"
+    },
+    {
+      "index": 17,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r1 d4t-socket d4t-active",
+      "tooltip": "Glyph Socket\n+46 Intelligence\n+49% Damage\n+73.6% Damage to Elites\n+46 Strength\n10.4%[x] Damage\nNon-Basic and Non-Core Skills deal 25%[x] increased damage.\nSOCKETED GLYPH:\nVersatility\nLevel 100\nGrants +327.0% bonus to all Magic nodes within range.\nAdditional Bonus:\nNon-Basic and Non-Core Skills deal 25%[x] increased damage.\n+40 / +40 Dexterity (purchased in range)\nLegendary Bonus:\nIncrease damage by 10.4%[x]."
+    },
+    {
+      "index": 18,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 19,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 20,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 21,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 22,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 23,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 24,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n2.0% Maximum Life"
+    },
+    {
+      "index": 25,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n2.0% Maximum Life"
+    },
+    {
+      "index": 26,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+1.5% Resistance to All Elements"
+    },
+    {
+      "index": 27,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nResilience\n+6.0% Resistance to All Elements\n4.0% Maximum Life\nBonus: Another +3.0% Resistance to All Elements if requirements met:\n+419 / 210 Strength"
+    },
+    {
+      "index": 28,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n2.0% Maximum Life"
+    },
+    {
+      "index": 29,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n2.0% Maximum Life"
+    },
+    {
+      "index": 30,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nPrime\n+20% Damage\n4.0% Maximum Life\nBonus: Another +10% Damage if requirements met:\n+493 / 190 Intelligence"
+    },
+    {
+      "index": 31,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+5% Damage"
+    },
+    {
+      "index": 32,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+1.5% Resistance to All Elements"
+    },
+    {
+      "index": 33,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+5% Damage"
+    },
+    {
+      "index": 34,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 35,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 36,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 37,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 38,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 39,
+      "boardIndex": 0,
+      "className": "d4t-node d4t-r1 d4t-start d4t-active",
+      "tooltip": null
+    },
+    {
+      "index": 40,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+8.8% Damage to Crowd Controlled Enemies"
+    },
+    {
+      "index": 41,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+1.5% Total Armor"
+    },
+    {
+      "index": 42,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+8.8% Damage to Crowd Controlled Enemies"
+    },
+    {
+      "index": 43,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nCalculated\n+35.0% Damage to Crowd Controlled Enemies\n+2.0% Total Armor\nBonus: Another +17.5% Damage to Crowd Controlled Enemies if requirements met:\n+493 / 285 Intelligence"
+    },
+    {
+      "index": 44,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+8.8% Damage to Crowd Controlled Enemies"
+    },
+    {
+      "index": 45,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+1.5% Total Armor"
+    },
+    {
+      "index": 46,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 47,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 48,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nDeviant\n+6.0% Resistance to All Elements\n4.0% Maximum Life\nBonus: Another +3.0% Resistance to All Elements if requirements met:\n+493 / 305 Intelligence"
+    },
+    {
+      "index": 49,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n2.0% Maximum Life"
+    },
+    {
+      "index": 50,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+1.5% Resistance to All Elements"
+    },
+    {
+      "index": 51,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 52,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 53,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 54,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 55,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+1.5% Resistance to All Elements"
+    },
+    {
+      "index": 56,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n2.0% Maximum Life"
+    },
+    {
+      "index": 57,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 58,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+7 Intelligence"
+    },
+    {
+      "index": 59,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+8.8% Damage to Crowd Controlled Enemies"
+    },
+    {
+      "index": 60,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+1.5% Resistance to All Elements"
+    },
+    {
+      "index": 61,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 62,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nDevious\n+130.4% Damage to Crowd Controlled Enemies\n+37 Dexterity\nBonus: Another +65.2% Damage to Crowd Controlled Enemies if requirements met:\n+493 / 305 Intelligence"
+    },
+    {
+      "index": 63,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+8.8% Damage to Crowd Controlled Enemies"
+    },
+    {
+      "index": 64,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 65,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+8.8% Damage to Crowd Controlled Enemies"
+    },
+    {
+      "index": 66,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 67,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-gate d4t-active",
+      "tooltip": "Board Attachment Gate\n+5 Strength\n+5 Intelligence\n+5 Willpower\n+5 Dexterity"
+    },
+    {
+      "index": 68,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Willpower"
+    },
+    {
+      "index": 69,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r4 d4t-active",
+      "tooltip": "Legendary Node\nCheap Shot\nYou deal 50%[x] increased damage, doubled against Crowd Controlled enemies."
+    },
+    {
+      "index": 70,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 71,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 72,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-socket d4t-active",
+      "tooltip": "Glyph Socket\n+95.4% Damage to Crowd Controlled Enemies\n+55 Dexterity\n+55% Damage\n10.4%[x] Non-Physical Damage\nImbuement Skill effects have 20%[x] increased potency.\nSOCKETED GLYPH:\nEfficacy\nLevel 100\nGrants +272.5% bonus to all Rare nodes within range.\nAdditional Bonus:\nImbuement Skill effects have 20%[x] increased potency.\n+27 / +25 Intelligence (purchased in range)\nLegendary Bonus:\nIncrease Non-Physical damage by 10.4%[x]."
+    },
+    {
+      "index": 73,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 74,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 75,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 76,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 77,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 78,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+5% Damage"
+    },
+    {
+      "index": 79,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Willpower"
+    },
+    {
+      "index": 80,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+1.5% Total Armor"
+    },
+    {
+      "index": 81,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 82,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nArtifice\n+75% Damage\n+37 Dexterity\nBonus: Another +37% Damage if requirements met:\n+419 / 305 Strength"
+    },
+    {
+      "index": 83,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+5% Damage"
+    },
+    {
+      "index": 84,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+1.5% Total Armor"
+    },
+    {
+      "index": 85,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+1.5% Total Armor"
+    },
+    {
+      "index": 86,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 87,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+7 Strength"
+    },
+    {
+      "index": 88,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+5% Damage"
+    },
+    {
+      "index": 89,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nSafeguard\n+6.0% Total Armor\n4.0% Maximum Life\nBonus: Another +3.0% Total Armor if requirements met:\n+2,402 / 1,215 Dexterity"
+    },
+    {
+      "index": 90,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+1.5% Total Armor"
+    },
+    {
+      "index": 91,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+1.5% Total Armor"
+    },
+    {
+      "index": 92,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 93,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 94,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 95,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 96,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 97,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 98,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 99,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 100,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 101,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+6.3% Damage to Healthy Enemies"
+    },
+    {
+      "index": 102,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n2.0% Maximum Life"
+    },
+    {
+      "index": 103,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 104,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nSpearhead\n+25.0% Damage to Healthy Enemies\n4.0% Maximum Life\nBonus: Another +12.5% Damage to Healthy Enemies if requirements met:\n+493 / 265 Intelligence"
+    },
+    {
+      "index": 105,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 106,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n2.0% Maximum Life"
+    },
+    {
+      "index": 107,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 108,
+      "boardIndex": 1,
+      "className": "d4t-node d4t-r1 d4t-gate d4t-active",
+      "tooltip": "Board Attachment Gate\n+5 Strength\n+5 Intelligence\n+5 Willpower\n+5 Dexterity"
+    },
+    {
+      "index": 109,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-gate d4t-active",
+      "tooltip": "Board Attachment Gate\n+5 Strength\n+5 Intelligence\n+5 Willpower\n+5 Dexterity"
+    },
+    {
+      "index": 110,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 111,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 112,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 113,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+7 Strength"
+    },
+    {
+      "index": 114,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 115,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+10.0% Imbued Damage"
+    },
+    {
+      "index": 116,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 117,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 118,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 119,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+7 Intelligence"
+    },
+    {
+      "index": 120,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 121,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 122,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 123,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 124,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 125,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 126,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-socket d4t-active",
+      "tooltip": "Glyph Socket\n+98.4% Damage to Poisoned Enemies\n10.4%[x] Damage\nPoisoning damage effects last 40%[x] longer.\nSOCKETED GLYPH:\nTracker\nLevel 100\nFor every 5 Intelligence purchased within range, you deal +8.3% increased damage to Poisoned targets.\nAdditional Bonus:\nPoisoning damage effects last 40%[x] longer.\n+59 / +25 Intelligence (purchased in range)\nLegendary Bonus:\nIncrease damage by 10.4%[x]."
+    },
+    {
+      "index": 127,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 128,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+5.0% Non-Physical Damage"
+    },
+    {
+      "index": 129,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nConcoction\n+20.0% Non-Physical Damage\n+10 Dexterity\nBonus: Another +10.0% Non-Physical Damage if requirements met:\n+493 / 340 Intelligence"
+    },
+    {
+      "index": 130,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+5.0% Non-Physical Damage"
+    },
+    {
+      "index": 131,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 132,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Willpower"
+    },
+    {
+      "index": 133,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+5.0% Non-Physical Damage"
+    },
+    {
+      "index": 134,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+7 Intelligence"
+    },
+    {
+      "index": 135,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 136,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 137,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 138,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+5.0% Non-Physical Damage"
+    },
+    {
+      "index": 139,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n1.5% Imbuement Cooldown Reduction"
+    },
+    {
+      "index": 140,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 141,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 142,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n1.5% Imbuement Cooldown Reduction"
+    },
+    {
+      "index": 143,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nReady Supply\n+20.0% Non-Physical Damage\n3.0% Imbuement Cooldown Reduction\nBonus: Another +10.0% Non-Physical Damage if requirements met:\n+2,402 / 1,800 Dexterity"
+    },
+    {
+      "index": 144,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+5.0% Non-Physical Damage"
+    },
+    {
+      "index": 145,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 146,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 147,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+5.0% Non-Physical Damage"
+    },
+    {
+      "index": 148,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 149,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-gate d4t-active",
+      "tooltip": "Board Attachment Gate\n+5 Strength\n+5 Intelligence\n+5 Willpower\n+5 Dexterity"
+    },
+    {
+      "index": 150,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Willpower"
+    },
+    {
+      "index": 151,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Willpower"
+    },
+    {
+      "index": 152,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 153,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 154,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 155,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 156,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 157,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 158,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 159,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 160,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 161,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 162,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+3.0% Healing Received"
+    },
+    {
+      "index": 163,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n2.0% Maximum Life"
+    },
+    {
+      "index": 164,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r4 d4t-active",
+      "tooltip": "Legendary Node\nEldritch Bounty\nYou gain 25%[x] Resistance to All Elements. You gain 60%[x] increased Poison, Shadow, and Cold damage."
+    },
+    {
+      "index": 165,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n2.0% Maximum Life"
+    },
+    {
+      "index": 166,
+      "boardIndex": 2,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nRestorative\n8.0% Maximum Life\n+6.0% Healing Received\nBonus: Another 4.0% Maximum Life if requirements met:\n+493 / 360 Intelligence"
+    },
+    {
+      "index": 167,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n2.0% Maximum Life"
+    },
+    {
+      "index": 168,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n2.0% Maximum Life"
+    },
+    {
+      "index": 169,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+1.5% Total Armor"
+    },
+    {
+      "index": 170,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 171,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+1.5% Resistance to All Elements"
+    },
+    {
+      "index": 172,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nDefensive Stance\n+6.0% Resistance to All Elements\n4.0% Maximum Life\nBonus: Another +3.0% Resistance to All Elements if requirements met:\n+493 / 435 Intelligence"
+    },
+    {
+      "index": 173,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 174,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+1.5% Total Armor"
+    },
+    {
+      "index": 175,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nToughened\n+6.0% Total Armor\n4.0% Maximum Life\nBonus: Another +3.0% Total Armor if requirements met:\n+493 / 435 Intelligence"
+    },
+    {
+      "index": 176,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 177,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 178,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 179,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+1.5% Resistance to All Elements"
+    },
+    {
+      "index": 180,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 181,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 182,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 183,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 184,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 185,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-gate d4t-active",
+      "tooltip": "Board Attachment Gate\n+5 Strength\n+5 Intelligence\n+5 Willpower\n+5 Dexterity"
+    },
+    {
+      "index": 186,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Willpower"
+    },
+    {
+      "index": 187,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 188,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 189,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 190,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 191,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 192,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 193,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 194,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 195,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 196,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r4 d4t-active",
+      "tooltip": "Legendary Node\nExploit Weakness\nYou deal 60%[x] increased Vulnerable damage. The first time you hit a Vulnerable enemy, their damage is reduced by 20%[x] for 6 seconds."
+    },
+    {
+      "index": 197,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 198,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 199,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 200,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 201,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+6% Vulnerable Damage"
+    },
+    {
+      "index": 202,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nArtifice\n+10% Damage\n+10 Dexterity\nBonus: Another +10% Damage if requirements met:\nRequired: +419 / 455 Strength"
+    },
+    {
+      "index": 203,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 204,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 205,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-socket d4t-active",
+      "tooltip": "Glyph Socket\n+106.8% Non-Physical Damage\n10.4%[x] Non-Physical Damage\nNon-Physical damage increases all the Non-Physical damage an enemy takes from you by 1%[x], up to 15%[x], for 15 seconds.\nSOCKETED GLYPH:\nCanny\nLevel 100\nFor every 5 Intelligence purchased within range, you deal +8.3% increased Non-physical damage.\nAdditional Bonus:\nNon-Physical damage increases all the Non-Physical damage an enemy takes from you by 1%[x], up to 15%[x], for 15 seconds.\n+64 / +25 Intelligence (purchased in range)\nLegendary Bonus:\nIncrease Non-Physical damage by 10.4%[x]."
+    },
+    {
+      "index": 206,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 207,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 208,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 209,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 210,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 211,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 212,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 213,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 214,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+7 Intelligence"
+    },
+    {
+      "index": 215,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nMisery\n+30.0% Damage to Elites\n+10 Dexterity\nBonus: Another +15.0% Damage to Elites if requirements met:\n+493 / 415 Intelligence"
+    },
+    {
+      "index": 216,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+7.5% Damage to Elites"
+    },
+    {
+      "index": 217,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 218,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 219,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+7.5% Damage to Elites"
+    },
+    {
+      "index": 220,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+7 Intelligence"
+    },
+    {
+      "index": 221,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 222,
+      "boardIndex": 3,
+      "className": "d4t-node d4t-r1 d4t-gate d4t-active",
+      "tooltip": "Board Attachment Gate\n+5 Strength\n+5 Intelligence\n+5 Willpower\n+5 Dexterity"
+    },
+    {
+      "index": 223,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-gate d4t-active",
+      "tooltip": "Board Attachment Gate\n+5 Strength\n+5 Intelligence\n+5 Willpower\n+5 Dexterity"
+    },
+    {
+      "index": 224,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 225,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 226,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 227,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 228,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 229,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 230,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+7 Intelligence"
+    },
+    {
+      "index": 231,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+7.5% Damage to Elites"
+    },
+    {
+      "index": 232,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 233,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+7 Strength"
+    },
+    {
+      "index": 234,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 235,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nGiant Killer\n+15.0% Damage to Elites\n+10 Dexterity\nBonus: Another +15.0% Damage to Elites if requirements met:\nRequired: +493 / 510 Intelligence"
+    },
+    {
+      "index": 236,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+7.5% Damage to Elites"
+    },
+    {
+      "index": 237,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 238,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 239,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 240,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+6.3% Damage to Healthy Enemies"
+    },
+    {
+      "index": 241,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nAssassin\n+12.5% Damage to Healthy Enemies\n+10 Dexterity\nBonus: Another +12.5% Damage to Healthy Enemies if requirements met:\nRequired: +419 / 510 Strength"
+    },
+    {
+      "index": 242,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+7.5% Damage to Elites"
+    },
+    {
+      "index": 243,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 244,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-socket d4t-active",
+      "tooltip": "Glyph Socket\n+123% Poison Damage\n10.4%[x] Poison Damage\nPoisoning damage effects have a 15% chance to deal double the amount of damage over their duration.\nSOCKETED GLYPH:\nBane\nLevel 100\nFor every 5 Strength purchased within range, you deal +8.3% increased Poison damage.\nAdditional Bonus:\nPoisoning damage effects have a 15% chance to deal double the amount of damage over their duration.\n+74 / +25 Strength (purchased in range)\nLegendary Bonus:\nIncrease Poison damage by 10.4%[x]."
+    },
+    {
+      "index": 245,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+6.3% Damage to Healthy Enemies"
+    },
+    {
+      "index": 246,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n+7 Strength"
+    },
+    {
+      "index": 247,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 248,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 249,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 250,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 251,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 252,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 253,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 254,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 255,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 256,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 257,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 258,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 259,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 260,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Intelligence"
+    },
+    {
+      "index": 261,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r4 d4t-active",
+      "tooltip": "Legendary Node\nDanse Macabre\nCasting a Mobility or Subterfuge Skill increases your damage by 60%[x] for 10 seconds."
+    },
+    {
+      "index": 262,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n2.0% Maximum Life"
+    },
+    {
+      "index": 263,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 264,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n1.5% Mobility Cooldown Reduction"
+    },
+    {
+      "index": 265,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r3 d4t-active",
+      "tooltip": "Rare Node\nAcrobat\n3.0% Mobility Cooldown Reduction\n4.0% Maximum Life\nBonus: Another 3.0% Mobility Cooldown Reduction if requirements met:\nRequired: +419 / 490 Strength"
+    },
+    {
+      "index": 266,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 267,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Dexterity"
+    },
+    {
+      "index": 268,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r1 d4t-active",
+      "tooltip": "Normal Node\n+5 Strength"
+    },
+    {
+      "index": 269,
+      "boardIndex": 4,
+      "className": "d4t-node d4t-r2 d4t-active",
+      "tooltip": "Magic Node\n2.0% Maximum Life"
+    }
+  ]
+}
