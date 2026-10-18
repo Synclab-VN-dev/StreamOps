@@ -19,7 +19,7 @@ from . import owned_items_scans
 CHEST = re.compile(r"^CHEST\s+(\d+)$", re.IGNORECASE)
 POWER = re.compile(r"^[\d,]+ Item Power$")
 MAX_SEGMENT = 100
-PROJECTION_VERSION = 3  # v3 additionally consumes strict canonical scan evidence
+PROJECTION_VERSION = 4  # v4 replays raw input + tooltip context for bag ownership
 ADDITIONAL_OBSERVED_TYPES = frozenset({"Charm", "Staff", "Horadric Seal"})
 
 def is_owned_item_anchor(name: str, kind: str, power: str) -> bool:
@@ -53,12 +53,15 @@ def _connect(path: Path, *, read_only: bool = False) -> sqlite3.Connection:
 
 def _initial() -> dict[str, Any]:
     return {"projectionVersion": PROJECTION_VERSION, "session": None, "context": "unknown", "tabHints": [], "recent": [],
-            "active": None, "lastSeenAt": None}
+            "active": None, "lastSeenAt": None, "characterInput": False,
+            "bagVisible": False, "equippedPrefix": None, "speechAfterEquipped": 0}
 
 
 def _reset_session(state: dict[str, Any], session: str) -> None:
     state.update({"session": session, "context": "unknown",
-                  "tabHints": [], "recent": [], "active": None})
+                  "tabHints": [], "recent": [], "active": None,
+                  "characterInput": False, "bagVisible": False,
+                  "equippedPrefix": None, "speechAfterEquipped": 0})
 
 
 def _location(state: dict[str, Any]) -> dict[str, Any]:
@@ -79,6 +82,15 @@ def _make_observation(active: dict[str, Any]) -> dict[str, Any]:
         data = {"name": normalize(lines[0]), "item_type": normalize(lines[1]),
                 "item_power": None, "base_stats": [], "affixes": [],
                 "effects_raw": [], "metadata_raw": lines[2:], "raw_lines": lines}
+    normalized = {normalize(line).casefold() for line in lines[3:]}
+    bag_evidence = bool(active.get("characterBag"))
+    # The markers belong to the selected item, not the EQUIPPED comparison.
+    action_evidence = {"equip", "mark as junk", "drop"} <= normalized
+    confirmed_bag = (active["location"]["type"] == "inventory"
+                     and bag_evidence and action_evidence)
+    marked_equipped = (active["location"]["type"] == "equipment"
+                       and active.get("equippedMarker") and bag_evidence)
+    confirmed = bool(confirmed_bag or marked_equipped)
     return {
         "id": "obs:" + active["session"] + ":" + str(active["start"]),
         "name": data["name"],
@@ -95,8 +107,10 @@ def _make_observation(active: dict[str, Any]) -> dict[str, Any]:
         "effectsRaw": data.get("effects_raw", []),
         "metadataRaw": data.get("metadata_raw", []),
         "rawSpeech": lines,
-        "ownershipStatus": "NOT_CONFIRMED",
-        "observationConfidence": "LOW",
+        "ownershipStatus": "CONFIRMED" if confirmed else "NOT_CONFIRMED",
+        "observationConfidence": "HIGH" if confirmed else "LOW",
+        "ownershipEvidence": ("character-bag-actions-v1" if confirmed_bag
+                              else "equipped-marker-v1" if marked_equipped else None),
         "firstSeenAt": active["timestamp"],
         "lastSeenAt": active["timestamp"],
         "pickedUpAt": None,
@@ -128,6 +142,23 @@ def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) ->
         _save_active(db, state)
         _reset_session(state, session)
     state["lastSeenAt"] = str(row["timestamp"])
+    if row["type"] == "input.marker.raw":
+        # Controller START is context evidence, not an item identity itself.
+        # Require subsequent CHARACTER and Sort Bag speech before bag confirmation.
+        try:
+            marker = json.loads(row["data_json"])
+        except (ValueError, TypeError):
+            marker = {}
+        if isinstance(marker, dict) and str(marker.get("state", "")).casefold() == "down":
+            if (str(marker.get("controlId", "")).casefold() == "start"
+                    or str(marker.get("key", "")).casefold() == "f3"):
+                _save_active(db, state)
+                state["active"] = None
+                state["recent"] = []
+                state["characterInput"] = True
+                state["bagVisible"] = False
+                state["equippedPrefix"] = None
+        return
     if row["type"] != "speech.raw":
         # Structured producer events are separate from speech; they cannot be
         # inferred from marker keys or tooltip text. Flush any completed raw
@@ -153,10 +184,26 @@ def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) ->
     seq = int(row["event_seq"])
     active = state["active"]
     upper = line.upper()
+    if state.get("equippedPrefix") is not None and upper != "EQUIPPED":
+        state["speechAfterEquipped"] += 1
+    if "sort bag" in " ".join(line.casefold().split()):
+        if state["context"] == "inventory" and state.get("characterInput"):
+            state["bagVisible"] = True
+    if upper == "EQUIPPED":
+        # Hard tooltip boundary: EQUIPPED labels ONLY the next item anchor.
+        _save_active(db, state)
+        state["active"] = None
+        state["recent"] = []
+        state["equippedPrefix"] = seq
+        state["speechAfterEquipped"] = 0
+        return
     if upper == "STASH":
         _save_active(db, state)
         state["active"] = None
         state["context"] = "stash"
+        state["characterInput"] = False
+        state["bagVisible"] = False
+        state["equippedPrefix"] = None
         state["tabHints"] = []
         state["recent"] = []
         return
@@ -165,6 +212,8 @@ def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) ->
         state["active"] = None
         # CHARACTER may include equipment/comparison; never assert a slot.
         state["context"] = "inventory"
+        state["bagVisible"] = False
+        state["equippedPrefix"] = None
         state["tabHints"] = []
         state["recent"] = []
         return
@@ -186,6 +235,11 @@ def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) ->
         name, item_type = recent[0], recent[1]
         anchor = is_owned_item_anchor(name["text"], item_type["text"], line)
     if anchor:
+        # Exactly three speech lines after EQUIPPED: name, type, power.
+        marked_equipped = (state.get("equippedPrefix") is not None
+                           and state["speechAfterEquipped"] == 3
+                           and state["context"] == "inventory")
+        state["equippedPrefix"] = None
         if active is not None:
             # The next name/type were already appended to previous tooltip.
             if len(active["lines"]) >= 2:
@@ -194,14 +248,23 @@ def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) ->
             _save_active(db, state)
         state["active"] = {
             "session": session, "start": recent[0]["seq"], "end": seq,
-            "timestamp": recent[0]["timestamp"], "location": _location(state),
+            "timestamp": recent[0]["timestamp"],
+            "location": ({"type": "equipment", "tab": None, "slot": None}
+                         if marked_equipped else _location(state)),
+            "equippedMarker": marked_equipped,
+            "characterBag": bool(state.get("characterInput") and state.get("bagVisible")),
             "tabHints": list(state["tabHints"]), "lines": [
                 recent[0]["text"], recent[1]["text"], line],
         }
     elif active is not None:
         active["lines"].append(line)
         active["end"] = seq
-        if len(active["lines"]) >= MAX_SEGMENT:
+        if len(active["lines"]) >= MAX_SEGMENT or (
+            upper == "DROP" and active.get("characterBag")
+            and active["location"]["type"] == "inventory"
+            and {"equip", "mark as junk", "drop"}
+                <= {normalize(x).casefold() for x in active["lines"][3:]}
+        ):
             _save_active(db, state)
             state["active"] = None
 
@@ -280,7 +343,12 @@ def _collapse_observation_fingerprints(
                 groups.append({"facts": dict(facts), "members": [item]})
         for group in groups:
             members = group["members"]
-            representative = max(members, key=lambda v: len(_candidate_facts(v)))
+            representative = max(
+                members, key=lambda v: (
+                    v.get("ownershipStatus") == "CONFIRMED",
+                    len(_candidate_facts(v)),
+                ),
+            )
             digest = hashlib.sha256(json.dumps(
                 [core, sorted(group["facts"].items())],
                 ensure_ascii=False, separators=(",", ":"),
@@ -454,8 +522,16 @@ class OwnedItemsRepository:
                         if obs["location"]["type"] == "stash":
                             tabs.update(obs.get("locationHints", {}).get("spokenChestTabs", []))
                         count += 1
+                    candidates = self._candidates(db, locations, rarity)
                     if include_unverified:
-                        items += self._candidates(db, locations, rarity)
+                        items += candidates
+                    else:
+                        # A verified bag action sequence can confirm the selected
+                        # inventory item without a complete grid scan. Do not
+                        # expose old unverified tooltip candidates by default.
+                        items += [item for item in candidates
+                                  if item["location"]["type"] == "inventory"
+                                  and item["ownershipStatus"] == "CONFIRMED"]
                 checkpoint = db.execute("SELECT state_json FROM owned_item_checkpoint WHERE id=1").fetchone()
                 if checkpoint:
                     state = json.loads(checkpoint[0])
@@ -480,7 +556,7 @@ class OwnedItemsRepository:
                     "lastScanAt": None,
                     "observationCandidates": count,
                     "verifiedScopes": scoped,
-                    "warning": "Tooltips do not prove ownership, a tab's selected index, slot identity, or full scan.",
+                    "warning": "Only corroborated CHARACTER/Bag + item-action tooltips confirm inventory. No full scan or slot identity is inferred.",
                 },
                 "observedTotal": len(items),
                 "items": items,
