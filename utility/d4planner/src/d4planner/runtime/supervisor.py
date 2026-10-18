@@ -102,6 +102,10 @@ class Supervisor:
         self.status.extras["runtime"] = {
             "isolated": self.isolated,
             "uatAttachOnly": self.uat_attach_only,
+            # Recorded by the actual long-lived scheduled supervisor, NOT the
+            # short-lived CLI, so source/version mismatches are diagnosable.
+            "moduleSource": str(Path(__file__).resolve()),
+            "moduleRoot": str(Path(__file__).resolve().parents[2]),
         }
         self.status.extras["inputMarker"] = {
             "key": "F11",
