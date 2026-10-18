@@ -63,12 +63,16 @@ def schema(db: sqlite3.Connection) -> None:
 
     # One-time, non-destructive migration: keep the legacy table for rollback
     # and audit, but never write to it again after this schema is installed.
-    if db.execute("SELECT 1 FROM item_projection_state WHERE id=1").fetchone():
+    metadata = db.execute(
+        "SELECT projection_version FROM item_projection_state WHERE id=1"
+    ).fetchone()
+    if metadata and int(metadata[0]) >= 2:
         return
-    db.execute(
-        "INSERT INTO item_projection_state(id,last_event_rowid,revision) VALUES(1,0,0)"
-    )
-    if _has_table(db, "equipment_current"):
+    if metadata is None:
+        db.execute(
+            "INSERT INTO item_projection_state(id,last_event_rowid,revision) VALUES(1,0,0)"
+        )
+    if metadata is None and _has_table(db, "equipment_current"):
         rows = db.execute(
             "SELECT * FROM equipment_current WHERE confidence='HIGH' ORDER BY id"
         ).fetchall()
@@ -94,6 +98,26 @@ def schema(db: sqlite3.Connection) -> None:
                 .encode("utf-8")).hexdigest()
             upsert(db, "eq:" + legacy_fingerprint, payload,
                    fingerprint=legacy_fingerprint)
+    if _has_table(db, "owned_grid_current"):
+        # Legacy attested grid snapshots are migrated once, not replayed as
+        # fresh events. Keep original physical token/scope when available.
+        for row in db.execute("SELECT * FROM owned_grid_current").fetchall():
+            old = dict(row)
+            payload = json.loads(old["item_json"])
+            if payload.get("ownershipStatus") != "CONFIRMED":
+                continue
+            token = payload.get("trackingToken")
+            key = ("grid:" + old["character_id"] + ":token:" + token
+                   if token else "grid:" + old["character_id"] +
+                   ":slot:" + old["container"] + ":" +
+                   str(old["tab_key"]) + ":" + str(old["slot_index"]))
+            digest = hashlib.sha256(_json([old["character_id"], token,
+                                          payload.get("name"), payload.get("affixes")])
+                                    .encode("utf-8")).hexdigest()
+            upsert(db, key, payload, fingerprint=digest,
+                   scope=old["character_id"])
+    db.execute("UPDATE item_projection_state SET projection_version=2 WHERE id=1")
+
 
 
 def _revision(db: sqlite3.Connection, when: str, session: str) -> int:
