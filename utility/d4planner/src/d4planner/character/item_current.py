@@ -320,6 +320,7 @@ def snapshot(path: Path, *, locations: set[str] | None = None,
                                  uri=True, timeout=5)) as db:
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA query_only=ON")
+        db.execute("BEGIN")  # pin one read snapshot for metadata + item rows
         if not _has_table(db, "item_current"):
             return result
         state = db.execute("SELECT revision,committed_at FROM item_projection_state WHERE id=1").fetchone()
