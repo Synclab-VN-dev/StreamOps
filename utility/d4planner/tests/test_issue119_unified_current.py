@@ -141,7 +141,8 @@ class UnifiedCurrentTests(unittest.TestCase):
         self.speech("newer", "CHARACTER", "NOT AN ITEM")
         repo.sync(session_id="newer")
         self.assertEqual(item_current.snapshot(self.db)["revision"], revision)
-        self.assertEqual(item_current.snapshot(self.db)["observedTotal"], 1)
+        # The EQUIPPED comparison now remains visible, but NOT_CONFIRMED.
+        self.assertEqual(item_current.snapshot(self.db)["observedTotal"], 2)
 
     def test_legacy_equipment_migration_without_fingerprint_column(self):
         with closing(sqlite3.connect(self.db)) as db, db:
