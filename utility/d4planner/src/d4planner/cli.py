@@ -1392,14 +1392,14 @@ def main(argv: list[str] | None = None) -> int:
         if getattr(args, "equipment_action", None) == "replay":
             return command_character_equipment_replay(args.path, trace=args.trace)
         return command_character_equipment(paths, raw_json=args.json)
+    if args.command == "item" and args.items_action is None:
+        return command_item(
+            paths, raw_json=args.json, location=args.location,
+            rarity=args.rarity, confirmed_only=args.confirmed_only,
+            attach=args.attach)
     if args.command in ("item", "items"):
-        # Historical history/export/status subcommands keep their own audit API.
-        if args.items_action not in ("history", "export", "status"):
-            return command_item(
-                paths, raw_json=args.json,
-                location=args.location, rarity=args.rarity,
-                confirmed_only=args.confirmed_only,
-                attach=args.attach)
+        # The plural entrypoint remains the legacy V1 observation/audit API
+        # during migration. New singular item is strict read-only current.
         return command_items(
             paths, action=args.items_action, raw_json=getattr(args, "json", False),
             location=args.location, rarity=args.rarity,
