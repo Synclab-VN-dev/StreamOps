@@ -16,7 +16,7 @@ STATS = ("Strength", "Intelligence", "Willpower", "Dexterity")
 SOURCE_BLOB = "4d14854e0f0abfe234b2e58e270f47db1472b4ff"
 SOURCE_COMMIT = "bb4c5cc6b2135583eb708f0a3f374060675b6c0b"
 FINGERPRINT = "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07"
-ATTRIBUTE_LINE = re.compile(r"^\\+(\\d+(?:\\.\\d+)?) (Strength|Intelligence|Willpower|Dexterity)$")
+ATTRIBUTE_LINE = re.compile(r"^\+(\d+(?:\.\d+)?) (Strength|Intelligence|Willpower|Dexterity)$")
 
 def require(condition, reason):
     graph.reject(condition, reason)
@@ -49,9 +49,10 @@ def capture(witness):
                 type(node["index"]) is int and node["index"] == i and
                 type(node["boardIndex"]) is int and 0 <= node["boardIndex"] <= 4 and
                 type(node["className"]) is str and "d4t-active" in node["className"] and
-                type(node["tooltip"]) is str and len(node["tooltip"]) < 2500,
+                (node["tooltip"] is None or type(node["tooltip"]) is str) and
+                len(node["tooltip"] or "") < 2500,
                 "PARAGON_SOURCE_NODE_TAMPER_OR_NOT_ACTIVE")
-        for line_number, line in enumerate(node["tooltip"].splitlines()):
+        for line_number, line in enumerate((node["tooltip"] or "").splitlines()):
             m = ATTRIBUTE_LINE.fullmatch(line.strip())
             if m:
                 value = float(m.group(1))
@@ -104,7 +105,7 @@ def main(argv=None):
                 "verifiedUniqueMetricIdsAdded":0,"publishAllowed":False}
         code=2
     args.report.parent.mkdir(parents=True,exist_ok=True)
-    args.report.write_text(json.dumps(result,indent=2,sort_keys=True)+"\\n",encoding="utf-8")
+    args.report.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n",encoding="utf-8")
     print(json.dumps({k:v for k,v in result.items() if k not in
                       ("contributions","unclassifiedAttributeLines")},sort_keys=True))
     return code

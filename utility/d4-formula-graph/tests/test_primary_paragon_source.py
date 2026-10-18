@@ -26,8 +26,8 @@ class RealParagonSource(unittest.TestCase):
         self.assertEqual(r,layer.capture(self.source))
     def test_change_observed_line_changes_only_partial_contribution(self):
         source=deepcopy(self.source)
-        row=next(x for x in source["nodes"] if x["tooltip"]=="Normal Node\\n+5 Strength")
-        row["tooltip"]="Normal Node\\n+7 Strength"
+        row=next(x for x in source["nodes"] if x["tooltip"]=="Normal Node\n+5 Strength")
+        row["tooltip"]="Normal Node\n+7 Strength"
         before=layer.capture(self.source)
         after=layer.capture(source)
         self.assertEqual(after["observedParagonUiFlatSums"]["Strength"],
@@ -48,7 +48,7 @@ class RealParagonSource(unittest.TestCase):
                 layer.capture(v)
     def test_semantic_extra_lines_never_become_flat_core_stats(self):
         v=deepcopy(self.source)
-        v["nodes"][0]["tooltip"]="Board Attachment Gate\\n+5 Strength\\n+30% Strength\\nBonus: +100 Strength if condition met"
+        v["nodes"][0]["tooltip"]="Board Attachment Gate\n+5 Strength\n+30% Strength\nBonus: +100 Strength if condition met"
         r=layer.capture(v)
         self.assertEqual(r["observedParagonUiFlatSums"]["Strength"],
                          layer.capture(self.source)["observedParagonUiFlatSums"]["Strength"])
