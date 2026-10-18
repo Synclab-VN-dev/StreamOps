@@ -52,6 +52,8 @@ def report(home: Path) -> dict:
             "supervisorPid": active.get("supervisorPid"),
             "lastError": active.get("lastError"),
             "lastEventAt": active.get("lastEventAt"),
+            "moduleRoot": ((active.get("extras") or {}).get("runtime") or {}).get("moduleRoot"),
+            "moduleSource": ((active.get("extras") or {}).get("runtime") or {}).get("moduleSource"),
         },
         "recentEventSessions": [],
         "eventCountForRuntimeSession": None,
