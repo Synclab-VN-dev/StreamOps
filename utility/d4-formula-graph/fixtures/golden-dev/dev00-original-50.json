@@ -1,0 +1,1050 @@
+{
+  "schemaVersion": "f3-rogue-50-golden-candidate-v1",
+  "artifact": "rogue-50-maxroll-golden-candidate",
+  "status": "CANDIDATE_ONLY_NOT_APPROVED",
+  "referenceApproval": "NOT_APPROVED",
+  "inputCompleteness": "PARTIAL",
+  "parityStatus": "NOT_TESTED",
+  "origin": "MAXROLL_BROWSER_CAPTURE",
+  "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+  "capturedPayloadSha256": "e0ded82a214d73b3cc693d50d623c9ddf489e979d06e8025f31c000be2840554",
+  "fixture": {
+    "id": "maxroll.d4planner.1g1any0x.variant3.endgame.3ae138cafe3a",
+    "url": "https://maxroll.gg/d4/planner/1g1any0x#3",
+    "classId": "rogue",
+    "className": "Rogue",
+    "level": 70,
+    "build": "Penetrating Shot Endgame",
+    "variant": "#3",
+    "gamePatch": "3.2.1",
+    "gameBuild": "73552",
+    "inputSnapshotSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+    "context": {
+      "difficulty": "Torment IV",
+      "weaponSet": "Dual Wield"
+    }
+  },
+  "captureSource": {
+    "origin": "MAXROLL_BROWSER_CAPTURE",
+    "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+    "browser": "Chrome for Testing 153.0.8010.12",
+    "playwright": "1.64.1",
+    "cdp": "1.3",
+    "runtimeResourceUrl": "https://maxroll.gg/assets/export-DOjdL1l3.js",
+    "runtimeResourceSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+    "runtimeResourceCopied": false
+  },
+  "coverage": {
+    "metrics": 50,
+    "displayEvidence": 50,
+    "rawEvidence": 50
+  },
+  "metrics": [
+    {
+      "metricId": "maxroll.heroDetails.900",
+      "maxrollInternalId": 900,
+      "group": "summary",
+      "originalMaxrollLabel": "Weapon Damage",
+      "expectedDisplayValue": "52,051",
+      "expectedRawValue": 52050.754872000005,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#summary/900",
+        "CDP Q0e@762:226098 section=7 id=900",
+        "F1:f1-evidence/f1-character-stats-all.png#summary/weapon_damage"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.901",
+      "maxrollInternalId": 901,
+      "group": "summary",
+      "originalMaxrollLabel": "Toughness",
+      "expectedDisplayValue": "2,885,757",
+      "expectedRawValue": 2885756.723201841,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#summary/901",
+        "CDP Q0e@762:226098 section=7 id=901",
+        "F1:f1-evidence/f1-character-stats-all.png#summary/toughness"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.279",
+      "maxrollInternalId": 279,
+      "group": "core",
+      "originalMaxrollLabel": "Level",
+      "expectedDisplayValue": "70",
+      "expectedRawValue": 70,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#core/279",
+        "CDP Q0e@762:226098 section=0 id=279",
+        "F1:f1-evidence/f1-character-stats-all.png#core/level"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.108",
+      "maxrollInternalId": 108,
+      "group": "core",
+      "originalMaxrollLabel": "Strength",
+      "expectedDisplayValue": "418",
+      "expectedRawValue": 418,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#core/108",
+        "CDP Q0e@762:226098 section=0 id=108",
+        "F1:f1-evidence/f1-character-stats-all.png#core/strength"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.109",
+      "maxrollInternalId": 109,
+      "group": "core",
+      "originalMaxrollLabel": "Intelligence",
+      "expectedDisplayValue": "492",
+      "expectedRawValue": 492,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#core/109",
+        "CDP Q0e@762:226098 section=0 id=109",
+        "F1:f1-evidence/f1-character-stats-all.png#core/intelligence"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.110",
+      "maxrollInternalId": 110,
+      "group": "core",
+      "originalMaxrollLabel": "Willpower",
+      "expectedDisplayValue": "202",
+      "expectedRawValue": 202,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#core/110",
+        "CDP Q0e@762:226098 section=0 id=110",
+        "F1:f1-evidence/f1-character-stats-all.png#core/willpower"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.111",
+      "maxrollInternalId": 111,
+      "group": "core",
+      "originalMaxrollLabel": "Dexterity",
+      "expectedDisplayValue": "2,402",
+      "expectedRawValue": 2402,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#core/111",
+        "CDP Q0e@762:226098 section=0 id=111",
+        "F1:f1-evidence/f1-character-stats-all.png#core/dexterity"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.2036494626",
+      "maxrollInternalId": 2036494626,
+      "group": "resistances",
+      "originalMaxrollLabel": "Toughness",
+      "expectedDisplayValue": "2,885,757",
+      "expectedRawValue": 2885756.723201841,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#resistances/2036494626",
+        "CDP Q0e@762:226098 section=6 id=2036494626",
+        "F1:f1-evidence/f1-character-stats-all.png#resistances/toughness"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.480",
+      "maxrollInternalId": 480,
+      "group": "resistances",
+      "originalMaxrollLabel": "Armor",
+      "expectedDisplayValue": "21,650",
+      "expectedRawValue": 21650.214,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#resistances/480",
+        "CDP Q0e@762:226098 section=6 id=480",
+        "F1:f1-evidence/f1-character-stats-all.png#resistances/armor"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.439",
+      "maxrollInternalId": 439,
+      "group": "resistances",
+      "originalMaxrollLabel": "Physical Resistance",
+      "expectedDisplayValue": "7,739",
+      "expectedRawValue": 7739,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#resistances/439",
+        "CDP Q0e@762:226098 section=6 id=439",
+        "F1:f1-evidence/f1-character-stats-all.png#resistances/physical_resistance"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.446",
+      "maxrollInternalId": 446,
+      "group": "resistances",
+      "originalMaxrollLabel": "Fire Resistance",
+      "expectedDisplayValue": "12,344",
+      "expectedRawValue": 12344,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#resistances/446",
+        "CDP Q0e@762:226098 section=6 id=446",
+        "F1:f1-evidence/f1-character-stats-all.png#resistances/fire_resistance"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.453",
+      "maxrollInternalId": 453,
+      "group": "resistances",
+      "originalMaxrollLabel": "Lightning Resistance",
+      "expectedDisplayValue": "12,344",
+      "expectedRawValue": 12344,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#resistances/453",
+        "CDP Q0e@762:226098 section=6 id=453",
+        "F1:f1-evidence/f1-character-stats-all.png#resistances/lightning_resistance"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.460",
+      "maxrollInternalId": 460,
+      "group": "resistances",
+      "originalMaxrollLabel": "Cold Resistance",
+      "expectedDisplayValue": "3,134",
+      "expectedRawValue": 3134,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#resistances/460",
+        "CDP Q0e@762:226098 section=6 id=460",
+        "F1:f1-evidence/f1-character-stats-all.png#resistances/cold_resistance"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.467",
+      "maxrollInternalId": 467,
+      "group": "resistances",
+      "originalMaxrollLabel": "Poison Resistance",
+      "expectedDisplayValue": "9,850",
+      "expectedRawValue": 9850,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#resistances/467",
+        "CDP Q0e@762:226098 section=6 id=467",
+        "F1:f1-evidence/f1-character-stats-all.png#resistances/poison_resistance"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.474",
+      "maxrollInternalId": 474,
+      "group": "resistances",
+      "originalMaxrollLabel": "Shadow Resistance",
+      "expectedDisplayValue": "7,739",
+      "expectedRawValue": 7739,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#resistances/474",
+        "CDP Q0e@762:226098 section=6 id=474",
+        "F1:f1-evidence/f1-character-stats-all.png#resistances/shadow_resistance"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.93",
+      "maxrollInternalId": 93,
+      "group": "offensive",
+      "originalMaxrollLabel": "Base Ranged Weapon Damage",
+      "expectedDisplayValue": "3,768",
+      "expectedRawValue": 3768,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/93",
+        "CDP Q0e@762:226098 section=1 id=93",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/base_ranged_weapon_damage"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.46",
+      "maxrollInternalId": 46,
+      "group": "offensive",
+      "originalMaxrollLabel": "Base Dual Wielded Weapon Damage",
+      "expectedDisplayValue": "3,456",
+      "expectedRawValue": 3456,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/46",
+        "CDP Q0e@762:226098 section=1 id=46",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/base_dual_wielded_weapon_damage"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.114",
+      "maxrollInternalId": 114,
+      "group": "offensive",
+      "originalMaxrollLabel": "Weapon Speed",
+      "expectedDisplayValue": "1.20",
+      "expectedRawValue": 1.2,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/114",
+        "CDP Q0e@762:226098 section=1 id=114",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/weapon_speed"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.3",
+      "maxrollInternalId": 3,
+      "group": "offensive",
+      "originalMaxrollLabel": "Attack Speed Bonus",
+      "expectedDisplayValue": "25.0%",
+      "expectedRawValue": 0.25,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/3",
+        "CDP Q0e@762:226098 section=1 id=3",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/attack_speed_bonus"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.4",
+      "maxrollInternalId": 4,
+      "group": "offensive",
+      "originalMaxrollLabel": "Critical Strike Chance",
+      "expectedDisplayValue": "-93.8%",
+      "expectedRawValue": -0.9376804999999999,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/4",
+        "CDP Q0e@762:226098 section=1 id=4",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/critical_strike_chance"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.347",
+      "maxrollInternalId": 347,
+      "group": "offensive",
+      "originalMaxrollLabel": "Critical Strike Damage",
+      "expectedDisplayValue": "50.0%",
+      "expectedRawValue": 0.5,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/347",
+        "CDP Q0e@762:226098 section=1 id=347",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/critical_strike_damage"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.349",
+      "maxrollInternalId": 349,
+      "group": "offensive",
+      "originalMaxrollLabel": "Vulnerable Damage",
+      "expectedDisplayValue": "104.0%",
+      "expectedRawValue": 1.04,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/349",
+        "CDP Q0e@762:226098 section=1 id=349",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/vulnerable_damage"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.1",
+      "maxrollInternalId": 1,
+      "group": "offensive",
+      "originalMaxrollLabel": "All Damage",
+      "expectedDisplayValue": "587.9%",
+      "expectedRawValue": 5.878875622400002,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/1",
+        "CDP Q0e@762:226098 section=1 id=1",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/all_damage"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.49",
+      "maxrollInternalId": 49,
+      "group": "offensive",
+      "originalMaxrollLabel": "Damage with Fire",
+      "expectedDisplayValue": "176.8%",
+      "expectedRawValue": 1.7676160000000003,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/49",
+        "CDP Q0e@762:226098 section=1 id=49",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/damage_with_fire"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.50",
+      "maxrollInternalId": 50,
+      "group": "offensive",
+      "originalMaxrollLabel": "Damage with Lightning",
+      "expectedDisplayValue": "176.8%",
+      "expectedRawValue": 1.7676160000000003,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/50",
+        "CDP Q0e@762:226098 section=1 id=50",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/damage_with_lightning"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.51",
+      "maxrollInternalId": 51,
+      "group": "offensive",
+      "originalMaxrollLabel": "Damage with Cold",
+      "expectedDisplayValue": "342.8%",
+      "expectedRawValue": 3.428185600000001,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/51",
+        "CDP Q0e@762:226098 section=1 id=51",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/damage_with_cold"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.52",
+      "maxrollInternalId": 52,
+      "group": "offensive",
+      "originalMaxrollLabel": "Damage with Holy",
+      "expectedDisplayValue": "176.8%",
+      "expectedRawValue": 1.7676160000000003,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/52",
+        "CDP Q0e@762:226098 section=1 id=52",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/damage_with_holy"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.71041540",
+      "maxrollInternalId": 71041540,
+      "group": "offensive",
+      "originalMaxrollLabel": "Damage with Poison",
+      "expectedDisplayValue": "606.9%",
+      "expectedRawValue": 6.069215820800001,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/71041540",
+        "CDP Q0e@762:226098 section=1 id=71041540",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/damage_with_poison"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.53",
+      "maxrollInternalId": 53,
+      "group": "offensive",
+      "originalMaxrollLabel": "Damage with Shadow",
+      "expectedDisplayValue": "342.8%",
+      "expectedRawValue": 3.428185600000001,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/53",
+        "CDP Q0e@762:226098 section=1 id=53",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/damage_with_shadow"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.251",
+      "maxrollInternalId": 251,
+      "group": "offensive",
+      "originalMaxrollLabel": "Damage with Imbued",
+      "expectedDisplayValue": "10.0%",
+      "expectedRawValue": 0.1,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/251",
+        "CDP Q0e@762:226098 section=1 id=251",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/damage_with_imbued"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.2",
+      "maxrollInternalId": 2,
+      "group": "offensive",
+      "originalMaxrollLabel": "Damage vs Elites",
+      "expectedDisplayValue": "208.6%",
+      "expectedRawValue": 2.08575,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/2",
+        "CDP Q0e@762:226098 section=1 id=2",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/damage_vs_elites"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.25",
+      "maxrollInternalId": 25,
+      "group": "offensive",
+      "originalMaxrollLabel": "Damage vs Crowd Controlled",
+      "expectedDisplayValue": "217.9%",
+      "expectedRawValue": 2.17875,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/25",
+        "CDP Q0e@762:226098 section=1 id=25",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/damage_vs_crowd_controlled"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.56",
+      "maxrollInternalId": 56,
+      "group": "offensive",
+      "originalMaxrollLabel": "Damage vs Healthy",
+      "expectedDisplayValue": "56.3%",
+      "expectedRawValue": 0.5625,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/56",
+        "CDP Q0e@762:226098 section=1 id=56",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/damage_vs_healthy"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.166",
+      "maxrollInternalId": 166,
+      "group": "offensive",
+      "originalMaxrollLabel": "Damage vs Poisoned",
+      "expectedDisplayValue": "98.4%",
+      "expectedRawValue": 0.9842085000000002,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/166",
+        "CDP Q0e@762:226098 section=1 id=166",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/damage_vs_poisoned"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.299",
+      "maxrollInternalId": 299,
+      "group": "offensive",
+      "originalMaxrollLabel": "Thorns",
+      "expectedDisplayValue": "0",
+      "expectedRawValue": 0,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#offensive/299",
+        "CDP Q0e@762:226098 section=1 id=299",
+        "F1:f1-evidence/f1-character-stats-all.png#offensive/thorns"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.58",
+      "maxrollInternalId": 58,
+      "group": "defensive",
+      "originalMaxrollLabel": "Maximum Life",
+      "expectedDisplayValue": "71,497",
+      "expectedRawValue": 71496.99842999999,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#defensive/58",
+        "CDP Q0e@762:226098 section=2 id=58",
+        "F1:f1-evidence/f1-character-stats-all.png#defensive/maximum_life"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.78",
+      "maxrollInternalId": 78,
+      "group": "defensive",
+      "originalMaxrollLabel": "Potion Capacity",
+      "expectedDisplayValue": "4",
+      "expectedRawValue": 4,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#defensive/78",
+        "CDP Q0e@762:226098 section=2 id=78",
+        "F1:f1-evidence/f1-character-stats-all.png#defensive/potion_capacity"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.180",
+      "maxrollInternalId": 180,
+      "group": "defensive",
+      "originalMaxrollLabel": "Healing Received",
+      "expectedDisplayValue": "16.1%",
+      "expectedRawValue": 0.160699697,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#defensive/180",
+        "CDP Q0e@762:226098 section=2 id=180",
+        "F1:f1-evidence/f1-character-stats-all.png#defensive/healing_received"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.431",
+      "maxrollInternalId": 431,
+      "group": "defensive",
+      "originalMaxrollLabel": "Armor",
+      "expectedDisplayValue": "21,650",
+      "expectedRawValue": 21650.214,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#defensive/431",
+        "CDP Q0e@762:226098 section=2 id=431",
+        "F1:f1-evidence/f1-character-stats-all.png#defensive/armor"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.357",
+      "maxrollInternalId": 357,
+      "group": "defensive",
+      "originalMaxrollLabel": "All Damage Reduction",
+      "expectedDisplayValue": "55.4%",
+      "expectedRawValue": 0.55375,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#defensive/357",
+        "CDP Q0e@762:226098 section=2 id=357",
+        "F1:f1-evidence/f1-character-stats-all.png#defensive/all_damage_reduction"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.104",
+      "maxrollInternalId": 104,
+      "group": "defensive",
+      "originalMaxrollLabel": "Barrier Bonus",
+      "expectedDisplayValue": "0.0%",
+      "expectedRawValue": 0,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#defensive/104",
+        "CDP Q0e@762:226098 section=2 id=104",
+        "F1:f1-evidence/f1-character-stats-all.png#defensive/barrier_bonus"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.61",
+      "maxrollInternalId": 61,
+      "group": "defensive",
+      "originalMaxrollLabel": "Dodge Chance",
+      "expectedDisplayValue": "14.4%",
+      "expectedRawValue": 0.14411596216875,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#defensive/61",
+        "CDP Q0e@762:226098 section=2 id=61",
+        "F1:f1-evidence/f1-character-stats-all.png#defensive/dodge_chance"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.81",
+      "maxrollInternalId": 81,
+      "group": "utility",
+      "originalMaxrollLabel": "Maximum Energy",
+      "expectedDisplayValue": "100",
+      "expectedRawValue": 100,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#utility/81",
+        "CDP Q0e@762:226098 section=3 id=81",
+        "F1:f1-evidence/f1-character-stats-all.png#utility/maximum_energy"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.286",
+      "maxrollInternalId": 286,
+      "group": "utility",
+      "originalMaxrollLabel": "Energy Regeneration",
+      "expectedDisplayValue": "8",
+      "expectedRawValue": 8.167512,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#utility/286",
+        "CDP Q0e@762:226098 section=3 id=286",
+        "F1:f1-evidence/f1-character-stats-all.png#utility/energy_regeneration"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.80",
+      "maxrollInternalId": 80,
+      "group": "utility",
+      "originalMaxrollLabel": "Movement Speed",
+      "expectedDisplayValue": "191.3%",
+      "expectedRawValue": 1.9124999999999999,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#utility/80",
+        "CDP Q0e@762:226098 section=3 id=80",
+        "F1:f1-evidence/f1-character-stats-all.png#utility/movement_speed"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.92",
+      "maxrollInternalId": 92,
+      "group": "utility",
+      "originalMaxrollLabel": "Cooldown Reduction",
+      "expectedDisplayValue": "25.5%",
+      "expectedRawValue": 0.2547099999999999,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#utility/92",
+        "CDP Q0e@762:226098 section=3 id=92",
+        "F1:f1-evidence/f1-character-stats-all.png#utility/cooldown_reduction"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.152",
+      "maxrollInternalId": 152,
+      "group": "utility",
+      "originalMaxrollLabel": "Imbuement Cooldown Reduction",
+      "expectedDisplayValue": "5.9%",
+      "expectedRawValue": 0.058881750000000066,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#utility/152",
+        "CDP Q0e@762:226098 section=3 id=152",
+        "F1:f1-evidence/f1-character-stats-all.png#utility/imbuement_cooldown_reduction"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.181",
+      "maxrollInternalId": 181,
+      "group": "utility",
+      "originalMaxrollLabel": "Lucky Hit Chance Bonus",
+      "expectedDisplayValue": "0.0%",
+      "expectedRawValue": 0,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#utility/181",
+        "CDP Q0e@762:226098 section=3 id=181",
+        "F1:f1-evidence/f1-character-stats-all.png#utility/lucky_hit_chance_bonus"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.367",
+      "maxrollInternalId": 367,
+      "group": "utility",
+      "originalMaxrollLabel": "Experience Bonus",
+      "expectedDisplayValue": "600.0%",
+      "expectedRawValue": 6,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#utility/367",
+        "CDP Q0e@762:226098 section=3 id=367",
+        "F1:f1-evidence/f1-character-stats-all.png#utility/experience_bonus"
+      ]
+    },
+    {
+      "metricId": "maxroll.heroDetails.70",
+      "maxrollInternalId": 70,
+      "group": "pvp",
+      "originalMaxrollLabel": "Damage Reduction",
+      "expectedDisplayValue": "92.0%",
+      "expectedRawValue": 0.9199219,
+      "rawOrigin": "MAXROLL_CDP_RUNTIME_DIRECT",
+      "displayOrigin": "MAXROLL_BROWSER_UI_DIRECT",
+      "origin": "MAXROLL_BROWSER_CAPTURE",
+      "patch": "3.2.1.73552",
+      "inputFingerprintSha256": "3ae138cafe3aa4b3633744d0ea5e22b1bd8d92afab77be857906d0b6010cff07",
+      "sourceFingerprintSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "capturedAtUtc": "2026-10-16T00:17:23.809Z",
+      "evidenceRefs": [
+        "evidence/f3-character-stats.png#pvp/70",
+        "CDP Q0e@762:226098 section=4 id=70",
+        "F1:f1-evidence/f1-character-stats-all.png#pvp/damage_reduction"
+      ]
+    }
+  ],
+  "warnings": [
+    "Expected values are direct Maxroll UI/CDP observations, not AI or StreamOps calculations.",
+    "Partial dynamic-state reproducibility prevents Golden approval.",
+    "No Graph actual exists in this artifact."
+  ],
+  "manifestRef": "manifest.sha256"
+}

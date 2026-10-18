@@ -45,6 +45,23 @@ jobs:
           python utility/d4-formula-graph/primary_paragon_source.py \
             --source utility/d4-formula-graph/fixtures/dev00-paragon-tooltip-source.json \
             --report artifacts/d4-formula-graph/dev00-paragon-primary-source.json
+      - name: M20 working-model candidate Actual then independent DEV Golden diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python utility/d4-formula-graph/working_model.py \
+            --source utility/d4-formula-graph/fixtures/dev00-source-sanitized.json \
+            --inventory utility/d4-formula-graph/fixtures/dev00-visible-inventory.json \
+            --targets utility/d4-formula-graph/fixtures/golden-target-20.json \
+            --f3map utility/d4-formula-graph/fixtures/f3-target20-source-map.json \
+            --paragon utility/d4-formula-graph/fixtures/dev00-paragon-tooltip-source.json \
+            --rolls utility/d4-formula-graph/fixtures/dev00-source-rolls.json \
+            --report artifacts/d4-formula-graph/dev00-working-model-actual-candidates.json
+          python utility/d4-formula-graph/working_model_golden_diag.py \
+            --model artifacts/d4-formula-graph/dev00-working-model-actual-candidates.json \
+            --golden utility/d4-formula-graph/fixtures/golden-dev/dev00-original-50.json \
+            --report artifacts/d4-formula-graph/dev00-working-model-vs-golden-20.json
+
       - name: Prove both exact-source synthetic variant graphs block unverified formulas
         shell: bash
         run: |
