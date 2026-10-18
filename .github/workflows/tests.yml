@@ -1,6 +1,5 @@
-name: Tests
+name: Full Tests
 on:
-  pull_request:
   push:
     branches: [master]
 permissions:
@@ -47,7 +46,7 @@ jobs:
           if ("${{ github.event_name }}" -eq "push") {
             "d4planner=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
             "server=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            "gameui=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "gameui=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
             exit 0
           }
 
