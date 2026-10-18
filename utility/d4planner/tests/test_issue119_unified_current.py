@@ -251,9 +251,13 @@ class UnifiedCurrentTests(unittest.TestCase):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 
-        empty = module.report(self.root)
+        # setUp() intentionally creates events.db, so exercise the missing
+        # database path under a distinct empty home instead.
+        empty_home = self.root / "empty-home"
+        empty = module.report(empty_home)
         self.assertFalse(empty["characterDbPresent"])
         self.assertFalse(empty["eventsDbPresent"])
+        self.assertFalse((empty_home / "state" / "events.db").exists())
         self.assertFalse(self.db.exists())
 
         self.init()
