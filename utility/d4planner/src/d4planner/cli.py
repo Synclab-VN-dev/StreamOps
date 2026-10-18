@@ -17,6 +17,7 @@ from typing import Any, Iterator
 from .character.equipment.projector import EquipmentProjector
 from .character.repository import EquipmentRepository
 from .character.owned_items import OwnedItemsRepository
+from .character.item_current import snapshot as current_item_snapshot
 from .character.service import CharacterService
 from .runtime.diagnostics import MemoryDiagnosticsSink
 from .runtime.events.repository import EventLogReader
@@ -875,6 +876,65 @@ def command_character_equipment(paths: RuntimePaths, *, raw_json: bool) -> int:
 
 
 
+def command_item(
+    paths: RuntimePaths, *, raw_json: bool = False,
+    location: str = "all", rarity: str | None = None,
+    confirmed_only: bool = False, attach: bool = False,
+) -> int:
+    """Read only character.db's committed current projection. No event replay."""
+    allowed = {"all", "equipment", "inventory", "stash", "unknown"}
+    locations = {part.strip().casefold() for part in location.split(",")}
+    if (not locations or not locations.issubset(allowed) or ""
+            in locations or ("all" in locations and len(locations) != 1)):
+        print(f"Invalid --location: {location!r}", file=sys.stderr)
+        return 2
+
+    def get_snapshot() -> dict[str, Any]:
+        return current_item_snapshot(
+            paths.character_db, locations=locations,
+            rarity=rarity, confirmed_only=confirmed_only)
+
+    def display(data: dict[str, Any], *, streaming: bool = False) -> None:
+        if raw_json or (streaming and not sys.stdout.isatty()):
+            print(json.dumps(data, ensure_ascii=False, separators=(",", ":")
+                             if streaming else None,
+                             indent=None if streaming else 2), flush=True)
+            return
+        if streaming and sys.stdout.isatty():
+            print("\x1b[2J\x1b[H", end="")
+        print(f"D4Planner items — revision {data['revision']} (last-known snapshot)")
+        for item in data["items"]:
+            where = item["location"]["type"]
+            slot = item["location"].get("slot")
+            if slot:
+                where += f"/{slot}"
+            print(f"{where:<18} {item['name']}  {item.get('itemPower') or '?'}"
+                  f"  {item.get('ownershipStatus', 'NOT_CONFIRMED')}")
+        print(f"Items: {data['observedTotal']}; "
+              f"coverage: {data['coverage']['overall']}; "
+              f"committed: {data['lastCommittedAt'] or '-'}", flush=True)
+        if streaming:
+            print("Watching committed changes; Ctrl+C detaches viewer only.", flush=True)
+
+    try:
+        data = get_snapshot()
+        display(data, streaming=attach)
+        if not attach:
+            return 0
+        last_revision = data["revision"]
+        while True:
+            time.sleep(0.25)
+            data = get_snapshot()
+            if data["revision"] != last_revision:
+                last_revision = data["revision"]
+                display(data, streaming=True)
+    except (KeyboardInterrupt, BrokenPipeError):
+        return 0
+    except (OSError, sqlite3.Error, ValueError, TypeError) as exc:
+        print(f"item blocked: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+
+
 def command_items(
     paths: RuntimePaths,
     *,
@@ -1242,10 +1302,12 @@ def build_parser() -> argparse.ArgumentParser:
     replay.add_argument("path", type=Path)
     replay.add_argument("--trace", action="store_true")
 
-    items = sub.add_parser("items")
+    items = sub.add_parser("item", aliases=["items"])
     items.add_argument("--json", action="store_true")
     items.add_argument("--location", default="all")
     items.add_argument("--rarity")
+    items.add_argument("--attach", action="store_true")
+    items.add_argument("--confirmed-only", action="store_true")
     items.add_argument("--include-unverified", action="store_true",
                        help="include observed tooltips without ownership proof")
     items_sub = items.add_subparsers(dest="items_action")
@@ -1330,7 +1392,14 @@ def main(argv: list[str] | None = None) -> int:
         if getattr(args, "equipment_action", None) == "replay":
             return command_character_equipment_replay(args.path, trace=args.trace)
         return command_character_equipment(paths, raw_json=args.json)
-    if args.command == "items":
+    if args.command in ("item", "items"):
+        # Historical history/export/status subcommands keep their own audit API.
+        if args.items_action not in ("history", "export", "status"):
+            return command_item(
+                paths, raw_json=args.json,
+                location=args.location, rarity=args.rarity,
+                confirmed_only=args.confirmed_only,
+                attach=args.attach)
         return command_items(
             paths, action=args.items_action, raw_json=getattr(args, "json", False),
             location=args.location, rarity=args.rarity,
