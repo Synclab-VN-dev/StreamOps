@@ -944,7 +944,7 @@ def command_items(
                     "canonicalEventsPresent": paths.events_db.is_file(),
                     "lastError": runtime.get("lastError"),
                 },
-                "warning": "Only HIGH-confidence equipped items are confirmed; tooltips are not proof of ownership.",
+                "warning": "HIGH-confidence equipment or input+CHARACTER/Sort Bag+item-action corroboration confirms observed items; inventory completeness is never inferred.",
             }
             if raw_json:
                 print(json.dumps(payload, ensure_ascii=False, indent=2))
