@@ -13,6 +13,7 @@ from typing import Any, Protocol
 
 from ..character.equipment.projector import EquipmentProjector
 from ..character.repository import EquipmentRepository
+from ..character.owned_items import OwnedItemsRepository
 from ..controller import ControllerProfile
 from .diagnostics import JsonlDiagnosticsSink
 from .events.model import EventDraft
@@ -120,6 +121,7 @@ class Supervisor:
             "overflow": False,
         }
         self.equipment_projector = EquipmentProjector(EquipmentRepository(paths.character_db))
+        self.item_resolver = OwnedItemsRepository(paths.character_db, paths.events_db)
 
     @staticmethod
     def _steam_priority_allows_launch(steam: object) -> bool:
