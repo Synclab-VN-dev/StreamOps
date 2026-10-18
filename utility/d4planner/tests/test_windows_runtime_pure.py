@@ -524,6 +524,47 @@ def test_limited_supervisor_only_verifies_interactive_tasks(tmp_path, monkeypatc
     assert "Register-ScheduledTask" not in commands[0]
 
 
+def test_supervisor_task_uses_active_module_source_root_not_inherited_pythonpath(
+    tmp_path, monkeypatch,
+):
+    from d4planner.runtime import windows
+    runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
+    monkeypatch.setattr(runtime, "require_windows", lambda: None)
+    monkeypatch.setattr(runtime, "prepare_interactive_tasks", lambda: None)
+    scripts = []
+    monkeypatch.setattr(
+        runtime, "_powershell",
+        lambda script, **kwargs: (
+            scripts.append(script) or subprocess.CompletedProcess([], 0, "", "")
+        ),
+    )
+
+    runtime.launch_supervisor_task(
+        speech=False, isolated=False, controller_profile="xbox16",
+        block_marker=True,
+    )
+    assert len(scripts) == 1
+    script = scripts[0]
+    source_root = str(Path(windows.__file__).resolve().parents[2])
+    assert ("$expectedWorkDir='" + source_root.replace("'", "''") + "'") in script
+    assert "New-ScheduledTaskAction -Execute $expectedExecute" in script
+    assert "-WorkingDirectory $expectedWorkDir" in script
+    assert "[string]$actions[0].WorkingDirectory -ne $expectedWorkDir" in script
+    assert script.index("refusing to modify foreign scheduled task") < script.index(
+        "Register-ScheduledTask"
+    )
+    assert "$expectedArguments='-m d4planner.daemon --block --controller-profile xbox16'" in script
+
+    # Helper tasks do not depend on source checkout and retain old invocation.
+    helper = runtime._task_reconcile_script(
+        task_name="test-helper", executable="powershell.exe",
+        arguments="-NoProfile -File start-nvda.ps1",
+        family="helper:start-nvda", legacy_argument_prefix="-NoProfile",
+    )
+    assert "$expectedWorkDir=''" in helper
+    assert "if($expectedWorkDir -ne '')" in helper
+
+
 def test_supervisor_task_is_normal_priority_and_prepares_helpers_first(tmp_path, monkeypatch):
     runtime = WindowsRuntime(RuntimePaths(tmp_path / "home"))
     monkeypatch.setattr(runtime, "require_windows", lambda: None)
