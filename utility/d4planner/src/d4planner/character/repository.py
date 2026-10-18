@@ -71,11 +71,11 @@ class EquipmentRepository:
             # New current-state writes go EXCLUSIVELY to item_current.
             # The old equipment_current table is migration/rollback history.
             if empty_slot_family:
-                item_current.remove_where(
+                item_current.mark_location_unknown(
                     db, "location='equipment' AND slot=?",
                     (empty_slot_family,), when=updated_at, session=session_id)
             if remove_item_fingerprint:
-                item_current.remove_where(
+                item_current.mark_location_unknown(
                     db, "item_key=?",
                     ("eq:" + remove_item_fingerprint,),
                     when=updated_at, session=session_id)
