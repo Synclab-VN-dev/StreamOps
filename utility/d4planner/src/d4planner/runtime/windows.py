@@ -135,7 +135,7 @@ class WindowsRuntime:
             "if($needsRegister){"
             "$a=if($expectedWorkDir -ne ''){"
             "New-ScheduledTaskAction -Execute $expectedExecute -Argument $expectedArguments "
-            "-WorkingDirectory $expectedWorkDir"
+            "-WorkingDirectory $expectedWorkDir;"
             "}else{New-ScheduledTaskAction -Execute $expectedExecute -Argument $expectedArguments};"
             "$p=New-ScheduledTaskPrincipal -UserId $u -LogonType Interactive -RunLevel Limited;"
             "$s=New-ScheduledTaskSettingsSet -Priority 4 "
