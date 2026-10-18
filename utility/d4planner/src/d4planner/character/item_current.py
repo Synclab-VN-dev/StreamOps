@@ -271,7 +271,7 @@ def apply_verified_scan(db: sqlite3.Connection, scan: sqlite3.Row,
                "grid:" + owner + ":slot:" + container + ":" +
                str(tab) + ":" + str(cell["slot_index"]))
         incoming.add(key)
-        item["location"] = {"type": container, "slot": str(cell["slot_index"]),
+        item["location"] = {"type": container, "slot": cell["slot_index"],
                             "tab": tab}
         item["ownershipStatus"] = "CONFIRMED"
         item["observationConfidence"] = "HIGH"
