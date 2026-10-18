@@ -141,10 +141,10 @@ class UnifiedCurrentTests(unittest.TestCase):
         self.speech("newer", "CHARACTER", "NOT AN ITEM")
         repo.sync(session_id="newer")
         self.assertEqual(item_current.snapshot(self.db)["revision"], revision)
-        # The EQUIPPED comparison now remains visible, but NOT_CONFIRMED.
-        self.assertEqual(item_current.snapshot(self.db)["observedTotal"], 2)
+        # Comparison is audit-only; physical current contains only verified Bag.
+        self.assertEqual(item_current.snapshot(self.db)["observedTotal"], 1)
 
-    def test_legacy_equipment_migration_without_fingerprint_column(self):
+    def test_dev_clean_bootstrap_does_not_import_legacy_equipment(self):
         with closing(sqlite3.connect(self.db)) as db, db:
             db.execute("""CREATE TABLE equipment_current(
                 id INTEGER PRIMARY KEY,slot_family TEXT,slot_index INTEGER,
@@ -161,8 +161,8 @@ class UnifiedCurrentTests(unittest.TestCase):
             item_current.schema(db)
             db.commit()
         items = item_current.snapshot(self.db)["items"]
-        self.assertEqual([x["name"] for x in items], ["OLD AMULET"])
-        self.assertEqual(items[0]["location"]["type"], "equipment")
+        self.assertEqual(items, [])  # DEV v3 intentionally starts clean
+        self.assertEqual(item_current.snapshot(self.db)["revision"], 0)
 
     def test_attach_emits_only_committed_revision_changes(self):
         self.init()
