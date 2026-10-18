@@ -345,22 +345,16 @@ def _consume_remove(db: sqlite3.Connection, row: sqlite3.Row, p: dict[str, Any])
 
 
 def current(db: sqlite3.Connection, locations: set[str], rarity: str | None) -> list[dict[str, Any]]:
-    if not db.execute("""SELECT 1 FROM sqlite_master WHERE name='owned_grid_current'""").fetchone():
+    if not db.execute("SELECT 1 FROM sqlite_master WHERE name='item_current'").fetchone():
         return []
-    sql="SELECT item_json FROM owned_grid_current"
-    clauses=[]
-    args: list[Any]=[]
+    sql = "SELECT item_json FROM item_current WHERE character_scope IS NOT NULL"
+    args: list[Any] = []
     if "all" not in locations:
-        clauses.append("container IN ("+",".join("?" for _ in locations)+")")
+        sql += " AND location IN (" + ",".join("?" for _ in locations) + ")"
         args.extend(sorted(locations))
-    if clauses:
-        sql+=" WHERE "+" AND ".join(clauses)
-    result=[]
-    for row in db.execute(sql,args):
-        item=json.loads(row[0])
-        if rarity is None or str(item.get("rarity") or "").casefold()==rarity.casefold():
-            result.append(item)
-    return result
+    records = [json.loads(r[0]) for r in db.execute(sql, args)]
+    return [r for r in records if rarity is None or
+            str(r.get("rarity") or "").casefold() == rarity.casefold()]
 
 
 def coverage(db: sqlite3.Connection) -> tuple[dict[str, Any],list[dict[str, Any]]]:
