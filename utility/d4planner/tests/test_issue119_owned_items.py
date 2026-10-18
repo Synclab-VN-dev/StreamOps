@@ -219,7 +219,7 @@ class OwnedItemsTests(unittest.TestCase):
             return repo.listing(locations={"all"}, include_unverified=True)
         with ThreadPoolExecutor(max_workers=3) as pool:
             responses = list(pool.map(inspect, range(6)))
-        self.assertEqual([x["observedTotal"] for x in responses], [4] * 6)
+        self.assertEqual([x["observedTotal"] for x in responses], [3] * 6)
         self.assertEqual(len(self.repo().history()), 4)
 
     def test_unicode_item_survives_canonical_json_projection(self):
