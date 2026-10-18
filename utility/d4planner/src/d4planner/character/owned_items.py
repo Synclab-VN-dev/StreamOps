@@ -55,7 +55,7 @@ def _initial() -> dict[str, Any]:
     return {"projectionVersion": PROJECTION_VERSION, "session": None, "context": "unknown", "tabHints": [], "recent": [],
             "active": None, "lastSeenAt": None, "characterInput": False,
             "bagVisible": False, "equippedPrefix": None, "speechAfterEquipped": 0,
-            "equippedName": None
+            "equippedName": None}
 
 
 def _reset_session(state: dict[str, Any], session: str) -> None:
