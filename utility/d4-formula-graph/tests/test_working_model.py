@@ -38,8 +38,8 @@ class WorkingModelTests(unittest.TestCase):
     def test_real_270_nodes_and_20_candidates_without_fake_verified(self):
         a=self.run_model()
         self.assertEqual(a["targetUniqueMetricIds"],20)
-        self.assertEqual(a["numericCandidates"],5)
-        self.assertEqual(a["provisionalCandidates"],4)
+        self.assertEqual(a["numericCandidates"],7)
+        self.assertEqual(a["provisionalCandidates"],6)
         self.assertGreater(a["observedRollsWithoutTrustedMetricMapping"],40)
         self.assertFalse(a["goldenExpectedLoaded"])
         self.assertEqual(a["newGoldenVerified"],0)
@@ -54,7 +54,7 @@ class WorkingModelTests(unittest.TestCase):
             self.assertTrue(record["contributions"])
         self.assertEqual(rows[model.LEVEL]["candidateRaw"],70)
         self.assertTrue(rows[model.LEVEL]["candidateIsCompleteActual"])
-        self.assertEqual(sum(r["candidateRaw"] is None for r in a["metrics"]),15)
+        self.assertEqual(sum(r["candidateRaw"] is None for r in a["metrics"]),13)
         self.assertFalse(a["publishAllowed"])
 
     def test_independent_full_20_expected_diffs_are_diagnostic_not_promoted(self):
@@ -65,8 +65,8 @@ class WorkingModelTests(unittest.TestCase):
         self.assertEqual(result["comparedMetricIds"],20)
         self.assertEqual(result["newGoldenVerified"],0)
         self.assertEqual(result["counts"]["SOURCE_LEVEL_SAMPLE_MATCH_NEEDS_ORIGINAL_GATE"],1)
-        self.assertEqual(result["counts"]["PROVISIONAL_MISMATCH"],4)
-        self.assertEqual(result["counts"]["BLOCKED_NO_CANDIDATE"],15)
+        self.assertEqual(result["counts"]["PROVISIONAL_MISMATCH"],6)
+        self.assertEqual(result["counts"]["BLOCKED_NO_CANDIDATE"],13)
         # These Expected values are asserted only INSIDE independent diagnostic tests.
         self.assertEqual(rows[model.PRIMARY["Strength"]]["rawDiffActualMinusExpected"],"-79")
         self.assertEqual(rows[model.PRIMARY["Intelligence"]]["rawDiffActualMinusExpected"],"-79")
@@ -84,7 +84,7 @@ class WorkingModelTests(unittest.TestCase):
                         7,"synthetic-class-base","SYNTHETIC_UNIT_TEST_NOT_SOURCE_APPROVED"),)
         baseline=self.run_model()
         extra=self.run_model(registry=model.ModelRegistry(
-            (model.ProfileLevel(),model.ParagonFlatTooltip(),ObservedBase())))
+            (model.ProfileLevel(),model.ParagonFlatTooltip(),__import__("paragon_damage_contributors").ParagonPercentDamage(),ObservedBase())))
         old={r["metricId"]:r for r in baseline["metrics"]}
         new={r["metricId"]:r for r in extra["metrics"]}
         self.assertEqual(new[model.PRIMARY["Strength"]]["candidateRaw"],
@@ -111,10 +111,25 @@ class WorkingModelTests(unittest.TestCase):
         self.assertNotEqual(before["reportSha256"],after["reportSha256"])
         self.assertEqual(after["newGoldenVerified"],0)
 
-    def test_no_magic_zero_for_unmapped_15_metrics(self):
+    def test_new_percent_provider_keeps_old_contributor_cases(self):
+        output=self.run_model()
+        rows={r["metricId"]:r for r in output["metrics"]}
+        for mid in model.PERCENT_DAMAGE_IDS:
+            row=rows[mid]
+            self.assertGreater(row["candidateRaw"],0)
+            self.assertTrue(row["candidateDisplay"].endswith("%"))
+            self.assertEqual(row["modelStatus"],"PROVISIONAL_PARTIAL_CONTRIBUTOR_SUBTOTAL")
+            self.assertTrue(row["missingContributorFamilies"])
+            self.assertTrue(all(c["family"]=="PARAGON_UI_PERCENT_DAMAGE"
+                                for c in row["contributions"]))
+            self.assertFalse(row["candidateIsCompleteActual"])
+        self.assertEqual(rows[model.PRIMARY["Strength"]]["candidateRaw"],339)
+        self.assertEqual(rows[model.LEVEL]["candidateRaw"],70)
+
+    def test_no_magic_zero_for_unmapped_13_metrics(self):
         output=self.run_model()
         unknown=[x for x in output["metrics"] if x["candidateRaw"] is None]
-        self.assertEqual(len(unknown),15)
+        self.assertEqual(len(unknown),13)
         self.assertTrue(all(x["candidateDisplay"] is None and
                             x["assumption"]=="UNAVAILABLE_RUNTIME_DEPENDENCIES_NOT_DEFAULTED"
                             for x in unknown))

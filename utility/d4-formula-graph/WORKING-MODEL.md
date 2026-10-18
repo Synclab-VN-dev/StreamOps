@@ -29,8 +29,9 @@ These are numeric partial source subtotals from real observations; they are
 not complete character stats. Any unknown class base/level, item NID mapping,
 socket/charm/skill, Altars and glyph stacking remain visible in coverage.
 The input roll witness is indexed, but is not assigned fake NID semantics.
-Working-model numeric candidates: 5/20 (Level + these four provisional
-subtotals). 15 stat candidates remain null until ANY trustworthy contributor
+Working-model numeric candidates: 7/20 (Level + four provisional primary
+attribute subtotals + two provisional Paragon percent-damage subtotals).
+13 stat candidates remain null until ANY trustworthy contributor
 exists. Any sample match on incomplete input is not VERIFIED.
 
 ## Independent Golden separation

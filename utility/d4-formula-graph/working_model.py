@@ -32,15 +32,10 @@ PRIMARY_GAPS = (
     "SOCKET_CHARM_AND_SKILL", "PARAGON_STACKING_AND_GLYPH_INTERACTIONS",
 )
 F3_PRIMARY = {name: "Floor(" + name + "_Total)" for name in PRIMARY}
+PERCENT_DAMAGE_IDS = ("maxroll.heroDetails.2", "maxroll.heroDetails.25")
 
 
-@dataclass(frozen=True)
-class SourceContribution:
-    metric_id: str
-    family: str
-    value: float | int
-    source_id: str
-    provenance: str
+from contributor_contract import SourceContribution
 
 
 class ContributorStrategy(Protocol):
@@ -144,9 +139,11 @@ def evaluate(source, inventory, targets, f3map, paragon_witness, roll_witness,
         graph.reject(rules[mid]["sourceExpression"] == F3_PRIMARY[name],
                      "PRIMARY_FORMULA_SOURCE_DRIFT")
     # Registry is the OCP extension seam. No downstream case switch per strategy.
+    from paragon_damage_contributors import ParagonPercentDamage
     registry = registry if registry is not None else ModelRegistry(
-        (ProfileLevel(), ParagonFlatTooltip()))
-    contributions = registry.contributions(source, paragon, rolls, set(known))
+        (ProfileLevel(), ParagonFlatTooltip(), ParagonPercentDamage()))
+    paragon_source_view = {**paragon, "sourceActiveNodes":tuple(paragon_witness["nodes"])}
+    contributions = registry.contributions(source, paragon_source_view, rolls, set(known))
     rows = []
     for entry in desired:
         mid = entry["metricId"]
@@ -155,6 +152,10 @@ def evaluate(source, inventory, targets, f3map, paragon_witness, roll_witness,
         gap = [] if mid == LEVEL else (
             [g for g in PRIMARY_GAPS if g not in families]
             if mid in PRIMARY.values() else
+            ["PARAGON_PERCENT_NOT_FULL_RUNTIME_BUCKET",
+             "EQUIPMENT_SKILL_CHARM_EFFECTS_UNMAPPED",
+             "MULTIPLICATIVE_OR_CONDITIONAL_STACKING_UNKNOWN"]
+            if mid in PERCENT_DAMAGE_IDS else
             ["NO_MAPPED_RUNTIME_CONTRIBUTOR:" + d for d in
              rules[mid]["intermediateVariables"]] or
             ["NO_EXECUTABLE_RUNTIME_FUNCTION"])
@@ -167,7 +168,9 @@ def evaluate(source, inventory, targets, f3map, paragon_witness, roll_witness,
                 state = "SOURCE_DERIVED_BASELINE_CANDIDATE"
             else:
                 state = "PROVISIONAL_PARTIAL_CONTRIBUTOR_SUBTOTAL"
-            display = f"{candidate:,}" if isinstance(candidate, int) else str(candidate)
+            display = (f"{candidate * 100:.1f}%" if mid in PERCENT_DAMAGE_IDS
+                       else f"{candidate:,}" if isinstance(candidate, int)
+                       else str(candidate))
         else:
             candidate = None
             display = None
@@ -185,6 +188,8 @@ def evaluate(source, inventory, targets, f3map, paragon_witness, roll_witness,
             "assumption": (
                 "PARTIAL_OBSERVED_SUBTOTAL_EXCLUDES_UNMAPPED_CONTRIBUTORS"
                 if mid in PRIMARY.values() else
+                "ADDITIVE_PARAGON_PERCENT_ONLY_NO_STACKING_OR_OTHER_FAMILIES"
+                if mid in PERCENT_DAMAGE_IDS else
                 "UNAVAILABLE_RUNTIME_DEPENDENCIES_NOT_DEFAULTED"
                 if not observed else "NONE_FOR_LEVEL_INPUT"),
             "contributions": [{
