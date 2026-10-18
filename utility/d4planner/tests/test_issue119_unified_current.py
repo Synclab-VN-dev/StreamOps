@@ -242,5 +242,34 @@ class UnifiedCurrentTests(unittest.TestCase):
 
 
 
+    def test_read_only_issue119_probe_reports_projection_without_db_writes(self):
+        import importlib.util
+        script = (Path(__file__).resolve().parents[3] /
+                  "scripts/acceptance/issue119_projection_probe.py")
+        spec = importlib.util.spec_from_file_location("issue119_projection_probe", script)
+        assert spec is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        empty = module.report(self.root)
+        self.assertFalse(empty["characterDbPresent"])
+        self.assertFalse(empty["eventsDbPresent"])
+        self.assertFalse(self.db.exists())
+
+        self.init()
+        with closing(sqlite3.connect(self.db)) as db, db:
+            db.row_factory = sqlite3.Row
+            item_current.upsert(db, "local-item", self.observe(), fingerprint="hash")
+        self.event("active", "speech.raw", {"text": "CHARACTER"})
+        before = self.db.stat().st_mtime_ns
+        actual = module.report(self.root)
+        self.assertTrue(actual["eventsDbPresent"])
+        self.assertEqual(actual["recentEventSessions"][0]["speechCount"], 1)
+        self.assertEqual(actual["currentItems"][0]["name"], "AMULET A")
+        self.assertGreater(actual["itemProjectionState"]["revision"], 0)
+        self.assertEqual(before, self.db.stat().st_mtime_ns)
+
+
+
 if __name__ == "__main__":
     unittest.main()
