@@ -1,0 +1,35 @@
+name: D4Planner Portability
+on:
+  pull_request:
+    paths:
+      - 'utility/d4planner/**'
+      - 'scripts/acceptance/issue119*'
+      - 'scripts/acceptance/issue87*'
+      - '.github/workflows/d4planner-portability.yml'
+permissions:
+  contents: read
+jobs:
+  d4planner-portability:
+    # Pure controller profile, hook policy and synthetic ingress tests must
+    # import on Linux without trying to initialize native Windows APIs.
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install D4Planner package and tests
+        run: python -m pip install -e 'utility/d4planner[dev]'
+      - name: Linux pure controller regression (no Steam/Win32)
+        run: |
+          python -m pytest -q \
+            utility/d4planner/tests/test_controller_contract.py \
+            utility/d4planner/tests/test_controller_additional_gates.py \
+            utility/d4planner/tests/test_multi_key_hook.py \
+            utility/d4planner/tests/test_multi_key_capture.py \
+            utility/d4planner/tests/test_issue87_uat_evidence.py
+      - name: Controller CLI validate on Linux
+        run: |
+          python -m d4planner.cli controller profiles
+          python -m d4planner.cli controller validate xbox16
