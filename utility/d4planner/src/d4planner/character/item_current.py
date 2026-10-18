@@ -154,12 +154,20 @@ def equipment_payload(*, name: str, item_type: str, item_power: int,
 
 def upsert(db: sqlite3.Connection, item_key: str, payload: dict[str, Any],
            *, fingerprint: str, scope: str | None = None) -> bool:
-    """Persist a confirmed observation; repeated identical speech is no-op."""
+    """Persist a confirmed item or a strictly scoped provisional EQUIPPED hint."""
     location = payload.get("location") or {}
     where = location.get("type", "unknown")
     if where not in {"equipment", "inventory", "stash", "unknown"}:
         where = "unknown"
-    if payload.get("ownershipStatus") != "CONFIRMED":
+    provisional = (
+        item_key.startswith("eq-hint:")
+        and payload.get("ownershipStatus") == "NOT_CONFIRMED"
+        and payload.get("presenceStatus") == "OBSERVED_ONLY"
+        and payload.get("ownershipEvidence") in
+        {"equipped-marker-v1", "equipped-marker-name-only-v1"}
+        and (payload.get("location") or {}).get("type") == "equipment"
+    )
+    if payload.get("ownershipStatus") != "CONFIRMED" and not provisional:
         return False
     previous = db.execute(
         "SELECT item_json FROM item_current WHERE item_key=?", (item_key,)
