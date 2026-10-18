@@ -260,11 +260,11 @@ def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) ->
         active["lines"].append(line)
         active["end"] = seq
         if len(active["lines"]) >= MAX_SEGMENT or (
-            upper == "DROP" and active.get("characterBag")
-            and active["location"]["type"] == "inventory"
-            and {"equip", "mark as junk", "drop"}
-                <= {normalize(x).casefold() for x in active["lines"][3:]}
+            upper == "DROP" and active["location"]["type"] == "inventory"
         ):
+            # Drop closes a bag tooltip even without START/Sort Bag evidence.
+            # Save the observation; _make_observation independently decides
+            # whether corroboration warrants CONFIRMED or NOT_CONFIRMED.
             _save_active(db, state)
             state["active"] = None
 
