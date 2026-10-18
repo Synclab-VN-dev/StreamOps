@@ -88,6 +88,7 @@ class WindowsRuntime:
         arguments: str,
         family: str,
         legacy_argument_prefix: str,
+        working_directory: str | None = None,
     ) -> str:
         """Build a fail-closed scheduled-task reconciliation transaction.
 
@@ -101,12 +102,14 @@ class WindowsRuntime:
         arguments_q = arguments.replace("'", "''")
         prefix_q = legacy_argument_prefix.replace("'", "''")
         marker_q = self._task_owner_marker(family).replace("'", "''")
+        workdir_q = (working_directory or "").replace("\'", "\'\'")
         return (
             "$u=[System.Security.Principal.WindowsIdentity]::GetCurrent().Name;"
             "$currentSid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value;"
             f"$taskName='{task_q}';$expectedExecute='{executable_q}';"
             f"$expectedArguments='{arguments_q}';$expectedOwner='{marker_q}';"
             f"$legacyPrefix='{prefix_q}';"
+            f"$expectedWorkDir=\'{workdir_q}\';"
             "$existing=Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue;"
             "$needsRegister=$false;"
             "if($existing){"
@@ -125,10 +128,15 @@ class WindowsRuntime:
             "if(($actions.Count -ne 1)-or($principal -ne $u)-or"
             "([string]$actions[0].Execute -ne $expectedExecute)-or"
             "([string]$actions[0].Arguments -ne $expectedArguments)-or"
+            "($expectedWorkDir -ne \'\' -and "
+            "[string]$actions[0].WorkingDirectory -ne $expectedWorkDir)-or"
             "($description -ne $expectedOwner)){$needsRegister=$true}"
             "}else{$needsRegister=$true};"
             "if($needsRegister){"
-            "$a=New-ScheduledTaskAction -Execute $expectedExecute -Argument $expectedArguments;"
+            "$a=if($expectedWorkDir -ne ''){"
+            "New-ScheduledTaskAction -Execute $expectedExecute -Argument $expectedArguments "
+            "-WorkingDirectory $expectedWorkDir"
+            "}else{New-ScheduledTaskAction -Execute $expectedExecute -Argument $expectedArguments};"
             "$p=New-ScheduledTaskPrincipal -UserId $u -LogonType Interactive -RunLevel Limited;"
             "$s=New-ScheduledTaskSettingsSet -Priority 4 "
             "-ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew "
@@ -978,6 +986,9 @@ class WindowsRuntime:
             arguments=argument_text,
             family="supervisor",
             legacy_argument_prefix="-m d4planner.daemon",
+            # Scheduled Tasks do not inherit caller's process-local PYTHONPATH.
+            # Python -m resolves the PR source module via this explicit CWD.
+            working_directory=str(Path(__file__).resolve().parents[2]),
         ) + f";Start-ScheduledTask -TaskName '{task_name}'"
         result = self._powershell(ps)
         if result.returncode != 0:
