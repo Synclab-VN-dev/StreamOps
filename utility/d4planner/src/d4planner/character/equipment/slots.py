@@ -8,6 +8,8 @@ SLOTS = {
     "Legs": "pants",
     "Feet": "boots",
     "Main Hand": "main_hand",
+    "Two-Handed": "main_hand",
+    "Two Handed": "main_hand",
     "Off-Hand": "off_hand",
     "Ring": "ring",
     "Neck": "amulet",
