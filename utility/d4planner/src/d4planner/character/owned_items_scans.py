@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from typing import Any
+from . import item_current
 
 SOURCE = "verified-grid-v1"
 BEGIN = "items.scan.begin"
@@ -206,18 +207,7 @@ def consume(db: sqlite3.Connection, row: sqlite3.Row) -> None:
         if p.get("expectedSlots") != scan["expected_slots"] or p.get("captureGapFree") is not True:
             db.execute("UPDATE owned_grid_scans SET status='INVALID' WHERE scan_id=?",(scan_id,))
             return
-        key = scan["tab"] if scan["container"]=="stash" else 0
-        # No data from one character is silently reused as another's current.
-        db.execute("""DELETE FROM owned_grid_current
-           WHERE character_id=? AND container=? AND tab_key=?""",
-           (scan["character_id"],scan["container"],key))
-        for cell in cells:
-            if cell["item_json"] is not None:
-                db.execute("""INSERT INTO owned_grid_current(
-                  character_id,container,tab_key,slot_index,scan_id,item_json)
-                  VALUES(?,?,?,?,?,?)""",
-                  (scan["character_id"],scan["container"],key,cell["slot_index"],
-                   scan_id,cell["item_json"]))
+        item_current.apply_verified_scan(db, scan, cells, row)
         db.execute("""UPDATE owned_grid_scans SET status='COMPLETE',end_seq=?,
                  completed_at=? WHERE scan_id=?""",(seq,row["timestamp"],scan_id))
         _record(db,row,"SCAN",{"scanId":scan_id,"container":scan["container"],
