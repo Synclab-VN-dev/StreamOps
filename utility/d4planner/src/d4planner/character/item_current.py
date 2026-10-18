@@ -221,7 +221,7 @@ def record_equipment(db: sqlite3.Connection, observation: Any) -> None:
     # A unique non-ring slot replaces an old item. An unequipped item should
     # remain in inventory only if a separately verified transition proves it.
     if observation.slot_family != "ring":
-        remove_where(db, "location='equipment' AND slot=? AND item_key<>?",
+        mark_location_unknown(db, "location='equipment' AND slot=? AND item_key<>?",
                      (observation.slot_family, key),
                      when=observation.observed_at, session=observation.session_id)
     upsert(db, key, payload, fingerprint=observation.fingerprint)
@@ -232,7 +232,7 @@ def record_equipment(db: sqlite3.Connection, observation: Any) -> None:
                ORDER BY last_seen_at DESC,revision DESC"""
         ).fetchall()
         for row in rows[2:]:
-            remove_where(db, "item_key=?", (row[0],),
+            mark_location_unknown(db, "item_key=?", (row[0],),
                          when=observation.observed_at, session=observation.session_id)
 
 
