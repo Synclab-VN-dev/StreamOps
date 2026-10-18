@@ -551,6 +551,19 @@ def test_supervisor_task_uses_active_module_source_root_not_inherited_pythonpath
     assert "New-ScheduledTaskAction -Execute $expectedExecute" in script
     assert "-WorkingDirectory $expectedWorkDir" in script
     assert "[string]$actions[0].WorkingDirectory -ne $expectedWorkDir" in script
+    if os.name == "nt":
+        # Parse the exact generated task update command, not just fragments.
+        parsed = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+             "$inputScript=[Console]::In.ReadToEnd();"
+             "$tokens=$null;$errors=$null;"
+             "[void][System.Management.Automation.Language.Parser]::ParseInput("
+             "$inputScript,[ref]$tokens,[ref]$errors);"
+             "if(@($errors).Count){$errors|Out-String|Write-Error;exit 1}"],
+            input=script, text=True, capture_output=True, timeout=20,
+        )
+        assert parsed.returncode == 0, parsed.stderr
+
     assert script.index("refusing to modify foreign scheduled task") < script.index(
         "Register-ScheduledTask"
     )
