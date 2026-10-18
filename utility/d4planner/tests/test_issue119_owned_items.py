@@ -71,8 +71,8 @@ class OwnedItemsTests(unittest.TestCase):
         repo = self.repo()
         self.assertEqual(repo.sync(), self.seq)
         payload = repo.listing(locations={"all"}, include_unverified=True)
-        self.assertEqual(payload["observedTotal"], 4)
-        self.assertEqual([x["name"] for x in payload["items"]].count("THE SAME RING"), 2)
+        self.assertEqual(payload["observedTotal"], 3)
+        self.assertEqual([x["name"] for x in payload["items"]].count("THE SAME RING"), 1)
         for item in payload["items"]:
             self.assertEqual(item["ownershipStatus"], "NOT_CONFIRMED")
             self.assertIsNone(item["location"]["tab"])
@@ -81,9 +81,48 @@ class OwnedItemsTests(unittest.TestCase):
         self.assertEqual(payload["coverage"]["stash"]["overall"], "PARTIAL")
         self.assertEqual([x["tab"] for x in payload["coverage"]["stash"]["tabs"]], [1,2,3])
         self.assertEqual(repo.listing(locations={"all"})["items"], [])
-        self.assertEqual(repo.listing(locations={"stash"}, include_unverified=True)["observedTotal"], 3)
+        self.assertEqual(repo.listing(locations={"stash"}, include_unverified=True)["observedTotal"], 2)
         self.assertEqual(repo.listing(locations={"inventory"}, include_unverified=True)["observedTotal"], 1)
         self.assertEqual(repo.listing(locations={"all"},rarity="unique",include_unverified=True)["observedTotal"],1)
+
+    def test_fingerprint_groups_repeated_and_partial_tooltips(self):
+        # One observed inventory item, read three times, sometimes only partially.
+        self.speech(
+            "CHARACTER", "OCELOT'S EYE OF NEBULOUS BREWS", "Legendary Amulet",
+            "850 Item Power", "+10% Critical Strike Chance", "CHARACTER",
+            "OCELOT'S EYE OF NEBULOUS BREWS", "Legendary Amulet",
+            "850 Item Power", "+10% Critical Strike Chance",
+            "+100 Intelligence", "CHARACTER",
+            "OCELOT'S EYE OF NEBULOUS BREWS", "Legendary Amulet",
+            "850 Item Power", "+10% Critical Strike Chance", "CHARACTER",
+        )
+        repo = self.repo()
+        snapshot = repo.listing(locations={"inventory"}, include_unverified=True)
+        self.assertEqual(snapshot["observedTotal"], 1)
+        item = snapshot["items"][0]
+        self.assertEqual(item["name"], "OCELOT'S EYE OF NEBULOUS BREWS")
+        self.assertEqual(item["observationCount"], 3)
+        self.assertEqual(len(item["fingerprint"]), 64)
+        self.assertEqual(item["ownershipStatus"], "NOT_CONFIRMED")
+        self.assertEqual(snapshot["coverage"]["observationCandidates"], 3)
+        self.assertEqual(len(repo.history()), 3)
+        self.assertEqual(repo.listing(locations={"inventory"})["observedTotal"], 0)
+        self.assertEqual(repo.listing(locations={"inventory"}, include_unverified=True)
+                         ["items"][0]["fingerprint"], item["fingerprint"])
+
+    def test_fingerprint_keeps_conflicting_item_stats_separate(self):
+        # Different roll values must not merge merely due to name/power.
+        self.speech(
+            "CHARACTER", "DUPLICATE NAME", "Legendary Ring",
+            "900 Item Power", "+10% Critical Strike Chance", "CHARACTER",
+            "DUPLICATE NAME", "Legendary Ring",
+            "900 Item Power", "+8% Critical Strike Chance", "CHARACTER",
+        )
+        repo = self.repo()
+        snapshot = repo.listing(locations={"inventory"}, include_unverified=True)
+        self.assertEqual(snapshot["observedTotal"], 2)
+        self.assertEqual(len({x["fingerprint"] for x in snapshot["items"]}), 2)
+        self.assertEqual(len(repo.history()), 2)
 
     def test_incremental_idempotent_replay_and_append_only_observations(self):
         self.fixture()
@@ -120,7 +159,7 @@ class OwnedItemsTests(unittest.TestCase):
         code,stdout,err = call("items","--json","--include-unverified","--location","stash")
         self.assertEqual((code,err),(0,""))
         payload=json.loads(stdout)
-        self.assertEqual(payload["observedTotal"],3)
+        self.assertEqual(payload["observedTotal"],2)
         code,stdout,err=call("items","status","--json")
         self.assertEqual(code,0)
         self.assertEqual(json.loads(stdout)["coverage"]["overall"],"PARTIAL")
