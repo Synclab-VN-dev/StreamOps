@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 from contextlib import closing
+from copy import deepcopy
 from pathlib import Path
 import re
 import sqlite3
@@ -468,7 +469,8 @@ class OwnedItemsRepository:
         item_current.schema(db)
 
     def sync(self, *, limit: int | None = None,
-             session_id: str | None = None) -> int:
+             session_id: str | None = None,
+             equipment_projector: Any | None = None) -> int:
         """Catch up by canonical row ID. Transactional batch checkpoint.
 
         Newly installed builds bootstrap from canonical source once. Further
@@ -512,22 +514,51 @@ class OwnedItemsRepository:
                     ).fetchall()
                 if not rows:
                     break
-                with dest:
-                    for row in rows:
-                        _consume(dest, state, row)
-                        last = int(row["id"])
-                        processed += 1
-                    dest.execute(
-                        """INSERT INTO owned_item_checkpoint(id,last_event_rowid,state_json)
-                           VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET
-                           last_event_rowid=excluded.last_event_rowid,
-                           state_json=excluded.state_json""",
-                        (last, json.dumps(state, ensure_ascii=False)),
-                    )
-                    if session_id is not None:
-                        item_current.update_cursor(
-                            dest, session=session_id, event_rowid=last,
-                            observed_at=state.get("lastSeenAt") or "")
+                # Both Bag/scan and Equipment consume the SAME ordered canonical
+                # event batch inside ONE item+checkpoint transaction. If a
+                # projector fails, roll back its mutable context with SQLite.
+                prior_context = (deepcopy(equipment_projector.context)
+                                 if equipment_projector is not None else None)
+                prior_state = deepcopy(state)
+                prior_last = last
+                prior_processed = processed
+                try:
+                    with dest:
+                        for row in rows:
+                            _consume(dest, state, row)
+                            if (equipment_projector is not None
+                                    and row["type"] == "speech.raw"):
+                                try:
+                                    payload = json.loads(row["data_json"])
+                                except (TypeError, ValueError):
+                                    payload = {}
+                                equipment_projector.consume({
+                                    "eventSeq": int(row["event_seq"]),
+                                    "sessionId": str(row["session_id"]),
+                                    "timestamp": str(row["timestamp"]),
+                                    "type": "speech.raw",
+                                    "data": payload if isinstance(payload, dict) else {},
+                                }, connection=dest)
+                            last = int(row["id"])
+                            processed += 1
+                        dest.execute(
+                            """INSERT INTO owned_item_checkpoint(id,last_event_rowid,state_json)
+                               VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET
+                               last_event_rowid=excluded.last_event_rowid,
+                               state_json=excluded.state_json""",
+                            (last, json.dumps(state, ensure_ascii=False)),
+                        )
+                        if session_id is not None:
+                            item_current.update_cursor(
+                                dest, session=session_id, event_rowid=last,
+                                observed_at=state.get("lastSeenAt") or "")
+                except Exception:
+                    if equipment_projector is not None:
+                        equipment_projector.context = prior_context
+                    state = prior_state
+                    last = prior_last
+                    processed = prior_processed
+                    raise
                 if len(rows) < batch_size:
                     break
         return processed
