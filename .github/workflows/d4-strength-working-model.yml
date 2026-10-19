@@ -1,0 +1,87 @@
+name: D4 Strength Scoped Working Formula (Issue 110)
+on:
+  push:
+    branches:
+      - feat/110-formula-graph-internal-gates
+    paths:
+      - 'utility/d4-formula-graph/**'
+      - '.github/workflows/d4-strength-working-model.yml'
+  pull_request:
+    paths:
+      - 'utility/d4-formula-graph/**'
+      - '.github/workflows/d4-strength-working-model.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  strength-candidate-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install exact schema dependency
+        run: python -m pip install -e 'utility/d4-rulekit[dev]'
+      - name: Strength source/research regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/d4-formula-graph
+          python -m compileall -q utility/d4-formula-graph
+          python -m unittest discover -s utility/d4-formula-graph/tests -p 'test_strength_model.py' -v 2>&1 | tee artifacts/d4-formula-graph/strength-unit.log
+          python -m unittest discover -s utility/d4-formula-graph/tests -p 'test_working_model_v2.py' -v 2>&1 | tee artifacts/d4-formula-graph/strength-v2-unit.log
+      - name: Source derived Strength then independent DEVELOPMENT Golden
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=utility/d4-formula-graph
+          fixture=$root/fixtures
+          report=artifacts/d4-formula-graph
+          python $root/strength_model.py \
+            --source $fixture/dev00-source-sanitized.json \
+            --paragon $fixture/dev00-paragon-tooltip-source.json \
+            --rules $fixture/strength-rogue-research-rules.json \
+            --report $report/dev00-strength-source-model.json
+          python $root/working_model_v2.py \
+            --source $fixture/dev00-source-sanitized.json \
+            --inventory $fixture/dev00-visible-inventory.json \
+            --targets $fixture/golden-target-20.json \
+            --f3map $fixture/f3-target20-source-map.json \
+            --paragon $fixture/dev00-paragon-tooltip-source.json \
+            --rolls $fixture/dev00-source-rolls.json \
+            --rules $fixture/strength-rogue-research-rules.json \
+            --report $report/dev00-working-model-v2.json
+          python $root/working_model_golden_diag.py \
+            --model $report/dev00-working-model-v2.json \
+            --golden $fixture/golden-dev/dev00-original-50.json \
+            --report $report/dev00-strength-v2-independent-golden-diagnostic.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=Path('artifacts/d4-formula-graph')
+          src=json.loads((d/'dev00-strength-source-model.json').read_text())
+          model=json.loads((d/'dev00-working-model-v2.json').read_text())
+          cmp=json.loads((d/'dev00-strength-v2-independent-golden-diagnostic.json').read_text())
+          s=next(r for r in model['metrics'] if r['metricId']=='maxroll.heroDetails.108')
+          x=next(r for r in cmp['metrics'] if r['metricId']=='maxroll.heroDetails.108')
+          assert src['candidateRaw']==349 and s['candidateRaw']==349
+          assert not src['goldenVerified'] and not s['goldenVerified']
+          assert src['decomposition']['observedNaiveTooltipTotal']==339
+          assert src['decomposition']['effectiveFlatSubtotal']==273
+          assert x['expectedRaw']==418 and x['actualCandidateRaw']==349
+          assert x['rawDiffActualMinusExpected']=='-69'
+          assert x['status']=='PROVISIONAL_MISMATCH'
+          assert cmp['newGoldenVerified']==0 and not cmp['publishAllowed']
+          assert not model['goldenExpectedLoaded'] and not model['publishAllowed']
+          print('STRENGTH_V2_SOURCE=PASS candidate=349 expected=418 diff=-69 GOLDEN_VERIFIED=NO')
+          PY
+      - name: Attach immutable development evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d4-strength-source-v2-evidence
+          path: artifacts/d4-formula-graph/
+          if-no-files-found: warn
+          retention-days: 30
