@@ -97,11 +97,20 @@ def _make_observation(active: dict[str, Any]) -> dict[str, Any]:
         {"equip", "drop"} <= normalized
         and bool(normalized & {"mark as junk", "unmark item"})
     )
-    confirmed_bag = (active["location"]["type"] == "inventory"
-                     and bag_evidence and action_evidence)
+    # Real-A 2026-10-19: EQUIPPED sometimes precedes a single selected
+    # Bag tooltip (Henri, Winterglass, Oracle's Wand, Ferocious Ocelot).
+    # A genuine comparison header lacks this selected item's action footer.
+    # Resolve after all tooltip lines have been assembled, not at the header.
     marked_equipped = (active["location"]["type"] == "equipment"
                        and active.get("equippedMarker") and bag_evidence)
-    # EQUIPPED is a comparison tooltip marker, not a physical slot proof.
+    selected_bag = (active["location"]["type"] == "inventory"
+                    or marked_equipped)
+    confirmed_bag = bool(selected_bag and bag_evidence and action_evidence)
+    resolved_location = (
+        {"type": "inventory", "tab": None, "slot": None}
+        if confirmed_bag and marked_equipped else active["location"]
+    )
+    # EQUIPPED without corroborated selected-Bag actions remains audit only.
     confirmed = bool(confirmed_bag)
     return {
         "id": "obs:" + active["session"] + ":" + str(active["start"]),
@@ -111,8 +120,9 @@ def _make_observation(active: dict[str, Any]) -> dict[str, Any]:
         "rarity": data.get("rarity"),
         "ancestral": bool(data.get("ancestral", False)),
         "favorite": bool(data.get("favorite", False)),
-        "location": active["location"],
-        "locationHints": {"spokenChestTabs": active["tabHints"]},
+        "location": resolved_location,
+        "locationHints": {"spokenChestTabs": active["tabHints"],
+                          "equippedMarkerSeen": bool(active.get("equippedMarker"))},
         "identityConfidence": "UNKNOWN",
         "baseStats": data.get("base_stats", []),
         "affixes": data.get("affixes", []),
@@ -331,7 +341,10 @@ def _consume(db: sqlite3.Connection, state: dict[str, Any], row: sqlite3.Row) ->
         active["lines"].append(line)
         active["end"] = seq
         if len(active["lines"]) >= MAX_SEGMENT or (
-            upper == "DROP" and active["location"]["type"] == "inventory"
+            upper == "DROP" and (
+                active["location"]["type"] == "inventory"
+                or (active.get("equippedMarker") and active.get("characterBag"))
+            )
         ):
             # Drop closes a bag tooltip even without START/Sort Bag evidence.
             # Save the observation; _make_observation independently decides
