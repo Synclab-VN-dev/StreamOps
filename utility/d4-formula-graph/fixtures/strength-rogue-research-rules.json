@@ -1,0 +1,14 @@
+{
+  "schema": "strength-contribution-research-v1",
+  "classId": "rogue",
+  "patch": "3.2.1.73552",
+  "levelOneBaseStrength": 7,
+  "perAdditionalLevelStrength": 1,
+  "gateBonusStrength": 5,
+  "provenance": {
+    "classStats": "https://www.gamerguides.com/diablo-iv/guide/stats-and-key-terms/overviews",
+    "levelGrowth": "https://www.gamerguides.com/diablo-iv/guide/stats-and-key-terms/overviews",
+    "gatePairs": "https://www.warcrafttavern.com/d4/paragon-boards/"
+  },
+  "verification": "RESEARCH_CANDIDATE_NOT_CAUSALLY_VERIFIED_ON_3_2_1"
+}
