@@ -5,6 +5,9 @@ of an already-exited daemon; (c) truthful read-only status and safe live stop.
 Steam/NVDA/game must never be stopped or otherwise modified by these tests.
 """
 import json
+import os
+
+import pytest
 
 from d4planner import cli
 from d4planner.runtime.model import ProcessInfo, RuntimeState
@@ -55,7 +58,6 @@ def test_stop_exited_restart_required_reconciles_durable_stopped(
     assert durable["state"] == "STOPPED"
     assert durable["supervisorPid"] is None
     assert durable["captureActive"] is False
-    assert "Steam predates" in durable["lastExitDetail"]
     assert "Steam predates" in durable["lastExitDetail"]
     assert read_json(paths.capture_state)["enabled"] is False
     assert not paths.stop_request.exists()
@@ -122,3 +124,31 @@ def test_early_bootstrap_restart_required_closes_ingress_and_marker(tmp_path):
     assert read_json(paths.capture_state)["enabled"] is False
     assert runtime.launches == 0
     assert not paths.stop_request.exists()
+
+
+def test_status_of_live_restart_required_remains_restart_required(monkeypatch, capsys, tmp_path):
+    paths = RuntimePaths(tmp_path / "d4-home")
+    _seed_restart(paths)
+    monkeypatch.setattr(cli, "_pid_alive", lambda pid: True)
+    assert cli.command_status(paths, raw_json=True) == 3
+    status = json.loads(capsys.readouterr().out)
+    assert status["state"] == "RESTART_REQUIRED"
+    assert status["supervisorAlive"] is True
+    assert "lastPersistedState" not in status
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Scheduled Task startup branch")
+def test_fast_exited_bootstrap_reports_restart_required_not_launch_timeout(
+    monkeypatch, tmp_path,
+):
+    paths = RuntimePaths(tmp_path / "d4-home")
+    paths.ensure()
+
+    class FakeScheduledTask:
+        def launch_supervisor_task(self, **_kwargs):
+            _seed_restart(paths)  # Supervisor exits before CLI first poll
+
+    monkeypatch.setattr(cli, "WindowsRuntime", lambda _: FakeScheduledTask())
+    monkeypatch.setattr(cli, "_pid_alive", lambda pid: False)
+    assert cli._spawn_daemon(paths, speech=False, isolated=False) == 4764
+    assert cli._wait_start(paths, 4764, timeout=0.5)["state"] == "RESTART_REQUIRED"
