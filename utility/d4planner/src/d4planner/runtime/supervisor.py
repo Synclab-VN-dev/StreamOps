@@ -939,19 +939,47 @@ class Supervisor:
     def run(self) -> int:
         state = self.bootstrap(start_marker=True)
         if state in {RuntimeState.BLOCKED, RuntimeState.RESTART_REQUIRED}:
-            self._stop_marker_capture()
-            if self.store:
-                # Preserve runtime-stop behavior when a keyboard backend
-                # fails during startup. Other bootstrap block reasons keep
-                # their previous terminal states.
-                if self.status.extras["inputMarker"].get("state") == "ERROR":
-                    self._safe_emit("runtime.stop", {"detail": "Hook startup failed"})
+            # Bootstrap can return before entering the normal loop/finally.
+            # Always complete capture, hook, session and stop-request cleanup.
+            # Preserve RESTART_REQUIRED on disk for the CLI start handshake,
+            # which maps it to exit=3 even if the scheduled task exits quickly.
+            try:
+                self._stop_marker_capture()
+                marker = self.status.extras["inputMarker"]
+                if marker.get("state") == "STARTING":
+                    marker["state"] = "STOPPED"
+                    marker["sessionId"] = None
+                try:
+                    write_capture_config(self.paths, enabled=False)
+                except OSError as exc:
+                    self.status.last_error = (
+                        f"bootstrap capture disable failed: {type(exc).__name__}: {exc}"
+                    )
+                self.status.capture_active = False
+                if self.store:
+                    self._safe_emit(
+                        "runtime.stop",
+                        {"detail": "D4Planner bootstrap exited",
+                         "reason": state.value},
+                    )
+                # The hook startup ERROR contract remains STOPPED, consistent
+                # with prior behavior; every other early failure retains its
+                # BLOCKED / RESTART_REQUIRED diagnostic until an explicit stop.
+                if self.store and marker.get("state") == "ERROR":
                     self.transition(
                         RuntimeState.STOPPED,
                         "D4Planner stopped after keyboard hook startup failure",
                         error=self.status.last_error,
                     )
-                self.store.close()
+                else:
+                    self._persist_status()
+            finally:
+                try:
+                    self.paths.stop_request.unlink()
+                except FileNotFoundError:
+                    pass
+                if self.store:
+                    self.store.close()
             return 2 if state == RuntimeState.BLOCKED else 3
 
         exit_code = 0
