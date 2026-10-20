@@ -187,7 +187,17 @@ def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool,
         while time.monotonic() < deadline:
             current = read_json(paths.runtime_state) or {}
             pid = current.get("supervisorPid")
-            if pid and pid != previous_pid and _pid_alive(int(pid)):
+            # A bootstrap preflight can fail and exit before this 100 ms
+            # polling loop observes an alive scheduled task. Its published
+            # terminal state is still a valid startup outcome (exit 2/3),
+            # not a 15-second supervisor launch timeout.
+            if pid and pid != previous_pid and (
+                _pid_alive(int(pid))
+                or str(current.get("state")) in {
+                    RuntimeState.BLOCKED.value,
+                    RuntimeState.RESTART_REQUIRED.value,
+                }
+            ):
                 return int(pid)
             time.sleep(0.1)
         raise RuntimeError("scheduled supervisor did not publish a live PID within 15s")
