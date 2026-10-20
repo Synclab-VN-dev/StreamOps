@@ -117,6 +117,57 @@ def _state(paths: RuntimePaths) -> dict[str, Any]:
     state["captureEffective"] = _capture_effective(paths)
     return state
 
+def _status_view(state: dict[str, Any]) -> dict[str, Any]:
+    """Show effective process state without changing startup diagnostics on disk.
+
+    The bootstrap reporter intentionally writes RESTART_REQUIRED (so the start
+    handshake can still return exit=3) before the supervisor exits. Once its
+    PID is dead, the durable terminal reason is historical, not a live process.
+    """
+    view = dict(state)
+    pid = view.get("supervisorPid")
+    if (pid and not view.get("supervisorAlive")
+            and view.get("state") != RuntimeState.STOPPED.value):
+        view["lastPersistedState"] = view["state"]
+        view["state"] = RuntimeState.STOPPED.value
+        view["supervisorPid"] = None
+        view["captureActive"] = False
+        view["staleRuntimeState"] = True
+    return view
+
+
+def _reconcile_exited_supervisor(paths: RuntimePaths, pid: int | None) -> bool:
+    """Persist STOPPED only after verifying the recorded supervisor has exited.
+
+    Never overwrite a newer supervisor's runtime state or stop a foreign PID.
+    Keep prior terminal reason in lastExitDetail for postmortem diagnosis.
+    """
+    prior = read_json(paths.runtime_state)
+    if not prior:
+        return True
+    current_pid = prior.get("supervisorPid")
+    if current_pid != pid or (pid and _pid_alive(int(pid))):
+        return False
+    if prior.get("state") != RuntimeState.STOPPED.value or current_pid is not None:
+        previous = str(prior.get("state") or "")
+        prior["lastExitState"] = previous
+        prior["lastExitDetail"] = str(prior.get("detail") or "")
+        prior["state"] = RuntimeState.STOPPED.value
+        prior["detail"] = "D4Planner stopped; supervisor process exited"
+        prior["supervisorPid"] = None
+        prior["captureActive"] = False
+        marker = (prior.get("extras") or {}).get("inputMarker")
+        if isinstance(marker, dict) and marker.get("state") != "ERROR":
+            marker["state"] = "STOPPED"
+            marker["sessionId"] = None
+        prior["updatedAt"] = iso_now()
+        atomic_write_json(paths.runtime_state, prior)
+    try:
+        paths.stop_request.unlink()
+    except FileNotFoundError:
+        pass
+    return True
+
 
 def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool,
                   block_marker: bool = False,
@@ -414,12 +465,18 @@ def command_logs(
     return 0
 
 def command_status(paths: RuntimePaths, *, raw_json: bool) -> int:
-    status = _state(paths)
+    status = _status_view(_state(paths))
     if raw_json:
         print(json.dumps(status, ensure_ascii=False, indent=2))
         state = str(status.get("state") or "")
-        if state in ACTIVE_STATES and not status.get("supervisorAlive"):
+        if status.get("staleRuntimeState") or (
+            state in ACTIVE_STATES and not status.get("supervisorAlive")
+        ):
             return 2
+        if state == RuntimeState.BLOCKED.value:
+            return 2
+        if state == RuntimeState.RESTART_REQUIRED.value:
+            return 3
         return 0
     tolk = status.get("tolk") or {}
     nvda = status.get("nvda") or {}
@@ -462,8 +519,15 @@ def command_status(paths: RuntimePaths, *, raw_json: bool) -> int:
     for key, value in rows:
         print(f"{key:<{width}}  {value}")
     state = str(status.get("state") or "")
-    if state in ACTIVE_STATES and not status.get("supervisorAlive"):
-        print("Warning: runtime state is stale; supervisor process is not running.", file=sys.stderr)
+    if status.get("staleRuntimeState") or (
+        state in ACTIVE_STATES and not status.get("supervisorAlive")
+    ):
+        previous = status.get("lastPersistedState") or state
+        print(
+            f"Warning: supervisor exited; previous runtime state was {previous}. "
+            "Run 'd4planner stop' to reconcile persisted state.",
+            file=sys.stderr,
+        )
         return 2
     if state == RuntimeState.BLOCKED.value:
         return 2
@@ -682,6 +746,9 @@ def command_stop(
         # lease. Disable it before any optional NVDA shutdown.
         write_capture_config(paths, enabled=False)
         print("capture disabled")
+        if not _reconcile_exited_supervisor(paths, int(pid) if pid else None):
+            print("Supervisor state changed during stop; retry safely.", file=sys.stderr)
+            return 1
         print("D4Planner already stopped.")
         if stop_nvda:
             nvda_code = _stop_nvda(paths, timeout=timeout, isolated=isolated)
@@ -701,6 +768,10 @@ def command_stop(
             # Make the ordering contract explicit: capture is disabled and
             # persisted before the NVDA graceful-quit request is issued.
             write_capture_config(paths, enabled=False)
+            if not _reconcile_exited_supervisor(paths, int(pid)):
+                # A newer supervisor may have replaced the previous PID.
+                print("Supervisor state changed during stop; retry safely.", file=sys.stderr)
+                return 1
             print("capture disabled")
             print("D4Planner stopped.")
             if stop_nvda:
