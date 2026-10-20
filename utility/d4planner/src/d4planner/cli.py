@@ -131,7 +131,8 @@ def _status_view(state: dict[str, Any]) -> dict[str, Any]:
         view["lastPersistedState"] = view["state"]
         view["state"] = RuntimeState.STOPPED.value
         view["supervisorPid"] = None
-        view["captureActive"] = False
+        # Preserve the recorded capture flag: an unexpired or abandoned
+        # capture lease must still appear as STALE until explicit stop.
         view["staleRuntimeState"] = True
     return view
 
@@ -534,7 +535,8 @@ def command_status(paths: RuntimePaths, *, raw_json: bool) -> int:
     ):
         previous = status.get("lastPersistedState") or state
         print(
-            f"Warning: supervisor exited; previous runtime state was {previous}. "
+            f"Warning: runtime state is stale; supervisor process is not running "
+            f"(previous state {previous}). "
             "Run 'd4planner stop' to reconcile persisted state.",
             file=sys.stderr,
         )
@@ -778,10 +780,15 @@ def command_stop(
             # Make the ordering contract explicit: capture is disabled and
             # persisted before the NVDA graceful-quit request is issued.
             write_capture_config(paths, enabled=False)
-            if not _reconcile_exited_supervisor(paths, int(pid)):
-                # A newer supervisor may have replaced the previous PID.
-                print("Supervisor state changed during stop; retry safely.", file=sys.stderr)
-                return 1
+            if current.get("state") != RuntimeState.STOPPED.value:
+                if not _reconcile_exited_supervisor(paths, int(pid)):
+                    # A newer supervisor may have replaced the previous PID.
+                    print("Supervisor state changed during stop; retry safely.", file=sys.stderr)
+                    return 1
+            # A supervisor may publish STOPPED before its process exits.
+            # Its own finalization has already persisted disabled capture.
+            # In-process E2E shares the runner's PID; trust STOPPED without
+            # demanding that the test process itself be terminated.
             print("capture disabled")
             print("D4Planner stopped.")
             if stop_nvda:
