@@ -15,7 +15,7 @@ class BrowserInfrastructure {
   #leases = new Map();
   #queue = [];
   #creating = 0;
-  #creationPromises = new Set();
+  #creations = new Set();
   #lifecycle = Promise.resolve();
   #generation = 0;
   #startedAt = null;
@@ -82,7 +82,7 @@ class BrowserInfrastructure {
     return Object.freeze({
       state: this.#state,
       pid: this.#pid,
-      activeLeases: this.#leases.size,
+      activeLeases: [...this.#leases.values()].filter(record => !record.releasing).length,
       pendingQueue: this.#queue.length,
       restartCount: this.#metrics.restartCount,
       uptimeMs: this.#startedAt === null ? 0 : Math.max(0, Date.now() - this.#startedAt),
@@ -139,14 +139,19 @@ class BrowserInfrastructure {
   async release(leaseId) {
     const record = this.#leases.get(leaseId);
     if (!record) return;
-    this.#leases.delete(leaseId);
+    if (record.disposePromise) return record.disposePromise;
+    record.releasing = true;
     clearTimeout(record.expiryTimer);
     record.lease._invalidate(infrastructureError(
       ERROR_CODES.LEASE_EXPIRED, `lease ${leaseId} has been released`));
-    await this.#closeContext(record.context);
-    this.#metrics.releaseCount += 1;
-    this.#log('released', { leaseId });
-    this.#dispatchQueue();
+    record.disposePromise = (async () => {
+      await this.#closeContext(record.context);
+      if (this.#leases.get(leaseId) === record) this.#leases.delete(leaseId);
+      this.#metrics.releaseCount += 1;
+      this.#log('released', { leaseId });
+      this.#dispatchQueue();
+    })();
+    return record.disposePromise;
   }
 
   async withLease(options, run) {
@@ -169,13 +174,14 @@ class BrowserInfrastructure {
 
   async #launch() {
     const started = Date.now();
+    let browser = null;
     try {
       const launchOptions = {
         ...this.#config.launchOptions,
         headless: this.#config.headless,
       };
       if (this.#config.executablePath) launchOptions.executablePath = this.#config.executablePath;
-      const browser = await this.#launcher.launch(launchOptions);
+      browser = await this.#launcher.launch(launchOptions);
       this.#browser = browser;
       this.#pid = await this.#readBrowserPid(browser);
       this.#generation += 1;
@@ -187,8 +193,14 @@ class BrowserInfrastructure {
       this.#metrics.lastLaunchDurationMs = Date.now() - started;
       this.#log('started');
     } catch (error) {
+      if (browser) {
+        this.#expectedClose.add(browser);
+        await browser.close().catch(() => {});
+      }
       this.#state = 'stopped';
-      this.#browser = null;
+      if (this.#browser === browser) this.#browser = null;
+      this.#pid = null;
+      this.#startedAt = null;
       this.#metrics.launchFailures += 1;
       throw error;
     }
@@ -202,7 +214,15 @@ class BrowserInfrastructure {
     this.#generation += 1;
     if (browser) this.#expectedClose.add(browser);
     this.#rejectQueue(error);
-    await Promise.allSettled([...this.#creationPromises]);
+    const creations = [...this.#creations];
+    this.#creations.clear();
+    for (const creation of creations) {
+      this.#cancelCreation(creation, error);
+      this.#releaseCreationReservation(creation);
+    }
+    await Promise.allSettled(creations
+      .filter(creation => creation.context)
+      .map(creation => this.#closeContext(creation.context)));
     const records = [...this.#leases.values()];
     this.#leases.clear();
     await Promise.allSettled(records.map(record => {
@@ -225,6 +245,12 @@ class BrowserInfrastructure {
     const error = infrastructureError(ERROR_CODES.BROWSER_DISCONNECTED,
       'browser disconnected; explicit restart required');
     this.#rejectQueue(error);
+    const creations = [...this.#creations];
+    this.#creations.clear();
+    for (const creation of creations) {
+      this.#cancelCreation(creation, error);
+      this.#releaseCreationReservation(creation);
+    }
     const records = [...this.#leases.values()];
     this.#leases.clear();
     for (const record of records) {
@@ -241,52 +267,122 @@ class BrowserInfrastructure {
 
   #reserveAndCreate(options, requestedAt) {
     this.#creating += 1;
-    const promise = this.#createReserved(options, requestedAt);
-    this.#creationPromises.add(promise);
-    return promise.finally(() => {
-      this.#creationPromises.delete(promise);
-      this.#creating -= 1;
-      this.#dispatchQueue();
+    let resolveClient;
+    let rejectClient;
+    const clientPromise = new Promise((resolve, reject) => {
+      resolveClient = resolve;
+      rejectClient = reject;
     });
+    const creation = {
+      browser: this.#browser,
+      generation: this.#generation,
+      options,
+      requestedAt,
+      context: null,
+      clientSettled: false,
+      reservationReleased: false,
+      resolveClient,
+      rejectClient,
+      timer: null,
+      onAbort: null,
+    };
+    this.#creations.add(creation);
+    const remainingMs = Math.max(0, options.timeoutMs - (Date.now() - requestedAt));
+    creation.timer = setTimeout(() => {
+      if (this.#cancelCreation(creation, infrastructureError(
+        ERROR_CODES.QUEUE_TIMEOUT, 'lease acquisition timed out'))) {
+        this.#metrics.queueTimeoutCount += 1;
+      }
+    }, remainingMs);
+    if (options.signal) {
+      creation.onAbort = () => {
+        if (creation.clientSettled) return;
+        this.#metrics.cancellationCount += 1;
+        this.#cancelCreation(creation, infrastructureError(
+          ERROR_CODES.CANCELLED, 'lease acquisition cancelled'));
+      };
+      options.signal.addEventListener('abort', creation.onAbort, { once: true });
+    }
+    this.#createReserved(creation).finally(() => {
+      this.#clearCreationSignals(creation);
+      this.#creations.delete(creation);
+      this.#releaseCreationReservation(creation);
+    });
+    return clientPromise;
   }
 
-  async #createReserved(options, requestedAt) {
-    const browser = this.#browser;
-    const generation = this.#generation;
+  async #createReserved(creation) {
+    const { browser, generation, options, requestedAt } = creation;
+    let context = null;
+    let leaseCreated = false;
     try {
-      const context = await browser.newContext(this.#config.contextOptions);
-      if (options.signal?.aborted) {
-        await this.#closeContext(context);
-        this.#metrics.cancellationCount += 1;
-        throw infrastructureError(ERROR_CODES.CANCELLED, 'lease acquisition cancelled');
-      }
+      context = await browser.newContext(this.#config.contextOptions);
+      creation.context = context;
+      if (creation.clientSettled) return;
       if (this.#state !== 'running' || browser !== this.#browser || generation !== this.#generation) {
-        await this.#closeContext(context);
         throw infrastructureError(ERROR_CODES.BROWSER_DISCONNECTED,
           'browser disconnected while creating lease');
       }
       const page = await context.newPage();
-      if (options.signal?.aborted) {
-        await this.#closeContext(context);
-        this.#metrics.cancellationCount += 1;
-        throw infrastructureError(ERROR_CODES.CANCELLED, 'lease acquisition cancelled');
+      if (creation.clientSettled) return;
+      if (this.#state !== 'running' || browser !== this.#browser || generation !== this.#generation) {
+        throw infrastructureError(ERROR_CODES.BROWSER_DISCONNECTED,
+          'browser disconnected while creating lease');
       }
       const id = randomUUID();
       const lease = new BrowserLease({ id, context, page, owner: this });
       const expiryTimer = setTimeout(() => this.#expireLease(id), options.leaseTimeoutMs);
       expiryTimer.unref?.();
-      this.#leases.set(id, { lease, context, expiryTimer });
+      this.#leases.set(id, { lease, context, expiryTimer, releasing: false, disposePromise: null });
+      leaseCreated = true;
       this.#metrics.acquireSucceeded += 1;
       this.#metrics.totalAcquireWaitMs += Date.now() - requestedAt;
       this.#metrics.peakContexts = Math.max(this.#metrics.peakContexts, this.#leases.size);
       context.once?.('close', () => this.#contextClosed(id));
       this.#log('acquired', { leaseId: id });
-      return lease;
+      this.#settleCreation(creation, null, lease);
     } catch (error) {
-      if (error?.code) throw error;
-      throw infrastructureError(ERROR_CODES.BROWSER_DISCONNECTED,
-        'failed to create browser context', error);
+      const typed = error?.code ? error : infrastructureError(
+        ERROR_CODES.BROWSER_DISCONNECTED, 'failed to create browser context', error);
+      if (context && !leaseCreated) {
+        await this.#closeContext(context);
+        context = null;
+      }
+      this.#settleCreation(creation, typed);
+    } finally {
+      if (context && !leaseCreated) await this.#closeContext(context);
     }
+  }
+
+  #settleCreation(creation, error, lease) {
+    if (creation.clientSettled) return false;
+    creation.clientSettled = true;
+    this.#clearCreationSignals(creation);
+    if (error) creation.rejectClient(error);
+    else creation.resolveClient(lease);
+    return true;
+  }
+
+  #cancelCreation(creation, error) {
+    if (!this.#settleCreation(creation, error)) return false;
+    if (creation.context) void this.#closeContext(creation.context);
+    return true;
+  }
+
+  #clearCreationSignals(creation) {
+    clearTimeout(creation.timer);
+    if (creation.options.signal && creation.onAbort) {
+      creation.options.signal.removeEventListener('abort', creation.onAbort);
+    }
+    creation.timer = null;
+    creation.onAbort = null;
+  }
+
+  #releaseCreationReservation(creation) {
+    if (creation.reservationReleased) return;
+    creation.reservationReleased = true;
+    this.#creating -= 1;
+    this.#dispatchQueue();
   }
 
   #dispatchQueue() {
@@ -325,18 +421,24 @@ class BrowserInfrastructure {
   async #expireLease(id) {
     const record = this.#leases.get(id);
     if (!record) return;
-    this.#leases.delete(id);
+    if (record.disposePromise) return record.disposePromise;
+    record.releasing = true;
     record.lease._invalidate(infrastructureError(
       ERROR_CODES.LEASE_EXPIRED, `lease ${id} expired`));
     this.#metrics.leaseExpirationCount += 1;
-    await this.#closeContext(record.context);
-    this.#dispatchQueue();
+    record.disposePromise = (async () => {
+      await this.#closeContext(record.context);
+      if (this.#leases.get(id) === record) this.#leases.delete(id);
+      this.#dispatchQueue();
+    })();
+    return record.disposePromise;
   }
 
   #contextClosed(id) {
     setImmediate(() => {
       const record = this.#leases.get(id);
       if (!record) return;
+      if (record.releasing) return;
       this.#leases.delete(id);
       clearTimeout(record.expiryTimer);
       const disconnected = this.#state === 'degraded' || !this.#browser?.isConnected();
@@ -368,12 +470,16 @@ class BrowserInfrastructure {
   }
 
   #log(event, fields = {}) {
-    this.#config.logger?.(Object.freeze({
-      component: 'browser-infrastructure',
-      event,
-      state: this.#state,
-      ...fields,
-    }));
+    try {
+      this.#config.logger?.(Object.freeze({
+        component: 'browser-infrastructure',
+        event,
+        state: this.#state,
+        ...fields,
+      }));
+    } catch {
+      // Consumer diagnostics are best-effort and must never own lifecycle control.
+    }
   }
 }
 

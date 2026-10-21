@@ -68,7 +68,9 @@ try {
 - CDP creation is lazy and cached per lease.
 - Capacity is `active contexts + contexts being created`; waiters use a bounded
   FIFO queue.
-- Timeout or abort removes a waiter and creates no hidden retry.
+- One acquisition deadline covers queue wait plus context/page creation. Timeout
+  or abort creates no hidden retry; a late resource is closed before its
+  reservation is returned.
 - `withLease()` releases in `finally`, including consumer exceptions.
 - Browser disconnect invalidates all outstanding leases and queued requests.
   Recovery is explicit through `restart()`; caller/provider logic is not
@@ -86,6 +88,8 @@ reported because this implementation does not measure it reliably.
 
 Logger events contain only component/event/state and resource identifiers such
 as lease ID. They never include page URL, content, cookies, headers or tokens.
+Consumer logger failures are isolated as best-effort diagnostics and cannot
+change lifecycle state or leak ownership of the browser process.
 
 ## Runtime cost
 
