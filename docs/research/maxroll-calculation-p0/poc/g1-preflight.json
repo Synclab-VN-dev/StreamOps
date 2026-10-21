@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "maxroll-calculation-poc-g1/1",
+  "capturedAt": "2026-10-21T13:28:31+07:00",
+  "branch": "research/maxroll-calculation-p0",
+  "startingCommit": "924b0adc594f57f5d38a251fc25f962dfc3e5fb6",
+  "environment": {
+    "os": "Linux F",
+    "node": "22.22.1",
+    "python": "3.12.3",
+    "browser": "Google Chrome for Testing 153.0.8010.12",
+    "browserPath": "/home/huy/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome",
+    "playwrightCore": "1.64.1",
+    "playwrightSource": "/tmp/issue106-f4.Z3XkXq/node_modules/playwright-core"
+  },
+  "checks": {
+    "BROWSER_AVAILABLE": {
+      "status": "PASS",
+      "actual": "Cached Chrome for Testing launched headless in an isolated Playwright context."
+    },
+    "PLAYWRIGHT_AVAILABLE": {
+      "status": "PASS",
+      "actual": "playwright-core 1.64.1 loaded from the retained Issue #106 temporary workspace."
+    },
+    "CDP_AVAILABLE": {
+      "status": "PASS",
+      "actual": "A new CDP session enabled Runtime and evaluated an about:blank expression; result was readyState=complete, href=about:blank, sum=42."
+    },
+    "MAXROLL_PAGE_ACCESS": {
+      "status": "BLOCKED_AUTHORIZATION_NOT_TESTED",
+      "actual": "No automated request to /d4/planner/* was made during G1."
+    },
+    "STATS_READABLE": {
+      "status": "NOT_RUN",
+      "actual": "Character Stats were not read because planner automation did not pass the authorization gate."
+    },
+    "AUTHORIZATION_STATUS": {
+      "status": "BLOCKED_NEEDS_WRITTEN_PROVIDER_PERMISSION",
+      "actual": "The current Maxroll robots policy prohibits automated retrieval without written Ziff Davis permission and disallows /d4/planner/*; the current Ziff Davis Terms restrict automated retrieval and reverse engineering. StreamOps Owner task authorization is not evidence of provider permission."
+    },
+    "OVERALL_PREFLIGHT": {
+      "status": "BLOCKED",
+      "actual": "Local browser/Playwright/CDP runtime is ready, but the Maxroll planner and Character Stats portions of G1 are blocked at the authorization gate."
+    }
+  },
+  "policyEvidence": {
+    "robotsUrl": "https://maxroll.gg/robots.txt",
+    "robotsSha256": "f674cd9e454a65fd8ba752c6ccb013aa0fe16878457876ea06302044add5d909",
+    "robotsObservedRules": [
+      "Automated retrieval requires written permission from Ziff Davis.",
+      "Generic user agents are disallowed from /d4/planner/*."
+    ],
+    "termsUrl": "https://www.ziffdavis.com/terms-of-use/",
+    "termsObservedEffectiveDate": "September 2026",
+    "termsObservedSections": [
+      "Section 2 restricts robot/scraper/retrieval applications and automated extraction.",
+      "Web-based software may not be reverse engineered unless specifically authorized."
+    ]
+  },
+  "historicalEvidenceBoundary": {
+    "linuxBrowserStatsPreviouslyObserved": true,
+    "historicalScope": "Issue #106 phase-specific approvals",
+    "reusableForCurrentTechnicalFeasibility": true,
+    "reusableAsCurrentProviderAuthorization": false,
+    "metricCatalogSize": 50
+  },
+  "actions": {
+    "maxrollPlannerOpened": false,
+    "statsRead": false,
+    "buildApplied": false,
+    "modifierMutated": false,
+    "cookiesTokensOrStorageRead": false,
+    "proprietaryBundleCopied": false,
+    "g2Run": false,
+    "g3Run": false
+  },
+  "cleanup": {
+    "probeContextClosed": true,
+    "probeBrowserClosed": true,
+    "preExistingBrowserProcessesTouched": false
+  }
+}
