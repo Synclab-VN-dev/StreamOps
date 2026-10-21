@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "maxroll-offline-poc/1",
+  "checkpoint": "L1_WARM_OFFLINE",
+  "baselineCommit": "76c852dbc93585686859e420acd75e1a38f114f6",
+  "patch": "3.2.1.73552",
+  "statuses": {
+    "L1_WARM_OFFLINE": "PASS",
+    "L2_COLD_OFFLINE": "NOT_RUN_AT_L1_CHECKPOINT",
+    "L3_STANDALONE_LOCAL": "NOT_RUN_AT_L1_CHECKPOINT"
+  },
+  "runtime": {
+    "browser": "Google Chrome for Testing 153.0.8010.12",
+    "playwrightCore": "1.64.1",
+    "assetPath": "/assets/export-DOjdL1l3.js",
+    "assetBytes": 3374547,
+    "assetSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+    "bundleRetained": false
+  },
+  "warmOffline": {
+    "cycles": 3,
+    "snapshots": 7,
+    "offlineSnapshots": 6,
+    "rawCoverage": "50/50 every snapshot",
+    "displayCoverage": "34/50 every snapshot",
+    "onlineLocalParityA": "50/50 raw and display records",
+    "onlineLocalParityB": "50/50 raw and display records",
+    "aUniqueOutputs": 1,
+    "bUniqueOutputs": 1,
+    "rollbackExact": true,
+    "fireResistance": {
+      "rawA": 22,
+      "rawB": 2822,
+      "rawDelta": 2800,
+      "displayA": "22",
+      "displayB": "2,822"
+    },
+    "offlineProof": {
+      "navigatorOnlineFalseEveryOfflineSnapshot": true,
+      "cacheBustingFetch": "FAILED_AS_EXPECTED",
+      "fetchError": "TypeError: Failed to fetch",
+      "attemptedRequestsAfterOffline": 6,
+      "failedRequestsAfterOffline": 6,
+      "responsesCompletedAfterOffline": 1,
+      "responsesCompletedDuringCalculationPhases": 0,
+      "lateResponseExplanation": "One already in-flight advertising script response completed 28 ms after offline activation, before any B/A calculation phase."
+    }
+  },
+  "performance": {
+    "browserLaunchMilliseconds": 166.10005099999998,
+    "onlineWarmLoadMilliseconds": 7613.1451830000005,
+    "offlineCalculationMilliseconds": {
+      "min": 1333.9466680000005,
+      "mean": 1379.8478861666663,
+      "median": 1381.8254049999987,
+      "max": 1425.961301000003
+    },
+    "cdpTaskDurationDeltaSeconds": {
+      "min": 0.80504,
+      "mean": 0.8412759999999997,
+      "max": 0.8737939999999993
+    },
+    "cdpJsHeapUsedBytes": {
+      "min": 128915884,
+      "max": 159673260
+    },
+    "limitations": [
+      "TaskDuration is a CDP CPU-work proxy, not host-wide CPU utilization.",
+      "JSHeapUsedSize is JavaScript heap usage, not total Chromium RSS."
+    ]
+  },
+  "evidence": {
+    "run": "evidence/offline-poc/warm-offline-run.json",
+    "runSha256": "be1a9ff890ec885e42534f6109e028a4193947eb87ff0f906c51934615ff000c",
+    "screenshots": [
+      "evidence/offline-poc/warm-offline-b3.png",
+      "evidence/offline-poc/warm-offline-a-final.png"
+    ],
+    "harness": "poc/warm_offline_poc.js",
+    "publishedBuildMutated": false,
+    "saveOrPublishInvoked": false,
+    "cookiesTokensOrStorageRead": false
+  }
+}

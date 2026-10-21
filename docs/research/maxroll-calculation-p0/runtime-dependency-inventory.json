@@ -1,0 +1,85 @@
+{
+  "schemaVersion": "maxroll-runtime-dependency-inventory/1",
+  "patch": "3.2.1.73552",
+  "checkpoint": "L1_WARM_OFFLINE",
+  "scope": "Dependencies evidenced for the bounded Character Stats A/B fixture; not the full Maxroll site",
+  "dependencies": [
+    {
+      "id": "runtime-export-bundle",
+      "identity": "/assets/export-DOjdL1l3.js",
+      "fingerprint": "sha256:e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "classification": "REQUIRED_FOR_CALCULATION",
+      "evidence": "The active heroDetails breakpoint resolved inside this asset and produced all 50 raw values before and during offline A/B calculations.",
+      "retained": false
+    },
+    {
+      "id": "in-memory-profile-and-item-state",
+      "identity": "Rogue L50 Torment I local profile with Runic Skullcap",
+      "classification": "REQUIRED_FOR_CALCULATION",
+      "evidence": "UI state mutation changed the runtime output from A to B and rollback restored A exactly."
+    },
+    {
+      "id": "game-data-min",
+      "identity": "https://assets-ng.maxroll.gg/d4-tools/game/data.min.json",
+      "classification": "UNKNOWN",
+      "evidence": "Loaded during online startup; warm-offline test proves only that its already-loaded in-memory state is sufficient. Cold-start necessity is unresolved."
+    },
+    {
+      "id": "game-data-locale",
+      "identity": "https://assets-ng.maxroll.gg/d4-tools/game/data.enus.json",
+      "classification": "UNKNOWN",
+      "evidence": "Loaded during online startup. It may be UI text, item identity data, or calculation input; L1 cannot separate these roles."
+    },
+    {
+      "id": "profile-load",
+      "identity": "https://planners.maxroll.gg/profiles/load/d4/{buildId}",
+      "classification": "REQUIRED_FOR_INITIAL_REFERENCE_LOAD_ONLY",
+      "evidence": "The reference fixture loaded online. No profile or calculation response completed during the offline calculation phases."
+    },
+    {
+      "id": "planner-ui-modules",
+      "identity": "Maxroll root, d4 planner, React/UI JavaScript modules",
+      "classification": "REQUIRED_FOR_CURRENT_UI_ADAPTER",
+      "evidence": "The PoC applies JSON through the item editor. Whether the calculation core can run without these modules is an L2/L3 question."
+    },
+    {
+      "id": "item-frame-images",
+      "identity": "frame-magic and tooltip-frame WebP resources",
+      "classification": "REQUIRED_FOR_UI_ONLY",
+      "evidence": "Requests failed with ERR_INTERNET_DISCONNECTED during A1, while 50 raw values and exact online parity still passed."
+    },
+    {
+      "id": "advertising-analytics-consent",
+      "identity": "Ziff Davis, Google, Amazon, Primis, consent and analytics resources",
+      "classification": "OPTIONAL",
+      "evidence": "Requests failed or were blocked after offline activation without affecting calculation."
+    },
+    {
+      "id": "remote-calculation-response",
+      "identity": "No endpoint observed",
+      "classification": "NOT_REQUIRED_FOR_WARM_CALCULATION",
+      "evidence": "Zero remote responses completed during all six offline B/A calculation phases."
+    },
+    {
+      "id": "web-workers",
+      "identity": null,
+      "classification": "UNKNOWN",
+      "evidence": "L1 did not instrument worker creation separately."
+    },
+    {
+      "id": "wasm",
+      "identity": null,
+      "classification": "UNKNOWN",
+      "evidence": "No standalone .wasm network resource was identified in the sanitized L1 inventory, but embedded or dynamically constructed WASM was not excluded."
+    },
+    {
+      "id": "browser-dom-react-context",
+      "identity": "DOM, event loop, React component state and CDP",
+      "classification": "REQUIRED_FOR_CURRENT_UI_ADAPTER",
+      "evidence": "Current input application and capture depend on browser UI and a render-time breakpoint; Node compatibility remains untested."
+    }
+  ],
+  "coldOfflineMinimumSet": "UNRESOLVED",
+  "standaloneNodeCompatibility": "UNRESOLVED",
+  "proprietaryAssetsCommitted": false
+}

@@ -1,0 +1,5722 @@
+{
+  "contractVersion": "maxroll-warm-offline-poc/1",
+  "capturedAt": "2026-10-21T12:00:10.442Z",
+  "status": "L1_WARM_OFFLINE_PASS",
+  "environment": {
+    "browser": "Google Chrome for Testing 153.0.8010.12",
+    "playwrightCore": "1.64.1",
+    "maxrollPatch": "3.2.1.73552",
+    "runtimeFingerprint": {
+      "assetPath": "/assets/export-DOjdL1l3.js",
+      "byteLength": 3374547,
+      "sha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
+      "retained": false
+    }
+  },
+  "performance": {
+    "browserLaunchMilliseconds": 166.10005099999998,
+    "onlineWarmLoadMilliseconds": 7613.1451830000005,
+    "calculationMilliseconds": [
+      {
+        "id": "A-online-warmup",
+        "value": 1663.9407790000005
+      },
+      {
+        "id": "B1-offline",
+        "value": 1419.539433
+      },
+      {
+        "id": "A1-offline",
+        "value": 1353.0576599999986
+      },
+      {
+        "id": "B2-offline",
+        "value": 1410.5931499999988
+      },
+      {
+        "id": "A2-offline",
+        "value": 1335.989104999997
+      },
+      {
+        "id": "B3-offline",
+        "value": 1425.961301000003
+      },
+      {
+        "id": "A3-offline",
+        "value": 1333.9466680000005
+      }
+    ],
+    "cpuProxy": "CDP Performance.TaskDuration delta; not host-wide CPU utilization",
+    "memoryProxy": "CDP Performance.JSHeapUsedSize; not total browser RSS"
+  },
+  "snapshots": [
+    {
+      "id": "A-online-warmup",
+      "mode": "ONLINE_WARMUP",
+      "inputBuildSha256": "32fdcb90bbc054981d9cfc54fa369cdbc2452aef84e22037703f2fc77e742536",
+      "capturedAt": "2026-10-21T11:59:59.966Z",
+      "calculationMilliseconds": 1663.9407790000005,
+      "navigatorOnline": true,
+      "observedModifiers": [],
+      "coverage": {
+        "metricIds": 50,
+        "rawValues": 50,
+        "displayValues": 34
+      },
+      "performance": {
+        "jsHeapUsedBytes": 148306088,
+        "jsHeapDeltaBytes": 26956004,
+        "taskDurationDeltaSeconds": 1.111872
+      },
+      "metrics": [
+        {
+          "metricId": "maxroll.heroDetails.900",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.901",
+          "rawValue": 693.0584806531045,
+          "displayValue": "693"
+        },
+        {
+          "metricId": "maxroll.heroDetails.279",
+          "rawValue": 50,
+          "displayValue": "50"
+        },
+        {
+          "metricId": "maxroll.heroDetails.108",
+          "rawValue": 56,
+          "displayValue": "56"
+        },
+        {
+          "metricId": "maxroll.heroDetails.109",
+          "rawValue": 56,
+          "displayValue": "56"
+        },
+        {
+          "metricId": "maxroll.heroDetails.110",
+          "rawValue": 57,
+          "displayValue": "57"
+        },
+        {
+          "metricId": "maxroll.heroDetails.111",
+          "rawValue": 59,
+          "displayValue": "59"
+        },
+        {
+          "metricId": "maxroll.heroDetails.2036494626",
+          "rawValue": 693.0584806531045,
+          "displayValue": "693"
+        },
+        {
+          "metricId": "maxroll.heroDetails.480",
+          "rawValue": 1715,
+          "displayValue": "1,715"
+        },
+        {
+          "metricId": "maxroll.heroDetails.439",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.446",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.453",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.460",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.467",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.474",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.93",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.46",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.114",
+          "rawValue": 1,
+          "displayValue": "1.00"
+        },
+        {
+          "metricId": "maxroll.heroDetails.3",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.4",
+          "rawValue": 0.0514,
+          "displayValue": "5.1%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.347",
+          "rawValue": 0.5,
+          "displayValue": "50.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.349",
+          "rawValue": 0.19999999999999996,
+          "displayValue": "20.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.1",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.49",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.50",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.51",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.52",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.71041540",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.53",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.251",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.2",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.25",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.56",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.166",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.299",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.58",
+          "rawValue": 484.56045000000006,
+          "displayValue": "485"
+        },
+        {
+          "metricId": "maxroll.heroDetails.78",
+          "rawValue": 4,
+          "displayValue": "4"
+        },
+        {
+          "metricId": "maxroll.heroDetails.180",
+          "rawValue": 0.019949914500000002,
+          "displayValue": "2.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.431",
+          "rawValue": 1715,
+          "displayValue": "1,715"
+        },
+        {
+          "metricId": "maxroll.heroDetails.357",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.104",
+          "rawValue": 0,
+          "displayValue": "0.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.61",
+          "rawValue": 0.0035395324250000002,
+          "displayValue": "0.4%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.81",
+          "rawValue": 100,
+          "displayValue": "100"
+        },
+        {
+          "metricId": "maxroll.heroDetails.286",
+          "rawValue": 8.0224,
+          "displayValue": "8"
+        },
+        {
+          "metricId": "maxroll.heroDetails.80",
+          "rawValue": 1,
+          "displayValue": "100.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.92",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.152",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.181",
+          "rawValue": 0,
+          "displayValue": "0.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.367",
+          "rawValue": 3,
+          "displayValue": "300.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.70",
+          "rawValue": 0.9199219,
+          "displayValue": "92.0%"
+        }
+      ],
+      "outputSha256": "c1a1cd1f81b4e4ef6a3fd4e15f3f9ec152543e6b20fc82acede926b5e19494c4"
+    },
+    {
+      "id": "B1-offline",
+      "mode": "WARM_OFFLINE",
+      "inputBuildSha256": "fa398c8b089eb7b6adcc336b6a77f35db9df76a5bfeeae54a55a90545ae5189c",
+      "capturedAt": "2026-10-21T12:00:01.506Z",
+      "calculationMilliseconds": 1419.539433,
+      "navigatorOnline": false,
+      "observedModifiers": [
+        "+2800 Fire Resistance"
+      ],
+      "coverage": {
+        "metricIds": 50,
+        "rawValues": 50,
+        "displayValues": 34
+      },
+      "performance": {
+        "jsHeapUsedBytes": 128915884,
+        "jsHeapDeltaBytes": -19559588,
+        "taskDurationDeltaSeconds": 0.8737939999999993
+      },
+      "metrics": [
+        {
+          "metricId": "maxroll.heroDetails.900",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.901",
+          "rawValue": 967.0261283628205,
+          "displayValue": "967"
+        },
+        {
+          "metricId": "maxroll.heroDetails.279",
+          "rawValue": 50,
+          "displayValue": "50"
+        },
+        {
+          "metricId": "maxroll.heroDetails.108",
+          "rawValue": 56,
+          "displayValue": "56"
+        },
+        {
+          "metricId": "maxroll.heroDetails.109",
+          "rawValue": 56,
+          "displayValue": "56"
+        },
+        {
+          "metricId": "maxroll.heroDetails.110",
+          "rawValue": 57,
+          "displayValue": "57"
+        },
+        {
+          "metricId": "maxroll.heroDetails.111",
+          "rawValue": 59,
+          "displayValue": "59"
+        },
+        {
+          "metricId": "maxroll.heroDetails.2036494626",
+          "rawValue": 967.0261283628205,
+          "displayValue": "967"
+        },
+        {
+          "metricId": "maxroll.heroDetails.480",
+          "rawValue": 1715,
+          "displayValue": "1,715"
+        },
+        {
+          "metricId": "maxroll.heroDetails.439",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.446",
+          "rawValue": 2822,
+          "displayValue": "2,822"
+        },
+        {
+          "metricId": "maxroll.heroDetails.453",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.460",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.467",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.474",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.93",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.46",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.114",
+          "rawValue": 1,
+          "displayValue": "1.00"
+        },
+        {
+          "metricId": "maxroll.heroDetails.3",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.4",
+          "rawValue": 0.0514,
+          "displayValue": "5.1%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.347",
+          "rawValue": 0.5,
+          "displayValue": "50.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.349",
+          "rawValue": 0.19999999999999996,
+          "displayValue": "20.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.1",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.49",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.50",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.51",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.52",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.71041540",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.53",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.251",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.2",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.25",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.56",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.166",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.299",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.58",
+          "rawValue": 484.56045000000006,
+          "displayValue": "485"
+        },
+        {
+          "metricId": "maxroll.heroDetails.78",
+          "rawValue": 4,
+          "displayValue": "4"
+        },
+        {
+          "metricId": "maxroll.heroDetails.180",
+          "rawValue": 0.019949914500000002,
+          "displayValue": "2.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.431",
+          "rawValue": 1715,
+          "displayValue": "1,715"
+        },
+        {
+          "metricId": "maxroll.heroDetails.357",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.104",
+          "rawValue": 0,
+          "displayValue": "0.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.61",
+          "rawValue": 0.0035395324250000002,
+          "displayValue": "0.4%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.81",
+          "rawValue": 100,
+          "displayValue": "100"
+        },
+        {
+          "metricId": "maxroll.heroDetails.286",
+          "rawValue": 8.0224,
+          "displayValue": "8"
+        },
+        {
+          "metricId": "maxroll.heroDetails.80",
+          "rawValue": 1,
+          "displayValue": "100.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.92",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.152",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.181",
+          "rawValue": 0,
+          "displayValue": "0.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.367",
+          "rawValue": 3,
+          "displayValue": "300.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.70",
+          "rawValue": 0.9199219,
+          "displayValue": "92.0%"
+        }
+      ],
+      "outputSha256": "d0259d7fd6c54d4c521e548eb7ee8860667350f17e65861a2c4f2e84d9d8ffd7"
+    },
+    {
+      "id": "A1-offline",
+      "mode": "WARM_OFFLINE",
+      "inputBuildSha256": "32fdcb90bbc054981d9cfc54fa369cdbc2452aef84e22037703f2fc77e742536",
+      "capturedAt": "2026-10-21T12:00:02.868Z",
+      "calculationMilliseconds": 1353.0576599999986,
+      "navigatorOnline": false,
+      "observedModifiers": [],
+      "coverage": {
+        "metricIds": 50,
+        "rawValues": 50,
+        "displayValues": 34
+      },
+      "performance": {
+        "jsHeapUsedBytes": 131566536,
+        "jsHeapDeltaBytes": 2607200,
+        "taskDurationDeltaSeconds": 0.8309769999999999
+      },
+      "metrics": [
+        {
+          "metricId": "maxroll.heroDetails.900",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.901",
+          "rawValue": 693.0584806531045,
+          "displayValue": "693"
+        },
+        {
+          "metricId": "maxroll.heroDetails.279",
+          "rawValue": 50,
+          "displayValue": "50"
+        },
+        {
+          "metricId": "maxroll.heroDetails.108",
+          "rawValue": 56,
+          "displayValue": "56"
+        },
+        {
+          "metricId": "maxroll.heroDetails.109",
+          "rawValue": 56,
+          "displayValue": "56"
+        },
+        {
+          "metricId": "maxroll.heroDetails.110",
+          "rawValue": 57,
+          "displayValue": "57"
+        },
+        {
+          "metricId": "maxroll.heroDetails.111",
+          "rawValue": 59,
+          "displayValue": "59"
+        },
+        {
+          "metricId": "maxroll.heroDetails.2036494626",
+          "rawValue": 693.0584806531045,
+          "displayValue": "693"
+        },
+        {
+          "metricId": "maxroll.heroDetails.480",
+          "rawValue": 1715,
+          "displayValue": "1,715"
+        },
+        {
+          "metricId": "maxroll.heroDetails.439",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.446",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.453",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.460",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.467",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.474",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.93",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.46",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.114",
+          "rawValue": 1,
+          "displayValue": "1.00"
+        },
+        {
+          "metricId": "maxroll.heroDetails.3",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.4",
+          "rawValue": 0.0514,
+          "displayValue": "5.1%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.347",
+          "rawValue": 0.5,
+          "displayValue": "50.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.349",
+          "rawValue": 0.19999999999999996,
+          "displayValue": "20.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.1",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.49",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.50",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.51",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.52",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.71041540",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.53",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.251",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.2",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.25",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.56",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.166",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.299",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.58",
+          "rawValue": 484.56045000000006,
+          "displayValue": "485"
+        },
+        {
+          "metricId": "maxroll.heroDetails.78",
+          "rawValue": 4,
+          "displayValue": "4"
+        },
+        {
+          "metricId": "maxroll.heroDetails.180",
+          "rawValue": 0.019949914500000002,
+          "displayValue": "2.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.431",
+          "rawValue": 1715,
+          "displayValue": "1,715"
+        },
+        {
+          "metricId": "maxroll.heroDetails.357",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.104",
+          "rawValue": 0,
+          "displayValue": "0.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.61",
+          "rawValue": 0.0035395324250000002,
+          "displayValue": "0.4%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.81",
+          "rawValue": 100,
+          "displayValue": "100"
+        },
+        {
+          "metricId": "maxroll.heroDetails.286",
+          "rawValue": 8.0224,
+          "displayValue": "8"
+        },
+        {
+          "metricId": "maxroll.heroDetails.80",
+          "rawValue": 1,
+          "displayValue": "100.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.92",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.152",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.181",
+          "rawValue": 0,
+          "displayValue": "0.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.367",
+          "rawValue": 3,
+          "displayValue": "300.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.70",
+          "rawValue": 0.9199219,
+          "displayValue": "92.0%"
+        }
+      ],
+      "outputSha256": "c1a1cd1f81b4e4ef6a3fd4e15f3f9ec152543e6b20fc82acede926b5e19494c4"
+    },
+    {
+      "id": "B2-offline",
+      "mode": "WARM_OFFLINE",
+      "inputBuildSha256": "fa398c8b089eb7b6adcc336b6a77f35db9df76a5bfeeae54a55a90545ae5189c",
+      "capturedAt": "2026-10-21T12:00:04.285Z",
+      "calculationMilliseconds": 1410.5931499999988,
+      "navigatorOnline": false,
+      "observedModifiers": [
+        "+2800 Fire Resistance"
+      ],
+      "coverage": {
+        "metricIds": 50,
+        "rawValues": 50,
+        "displayValues": 34
+      },
+      "performance": {
+        "jsHeapUsedBytes": 143894864,
+        "jsHeapDeltaBytes": 12289848,
+        "taskDurationDeltaSeconds": 0.8659579999999991
+      },
+      "metrics": [
+        {
+          "metricId": "maxroll.heroDetails.900",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.901",
+          "rawValue": 967.0261283628205,
+          "displayValue": "967"
+        },
+        {
+          "metricId": "maxroll.heroDetails.279",
+          "rawValue": 50,
+          "displayValue": "50"
+        },
+        {
+          "metricId": "maxroll.heroDetails.108",
+          "rawValue": 56,
+          "displayValue": "56"
+        },
+        {
+          "metricId": "maxroll.heroDetails.109",
+          "rawValue": 56,
+          "displayValue": "56"
+        },
+        {
+          "metricId": "maxroll.heroDetails.110",
+          "rawValue": 57,
+          "displayValue": "57"
+        },
+        {
+          "metricId": "maxroll.heroDetails.111",
+          "rawValue": 59,
+          "displayValue": "59"
+        },
+        {
+          "metricId": "maxroll.heroDetails.2036494626",
+          "rawValue": 967.0261283628205,
+          "displayValue": "967"
+        },
+        {
+          "metricId": "maxroll.heroDetails.480",
+          "rawValue": 1715,
+          "displayValue": "1,715"
+        },
+        {
+          "metricId": "maxroll.heroDetails.439",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.446",
+          "rawValue": 2822,
+          "displayValue": "2,822"
+        },
+        {
+          "metricId": "maxroll.heroDetails.453",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.460",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.467",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.474",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.93",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.46",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.114",
+          "rawValue": 1,
+          "displayValue": "1.00"
+        },
+        {
+          "metricId": "maxroll.heroDetails.3",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.4",
+          "rawValue": 0.0514,
+          "displayValue": "5.1%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.347",
+          "rawValue": 0.5,
+          "displayValue": "50.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.349",
+          "rawValue": 0.19999999999999996,
+          "displayValue": "20.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.1",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.49",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.50",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.51",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.52",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.71041540",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.53",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.251",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.2",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.25",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.56",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.166",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.299",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.58",
+          "rawValue": 484.56045000000006,
+          "displayValue": "485"
+        },
+        {
+          "metricId": "maxroll.heroDetails.78",
+          "rawValue": 4,
+          "displayValue": "4"
+        },
+        {
+          "metricId": "maxroll.heroDetails.180",
+          "rawValue": 0.019949914500000002,
+          "displayValue": "2.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.431",
+          "rawValue": 1715,
+          "displayValue": "1,715"
+        },
+        {
+          "metricId": "maxroll.heroDetails.357",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.104",
+          "rawValue": 0,
+          "displayValue": "0.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.61",
+          "rawValue": 0.0035395324250000002,
+          "displayValue": "0.4%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.81",
+          "rawValue": 100,
+          "displayValue": "100"
+        },
+        {
+          "metricId": "maxroll.heroDetails.286",
+          "rawValue": 8.0224,
+          "displayValue": "8"
+        },
+        {
+          "metricId": "maxroll.heroDetails.80",
+          "rawValue": 1,
+          "displayValue": "100.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.92",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.152",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.181",
+          "rawValue": 0,
+          "displayValue": "0.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.367",
+          "rawValue": 3,
+          "displayValue": "300.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.70",
+          "rawValue": 0.9199219,
+          "displayValue": "92.0%"
+        }
+      ],
+      "outputSha256": "d0259d7fd6c54d4c521e548eb7ee8860667350f17e65861a2c4f2e84d9d8ffd7"
+    },
+    {
+      "id": "A2-offline",
+      "mode": "WARM_OFFLINE",
+      "inputBuildSha256": "32fdcb90bbc054981d9cfc54fa369cdbc2452aef84e22037703f2fc77e742536",
+      "capturedAt": "2026-10-21T12:00:05.631Z",
+      "calculationMilliseconds": 1335.989104999997,
+      "navigatorOnline": false,
+      "observedModifiers": [],
+      "coverage": {
+        "metricIds": 50,
+        "rawValues": 50,
+        "displayValues": 34
+      },
+      "performance": {
+        "jsHeapUsedBytes": 146490832,
+        "jsHeapDeltaBytes": 2543940,
+        "taskDurationDeltaSeconds": 0.80504
+      },
+      "metrics": [
+        {
+          "metricId": "maxroll.heroDetails.900",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.901",
+          "rawValue": 693.0584806531045,
+          "displayValue": "693"
+        },
+        {
+          "metricId": "maxroll.heroDetails.279",
+          "rawValue": 50,
+          "displayValue": "50"
+        },
+        {
+          "metricId": "maxroll.heroDetails.108",
+          "rawValue": 56,
+          "displayValue": "56"
+        },
+        {
+          "metricId": "maxroll.heroDetails.109",
+          "rawValue": 56,
+          "displayValue": "56"
+        },
+        {
+          "metricId": "maxroll.heroDetails.110",
+          "rawValue": 57,
+          "displayValue": "57"
+        },
+        {
+          "metricId": "maxroll.heroDetails.111",
+          "rawValue": 59,
+          "displayValue": "59"
+        },
+        {
+          "metricId": "maxroll.heroDetails.2036494626",
+          "rawValue": 693.0584806531045,
+          "displayValue": "693"
+        },
+        {
+          "metricId": "maxroll.heroDetails.480",
+          "rawValue": 1715,
+          "displayValue": "1,715"
+        },
+        {
+          "metricId": "maxroll.heroDetails.439",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.446",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.453",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.460",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.467",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.474",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.93",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.46",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.114",
+          "rawValue": 1,
+          "displayValue": "1.00"
+        },
+        {
+          "metricId": "maxroll.heroDetails.3",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.4",
+          "rawValue": 0.0514,
+          "displayValue": "5.1%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.347",
+          "rawValue": 0.5,
+          "displayValue": "50.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.349",
+          "rawValue": 0.19999999999999996,
+          "displayValue": "20.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.1",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.49",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.50",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.51",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.52",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.71041540",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.53",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.251",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.2",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.25",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.56",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.166",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.299",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.58",
+          "rawValue": 484.56045000000006,
+          "displayValue": "485"
+        },
+        {
+          "metricId": "maxroll.heroDetails.78",
+          "rawValue": 4,
+          "displayValue": "4"
+        },
+        {
+          "metricId": "maxroll.heroDetails.180",
+          "rawValue": 0.019949914500000002,
+          "displayValue": "2.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.431",
+          "rawValue": 1715,
+          "displayValue": "1,715"
+        },
+        {
+          "metricId": "maxroll.heroDetails.357",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.104",
+          "rawValue": 0,
+          "displayValue": "0.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.61",
+          "rawValue": 0.0035395324250000002,
+          "displayValue": "0.4%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.81",
+          "rawValue": 100,
+          "displayValue": "100"
+        },
+        {
+          "metricId": "maxroll.heroDetails.286",
+          "rawValue": 8.0224,
+          "displayValue": "8"
+        },
+        {
+          "metricId": "maxroll.heroDetails.80",
+          "rawValue": 1,
+          "displayValue": "100.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.92",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.152",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.181",
+          "rawValue": 0,
+          "displayValue": "0.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.367",
+          "rawValue": 3,
+          "displayValue": "300.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.70",
+          "rawValue": 0.9199219,
+          "displayValue": "92.0%"
+        }
+      ],
+      "outputSha256": "c1a1cd1f81b4e4ef6a3fd4e15f3f9ec152543e6b20fc82acede926b5e19494c4"
+    },
+    {
+      "id": "B3-offline",
+      "mode": "WARM_OFFLINE",
+      "inputBuildSha256": "fa398c8b089eb7b6adcc336b6a77f35db9df76a5bfeeae54a55a90545ae5189c",
+      "capturedAt": "2026-10-21T12:00:07.064Z",
+      "calculationMilliseconds": 1425.961301000003,
+      "navigatorOnline": false,
+      "observedModifiers": [
+        "+2800 Fire Resistance"
+      ],
+      "coverage": {
+        "metricIds": 50,
+        "rawValues": 50,
+        "displayValues": 34
+      },
+      "performance": {
+        "jsHeapUsedBytes": 158814264,
+        "jsHeapDeltaBytes": 12283532,
+        "taskDurationDeltaSeconds": 0.8668409999999991
+      },
+      "metrics": [
+        {
+          "metricId": "maxroll.heroDetails.900",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.901",
+          "rawValue": 967.0261283628205,
+          "displayValue": "967"
+        },
+        {
+          "metricId": "maxroll.heroDetails.279",
+          "rawValue": 50,
+          "displayValue": "50"
+        },
+        {
+          "metricId": "maxroll.heroDetails.108",
+          "rawValue": 56,
+          "displayValue": "56"
+        },
+        {
+          "metricId": "maxroll.heroDetails.109",
+          "rawValue": 56,
+          "displayValue": "56"
+        },
+        {
+          "metricId": "maxroll.heroDetails.110",
+          "rawValue": 57,
+          "displayValue": "57"
+        },
+        {
+          "metricId": "maxroll.heroDetails.111",
+          "rawValue": 59,
+          "displayValue": "59"
+        },
+        {
+          "metricId": "maxroll.heroDetails.2036494626",
+          "rawValue": 967.0261283628205,
+          "displayValue": "967"
+        },
+        {
+          "metricId": "maxroll.heroDetails.480",
+          "rawValue": 1715,
+          "displayValue": "1,715"
+        },
+        {
+          "metricId": "maxroll.heroDetails.439",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.446",
+          "rawValue": 2822,
+          "displayValue": "2,822"
+        },
+        {
+          "metricId": "maxroll.heroDetails.453",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.460",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.467",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.474",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.93",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.46",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.114",
+          "rawValue": 1,
+          "displayValue": "1.00"
+        },
+        {
+          "metricId": "maxroll.heroDetails.3",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.4",
+          "rawValue": 0.0514,
+          "displayValue": "5.1%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.347",
+          "rawValue": 0.5,
+          "displayValue": "50.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.349",
+          "rawValue": 0.19999999999999996,
+          "displayValue": "20.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.1",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.49",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.50",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.51",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.52",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.71041540",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.53",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.251",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.2",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.25",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.56",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.166",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.299",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.58",
+          "rawValue": 484.56045000000006,
+          "displayValue": "485"
+        },
+        {
+          "metricId": "maxroll.heroDetails.78",
+          "rawValue": 4,
+          "displayValue": "4"
+        },
+        {
+          "metricId": "maxroll.heroDetails.180",
+          "rawValue": 0.019949914500000002,
+          "displayValue": "2.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.431",
+          "rawValue": 1715,
+          "displayValue": "1,715"
+        },
+        {
+          "metricId": "maxroll.heroDetails.357",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.104",
+          "rawValue": 0,
+          "displayValue": "0.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.61",
+          "rawValue": 0.0035395324250000002,
+          "displayValue": "0.4%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.81",
+          "rawValue": 100,
+          "displayValue": "100"
+        },
+        {
+          "metricId": "maxroll.heroDetails.286",
+          "rawValue": 8.0224,
+          "displayValue": "8"
+        },
+        {
+          "metricId": "maxroll.heroDetails.80",
+          "rawValue": 1,
+          "displayValue": "100.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.92",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.152",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.181",
+          "rawValue": 0,
+          "displayValue": "0.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.367",
+          "rawValue": 3,
+          "displayValue": "300.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.70",
+          "rawValue": 0.9199219,
+          "displayValue": "92.0%"
+        }
+      ],
+      "outputSha256": "d0259d7fd6c54d4c521e548eb7ee8860667350f17e65861a2c4f2e84d9d8ffd7"
+    },
+    {
+      "id": "A3-offline",
+      "mode": "WARM_OFFLINE",
+      "inputBuildSha256": "32fdcb90bbc054981d9cfc54fa369cdbc2452aef84e22037703f2fc77e742536",
+      "capturedAt": "2026-10-21T12:00:08.406Z",
+      "calculationMilliseconds": 1333.9466680000005,
+      "navigatorOnline": false,
+      "observedModifiers": [],
+      "coverage": {
+        "metricIds": 50,
+        "rawValues": 50,
+        "displayValues": 34
+      },
+      "performance": {
+        "jsHeapUsedBytes": 159673260,
+        "jsHeapDeltaBytes": 815284,
+        "taskDurationDeltaSeconds": 0.8050460000000008
+      },
+      "metrics": [
+        {
+          "metricId": "maxroll.heroDetails.900",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.901",
+          "rawValue": 693.0584806531045,
+          "displayValue": "693"
+        },
+        {
+          "metricId": "maxroll.heroDetails.279",
+          "rawValue": 50,
+          "displayValue": "50"
+        },
+        {
+          "metricId": "maxroll.heroDetails.108",
+          "rawValue": 56,
+          "displayValue": "56"
+        },
+        {
+          "metricId": "maxroll.heroDetails.109",
+          "rawValue": 56,
+          "displayValue": "56"
+        },
+        {
+          "metricId": "maxroll.heroDetails.110",
+          "rawValue": 57,
+          "displayValue": "57"
+        },
+        {
+          "metricId": "maxroll.heroDetails.111",
+          "rawValue": 59,
+          "displayValue": "59"
+        },
+        {
+          "metricId": "maxroll.heroDetails.2036494626",
+          "rawValue": 693.0584806531045,
+          "displayValue": "693"
+        },
+        {
+          "metricId": "maxroll.heroDetails.480",
+          "rawValue": 1715,
+          "displayValue": "1,715"
+        },
+        {
+          "metricId": "maxroll.heroDetails.439",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.446",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.453",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.460",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.467",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.474",
+          "rawValue": 22,
+          "displayValue": "22"
+        },
+        {
+          "metricId": "maxroll.heroDetails.93",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.46",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.114",
+          "rawValue": 1,
+          "displayValue": "1.00"
+        },
+        {
+          "metricId": "maxroll.heroDetails.3",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.4",
+          "rawValue": 0.0514,
+          "displayValue": "5.1%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.347",
+          "rawValue": 0.5,
+          "displayValue": "50.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.349",
+          "rawValue": 0.19999999999999996,
+          "displayValue": "20.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.1",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.49",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.50",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.51",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.52",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.71041540",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.53",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.251",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.2",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.25",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.56",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.166",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.299",
+          "rawValue": 0,
+          "displayValue": "0"
+        },
+        {
+          "metricId": "maxroll.heroDetails.58",
+          "rawValue": 484.56045000000006,
+          "displayValue": "485"
+        },
+        {
+          "metricId": "maxroll.heroDetails.78",
+          "rawValue": 4,
+          "displayValue": "4"
+        },
+        {
+          "metricId": "maxroll.heroDetails.180",
+          "rawValue": 0.019949914500000002,
+          "displayValue": "2.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.431",
+          "rawValue": 1715,
+          "displayValue": "1,715"
+        },
+        {
+          "metricId": "maxroll.heroDetails.357",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.104",
+          "rawValue": 0,
+          "displayValue": "0.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.61",
+          "rawValue": 0.0035395324250000002,
+          "displayValue": "0.4%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.81",
+          "rawValue": 100,
+          "displayValue": "100"
+        },
+        {
+          "metricId": "maxroll.heroDetails.286",
+          "rawValue": 8.0224,
+          "displayValue": "8"
+        },
+        {
+          "metricId": "maxroll.heroDetails.80",
+          "rawValue": 1,
+          "displayValue": "100.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.92",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.152",
+          "rawValue": 0,
+          "displayValue": null
+        },
+        {
+          "metricId": "maxroll.heroDetails.181",
+          "rawValue": 0,
+          "displayValue": "0.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.367",
+          "rawValue": 3,
+          "displayValue": "300.0%"
+        },
+        {
+          "metricId": "maxroll.heroDetails.70",
+          "rawValue": 0.9199219,
+          "displayValue": "92.0%"
+        }
+      ],
+      "outputSha256": "c1a1cd1f81b4e4ef6a3fd4e15f3f9ec152543e6b20fc82acede926b5e19494c4"
+    }
+  ],
+  "acceptance": {
+    "cycles": 3,
+    "offlineAUniqueOutputHashes": 1,
+    "offlineBUniqueOutputHashes": 1,
+    "allOfflineNavigatorFalse": true,
+    "explicitOfflineFetchFailed": true,
+    "remoteResponsesCompletedAfterOffline": 1,
+    "remoteCalculationResponsesCompletedAfterOffline": 0,
+    "rawCoverageEverySnapshot": true,
+    "aRollbackExact": true,
+    "aMatchesOnlineBaseline": true,
+    "bMatchesOnlineBaseline": true,
+    "fireResistanceDelta": 2800
+  },
+  "network": {
+    "offlineActivatedAt": "2026-10-21T11:59:59.967Z",
+    "attemptedAfterOffline": [
+      {
+        "phase": null,
+        "method": "GET",
+        "endpoint": "https://live.primis.tech/live/liveView.php",
+        "resourceType": "script"
+      },
+      {
+        "phase": null,
+        "method": "GET",
+        "endpoint": "https://maxroll.gg/favicon.ico",
+        "resourceType": "fetch"
+      },
+      {
+        "phase": "A1-offline",
+        "method": "GET",
+        "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/frame-magic.769cf170.webp",
+        "resourceType": "image"
+      },
+      {
+        "phase": "A1-offline",
+        "method": "GET",
+        "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/tooltip-frame.9829c985.webp",
+        "resourceType": "image"
+      },
+      {
+        "phase": "A1-offline",
+        "method": "POST",
+        "endpoint": "https://analytics.google.com/g/collect",
+        "resourceType": "fetch"
+      },
+      {
+        "phase": "A1-offline",
+        "method": "POST",
+        "endpoint": "https://www.google.com/g/collect",
+        "resourceType": "fetch"
+      }
+    ],
+    "failedAfterOffline": [
+      {
+        "phase": null,
+        "method": "GET",
+        "endpoint": "https://live.primis.tech/live/liveView.php",
+        "resourceType": "script",
+        "errorText": "net::ERR_INTERNET_DISCONNECTED"
+      },
+      {
+        "phase": null,
+        "method": "GET",
+        "endpoint": "https://maxroll.gg/favicon.ico",
+        "resourceType": "fetch",
+        "errorText": "net::ERR_INTERNET_DISCONNECTED"
+      },
+      {
+        "phase": "A1-offline",
+        "method": "GET",
+        "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/frame-magic.769cf170.webp",
+        "resourceType": "image",
+        "errorText": "net::ERR_INTERNET_DISCONNECTED"
+      },
+      {
+        "phase": "A1-offline",
+        "method": "GET",
+        "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/tooltip-frame.9829c985.webp",
+        "resourceType": "image",
+        "errorText": "net::ERR_INTERNET_DISCONNECTED"
+      },
+      {
+        "phase": "A1-offline",
+        "method": "POST",
+        "endpoint": "https://analytics.google.com/g/collect",
+        "resourceType": "fetch",
+        "errorText": "net::ERR_BLOCKED_BY_CLIENT.Inspector"
+      },
+      {
+        "phase": "A1-offline",
+        "method": "POST",
+        "endpoint": "https://www.google.com/g/collect",
+        "resourceType": "fetch",
+        "errorText": "net::ERR_BLOCKED_BY_CLIENT.Inspector"
+      }
+    ],
+    "responsesAfterOffline": [
+      {
+        "phase": null,
+        "observedAt": "2026-10-21T11:59:59.995Z",
+        "endpoint": "https://live.primis.tech/live/liveView.php",
+        "status": 200,
+        "resourceType": "script"
+      }
+    ],
+    "blockedNonRead": [
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://fast.nexx360.io/booster"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://elb.the-ozone-project.com/openrtb2/auction"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://hb.yellowblue.io/hb-multi"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://server.cpmstar.com/view.aspx"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://server.cpmstar.com/view.aspx"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://ap.lijit.com/rtb/bid"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://direct.adsrvr.org/bid/bidder/ziffdavis"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://rtb.openx.net/openrtbb/prebidjs"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://htlb.casalemedia.com/openrtb/pbjs"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://openads.adsrvr.org/cookie_sync"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://openads.adsrvr.org/openrtb2/auction"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://bidpapers.com/o1zsh04vwyieoz_j7vgufj3g03"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://analytics.maxroll.gg/api/event"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://bidpapers.com/o1zsh04vwyieoz_j7vgufj3g03"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://tlx.3lift.com/header/auction"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://hbopenbid.pubmatic.com/translator"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://analytics.google.com/g/collect"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://stats.g.doubleclick.net/g/collect"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://www.google.com/g/collect"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://s.clarity.ms/collect"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://s.clarity.ms/collect"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://s.clarity.ms/collect"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://s.clarity.ms/collect"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://maxroll.gg/cdn-cgi/rum"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://maxroll.gg/cdn-cgi/rum"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://maxroll.gg/cdn-cgi/rum"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://bidpapers.com/o1zsh04vwyieoz_j7vgufj3g03"
+      },
+      {
+        "afterOffline": false,
+        "method": "POST",
+        "endpoint": "https://bidpapers.com/o1zsh04vwyieoz_j7vgufj3g03"
+      },
+      {
+        "afterOffline": true,
+        "method": "POST",
+        "endpoint": "https://analytics.google.com/g/collect"
+      },
+      {
+        "afterOffline": true,
+        "method": "POST",
+        "endpoint": "https://www.google.com/g/collect"
+      }
+    ],
+    "explicitProbe": {
+      "navigatorOnline": false,
+      "fetchResult": "FAILED_AS_EXPECTED",
+      "errorName": "TypeError",
+      "errorMessage": "Failed to fetch"
+    }
+  },
+  "runtimeResourcesLoadedOnline": [
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.033Z",
+      "endpoint": "https://maxroll.gg/d4/planner/1g1any0x",
+      "status": 200,
+      "resourceType": "document"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.093Z",
+      "endpoint": "https://maxroll.gg/assets/util-BG_dQQh8.css",
+      "status": 200,
+      "resourceType": "stylesheet"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.095Z",
+      "endpoint": "https://maxroll.gg/assets/background-banner-CinlkYA9.css",
+      "status": 200,
+      "resourceType": "stylesheet"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.095Z",
+      "endpoint": "https://maxroll.gg/assets/social-button-DR-GaldH.css",
+      "status": 200,
+      "resourceType": "stylesheet"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.100Z",
+      "endpoint": "https://maxroll.gg/assets/search-input-BL4pQxLT.css",
+      "status": 200,
+      "resourceType": "stylesheet"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.102Z",
+      "endpoint": "https://cdn.ziffstatic.com/pg/maxroll.css",
+      "status": 200,
+      "resourceType": "stylesheet"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.102Z",
+      "endpoint": "https://cdn.ziffstatic.com/geo.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.112Z",
+      "endpoint": "https://cdn.ziffstatic.com/jst/zdconsent.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.117Z",
+      "endpoint": "https://cdn.ziffstatic.com/pg/maxroll.prebid.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.132Z",
+      "endpoint": "https://maxroll.gg/assets/subscription-widget-DfLXfuNx.css",
+      "status": 200,
+      "resourceType": "stylesheet"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.133Z",
+      "endpoint": "https://maxroll.gg/assets/planner-D5uGLgvM.css",
+      "status": 200,
+      "resourceType": "stylesheet"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.173Z",
+      "endpoint": "https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.191Z",
+      "endpoint": "https://maxroll.gg/assets/section-Cw6latP-.css",
+      "status": 200,
+      "resourceType": "stylesheet"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.191Z",
+      "endpoint": "https://maxroll.gg/assets/index-B_a3a86N.css",
+      "status": 200,
+      "resourceType": "stylesheet"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.191Z",
+      "endpoint": "https://maxroll.gg/assets/badge-DUzkQFxZ.css",
+      "status": 200,
+      "resourceType": "stylesheet"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.192Z",
+      "endpoint": "https://securepubads.g.doubleclick.net/tag/js/gpt.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.193Z",
+      "endpoint": "https://maxroll.gg/assets/root-woyDQ9IF.css",
+      "status": 200,
+      "resourceType": "stylesheet"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.227Z",
+      "endpoint": "https://maxroll.gg/assets/index-CnUkWTiT.css",
+      "status": 200,
+      "resourceType": "stylesheet"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.250Z",
+      "endpoint": "https://maxroll.gg/assets/entry.client-DQk_8mBp.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.250Z",
+      "endpoint": "https://maxroll.gg/assets/jsx-runtime-CDnd_NX6.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.251Z",
+      "endpoint": "https://maxroll.gg/assets/client-Bqqr2XvQ.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.252Z",
+      "endpoint": "https://maxroll.gg/assets/surface-catalogue-BGVScTWT.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.287Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/game-banners/d4.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.306Z",
+      "endpoint": "https://maxroll.gg/assets/index-D4GOtUAk.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.307Z",
+      "endpoint": "https://maxroll.gg/assets/preload-helper-D7HrI6pR.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.307Z",
+      "endpoint": "https://maxroll.gg/assets/index-BxmJuNOl.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.307Z",
+      "endpoint": "https://maxroll.gg/assets/components-DIPnPjs9.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.307Z",
+      "endpoint": "https://maxroll.gg/assets/index--4zewOuh.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.308Z",
+      "endpoint": "https://maxroll.gg/assets/index-D8-MGHw6.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.308Z",
+      "endpoint": "https://maxroll.gg/assets/client-only-ia4T_ISJ.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.309Z",
+      "endpoint": "https://maxroll.gg/assets/index-Cad1Gzic.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.309Z",
+      "endpoint": "https://maxroll.gg/assets/background-banner-BtgMn_qy.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.309Z",
+      "endpoint": "https://maxroll.gg/assets/context-BAreFtS0.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.309Z",
+      "endpoint": "https://maxroll.gg/assets/ad-container-client-only-BSMexvhs.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.309Z",
+      "endpoint": "https://maxroll.gg/assets/modal-dialog-BhyDCwp9.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.309Z",
+      "endpoint": "https://maxroll.gg/assets/use-account-deletion-DCw3riAg.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.310Z",
+      "endpoint": "https://maxroll.gg/assets/identity-pending-deletion-alert-displayed-cache-zjlqogfj.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.310Z",
+      "endpoint": "https://maxroll.gg/assets/button-D9v9WIYE.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.310Z",
+      "endpoint": "https://maxroll.gg/assets/global-link-g5K9Qo1y.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.310Z",
+      "endpoint": "https://maxroll.gg/assets/index-ShYo6H0B.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.310Z",
+      "endpoint": "https://maxroll.gg/assets/image-DpjvDi1y.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.310Z",
+      "endpoint": "https://maxroll.gg/assets/icon-BdJXDIIC.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.310Z",
+      "endpoint": "https://maxroll.gg/assets/newsletter-signup-widget-NjbA5VkN.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.310Z",
+      "endpoint": "https://maxroll.gg/assets/index-BgMRJ5n8.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.310Z",
+      "endpoint": "https://maxroll.gg/assets/search-BE7I0_UQ.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.311Z",
+      "endpoint": "https://maxroll.gg/assets/util-H9BAXEk6.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.311Z",
+      "endpoint": "https://maxroll.gg/assets/subscription-widget-hbFH-mXO.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.311Z",
+      "endpoint": "https://maxroll.gg/assets/login-form-DFgTza3q.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.311Z",
+      "endpoint": "https://maxroll.gg/assets/search-input-OSNYDY48.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.324Z",
+      "endpoint": "https://maxroll.gg/assets/icon-arrow-down-B7RonKKm.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.330Z",
+      "endpoint": "https://maxroll.gg/assets/use-assets-BhEoP0fP.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.330Z",
+      "endpoint": "https://maxroll.gg/assets/social-button-N87U4aIL.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.331Z",
+      "endpoint": "https://maxroll.gg/assets/index-jELzwEb7.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.331Z",
+      "endpoint": "https://maxroll.gg/assets/index-DJoe2Iu2.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.346Z",
+      "endpoint": "https://maxroll.gg/assets/index-BX_vEiOc.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.357Z",
+      "endpoint": "https://maxroll.gg/assets/index-BKmX_Jes.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.358Z",
+      "endpoint": "https://maxroll.gg/assets/section-59nlLFI7.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.358Z",
+      "endpoint": "https://maxroll.gg/assets/useInitSettings-D9_Au6BW.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.358Z",
+      "endpoint": "https://maxroll.gg/assets/lodash-Bhk9jHER.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.358Z",
+      "endpoint": "https://maxroll.gg/assets/accordion-ED74XLPM.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.358Z",
+      "endpoint": "https://maxroll.gg/assets/badge-BtCnnXFY.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.359Z",
+      "endpoint": "https://maxroll.gg/assets/react-error-boundary.esm-zUV0pqZR.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.373Z",
+      "endpoint": "https://maxroll.gg/assets/index-C8IlXWpU.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.381Z",
+      "endpoint": "https://maxroll.gg/assets/useMainIgn-62t3H7Ho.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.381Z",
+      "endpoint": "https://maxroll.gg/assets/settings-form-content-Dx4vahC2.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.381Z",
+      "endpoint": "https://maxroll.gg/assets/connect-poe-account-info-Chh_5L1O.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.382Z",
+      "endpoint": "https://maxroll.gg/assets/store-provider-Vd6Asrx_.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.382Z",
+      "endpoint": "https://maxroll.gg/assets/store-provider-DwwYRSlA.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.382Z",
+      "endpoint": "https://maxroll.gg/assets/store-provider-uL62BGfv.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.384Z",
+      "endpoint": "https://maxroll.gg/assets/index-D5B7NnUC.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.384Z",
+      "endpoint": "https://maxroll.gg/assets/dropdown-menu-1_pB7Z2D.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.385Z",
+      "endpoint": "https://maxroll.gg/assets/index-wI52XV3O.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.385Z",
+      "endpoint": "https://maxroll.gg/assets/column-header-DQcB1K5H.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.385Z",
+      "endpoint": "https://maxroll.gg/assets/index-BRM34FrV.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.386Z",
+      "endpoint": "https://maxroll.gg/assets/index-DlbQZJMo.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.386Z",
+      "endpoint": "https://maxroll.gg/assets/service-selection-BdqPy7-r.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.387Z",
+      "endpoint": "https://maxroll.gg/assets/user-sub-type-cache-DFssqkld.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.387Z",
+      "endpoint": "https://maxroll.gg/assets/external-libs-DJkVFt9B.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.387Z",
+      "endpoint": "https://maxroll.gg/assets/line-separator-Bz-dw4qB.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.387Z",
+      "endpoint": "https://maxroll.gg/assets/user-auth-card-DCqVV4AE.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.388Z",
+      "endpoint": "https://maxroll.gg/assets/ory-utils-CyGjQZMt.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.399Z",
+      "endpoint": "https://maxroll.gg/assets/index-9FN8XdXw.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.399Z",
+      "endpoint": "https://maxroll.gg/assets/utils-DsZfy_ae.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.399Z",
+      "endpoint": "https://maxroll.gg/assets/sites-BBlceG8J.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.399Z",
+      "endpoint": "https://maxroll.gg/assets/_baseGetTag-BbTeXNYe.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.399Z",
+      "endpoint": "https://maxroll.gg/assets/iconBase-VHdjYBsW.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.399Z",
+      "endpoint": "https://maxroll.gg/assets/index-BrhoaaMv.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.400Z",
+      "endpoint": "https://maxroll.gg/assets/index-BxNYTUUc.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.403Z",
+      "endpoint": "https://maxroll.gg/assets/sheet-D95kcjtA.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.404Z",
+      "endpoint": "https://maxroll.gg/assets/menu-B_ZQFdYu.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.404Z",
+      "endpoint": "https://maxroll.gg/assets/usePublicLeagues-B65eacvK.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.404Z",
+      "endpoint": "https://maxroll.gg/assets/pencil-CzHjpiha.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.404Z",
+      "endpoint": "https://maxroll.gg/assets/index-BX3fqNA8.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.408Z",
+      "endpoint": "https://maxroll.gg/assets/index-Cef8Deab.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.409Z",
+      "endpoint": "https://maxroll.gg/assets/scroll-area-Dj8n7zY2.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.409Z",
+      "endpoint": "https://maxroll.gg/assets/play-DWXFU4fo.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.409Z",
+      "endpoint": "https://maxroll.gg/assets/plus-DWbjU6qc.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.409Z",
+      "endpoint": "https://maxroll.gg/assets/client-only-1LwiACwj.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.409Z",
+      "endpoint": "https://maxroll.gg/assets/skeleton-BWQZRiFq.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.410Z",
+      "endpoint": "https://maxroll.gg/assets/listing-category-select-DW5t_1gW.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.410Z",
+      "endpoint": "https://maxroll.gg/assets/package-DpeE3YGx.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.410Z",
+      "endpoint": "https://maxroll.gg/assets/useSyncLeagueStores-C0UrSRjn.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.410Z",
+      "endpoint": "https://maxroll.gg/assets/list-BabcCMr7.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.411Z",
+      "endpoint": "https://maxroll.gg/assets/immer-Dw4EE-Qj.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.411Z",
+      "endpoint": "https://maxroll.gg/assets/info-DCVA3d3V.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.411Z",
+      "endpoint": "https://maxroll.gg/assets/currency-input-rbw61MJT.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.411Z",
+      "endpoint": "https://maxroll.gg/assets/tabs-CSldNL39.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.411Z",
+      "endpoint": "https://maxroll.gg/assets/obscenity-BiMe-aiJ.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.411Z",
+      "endpoint": "https://maxroll.gg/assets/price-range-control-EaEYNzhN.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.412Z",
+      "endpoint": "https://maxroll.gg/assets/store-Sbx7IxO9.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.412Z",
+      "endpoint": "https://maxroll.gg/assets/schemas-D5mh-D-H.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.412Z",
+      "endpoint": "https://maxroll.gg/assets/vouch-history-dialog-Uj1xT6UK.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.413Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/game-icons/d4.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.423Z",
+      "endpoint": "https://maxroll.gg/assets/index-06f2a400-DbUgGlFd.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.438Z",
+      "endpoint": "https://maxroll.gg/assets/index-D18xLVj4.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.439Z",
+      "endpoint": "https://fonts.googleapis.com/css2",
+      "status": 200,
+      "resourceType": "stylesheet"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.440Z",
+      "endpoint": "https://maxroll.gg/assets/useUiStateStore-CQw9qIf2.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.440Z",
+      "endpoint": "https://fonts.googleapis.com/css",
+      "status": 200,
+      "resourceType": "stylesheet"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.440Z",
+      "endpoint": "https://fonts.googleapis.com/css2",
+      "status": 200,
+      "resourceType": "stylesheet"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.498Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/game-logos/minecraft-dungeons-2-logo.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.498Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/minor-branches/poe-2/poe-2-icon.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.499Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/game-logos/poe-logo.png",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.499Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/game-logos/d4logo.png",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.499Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/game-logos/d2logo.png",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.499Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/game-logos/le-logo.png",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.500Z",
+      "endpoint": "https://maxroll.gg/assets/planner-CIszbscB.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.500Z",
+      "endpoint": "https://maxroll.gg/assets/index-BArjJOpT.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.500Z",
+      "endpoint": "https://maxroll.gg/assets/d4-4cdL6Mb1.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.501Z",
+      "endpoint": "https://maxroll.gg/assets/floating-ads-page-D-PRN6F-.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.501Z",
+      "endpoint": "https://maxroll.gg/assets/d4.planner-Dio_0biR.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.501Z",
+      "endpoint": "https://maxroll.gg/assets/layout-list-ZhP35KHm.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.502Z",
+      "endpoint": "https://maxroll.gg/assets/whisper.utils-uuXKJvv5.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.502Z",
+      "endpoint": "https://maxroll.gg/assets/clock-CYF5kjDZ.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.502Z",
+      "endpoint": "https://maxroll.gg/assets/quantity-column-DyyIrkoQ.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.502Z",
+      "endpoint": "https://maxroll.gg/assets/loader-circle-DYLVRL2s.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.503Z",
+      "endpoint": "https://maxroll.gg/assets/useAutoInactiveListingsDialog-CuhiAg60.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.503Z",
+      "endpoint": "https://maxroll.gg/assets/check-column-5BF2XmaJ.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.503Z",
+      "endpoint": "https://maxroll.gg/assets/price-column-KoEDSQAk.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.503Z",
+      "endpoint": "https://maxroll.gg/assets/multiplier-column-CKHNUukd.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.504Z",
+      "endpoint": "https://maxroll.gg/assets/useListingToolStore-Cfv7vSNu.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.504Z",
+      "endpoint": "https://maxroll.gg/assets/service-table-columns-DSSvqMX8.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.504Z",
+      "endpoint": "https://maxroll.gg/assets/arrow-right-to-line-5FGsGrHd.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.504Z",
+      "endpoint": "https://maxroll.gg/assets/root-BjzZswKH.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.518Z",
+      "endpoint": "https://maxroll.gg/assets/index-38cxNcp8.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.519Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/game-logos/borderlands-4-red-logo.svg",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.519Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/game-logos/la-logo.png",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.519Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/game-logos/blue-protocol-logo.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.520Z",
+      "endpoint": "https://cdn.ziffstatic.com/pg/maxroll.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.520Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/game-logos/wow-retail-icon-v3.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.521Z",
+      "endpoint": "https://maxroll.gg/assets/index-BBXz3hyC.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.522Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/game-logos/coe33-icon.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.523Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/game-logos/diablo-iii-logo.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.523Z",
+      "endpoint": "https://maxroll.gg/js/sponsor.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.527Z",
+      "endpoint": "https://maxroll.gg/assets/index-BhfnTdAy.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.682Z",
+      "endpoint": "https://cdn.ziffstatic.com/ajs",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.683Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/maxroll-mark-icon.svg",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.683Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/icons/frontend/message.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.683Z",
+      "endpoint": "https://fonts.gstatic.com/s/sourcesans3/v20/nwpStKy2OAdR1K-IwhWudF-R3w8aZQ.woff2",
+      "status": 200,
+      "resourceType": "font"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.683Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/games.svg",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.683Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/icons/frontend/gift.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.684Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/blue-arrow-down.svg",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.685Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/more-circle.svg",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.686Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/icons/frontend/discovery.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.686Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/starforge-logo.svg",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.686Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/chevron-right.svg",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.687Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/icons/frontend/user.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.687Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/home.svg",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.687Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/icons/frontend/search.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.688Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/twitch-logo-gray.svg",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.688Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/instagram-logo-gray.svg",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.689Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/youtube-logo-gray.svg",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.690Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/twitter-x-logo-gray.svg",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.691Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/discord-logo-gray.svg",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.691Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/game-logos/hell-clock-logo.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.691Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/icons/frontend/news.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.699Z",
+      "endpoint": "https://cdn.cookielaw.org/consent/0195d361-30a1-783f-9aea-4a2b8b42657a/0195d361-30a1-783f-9aea-4a2b8b42657a.json",
+      "status": 200,
+      "resourceType": "xhr"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.769Z",
+      "endpoint": "https://bidpapers.com/static/h4gi62et6i_ld.index.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.801Z",
+      "endpoint": "https://geolocation.onetrust.com/cookieconsentpub/v1/geo/location",
+      "status": 200,
+      "resourceType": "xhr"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.809Z",
+      "endpoint": "https://cdn.ziffstatic.com/pub/icong1.png",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.827Z",
+      "endpoint": "https://cdn.ziffstatic.com/jst/otBannerSdk.202609.2.0.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.837Z",
+      "endpoint": "https://maxroll.gg/__manifest",
+      "status": 200,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.838Z",
+      "endpoint": "https://cdn.ziffstatic.com/pg/openads.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.839Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/icons/frontend/pin.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.865Z",
+      "endpoint": "https://maxroll.gg/assets/index-14xl38Q7.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.865Z",
+      "endpoint": "https://config.aps.amazon-adsystem.com/configs/3158",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.871Z",
+      "endpoint": "https://client.aps.amazon-adsystem.com/publisher.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.879Z",
+      "endpoint": "https://cdn.cookielaw.org/consent/0195d361-30a1-783f-9aea-4a2b8b42657a/01a13247-6fe6-7446-a453-8cadee93172d/en.json",
+      "status": 200,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.881Z",
+      "endpoint": "https://maxroll.gg/assets/index-njtO3FZf.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.887Z",
+      "endpoint": "https://maxroll.gg/assets/index-Bc0Fzdxp.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.894Z",
+      "endpoint": "https://cdn.confiant-integrations.net/mA7f6kSsiSaXKqvo4eBPTpe0oa0/gpt_and_prebid/config.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.901Z",
+      "endpoint": "https://cdn.ziffstatic.com/jst/otGPP.202609.2.0.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.917Z",
+      "endpoint": "https://aax.amazon-adsystem.com/e/dtb/bid/44366.75/0/prebid",
+      "status": 200,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:48.919Z",
+      "endpoint": "https://maxroll.gg/assets/export-DOjdL1l3.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.058Z",
+      "endpoint": "https://cdn.confiant-integrations.net/D4QxaEgV4932fC_gwr4qNIJFm44/video/config.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.059Z",
+      "endpoint": "https://cdn.cookielaw.org/scripttemplates/202609.2.0/assets/otCommonStyles.css",
+      "status": 200,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.059Z",
+      "endpoint": "https://cdn.confiant-integrations.net/gptprebidnative/202610151417/wrap.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.167Z",
+      "endpoint": "https://maxroll.gg/assets/index-Chw5CrPt.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.167Z",
+      "endpoint": "https://maxroll.gg/api/twitch",
+      "status": 200,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.167Z",
+      "endpoint": "https://maxroll.gg/api/me",
+      "status": 200,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.167Z",
+      "endpoint": "https://maxroll.gg/assets/api.twitch-l0sNRNKZ.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.168Z",
+      "endpoint": "https://maxroll.gg/assets/index-CBxCq927.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.168Z",
+      "endpoint": "https://maxroll.gg/assets/index-BzmMgIMI.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.175Z",
+      "endpoint": "https://maxroll.gg/assets/index-D9a1SgJC.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.176Z",
+      "endpoint": "https://c.amazon-adsystem.com/bao-csm/aps-comm/aps_csm.js",
+      "status": 200,
+      "resourceType": "xhr"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.176Z",
+      "endpoint": "https://sb.scorecardresearch.com/beacon.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.177Z",
+      "endpoint": "https://planners.maxroll.gg/page-overrides/public",
+      "status": 200,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.177Z",
+      "endpoint": "https://metrics.rapidedge.io/gamera.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.179Z",
+      "endpoint": "https://securepubads.g.doubleclick.net/pagead/managed/js/gpt/m202610150101/pubads_impl.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.333Z",
+      "endpoint": "https://www.googletagmanager.com/gtag/js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.334Z",
+      "endpoint": "https://cdn.static.zdbb.net/js/z0WVjCBSEeGLoxIxOQVEwQ.min.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.334Z",
+      "endpoint": "https://www.clarity.ms/tag/v947z7ez2x",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.354Z",
+      "endpoint": "https://fastlane.rubiconproject.com/a/api/fastlane.json",
+      "status": 200,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.417Z",
+      "endpoint": "https://planners.maxroll.gg/profiles/load/d4/1g1any0x",
+      "status": 200,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.417Z",
+      "endpoint": "https://cdn.confiant-integrations.net/video/202610151417/wrap.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.515Z",
+      "endpoint": "https://fundingchoicesmessages.google.com/i/5691",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.575Z",
+      "endpoint": "https://www.google.com.vn/ads/ga-audiences",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.592Z",
+      "endpoint": "https://securepubads.g.doubleclick.net/pagead/managed/dict/m202610200101/gpt",
+      "status": 200,
+      "resourceType": "other"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.600Z",
+      "endpoint": "https://planners.maxroll.gg/users/whoami",
+      "status": 401,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.625Z",
+      "endpoint": "https://cm.g.doubleclick.net/partnerpixels",
+      "status": 200,
+      "resourceType": "document"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.647Z",
+      "endpoint": "https://scripts.clarity.ms/0.8.72-beta/clarity.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.678Z",
+      "endpoint": "https://sb.scorecardresearch.com/b",
+      "status": 302,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.689Z",
+      "endpoint": "https://69c029383bbea3d60244c7407186cb96.safeframe.googlesyndication.com/safeframe/1-0-45/html/container.html",
+      "status": 200,
+      "resourceType": "document"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.693Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/game/data.enus.json",
+      "status": 200,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.742Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/game/data.min.json",
+      "status": 200,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.872Z",
+      "endpoint": "https://securepubads.g.doubleclick.net/gampad/ads",
+      "status": 200,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:49.911Z",
+      "endpoint": "https://sb.scorecardresearch.com/b2",
+      "status": 204,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.256Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1800745969.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.256Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1493282523.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.256Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/570613437.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.258Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3831419091.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.258Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/593088366.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.258Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2281909844.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.258Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2590867783.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.258Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2489669816.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.258Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/bg-rogue.4470cffc.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.259Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/paragon.a32a0012.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.260Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3169811489.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.260Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2438399663.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.260Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/SansSerif_Italic.694ffd04.ttf",
+      "status": 200,
+      "resourceType": "font"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.261Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/858665677.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.261Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/4095714092.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.261Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1777188871.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.261Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/background.3340b189.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.261Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1157853967.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.261Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/833791648.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.262Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1027190712.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.262Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1014279793.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.262Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/4274383807.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.262Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2218573702.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.262Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/914686433.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.262Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/4204752281.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.262Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/673609261.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.263Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/7199608.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.264Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3340286619.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.264Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/line.3e32b2e7.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.264Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3996462973.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.264Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3769175811.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.264Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1711395052.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.264Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1980909659.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.264Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3968716431.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.265Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3549828161.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.265Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2660955585.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.265Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/ExocetMedium.01c9da0e.ttf",
+      "status": 200,
+      "resourceType": "font"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.265Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/frame-sm.b1af71f3.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.265Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1539931079.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.265Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/983874568.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.265Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2439438646.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.266Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/tiles.38395369.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.266Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1214347041.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.266Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1196437418.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.266Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2307159530.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.266Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1643528245.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.266Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2901939234.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.267Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/4249947077.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.267Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3616384966.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.267Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3358809279.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.267Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3825033762.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.267Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/385131478.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.267Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/skill-lines-a-v2.547e43e6.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.267Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1184662454.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.267Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2916187532.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.268Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/7099689.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.268Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/744033029.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.268Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1896914492.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.268Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/lines.06866821.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.268Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1555000792.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.268Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1392724544.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.268Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3003875885.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.268Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3486228819.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.269Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/4145162377.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.269Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/4105356248.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.269Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1994634449.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.269Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2263047508.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.269Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3078535150.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.269Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2920834280.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.269Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/4058469173.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.271Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2780174111.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.271Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2096441689.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.271Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/mercenary.7dbce840.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.271Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3072630825.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.272Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/frames.a625a94e.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.272Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/39097082.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.272Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1818791500.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.272Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1620674625.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.272Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3057540394.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.273Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3047367406.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.273Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2702495960.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.273Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3551686327.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.274Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3013726896.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.274Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3601548611.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.274Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/4217864944.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.274Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3921071145.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.274Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/518839358.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.274Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/d4/classes/rogue.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.274Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1565262918.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.274Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3814921826.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.274Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/poe2/build-guides/poe2-pattern.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.274Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1512077676.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.274Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/skill-lines.c07c2562.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.274Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/835918151.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.274Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3328799720.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.275Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/166406234.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.275Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/points.ac392d8f.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.275Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1866407493.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.275Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3614186810.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.275Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2825736727.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.275Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/Serif.cd8cd0ef.otf",
+      "status": 200,
+      "resourceType": "font"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.276Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1587379851.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.276Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3948011034.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.276Z",
+      "endpoint": "https://fonts.gstatic.com/s/sourcesans3/v15/nwpStKy2OAdR1K-IwhWudF-R3w8aZQ.woff2",
+      "status": 200,
+      "resourceType": "font"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.276Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/board-background.5a4d1647.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.276Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1588429676.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.276Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1043036719.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.276Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2793072676.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.276Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/4017507106.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.276Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/large-line.61f473b5.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.276Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/750137174.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.276Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/points40.26cce059.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.276Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3202322446.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.276Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/skill-lines-v2.ad8eec6c.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.276Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/446244646.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.277Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1014847393.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.277Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/35213322.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.277Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/898961067.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.277Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1968830177.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.277Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/line-v2.b37199b3.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.277Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3847985658.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.277Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/skill-lines-a.9c2e7586.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.277Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/353880186.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.277Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/146159251.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.277Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3886390560.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.277Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/SansSerif.26d0ba43.ttf",
+      "status": 200,
+      "resourceType": "font"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.277Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2841920196.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.278Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1093628598.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.278Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/678742091.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.278Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1078773311.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.278Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1561866532.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.278Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/support.fea8a6ca.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.313Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/slots.20b6acce.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.313Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/rogue-v2.2b53abb9.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.314Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/gothic-bg.ef47bf79.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.314Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/socket.130ea97d.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.314Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/frames.979f76d2.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.347Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/664139391.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.348Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2679069819.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.348Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3577328069.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.348Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/gems.89be3eb3.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.348Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3902529418.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.348Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/4061938947.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.349Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3125733805.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.349Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1903997053.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.349Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2853628587.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.349Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3931493632.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.349Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2853628615.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.349Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/393769349.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.350Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2734424196.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.350Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3128664775.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.350Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2271106777.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.350Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2231096169.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.350Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3128664768.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.350Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2231096141.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.350Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/skillbar.9c45ba7b.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.351Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/talismans.8d8c4d27.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.351Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/seal-slot.9e3e9bfe.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.351Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1884221863.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.351Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/filled-charm-slot.82a6abc9.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.351Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3708723295.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.351Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1884221864.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.352Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1884221862.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.352Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/maxroll-mark-icon.svg",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.352Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1332695357.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.352Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/spec-rogue.1a423ac1.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.353Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/team/mattias.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.353Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1884221860.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.353Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/1884221861.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.353Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3144293964.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.402Z",
+      "endpoint": "https://zdbb.net/check_c",
+      "status": 200,
+      "resourceType": "xhr"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.405Z",
+      "endpoint": "https://gurgle.zdbb.net/info",
+      "status": 200,
+      "resourceType": "xhr"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.406Z",
+      "endpoint": "https://maxroll.gg/api/twitch",
+      "status": 200,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.445Z",
+      "endpoint": "https://maxroll.gg/api/twitch",
+      "status": 200,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.464Z",
+      "endpoint": "https://securepubads.g.doubleclick.net/pcs/view",
+      "status": 200,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.474Z",
+      "endpoint": "https://securepubads.g.doubleclick.net/pcs/view",
+      "status": 200,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.484Z",
+      "endpoint": "https://tpc.googlesyndication.com/simgad/4230167927532890035",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.485Z",
+      "endpoint": "https://tpc.googlesyndication.com/simgad/4230167927532890035",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.485Z",
+      "endpoint": "https://tpc.googlesyndication.com/pagead/js/r20261019/r20110914/client/window_focus.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.486Z",
+      "endpoint": "https://tpc.googlesyndication.com/pagead/js/r20261019/r20110914/abg_lite.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.488Z",
+      "endpoint": "https://tpc.googlesyndication.com/pagead/js/r20261019/r20110914/client/window_focus.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.494Z",
+      "endpoint": "https://tpc.googlesyndication.com/pagead/js/r20261019/r20110914/abg_lite.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.519Z",
+      "endpoint": "https://pagead2.googlesyndication.com/pagead/managed/js/activeview/current/ufs_web_display.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.545Z",
+      "endpoint": "https://pagead2.googlesyndication.com/pagead/managed/js/activeview/current/ufs_web_display.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.589Z",
+      "endpoint": "https://zdbb.net/l/z0WVjCBSEeGLoxIxOQVEwQ",
+      "status": 303,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.595Z",
+      "endpoint": "https://securepubads.g.doubleclick.net/pcs/view",
+      "status": 200,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.604Z",
+      "endpoint": "https://pagead2.googlesyndication.com/pagead/gen_204",
+      "status": 204,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.618Z",
+      "endpoint": "https://securepubads.g.doubleclick.net/pcs/view",
+      "status": 200,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.640Z",
+      "endpoint": "https://pagead2.googlesyndication.com/pagead/gen_204",
+      "status": 204,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.640Z",
+      "endpoint": "https://pagead2.googlesyndication.com/pagead/gen_204",
+      "status": 204,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.640Z",
+      "endpoint": "https://pagead2.googlesyndication.com/pagead/gen_204",
+      "status": 204,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.663Z",
+      "endpoint": "https://pagead2.googlesyndication.com/pagead/gen_204",
+      "status": 204,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.663Z",
+      "endpoint": "https://pagead2.googlesyndication.com/pagead/gen_204",
+      "status": 204,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.684Z",
+      "endpoint": "https://cm.g.doubleclick.net/pixel",
+      "status": 302,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.689Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/skills.1e683ef9.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.690Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/items.5c30e3bb.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.712Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/aspects.80aeefac.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.785Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:51.873Z",
+      "endpoint": "https://zdbb.net/l/qI109lRAEeGCiBIxORcFRw/",
+      "status": 303,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.055Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.065Z",
+      "endpoint": "https://pixel.rubiconproject.com/token",
+      "status": 204,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.125Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/maxroll-mark-icon-48x48.png",
+      "status": 200,
+      "resourceType": "other"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.164Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/maxroll-mark-icon.svg",
+      "status": 200,
+      "resourceType": "other"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.172Z",
+      "endpoint": "https://ep1.adtrafficquality.google/getconfig/sodar",
+      "status": 200,
+      "resourceType": "xhr"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.214Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.256Z",
+      "endpoint": "https://c.clarity.ms/c.gif",
+      "status": 302,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.292Z",
+      "endpoint": "https://ep2.adtrafficquality.google/sodar/sodar2.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.387Z",
+      "endpoint": "https://ep2.adtrafficquality.google/sodar/sodar2/255/runner.html",
+      "status": 200,
+      "resourceType": "document"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.405Z",
+      "endpoint": "https://www.google.com/recaptcha/api2/aframe",
+      "status": 200,
+      "resourceType": "document"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.480Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.488Z",
+      "endpoint": "https://pagead2.googlesyndication.com/bg/cFw71dxkUomkQXM7t6QoYNjBlWI8nymNIgO1CZOepbY.js",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.491Z",
+      "endpoint": "https://pagead2.googlesyndication.com/pagead/sodar",
+      "status": 204,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.556Z",
+      "endpoint": "https://c.bing.com/c.gif",
+      "status": 302,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.565Z",
+      "endpoint": "https://ep2.adtrafficquality.google/generate_204",
+      "status": 204,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.636Z",
+      "endpoint": "https://c.clarity.ms/c.gif",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.638Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.651Z",
+      "endpoint": "https://pagead2.googlesyndication.com/pcs/activeview",
+      "status": 200,
+      "resourceType": "fetch"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.868Z",
+      "endpoint": "https://jogger.zdbb.net/check",
+      "status": 200,
+      "resourceType": "xhr"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:52.914Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:53.059Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:53.137Z",
+      "endpoint": "https://ep1.adtrafficquality.google/pagead/sodar",
+      "status": 204,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:53.217Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:53.367Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:53.638Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:53.786Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:53.938Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:54.206Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:54.473Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:54.618Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:54.887Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:55.151Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:55.308Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:55.455Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:56.362Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/charm-slot.82a3cf12.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:56.362Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/empty.42d63759.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:56.363Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:56.390Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/locked-charm-slot.09f479df.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:56.425Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/maxroll-mark-icon-48x48.png",
+      "status": 200,
+      "resourceType": "other"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:56.462Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/maxroll-mark-icon.svg",
+      "status": 200,
+      "resourceType": "other"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:56.746Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:57.019Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:57.560Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:57.941Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": null,
+      "observedAt": "2026-10-21T11:59:58.202Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.414Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/highlight.de4a1895.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.416Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/tooltip-base.d5050608.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.418Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/frame-legendary.b243f03a.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.418Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/frame-mythic.4695b2a7.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.419Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/headers.06cd93ea.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.426Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/list-icons.891a878a.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.426Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2834110305.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.426Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2499146167.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.426Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/frame-unique.867dc987.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.427Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3290737662.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.479Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/4279695309.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.479Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.502Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/4259099416.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.528Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/261700693.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.562Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2562904665.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.582Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3534216513.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.615Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.619Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2590632669.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.644Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/3665411842.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.660Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/fontIcons.37f640db.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.662Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/static/media/frame-rare.0ebba207.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:58.662Z",
+      "endpoint": "https://assets-ng.maxroll.gg/d4-tools/images/webp/2766308895.webp",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:59.192Z",
+      "endpoint": "https://assets-ng.maxroll.gg/images/check.svg",
+      "status": 200,
+      "resourceType": "image"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:59.193Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:59.447Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    },
+    {
+      "phase": "A-online-warmup",
+      "observedAt": "2026-10-21T11:59:59.703Z",
+      "endpoint": "https://live.primis.tech/live/liveView.php",
+      "status": 200,
+      "resourceType": "script"
+    }
+  ],
+  "evidence": {
+    "screenshots": [
+      "evidence/offline-poc/warm-offline-b3.png",
+      "evidence/offline-poc/warm-offline-a-final.png"
+    ],
+    "breakpointRequested": {
+      "lineNumber": 762,
+      "columnNumber": 226096
+    },
+    "breakpointInitialResolvedLocations": 0,
+    "breakpointResolvedEvents": 1,
+    "pausedCount": 2520,
+    "publishedBuildMutated": false,
+    "saveOrPublishInvoked": false,
+    "cookiesTokensOrStorageRead": false,
+    "proprietaryBundleRetained": false,
+    "cleanup": "PASS"
+  }
+}

@@ -1,0 +1,20 @@
+L1 diagnostic attempts
+
+Attempt 1
+- Command: node poc/warm_offline_poc.js ...
+- Exit: 1 before browser launch
+- stderr: Error: Cannot find module 'playwright-core'
+- Root cause: direct Node execution did not inherit the NODE_PATH used by maxroll_poc.py.
+- Fix: NODE_PATH=/tmp/issue106-f4.Z3XkXq/node_modules
+
+Attempt 2
+- Exit: 1 after capture
+- stderr: Error: a remote response completed after offline activation
+- Evidence: one already in-flight Primis advertising script response completed about 28 ms after offline activation, outside every calculation phase.
+- Root cause: verifier conflated any late response with a calculation-correlated response.
+- Fix: retain all responses, tag each with active phase, and fail if a remote response completes during B/A calculation.
+
+Final attempt
+- Exit: 0
+- Status: L1_WARM_OFFLINE_PASS
+- Remote responses completed during B/A calculation phases: 0
