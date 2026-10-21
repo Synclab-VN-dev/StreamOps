@@ -1,0 +1,86 @@
+{
+  "run": {
+    "started_at": "2026-10-21T12:14:55+07:00",
+    "completed_at": "2026-10-21T12:16:26+07:00",
+    "tested_git_head": "9e1eec2838f73557853e2d017735b9d52533355e",
+    "classification": "BLOCKED",
+    "summary": {
+      "PASS": 6,
+      "FAIL": 0,
+      "BLOCKED": 1,
+      "NOT_RUN": 3
+    }
+  },
+  "tests": [
+    {
+      "id": "NET-01",
+      "status": "PASS",
+      "expected": "maxroll.gg resolves successfully",
+      "actual": "Resolved to two IPv4 and two IPv6 Cloudflare addresses",
+      "evidence": ["evidence/network.txt"]
+    },
+    {
+      "id": "NET-02",
+      "status": "PASS",
+      "expected": "planners.maxroll.gg resolves successfully",
+      "actual": "Resolved to two IPv4 and two IPv6 Cloudflare addresses",
+      "evidence": ["evidence/network.txt"]
+    },
+    {
+      "id": "NET-03",
+      "status": "PASS",
+      "expected": "TLS and HTTP response from maxroll.gg",
+      "actual": "Certificate verification OK; HTTPS returned HTTP 200 text/html",
+      "evidence": ["evidence/network.txt"]
+    },
+    {
+      "id": "NET-04",
+      "status": "PASS",
+      "expected": "TLS and HTTP response from planners.maxroll.gg",
+      "actual": "Certificate verification OK; HTTPS returned HTTP 200 application/json",
+      "evidence": ["evidence/network.txt"]
+    },
+    {
+      "id": "API-01",
+      "status": "PASS",
+      "expected": "Assess profile-load status, content type, and response",
+      "actual": "Publicly sourced build ID returned HTTP 200 application/json, 18240 bytes; endpoint remains unofficial/unsupported",
+      "evidence": ["evidence/profile-response.json"]
+    },
+    {
+      "id": "API-02",
+      "status": "PASS",
+      "expected": "Determine build schema when valid JSON is returned",
+      "actual": "Valid JSON parsed; nested data string contains profiles, item pool, options, skill tree, paragon, and related build-input structures",
+      "evidence": ["evidence/profile-response.json"]
+    },
+    {
+      "id": "CALC-01",
+      "status": "BLOCKED",
+      "expected": "Find evidence for or against a calculation endpoint",
+      "actual": "Planner traffic inspection was not run because published robots policy prohibits automated retrieval and disallows /d4/planner/*; profile response had no exact calculated-output keys",
+      "evidence": ["evidence/network.txt", "evidence/profile-response.json"]
+    },
+    {
+      "id": "CALC-02",
+      "status": "NOT_RUN",
+      "expected": "Obtain Character Stats A/B after changing a flat modifier",
+      "actual": "Not run because CALC-01 browser discovery was blocked by published access policy",
+      "evidence": ["evidence/network.txt"]
+    },
+    {
+      "id": "CALC-03",
+      "status": "NOT_RUN",
+      "expected": "Obtain Character Stats A/B after changing a percentage modifier",
+      "actual": "Not run because CALC-01 browser discovery was blocked by published access policy",
+      "evidence": ["evidence/network.txt"]
+    },
+    {
+      "id": "CALC-04",
+      "status": "NOT_RUN",
+      "expected": "Obtain Character Stats A/B after toggling a conditional effect",
+      "actual": "Not run because CALC-01 browser discovery was blocked by published access policy",
+      "evidence": ["evidence/network.txt"]
+    }
+  ]
+}

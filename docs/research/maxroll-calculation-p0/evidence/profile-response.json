@@ -1,0 +1,98 @@
+{
+  "captured_at": "2026-10-21T12:15:41+07:00",
+  "test_cases": ["API-01", "API-02"],
+  "request": {
+    "method": "GET",
+    "url_template": "https://planners.maxroll.gg/profiles/load/d4/{buildId}",
+    "build_id": "zj6zc20q",
+    "authentication_sent": false,
+    "source": "https://www.reddit.com/r/D4Barbarian/comments/1wqem82/i_can_probably_go_faster_what_do_you_think/"
+  },
+  "response": {
+    "http_status": 200,
+    "content_type": "application/json; charset=utf-8",
+    "content_length_header": 18240,
+    "body_bytes": 18240,
+    "body_sha256": "2d7663e46e9af157257ad8c5bcdb9d77de48d41116b45702ed4b1bf3cd0f1f51",
+    "valid_json": true,
+    "top_level_type": "object",
+    "top_level_schema": {
+      "accessed": "number",
+      "average_rating": "number",
+      "category": "string",
+      "class": "string",
+      "data": "string",
+      "date": "string",
+      "folder": "number",
+      "game": "string",
+      "id": "string",
+      "mainset": "string",
+      "metadata": "string",
+      "name": "string",
+      "public": "boolean",
+      "search_metadata": "object",
+      "season": "string",
+      "shared": "boolean",
+      "tags": "null",
+      "total_ratings": "number",
+      "type": "string",
+      "user": "object",
+      "userId": "number"
+    },
+    "parsed_data_schema": {
+      "activeEmbed": "number",
+      "activeProfile": "number",
+      "embeds": "array",
+      "globalNotes": "object",
+      "items": "object",
+      "lootFilters": "array",
+      "options": "object",
+      "pinnedStats": "object",
+      "profiles": "array",
+      "season": "number"
+    },
+    "parsed_profile_schema": {
+      "arsenal": "object",
+      "class": "number",
+      "elixirs": "array",
+      "items": "object",
+      "level": "number",
+      "mercenary": "object",
+      "name": "string",
+      "paragon": "object",
+      "rotations": "array",
+      "skillBar": "array",
+      "skillTree": "object",
+      "technique": "string",
+      "warPlans": "array",
+      "widgetNotes": "object",
+      "world": "object",
+      "worldTier": "number"
+    },
+    "observed_counts": {
+      "profiles": 1,
+      "items": 27,
+      "embeds": 0,
+      "option_keys": 15,
+      "pinned_stats": 0
+    },
+    "exact_calculation_output_keys_found": []
+  },
+  "sanitization": {
+    "raw_body_committed": false,
+    "omitted": [
+      "cookies and response identifiers",
+      "user and author fields",
+      "build values and notes",
+      "raw proprietary profile payload"
+    ],
+    "retained": [
+      "request provenance",
+      "HTTP metadata",
+      "body byte count and SHA-256",
+      "field names and JSON types",
+      "non-sensitive aggregate counts"
+    ]
+  },
+  "interpretation": "The response proves a profile-load JSON endpoint for this public build ID. It does not prove that the endpoint is official or supported, and it contains no verified calculated Character Stats output."
+}

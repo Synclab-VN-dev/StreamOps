@@ -1,0 +1,77 @@
+StreamOps Maxroll calculation P0 — network evidence
+Captured: 2026-10-21T12:16:10+07:00 through 2026-10-21T12:16:26+07:00
+Environment: Linux huy-synclab 6.8.0-146-generic x86_64
+Tests: NET-01, NET-02, NET-03, NET-04, CALC-01 blocker
+
+Commands:
+  getent ahosts maxroll.gg
+  getent ahosts planners.maxroll.gg
+  openssl s_client -connect HOST:443 -servername HOST -verify_return_error </dev/null
+  curl --silent --show-error --location --output /dev/null --connect-timeout 15
+    --max-time 30 --write-out 'url_effective=... http_code=... content_type=...
+    remote_ip=... ssl_verify_result=... num_redirects=...' URL
+
+[2026-10-21T12:16:11+07:00] NET-01 DNS maxroll.gg
+104.18.25.68
+104.18.24.68
+2606:4700::6812:1944
+2606:4700::6812:1844
+
+[2026-10-21T12:16:11+07:00] NET-02 DNS planners.maxroll.gg
+104.18.25.68
+104.18.24.68
+2606:4700::6812:1844
+2606:4700::6812:1944
+
+[2026-10-21T12:16:10+07:00] NET-03 TLS maxroll.gg
+subject=CN = maxroll.gg
+issuer=C = US, O = Let's Encrypt, CN = YE2
+notBefore=Aug 31 11:30:13 2026 GMT
+notAfter=Nov 29 11:30:12 2026 GMT
+SAN=DNS:*.maxroll.gg, DNS:*.poexchange.maxroll.gg, DNS:maxroll.gg
+Verification: OK
+Verify return code: 0 (ok)
+
+[2026-10-21T12:16:11+07:00] NET-03 HTTP maxroll.gg
+url_effective=https://maxroll.gg/
+http_code=200
+content_type=text/html; charset=utf-8
+remote_ip=104.18.24.68
+ssl_verify_result=0
+num_redirects=0
+
+[2026-10-21T12:16:11+07:00] NET-04 TLS planners.maxroll.gg
+subject=CN = planners.maxroll.gg
+issuer=C = US, O = Let's Encrypt, CN = YE1
+notBefore=Oct  7 04:52:45 2026 GMT
+notAfter=Jan  5 04:52:44 2027 GMT
+SAN=DNS:planners.maxroll.gg
+Verification: OK
+Verify return code: 0 (ok)
+
+[2026-10-21T12:16:11+07:00] NET-04 HTTP planners.maxroll.gg
+url_effective=https://planners.maxroll.gg/
+http_code=200
+content_type=application/json; charset=utf-8
+remote_ip=104.18.24.68
+ssl_verify_result=0
+num_redirects=0
+
+[2026-10-21T12:16:22+07:00] CALC-01 verified access-policy blocker
+URL: https://maxroll.gg/robots.txt
+Relevant published policy (short excerpts):
+  "Use of any robot, crawler, or other tool to scrape, harvest, extract, or
+  retrieve any content on this website using automated means is prohibited
+  without written permission from Ziff Davis."
+  User-agent: *
+  Disallow: /d4/planner/*
+
+Consequence: Playwright automation, planner network interception, UI mutation,
+and screenshots were not run. No CAPTCHA, authentication, anti-bot measure, or
+published access restriction was bypassed. No calculation-trace.json or
+screenshots were created because no calculation run occurred.
+
+[2026-10-21T12:16:26+07:00] planners.maxroll.gg robots check
+GET https://planners.maxroll.gg/robots.txt
+HTTP 404 application/json; charset=utf-8
+Body: {"message":"Route GET:/robots.txt not found","error":"Not Found","statusCode":404}
