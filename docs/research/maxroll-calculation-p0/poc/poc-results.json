@@ -1,0 +1,78 @@
+{
+  "run": {
+    "checked_at": "2026-10-21T13:16:36+07:00",
+    "branch": "research/maxroll-calculation-p0",
+    "starting_head": "4c60b36170d04e0a7818e713ca2dfc00e50cecbb",
+    "verdict": "BLOCKED",
+    "coverage": {
+      "produced": 0,
+      "denominator": 50,
+      "unsupported": 50,
+      "unknown": 0
+    },
+    "supported_input_groups": [],
+    "summary": {
+      "PASS": 0,
+      "PARTIAL": 0,
+      "BLOCKED": 6,
+      "FAIL": 0
+    }
+  },
+  "tests": [
+    {
+      "id": "POC-01",
+      "test": "Load build A from editable JSON into the Maxroll calculation provider",
+      "status": "BLOCKED",
+      "actual": "No supported or currently authorized provider interface is callable",
+      "evidence": ["../poc-report.md", "../evidence/poc-infrastructure-check.txt"]
+    },
+    {
+      "id": "POC-02",
+      "test": "Calculate and export 50 Character Stats for build A",
+      "status": "BLOCKED",
+      "actual": "Calculation did not run; produced coverage is 0/50",
+      "evidence": ["../poc-report.md"]
+    },
+    {
+      "id": "POC-03",
+      "test": "Create build B by changing exactly one modifier and apply it",
+      "status": "BLOCKED",
+      "actual": "No validated arbitrary-state application contract is available; no build B file was created",
+      "evidence": ["../poc-report.md"]
+    },
+    {
+      "id": "POC-04",
+      "test": "Calculate build B and verify a real A/B delta",
+      "status": "BLOCKED",
+      "actual": "Neither A nor B calculation output exists",
+      "evidence": ["../poc-report.md"]
+    },
+    {
+      "id": "POC-05",
+      "test": "Compare A/B outputs with Maxroll UI",
+      "status": "BLOCKED",
+      "actual": "No authorized live Maxroll fixture or DevTools session is connected",
+      "evidence": ["../poc-report.md", "../evidence/poc-infrastructure-check.txt"]
+    },
+    {
+      "id": "POC-06",
+      "test": "Recalculate A and verify repeatability",
+      "status": "BLOCKED",
+      "actual": "Initial A calculation never ran",
+      "evidence": ["../poc-report.md"]
+    }
+  ],
+  "artifacts_not_created": [
+    "build-a.json",
+    "build-b.json",
+    "stats-a.json",
+    "stats-b.json",
+    "maxroll_poc.py"
+  ],
+  "historical_evidence_boundary": {
+    "metric_ids_cataloged": 50,
+    "approved_golden_metrics": 0,
+    "real_graph_parity_pass": 0,
+    "note": "Historical Maxroll fixture captures were not replayed or represented as output from this PoC."
+  }
+}

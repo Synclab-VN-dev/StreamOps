@@ -1,0 +1,51 @@
+Maxroll JSON-to-Calculated-Stats PoC — infrastructure and evidence reuse check
+Checked: 2026-10-21T13:15:27+07:00 through 2026-10-21T13:16:36+07:00
+Tests: S1 evidence reuse, S3 provider adapter gate, POC-01 through POC-06
+
+Git baseline
+- Branch: research/maxroll-calculation-p0
+- Starting HEAD: 4c60b36170d04e0a7818e713ca2dfc00e50cecbb
+- Remote research HEAD matched local.
+- Working tree was clean before this PoC evidence was added.
+
+Historical infrastructure evidence from Issue #106
+- maxroll-devtools + localhost SSH reverse tunnel to Edge on Windows A was
+  reported operational during Phase 1/2:
+  https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6173451731
+- Linux F isolated Chrome for Testing + Playwright/CDP feasibility passed under
+  a phase-specific approval:
+  https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6183958789
+- F3 reported a candidate inventory of 50 metric IDs with 50 raw and 50 display
+  values for a pinned Rogue fixture, but input completeness was PARTIAL and the
+  Golden was not approved:
+  https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6205171703
+- #106 closeout retained 0/50 real independent Graph parity PASS:
+  https://github.com/Synclab-VN-dev/StreamOps/issues/106#issuecomment-6217965965
+
+Current capability observations
+- Cached executable reports: Google Chrome for Testing 153.0.8010.12.
+- A temporary historical workspace reports playwright-core 1.64.1.
+- Running ssh processes: none.
+- Active Codex launch configuration includes:
+  mcp_servers.maxroll-devtools.enabled=false
+- Active callable-tool registry contains no Maxroll/DevTools/browser/Chrome/
+  Playwright control tool.
+- No authorized disposable Maxroll CDP session or reverse tunnel was identified.
+
+Provider gate
+- Supported Calculation API: not identified.
+- Profile API: previously observed, but it loads saved state and does not return
+  verified calculated Character Stats.
+- Authorized client runtime: unavailable in the active session.
+- Permitted browser adapter: unavailable; a new automated planner session was
+  not started.
+
+Safety decision
+- Do not attach to unrelated browser processes or profiles.
+- Do not reactivate old phase-scoped access without a current authorization.
+- Do not use cached Chrome/Playwright binaries to bypass the published access
+  restriction recorded in evidence/client-calculation/policy-check.txt.
+- Do not copy proprietary runtime code or implement substitute Diablo formulas.
+- Do not create build/stats output files or a CLI that replays cached values.
+
+Result: BLOCKED before provider invocation; Character Stats coverage 0/50.
