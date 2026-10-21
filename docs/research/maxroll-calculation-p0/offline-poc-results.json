@@ -1,12 +1,12 @@
 {
-  "schemaVersion": "maxroll-offline-poc/1",
-  "checkpoint": "L1_WARM_OFFLINE",
+  "schemaVersion": "maxroll-offline-poc/2",
   "baselineCommit": "76c852dbc93585686859e420acd75e1a38f114f6",
   "patch": "3.2.1.73552",
   "statuses": {
     "L1_WARM_OFFLINE": "PASS",
-    "L2_COLD_OFFLINE": "NOT_RUN_AT_L1_CHECKPOINT",
-    "L3_STANDALONE_LOCAL": "NOT_RUN_AT_L1_CHECKPOINT"
+    "L2_COLD_OFFLINE_DISK_CACHE_ONLY": "BLOCKED_BOOTSTRAP_DOCUMENT_NOT_SERVED",
+    "L2_COLD_OFFLINE_EPHEMERAL_LOCAL_ARCHIVE": "PASS_BOUNDED_POC",
+    "L3_STANDALONE_LOCAL_PROVIDER": "PASS_BOUNDED_LOCAL_BROWSER_RUNTIME"
   },
   "runtime": {
     "browser": "Google Chrome for Testing 153.0.8010.12",
@@ -14,70 +14,90 @@
     "assetPath": "/assets/export-DOjdL1l3.js",
     "assetBytes": 3374547,
     "assetSha256": "e796b92751d0b07be8b10eed705727467e23ba0d99eb088e87de88942c57a1f4",
-    "bundleRetained": false
+    "bundleCommitted": false
   },
   "warmOffline": {
+    "status": "L1_WARM_OFFLINE_PASS",
     "cycles": 3,
-    "snapshots": 7,
-    "offlineSnapshots": 6,
     "rawCoverage": "50/50 every snapshot",
     "displayCoverage": "34/50 every snapshot",
-    "onlineLocalParityA": "50/50 raw and display records",
-    "onlineLocalParityB": "50/50 raw and display records",
+    "aAndBMatchOnline": true,
+    "rollbackExact": true,
+    "remoteCalculationResponses": 0,
+    "meanCalculationMilliseconds": 1379.8478861666663
+  },
+  "coldOfflineDiskCache": {
+    "status": "L2_COLD_OFFLINE_BLOCKED_BOOTSTRAP_FETCH",
+    "freshBrowserProcess": true,
+    "offlineBeforeNavigation": true,
+    "navigatorOnline": false,
+    "remoteResponsesCompleted": 0,
+    "diskOrServiceWorkerResponses": 0,
+    "failedRequiredEndpoint": "https://maxroll.gg/d4/planner/1g1any0x",
+    "appBooted": false,
+    "rawCoverage": "0/50",
+    "classification": "Chromium disk cache alone is not a deployable cold-offline runtime boundary."
+  },
+  "coldOfflineEphemeralArchive": {
+    "status": "L2_COLD_OFFLINE_PASS_EPHEMERAL_ARCHIVE",
+    "archiveStorage": "process memory only",
+    "archiveRetained": false,
+    "archiveEntries": 354,
+    "archiveBytes": 59025550,
+    "newBrowserProcess": true,
+    "offlineBeforeNavigation": true,
+    "allHttpRequests": "locally fulfilled from the in-memory archive or aborted",
+    "explicitUnarchivedFetch": "FAILED_AS_EXPECTED",
+    "remoteResponsesCompleted": 0,
+    "optionalArchiveMisses": 42,
+    "cycles": 3,
+    "rawCoverage": "50/50 every snapshot",
+    "displayCoverage": "34/50 every snapshot",
+    "onlineLocalParity": "50/50 for A and B",
     "aUniqueOutputs": 1,
     "bUniqueOutputs": 1,
-    "rollbackExact": true,
-    "fireResistance": {
-      "rawA": 22,
-      "rawB": 2822,
-      "rawDelta": 2800,
-      "displayA": "22",
-      "displayB": "2,822"
-    },
-    "offlineProof": {
-      "navigatorOnlineFalseEveryOfflineSnapshot": true,
-      "cacheBustingFetch": "FAILED_AS_EXPECTED",
-      "fetchError": "TypeError: Failed to fetch",
-      "attemptedRequestsAfterOffline": 6,
-      "failedRequestsAfterOffline": 6,
-      "responsesCompletedAfterOffline": 1,
-      "responsesCompletedDuringCalculationPhases": 0,
-      "lateResponseExplanation": "One already in-flight advertising script response completed 28 ms after offline activation, before any B/A calculation phase."
-    }
+    "meanCalculationMilliseconds": 1368.8995151428571,
+    "coldBrowserLaunchMilliseconds": 150.58946599999945,
+    "coldLocalLoadMilliseconds": 7509.642790000002,
+    "navigatorOnlineCaveat": "navigator.onLine returned true on route-fulfilled pages; outbound proof is provided by context offline mode, fail-closed routing and the failed unarchived fetch."
   },
-  "performance": {
-    "browserLaunchMilliseconds": 166.10005099999998,
-    "onlineWarmLoadMilliseconds": 7613.1451830000005,
-    "offlineCalculationMilliseconds": {
-      "min": 1333.9466680000005,
-      "mean": 1379.8478861666663,
-      "median": 1381.8254049999987,
-      "max": 1425.961301000003
+  "standalone": {
+    "status": "L3_STANDALONE_LOCAL_BROWSER_PASS_BOUNDED_POC",
+    "optionA": "A separately provisioned temporary runtime package was consumed by three independent Python CLI runs (A, B, A) with Chromium offline before navigation and every HTTP request locally fulfilled or aborted.",
+    "runtimePackage": {
+      "manifestSha256": "b95e64628ad00014cb0bc0a4f1b85c16af5fde93962fcdda1e1e7a487dbf6a11",
+      "entries": 354,
+      "uniqueBlobs": 352,
+      "logicalBytes": 59025550,
+      "committed": false,
+      "cleanup": "PASS"
     },
-    "cdpTaskDurationDeltaSeconds": {
-      "min": 0.80504,
-      "mean": 0.8412759999999997,
-      "max": 0.8737939999999993
-    },
-    "cdpJsHeapUsedBytes": {
-      "min": 128915884,
-      "max": 159673260
-    },
-    "limitations": [
-      "TaskDuration is a CDP CPU-work proxy, not host-wide CPU utilization.",
-      "JSHeapUsedSize is JavaScript heap usage, not total Chromium RSS."
-    ]
+    "cli": "poc/local_maxroll_poc.py",
+    "aOnlineLocalParity": "50/50",
+    "bOnlineLocalParity": "50/50",
+    "rollbackExact": true,
+    "remainingLimitation": "The bounded runtime package is a 59 MB working superset and requires a separate authorized provisioning step; it is not a committed or redistributable artifact.",
+    "optionBNode": "BLOCKED_NO_SUPPORTED_EXPORTED_CALCULATION_INTERFACE",
+    "targetPythonCliImplemented": true,
+    "proprietaryAssetsCommitted": false
   },
   "evidence": {
-    "run": "evidence/offline-poc/warm-offline-run.json",
-    "runSha256": "be1a9ff890ec885e42534f6109e028a4193947eb87ff0f906c51934615ff000c",
+    "warmOffline": "evidence/offline-poc/warm-offline-run.json",
+    "coldDiskCache": "evidence/offline-poc/cold-offline-cache-run.json",
+    "ephemeralLocalRuntime": "evidence/offline-poc/ephemeral-local-runtime-run.json",
+    "standaloneLocal": "evidence/offline-poc/standalone-local-results.json",
     "screenshots": [
-      "evidence/offline-poc/warm-offline-b3.png",
-      "evidence/offline-poc/warm-offline-a-final.png"
-    ],
-    "harness": "poc/warm_offline_poc.js",
+      "evidence/offline-poc/cold-offline-error.png",
+      "evidence/offline-poc/ephemeral-local-before-interaction.png",
+      "evidence/offline-poc/ephemeral-local-a-final.png"
+    ]
+  },
+  "safety": {
     "publishedBuildMutated": false,
     "saveOrPublishInvoked": false,
-    "cookiesTokensOrStorageRead": false
+    "cookiesTokensOrStorageRead": false,
+    "proprietaryAssetBodiesCommitted": false,
+    "productionOrCiChanged": false,
+    "prOpened": false
   }
 }

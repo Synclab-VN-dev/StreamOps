@@ -1,0 +1,67 @@
+{
+  "contractVersion": "maxroll-standalone-local-results/1",
+  "status": "L3_STANDALONE_LOCAL_BROWSER_PASS_BOUNDED_POC",
+  "capturedAt": "2026-10-21T12:23:50.194Z",
+  "patch": "3.2.1.73552",
+  "runtimePackage": {
+    "contractVersion": "maxroll-local-runtime-package/1",
+    "manifestSha256": "b95e64628ad00014cb0bc0a4f1b85c16af5fde93962fcdda1e1e7a487dbf6a11",
+    "entries": 354,
+    "uniqueBlobs": 352,
+    "logicalBytes": 59025550,
+    "storage": "temporary /tmp only",
+    "committed": false,
+    "cleanup": "PASS"
+  },
+  "runs": [
+    {
+      "id": "A1",
+      "input": "poc/build-a.json",
+      "inputSha256": "32fdcb90bbc054981d9cfc54fa369cdbc2452aef84e22037703f2fc77e742536",
+      "output": "poc/stats-a-local.json",
+      "normalizedMetricsSha256": "5bd146f3900a28e47361cc417ba97ef4d845db03a7614b2deffdcfc540feaaec",
+      "coverage": { "raw": 50, "display": 34, "denominator": 50 },
+      "fireResistance": { "raw": 22, "display": "22" }
+    },
+    {
+      "id": "B",
+      "input": "poc/build-b.json",
+      "inputSha256": "fa398c8b089eb7b6adcc336b6a77f35db9df76a5bfeeae54a55a90545ae5189c",
+      "output": "poc/stats-b-local.json",
+      "normalizedMetricsSha256": "b0a303e64760c2fce43a3a6df3f6a7681b71b66f889da7e579e87e743ee02a49",
+      "coverage": { "raw": 50, "display": 34, "denominator": 50 },
+      "fireResistance": { "raw": 2822, "display": "2,822" }
+    },
+    {
+      "id": "A2",
+      "input": "poc/build-a.json",
+      "inputSha256": "32fdcb90bbc054981d9cfc54fa369cdbc2452aef84e22037703f2fc77e742536",
+      "output": "evidence/offline-poc/stats-a2-local.json",
+      "normalizedMetricsSha256": "5bd146f3900a28e47361cc417ba97ef4d845db03a7614b2deffdcfc540feaaec",
+      "coverage": { "raw": 50, "display": 34, "denominator": 50 },
+      "fireResistance": { "raw": 22, "display": "22" }
+    }
+  ],
+  "acceptance": {
+    "separateCliProcesses": true,
+    "runtimePackageProvisionedBeforeCli": true,
+    "offlineBeforeNavigationEachRun": true,
+    "everyHttpRequestLocallyFulfilledOrAborted": true,
+    "explicitUnarchivedFetchFailedEveryRun": true,
+    "rawCoverageEveryRun": "50/50",
+    "aRollbackExact": true,
+    "aOnlineLocalParity": "50/50",
+    "bOnlineLocalParity": "50/50",
+    "cachedStatsUsedAsCalculationInput": false,
+    "diabloFormulasImplementedLocally": false
+  },
+  "nodeStandalone": {
+    "status": "BLOCKED_NO_SUPPORTED_EXPORTED_CALCULATION_INTERFACE"
+  },
+  "safety": {
+    "publishedBuildMutated": false,
+    "saveOrPublishInvoked": false,
+    "cookiesTokensOrStorageRead": false,
+    "proprietaryAssetBodiesCommitted": false
+  }
+}

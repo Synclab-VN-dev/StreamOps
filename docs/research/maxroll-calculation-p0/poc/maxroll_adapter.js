@@ -3,6 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { chromium } = require('playwright-core');
 
 const PLANNER_URL = 'https://maxroll.gg/d4/planner/1g1any0x#3';
@@ -26,6 +27,20 @@ function assert(condition, message) {
 
 function readBuild(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
+}
+
+function sha256(bytes) {
+  return crypto.createHash('sha256').update(bytes).digest('hex');
+}
+
+function loadRuntimePackage(runtimeDir, expectedPatch) {
+  const root = path.resolve(runtimeDir);
+  const manifest = readBuild(path.join(root, 'runtime-package.json'));
+  assert(manifest.contractVersion === 'maxroll-local-runtime-package/1',
+    'unsupported local runtime package contract');
+  assert(manifest.patch === expectedPatch,
+    `runtime package patch mismatch: ${manifest.patch}`);
+  return { root, manifest };
 }
 
 async function setLevel(page, level) {
@@ -118,17 +133,36 @@ async function main() {
   try {
     browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
     context = await browser.newContext({ viewport: { width: 1600, height: 1200 } });
+    const runtimePackage = args['runtime-dir']
+      ? loadRuntimePackage(args['runtime-dir'], build.game.patch) : null;
+    if (runtimePackage) await context.setOffline(true);
     const page = await context.newPage();
     const blockedRequests = [];
+    const archiveHits = [];
+    const archiveMisses = [];
     await page.route('**/*', route => {
-      const method = route.request().method();
+      const request = route.request();
+      const method = request.method();
       if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
-        const requestUrl = new URL(route.request().url());
+        const requestUrl = new URL(request.url());
         blockedRequests.push({
           method,
           endpoint: `${requestUrl.origin}${requestUrl.pathname}`,
         });
         return route.abort('blockedbyclient');
+      }
+      if (runtimePackage) {
+        const key = request.url().split('#')[0];
+        const entry = runtimePackage.manifest.entries[key];
+        if (!entry) {
+          archiveMisses.push({ endpoint: key, resourceType: request.resourceType() });
+          return route.abort('internetdisconnected');
+        }
+        const body = fs.readFileSync(path.join(runtimePackage.root, entry.blob));
+        assert(body.length === entry.byteLength && sha256(body) === entry.sha256,
+          `runtime blob integrity mismatch: ${entry.blob}`);
+        archiveHits.push({ endpoint: key, resourceType: request.resourceType() });
+        return route.fulfill({ status: entry.status, headers: entry.headers, body });
       }
       return route.continue();
     });
@@ -175,6 +209,14 @@ async function main() {
       .match(/Game version:\s*([^\n]+)/)?.[1] || null;
     assert(observedReferencePatch === build.game.patch,
       `patch mismatch: input=${build.game.patch} observed=${observedReferencePatch}`);
+
+    if (runtimePackage) {
+      const dismiss = page.getByRole('button', { name: 'No Thanks', exact: true });
+      if (await dismiss.count() > 0 && await dismiss.first().isVisible()) {
+        await dismiss.first().click();
+        await page.waitForTimeout(300);
+      }
+    }
 
     await page.getByRole('button', { name: 'New Profile', exact: true }).click();
     await page.waitForTimeout(700);
@@ -236,6 +278,18 @@ async function main() {
       .getEntriesByType('resource').map(entry => entry.name)
       .filter(name => /^https:\/\/maxroll\.gg\/assets\/export-.*\.js/.test(name))
       .map(name => new URL(name).pathname));
+    const explicitOfflineProbe = runtimePackage ? await page.evaluate(async () => {
+      try {
+        await fetch(`https://maxroll.gg/__offline_probe_unarchived?nonce=${Date.now()}`, {
+          cache: 'no-store',
+        });
+        return 'UNEXPECTED_SUCCESS';
+      } catch {
+        return 'FAILED_AS_EXPECTED';
+      }
+    }) : null;
+    if (runtimePackage) assert(explicitOfflineProbe === 'FAILED_AS_EXPECTED',
+      'local runtime unarchived fetch unexpectedly succeeded');
 
     result = {
       contractVersion: 'maxroll-stats-poc/1',
@@ -281,6 +335,15 @@ async function main() {
         screenshot: path.relative(path.join(__dirname, '..'), screenshot),
         allowedNetworkMethods: ['GET', 'HEAD', 'OPTIONS'],
         blockedNonReadRequests: blockedRequests.length,
+        calculationMode: runtimePackage ? 'LOCAL_RUNTIME_PACKAGE_OFFLINE' : 'BROWSER_ONLINE',
+        runtimePackage: runtimePackage ? {
+          directoryCommitted: false,
+          manifestContract: runtimePackage.manifest.contractVersion,
+          archiveHits: archiveHits.length,
+          archiveMisses: archiveMisses.length,
+          everyHttpRequestLocallyFulfilledOrAborted: true,
+          explicitUnarchivedFetch: explicitOfflineProbe,
+        } : null,
         cookiesTokensOrStorageRead: false,
       },
     };

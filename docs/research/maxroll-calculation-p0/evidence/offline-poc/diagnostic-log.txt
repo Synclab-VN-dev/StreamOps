@@ -18,3 +18,39 @@ Final attempt
 - Exit: 0
 - Status: L1_WARM_OFFLINE_PASS
 - Remote responses completed during B/A calculation phases: 0
+
+L2 diagnostics
+
+Disk-cache attempt
+- A first diagnostic used Playwright request routing, which disables Chromium HTTP cache.
+- Final harness removed that confounder and used a navigation-only online seed.
+- Fresh browser process entered offline mode before navigation.
+- Result: planner document failed with ERR_INTERNET_DISCONNECTED, no app boot, 0/50 raw.
+- Classification: L2_COLD_OFFLINE_BLOCKED_BOOTSTRAP_FETCH for disk-cache-only mode.
+
+Ephemeral local archive attempt 1
+- Fresh offline browser booted the locally fulfilled app.
+- Interaction was blocked by the supported Maxroll ad-block notice overlay.
+- Fix: click the visible "No Thanks" UI button; no DOM/internal-state bypass.
+
+Ephemeral local archive attempt 2
+- A/B/A calculation completed, but the run stopped on navigator.onLine === true.
+- Root cause: navigator.onLine does not represent the fail-closed route boundary on a locally fulfilled HTTPS document.
+- Fix: retain the observed true value, require context offline before navigation, abort every archive miss, permit no route.continue call, and require an unarchived cache-busting fetch to fail.
+
+Ephemeral local archive final attempt
+- Exit: 0
+- Status: L2_COLD_OFFLINE_PASS_EPHEMERAL_ARCHIVE
+- Fresh browser process, 354 RAM-only entries / 59,025,550 bytes.
+- Three A -> B -> A cycles; 50/50 raw every snapshot; A/B online parity exact.
+- Zero outbound responses; archive cleared after run.
+
+L3 standalone local CLI
+- Provisioned contract maxroll-local-runtime-package/1 in an explicit /tmp directory.
+- Manifest SHA-256: b95e64628ad00014cb0bc0a4f1b85c16af5fde93962fcdda1e1e7a487dbf6a11.
+- Ran local_maxroll_poc.py in three separate processes: A, B, A.
+- Each process: 50/50 raw, 34/50 display, integrity-checked local blobs, unarchived fetch failed.
+- Normalized A online/local/A2 parity: exact 50/50.
+- Normalized B online/local parity: exact 50/50.
+- Missing runtime-dir negative test: exit 2, no output created.
+- Temporary 59 MB runtime package removed after capture: PASS.

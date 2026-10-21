@@ -1,0 +1,765 @@
+{
+  "contractVersion": "maxroll-stats-poc/1",
+  "provider": "maxroll",
+  "calculatedAt": "2026-10-21T12:23:36.204Z",
+  "observedMaxrollPatch": "3.2.1.73552",
+  "runtimeVersion": {
+    "applicationAsset": "/assets/export-DOjdL1l3.js",
+    "browser": "Google Chrome for Testing 153.0.8010.12",
+    "playwrightCore": "1.64.1"
+  },
+  "inputBuildSha256": "32fdcb90bbc054981d9cfc54fa369cdbc2452aef84e22037703f2fc77e742536",
+  "appliedInput": {
+    "fixture": "NEW_PROFILE_LOCAL",
+    "class": "Rogue",
+    "level": 50,
+    "worldTier": "Torment I",
+    "item": {
+      "slot": "Helm",
+      "baseName": "Runic Skullcap",
+      "observedModifiers": []
+    }
+  },
+  "coverage": {
+    "denominator": 50,
+    "metricIds": 50,
+    "rawValues": 50,
+    "displayValues": 34,
+    "unknown": 0
+  },
+  "metrics": [
+    {
+      "metricId": "maxroll.heroDetails.900",
+      "maxrollInternalId": 900,
+      "category": "summary",
+      "statName": "Weapon Damage",
+      "rawValue": 0,
+      "displayValue": "0",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.901",
+      "maxrollInternalId": 901,
+      "category": "summary",
+      "statName": "Toughness",
+      "rawValue": 693.0584806531045,
+      "displayValue": "693",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.279",
+      "maxrollInternalId": 279,
+      "category": "core",
+      "statName": "Level",
+      "rawValue": 50,
+      "displayValue": "50",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.108",
+      "maxrollInternalId": 108,
+      "category": "core",
+      "statName": "Strength",
+      "rawValue": 56,
+      "displayValue": "56",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.109",
+      "maxrollInternalId": 109,
+      "category": "core",
+      "statName": "Intelligence",
+      "rawValue": 56,
+      "displayValue": "56",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.110",
+      "maxrollInternalId": 110,
+      "category": "core",
+      "statName": "Willpower",
+      "rawValue": 57,
+      "displayValue": "57",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.111",
+      "maxrollInternalId": 111,
+      "category": "core",
+      "statName": "Dexterity",
+      "rawValue": 59,
+      "displayValue": "59",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.2036494626",
+      "maxrollInternalId": 2036494626,
+      "category": "resistances",
+      "statName": "Toughness",
+      "rawValue": 693.0584806531045,
+      "displayValue": "693",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.480",
+      "maxrollInternalId": 480,
+      "category": "resistances",
+      "statName": "Armor",
+      "rawValue": 1715,
+      "displayValue": "1,715",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.439",
+      "maxrollInternalId": 439,
+      "category": "resistances",
+      "statName": "Physical Resistance",
+      "rawValue": 22,
+      "displayValue": "22",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.446",
+      "maxrollInternalId": 446,
+      "category": "resistances",
+      "statName": "Fire Resistance",
+      "rawValue": 22,
+      "displayValue": "22",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.453",
+      "maxrollInternalId": 453,
+      "category": "resistances",
+      "statName": "Lightning Resistance",
+      "rawValue": 22,
+      "displayValue": "22",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.460",
+      "maxrollInternalId": 460,
+      "category": "resistances",
+      "statName": "Cold Resistance",
+      "rawValue": 22,
+      "displayValue": "22",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.467",
+      "maxrollInternalId": 467,
+      "category": "resistances",
+      "statName": "Poison Resistance",
+      "rawValue": 22,
+      "displayValue": "22",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.474",
+      "maxrollInternalId": 474,
+      "category": "resistances",
+      "statName": "Shadow Resistance",
+      "rawValue": 22,
+      "displayValue": "22",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.93",
+      "maxrollInternalId": 93,
+      "category": "offensive",
+      "statName": "Base Ranged Weapon Damage",
+      "rawValue": 0,
+      "displayValue": "0",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.46",
+      "maxrollInternalId": 46,
+      "category": "offensive",
+      "statName": "Base Dual Wielded Weapon Damage",
+      "rawValue": 0,
+      "displayValue": "0",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.114",
+      "maxrollInternalId": 114,
+      "category": "offensive",
+      "statName": "Weapon Speed",
+      "rawValue": 1,
+      "displayValue": "1.00",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.3",
+      "maxrollInternalId": 3,
+      "category": "offensive",
+      "statName": "Attack Speed Bonus",
+      "rawValue": 0,
+      "displayValue": null,
+      "unit": null,
+      "status": "SUPPORTED_RAW_ONLY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": null
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.4",
+      "maxrollInternalId": 4,
+      "category": "offensive",
+      "statName": "Critical Strike Chance",
+      "rawValue": 0.0514,
+      "displayValue": "5.1%",
+      "unit": "%",
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.347",
+      "maxrollInternalId": 347,
+      "category": "offensive",
+      "statName": "Critical Strike Damage",
+      "rawValue": 0.5,
+      "displayValue": "50.0%",
+      "unit": "%",
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.349",
+      "maxrollInternalId": 349,
+      "category": "offensive",
+      "statName": "Vulnerable Damage",
+      "rawValue": 0.19999999999999996,
+      "displayValue": "20.0%",
+      "unit": "%",
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.1",
+      "maxrollInternalId": 1,
+      "category": "offensive",
+      "statName": "All Damage",
+      "rawValue": 0,
+      "displayValue": null,
+      "unit": null,
+      "status": "SUPPORTED_RAW_ONLY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": null
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.49",
+      "maxrollInternalId": 49,
+      "category": "offensive",
+      "statName": "Damage with Fire",
+      "rawValue": 0,
+      "displayValue": null,
+      "unit": null,
+      "status": "SUPPORTED_RAW_ONLY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": null
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.50",
+      "maxrollInternalId": 50,
+      "category": "offensive",
+      "statName": "Damage with Lightning",
+      "rawValue": 0,
+      "displayValue": null,
+      "unit": null,
+      "status": "SUPPORTED_RAW_ONLY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": null
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.51",
+      "maxrollInternalId": 51,
+      "category": "offensive",
+      "statName": "Damage with Cold",
+      "rawValue": 0,
+      "displayValue": null,
+      "unit": null,
+      "status": "SUPPORTED_RAW_ONLY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": null
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.52",
+      "maxrollInternalId": 52,
+      "category": "offensive",
+      "statName": "Damage with Holy",
+      "rawValue": 0,
+      "displayValue": null,
+      "unit": null,
+      "status": "SUPPORTED_RAW_ONLY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": null
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.71041540",
+      "maxrollInternalId": 71041540,
+      "category": "offensive",
+      "statName": "Damage with Poison",
+      "rawValue": 0,
+      "displayValue": null,
+      "unit": null,
+      "status": "SUPPORTED_RAW_ONLY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": null
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.53",
+      "maxrollInternalId": 53,
+      "category": "offensive",
+      "statName": "Damage with Shadow",
+      "rawValue": 0,
+      "displayValue": null,
+      "unit": null,
+      "status": "SUPPORTED_RAW_ONLY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": null
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.251",
+      "maxrollInternalId": 251,
+      "category": "offensive",
+      "statName": "Damage with Imbued",
+      "rawValue": 0,
+      "displayValue": null,
+      "unit": null,
+      "status": "SUPPORTED_RAW_ONLY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": null
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.2",
+      "maxrollInternalId": 2,
+      "category": "offensive",
+      "statName": "Damage vs Elites",
+      "rawValue": 0,
+      "displayValue": null,
+      "unit": null,
+      "status": "SUPPORTED_RAW_ONLY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": null
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.25",
+      "maxrollInternalId": 25,
+      "category": "offensive",
+      "statName": "Damage vs Crowd Controlled",
+      "rawValue": 0,
+      "displayValue": null,
+      "unit": null,
+      "status": "SUPPORTED_RAW_ONLY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": null
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.56",
+      "maxrollInternalId": 56,
+      "category": "offensive",
+      "statName": "Damage vs Healthy",
+      "rawValue": 0,
+      "displayValue": null,
+      "unit": null,
+      "status": "SUPPORTED_RAW_ONLY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": null
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.166",
+      "maxrollInternalId": 166,
+      "category": "offensive",
+      "statName": "Damage vs Poisoned",
+      "rawValue": 0,
+      "displayValue": null,
+      "unit": null,
+      "status": "SUPPORTED_RAW_ONLY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": null
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.299",
+      "maxrollInternalId": 299,
+      "category": "offensive",
+      "statName": "Thorns",
+      "rawValue": 0,
+      "displayValue": "0",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.58",
+      "maxrollInternalId": 58,
+      "category": "defensive",
+      "statName": "Maximum Life",
+      "rawValue": 484.56045000000006,
+      "displayValue": "485",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.78",
+      "maxrollInternalId": 78,
+      "category": "defensive",
+      "statName": "Potion Capacity",
+      "rawValue": 4,
+      "displayValue": "4",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.180",
+      "maxrollInternalId": 180,
+      "category": "defensive",
+      "statName": "Healing Received",
+      "rawValue": 0.019949914500000002,
+      "displayValue": "2.0%",
+      "unit": "%",
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.431",
+      "maxrollInternalId": 431,
+      "category": "defensive",
+      "statName": "Armor",
+      "rawValue": 1715,
+      "displayValue": "1,715",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.357",
+      "maxrollInternalId": 357,
+      "category": "defensive",
+      "statName": "All Damage Reduction",
+      "rawValue": 0,
+      "displayValue": null,
+      "unit": null,
+      "status": "SUPPORTED_RAW_ONLY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": null
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.104",
+      "maxrollInternalId": 104,
+      "category": "defensive",
+      "statName": "Barrier Bonus",
+      "rawValue": 0,
+      "displayValue": "0.0%",
+      "unit": "%",
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.61",
+      "maxrollInternalId": 61,
+      "category": "defensive",
+      "statName": "Dodge Chance",
+      "rawValue": 0.0035395324250000002,
+      "displayValue": "0.4%",
+      "unit": "%",
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.81",
+      "maxrollInternalId": 81,
+      "category": "utility",
+      "statName": "Maximum Energy",
+      "rawValue": 100,
+      "displayValue": "100",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.286",
+      "maxrollInternalId": 286,
+      "category": "utility",
+      "statName": "Energy Regeneration",
+      "rawValue": 8.0224,
+      "displayValue": "8",
+      "unit": null,
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.80",
+      "maxrollInternalId": 80,
+      "category": "utility",
+      "statName": "Movement Speed",
+      "rawValue": 1,
+      "displayValue": "100.0%",
+      "unit": "%",
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.92",
+      "maxrollInternalId": 92,
+      "category": "utility",
+      "statName": "Cooldown Reduction",
+      "rawValue": 0,
+      "displayValue": null,
+      "unit": null,
+      "status": "SUPPORTED_RAW_ONLY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": null
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.152",
+      "maxrollInternalId": 152,
+      "category": "utility",
+      "statName": "Imbuement Cooldown Reduction",
+      "rawValue": 0,
+      "displayValue": null,
+      "unit": null,
+      "status": "SUPPORTED_RAW_ONLY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": null
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.181",
+      "maxrollInternalId": 181,
+      "category": "utility",
+      "statName": "Lucky Hit Chance Bonus",
+      "rawValue": 0,
+      "displayValue": "0.0%",
+      "unit": "%",
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.367",
+      "maxrollInternalId": 367,
+      "category": "utility",
+      "statName": "Experience Bonus",
+      "rawValue": 3,
+      "displayValue": "300.0%",
+      "unit": "%",
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    },
+    {
+      "metricId": "maxroll.heroDetails.70",
+      "maxrollInternalId": 70,
+      "category": "pvp",
+      "statName": "Damage Reduction",
+      "rawValue": 0.9199219,
+      "displayValue": "92.0%",
+      "unit": "%",
+      "status": "SUPPORTED_RAW_AND_DISPLAY",
+      "provenance": {
+        "raw": "MAXROLL_CDP_RUNTIME",
+        "display": "MAXROLL_UI_DOM"
+      }
+    }
+  ],
+  "evidence": {
+    "referenceUrl": "https://maxroll.gg/d4/planner/1g1any0x#3",
+    "referenceResolvedUrl": "https://maxroll.gg/d4/planner/1g1any0x#3",
+    "actualCalculationFixture": "NEW_PROFILE_LOCAL",
+    "publishedBuildMutated": false,
+    "saveOrPublishInvoked": false,
+    "debuggerEnabled": true,
+    "breakpointRequested": {
+      "lineNumber": 762,
+      "columnNumber": 226096
+    },
+    "breakpointInitialResolvedLocations": 0,
+    "breakpointResolvedEvents": 1,
+    "pausedCount": 1176,
+    "screenshot": "evidence/offline-poc/standalone-runs/2026-10-21T12-23-23-720Z-32fdcb90bbc0.png",
+    "allowedNetworkMethods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "blockedNonReadRequests": 1,
+    "calculationMode": "LOCAL_RUNTIME_PACKAGE_OFFLINE",
+    "runtimePackage": {
+      "directoryCommitted": false,
+      "manifestContract": "maxroll-local-runtime-package/1",
+      "archiveHits": 358,
+      "archiveMisses": 39,
+      "everyHttpRequestLocallyFulfilledOrAborted": true,
+      "explicitUnarchivedFetch": "FAILED_AS_EXPECTED"
+    },
+    "cookiesTokensOrStorageRead": false,
+    "cleanup": "PASS"
+  }
+}
