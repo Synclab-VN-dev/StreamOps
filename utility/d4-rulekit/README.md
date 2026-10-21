@@ -36,6 +36,13 @@ production data. Missing rules must be reported; do not silently assume zero imp
 
 No changes to FE, MagicPath, StreamOps runtime, OBS, or GitHub repo settings.
 
+## Browser infrastructure
+
+Issue #124 adds an isolated provider-agnostic Node.js package at
+[`browser-infra/`](browser-infra/README.md). It manages persistent headless
+Chromium lifecycle and disposable leases only. It does not change the Python
+DSL/CLI contracts and does not contain D4 or provider calculation logic.
+
 ## CI-03: game-evidence-backed execution contract
 
 - **Canonical semantics:** `contracts/execution-v1.json` (not the JSON Schema).
