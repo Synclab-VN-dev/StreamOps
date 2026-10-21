@@ -1,0 +1,30 @@
+Maxroll CALC-01 access-policy check
+Timestamp: 2026-10-21T12:55:02+07:00
+Test: S2 browser inspection setup prerequisite
+
+GET https://maxroll.gg/robots.txt
+HTTP status: 200
+Content-Type: text/plain; charset=utf-8
+TLS verification result: 0 (verified)
+
+Observed policy markers:
+- Automated retrieval requires written permission from Ziff Davis.
+- Generic agent rule: Disallow: /d4/planner/*
+- Terms link: https://www.ziffdavis.com/terms-of-use
+
+The linked Terms of Use were checked on 2026-10-21 and identified themselves as
+effective September 2026. Section 2 restricts automated retrieval and states
+that web-based software may not be reverse engineered without specific
+authorization.
+
+Environment capability check:
+- Human-operated browser/DevTools channel: unavailable in this agent session.
+- google-chrome executable: not installed.
+- chromium/chromium-browser executable: not installed.
+
+Decision:
+- Do not install or run automated browser tooling as a substitute for the
+  requested manual DevTools inspection.
+- Status: BLOCKED_NEED_MANUAL_EVIDENCE.
+- No planner page, modifier, Character Stats UI, request trace, screenshot, or
+  recording was accessed or produced during this follow-up.

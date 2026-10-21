@@ -1,0 +1,72 @@
+{
+  "run": {
+    "baseline_checked_at": "2026-10-21T12:55:02+07:00",
+    "baseline_head": "c0e345e0430500b5c0b38fc85d8532348c3c4c24",
+    "branch": "research/maxroll-calculation-p0",
+    "architecture_classification": "NOT_VERIFIED",
+    "operational_blocker": "BLOCKED_NEED_MANUAL_EVIDENCE",
+    "summary": {
+      "PASS": 0,
+      "FAIL": 0,
+      "BLOCKED": 4,
+      "NOT_RUN": 0,
+      "NOT_VERIFIED": 1
+    }
+  },
+  "tests": [
+    {
+      "id": "CALC-01A",
+      "test": "Online modifier mutation",
+      "status": "BLOCKED",
+      "actual": "No human-operated browser or DevTools channel was available; no modifier was changed",
+      "stats_tested": [],
+      "evidence": ["manual-test-instructions.md"]
+    },
+    {
+      "id": "CALC-01B",
+      "test": "Network observation",
+      "status": "BLOCKED",
+      "actual": "No authorized manual DevTools capture was performed; automation was not substituted",
+      "stats_tested": [],
+      "evidence": [
+        "evidence/client-calculation/policy-check.txt",
+        "manual-test-instructions.md"
+      ]
+    },
+    {
+      "id": "CALC-01C",
+      "test": "Offline mutation",
+      "status": "BLOCKED",
+      "actual": "Offline mode and A/B/C mutations were not exercised",
+      "stats_tested": [],
+      "evidence": ["manual-test-instructions.md"]
+    },
+    {
+      "id": "CALC-01D",
+      "test": "Three-run repeatability",
+      "status": "BLOCKED",
+      "actual": "No A to B to C to A run was executed",
+      "stats_tested": [],
+      "evidence": ["manual-test-instructions.md"]
+    },
+    {
+      "id": "CALC-01E",
+      "test": "Architecture classification",
+      "status": "NOT_VERIFIED",
+      "actual": "Available evidence cannot distinguish client, server, or hybrid calculation",
+      "client_calculation_status": "NOT_VERIFIED",
+      "server_calculation_status": "NOT_VERIFIED",
+      "hybrid_calculation_status": "NOT_VERIFIED",
+      "offline_test_result": "BLOCKED_NEED_MANUAL_EVIDENCE",
+      "evidence": ["client-calculation-report.md"]
+    }
+  ],
+  "artifacts_not_created": [
+    "screenshots",
+    "recordings",
+    "HAR",
+    "WebSocket frames",
+    "performance traces",
+    "calculation request or response payloads"
+  ]
+}
