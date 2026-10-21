@@ -1,0 +1,24 @@
+{
+  "contractVersion": "maxroll-build-poc/1",
+  "provider": "maxroll",
+  "game": {"id": "d4", "patch": "3.2.1.73552"},
+  "profile": {
+    "class": "Rogue",
+    "level": 50,
+    "worldTier": "Torment I",
+    "items": {"Helm": "poc-helm"},
+    "skills": {},
+    "paragon": {}
+  },
+  "items": {
+    "poc-helm": {
+      "slot": "Helm",
+      "baseName": "Runic Skullcap",
+      "explicitModifiers": []
+    }
+  },
+  "calculationContext": {
+    "fixture": "NEW_PROFILE_LOCAL",
+    "conditions": {}
+  }
+}

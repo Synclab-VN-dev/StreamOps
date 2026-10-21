@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Synclab-VN-dev/StreamOps/docs/research/maxroll-calculation-p0/poc/build.schema.json",
+  "title": "Maxroll calculation provider PoC build",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "provider", "game", "profile", "items", "calculationContext"],
+  "properties": {
+    "contractVersion": {"const": "maxroll-build-poc/1"},
+    "provider": {"const": "maxroll"},
+    "game": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "patch"],
+      "properties": {
+        "id": {"const": "d4"},
+        "patch": {"type": "string", "minLength": 1}
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "level", "worldTier", "items", "skills", "paragon"],
+      "properties": {
+        "class": {"const": "Rogue"},
+        "level": {"type": "integer", "minimum": 1, "maximum": 70},
+        "worldTier": {"const": "Torment I"},
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["Helm"],
+          "properties": {"Helm": {"type": "string", "minLength": 1}}
+        },
+        "skills": {"type": "object", "maxProperties": 0},
+        "paragon": {"type": "object", "maxProperties": 0}
+      }
+    },
+    "items": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": {"$ref": "#/$defs/item"}
+    },
+    "calculationContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fixture", "conditions"],
+      "properties": {
+        "fixture": {"const": "NEW_PROFILE_LOCAL"},
+        "conditions": {"type": "object", "maxProperties": 0}
+      }
+    }
+  },
+  "$defs": {
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slot", "baseName", "explicitModifiers"],
+      "properties": {
+        "slot": {"const": "Helm"},
+        "baseName": {"const": "Runic Skullcap"},
+        "explicitModifiers": {
+          "type": "array",
+          "maxItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["identity", "pickerLabel", "expectedEffect"],
+            "properties": {
+              "identity": {"type": "string", "minLength": 1},
+              "pickerLabel": {"type": "string", "minLength": 1},
+              "expectedEffect": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,78 +1,85 @@
-# Reproduce Maxroll calculation P0
+# Reproduce the Maxroll JSON-to-Calculated-Stats PoC
 
-Run from the repository root on Linux. These commands reproduce the permitted
-connectivity and public-profile checks; they do not automate the planner UI.
+Run from the StreamOps repository root on Linux F. The commands assume the
+scoped Maxroll automation permission recorded in `poc/poc-results.json` still
+applies.
 
 ## Prerequisites
 
-Required commands: Bash, `getent`, `curl`, `openssl`, `timeout`, `sha256sum`,
-and `jq`. No Maxroll credentials are used.
+- Python 3.12 or compatible Python 3.
+- Node.js 22 or compatible Node.js.
+- Chrome for Testing at
+  `/home/huy/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome`.
+- `playwright-core` 1.64.1 available through
+  `/tmp/issue106-f4.Z3XkXq/node_modules` or `NODE_PATH`.
+- Network access to the approved Maxroll planner URL.
 
-## All permitted probes
+No Maxroll account, cookies, token, SSH tunnel, Windows A, or system package
+installation is used.
 
-Use a build ID from a documented public planner link, not a random value:
-
-```bash
-bash docs/research/maxroll-calculation-p0/probe.sh zj6zc20q
-```
-
-The evidence run sourced `zj6zc20q` from:
-`https://www.reddit.com/r/D4Barbarian/comments/1wqem82/i_can_probably_go_faster_what_do_you_think/`.
-
-## Individual NET tests
+## Validate syntax
 
 ```bash
-getent ahosts maxroll.gg
-getent ahosts planners.maxroll.gg
-
-openssl s_client -connect maxroll.gg:443 \
-  -servername maxroll.gg -verify_return_error </dev/null
-openssl s_client -connect planners.maxroll.gg:443 \
-  -servername planners.maxroll.gg -verify_return_error </dev/null
-
-curl --silent --show-error --location --output /dev/null \
-  --write-out 'http=%{http_code} type=%{content_type} ip=%{remote_ip} tls_verify=%{ssl_verify_result}\n' \
-  https://maxroll.gg/
-curl --silent --show-error --location --output /dev/null \
-  --write-out 'http=%{http_code} type=%{content_type} ip=%{remote_ip} tls_verify=%{ssl_verify_result}\n' \
-  https://planners.maxroll.gg/
+python3 -m py_compile \
+  docs/research/maxroll-calculation-p0/poc/maxroll_poc.py
+node --check \
+  docs/research/maxroll-calculation-p0/poc/maxroll_adapter.js
+jq -e . \
+  docs/research/maxroll-calculation-p0/poc/build.schema.json \
+  docs/research/maxroll-calculation-p0/poc/build-a.json \
+  docs/research/maxroll-calculation-p0/poc/build-b.json
 ```
 
-## API-01 and API-02
-
-The temporary files are deleted when the shell exits. Response headers are
-filtered so cookies are not printed or persisted.
+## Calculate A and B
 
 ```bash
-profile_body=$(mktemp)
-profile_headers=$(mktemp)
-trap 'rm -f "$profile_body" "$profile_headers"' EXIT
+python3 docs/research/maxroll-calculation-p0/poc/maxroll_poc.py \
+  --input docs/research/maxroll-calculation-p0/poc/build-a.json \
+  --output docs/research/maxroll-calculation-p0/poc/stats-a.json
 
-curl --silent --show-error --location --max-time 30 \
-  --dump-header "$profile_headers" --output "$profile_body" \
-  https://planners.maxroll.gg/profiles/load/d4/zj6zc20q
-
-grep -Ei '^(HTTP/|date:|content-type:|content-length:|cache-control:)' \
-  "$profile_headers"
-jq -e . "$profile_body" >/dev/null
-wc -c "$profile_body"
-sha256sum "$profile_body"
-jq '{top_level_schema: with_entries(.value |= type),
-     nested_data_schema: (.data | fromjson | with_entries(.value |= type))}' \
-  "$profile_body"
+python3 docs/research/maxroll-calculation-p0/poc/maxroll_poc.py \
+  --input docs/research/maxroll-calculation-p0/poc/build-b.json \
+  --output docs/research/maxroll-calculation-p0/poc/stats-b.json
 ```
 
-## CALC-01 through CALC-04
+Each invocation must report 50 metric IDs, 50 raw values, 34 display values,
+the observed patch `3.2.1.73552`, and cleanup `PASS`. A successful command
+replaces only its requested output after the browser adapter returns valid JSON.
 
-Do not run Playwright against `/d4/planner/*` without written permission from
-the site owner. Re-check the live policy before any future attempt:
+## Inspect the bounded delta
 
 ```bash
-curl --silent --show-error https://maxroll.gg/robots.txt
+jq -s '
+  (.[0].metrics | map({key:.metricId,value:.}) | from_entries) as $a |
+  (.[1].metrics | map({key:.metricId,value:.}) | from_entries) as $b |
+  [$a | keys[] as $id |
+    select($a[$id].rawValue != $b[$id].rawValue or
+           $a[$id].displayValue != $b[$id].displayValue) |
+    {metricId:$id,
+     rawA:$a[$id].rawValue,rawB:$b[$id].rawValue,
+     displayA:$a[$id].displayValue,displayB:$b[$id].displayValue}]
+' \
+  docs/research/maxroll-calculation-p0/poc/stats-a.json \
+  docs/research/maxroll-calculation-p0/poc/stats-b.json
 ```
 
-At the evidence timestamp, the published text prohibited automated retrieval
-without written permission and the generic-agent rules explicitly disallowed
-`/d4/planner/*`. Therefore calculation endpoint discovery, modifier A/B tests,
-three-run consistency checks, screenshots, and calculation traces have no
-reproduction command in this run.
+The observed changed IDs are Fire Resistance and the two cataloged Toughness
+rows. This command compares provider output; it does not calculate any Diablo IV
+formula.
+
+## Invalid input
+
+```bash
+python3 docs/research/maxroll-calculation-p0/poc/maxroll_poc.py \
+  --input invalid-build.json --output invalid-stats.json
+```
+
+An invalid contract exits 2 with a `validation error` and does not report a
+successful output.
+
+## Safety boundary
+
+The adapter always creates a local unsaved New Profile, blocks non-read network
+methods, and closes the browser context. Do not add Save/Publish, account
+profiles, cookie/token reads, private-state writes, or unsupported runtime
+mutation to the reproduction flow.

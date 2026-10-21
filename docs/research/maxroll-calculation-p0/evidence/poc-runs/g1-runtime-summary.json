@@ -1,0 +1,46 @@
+{
+  "status": "PASS",
+  "sourceUrl": "https://maxroll.gg/d4/planner/1g1any0x#3",
+  "observedPatch": "3.2.1.73552",
+  "runtimeAsset": "/assets/export-DOjdL1l3.js",
+  "browser": "Google Chrome for Testing 153.0.8010.12",
+  "playwrightCore": "1.64.1",
+  "cdp": {
+    "debuggerEnabled": true,
+    "breakpointResolvedEvents": 1,
+    "pausedEvents": 336
+  },
+  "coverage": {
+    "metricIds": 50,
+    "rawValues": 50,
+    "displayValues": 50
+  },
+  "samples": [
+    {
+      "metricId": "maxroll.heroDetails.900",
+      "statName": "Weapon Damage",
+      "rawValue": 52050.754872000005,
+      "displayValue": "52,051"
+    },
+    {
+      "metricId": "maxroll.heroDetails.901",
+      "statName": "Toughness",
+      "rawValue": 2885756.723201841,
+      "displayValue": "2,885,757"
+    },
+    {
+      "metricId": "maxroll.heroDetails.446",
+      "statName": "Fire Resistance",
+      "rawValue": 12344,
+      "displayValue": "12,344"
+    }
+  ],
+  "networkSafety": {
+    "allowedMethods": ["GET", "HEAD", "OPTIONS"],
+    "blockedNonReadRequests": 20
+  },
+  "publishedBuildMutated": false,
+  "cookiesTokensOrStorageRead": false,
+  "proprietaryBundleRetained": false,
+  "browserContextClosed": true
+}

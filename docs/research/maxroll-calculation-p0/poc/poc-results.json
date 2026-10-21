@@ -1,78 +1,178 @@
 {
   "run": {
-    "checked_at": "2026-10-21T13:16:36+07:00",
+    "completedAt": "2026-10-21T07:07:21.863Z",
     "branch": "research/maxroll-calculation-p0",
-    "starting_head": "4c60b36170d04e0a7818e713ca2dfc00e50cecbb",
-    "verdict": "BLOCKED",
-    "coverage": {
-      "produced": 0,
-      "denominator": 50,
-      "unsupported": 50,
-      "unknown": 0
+    "startingCommit": "8cc6704bc2137bc2d36b0ed38909b542c79ec36d",
+    "authorization": {
+      "status": "OWNER_ATTESTED_PROVIDER_PERMISSION",
+      "provenance": "Owner stated in the task conversation that Maxroll agreed to the browser automation PoC scope."
     },
-    "supported_input_groups": [],
-    "summary": {
-      "PASS": 0,
-      "PARTIAL": 0,
-      "BLOCKED": 6,
-      "FAIL": 0
+    "environment": {
+      "os": "Linux F",
+      "browser": "Google Chrome for Testing 153.0.8010.12",
+      "playwrightCore": "1.64.1",
+      "python": "3.12.3",
+      "node": "22.22.1"
+    },
+    "maxroll": {
+      "patch": "3.2.1.73552",
+      "runtimeAsset": "/assets/export-DOjdL1l3.js",
+      "referenceUrl": "https://maxroll.gg/d4/planner/1g1any0x#3"
+    },
+    "gates": {
+      "G1": "PASS",
+      "G2": "PASS_BOUNDED_POC",
+      "G3": "PARTIAL_DISPLAY_34_OF_50"
+    },
+    "coverage": {
+      "metricIds": "50/50",
+      "rawValues": "50/50",
+      "displayValues": "34/50",
+      "verifiedAgainstUi": "34/50",
+      "unknownRaw": "0/50"
+    }
+  },
+  "inputs": {
+    "buildA": {
+      "path": "build-a.json",
+      "canonicalSha256": "32fdcb90bbc054981d9cfc54fa369cdbc2452aef84e22037703f2fc77e742536",
+      "fileSha256": "04b8c15cd4dac86e03466cfa0ead9f2f279e393ad3ee4cbf3a5d91e4bc72701b",
+      "modifier": null
+    },
+    "buildB": {
+      "path": "build-b.json",
+      "canonicalSha256": "fa398c8b089eb7b6adcc336b6a77f35db9df76a5bfeeae54a55a90545ae5189c",
+      "fileSha256": "7c26e56bc3c3ffe3e23177889529cf9fe97e8fdef4d7946db9c2361685a36156",
+      "modifier": {
+        "identity": "Dampening / Of Dampening",
+        "effect": "+2800 Fire Resistance"
+      }
+    },
+    "common": {
+      "class": "Rogue",
+      "level": 50,
+      "worldTier": "Torment I",
+      "fixture": "NEW_PROFILE_LOCAL",
+      "item": "Runic Skullcap",
+      "skills": {},
+      "paragon": {}
     }
   },
   "tests": [
     {
-      "id": "POC-01",
-      "test": "Load build A from editable JSON into the Maxroll calculation provider",
-      "status": "BLOCKED",
-      "actual": "No supported or currently authorized provider interface is callable",
-      "evidence": ["../poc-report.md", "../evidence/poc-infrastructure-check.txt"]
+      "id": "G1-RUNTIME",
+      "status": "PASS",
+      "actual": "Planner opened; patch and runtime asset observed; CDP heroDetails breakpoint captured 50/50 raw and UI DOM exposed 50/50 display values on the published reference fixture."
     },
     {
-      "id": "POC-02",
-      "test": "Calculate and export 50 Character Stats for build A",
-      "status": "BLOCKED",
-      "actual": "Calculation did not run; produced coverage is 0/50",
-      "evidence": ["../poc-report.md"]
+      "id": "A-BASELINE",
+      "status": "PASS",
+      "actual": "Input A was validated and applied to a fresh local New Profile; 50 raw and 34 rendered display metrics were exported."
     },
     {
-      "id": "POC-03",
-      "test": "Create build B by changing exactly one modifier and apply it",
-      "status": "BLOCKED",
-      "actual": "No validated arbitrary-state application contract is available; no build B file was created",
-      "evidence": ["../poc-report.md"]
+      "id": "B-MODIFIER",
+      "status": "PASS",
+      "actual": "Input B differed only by Dampening / Of Dampening; UI showed +2800 Fire Resistance and Maxroll recalculated the output."
     },
     {
-      "id": "POC-04",
-      "test": "Calculate build B and verify a real A/B delta",
-      "status": "BLOCKED",
-      "actual": "Neither A nor B calculation output exists",
-      "evidence": ["../poc-report.md"]
+      "id": "A-B-A-REPEATABILITY",
+      "status": "PASS",
+      "actual": "Three A -> B -> A cycles produced six identical normalized A results and three identical normalized B results across nine disposable browser contexts."
     },
     {
-      "id": "POC-05",
-      "test": "Compare A/B outputs with Maxroll UI",
-      "status": "BLOCKED",
-      "actual": "No authorized live Maxroll fixture or DevTools session is connected",
-      "evidence": ["../poc-report.md", "../evidence/poc-infrastructure-check.txt"]
+      "id": "INVALID-INPUT",
+      "status": "PASS",
+      "actual": "Missing contractVersion exited 2 with a clear validation error and created no output."
     },
     {
-      "id": "POC-06",
-      "test": "Recalculate A and verify repeatability",
-      "status": "BLOCKED",
-      "actual": "Initial A calculation never ran",
-      "evidence": ["../poc-report.md"]
+      "id": "METRIC-COVERAGE",
+      "status": "PARTIAL",
+      "actual": "All 50 catalog IDs have observed runtime raw values; the minimal blank fixture rendered 34 of them in the UI and left 16 as raw-only."
     }
   ],
-  "artifacts_not_created": [
-    "build-a.json",
-    "build-b.json",
-    "stats-a.json",
-    "stats-b.json",
-    "maxroll_poc.py"
+  "repeatability": {
+    "sequenceCount": 3,
+    "invocationCount": 9,
+    "aInvocationCount": 6,
+    "bInvocationCount": 3,
+    "normalizedUniqueA": 1,
+    "normalizedUniqueB": 1,
+    "staleStateObserved": false,
+    "runs": [
+      "stats-a.json",
+      "stats-b.json",
+      "../evidence/poc-runs/cycle-1-a2.json",
+      "../evidence/poc-runs/cycle-2-a1.json",
+      "../evidence/poc-runs/cycle-2-b.json",
+      "../evidence/poc-runs/cycle-2-a2.json",
+      "../evidence/poc-runs/cycle-3-a1.json",
+      "../evidence/poc-runs/cycle-3-b.json",
+      "../evidence/poc-runs/cycle-3-a2.json"
+    ]
+  },
+  "observedDelta": [
+    {
+      "metricId": "maxroll.heroDetails.446",
+      "statName": "Fire Resistance",
+      "rawA": 22,
+      "rawB": 2822,
+      "rawDelta": 2800,
+      "displayA": "22",
+      "displayB": "2,822"
+    },
+    {
+      "metricId": "maxroll.heroDetails.901",
+      "statName": "Toughness",
+      "rawA": 693.0584806531045,
+      "rawB": 967.0261283628205,
+      "rawDelta": 273.96764770971595,
+      "displayA": "693",
+      "displayB": "967"
+    },
+    {
+      "metricId": "maxroll.heroDetails.2036494626",
+      "statName": "Toughness",
+      "rawA": 693.0584806531045,
+      "rawB": 967.0261283628205,
+      "rawDelta": 273.96764770971595,
+      "displayA": "693",
+      "displayB": "967"
+    }
   ],
-  "historical_evidence_boundary": {
-    "metric_ids_cataloged": 50,
-    "approved_golden_metrics": 0,
-    "real_graph_parity_pass": 0,
-    "note": "Historical Maxroll fixture captures were not replayed or represented as output from this PoC."
+  "unchangedMetricCount": 47,
+  "outputFiles": {
+    "statsA": {
+      "path": "stats-a.json",
+      "sha256": "844880fd4909aaba8e90687cb43d2a47f61c3601b23d113662109a5fc00b3b4f"
+    },
+    "statsB": {
+      "path": "stats-b.json",
+      "sha256": "e76d5821d216b402d1cc434341f3be379bbff138bfc29643df26806f55f32403"
+    }
+  },
+  "inputGroupsCovered": [
+    "game patch",
+    "class",
+    "level",
+    "world tier",
+    "one equipment slot and base item",
+    "one explicit modifier"
+  ],
+  "limitations": [
+    "The contract mirrors the native profile/items separation but is a bounded UI-mapping contract, not a byte-for-byte saved-profile serialization.",
+    "Only Rogue, level 50, Torment I, Helm, Runic Skullcap, and zero/one Dampening modifier are accepted.",
+    "Skills and Paragon are accepted only as empty objects; other input groups are unsupported.",
+    "Sixteen conditional or zero-value stats were available from heroDetails raw runtime but were not rendered by this minimal fixture.",
+    "The adapter relies on a version-specific runtime breakpoint and must fail closed if the observed patch or UI state differs."
+  ],
+  "safety": {
+    "publishedBuildMutated": false,
+    "saveOrPublishInvoked": false,
+    "nonReadNetworkMethodsBlocked": true,
+    "cookiesTokensOrStorageRead": false,
+    "proprietaryBundleRetained": false,
+    "productionCodeChanged": false,
+    "ciChangedOrRun": false,
+    "prOpened": false
   }
 }

@@ -1,0 +1,6 @@
+Test: INVALID-INPUT
+Command: python3 maxroll_poc.py --input <invalid JSON contract> --output <pre-existing temporary output>
+Exit code: 2
+stderr: validation error: contractVersion must be 'maxroll-build-poc/1'
+Pre-existing/stale output after validation failure: absent
+Result: PASS
