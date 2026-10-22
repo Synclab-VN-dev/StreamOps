@@ -26,7 +26,10 @@ export interface MaxrollPatchProfileConfig {
   supportedChangeTypes?: readonly string[];
   provenanceSource?: string;
   displayProvenanceSource?: string;
-  selectors: Readonly<{
+  runtimeKind?: 'synthetic-dom-v1' | 'maxroll-ui-cdp-v1';
+  realRuntime?: Readonly<Record<string, unknown>>;
+  authorizationRef?: string;
+  selectors?: Readonly<{
     ready: string;
     buildInput: string;
     applyButton: string;
@@ -112,6 +115,9 @@ export class MaxrollPatchProfile {
   readonly assetSha256: string;
   readonly metricCatalog: readonly MetricDefinition[];
   readonly supportedBuildSchemaVersion: string;
+  readonly runtimeKind: 'synthetic-dom-v1' | 'maxroll-ui-cdp-v1';
+  readonly realRuntime?: Readonly<Record<string, unknown>>;
+  readonly authorizationRef?: string;
   capability(): Readonly<Record<string, unknown>>;
 }
 
@@ -129,6 +135,7 @@ export class MaxrollProvider {
     snapshots: SnapshotPort;
     profile: MaxrollPatchProfile;
     sessionTimeoutMs?: number;
+    componentFactory?: MaxrollComponentFactory;
   }>);
   readonly id: 'maxroll';
   readonly version: string;
@@ -145,3 +152,42 @@ export class MaxrollSession implements ProviderSession {
 
 export class MaxrollRuntimeAdapter {}
 export class MaxrollMetricsExtractor {}
+export class RealMaxrollRuntimeAdapter {}
+export class RealMaxrollMetricsExtractor {}
+
+export class MaxrollComponentFactory {
+  constructor(options?: Readonly<{
+    runtimeKind?: 'synthetic-dom-v1' | 'maxroll-ui-cdp-v1';
+    RuntimeAdapter?: new (options: Readonly<Record<string, unknown>>) => unknown;
+    BuildMapper?: new (profile: MaxrollPatchProfile) => unknown;
+    MetricsExtractor?: new (profile: MaxrollPatchProfile) => unknown;
+  }>);
+  readonly runtimeKind: 'synthetic-dom-v1' | 'maxroll-ui-cdp-v1';
+  createRuntimeAdapter(options: Readonly<Record<string, unknown>>): unknown;
+  createBuildMapper(profile: MaxrollPatchProfile): unknown;
+  createMetricsExtractor(profile: MaxrollPatchProfile): unknown;
+}
+
+export const MAXROLL_32173552_REFERENCE: Readonly<{
+  gamePatch: '3.2.1.73552';
+  applicationAssetPath: string;
+  applicationAssetSha256: string;
+  breakpoint: Readonly<{ lineNumber: number; columnNumber: number }>;
+}>;
+export const REAL_MAXROLL_COMPONENT_FACTORY: MaxrollComponentFactory;
+export interface Maxroll32173552RealProfileConfig {
+  snapshotId: string;
+  snapshotManifestSha256: string;
+  sourceUrl: string;
+  metricCatalog: readonly MetricDefinition[];
+  providerVersion?: string;
+  runtimeVersion?: string;
+  assetUrl?: string;
+  supportedBuildSchemaVersion?: string;
+  supportedChangeTypes?: readonly string[];
+  realRuntime?: Readonly<Record<string, unknown>>;
+  authorizationRef: string;
+}
+export function createMaxroll32173552RealProfile(
+  config: Maxroll32173552RealProfileConfig,
+): MaxrollPatchProfile;

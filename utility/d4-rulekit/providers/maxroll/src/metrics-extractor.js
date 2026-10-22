@@ -8,7 +8,9 @@ class MaxrollMetricsExtractor {
 
   constructor(profile) { this.#profile = profile; }
 
-  async extract(cdp, expectedPhase) {
+  async extract(source, evaluation) {
+    const cdp = source?.cdp ?? source;
+    const expectedPhase = typeof evaluation === 'number' ? evaluation : evaluation?.phase;
     const selector = JSON.stringify(this.#profile.selectors.metrics);
     const expression = `(() => ({phase:Number(document.querySelector(${JSON.stringify(this.#profile.selectors.phase)})?.textContent),metrics:[...document.querySelectorAll(${selector})].map(node=>({id:node.dataset.metricId,raw:JSON.parse(node.dataset.raw),display:node.dataset.displayPresent==='true'?node.textContent:null,unit:node.dataset.unit||null,phase:Number(node.dataset.phase)}))}))()`;
     let evaluated;

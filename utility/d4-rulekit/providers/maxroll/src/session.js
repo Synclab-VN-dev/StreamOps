@@ -113,7 +113,12 @@ class MaxrollSession {
       if (options.signal?.aborted) throw new MaxrollProviderError(ERROR_CODES.CANCELLED, 'evaluation cancelled');
       const applied = await this.#adapter.apply(mapped.desired, mapped.fingerprint);
       if (options.signal?.aborted) throw new MaxrollProviderError(ERROR_CODES.CANCELLED, 'evaluation cancelled');
-      const metrics = await this.#extractor.extract(this.#adapter.cdp, applied.phase);
+      const metrics = await this.#extractor.extract(this.#adapter, applied);
+      const networkReplay = this.#mount?.getDiagnostics?.() ?? null;
+      if (networkReplay && networkReplay.transportOffline !== true) {
+        throw new MaxrollProviderError(ERROR_CODES.RUNTIME_NOT_READY,
+          'offline-strict transport policy is not active');
+      }
       return immutable({
         build: mapped.desired,
         metrics,
@@ -123,8 +128,10 @@ class MaxrollSession {
           snapshotId: this.#profile.snapshotId,
           snapshotManifestSha256: this.#profile.snapshotManifestSha256,
           assetSha256: this.#profile.assetSha256,
+          authorizationRef: this.#profile.authorizationRef ?? null,
           inputFingerprint: mapped.fingerprint,
           phase: applied.phase,
+          networkReplay,
         },
       });
     }, { signal: options.signal, timeoutMs: options.timeoutMs ?? this.#timeoutMs });

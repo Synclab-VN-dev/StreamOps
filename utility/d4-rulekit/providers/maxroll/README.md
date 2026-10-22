@@ -7,6 +7,7 @@ Snapshot infrastructure from Issue #124 and exposes the provider/session port ex
 ```text
 MaxrollProvider
   -> MaxrollPatchProfile (snapshot/runtime/asset pin)
+  -> MaxrollComponentFactory (synthetic or real strategy injection)
   -> MaxrollSession (desired-state and recovery lifecycle)
   -> MaxrollBuildMapper (bounded input support)
   -> MaxrollRuntimeAdapter (UI apply/read-back + CDP)
@@ -39,8 +40,10 @@ Golden `VERIFIED` evidence.
 - No login, Save/Publish, cookie/token access or formula implementation exists in this package.
 
 The repository contains only a synthetic Maxroll-shaped website used to test architecture and real
-Chromium lifecycle. It contains no Maxroll asset body. Real Maxroll E2E remains
+Chromium lifecycle. It contains no Maxroll asset body. A separate `maxroll-ui-cdp-v1` strategy now
+implements the bounded historical UI/CDP protocol, but real Maxroll E2E remains
 `BLOCKED_AUTHORIZED_SNAPSHOT` until a permitted generic snapshot package is provisioned and pinned.
+See `RUNTIME-COMPATIBILITY.md` and `REAL-REPRODUCE.md`.
 
 ## Local tests
 
@@ -51,6 +54,10 @@ npm run test:unit
 npm run test:contract
 BROWSER_INFRA_CHROMIUM_PATH=/path/to/pinned/chrome npm run test:e2e
 ```
+
+`npm run test:real` is deliberately outside the default synthetic gate. It requires all explicit
+snapshot trust/provenance inputs documented in `REAL-REPRODUCE.md` and fails rather than skips when
+they are absent.
 
 The package sets npm `install-links=true` so the sibling file dependency is packed into this
 package's `node_modules` on a clean install. This lets `browser-infra` resolve its own declared

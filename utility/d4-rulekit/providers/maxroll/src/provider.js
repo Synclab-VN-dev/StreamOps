@@ -1,19 +1,23 @@
 'use strict';
 
 const { bounded } = require('./async');
-const { MaxrollBuildMapper } = require('./build-mapper');
+const { MaxrollComponentFactory } = require('./component-factory');
 const { ERROR_CODES, MaxrollProviderError } = require('./errors');
-const { MaxrollMetricsExtractor } = require('./metrics-extractor');
-const { MaxrollRuntimeAdapter } = require('./runtime-adapter');
 const { MaxrollSession } = require('./session');
 
 class MaxrollProvider {
   id = 'maxroll';
 
-  constructor({ browser, snapshots, profile, sessionTimeoutMs = 15_000 }) {
+  constructor({
+    browser, snapshots, profile, sessionTimeoutMs = 15_000,
+    componentFactory = new MaxrollComponentFactory(),
+  }) {
     if (!browser || typeof browser.acquire !== 'function' ||
         !snapshots || !['verify', 'load', 'mount'].every(method => typeof snapshots[method] === 'function') ||
-        !profile) {
+        !profile || !componentFactory ||
+        !['createRuntimeAdapter', 'createBuildMapper', 'createMetricsExtractor']
+          .every(method => typeof componentFactory[method] === 'function') ||
+        componentFactory.runtimeKind !== profile.runtimeKind) {
       throw new MaxrollProviderError(ERROR_CODES.INVALID_CONFIG,
         'browser, snapshots and patch profile dependencies are required');
     }
@@ -21,6 +25,7 @@ class MaxrollProvider {
     this.browser = browser;
     this.snapshots = snapshots;
     this.profile = profile;
+    this.componentFactory = componentFactory;
     this.sessionTimeoutMs = sessionTimeoutMs;
   }
 
@@ -57,12 +62,12 @@ class MaxrollProvider {
         mode: 'offline-strict', onMissingResource: 'abort',
       });
       if (abandoned) { await cleanup(); throw new MaxrollProviderError(ERROR_CODES.CANCELLED, 'session creation abandoned'); }
-      const adapter = new MaxrollRuntimeAdapter({ lease, profile: this.profile });
+      const adapter = this.componentFactory.createRuntimeAdapter({ lease, profile: this.profile });
       await adapter.initialize();
       session = new MaxrollSession({
         adapter,
-        mapper: new MaxrollBuildMapper(this.profile),
-        extractor: new MaxrollMetricsExtractor(this.profile),
+        mapper: this.componentFactory.createBuildMapper(this.profile),
+        extractor: this.componentFactory.createMetricsExtractor(this.profile),
         profile: this.profile,
         mount,
         lease,

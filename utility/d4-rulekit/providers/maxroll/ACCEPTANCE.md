@@ -10,17 +10,18 @@
 | MXP-06 | three A→B→A cycles, exact restore, stale/incomplete fail-closed | LOCAL_PASS_SYNTHETIC |
 | MXP-07 | CalculationProvider contract fixture, no Application API duplication | LOCAL_PASS |
 | MXP-08 | real Chromium cold replay/warm reuse/zero egress plus launch, load, calculation, queue and RSS measurements | LOCAL_PASS_SYNTHETIC |
-| MXP-09 | authorized pinned Maxroll snapshot E2E | BLOCKED_AUTHORIZED_SNAPSHOT |
-| MXP-10 | all 8 Application APIs through DI, offline Chromium preview/commit/reset/cleanup | LOCAL_PASS_SYNTHETIC / BLOCKED_AUTHORIZED_SNAPSHOT |
+| MXP-09 | reusable real offline A→B→A contract + authorized pinned snapshot E2E | CONTRACT_PASS / BLOCKED_AUTHORIZED_SNAPSHOT |
+| MXP-10 | all 8 Application APIs through DI, offline Chromium preview/commit/reset/cleanup | LOCAL_PASS_SYNTHETIC; REAL_CONTRACT_PASS / BLOCKED_AUTHORIZED_SNAPSHOT |
 | MXP-11 | package/docs/regressions/CI evidence job | LOCAL_PASS / CI_PENDING |
 
 Synthetic values validate orchestration only and are never reported as Maxroll Golden or formula
 correctness. The 50-ID catalog comes from the existing Issue #106 research evidence; the synthetic
 fixture does not reproduce Diablo IV formulas.
 
-Real adapter compatibility gaps are documented in `REAL-MAXROLL-GAP-ANALYSIS.md`. The real gate
-requires both an authorized snapshot and version-specific runtime/build/read-back/extraction
-strategies; snapshot provisioning alone is not represented as sufficient.
+Real adapter compatibility and provenance are documented in `RUNTIME-COMPATIBILITY.md`. The
+version-specific runtime/read-back/extraction strategies and executable contract now exist; the
+remaining real gate requires an authorized snapshot and external trust anchor. Contract coverage
+is not represented as runtime PASS.
 
 The integrated synthetic Chromium test proves the complete Application → Provider → Browser
 Infrastructure → pinned snapshot control flow. It does not satisfy the real-runtime portion of
