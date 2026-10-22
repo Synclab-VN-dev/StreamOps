@@ -50,6 +50,15 @@ Issue #128 adds the version-pinned Maxroll adapter under
 Infrastructure through dependency injection and keeps all patch-specific mapping, runtime and
 metric extraction outside the generic infrastructure and Python Rule Kit.
 
+## Application orchestration
+
+Issue #127 adds a separate provider-agnostic Node.js package at
+[`application/`](application/README.md). It owns session lifecycle, immutable
+preview/commit/reset state, revision checks, result normalization and version-safe
+cache identity through an injected Calculation Provider contract. It imports neither
+Browser Infrastructure nor provider-specific calculation logic, and it leaves the
+existing Python DSL/CLI contracts unchanged.
+
 ## CI-03: game-evidence-backed execution contract
 
 - **Canonical semantics:** `contracts/execution-v1.json` (not the JSON Schema).
