@@ -145,3 +145,44 @@ jobs:
           path: utility/d4-rulekit/browser-infra/artifacts/
           if-no-files-found: error
           retention-days: 30
+
+  maxroll-provider:
+    name: Maxroll Provider synthetic unit, contract and offline Chromium E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: utility/d4-rulekit/providers/maxroll
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: utility/d4-rulekit/providers/maxroll/package-lock.json
+
+      - name: Install pinned local infrastructure dependency
+        run: npm ci
+
+      - name: Install pinned Chromium and Linux dependencies
+        run: npx playwright-core install --with-deps chromium
+
+      - name: Resolve pinned Chromium executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          chromium_path=$(node -e "process.stdout.write(require('playwright-core').chromium.executablePath())")
+          test -x "$chromium_path"
+          echo "BROWSER_INFRA_CHROMIUM_PATH=$chromium_path" >> "$GITHUB_ENV"
+
+      - name: Type declarations, unit, contract and offline synthetic E2E
+        run: npm test
+
+      - name: Upload provider reports (including failure evidence)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d4-rulekit-maxroll-provider-evidence
+          path: utility/d4-rulekit/providers/maxroll/artifacts/
+          if-no-files-found: error
+          retention-days: 30

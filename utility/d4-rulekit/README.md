@@ -43,6 +43,13 @@ Issue #124 adds an isolated provider-agnostic Node.js package at
 Chromium lifecycle and disposable leases only. It does not change the Python
 DSL/CLI contracts and does not contain D4 or provider calculation logic.
 
+## Calculation providers
+
+Issue #128 adds the version-pinned Maxroll adapter under
+[`providers/maxroll/`](providers/maxroll/README.md). The provider consumes Browser
+Infrastructure through dependency injection and keeps all patch-specific mapping, runtime and
+metric extraction outside the generic infrastructure and Python Rule Kit.
+
 ## CI-03: game-evidence-backed execution contract
 
 - **Canonical semantics:** `contracts/execution-v1.json` (not the JSON Schema).
