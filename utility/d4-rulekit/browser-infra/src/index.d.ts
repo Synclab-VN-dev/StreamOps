@@ -13,6 +13,7 @@ export interface BrowserConfig {
   maxQueue?: number;
   acquireTimeoutMs?: number;
   leaseTimeoutMs?: number;
+  cleanupTimeoutMs?: number;
   headless?: boolean;
   executablePath?: string;
   launchOptions?: BrowserTypeLaunchOptions;
@@ -46,6 +47,9 @@ export interface BrowserMetrics {
   queueTimeoutCount: number;
   cancellationCount: number;
   leaseExpirationCount: number;
+  cleanupFailureCount: number;
+  recoveryCount: number;
+  recoveryFailureCount: number;
   peakContexts: number;
   currentContexts: number;
   pendingQueue: number;
@@ -81,6 +85,7 @@ export type BrowserInfrastructureErrorCode =
   | 'QUEUE_TIMEOUT'
   | 'LEASE_EXPIRED'
   | 'BROWSER_DISCONNECTED'
+  | 'CLEANUP_FAILED'
   | 'CANCELLED'
   | 'INVALID_CONFIG';
 

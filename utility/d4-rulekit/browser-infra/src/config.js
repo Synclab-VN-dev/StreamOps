@@ -7,6 +7,7 @@ const DEFAULT_CONFIG = Object.freeze({
   maxQueue: 32,
   acquireTimeoutMs: 10_000,
   leaseTimeoutMs: 60_000,
+  cleanupTimeoutMs: 5_000,
   headless: true,
   executablePath: undefined,
   launchOptions: {},
@@ -31,6 +32,7 @@ function validateConfig(input = {}) {
   positiveInteger(config.maxQueue, 'maxQueue', { allowZero: true });
   positiveInteger(config.acquireTimeoutMs, 'acquireTimeoutMs');
   positiveInteger(config.leaseTimeoutMs, 'leaseTimeoutMs');
+  positiveInteger(config.cleanupTimeoutMs, 'cleanupTimeoutMs');
   if (typeof config.headless !== 'boolean') {
     throw infrastructureError(ERROR_CODES.INVALID_CONFIG, 'headless must be boolean');
   }

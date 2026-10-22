@@ -86,8 +86,8 @@ class FakeBrowser extends EventEmitter {
 
   async close() {
     if (!this.connected) return;
-    this.connected = false;
     for (const context of this.contexts) await context.close();
+    this.connected = false;
     this.launcher.connected -= 1;
     this.emit('disconnected');
   }
@@ -124,4 +124,4 @@ class FakeLauncher {
   }
 }
 
-module.exports = { FakeLauncher };
+module.exports = { FakeBrowser, FakeContext, FakeLauncher };

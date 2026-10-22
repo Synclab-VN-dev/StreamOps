@@ -44,6 +44,7 @@ const browsers = new BrowserInfrastructure({
   maxQueue: 16,
   acquireTimeoutMs: 5_000,
   leaseTimeoutMs: 60_000,
+  cleanupTimeoutMs: 5_000,
 });
 
 await browsers.start();
@@ -71,15 +72,26 @@ try {
 - One acquisition deadline covers queue wait plus context/page creation. Timeout
   or abort creates no hidden retry; a late resource is closed before its
   reservation is returned.
+- Because Playwright does not expose cancellation for an in-flight
+  `newContext()`/`newPage()`, a timed-out or cancelled creation automatically
+  recycles that browser generation. Existing leases and queued acquisitions
+  fail closed; provider callbacks are never replayed. New acquisitions are
+  accepted after the replacement browser reaches `running`.
 - `withLease()` releases in `finally`, including consumer exceptions.
 - Browser disconnect invalidates all outstanding leases and queued requests.
   Recovery is explicit through `restart()`; caller/provider logic is not
   replayed.
 - Restart invalidates old handles before launching the replacement process.
 - Closing a context outside the lease API invalidates that lease.
+- Context cleanup must resolve within `cleanupTimeoutMs` before its capacity is
+  returned. A rejected or timed-out close yields `CLEANUP_FAILED` and starts a
+  controlled browser recycle. If browser shutdown also cannot be confirmed,
+  state remains `degraded`, no replacement process is launched, and a bounded
+  `restart()` is available after the underlying close condition is resolved.
 
 Stable error codes are `NOT_RUNNING`, `CAPACITY_EXCEEDED`, `QUEUE_TIMEOUT`,
-`LEASE_EXPIRED`, `BROWSER_DISCONNECTED`, `CANCELLED`, and `INVALID_CONFIG`.
+`LEASE_EXPIRED`, `BROWSER_DISCONNECTED`, `CLEANUP_FAILED`, `CANCELLED`, and
+`INVALID_CONFIG`.
 
 `getStatus()` returns lifecycle state, Chromium PID when CDP exposes it, active
 leases, queue depth, restart count and uptime. `getMetrics()` returns actual

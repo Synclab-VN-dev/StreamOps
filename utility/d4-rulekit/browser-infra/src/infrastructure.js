@@ -20,6 +20,7 @@ class BrowserInfrastructure {
   #generation = 0;
   #startedAt = null;
   #expectedClose = new WeakSet();
+  #recoveryScheduled = false;
   #metrics = {
     launchCount: 0,
     launchFailures: 0,
@@ -31,6 +32,9 @@ class BrowserInfrastructure {
     queueTimeoutCount: 0,
     cancellationCount: 0,
     leaseExpirationCount: 0,
+    cleanupFailureCount: 0,
+    recoveryCount: 0,
+    recoveryFailureCount: 0,
     peakContexts: 0,
     totalAcquireWaitMs: 0,
     lastLaunchDurationMs: null,
@@ -52,6 +56,10 @@ class BrowserInfrastructure {
           }
         }
         return;
+      }
+      if (this.#state !== 'stopped') {
+        throw infrastructureError(ERROR_CODES.CLEANUP_FAILED,
+          'browser infrastructure requires restart from degraded state');
       }
       if (config !== undefined) this.#config = validateConfig({ ...this.#config, ...config });
       await this.#launch();
@@ -145,7 +153,13 @@ class BrowserInfrastructure {
     record.lease._invalidate(infrastructureError(
       ERROR_CODES.LEASE_EXPIRED, `lease ${leaseId} has been released`));
     record.disposePromise = (async () => {
-      await this.#closeContext(record.context);
+      try {
+        await this.#closeContext(record.context);
+      } catch (error) {
+        this.#metrics.cleanupFailureCount += 1;
+        this.#scheduleRecovery('context release cleanup failed');
+        throw error;
+      }
       if (this.#leases.get(leaseId) === record) this.#leases.delete(leaseId);
       this.#metrics.releaseCount += 1;
       this.#log('released', { leaseId });
@@ -195,7 +209,15 @@ class BrowserInfrastructure {
     } catch (error) {
       if (browser) {
         this.#expectedClose.add(browser);
-        await browser.close().catch(() => {});
+        try {
+          await this.#closeBrowser(browser);
+        } catch (cleanupError) {
+          this.#state = 'degraded';
+          this.#browser = browser;
+          this.#metrics.cleanupFailureCount += 1;
+          this.#metrics.launchFailures += 1;
+          throw cleanupError;
+        }
       }
       this.#state = 'stopped';
       if (this.#browser === browser) this.#browser = null;
@@ -209,30 +231,37 @@ class BrowserInfrastructure {
   async #shutdown(code, message) {
     const error = infrastructureError(code, message);
     const browser = this.#browser;
-    this.#browser = null;
-    this.#pid = null;
     this.#generation += 1;
     if (browser) this.#expectedClose.add(browser);
     this.#rejectQueue(error);
     const creations = [...this.#creations];
-    this.#creations.clear();
     for (const creation of creations) {
       this.#cancelCreation(creation, error);
-      this.#releaseCreationReservation(creation);
     }
     await Promise.allSettled(creations
       .filter(creation => creation.context)
       .map(creation => this.#closeContext(creation.context)));
     const records = [...this.#leases.values()];
-    this.#leases.clear();
     await Promise.allSettled(records.map(record => {
       clearTimeout(record.expiryTimer);
       record.lease._invalidate(error);
       return this.#closeContext(record.context);
     }));
     if (browser) {
-      await browser.close().catch(() => {});
+      try {
+        await this.#closeBrowser(browser);
+      } catch (cleanupError) {
+        this.#state = 'degraded';
+        this.#metrics.cleanupFailureCount += 1;
+        this.#log('cleanup_failed', { code: cleanupError.code });
+        throw cleanupError;
+      }
     }
+    if (this.#browser === browser) this.#browser = null;
+    this.#pid = null;
+    this.#creations.clear();
+    for (const creation of creations) this.#releaseCreationReservation(creation);
+    this.#leases.clear();
   }
 
   #handleDisconnect(browser, generation) {
@@ -256,7 +285,7 @@ class BrowserInfrastructure {
     for (const record of records) {
       clearTimeout(record.expiryTimer);
       record.lease._invalidate(error);
-      this.#closeContext(record.context);
+      void this.#closeContext(record.context).catch(() => {});
     }
     this.#log('disconnected');
   }
@@ -292,14 +321,17 @@ class BrowserInfrastructure {
       if (this.#cancelCreation(creation, infrastructureError(
         ERROR_CODES.QUEUE_TIMEOUT, 'lease acquisition timed out'))) {
         this.#metrics.queueTimeoutCount += 1;
+        this.#scheduleRecovery('browser resource creation timed out');
       }
     }, remainingMs);
     if (options.signal) {
       creation.onAbort = () => {
         if (creation.clientSettled) return;
         this.#metrics.cancellationCount += 1;
-        this.#cancelCreation(creation, infrastructureError(
-          ERROR_CODES.CANCELLED, 'lease acquisition cancelled'));
+        if (this.#cancelCreation(creation, infrastructureError(
+          ERROR_CODES.CANCELLED, 'lease acquisition cancelled'))) {
+          this.#scheduleRecovery('browser resource creation cancelled');
+        }
       };
       options.signal.addEventListener('abort', creation.onAbort, { once: true });
     }
@@ -342,15 +374,32 @@ class BrowserInfrastructure {
       this.#log('acquired', { leaseId: id });
       this.#settleCreation(creation, null, lease);
     } catch (error) {
-      const typed = error?.code ? error : infrastructureError(
+      let typed = error?.code ? error : infrastructureError(
         ERROR_CODES.BROWSER_DISCONNECTED, 'failed to create browser context', error);
       if (context && !leaseCreated) {
-        await this.#closeContext(context);
+        try {
+          await this.#closeContext(context);
+        } catch (cleanupError) {
+          typed = cleanupError;
+          this.#metrics.cleanupFailureCount += 1;
+          if (browser === this.#browser) {
+            this.#scheduleRecovery('failed creation cleanup could not be confirmed');
+          }
+        }
         context = null;
       }
       this.#settleCreation(creation, typed);
     } finally {
-      if (context && !leaseCreated) await this.#closeContext(context);
+      if (context && !leaseCreated) {
+        try {
+          await this.#closeContext(context);
+        } catch {
+          this.#metrics.cleanupFailureCount += 1;
+          if (browser === this.#browser) {
+            this.#scheduleRecovery('late creation cleanup could not be confirmed');
+          }
+        }
+      }
     }
   }
 
@@ -365,7 +414,6 @@ class BrowserInfrastructure {
 
   #cancelCreation(creation, error) {
     if (!this.#settleCreation(creation, error)) return false;
-    if (creation.context) void this.#closeContext(creation.context);
     return true;
   }
 
@@ -427,7 +475,13 @@ class BrowserInfrastructure {
       ERROR_CODES.LEASE_EXPIRED, `lease ${id} expired`));
     this.#metrics.leaseExpirationCount += 1;
     record.disposePromise = (async () => {
-      await this.#closeContext(record.context);
+      try {
+        await this.#closeContext(record.context);
+      } catch {
+        this.#metrics.cleanupFailureCount += 1;
+        this.#scheduleRecovery('expired lease cleanup failed');
+        return;
+      }
       if (this.#leases.get(id) === record) this.#leases.delete(id);
       this.#dispatchQueue();
     })();
@@ -451,7 +505,54 @@ class BrowserInfrastructure {
   }
 
   async #closeContext(context) {
-    await context.close().catch(() => {});
+    await this.#boundedCleanup(
+      () => context.close(),
+      'browser context cleanup failed or timed out');
+  }
+
+  async #closeBrowser(browser) {
+    await this.#boundedCleanup(
+      () => browser.close(),
+      'browser process cleanup failed or timed out');
+  }
+
+  async #boundedCleanup(operation, message) {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(infrastructureError(
+        ERROR_CODES.CLEANUP_FAILED, message)), this.#config.cleanupTimeoutMs);
+    });
+    try {
+      return await Promise.race([Promise.resolve().then(operation), timeout]);
+    } catch (error) {
+      if (error?.code === ERROR_CODES.CLEANUP_FAILED) throw error;
+      throw infrastructureError(ERROR_CODES.CLEANUP_FAILED, message, error);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  #scheduleRecovery(message) {
+    if (this.#recoveryScheduled || this.#state !== 'running') return;
+    this.#recoveryScheduled = true;
+    this.#state = 'degraded';
+    this.#metrics.recoveryCount += 1;
+    const recovery = this.#serialize(async () => {
+      if (this.#state !== 'degraded') return;
+      this.#state = 'restarting';
+      try {
+        await this.#shutdown(ERROR_CODES.BROWSER_DISCONNECTED, message);
+        this.#metrics.restartCount += 1;
+        await this.#launch();
+      } catch (error) {
+        this.#state = 'degraded';
+        this.#metrics.recoveryFailureCount += 1;
+        this.#log('recovery_failed', { code: error?.code ?? ERROR_CODES.CLEANUP_FAILED });
+      }
+    });
+    void recovery.finally(() => {
+      this.#recoveryScheduled = false;
+    });
   }
 
   async #readBrowserPid(browser) {

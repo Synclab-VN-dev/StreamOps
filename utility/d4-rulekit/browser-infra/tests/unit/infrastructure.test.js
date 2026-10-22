@@ -7,7 +7,7 @@ const {
   BrowserInfrastructureError,
   ERROR_CODES,
 } = require('../../src');
-const { FakeLauncher } = require('../helpers/fakes');
+const { FakeContext, FakeLauncher } = require('../helpers/fakes');
 
 function infra(config = {}, launcher = new FakeLauncher()) {
   return { instance: new BrowserInfrastructure(config, { launcher }), launcher };
@@ -40,10 +40,19 @@ async function settlesWithin(promise, timeoutMs = 500) {
   }
 }
 
+async function waitFor(predicate, timeoutMs = 500) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise(resolve => setTimeout(resolve, 2));
+  }
+  assert.fail('condition timed out');
+}
+
 test('INF-09 rejects invalid configuration fail-closed', () => {
   for (const config of [
     { maxContexts: 0 }, { maxQueue: -1 }, { acquireTimeoutMs: 0 },
-    { leaseTimeoutMs: 0 }, { headless: 'yes' }, { logger: true },
+    { leaseTimeoutMs: 0 }, { cleanupTimeoutMs: 0 }, { headless: 'yes' }, { logger: true },
   ]) {
     assert.throws(() => new BrowserInfrastructure(config), error =>
       error.code === ERROR_CODES.INVALID_CONFIG);
@@ -201,6 +210,56 @@ test('INF-06 acquisition deadline covers hanging creation and restart stays boun
   assert.equal(instance.getMetrics().currentContexts, 0);
 });
 
+test('INF-06 hung newContext timeout auto-recovers and closes late resolution', async t => {
+  const { instance, launcher } = infra({ maxContexts: 1, acquireTimeoutMs: 10 });
+  const gate = deferred();
+  t.after(async () => {
+    gate.resolve();
+    await instance.stop().catch(() => {});
+  });
+  await instance.start();
+  const oldBrowser = launcher.latest();
+  let lateContext;
+  oldBrowser.newContext = async () => {
+    await gate.promise;
+    lateContext = new FakeContext(oldBrowser);
+    oldBrowser.contexts.push(lateContext);
+    return lateContext;
+  };
+  await rejectsCode(instance.acquire(), ERROR_CODES.QUEUE_TIMEOUT);
+  await waitFor(() => instance.getStatus().state === 'running' && launcher.launchCount === 2);
+  assert.equal(instance.getMetrics().recoveryCount, 1);
+  assert.equal(instance.getMetrics().recoveryFailureCount, 0);
+  const recovered = await instance.acquire();
+  await recovered.release();
+  gate.resolve();
+  await waitFor(() => lateContext?.closed === true);
+  assert.equal(instance.getMetrics().currentContexts, 0);
+});
+
+test('INF-06 hung newPage timeout auto-recovers without capacity starvation', async t => {
+  const { instance, launcher } = infra({ maxContexts: 1, acquireTimeoutMs: 10 });
+  const gate = deferred();
+  t.after(async () => {
+    gate.resolve();
+    await instance.stop().catch(() => {});
+  });
+  await instance.start();
+  const oldBrowser = launcher.latest();
+  const createContext = oldBrowser.newContext.bind(oldBrowser);
+  oldBrowser.newContext = async () => {
+    const context = await createContext();
+    context.newPage = () => gate.promise;
+    return context;
+  };
+  await rejectsCode(instance.acquire(), ERROR_CODES.QUEUE_TIMEOUT);
+  await waitFor(() => instance.getStatus().state === 'running' && launcher.launchCount === 2);
+  assert.equal(instance.getMetrics().recoveryCount, 1);
+  const recovered = await instance.acquire();
+  await recovered.release();
+  assert.equal(instance.getMetrics().currentContexts, 0);
+});
+
 test('INF-06/13 newPage failure closes the created context and frees capacity', async () => {
   const { instance, launcher } = infra({ maxContexts: 1 });
   await instance.start();
@@ -244,6 +303,71 @@ test('INF-05 release retains capacity and FIFO until delayed context close compl
   assert.deepEqual(order, ['second', 'third']);
   await third.release();
   await instance.stop();
+});
+
+test('INF-05/13 close rejection retains capacity and recycles before serving more work', async t => {
+  const { instance, launcher } = infra({
+    maxContexts: 1, maxQueue: 1, cleanupTimeoutMs: 20,
+  });
+  t.after(async () => instance.stop().catch(() => {}));
+  await instance.start();
+  const first = await instance.acquire();
+  const oldBrowser = launcher.latest();
+  const closeContext = first.context.close.bind(first.context);
+  let closeCalls = 0;
+  let wasLiveWhenCloseRejected = false;
+  first.context.close = async () => {
+    closeCalls += 1;
+    if (closeCalls === 1) {
+      wasLiveWhenCloseRejected = !first.context.closed;
+      throw new Error('synthetic close rejection');
+    }
+    return closeContext();
+  };
+  const queued = instance.acquire();
+  await rejectsCode(first.release(), ERROR_CODES.CLEANUP_FAILED);
+  assert.equal(wasLiveWhenCloseRejected, true);
+  await rejectsCode(queued, ERROR_CODES.BROWSER_DISCONNECTED);
+  await waitFor(() => instance.getStatus().state === 'running' && launcher.launchCount === 2);
+  assert.equal(instance.getMetrics().cleanupFailureCount, 1);
+  assert.equal(instance.getMetrics().recoveryCount, 1);
+  assert.equal(oldBrowser.connected, false);
+  const recovered = await instance.acquire();
+  assert.equal(launcher.browsers.flatMap(browser => browser.contexts)
+    .filter(context => !context.closed).length, 1);
+  await recovered.release();
+});
+
+test('INF-05/13 hanging close is bounded, stays degraded, and explicit recovery is safe', async t => {
+  const { instance, launcher } = infra({
+    maxContexts: 1, maxQueue: 1, cleanupTimeoutMs: 10,
+  });
+  await instance.start();
+  const lease = await instance.acquire();
+  const closeContext = lease.context.close.bind(lease.context);
+  t.after(async () => {
+    lease.context.close = closeContext;
+    await instance.stop().catch(() => {});
+  });
+  lease.context.close = () => new Promise(() => {});
+  const queued = instance.acquire();
+  await rejectsCode(settlesWithin(lease.release()), ERROR_CODES.CLEANUP_FAILED);
+  await rejectsCode(queued, ERROR_CODES.BROWSER_DISCONNECTED);
+  await waitFor(() => instance.getStatus().state === 'degraded');
+  assert.equal(launcher.launchCount, 1);
+  assert.equal(instance.getMetrics().cleanupFailureCount, 2);
+  assert.equal(instance.getMetrics().recoveryFailureCount, 1);
+  assert.equal(lease.context.closed, false);
+  assert.equal(instance.getMetrics().currentContexts, 1);
+  await rejectsCode(instance.acquire(), ERROR_CODES.NOT_RUNNING);
+  lease.context.close = closeContext;
+  await settlesWithin(instance.restart());
+  assert.equal(instance.getStatus().state, 'running');
+  assert.equal(launcher.connected, 1);
+  assert.equal(launcher.peakConnected, 1);
+  const recovered = await instance.acquire();
+  await recovered.release();
+  assert.equal(instance.getMetrics().currentContexts, 0);
 });
 
 test('INF-01/09 throwing consumer logger cannot break lifecycle or leak browser', async () => {
