@@ -28,7 +28,9 @@ class D4RuleKitApplication {
     const sessionTtlMs = positiveInteger(options.sessionTtlMs, 30 * 60_000, 'sessionTtlMs');
     this.#operationTimeoutMs = positiveInteger(options.operationTimeoutMs, 5_000, 'operationTimeoutMs');
     const cleanupTimeoutMs = positiveInteger(options.cleanupTimeoutMs, 1_000, 'cleanupTimeoutMs');
-    this.#sessions = new SessionManager({ maxSessions, ttlMs: sessionTtlMs, clock: this.#clock });
+    this.#sessions = new SessionManager({
+      maxSessions, ttlMs: sessionTtlMs, clock: this.#clock, scheduler: options.scheduler,
+    });
     this.#orchestrator = new CalculationOrchestrator({ operationTimeoutMs: this.#operationTimeoutMs, cleanupTimeoutMs });
   }
 
@@ -39,34 +41,66 @@ class D4RuleKitApplication {
   async createSession(options) {
     validateCreate(options);
     await this.#expireSessions();
-    this.#sessions.assertCapacity();
-    const provider = this.#registry.get(options.providerId, options.providerVersion);
-    const capabilities = immutableCopy(provider.getCapabilities());
+    this.#sessions.reserve();
+    let provider;
+    let capabilities;
+    let build;
+    let buildState;
+    try {
+      provider = this.#registry.get(options.providerId, options.providerVersion);
+      capabilities = immutableCopy(provider.getCapabilities());
+      build = immutableCopy(options.build);
+      buildState = new BuildStateManager(build);
+    } catch (error) {
+      this.#sessions.releaseReservation();
+      throw error;
+    }
     const sessionId = crypto.randomUUID();
-    const build = immutableCopy(options.build);
-    const buildState = new BuildStateManager(build);
-    const providerRuntime = await bounded(signal => provider.createSession({
-      contractVersion: CONTRACT_VERSION,
-      build: clone(build),
-      buildSchemaVersion: options.buildSchemaVersion,
-      snapshotId: options.snapshotId ?? null,
-      snapshotManifestSha256: options.snapshotManifestSha256 ?? null,
-      signal,
-    }), { timeoutMs: options.timeoutMs ?? this.#operationTimeoutMs, signal: options.signal });
+    let abandoned = false;
+    let cleanupLateRuntime = Promise.resolve();
+    let providerRuntime;
+    try {
+      providerRuntime = await bounded(signal => {
+        const creation = Promise.resolve().then(() => provider.createSession({
+          contractVersion: CONTRACT_VERSION,
+          build: clone(build),
+          buildSchemaVersion: options.buildSchemaVersion,
+          snapshotId: options.snapshotId ?? null,
+          snapshotManifestSha256: options.snapshotManifestSha256 ?? null,
+          signal,
+        }));
+        cleanupLateRuntime = creation.then(async runtime => {
+          if (abandoned && typeof runtime?.close === 'function') {
+            await this.#orchestrator.close(runtime).catch(() => undefined);
+          }
+        }, () => undefined);
+        return creation;
+      }, {
+        timeoutMs: options.timeoutMs ?? this.#operationTimeoutMs, signal: options.signal,
+      });
+    } catch (error) {
+      abandoned = true;
+      void cleanupLateRuntime;
+      this.#sessions.releaseReservation();
+      throw error;
+    }
     if (!providerRuntime || typeof providerRuntime.evaluate !== 'function' || typeof providerRuntime.close !== 'function') {
       if (typeof providerRuntime?.close === 'function') await this.#orchestrator.close(providerRuntime).catch(() => undefined);
+      this.#sessions.releaseReservation();
       throw new ApplicationError(ERROR_CODES.PROVIDER_FAILURE, 'provider returned invalid session runtime');
     }
     let baselineCheckpoint = null;
     if (capabilities.stateModel === 'stateful') {
       if (typeof providerRuntime.checkpoint !== 'function' || typeof providerRuntime.restore !== 'function') {
-        await this.#orchestrator.close(providerRuntime);
+        await this.#orchestrator.close(providerRuntime).catch(() => undefined);
+        this.#sessions.releaseReservation();
         throw new ApplicationError(ERROR_CODES.PROVIDER_FAILURE, 'stateful provider requires checkpoint and restore');
       }
       try {
         baselineCheckpoint = await this.#orchestrator.checkpoint(providerRuntime, options);
       } catch (error) {
         await this.#orchestrator.close(providerRuntime).catch(() => undefined);
+        this.#sessions.releaseReservation();
         throw error;
       }
     }
@@ -89,7 +123,7 @@ class D4RuleKitApplication {
       executor: new SerialExecutor(),
       diagnostics: { evaluations: 0, previews: 0, commits: 0, resets: 0, failures: 0, cacheHits: 0 },
     };
-    this.#sessions.add(session);
+    this.#sessions.addReserved(session, current => this.#expireIdle(current));
     return this.#publicSession(session);
   }
 
@@ -106,10 +140,22 @@ class D4RuleKitApplication {
         }
       }
       const started = this.#clock();
-      const output = await this.#callProvider(session, {
-        build: clone(session.buildState.committed), changes: [], mode: 'EVALUATE',
-      }, options);
-      this.#assertOutputBuild(session, output.build, session.buildState.fingerprint);
+      const checkpoint = await this.#checkpoint(session, options);
+      let output;
+      try {
+        output = await this.#callProvider(session, {
+          build: clone(session.buildState.committed), changes: [], mode: 'EVALUATE',
+        }, options);
+        this.#assertOutputBuild(session, output.build, session.buildState.fingerprint);
+      } catch (error) {
+        if (error instanceof ApplicationError &&
+            (error.code === ERROR_CODES.TIMEOUT || error.code === ERROR_CODES.CANCELLED)) {
+          this.#quarantine(session, error);
+          throw error;
+        }
+        await this.#recoverOrQuarantine(session, checkpoint, error, options);
+        throw error;
+      }
       const result = this.#result(session, output, started, { hit: false, key });
       session.diagnostics.evaluations += 1;
       this.#cache.set(key, result);
@@ -276,28 +322,44 @@ class D4RuleKitApplication {
 
   async #expireSessions() {
     for (const session of this.#sessions.values()) {
-      if (session.status === 'ACTIVE' && this.#sessions.isExpired(session)) {
-        session.status = 'EXPIRED';
-      }
-      if (session.status === 'EXPIRED') {
-        try {
-          await this.#orchestrator.close(session.providerRuntime);
-          session.status = 'CLOSED';
-        } catch (error) {
-          session.status = 'QUARANTINED';
-          session.diagnostics.failures += 1;
-          session.diagnostics.lastFailure = 'RECOVERY_FAILED';
-          continue;
-        }
-        this.#sessions.delete(session.id);
-        this.#cache.deleteSession(session.id);
-      }
+      if (session.status === 'ACTIVE' && !this.#sessions.isExpired(session)) continue;
+      await this.#expireIdle(session);
     }
   }
+
+  async #expireIdle(session) {
+    if (this.#sessions.find(session.id) !== session) return;
+    if (session.status === 'ACTIVE' && !this.#sessions.isExpired(session)) {
+      this.#sessions.reschedule(session);
+      return;
+    }
+    return session.executor.run(async () => {
+      if (this.#sessions.find(session.id) !== session) return;
+      if (session.status === 'ACTIVE' && !this.#sessions.isExpired(session)) {
+        this.#sessions.reschedule(session);
+        return;
+      }
+      if (session.status === 'ACTIVE') session.status = 'EXPIRED';
+      if (session.status !== 'EXPIRED') return;
+      this.#cache.deleteSession(session.id);
+      try {
+        await this.#orchestrator.close(session.providerRuntime);
+        session.status = 'CLOSED';
+        this.#sessions.delete(session.id);
+      } catch (error) {
+        session.status = 'QUARANTINED';
+        session.diagnostics.failures += 1;
+        session.diagnostics.lastFailure = 'RECOVERY_FAILED';
+        this.#sessions.cancelExpiry(session.id);
+      }
+    });
+  }
+
   #expireOne(session) {
     if (session.status === 'ACTIVE' && this.#sessions.isExpired(session)) {
       session.status = 'EXPIRED';
       this.#cache.deleteSession(session.id);
+      void this.#expireIdle(session);
     }
     if (session.status === 'EXPIRED') throw new ApplicationError(ERROR_CODES.SESSION_EXPIRED, 'session expired');
   }
@@ -366,15 +428,24 @@ class D4RuleKitApplication {
     session.diagnostics.failures += 1;
     session.diagnostics.lastFailure = error instanceof ApplicationError ? error.code : 'PROVIDER_FAILURE';
     this.#cache.deleteSession(session.id);
+    this.#sessions.cancelExpiry(session.id);
     this.#orchestrator.close(session.providerRuntime).catch(() => undefined);
   }
 
   async #callProvider(session, input, options) {
     try {
-      return await this.#orchestrator.evaluate(session.providerRuntime, {
+      const output = await this.#orchestrator.evaluate(session.providerRuntime, {
         ...input, contractVersion: CONTRACT_VERSION, buildSchemaVersion: session.buildSchemaVersion,
         snapshotId: session.snapshotId, snapshotManifestSha256: session.snapshotManifestSha256,
       }, options);
+      const actualIds = new Set(output.metrics.map(metric => metric.id));
+      const missingIds = (session.capabilities.metricIds ?? []).filter(id => !actualIds.has(id));
+      if (missingIds.length > 0) {
+        throw new ApplicationError(ERROR_CODES.PROVIDER_FAILURE, 'provider metric coverage mismatch', {
+          details: { expected: session.capabilities.metricIds.length, actual: actualIds.size, missingIds },
+        });
+      }
+      return output;
     } catch (error) {
       session.diagnostics.failures += 1;
       if (error instanceof ApplicationError) {

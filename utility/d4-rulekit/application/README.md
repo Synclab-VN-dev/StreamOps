@@ -34,6 +34,7 @@ const current = await app.evaluate(session.sessionId);
 ## Safety semantics
 
 - A session pins provider version, snapshot identity/digest, build schema, fingerprint and revision.
+- Concurrent creation reserves capacity before provider work; timed-out late runtimes are cleaned up.
 - Preview never publishes candidate state. Stateful providers must implement checkpoint/restore.
 - Commit requires both optimistic `expectedRevision` and a matching preview token.
 - Rollback failure quarantines the session. Timed-out/cancelled stateful mutation is fail-closed.
@@ -41,9 +42,11 @@ const current = await app.evaluate(session.sessionId);
 - Provider `OBSERVED` output is never promoted to `VERIFIED`.
 - Cache identity includes provider, snapshot digest, build, contract/schema and capability policy versions.
 - Application core imports no browser or provider-specific implementation.
+- Idle sessions are actively expired and cleaned up without requiring a later client request.
 
-The synthetic providers in tests exercise contracts only; they are not Diablo IV formulas and are
-not evidence for APP-07. Real provider integration remains blocked on Issue #128.
+The synthetic providers and pinned synthetic runtime exercise contracts only; they are not Diablo IV
+formulas or real Maxroll calculation evidence. Real APP-07 integration remains
+`BLOCKED_AUTHORIZED_SNAPSHOT` on Issue #128.
 
 ## Local gates
 

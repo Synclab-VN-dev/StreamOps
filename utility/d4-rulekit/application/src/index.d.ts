@@ -71,6 +71,10 @@ export interface ApplicationOptions {
   operationTimeoutMs?: number;
   cleanupTimeoutMs?: number;
   clock?: () => number;
+  scheduler?: Readonly<{
+    setTimeout(callback: () => void, delayMs: number): unknown;
+    clearTimeout(handle: unknown): void;
+  }>;
 }
 
 export interface CreateSessionOptions {

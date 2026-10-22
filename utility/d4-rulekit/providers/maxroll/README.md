@@ -54,4 +54,6 @@ BROWSER_INFRA_CHROMIUM_PATH=/path/to/pinned/chrome npm run test:e2e
 
 Tests are deterministic and bounded. The E2E suite starts a local synthetic origin, captures it with
 the generic Snapshot Manager, then evaluates three A→B→A cycles from offline-strict replay with zero
-origin requests.
+origin requests. It also exercises all eight D4 Rule Kit Application APIs through provider dependency
+injection, including immutable preview, commit, reset and cleanup. This is architecture/lifecycle
+evidence only; real Maxroll integration remains `BLOCKED_AUTHORIZED_SNAPSHOT`.
