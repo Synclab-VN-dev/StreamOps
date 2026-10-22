@@ -43,6 +43,15 @@ Issue #124 adds an isolated provider-agnostic Node.js package at
 Chromium lifecycle and disposable leases only. It does not change the Python
 DSL/CLI contracts and does not contain D4 or provider calculation logic.
 
+## Application orchestration
+
+Issue #127 adds a separate provider-agnostic Node.js package at
+[`application/`](application/README.md). It owns session lifecycle, immutable
+preview/commit/reset state, revision checks, result normalization and version-safe
+cache identity through an injected Calculation Provider contract. It imports neither
+Browser Infrastructure nor provider-specific calculation logic, and it leaves the
+existing Python DSL/CLI contracts unchanged.
+
 ## CI-03: game-evidence-backed execution contract
 
 - **Canonical semantics:** `contracts/execution-v1.json` (not the JSON Schema).

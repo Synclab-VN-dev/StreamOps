@@ -145,3 +145,33 @@ jobs:
           path: utility/d4-rulekit/browser-infra/artifacts/
           if-no-files-found: error
           retention-days: 30
+
+  application:
+    name: Application unit, contract and synthetic E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: utility/d4-rulekit/application
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: utility/d4-rulekit/application/package-lock.json
+
+      - name: Install pinned development dependencies
+        run: npm ci
+
+      - name: Type declarations and all local application gates
+        run: npm test
+
+      - name: Upload application reports (including failure evidence)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d4-rulekit-application-evidence
+          path: utility/d4-rulekit/application/artifacts/
+          if-no-files-found: error
+          retention-days: 30

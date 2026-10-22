@@ -1,0 +1,21 @@
+{
+  "name": "@streamops/d4-rulekit-application",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Provider-agnostic, session-based calculation application layer",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test:unit": "node scripts/run-suite.js unit",
+    "test:contract": "node scripts/run-suite.js contract",
+    "test:e2e": "node scripts/run-suite.js e2e",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "npm run typecheck && npm run test:unit && npm run test:contract && npm run test:e2e"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}
