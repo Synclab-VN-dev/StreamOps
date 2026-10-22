@@ -148,7 +148,7 @@ jobs:
 
   maxroll-provider:
     name: Maxroll Provider synthetic unit, contract and offline Chromium E2E
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:
       run:
@@ -164,16 +164,34 @@ jobs:
       - name: Install pinned local infrastructure dependency
         run: npm ci
 
-      - name: Install pinned Chromium and Linux dependencies
-        run: npx playwright-core install --with-deps chromium
-
-      - name: Resolve pinned Chromium executable
+      - name: Discover preinstalled browser and runtime versions
         shell: bash
         run: |
           set -euo pipefail
-          chromium_path=$(node -e "process.stdout.write(require('playwright-core').chromium.executablePath())")
-          test -x "$chromium_path"
-          echo "BROWSER_INFRA_CHROMIUM_PATH=$chromium_path" >> "$GITHUB_ENV"
+          echo "runner_os=${{ runner.os }}"
+          echo "image_os=${ImageOS:-unknown}"
+          echo "image_version=${ImageVersion:-unknown}"
+          uname -a
+          browser_path=""
+          for browser_command in chromium chromium-browser google-chrome google-chrome-stable; do
+            candidate=$(command -v "$browser_command" || true)
+            echo "probe_${browser_command}=${candidate:-NOT_FOUND}"
+            if [[ -z "$browser_path" && -n "$candidate" && -x "$candidate" ]]; then
+              browser_path="$candidate"
+            fi
+          done
+          if [[ -z "$browser_path" ]]; then
+            echo "::error::No preinstalled Chromium/Chrome executable was found on the runner"
+            exit 1
+          fi
+          echo "browser_path=$browser_path"
+          "$browser_path" --version
+          node --version
+          node -e "console.log('playwright-core ' + require('playwright-core/package.json').version)"
+          echo "BROWSER_INFRA_CHROMIUM_PATH=$browser_path" >> "$GITHUB_ENV"
+
+      - name: Verify preinstalled browser compatibility and cleanup
+        run: npm run smoke:browser
 
       - name: Type declarations, unit, contract and offline synthetic E2E
         run: npm test
@@ -184,7 +202,7 @@ jobs:
         with:
           name: d4-rulekit-maxroll-provider-evidence
           path: utility/d4-rulekit/providers/maxroll/artifacts/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
 
   application:

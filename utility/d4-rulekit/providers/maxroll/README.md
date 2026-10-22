@@ -65,5 +65,10 @@ evidence only; real Maxroll integration remains `BLOCKED_AUTHORIZED_SNAPSHOT`.
 The MXP-08 E2E writes local launch/load/calculation/queue/RSS observations to ignored
 `artifacts/performance.json`; these measurements are evidence, not performance thresholds.
 
+The synthetic CI job probes the browser already installed on the pinned GitHub runner image and
+runs `npm run smoke:browser` before the suites. The smoke launches through Browser Infrastructure,
+navigates a local `data:` document, releases its lease and verifies browser shutdown. Missing or
+incompatible browsers fail explicitly; CI does not silently download a replacement or skip E2E.
+
 See `REAL-MAXROLL-GAP-ANALYSIS.md` before creating a real patch profile. The current selectors and
 UI protocol belong to the synthetic Phase A runtime and are not asserted to exist on Maxroll.
