@@ -125,6 +125,7 @@ export type SnapshotErrorCode =
   | 'CAPTURE_TIMEOUT'
   | 'CAPTURE_CANCELLED'
   | 'POLICY_BLOCKED'
+  | 'SENSITIVE_RESPONSE'
   | 'REPLAY_MISS'
   | 'MOUNT_INVALID'
   | 'MOUNT_CLEANUP_FAILED';
@@ -179,6 +180,9 @@ export interface WebSnapshotDraft {
   readonly capture: Readonly<{
     durationMs: number;
     blockedRequestCount: number;
+    blockedWebSocketCount: number;
+    excludedResponseCount: number;
+    redactedResponseCount: number;
     blockedRequests: readonly Readonly<{ method: string; url: string }>[];
     serviceWorkerPolicy: 'block';
   }>;
@@ -198,7 +202,10 @@ export interface WebSnapshotManifest {
   readonly resources: readonly SnapshotResourceManifest[];
   readonly resourceCount: number;
   readonly totalBytes: number;
-  readonly integrity: Readonly<{ algorithm: 'sha256' }>;
+  readonly integrity: Readonly<{
+    algorithm: 'sha256';
+    manifest: Readonly<{ algorithm: 'sha256'; anchor: 'manifest.sha256' }>;
+  }>;
 }
 
 export interface SnapshotVerification {
@@ -207,6 +214,7 @@ export interface SnapshotVerification {
   readonly resourceCount: number;
   readonly totalBytes: number;
   readonly algorithm: 'sha256';
+  readonly manifestSha256: string;
 }
 
 export interface SnapshotFilter {
@@ -223,8 +231,28 @@ export interface CaptureResourceDescriptor {
 
 export interface CapturePolicy extends Omit<SnapshotLimits, 'maxSnapshots'> {
   sensitiveQueryParameters?: readonly string[];
+  sensitiveJsonFields?: readonly string[];
+  sensitiveResponseNames?: readonly string[];
   allowResource?: (resource: CaptureResourceDescriptor) => boolean | Promise<boolean>;
+  responsePolicy?: (
+    response: Readonly<{
+      method: 'GET' | 'HEAD';
+      url: string;
+      status: number;
+      headers: Readonly<Record<string, string>>;
+      contentType: string | null;
+      body: Uint8Array;
+    }>,
+  ) => SnapshotResponseDecision | void | Promise<SnapshotResponseDecision | void>;
 }
+
+export type SnapshotResponseDecision =
+  | Readonly<{ action: 'default' | 'exclude' | 'include-sensitive' }>
+  | Readonly<{
+      action: 'redact';
+      body: Uint8Array | string;
+      headers?: Readonly<Record<string, string>>;
+    }>;
 
 export interface SnapshotCaptureOptions {
   url: string;
@@ -265,6 +293,7 @@ export interface SnapshotMountDiagnostics {
   readonly fulfilled: number;
   readonly aborted: number;
   readonly redirected: number;
+  readonly transportOffline: boolean;
   readonly misses: readonly Readonly<{ method: string; url: string; code: 'REPLAY_MISS' }>[];
 }
 

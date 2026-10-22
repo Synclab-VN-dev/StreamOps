@@ -36,7 +36,8 @@ after(async () => {
   await fsp.rm(rootDir, { recursive: true, force: true });
 });
 
-function createBrowser() {
+function createBrowser(overrides = {}) {
+  const { contextOptions = { serviceWorkers: 'block' }, ...config } = overrides;
   const browser = new BrowserInfrastructure({
     executablePath,
     maxContexts: 2,
@@ -44,8 +45,9 @@ function createBrowser() {
     acquireTimeoutMs: 3_000,
     leaseTimeoutMs: 30_000,
     cleanupTimeoutMs: 3_000,
-    contextOptions: { serviceWorkers: 'block' },
+    contextOptions,
     launchOptions: { args: ['--disable-background-networking'] },
+    ...config,
   });
   active.add(browser);
   return browser;
@@ -264,6 +266,102 @@ test('SNAP-07 sensitive response data is excluded and sensitive request URLs are
     allowedOrigins: [sites.staticSite.origin],
   }), SNAPSHOT_ERROR_CODES.POLICY_BLOCKED);
 });
+
+test('W3-R3 SNAP-07 does not persist sensitive JSON bodies or redirect locations', async () => {
+  const browser = createBrowser();
+  await browser.start();
+  const jsonId = nextId('response-json-policy');
+  const jsonCapture = await captureAndSave(browser, {
+    snapshotId: jsonId,
+    site: 'response-policy',
+    version: 'v1',
+    url: `${sites.staticSite.origin}/api/private`,
+    allowedOrigins: [sites.staticSite.origin],
+  });
+  const draftText = jsonCapture.draft.resources
+    .map(resource => `${JSON.stringify(resource.headers)}\n${resource.body}`).join('\n');
+  assert.equal(draftText.includes('json-secret-token'), false);
+  assert.equal(draftText.includes('private@example.test'), false);
+  assert.equal(draftText.includes('[REDACTED]'), true);
+  assert.equal(jsonCapture.draft.capture.redactedResponseCount, 1);
+
+  const { manager } = createManager(browser);
+  const redirectId = nextId('response-redirect-policy');
+  await rejectsCode(manager.capture({
+    snapshotId: redirectId,
+    url: `${sites.staticSite.origin}/redirect-private`,
+    allowedOrigins: [sites.staticSite.origin],
+  }), SNAPSHOT_ERROR_CODES.SENSITIVE_RESPONSE);
+  await rejectsCode(manager.load(redirectId), SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND);
+
+  const excluded = await manager.capture({
+    snapshotId: nextId('response-excluded'),
+    url: `${sites.staticSite.origin}/api/private`,
+    allowedOrigins: [sites.staticSite.origin],
+    capturePolicy: { responsePolicy: () => ({ action: 'exclude' }) },
+  });
+  assert.equal(excluded.resources.length, 0);
+  assert.equal(excluded.capture.excludedResponseCount, 1);
+
+  const explicitlyRedacted = await manager.capture({
+    snapshotId: nextId('response-explicit-redact'),
+    url: `${sites.staticSite.origin}/api/private`,
+    allowedOrigins: [sites.staticSite.origin],
+    capturePolicy: {
+      responsePolicy: () => ({ action: 'redact', body: '{"safe":"caller-redacted"}' }),
+    },
+  });
+  assert.equal(String(explicitlyRedacted.resources[0].body), '{"safe":"caller-redacted"}');
+
+  const optedIn = await manager.capture({
+    snapshotId: nextId('response-opt-in'),
+    url: `${sites.staticSite.origin}/api/private`,
+    allowedOrigins: [sites.staticSite.origin],
+    capturePolicy: { responsePolicy: () => ({ action: 'include-sensitive' }) },
+  });
+  assert.equal(String(optedIn.resources[0].body).includes('json-secret-token'), true);
+});
+
+for (const serviceWorkers of [undefined, 'allow']) {
+  test(`W3-R1 SNAP-04/05/12 strict replay blocks Worker WebSocket and SW (${serviceWorkers ?? 'default'})`, async () => {
+    const contextOptions = serviceWorkers === undefined ? {} : { serviceWorkers };
+    const browser = createBrowser({ contextOptions });
+    await browser.start();
+    const snapshotId = nextId(`strict-${serviceWorkers ?? 'default'}`);
+    const { manager } = await captureAndSave(browser, {
+      snapshotId,
+      site: 'strict-worker',
+      version: 'v1',
+      url: `${sites.dynamic.origin}/`,
+      allowedOrigins: [sites.dynamic.origin, sites.asset.origin],
+      interact: async ({ page }) => {
+        await page.evaluate(() => {
+          window.socketWorker = new Worker('/worker.js');
+        });
+        await page.waitForTimeout(100);
+      },
+    });
+    const websocketBefore = sites.websocket.attempts.length;
+    const dynamicBefore = sites.dynamic.requests.length;
+    let onlineObserved;
+    await browser.withLease({}, async lease => {
+      const mount = await manager.mount(lease, snapshotId);
+      await lease.page.goto(`${sites.dynamic.origin}/`);
+      onlineObserved = await lease.page.evaluate(() => navigator.onLine);
+      const workerResult = await lease.page.evaluate(url => new Promise(resolve => {
+        window.socketWorker = new Worker('/worker.js');
+        window.socketWorker.onmessage = event => resolve(event.data);
+        window.socketWorker.postMessage(url);
+        setTimeout(() => resolve('timeout'), 1_000);
+      }), sites.websocket.url);
+      assert.notEqual(workerResult, 'timeout');
+      assert.equal(mount.getDiagnostics().aborted, 0);
+    });
+    assert.equal(sites.websocket.attempts.length, websocketBefore);
+    assert.equal(onlineObserved, false);
+    assert.equal(sites.dynamic.requests.length, dynamicBefore);
+  });
+}
 
 test('SNAP-10 cancellation and resource limits terminate capture without a package', async () => {
   const browser = createBrowser();

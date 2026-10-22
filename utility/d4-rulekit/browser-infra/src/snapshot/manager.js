@@ -5,9 +5,12 @@ const playwrightPackage = require('playwright-core/package.json');
 const { NetworkInterceptor, resourceKey } = require('./interceptor');
 const { SNAPSHOT_ERROR_CODES, WebSnapshotError, snapshotError } = require('./errors');
 const {
+  DEFAULT_SENSITIVE_JSON_NAMES,
   DEFAULT_SENSITIVE_QUERY_NAMES,
+  containsSensitiveLocation,
   hasSensitiveRequestHeaders,
   normalizeOrigins,
+  redactSensitiveJson,
   sanitizeResponseHeaders,
   sanitizeUrlForDiagnostics,
   validateSafeUrl,
@@ -117,6 +120,9 @@ class WebSnapshotManager {
     const pending = new Set();
     let totalBytes = 0;
     let fatalError = null;
+    let blockedWebSocketCount = 0;
+    let excludedResponseCount = 0;
+    let redactedResponseCount = 0;
     const fail = error => {
       if (!fatalError) fatalError = error;
       void lease.page.close().catch(() => {});
@@ -153,7 +159,10 @@ class WebSnapshotManager {
     const responseHandler = response => {
       const task = this.#recordResponse(response, resources, options, currentTotal => {
         totalBytes = currentTotal;
-      }, () => totalBytes).catch(fail);
+      }, () => totalBytes, event => {
+        if (event === 'excluded') excludedResponseCount += 1;
+        if (event === 'redacted') redactedResponseCount += 1;
+      }).catch(fail);
       pending.add(task);
       void task.finally(() => pending.delete(task));
     };
@@ -187,6 +196,13 @@ class WebSnapshotManager {
         // Browser context serviceWorkers=block remains the primary policy.
       }
     });
+    if (typeof lease.context.routeWebSocket === 'function') {
+      await lease.context.routeWebSocket('**/*', async webSocket => {
+        blockedWebSocketCount += 1;
+        await webSocket.close({ code: 1008, reason: 'snapshot capture excludes WebSocket traffic' })
+          .catch(() => {});
+      });
+    }
     await lease.context.route('**/*', routeHandler);
     lease.page.on('response', responseHandler);
     try {
@@ -225,6 +241,9 @@ class WebSnapshotManager {
         capture: Object.freeze({
           durationMs: Date.now() - started,
           blockedRequestCount: blocked.length,
+          blockedWebSocketCount,
+          excludedResponseCount,
+          redactedResponseCount,
           blockedRequests: Object.freeze(blocked),
           serviceWorkerPolicy: 'block',
         }),
@@ -242,7 +261,7 @@ class WebSnapshotManager {
     }
   }
 
-  async #recordResponse(response, resources, options, setTotal, getTotal) {
+  async #recordResponse(response, resources, options, setTotal, getTotal, onPolicy) {
     const request = response.request();
     const method = request.method().toUpperCase();
     if (!['GET', 'HEAD'].includes(method)) return;
@@ -253,12 +272,71 @@ class WebSnapshotManager {
     } catch {
       return;
     }
-    const body = method === 'HEAD' || [204, 205, 304].includes(response.status())
+    let body = method === 'HEAD' || [204, 205, 304].includes(response.status())
       || (response.status() >= 300 && response.status() < 400)
       ? Buffer.alloc(0) : await response.body();
     if (body.length > options.maxResourceBytes) {
       throw snapshotError(SNAPSHOT_ERROR_CODES.RESOURCE_LIMIT,
         'captured resource exceeds maxResourceBytes');
+    }
+    let headers = sanitizeResponseHeaders(await response.allHeaders());
+    const descriptor = Object.freeze({
+      method,
+      url,
+      status: response.status(),
+      headers: Object.freeze({ ...headers }),
+      contentType: headers['content-type'] ?? null,
+      body: Buffer.from(body),
+    });
+    const decision = options.responsePolicy
+      ? await options.responsePolicy(descriptor)
+      : undefined;
+    if (decision !== undefined
+        && (!decision || typeof decision !== 'object' || Array.isArray(decision))) {
+      throw snapshotError(SNAPSHOT_ERROR_CODES.INVALID_OPTIONS,
+        'responsePolicy must return an action object');
+    }
+    const action = decision?.action ?? 'default';
+    if (!['default', 'exclude', 'redact', 'include-sensitive'].includes(action)) {
+      throw snapshotError(SNAPSHOT_ERROR_CODES.INVALID_OPTIONS,
+        'responsePolicy returned an unsupported action');
+    }
+    if (action === 'exclude') {
+      onPolicy('excluded');
+      return;
+    }
+    if (action === 'redact') {
+      if (decision.body === undefined) {
+        throw snapshotError(SNAPSHOT_ERROR_CODES.INVALID_OPTIONS,
+          'responsePolicy redact action requires body');
+      }
+      try {
+        body = Buffer.from(decision.body);
+      } catch (error) {
+        throw snapshotError(SNAPSHOT_ERROR_CODES.INVALID_OPTIONS,
+          'responsePolicy redact body must be a string or byte array', error);
+      }
+      if (decision.headers !== undefined) headers = sanitizeResponseHeaders(decision.headers);
+      onPolicy('redacted');
+    }
+    if (action !== 'include-sensitive') {
+      const location = headers.location;
+      if (location && containsSensitiveLocation(location, url, options.sensitiveResponseNames)) {
+        throw snapshotError(SNAPSHOT_ERROR_CODES.SENSITIVE_RESPONSE,
+          'redirect Location contains a sensitive parameter');
+      }
+      if (action === 'default') {
+        const redacted = redactSensitiveJson(body, headers['content-type'],
+          options.sensitiveJsonFields);
+        if (redacted.redactedFields.length > 0) {
+          body = redacted.body;
+          onPolicy('redacted');
+        }
+      }
+    }
+    if (body.length > options.maxResourceBytes) {
+      throw snapshotError(SNAPSHOT_ERROR_CODES.RESOURCE_LIMIT,
+        'captured resource exceeds maxResourceBytes after response policy');
     }
     const key = resourceKey(method, url);
     const digest = sha256(body);
@@ -285,7 +363,7 @@ class WebSnapshotManager {
       method,
       url,
       status: response.status(),
-      headers: sanitizeResponseHeaders(await response.allHeaders()),
+      headers,
       redirectedFrom: request.redirectedFrom()?.url() ?? null,
       body,
     }));
@@ -300,6 +378,14 @@ class WebSnapshotManager {
     const sensitiveQueryParameters = [
       ...DEFAULT_SENSITIVE_QUERY_NAMES,
       ...(options.capturePolicy?.sensitiveQueryParameters ?? []),
+    ];
+    const sensitiveJsonFields = [
+      ...DEFAULT_SENSITIVE_JSON_NAMES,
+      ...(options.capturePolicy?.sensitiveJsonFields ?? []),
+    ];
+    const sensitiveResponseNames = [
+      ...DEFAULT_SENSITIVE_QUERY_NAMES,
+      ...(options.capturePolicy?.sensitiveResponseNames ?? []),
     ];
     const url = validateSafeUrl(options.url, allowedOrigins, sensitiveQueryParameters);
     const snapshotId = options.snapshotId === undefined
@@ -316,6 +402,9 @@ class WebSnapshotManager {
       signal: options.signal,
       interact: options.interact,
       allowResource: options.capturePolicy?.allowResource,
+      responsePolicy: options.capturePolicy?.responsePolicy,
+      sensitiveJsonFields,
+      sensitiveResponseNames,
     };
     for (const name of ['timeoutMs', 'maxResources', 'maxResourceBytes', 'maxTotalBytes']) {
       if (!Number.isInteger(normalized[name]) || normalized[name] < 1) {
@@ -329,6 +418,17 @@ class WebSnapshotManager {
     if (normalized.allowResource !== undefined && typeof normalized.allowResource !== 'function') {
       throw snapshotError(SNAPSHOT_ERROR_CODES.INVALID_OPTIONS,
         'capturePolicy.allowResource must be a function');
+    }
+    if (normalized.responsePolicy !== undefined && typeof normalized.responsePolicy !== 'function') {
+      throw snapshotError(SNAPSHOT_ERROR_CODES.INVALID_OPTIONS,
+        'capturePolicy.responsePolicy must be a function');
+    }
+    for (const name of ['sensitiveJsonFields', 'sensitiveResponseNames']) {
+      if (!Array.isArray(normalized[name])
+          || normalized[name].some(value => typeof value !== 'string' || value.length === 0)) {
+        throw snapshotError(SNAPSHOT_ERROR_CODES.INVALID_OPTIONS,
+          `${name} must contain non-empty strings`);
+      }
     }
     if (normalized.signal !== undefined && !(normalized.signal instanceof AbortSignal)) {
       throw snapshotError(SNAPSHOT_ERROR_CODES.INVALID_OPTIONS, 'signal must be an AbortSignal');

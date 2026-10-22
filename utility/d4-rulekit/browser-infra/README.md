@@ -148,6 +148,12 @@ const draft = await snapshots.capture({
   version: 'v1',
   url: 'https://example.test/app',
   allowedOrigins: ['https://example.test'],
+  capturePolicy: {
+    // Optional generic decision: default | exclude | redact | include-sensitive.
+    responsePolicy: response => response.contentType === 'application/octet-stream'
+      ? { action: 'exclude' }
+      : { action: 'default' },
+  },
   interact: async ({ page }) => page.click('#load-lazy-content'),
 });
 await snapshots.save(draft);
@@ -179,14 +185,36 @@ lease after snapshot use. Consumers may provide
 generic interaction and resource-policy callbacks; the infrastructure has no
 site selectors or domain knowledge.
 
-Saved packages use `web-snapshot/v1`, one immutable directory per snapshot ID,
-and content-addressed SHA-256 blobs. Save uses a temporary directory followed
-by an atomic rename. Duplicate IDs, corrupt manifests, missing/tampered blobs,
-limit violations and partial writes fail with typed snapshot errors. Captured
-website assets are runtime data and must not be committed to Git.
+The default response policy recursively replaces values for common sensitive
+JSON keys (tokens, secrets and a small generic PII key set) with
+`[REDACTED]`. A redirect `Location` containing a sensitive query/fragment key
+fails capture with `SENSITIVE_RESPONSE`. A caller may explicitly return
+`exclude`, supply a replacement body/headers with `redact`, or deliberately
+opt in with `include-sensitive`. The latter is an explicit authorization and
+must not be used for shareable snapshots. Generic filtering cannot identify
+all PII, secrets embedded in arbitrary HTML/binary bodies, or site-specific
+identifiers; callers must add `sensitiveJsonFields`,
+`sensitiveResponseNames`, or a response policy for their data contract.
 
-Replay is `offline-strict`: every request must resolve from the verified
-package and a miss is aborted, never continued to the Internet. Redirect
+Saved packages use `web-snapshot/v1`, one immutable directory per snapshot ID,
+content-addressed SHA-256 blobs, and a `manifest.sha256` anchor. Save writes the
+manifest, anchor and blobs in a temporary directory followed by an atomic
+rename. Duplicate IDs, modified metadata, corrupt manifests, missing/tampered
+blobs, limit violations and partial writes fail with typed snapshot errors.
+The co-located anchor detects accidental corruption and a manifest-only edit;
+it is not a signature and cannot protect against an attacker who can rewrite
+both the package and its anchor. A signed/external trust registry is required
+for that threat model. `verify()` returns `manifestSha256` so an authorized
+consumer can pin it in an independent registry. Captured website assets are runtime data and must not be
+committed to Git.
+
+Replay is `offline-strict`: after routes are installed the complete browser
+context is forced transport-offline, so page, Dedicated Worker, WebSocket and
+Service Worker traffic cannot fall through to the network. Every HTTP request
+must additionally resolve from the verified package and a miss is aborted,
+never continued to the Internet. A context with an already-running Service
+Worker is rejected; `unmount()` removes routes and restores online transport.
+Redirect
 metadata is retained exactly in the manifest. Chromium does not re-intercept a
 redirect follow-up emitted by a route-fulfilled 3xx response, so replay uses a
 controlled local redirect transition for documents and resolves subresource

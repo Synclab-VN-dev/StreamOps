@@ -12,6 +12,7 @@ const {
 } = require('./policy');
 
 const SNAPSHOT_SCHEMA_VERSION = 'web-snapshot/v1';
+const MANIFEST_ANCHOR_FILE = 'manifest.sha256';
 const DEFAULT_STORE_LIMITS = Object.freeze({
   maxSnapshots: 100,
   maxResources: 5_000,
@@ -128,10 +129,15 @@ class FileSystemSnapshotStore {
         resources,
         resourceCount: resources.length,
         totalBytes,
-        integrity: { algorithm: 'sha256' },
+        integrity: {
+          algorithm: 'sha256',
+          manifest: { algorithm: 'sha256', anchor: MANIFEST_ANCHOR_FILE },
+        },
       };
-      await this.#fs.writeFile(path.join(temporary, 'manifest.json'),
-        `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
+      const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
+      await this.#fs.writeFile(path.join(temporary, 'manifest.json'), manifestBytes, { flag: 'wx' });
+      await this.#fs.writeFile(path.join(temporary, MANIFEST_ANCHOR_FILE),
+        `${sha256(manifestBytes)}\n`, { flag: 'wx' });
       try {
         await this.#fs.rename(temporary, destination);
       } catch (error) {
@@ -151,18 +157,35 @@ class FileSystemSnapshotStore {
   async load(snapshotId) {
     validateSnapshotId(snapshotId);
     let text;
+    const directory = this.#snapshotPath(snapshotId);
     try {
-      const directory = this.#snapshotPath(snapshotId);
       const stat = await this.#fs.lstat(directory);
       if (!stat.isDirectory() || stat.isSymbolicLink()) {
         throw snapshotError(SNAPSHOT_ERROR_CODES.INVALID_SNAPSHOT,
           'snapshot package must be a real directory');
       }
-      text = await this.#fs.readFile(path.join(directory, 'manifest.json'), 'utf8');
     } catch (error) {
       if (error?.code === 'ENOENT') {
         throw snapshotError(SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND,
           'snapshot was not found', error);
+      }
+      throw this.#storageError(error);
+    }
+    try {
+      const manifestPath = path.join(directory, 'manifest.json');
+      const [manifestBytes, anchor] = await Promise.all([
+        this.#fs.readFile(manifestPath),
+        this.#fs.readFile(path.join(directory, MANIFEST_ANCHOR_FILE), 'utf8'),
+      ]);
+      if (!/^[a-f0-9]{64}\n?$/.test(anchor) || anchor.trim() !== sha256(manifestBytes)) {
+        throw snapshotError(SNAPSHOT_ERROR_CODES.INTEGRITY_MISMATCH,
+          'snapshot manifest integrity mismatch');
+      }
+      text = manifestBytes.toString('utf8');
+    } catch (error) {
+      if (error?.code === 'ENOENT') {
+        throw snapshotError(SNAPSHOT_ERROR_CODES.INVALID_SNAPSHOT,
+          'snapshot package is missing its manifest or integrity anchor', error);
       }
       throw this.#storageError(error);
     }
@@ -202,6 +225,8 @@ class FileSystemSnapshotStore {
 
   async verify(snapshotId) {
     const manifest = await this.load(snapshotId);
+    const manifestSha256 = (await this.#fs.readFile(
+      path.join(this.#snapshotPath(snapshotId), MANIFEST_ANCHOR_FILE), 'utf8')).trim();
     let verifiedBytes = 0;
     for (const resource of manifest.resources) {
       let body;
@@ -230,6 +255,7 @@ class FileSystemSnapshotStore {
       resourceCount: manifest.resourceCount,
       totalBytes: manifest.totalBytes,
       algorithm: 'sha256',
+      manifestSha256,
     });
   }
 
@@ -303,6 +329,8 @@ class FileSystemSnapshotStore {
         || manifest.resourceCount !== manifest.resources.length
         || !Number.isInteger(manifest.totalBytes) || manifest.totalBytes < 0
         || manifest.integrity?.algorithm !== 'sha256'
+        || manifest.integrity?.manifest?.algorithm !== 'sha256'
+        || manifest.integrity?.manifest?.anchor !== MANIFEST_ANCHOR_FILE
         || !Array.isArray(manifest.allowedOrigins)
         || typeof manifest.sourceUrl !== 'string'
         || typeof manifest.capturedAt !== 'string' || !Number.isFinite(Date.parse(manifest.capturedAt))
@@ -400,6 +428,7 @@ class FileSystemSnapshotStore {
 module.exports = {
   DEFAULT_STORE_LIMITS,
   FileSystemSnapshotStore,
+  MANIFEST_ANCHOR_FILE,
   SNAPSHOT_SCHEMA_VERSION,
   sha256,
 };

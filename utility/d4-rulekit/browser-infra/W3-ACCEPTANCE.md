@@ -55,17 +55,18 @@ python3 -m venv /tmp/streamops-w3-python.<temporary>/venv
 
 - Node.js `22.22.1`; Playwright Core `1.64.1`.
 - Chrome for Testing `156.0.8078.4`, real headless process.
-- Unit: `37/37 PASS` (24 W1/W2 + 13 W3).
-- Real Chromium E2E: `19/19 PASS` (9 W1/W2 + 10 W3).
+- Unit: `41/41 PASS` (24 W1/W2 + 17 W3/review regressions).
+- Real Chromium E2E: `22/22 PASS` (9 W1/W2 + 13 W3/review regressions).
 - Python Rule Kit: `38/38 PASS`.
-- Full Node unit + E2E wall time: `19.02s`.
-- Peak measured resident set for the full `npm test` command tree: `216,984 KiB`.
+- Latest full Node unit + E2E wall time: `23.59s`; measured peak RSS for the
+  command tree: `215,752 KiB`.
 - JUnit/JSON evidence: ignored local `artifacts/{unit,e2e}.{junit.xml,json}`.
 
 ## Boundaries and remaining risks
 
-- Replay is intentionally `offline-strict`; an uncaptured resource aborts.
-- Service Workers are blocked. Sites that require SW, writes, WebSockets,
+- Replay is intentionally `offline-strict`; the context is transport-offline
+  and an uncaptured resource aborts. Pre-existing Service Workers reject mount.
+- Service Workers and WebSockets are blocked. Sites that require SW, writes,
   streaming, authentication or server-side execution are outside this version.
 - Playwright invokes one route handler for an HTTP redirect chain. To prevent a
   fulfilled 3xx from escaping to the network, replay retains the exact 3xx and
@@ -77,6 +78,12 @@ python3 -m venv /tmp/streamops-w3-python.<temporary>/venv
   deploy one store writer per root or provide a locking/object-store adapter.
 - Website asset retention and redistribution require caller authorization;
   no captured website body is committed to Git.
+- `manifest.sha256` detects corruption or manifest-only edits, but is a
+  co-located checksum rather than a signature. An attacker able to replace the
+  package and anchor remains outside the trust model.
+- Common sensitive JSON keys are redacted and sensitive redirect locations
+  fail closed. Generic filtering cannot discover all PII or secrets in
+  arbitrary text/binary bodies; site/data owners must provide response policy.
 
 ## WHAT / WHO / WHY / HOW
 

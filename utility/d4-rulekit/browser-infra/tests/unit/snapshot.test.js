@@ -14,7 +14,9 @@ const {
   WebSnapshotManager,
 } = require('../../src');
 const {
+  containsSensitiveLocation,
   hasSensitiveRequestHeaders,
+  redactSensitiveJson,
   sanitizeResponseHeaders,
   validateSafeUrl,
 } = require('../../src/snapshot/policy');
@@ -81,14 +83,45 @@ test('SNAP-06 detects tampered and missing content-addressed resources', async (
   const rootDir = await temporaryDirectory();
   const store = new FileSystemSnapshotStore({ rootDir });
   const manifest = await store.save(draft('integrity'));
-  assert.deepEqual(await store.verify('integrity'), {
+  const verification = await store.verify('integrity');
+  const { manifestSha256, ...summary } = verification;
+  assert.deepEqual(summary, {
     snapshotId: 'integrity', valid: true, resourceCount: 1, totalBytes: 16, algorithm: 'sha256',
   });
+  assert.match(manifestSha256, /^[a-f0-9]{64}$/);
   const blob = path.join(rootDir, 'integrity', manifest.resources[0].blob);
   await fs.writeFile(blob, 'tampered');
   await rejectsCode(store.verify('integrity'), SNAPSHOT_ERROR_CODES.INTEGRITY_MISMATCH);
   await fs.rm(blob);
   await rejectsCode(store.verify('integrity'), SNAPSHOT_ERROR_CODES.RESOURCE_MISSING);
+});
+
+test('W3-R2 SNAP-06 rejects manifest HTTP status tampering', async () => {
+  const rootDir = await temporaryDirectory();
+  const store = new FileSystemSnapshotStore({ rootDir });
+  await store.save(draft('tamper-status'));
+  const manifestPath = path.join(rootDir, 'tamper-status', 'manifest.json');
+  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  manifest.resources[0].status = 201;
+  await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  await rejectsCode(store.verify('tamper-status'), SNAPSHOT_ERROR_CODES.INTEGRITY_MISMATCH);
+  const manager = new WebSnapshotManager({
+    browser: { withLease() {} },
+    store,
+  });
+  await rejectsCode(manager.mount({ valid: true }, 'tamper-status'),
+    SNAPSHOT_ERROR_CODES.INTEGRITY_MISMATCH);
+});
+
+test('W3-R2 SNAP-06 rejects manifest content-type tampering', async () => {
+  const rootDir = await temporaryDirectory();
+  const store = new FileSystemSnapshotStore({ rootDir });
+  await store.save(draft('tamper-content-type'));
+  const manifestPath = path.join(rootDir, 'tamper-content-type', 'manifest.json');
+  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  manifest.resources[0].headers['content-type'] = 'application/javascript';
+  await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  await rejectsCode(store.verify('tamper-content-type'), SNAPSHOT_ERROR_CODES.INTEGRITY_MISMATCH);
 });
 
 test('SNAP-09 rejects corrupt/partial packages and cleans failed atomic saves', async () => {
@@ -98,7 +131,7 @@ test('SNAP-09 rejects corrupt/partial packages and cleans failed atomic saves', 
   await fs.writeFile(path.join(rootDir, 'corrupt', 'manifest.json'), '{not-json');
   await rejectsCode(store.load('corrupt'), SNAPSHOT_ERROR_CODES.INVALID_SNAPSHOT);
   await fs.mkdir(path.join(rootDir, 'partial'));
-  await rejectsCode(store.load('partial'), SNAPSHOT_ERROR_CODES.SNAPSHOT_NOT_FOUND);
+  await rejectsCode(store.load('partial'), SNAPSHOT_ERROR_CODES.INVALID_SNAPSHOT);
 
   const failingFs = Object.create(fs);
   failingFs.writeFile = async (...args) => {
@@ -167,15 +200,37 @@ test('SNAP-07 excludes sensitive URLs/headers and strips unsafe response headers
   }), { 'content-type': 'text/plain', etag: 'abc' });
 });
 
+test('W3-R3 SNAP-07 redacts generic sensitive JSON keys and detects sensitive redirects', () => {
+  const original = Buffer.from(JSON.stringify({
+    safe: 42,
+    access_token: 'secret',
+    profile: { email: 'private@example.test' },
+  }));
+  const result = redactSensitiveJson(original, 'application/json; charset=utf-8');
+  assert.deepEqual(JSON.parse(result.body.toString()), {
+    safe: 42,
+    access_token: '[REDACTED]',
+    profile: { email: '[REDACTED]' },
+  });
+  assert.deepEqual(result.redactedFields, ['access_token', 'email']);
+  assert.equal(containsSensitiveLocation('/next?token=secret', 'https://site.example/start'), true);
+  assert.equal(containsSensitiveLocation('/next#access_token=secret',
+    'https://site.example/start'), true);
+  assert.equal(containsSensitiveLocation('/next?view=public', 'https://site.example/start'), false);
+});
+
 class FakeReplayContext extends EventEmitter {
   constructor() {
     super();
     this.handler = null;
     this.unrouteCount = 0;
     this.initScriptCount = 0;
+    this.offline = false;
   }
 
   async addInitScript() { this.initScriptCount += 1; }
+  async setOffline(value) { this.offline = value; }
+  serviceWorkers() { return []; }
   async route(_pattern, handler) { this.handler = handler; }
   async unroute(_pattern, handler) {
     assert.equal(handler, this.handler);
@@ -212,12 +267,13 @@ test('SNAP-05/08 strict mount fulfills exact resources, aborts misses, and unmou
   await context.handler(miss);
   assert.deepEqual(miss.calls, [['abort', 'blockedbyclient']]);
   assert.deepEqual(mount.getDiagnostics(), {
-    fulfilled: 1, aborted: 1, redirected: 0,
+    fulfilled: 1, aborted: 1, redirected: 0, transportOffline: true,
     misses: [{ method: 'GET', url: 'https://site.example/missing', code: 'REPLAY_MISS' }],
   });
   await Promise.all([mount.unmount(), mount.unmount()]);
   assert.equal(mount.mounted, false);
   assert.equal(context.unrouteCount, 1);
+  assert.equal(context.offline, false);
 });
 
 test('SNAP-08 context close cleans mount state for subsequent mount', async () => {
@@ -231,6 +287,16 @@ test('SNAP-08 context close cleans mount state for subsequent mount', async () =
   const second = await interceptor.mount(lease, { resources });
   assert.equal(second.mounted, true);
   await second.unmount();
+});
+
+test('W3-R1 SNAP-12 rejects a context with pre-existing service workers', async () => {
+  const context = new FakeReplayContext();
+  context.serviceWorkers = () => [{ url: () => 'https://site.example/sw.js' }];
+  const interceptor = new NetworkInterceptor();
+  await rejectsCode(interceptor.mount({ valid: true, context }, { resources: new Map() }),
+    SNAPSHOT_ERROR_CODES.MOUNT_INVALID);
+  assert.equal(context.handler, null);
+  assert.equal(context.offline, false);
 });
 
 test('SNAP-08 cleanup failure is explicit and context close enables recovery', async () => {

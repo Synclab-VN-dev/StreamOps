@@ -14,12 +14,14 @@ class SnapshotMount {
   #mounted = true;
   #diagnostics;
   #unmountPromise = null;
+  #restoreNetwork;
 
-  constructor({ context, handler, onUnmount, diagnostics }) {
+  constructor({ context, handler, onUnmount, diagnostics, restoreNetwork }) {
     this.#context = context;
     this.#handler = handler;
     this.#onUnmount = onUnmount;
     this.#diagnostics = diagnostics;
+    this.#restoreNetwork = restoreNetwork;
     context.once?.('close', () => {
       this.#mounted = false;
       this.#onUnmount();
@@ -35,6 +37,7 @@ class SnapshotMount {
       fulfilled: this.#diagnostics.fulfilled,
       aborted: this.#diagnostics.aborted,
       redirected: this.#diagnostics.redirected,
+      transportOffline: this.#diagnostics.transportOffline,
       misses: Object.freeze([...this.#diagnostics.misses]),
     });
   }
@@ -45,6 +48,7 @@ class SnapshotMount {
     this.#unmountPromise = (async () => {
       try {
         await this.#context.unroute('**/*', this.#handler);
+        await this.#restoreNetwork();
       } catch (error) {
         if (!this.#mounted) return;
         throw snapshotError(SNAPSHOT_ERROR_CODES.MOUNT_CLEANUP_FAILED,
@@ -65,7 +69,8 @@ class NetworkInterceptor {
   #mounts = new WeakMap();
 
   async mount(lease, snapshotPackage, options = {}) {
-    if (!lease?.valid || !lease.context || !snapshotPackage?.resources) {
+    if (!lease?.valid || !lease.context || !snapshotPackage?.resources
+        || typeof lease.context.setOffline !== 'function') {
       throw snapshotError(SNAPSHOT_ERROR_CODES.MOUNT_INVALID,
         'a valid browser lease and verified snapshot package are required');
     }
@@ -79,7 +84,14 @@ class NetworkInterceptor {
       throw snapshotError(SNAPSHOT_ERROR_CODES.MOUNT_INVALID,
         'the lease already has a mounted snapshot');
     }
-    const diagnostics = { fulfilled: 0, aborted: 0, redirected: 0, misses: [] };
+    const existingServiceWorkers = lease.context.serviceWorkers?.() ?? [];
+    if (existingServiceWorkers.length > 0) {
+      throw snapshotError(SNAPSHOT_ERROR_CODES.MOUNT_INVALID,
+        'offline-strict replay requires a context without pre-existing service workers');
+    }
+    const diagnostics = {
+      fulfilled: 0, aborted: 0, redirected: 0, transportOffline: false, misses: [],
+    };
     const handler = async route => {
       const request = route.request();
       const key = resourceKey(request.method(), request.url());
@@ -158,12 +170,24 @@ class NetworkInterceptor {
       }
     });
     await lease.context.route('**/*', handler);
+    try {
+      await lease.context.setOffline(true);
+      diagnostics.transportOffline = true;
+    } catch (error) {
+      await lease.context.unroute('**/*', handler).catch(() => {});
+      throw snapshotError(SNAPSHOT_ERROR_CODES.MOUNT_INVALID,
+        'browser context cannot enforce transport-offline replay', error);
+    }
     const onUnmount = () => this.#mounts.delete(lease.context);
     const mount = new SnapshotMount({
       context: lease.context,
       handler,
       onUnmount,
       diagnostics,
+      restoreNetwork: async () => {
+        await lease.context.setOffline(false);
+        diagnostics.transportOffline = false;
+      },
     });
     this.#mounts.set(lease.context, mount);
     return mount;
