@@ -42,6 +42,9 @@ Review regressions `APP-R1` through `APP-R5` cover concurrent capacity reservati
 resolution, complete metric coverage, stateful evaluation recovery and active TTL cleanup.
 `APP-R6` proves a timed-out creation retains capacity until late cleanup succeeds; rejected or hung
 cleanup remains fail-closed and cannot overcommit `maxSessions`.
+`APP-R7` routes preview's baseline evaluation through the same checkpoint/recovery path as public
+evaluation: a provider mutation followed by failure is restored, while failed restore,
+timeout or cancellation quarantines the session and invalidates cached reuse.
 
 No manual UAT is required for Phase A. Long-running stress and soak tests are not part of this
 phase. The synthetic integration establishes contract compatibility but does not promote the real

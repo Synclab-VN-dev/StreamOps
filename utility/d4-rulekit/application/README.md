@@ -37,6 +37,8 @@ const current = await app.evaluate(session.sessionId);
 - Concurrent creation reserves capacity before provider work. A timed-out late runtime retains that
   capacity until bounded cleanup succeeds; failed/unknown cleanup stays quarantined fail-closed.
 - Preview never publishes candidate state. Stateful providers must implement checkpoint/restore.
+- Preview baseline evaluation is checkpointed too; failure restores the verified state or
+  quarantines the session before any subsequent evaluate/preview/commit can reuse it.
 - Commit requires both optimistic `expectedRevision` and a matching preview token.
 - Rollback failure quarantines the session. Timed-out/cancelled stateful mutation is fail-closed.
 - `UNKNOWN` and `UNSUPPORTED` metrics preserve `null`; normalization never invents zero.

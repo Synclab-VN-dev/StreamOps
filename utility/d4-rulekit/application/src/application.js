@@ -149,22 +149,7 @@ class D4RuleKitApplication {
         }
       }
       const started = this.#clock();
-      const checkpoint = await this.#checkpoint(session, options);
-      let output;
-      try {
-        output = await this.#callProvider(session, {
-          build: clone(session.buildState.committed), changes: [], mode: 'EVALUATE',
-        }, options);
-        this.#assertOutputBuild(session, output.build, session.buildState.fingerprint);
-      } catch (error) {
-        if (error instanceof ApplicationError &&
-            (error.code === ERROR_CODES.TIMEOUT || error.code === ERROR_CODES.CANCELLED)) {
-          this.#quarantine(session, error);
-          throw error;
-        }
-        await this.#recoverOrQuarantine(session, checkpoint, error, options);
-        throw error;
-      }
+      const { output } = await this.#evaluateUncached(session, options);
       const result = this.#result(session, output, started, { hit: false, key });
       session.diagnostics.evaluations += 1;
       this.#cache.set(key, result);
@@ -466,10 +451,22 @@ class D4RuleKitApplication {
   }
 
   async #evaluateUncached(session, options) {
-    const output = await this.#callProvider(session, {
-      build: clone(session.buildState.committed), changes: [], mode: 'EVALUATE',
-    }, options);
-    this.#assertOutputBuild(session, output.build, session.buildState.fingerprint);
+    const checkpoint = await this.#checkpoint(session, options);
+    let output;
+    try {
+      output = await this.#callProvider(session, {
+        build: clone(session.buildState.committed), changes: [], mode: 'EVALUATE',
+      }, options);
+      this.#assertOutputBuild(session, output.build, session.buildState.fingerprint);
+    } catch (error) {
+      if (error instanceof ApplicationError &&
+          (error.code === ERROR_CODES.TIMEOUT || error.code === ERROR_CODES.CANCELLED)) {
+        this.#quarantine(session, error);
+        throw error;
+      }
+      await this.#recoverOrQuarantine(session, checkpoint, error, options);
+      throw error;
+    }
     return { metrics: normalizeMetrics(output.metrics), output };
   }
 
