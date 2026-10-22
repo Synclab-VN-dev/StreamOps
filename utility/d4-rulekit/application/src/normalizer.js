@@ -13,6 +13,14 @@ function normalizeMetrics(metrics) {
       throw new ApplicationError(ERROR_CODES.PROVIDER_FAILURE, 'provider returned invalid or duplicate metric');
     }
     ids.add(metric.id);
+    if (!validRawValue(metric.rawValue) ||
+        metric.displayValue !== undefined && metric.displayValue !== null && typeof metric.displayValue !== 'string' ||
+        metric.unit !== undefined && metric.unit !== null && (typeof metric.unit !== 'string' || !metric.unit)) {
+      throw new ApplicationError(ERROR_CODES.PROVIDER_FAILURE, 'provider returned invalid metric value schema');
+    }
+    if (metric.status === 'OBSERVED' && (metric.rawValue === null || metric.rawValue === undefined)) {
+      throw new ApplicationError(ERROR_CODES.PROVIDER_FAILURE, 'OBSERVED metric requires a rawValue');
+    }
     if ((metric.status === 'UNKNOWN' || metric.status === 'UNSUPPORTED') &&
         (metric.rawValue !== null && metric.rawValue !== undefined)) {
       throw new ApplicationError(ERROR_CODES.PROVIDER_FAILURE, `${metric.status} metric must not fabricate rawValue`);
@@ -28,6 +36,11 @@ function normalizeMetrics(metrics) {
     };
   });
   return immutableCopy(normalized.sort((a, b) => a.id.localeCompare(b.id)));
+}
+
+function validRawValue(value) {
+  return value === undefined || value === null || typeof value === 'string' ||
+    typeof value === 'boolean' || typeof value === 'number' && Number.isFinite(value);
 }
 
 function metricDelta(before, after) {

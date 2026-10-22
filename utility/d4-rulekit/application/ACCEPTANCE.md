@@ -22,7 +22,7 @@ code. Provider state and business calculations never enter Application Core.
 | Acceptance | Automated evidence | Phase A expectation |
 |---|---|---|
 | APP-01 | registry unit tests, exact API contract, provider-B substitution | LOCAL_PASS |
-| APP-02 | atomic quota reservations, proactive TTL cleanup, bounded close, multi-session isolation | LOCAL_PASS |
+| APP-02 | atomic quota reservations, late-cleanup quarantine, proactive TTL cleanup, bounded close, isolation | LOCAL_PASS |
 | APP-03 | immutable preview, token/revision commit, reset, rollback quarantine | LOCAL_PASS |
 | APP-04 | serial/parallel tests, late-runtime cleanup, timeout/cancel and stateful recovery | LOCAL_PASS |
 | APP-05 | normalized raw/display/unit/status/provenance and percentage-point delta | LOCAL_PASS |
@@ -40,6 +40,8 @@ Recovery/concurrency cases are in `tests/unit/recovery.test.js`; full consumer w
 
 Review regressions `APP-R1` through `APP-R5` cover concurrent capacity reservation, late provider
 resolution, complete metric coverage, stateful evaluation recovery and active TTL cleanup.
+`APP-R6` proves a timed-out creation retains capacity until late cleanup succeeds; rejected or hung
+cleanup remains fail-closed and cannot overcommit `maxSessions`.
 
 No manual UAT is required for Phase A. Long-running stress and soak tests are not part of this
 phase. The synthetic integration establishes contract compatibility but does not promote the real

@@ -34,7 +34,8 @@ const current = await app.evaluate(session.sessionId);
 ## Safety semantics
 
 - A session pins provider version, snapshot identity/digest, build schema, fingerprint and revision.
-- Concurrent creation reserves capacity before provider work; timed-out late runtimes are cleaned up.
+- Concurrent creation reserves capacity before provider work. A timed-out late runtime retains that
+  capacity until bounded cleanup succeeds; failed/unknown cleanup stays quarantined fail-closed.
 - Preview never publishes candidate state. Stateful providers must implement checkpoint/restore.
 - Commit requires both optimistic `expectedRevision` and a matching preview token.
 - Rollback failure quarantines the session. Timed-out/cancelled stateful mutation is fail-closed.

@@ -57,11 +57,11 @@ class D4RuleKitApplication {
     }
     const sessionId = crypto.randomUUID();
     let abandoned = false;
-    let cleanupLateRuntime = Promise.resolve();
     let providerRuntime;
+    let creation;
     try {
       providerRuntime = await bounded(signal => {
-        const creation = Promise.resolve().then(() => provider.createSession({
+        creation = Promise.resolve().then(() => provider.createSession({
           contractVersion: CONTRACT_VERSION,
           build: clone(build),
           buildSchemaVersion: options.buildSchemaVersion,
@@ -69,19 +69,28 @@ class D4RuleKitApplication {
           snapshotManifestSha256: options.snapshotManifestSha256 ?? null,
           signal,
         }));
-        cleanupLateRuntime = creation.then(async runtime => {
-          if (abandoned && typeof runtime?.close === 'function') {
-            await this.#orchestrator.close(runtime).catch(() => undefined);
-          }
-        }, () => undefined);
         return creation;
       }, {
         timeoutMs: options.timeoutMs ?? this.#operationTimeoutMs, signal: options.signal,
       });
     } catch (error) {
       abandoned = true;
-      void cleanupLateRuntime;
-      this.#sessions.releaseReservation();
+      if (!creation) {
+        this.#sessions.releaseReservation();
+        throw error;
+      }
+      void creation.then(async runtime => {
+        if (!abandoned || typeof runtime?.close !== 'function') return;
+        try {
+          await this.#orchestrator.close(runtime);
+          this.#sessions.releaseReservation();
+        } catch {
+          // The runtime may still own resources. Retain capacity fail-closed until
+          // the Application instance is replaced; never overcommit an unknown lease.
+        }
+      }, () => {
+        this.#sessions.releaseReservation();
+      });
       throw error;
     }
     if (!providerRuntime || typeof providerRuntime.evaluate !== 'function' || typeof providerRuntime.close !== 'function') {

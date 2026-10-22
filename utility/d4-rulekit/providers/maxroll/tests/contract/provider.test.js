@@ -6,6 +6,12 @@ const path = require('node:path');
 const test = require('node:test');
 const { MaxrollProvider, MaxrollSession } = require('../../src');
 
+test('clean provider dependency exposes BrowserInfrastructure from its installed package tree', () => {
+  const infrastructure = require('@streamops/browser-infrastructure');
+  assert.equal(typeof infrastructure.BrowserInfrastructure, 'function');
+  assert.equal(typeof infrastructure.WebSnapshotManager, 'function');
+});
+
 test('provider surface matches CalculationProvider without duplicating Application APIs', () => {
   const providerMethods = Object.getOwnPropertyNames(MaxrollProvider.prototype)
     .filter(name => name !== 'constructor').sort();

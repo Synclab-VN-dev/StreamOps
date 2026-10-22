@@ -38,8 +38,15 @@ class MaxrollMetricsExtractor {
     }
     return immutable(this.#profile.metricCatalog.map(definition => {
       const metric = byId.get(definition.id);
-      if (metric.raw === undefined || metric.raw === null) {
-        throw new MaxrollProviderError(ERROR_CODES.METRICS_INCOMPLETE, `raw metric unavailable: ${definition.id}`);
+      if (definition.rawValueType !== 'finite-number' ||
+          typeof metric.raw !== 'number' || !Number.isFinite(metric.raw)) {
+        throw new MaxrollProviderError(ERROR_CODES.METRICS_INCOMPLETE,
+          `raw metric violates ${definition.rawValueType}: ${definition.id}`);
+      }
+      if (metric.display !== null && typeof metric.display !== 'string' ||
+          metric.unit !== null && (typeof metric.unit !== 'string' || !metric.unit)) {
+        throw new MaxrollProviderError(ERROR_CODES.METRICS_INCOMPLETE,
+          `metric display/unit schema is invalid: ${definition.id}`);
       }
       return {
         id: definition.id,

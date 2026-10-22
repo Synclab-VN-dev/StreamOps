@@ -9,6 +9,7 @@ export interface MetricDefinition {
   readonly internalId: number;
   readonly category: string;
   readonly name: string;
+  readonly rawValueType: 'finite-number';
 }
 
 export interface MaxrollPatchProfileConfig {

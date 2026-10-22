@@ -33,6 +33,7 @@ const METRIC_CATALOG = Object.freeze(rows.map(([internalId, category, name]) => 
   internalId,
   category,
   name,
+  rawValueType: 'finite-number',
 })));
 
 module.exports = { METRIC_CATALOG };

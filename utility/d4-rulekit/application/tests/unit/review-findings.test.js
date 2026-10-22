@@ -123,3 +123,99 @@ test('APP-R5 TTL cleanup runs without a later public API request', async () => {
   assert.throws(() => app.getSession(session.sessionId),
     error => error instanceof ApplicationError && error.code === ERROR_CODES.SESSION_NOT_FOUND);
 });
+
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((onResolve, onReject) => { resolve = onResolve; reject = onReject; });
+  return { promise, resolve, reject };
+}
+
+function runtimeWithClose(close) {
+  return {
+    evaluate: async ({ build }) => ({ build, metrics: [metric()] }),
+    close,
+  };
+}
+
+test('APP-R6 retains timed-out creation capacity until late runtime close succeeds', async () => {
+  const creation = deferred();
+  const closing = deferred();
+  let creates = 0;
+  const provider = {
+    id: 'late-capacity.synthetic', version: '1', getCapabilities: () => capabilities(),
+    createSession: async () => {
+      creates += 1;
+      if (creates === 1) return creation.promise;
+      return runtimeWithClose(async () => {});
+    },
+  };
+  const app = new D4RuleKitApplication({
+    providers: [provider], maxSessions: 1, operationTimeoutMs: 10, cleanupTimeoutMs: 20,
+  });
+  await assert.rejects(app.createSession(createOptions(provider.id, provider.version)),
+    error => error.code === ERROR_CODES.TIMEOUT);
+  await assert.rejects(app.createSession(createOptions(provider.id, provider.version)),
+    error => error.code === ERROR_CODES.QUOTA_EXCEEDED);
+  creation.resolve(runtimeWithClose(() => closing.promise));
+  await new Promise(resolve => setImmediate(resolve));
+  await assert.rejects(app.createSession(createOptions(provider.id, provider.version)),
+    error => error.code === ERROR_CODES.QUOTA_EXCEEDED);
+  closing.resolve();
+  await new Promise(resolve => setImmediate(resolve));
+  const replacement = await app.createSession(createOptions(provider.id, provider.version));
+  await app.closeSession(replacement.sessionId);
+});
+
+test('APP-R6 failed late close quarantines capacity instead of overcommitting', async () => {
+  const creation = deferred();
+  const provider = {
+    id: 'late-close-failure.synthetic', version: '1', getCapabilities: () => capabilities(),
+    createSession: () => creation.promise,
+  };
+  const app = new D4RuleKitApplication({
+    providers: [provider], maxSessions: 1, operationTimeoutMs: 10, cleanupTimeoutMs: 10,
+  });
+  await assert.rejects(app.createSession(createOptions(provider.id, provider.version)),
+    error => error.code === ERROR_CODES.TIMEOUT);
+  creation.resolve(runtimeWithClose(async () => { throw new Error('close failed'); }));
+  await new Promise(resolve => setImmediate(resolve));
+  await assert.rejects(app.createSession(createOptions(provider.id, provider.version)),
+    error => error.code === ERROR_CODES.QUOTA_EXCEEDED);
+});
+
+test('APP-R6 hung late close stays bounded and retains quarantined capacity', async () => {
+  const creation = deferred();
+  const provider = {
+    id: 'late-close-hang.synthetic', version: '1', getCapabilities: () => capabilities(),
+    createSession: () => creation.promise,
+  };
+  const app = new D4RuleKitApplication({
+    providers: [provider], maxSessions: 1, operationTimeoutMs: 10, cleanupTimeoutMs: 10,
+  });
+  await assert.rejects(app.createSession(createOptions(provider.id, provider.version)),
+    error => error.code === ERROR_CODES.TIMEOUT);
+  creation.resolve(runtimeWithClose(() => new Promise(() => {})));
+  await new Promise(resolve => setTimeout(resolve, 15));
+  await assert.rejects(app.createSession(createOptions(provider.id, provider.version)),
+    error => error.code === ERROR_CODES.QUOTA_EXCEEDED);
+});
+
+test('MXP-R2 invalid numeric provider output is rejected and never cached', async () => {
+  let evaluations = 0;
+  const provider = {
+    id: 'invalid-number.synthetic', version: '1', getCapabilities: () => capabilities(),
+    createSession: async () => ({
+      evaluate: async ({ build }) => {
+        evaluations += 1;
+        return { build, metrics: [{ ...metric(), rawValue: Number.NaN }] };
+      },
+      close: async () => {},
+    }),
+  };
+  const app = new D4RuleKitApplication({ providers: [provider] });
+  const session = await app.createSession(createOptions(provider.id, provider.version));
+  await assert.rejects(app.evaluate(session.sessionId), error => error.code === ERROR_CODES.PROVIDER_FAILURE);
+  await assert.rejects(app.evaluate(session.sessionId), error => error.code === ERROR_CODES.PROVIDER_FAILURE);
+  assert.equal(evaluations, 2);
+});

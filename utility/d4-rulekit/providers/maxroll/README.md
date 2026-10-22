@@ -52,6 +52,10 @@ npm run test:contract
 BROWSER_INFRA_CHROMIUM_PATH=/path/to/pinned/chrome npm run test:e2e
 ```
 
+The package sets npm `install-links=true` so the sibling file dependency is packed into this
+package's `node_modules` on a clean install. This lets `browser-infra` resolve its own declared
+`playwright-core` dependency without relying on a pre-existing sibling `node_modules` directory.
+
 Tests are deterministic and bounded. The E2E suite starts a local synthetic origin, captures it with
 the generic Snapshot Manager, then evaluates three A→B→A cycles from offline-strict replay with zero
 origin requests. It also exercises all eight D4 Rule Kit Application APIs through provider dependency
@@ -60,3 +64,6 @@ evidence only; real Maxroll integration remains `BLOCKED_AUTHORIZED_SNAPSHOT`.
 
 The MXP-08 E2E writes local launch/load/calculation/queue/RSS observations to ignored
 `artifacts/performance.json`; these measurements are evidence, not performance thresholds.
+
+See `REAL-MAXROLL-GAP-ANALYSIS.md` before creating a real patch profile. The current selectors and
+UI protocol belong to the synthetic Phase A runtime and are not asserted to exist on Maxroll.

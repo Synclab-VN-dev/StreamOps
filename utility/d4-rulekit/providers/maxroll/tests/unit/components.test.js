@@ -63,6 +63,27 @@ test('metric extractor fail-closes stale, missing, duplicate and unavailable raw
   await rejectsCode(extractor.extract({ send: async () => ({ result: { value: { phase: 2, metrics: noRaw } } }) }, 2), ERROR_CODES.METRICS_INCOMPLETE);
 });
 
+test('MXP-R2 metric extractor rejects non-finite/non-numeric raw values and invalid display/unit schema', async () => {
+  const extractor = new MaxrollMetricsExtractor(createProfile());
+  const base = METRIC_CATALOG.map(metric => ({
+    id: metric.id, raw: 1, display: '1', unit: null, phase: 2,
+  }));
+  for (const invalid of ['1', {}, [], Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    const rows = structuredClone(base);
+    rows[0].raw = invalid;
+    await rejectsCode(extractor.extract({
+      send: async () => ({ result: { value: { phase: 2, metrics: rows } } }),
+    }, 2), ERROR_CODES.METRICS_INCOMPLETE);
+  }
+  for (const [field, invalid] of [['display', 1], ['unit', {}], ['unit', '']]) {
+    const rows = structuredClone(base);
+    rows[0][field] = invalid;
+    await rejectsCode(extractor.extract({
+      send: async () => ({ result: { value: { phase: 2, metrics: rows } } }),
+    }, 2), ERROR_CODES.METRICS_INCOMPLETE);
+  }
+});
+
 test('stateful provider session evaluates A/B/A, checkpoints, restores and closes idempotently', async () => {
   const profile = createProfile();
   const deps = makeSessionDependencies();
