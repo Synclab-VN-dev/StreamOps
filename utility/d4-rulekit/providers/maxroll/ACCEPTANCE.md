@@ -9,7 +9,7 @@
 | MXP-05 | 50 expected raw IDs, 34 display values, phase/completeness negative tests | LOCAL_PASS_SYNTHETIC |
 | MXP-06 | three A→B→A cycles, exact restore, stale/incomplete fail-closed | LOCAL_PASS_SYNTHETIC |
 | MXP-07 | CalculationProvider contract fixture, no Application API duplication | LOCAL_PASS |
-| MXP-08 | real Chromium cold snapshot replay, warm reuse, zero origin egress | LOCAL_PASS_SYNTHETIC |
+| MXP-08 | real Chromium cold replay/warm reuse/zero egress plus launch, load, calculation, queue and RSS measurements | LOCAL_PASS_SYNTHETIC |
 | MXP-09 | authorized pinned Maxroll snapshot E2E | BLOCKED_AUTHORIZED_SNAPSHOT |
 | MXP-10 | all 8 Application APIs through DI, offline Chromium preview/commit/reset/cleanup | LOCAL_PASS_SYNTHETIC / BLOCKED_AUTHORIZED_SNAPSHOT |
 | MXP-11 | package/docs/regressions/CI evidence job | LOCAL_PASS / CI_PENDING |

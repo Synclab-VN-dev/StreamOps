@@ -57,3 +57,6 @@ the generic Snapshot Manager, then evaluates three A→B→A cycles from offline
 origin requests. It also exercises all eight D4 Rule Kit Application APIs through provider dependency
 injection, including immutable preview, commit, reset and cleanup. This is architecture/lifecycle
 evidence only; real Maxroll integration remains `BLOCKED_AUTHORIZED_SNAPSHOT`.
+
+The MXP-08 E2E writes local launch/load/calculation/queue/RSS observations to ignored
+`artifacts/performance.json`; these measurements are evidence, not performance thresholds.

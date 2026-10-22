@@ -61,6 +61,52 @@ function sessionOptions(profile) {
   };
 }
 
+async function chromiumRssBytes(pid) {
+  if (!pid) return null;
+  try {
+    const status = await fs.readFile(`/proc/${pid}/status`, 'utf8');
+    const match = status.match(/^VmRSS:\s+(\d+)\s+kB$/m);
+    return match ? Number(match[1]) * 1024 : null;
+  } catch {
+    return null;
+  }
+}
+
+test('MXP-08 records bounded cold load, warm calculation, queue and RSS measurements', async t => {
+  const { browser, provider, profile } = await fixture(t);
+  const loadStarted = process.hrtime.bigint();
+  const session = await provider.createSession(sessionOptions(profile));
+  const sessionLoadMs = Number(process.hrtime.bigint() - loadStarted) / 1e6;
+  const durations = [];
+  for (let index = 0; index < 3; index += 1) {
+    const started = process.hrtime.bigint();
+    await session.evaluate({
+      build: BASE_BUILD, changes: [], buildSchemaVersion: profile.supportedBuildSchemaVersion,
+    });
+    durations.push(Number(process.hrtime.bigint() - started) / 1e6);
+  }
+  const browserMetrics = browser.getMetrics();
+  const status = browser.getStatus();
+  const report = {
+    schemaVersion: 'maxroll-provider-performance/1',
+    fixture: 'SYNTHETIC_MAXROLL_RUNTIME',
+    browserLaunchMs: browserMetrics.lastLaunchDurationMs,
+    sessionLoadMs,
+    warmCalculationMs: durations,
+    averageAcquireWaitMs: browserMetrics.averageAcquireWaitMs,
+    nodeRssBytes: process.memoryUsage().rss,
+    chromiumRssBytes: await chromiumRssBytes(status.pid),
+  };
+  for (const value of [report.browserLaunchMs, report.sessionLoadMs,
+    ...report.warmCalculationMs, report.averageAcquireWaitMs, report.nodeRssBytes]) {
+    assert.equal(Number.isFinite(value) && value >= 0, true);
+  }
+  await fs.mkdir(path.resolve(__dirname, '../../artifacts'), { recursive: true });
+  await fs.writeFile(path.resolve(__dirname, '../../artifacts/performance.json'),
+    `${JSON.stringify(report, null, 2)}\n`);
+  await session.close();
+});
+
 test('MXP cold offline provider runs three exact A→B→A cycles with zero origin egress', async t => {
   const { provider, profile, site } = await fixture(t);
   site.resetRequests();
