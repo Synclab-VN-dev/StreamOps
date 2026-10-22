@@ -17,14 +17,16 @@ fs.mkdirSync(artifacts, { recursive: true });
 const startedAt = new Date().toISOString();
 const junitPath = path.join(artifacts, `${suite}.junit.xml`);
 const jsonPath = path.join(artifacts, `${suite}.json`);
-const tests = suite === 'unit'
-  ? path.join(root, 'tests/unit/infrastructure.test.js')
-  : path.join(root, 'tests/e2e/chromium.test.js');
+const testDirectory = path.join(root, `tests/${suite}`);
+const tests = fs.readdirSync(testDirectory)
+  .filter(name => name.endsWith('.test.js'))
+  .sort()
+  .map(name => path.join(testDirectory, name));
 const result = spawnSync(process.execPath, [
   '--test', '--test-concurrency=1',
   '--test-reporter=spec', '--test-reporter-destination=stdout',
   '--test-reporter=junit', `--test-reporter-destination=${junitPath}`,
-  tests,
+  ...tests,
 ], {
   cwd: root,
   env: process.env,

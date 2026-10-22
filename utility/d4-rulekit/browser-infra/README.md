@@ -1,14 +1,17 @@
 # Persistent Chromium browser infrastructure
 
 Provider-agnostic Node.js infrastructure for one managed headless Chromium
-process and disposable `BrowserContext`/`Page` leases. It belongs to D4 Rule
-Kit infrastructure but contains no Diablo IV or provider behavior.
+process, disposable `BrowserContext`/`Page` leases, and immutable local web
+snapshots. It belongs to D4 Rule Kit infrastructure but contains no Diablo IV
+or provider behavior.
 
 ## Boundary
 
 The package owns browser launch, shutdown, explicit restart, context capacity,
 FIFO queueing, acquisition timeout/cancellation, lease expiry, lazy CDP
-sessions, crash invalidation, safe diagnostics, status and counters.
+sessions, crash invalidation, safe diagnostics, status and counters. Its
+snapshot capability owns read-only resource capture, content-addressed local
+storage, integrity verification and strict offline replay.
 
 It does **not** own URLs, selectors, build/profile mutations, calculation
 semantics, provider retries, Character Stats, transport/IPC, or Python adapter
@@ -102,6 +105,100 @@ Logger events contain only component/event/state and resource identifiers such
 as lease ID. They never include page URL, content, cookies, headers or tokens.
 Consumer logger failures are isolated as best-effort diagnostics and cannot
 change lifecycle state or leak ownership of the browser process.
+
+## Generic web snapshots
+
+The snapshot lifecycle is composed with, but independent from, the browser
+lifecycle:
+
+```text
+WebSnapshotManager
+  |-- BrowserInfrastructure (capture lease only)
+  |-- SnapshotStore
+  |     `-- FileSystemSnapshotStore (immutable manifest + SHA-256 blobs)
+  `-- NetworkInterceptor
+        `-- SnapshotMount (offline-strict routing on one lease)
+```
+
+`WebSnapshotManager` exposes `capture`, `save`, `load`, `list`, `verify`, and
+`mount`. `SnapshotMount` exposes idempotent `unmount` and replay diagnostics.
+The manager depends on the store contract, so another persistence backend can
+replace `FileSystemSnapshotStore` without changing capture or replay callers.
+
+```js
+const {
+  BrowserInfrastructure,
+  FileSystemSnapshotStore,
+  WebSnapshotManager,
+} = require('./src');
+
+const browser = new BrowserInfrastructure({
+  executablePath: process.env.BROWSER_INFRA_CHROMIUM_PATH,
+  contextOptions: { serviceWorkers: 'block' },
+});
+const snapshots = new WebSnapshotManager({
+  browser,
+  store: new FileSystemSnapshotStore({ rootDir: '/var/tmp/web-snapshots' }),
+});
+
+await browser.start();
+const draft = await snapshots.capture({
+  snapshotId: 'example-v1',
+  site: 'example',
+  version: 'v1',
+  url: 'https://example.test/app',
+  allowedOrigins: ['https://example.test'],
+  interact: async ({ page }) => page.click('#load-lazy-content'),
+});
+await snapshots.save(draft);
+
+// A second site or a new version is a distinct immutable package.
+await snapshots.save(await snapshots.capture({
+  snapshotId: 'another-site-v2',
+  site: 'another-site',
+  version: 'v2',
+  url: 'https://assets.example.test/dashboard',
+  allowedOrigins: ['https://assets.example.test'],
+}));
+console.log(await snapshots.list({ site: 'another-site' }));
+
+await browser.withLease({}, async lease => {
+  const mounted = await snapshots.mount(lease, 'example-v1');
+  await lease.page.goto('https://example.test/app');
+  console.log(mounted.getDiagnostics());
+  await mounted.unmount();
+});
+```
+
+Capture defaults to credential-free `GET`/`HEAD` requests on explicitly
+allowlisted HTTP(S) origins. Authorization/cookie headers, sensitive query
+parameters, unsafe response headers, authenticated sessions, write methods,
+WebSockets and service workers are excluded or blocked. These defensive
+browser-global blocks remain for the disposable lease lifetime; release the
+lease after snapshot use. Consumers may provide
+generic interaction and resource-policy callbacks; the infrastructure has no
+site selectors or domain knowledge.
+
+Saved packages use `web-snapshot/v1`, one immutable directory per snapshot ID,
+and content-addressed SHA-256 blobs. Save uses a temporary directory followed
+by an atomic rename. Duplicate IDs, corrupt manifests, missing/tampered blobs,
+limit violations and partial writes fail with typed snapshot errors. Captured
+website assets are runtime data and must not be committed to Git.
+
+Replay is `offline-strict`: every request must resolve from the verified
+package and a miss is aborted, never continued to the Internet. Redirect
+metadata is retained exactly in the manifest. Chromium does not re-intercept a
+redirect follow-up emitted by a route-fulfilled 3xx response, so replay uses a
+controlled local redirect transition for documents and resolves subresource
+redirects to their captured target. This prevents network escape while
+preserving the captured redirect chain as evidence. Use
+`contextOptions: { serviceWorkers: 'block' }`; the mount also installs a
+defensive registration block. A fresh Chromium process/profile is supported;
+browser disk cache is not part of the contract.
+
+Default limits are 100 snapshots per store, 5,000 resources per snapshot,
+32 MiB per resource and 256 MiB total. Capture additionally has a 30-second
+default timeout. Configure lower limits for untrusted or constrained jobs.
 
 ## Runtime cost
 

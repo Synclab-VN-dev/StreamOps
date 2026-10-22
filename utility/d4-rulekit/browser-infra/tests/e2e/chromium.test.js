@@ -207,7 +207,7 @@ test('INF-11/12 generic consumer uses local fixture only and has no provider imp
   });
   assert.deepEqual([...new Set(attempted)], [fixture.origin]);
   const sourceRoot = path.resolve(__dirname, '../../src');
-  const source = fs.readdirSync(sourceRoot)
+  const source = fs.readdirSync(sourceRoot, { recursive: true })
     .filter(name => name.endsWith('.js'))
     .map(name => fs.readFileSync(path.join(sourceRoot, name), 'utf8'))
     .join('\n');
