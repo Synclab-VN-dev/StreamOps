@@ -1,4 +1,4 @@
-name: D4 Rulekit (G1 Contract)
+name: D4 Rule Kit
 on:
   push:
     branches:
@@ -102,5 +102,46 @@ jobs:
         with:
           name: d4-rulekit-g1-evidence
           path: artifacts/d4-rulekit/
+          if-no-files-found: error
+          retention-days: 30
+
+  browser-infrastructure:
+    name: Persistent Chromium unit and real-headless E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: utility/d4-rulekit/browser-infra
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: utility/d4-rulekit/browser-infra/package-lock.json
+
+      - name: Install pinned Playwright Core
+        run: npm ci
+
+      - name: Install pinned Chromium and Linux dependencies
+        run: npx playwright-core install --with-deps chromium
+
+      - name: Resolve pinned Chromium executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          chromium_path=$(node -e "process.stdout.write(require('playwright-core').chromium.executablePath())")
+          test -x "$chromium_path"
+          echo "BROWSER_INFRA_CHROMIUM_PATH=$chromium_path" >> "$GITHUB_ENV"
+
+      - name: Unit and real headless Chromium E2E
+        run: npm test
+
+      - name: Upload browser infrastructure reports (including failure evidence)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d4-rulekit-browser-infrastructure-evidence
+          path: utility/d4-rulekit/browser-infra/artifacts/
           if-no-files-found: error
           retention-days: 30

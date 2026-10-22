@@ -1,0 +1,19 @@
+{
+  "name": "@streamops/browser-infrastructure",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Provider-agnostic persistent headless Chromium lifecycle and lease infrastructure",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test:unit": "node scripts/run-suite.js unit",
+    "test:e2e": "node scripts/run-suite.js e2e",
+    "test": "npm run test:unit && npm run test:e2e"
+  },
+  "dependencies": {
+    "playwright-core": "1.64.1"
+  }
+}
