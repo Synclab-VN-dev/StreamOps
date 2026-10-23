@@ -1,6 +1,6 @@
 'use strict';
 
-const { METRIC_CATALOG } = require('../../src');
+const { ERROR_CODES, METRIC_CATALOG, MaxrollProviderError } = require('../../src');
 
 function fakeMetrics(phase, fire = 22) {
   return METRIC_CATALOG.map((metric, index) => ({
@@ -14,17 +14,20 @@ function fakeMetrics(phase, fire = 22) {
 function makeSessionDependencies() {
   const controls = {
     phase: 0, failApply: false, failExtract: false, failRestore: false,
-    hangApply: false, releases: 0, unmounts: 0,
+    hangApply: false, runtimeFailure: false, releases: 0, unmounts: 0, adapterCloses: 0,
   };
   const adapter = {
     cdp: {},
     async apply(desired) {
+      if (controls.runtimeFailure) throw new MaxrollProviderError(
+        ERROR_CODES.RUNTIME_NOT_READY, 'synthetic CDP failure');
       if (controls.failApply || controls.failRestore) throw new Error('apply failed');
       if (controls.hangApply) await new Promise(() => {});
       controls.phase += 1;
       controls.current = structuredClone(desired);
       return { phase: controls.phase, observed: desired };
     },
+    async close() { controls.adapterCloses += 1; },
   };
   const extractor = {
     async extract(_cdp, phase) {

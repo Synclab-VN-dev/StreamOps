@@ -12,6 +12,8 @@ class RealMaxrollRuntimeAdapter {
   #captures = new Map();
   #phase = 0;
   #breakpointLocations = 0;
+  #runtimeFailure = null;
+  #closed = false;
 
   constructor({ lease, profile }) {
     this.#lease = lease;
@@ -28,9 +30,10 @@ class RealMaxrollRuntimeAdapter {
     this.#cdp = await this.#lease.createCDPSession();
     await this.#cdp.send('Debugger.enable');
     this.#cdp.on('Debugger.breakpointResolved', () => { this.#breakpointLocations += 1; });
-    this.#cdp.on('Debugger.paused', event => {
-      this.#pauseChain = this.#pauseChain.then(() => this.#handlePause(event));
-    });
+    this.#cdp.on('Debugger.paused', event => { this.#queuePause(event); });
+    const disconnect = () => this.#recordRuntimeFailure(new MaxrollProviderError(
+      ERROR_CODES.RUNTIME_NOT_READY, 'CDP disconnected while the real runtime was active'));
+    this.#cdp.on('close', disconnect);
     const breakpoint = await this.#cdp.send('Debugger.setBreakpointByUrl', {
       urlRegex: runtime.assetUrlRegex,
       lineNumber: runtime.breakpoint.lineNumber,
@@ -64,6 +67,8 @@ class RealMaxrollRuntimeAdapter {
           details: { gamePatch: identity.gamePatch, breakpointLocations: this.#breakpointLocations },
         });
     }
+    await this.#pauseChain;
+    this.#assertRuntimeHealthy();
     return {
       runtimeVersion: this.#profile.runtimeVersion,
       gamePatch: identity.gamePatch,
@@ -74,6 +79,7 @@ class RealMaxrollRuntimeAdapter {
 
   async apply(desired, expectedFingerprint) {
     this.#assertLease();
+    this.#assertRuntimeHealthy();
     const runtime = this.#profile.realRuntime;
     await this.#dismissOptionalOverlay();
     await this.#lease.page.getByRole('button', {
@@ -174,8 +180,16 @@ class RealMaxrollRuntimeAdapter {
     return this.#cdp;
   }
 
+  async close() {
+    if (this.#closed) return;
+    this.#closed = true;
+    this.#recordRuntimeFailure(new MaxrollProviderError(ERROR_CODES.SESSION_INVALIDATED,
+      'real runtime adapter closed while a capture was pending'));
+  }
+
   async #beginCapture() {
     await this.#pauseChain;
+    this.#assertRuntimeHealthy();
     if (this.#activeCapture) {
       throw new MaxrollProviderError(ERROR_CODES.RUNTIME_NOT_READY,
         'a real metric capture is already active');
@@ -188,29 +202,50 @@ class RealMaxrollRuntimeAdapter {
       resolveCapture = resolve;
       rejectCapture = reject;
     });
-    const timer = setTimeout(() => {
-      if (!this.#activeCapture) return;
-      this.#activeCapture = null;
-      rejectCapture(new MaxrollProviderError(ERROR_CODES.METRICS_INCOMPLETE,
-        'timed out waiting for the complete real metric catalog'));
-    }, runtime.captureTimeoutMs);
-    this.#activeCapture = {
+    const capture = {
       expected,
       values: new Map(),
-      resolve: values => { clearTimeout(timer); this.#activeCapture = null; resolveCapture(values); },
-      reject: error => { clearTimeout(timer); rejectCapture(error); },
+      timer: null,
+      settled: false,
+      resolve: values => {
+        if (capture.settled) return;
+        capture.settled = true;
+        clearTimeout(capture.timer);
+        if (this.#activeCapture === capture) this.#activeCapture = null;
+        resolveCapture(values);
+      },
+      reject: error => {
+        if (capture.settled) return;
+        capture.settled = true;
+        clearTimeout(capture.timer);
+        if (this.#activeCapture === capture) this.#activeCapture = null;
+        rejectCapture(error);
+      },
     };
+    capture.timer = setTimeout(() => capture.reject(new MaxrollProviderError(
+      ERROR_CODES.METRICS_INCOMPLETE,
+      'timed out waiting for the complete real metric catalog')),
+    runtime.captureTimeoutMs);
+    this.#activeCapture = capture;
     return { completion: promise };
   }
 
   #abortCapture(error) {
     const capture = this.#activeCapture;
     if (!capture) return;
-    this.#activeCapture = null;
     capture.reject(error);
   }
 
+  #queuePause(event) {
+    this.#pauseChain = this.#pauseChain
+      .then(() => this.#runtimeFailure ? this.#resumePausedTarget() : this.#handlePause(event))
+      .catch(error => { this.#recordRuntimeFailure(error); });
+  }
+
   async #handlePause(event) {
+    let captureError = null;
+    let completedCapture = null;
+    let completedValues = null;
     try {
       const capture = this.#activeCapture;
       if (!capture) return;
@@ -226,12 +261,44 @@ class RealMaxrollRuntimeAdapter {
       if (capture.expected.has(internalId)) {
         capture.values.set(internalId, { internalId, rawValue: value.raw });
         if (capture.values.size === capture.expected.size) {
-          capture.resolve([...capture.values.values()]);
+          completedCapture = capture;
+          completedValues = [...capture.values.values()];
         }
       }
+    } catch (error) {
+      captureError = this.#runtimeError('CDP call-frame evaluation failed', error);
     } finally {
-      await this.#cdp.send('Debugger.resume').catch(() => {});
+      try {
+        await this.#resumePausedTarget();
+      } catch (error) {
+        throw this.#runtimeError('CDP could not resume a paused target', error);
+      }
     }
+    if (captureError) throw captureError;
+    completedCapture?.resolve(completedValues);
+  }
+
+  async #resumePausedTarget() {
+    await this.#cdp.send('Debugger.resume');
+  }
+
+  #recordRuntimeFailure(error) {
+    const failure = error instanceof MaxrollProviderError ? error :
+      this.#runtimeError('real Maxroll CDP runtime failed', error);
+    if (!this.#runtimeFailure) this.#runtimeFailure = failure;
+    this.#abortCapture(this.#runtimeFailure);
+  }
+
+  #runtimeError(message, cause) {
+    return new MaxrollProviderError(ERROR_CODES.RUNTIME_NOT_READY, message, { cause });
+  }
+
+  #assertRuntimeHealthy() {
+    if (this.#closed) {
+      throw new MaxrollProviderError(ERROR_CODES.SESSION_INVALIDATED,
+        'real runtime adapter is closed');
+    }
+    if (this.#runtimeFailure) throw this.#runtimeFailure;
   }
 
   async #dismissOptionalOverlay() {

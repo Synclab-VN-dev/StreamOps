@@ -48,7 +48,8 @@ class MaxrollSession {
         return evaluated;
       } catch (error) {
         if (error instanceof MaxrollProviderError &&
-            [ERROR_CODES.TIMEOUT, ERROR_CODES.CANCELLED, ERROR_CODES.SESSION_INVALIDATED]
+            [ERROR_CODES.TIMEOUT, ERROR_CODES.CANCELLED, ERROR_CODES.SESSION_INVALIDATED,
+              ERROR_CODES.RUNTIME_NOT_READY]
               .includes(error.code)) {
           this.#invalidate();
           throw error;
@@ -95,6 +96,7 @@ class MaxrollSession {
       if (this.#status === 'CLOSED') return;
       this.#status = 'CLOSING';
       const failures = [];
+      try { await this.#adapter?.close?.(); } catch (error) { failures.push(error); }
       try { await this.#mount?.unmount(); } catch (error) { failures.push(error); }
       try { await this.#lease?.release(); } catch (error) { failures.push(error); }
       this.#status = failures.length ? 'INVALIDATED' : 'CLOSED';

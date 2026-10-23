@@ -7,6 +7,8 @@ const {
   METRIC_CATALOG,
   MAXROLL_32173552_REFERENCE,
   MaxrollProvider,
+  MaxrollBuildMapper,
+  MaxrollSession,
   REAL_MAXROLL_COMPONENT_FACTORY,
   RealMaxrollMetricsExtractor,
   RealMaxrollRuntimeAdapter,
@@ -27,22 +29,41 @@ function createRealProfile(overrides = {}) {
 }
 
 class FakeCdp {
-  constructor({ breakpointLocations = [{}] } = {}) {
+  constructor({
+    breakpointLocations = [{}], failEvaluateOnce = false, failResumeOnce = false,
+  } = {}) {
     this.breakpointLocations = breakpointLocations;
+    this.failEvaluateOnce = failEvaluateOnce;
+    this.failResumeOnce = failResumeOnce;
   }
   handlers = new Map();
   modifierActive = false;
+  evaluateAttempts = 0;
+  resumeAttempts = 0;
 
   on(name, handler) { this.handlers.set(name, handler); }
 
   async send(method, params) {
     if (method === 'Debugger.setBreakpointByUrl') return { locations: this.breakpointLocations };
     if (method === 'Debugger.evaluateOnCallFrame') {
+      this.evaluateAttempts += 1;
+      if (this.failEvaluateOnce) {
+        this.failEvaluateOnce = false;
+        throw new Error('evaluateOnCallFrame disconnected');
+      }
       const internalId = Number(params.callFrameId);
       return { result: { value: {
         id: internalId,
         raw: internalId === 446 ? (this.modifierActive ? 2822 : 22) : internalId,
       } } };
+    }
+    if (method === 'Debugger.resume') {
+      this.resumeAttempts += 1;
+      if (this.failResumeOnce) {
+        this.failResumeOnce = false;
+        throw new Error('resume disconnected');
+      }
+      return {};
     }
     return {};
   }
@@ -53,6 +74,10 @@ class FakeCdp {
         callFrames: [{ callFrameId: String(metric.internalId) }],
       });
     }
+  }
+
+  emitDisconnect() {
+    this.handlers.get('close')?.();
   }
 }
 
@@ -70,9 +95,13 @@ class FakeLocator {
   async isVisible() { return this.actions.visible ?? true; }
 }
 
-function createFakeLease({ breakpointLocations, optionCount = 1, reportedModifierCount } = {}) {
-  const cdp = new FakeCdp({ breakpointLocations });
+function createFakeLease({
+  breakpointLocations, optionCount = 1, reportedModifierCount,
+  failEvaluateOnce = false, failResumeOnce = false, emitOnItemClick = true,
+} = {}) {
+  const cdp = new FakeCdp({ breakpointLocations, failEvaluateOnce, failResumeOnce });
   const state = { level: 1, itemPresent: false, modifierActive: false };
+  let emitMetricsOnItemClick = emitOnItemClick;
   const page = {
     async goto() {},
     async waitForFunction() {},
@@ -92,13 +121,13 @@ function createFakeLease({ breakpointLocations, optionCount = 1, reportedModifie
       if (text === 'Helm') return new FakeLocator();
       if (text === 'Runic Skullcap') return new FakeLocator({ click: () => {
         state.itemPresent = true;
-        cdp.emitMetrics();
+        if (emitMetricsOnItemClick) cdp.emitMetrics();
       } });
       if (text === 'Add Modifier') return new FakeLocator();
       if (text === 'Dampening / Of Dampening') return new FakeLocator({ count: optionCount, click: () => {
         state.modifierActive = true;
         cdp.modifierActive = true;
-        cdp.emitMetrics();
+        if (emitMetricsOnItemClick) cdp.emitMetrics();
       } });
       return new FakeLocator({ count: 0, visible: false });
     },
@@ -121,8 +150,11 @@ function createFakeLease({ breakpointLocations, optionCount = 1, reportedModifie
   };
   return {
     valid: true,
+    cdp,
     page,
+    setEmitOnItemClick(value) { emitMetricsOnItemClick = value; },
     createCDPSession: async () => cdp,
+    release: async () => {},
   };
 }
 
@@ -157,7 +189,7 @@ test('provider rejects a real profile paired with the synthetic component factor
   }), error => error.code === ERROR_CODES.INVALID_CONFIG);
 });
 
-test('real adapter and extractor enforce read-back, freshness and 50/34 observed coverage', async () => {
+test('MXP-R3-04 successful capture preserves 50 raw, 34 display and single-use freshness', async () => {
   const profile = createRealProfile();
   const adapter = new RealMaxrollRuntimeAdapter({ lease: createFakeLease(), profile });
   const extractor = new RealMaxrollMetricsExtractor(profile);
@@ -202,4 +234,114 @@ test('real adapter fails closed on unresolved breakpoint and ambiguous modifier 
   await adapter.initialize();
   await assert.rejects(() => adapter.apply(MODIFIED_BUILD, sha256(MODIFIED_BUILD)),
     error => error.code === ERROR_CODES.APPLY_FAILED);
+});
+
+test('MXP-R3-01 evaluateOnCallFrame failure resumes and rejects active capture promptly', async () => {
+  const profile = createRealProfile({ realRuntime: { captureTimeoutMs: 500 } });
+  const lease = createFakeLease({ failEvaluateOnce: true });
+  const adapter = new RealMaxrollRuntimeAdapter({ lease, profile });
+  await adapter.initialize();
+  const started = performance.now();
+  await assert.rejects(() => adapter.apply(BASE_BUILD, sha256(BASE_BUILD)),
+    error => error.code === ERROR_CODES.RUNTIME_NOT_READY);
+  assert.equal(performance.now() - started < 100, true, 'known CDP failure must not wait for capture timeout');
+  assert.equal(lease.cdp.resumeAttempts >= 1, true);
+});
+
+test('MXP-R3-02 a failed pause cannot poison later event handling or return partial success', async () => {
+  const profile = createRealProfile({ realRuntime: { captureTimeoutMs: 500 } });
+  const lease = createFakeLease({ failEvaluateOnce: true });
+  const adapter = new RealMaxrollRuntimeAdapter({ lease, profile });
+  await adapter.initialize();
+  await assert.rejects(() => adapter.apply(BASE_BUILD, sha256(BASE_BUILD)),
+    error => error.code === ERROR_CODES.RUNTIME_NOT_READY);
+  const resumesBefore = lease.cdp.resumeAttempts;
+  lease.cdp.emitMetrics();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(lease.cdp.resumeAttempts > resumesBefore, true, 'later paused targets must be resumed');
+  await assert.rejects(() => adapter.apply(BASE_BUILD, sha256(BASE_BUILD)),
+    error => error.code === ERROR_CODES.RUNTIME_NOT_READY);
+});
+
+test('MXP-R3-03 resume failure and CDP disconnect reject pending capture fail-closed', async () => {
+  const profile = createRealProfile({ realRuntime: { captureTimeoutMs: 500 } });
+  const resumeLease = createFakeLease({ failResumeOnce: true });
+  const resumeAdapter = new RealMaxrollRuntimeAdapter({ lease: resumeLease, profile });
+  await resumeAdapter.initialize();
+  await assert.rejects(() => resumeAdapter.apply(BASE_BUILD, sha256(BASE_BUILD)),
+    error => error.code === ERROR_CODES.RUNTIME_NOT_READY);
+
+  const disconnectLease = createFakeLease({ emitOnItemClick: false });
+  const disconnectAdapter = new RealMaxrollRuntimeAdapter({ lease: disconnectLease, profile });
+  await disconnectAdapter.initialize();
+  const pending = disconnectAdapter.apply(BASE_BUILD, sha256(BASE_BUILD));
+  await new Promise(resolve => setImmediate(resolve));
+  disconnectLease.cdp.emitDisconnect();
+  await assert.rejects(pending, error => error.code === ERROR_CODES.RUNTIME_NOT_READY);
+});
+
+test('MXP-R3 timeout, close and late callbacks settle once without stale capture reuse', async () => {
+  const profile = createRealProfile({ realRuntime: { captureTimeoutMs: 15 } });
+  const lease = createFakeLease({ emitOnItemClick: false });
+  const adapter = new RealMaxrollRuntimeAdapter({ lease, profile });
+  const extractor = new RealMaxrollMetricsExtractor(profile);
+  await adapter.initialize();
+
+  await assert.rejects(() => adapter.apply(BASE_BUILD, sha256(BASE_BUILD)),
+    error => error.code === ERROR_CODES.METRICS_INCOMPLETE);
+  lease.cdp.emitMetrics();
+  await new Promise(resolve => setImmediate(resolve));
+
+  lease.setEmitOnItemClick(true);
+  const applied = await adapter.apply(BASE_BUILD, sha256(BASE_BUILD));
+  const metrics = await extractor.extract(adapter, applied);
+  assert.equal(metrics.length, 50);
+  await assert.rejects(() => extractor.extract(adapter, applied),
+    error => error.code === ERROR_CODES.STALE_METRICS);
+
+  const pendingLease = createFakeLease({ emitOnItemClick: false });
+  const pendingAdapter = new RealMaxrollRuntimeAdapter({ lease: pendingLease, profile });
+  await pendingAdapter.initialize();
+  const pending = pendingAdapter.apply(BASE_BUILD, sha256(BASE_BUILD));
+  await new Promise(resolve => setImmediate(resolve));
+  await pendingAdapter.close();
+  await assert.rejects(pending, error => error.code === ERROR_CODES.SESSION_INVALIDATED);
+  pendingLease.cdp.emitMetrics();
+  await new Promise(resolve => setImmediate(resolve));
+  await assert.rejects(() => pendingAdapter.apply(BASE_BUILD, sha256(BASE_BUILD)),
+    error => error.code === ERROR_CODES.SESSION_INVALIDATED);
+});
+
+test('MXP-R3 cancellation closes the real adapter and rejects late paused callbacks', async () => {
+  const profile = createRealProfile({ realRuntime: { captureTimeoutMs: 500 } });
+  const lease = createFakeLease();
+  const adapter = new RealMaxrollRuntimeAdapter({ lease, profile });
+  await adapter.initialize();
+  const session = new MaxrollSession({
+    adapter,
+    mapper: new MaxrollBuildMapper(profile),
+    extractor: new RealMaxrollMetricsExtractor(profile),
+    profile,
+    lease,
+    mount: { unmount: async () => {} },
+    timeoutMs: 500,
+  });
+  await session.initialize(BASE_BUILD, profile.supportedBuildSchemaVersion);
+  lease.setEmitOnItemClick(false);
+  const abort = new AbortController();
+  const pending = session.evaluate({
+    build: MODIFIED_BUILD,
+    buildSchemaVersion: profile.supportedBuildSchemaVersion,
+    signal: abort.signal,
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  abort.abort();
+  await assert.rejects(pending, error => error.code === ERROR_CODES.CANCELLED);
+  await new Promise(resolve => setImmediate(resolve));
+  lease.cdp.emitMetrics();
+  await new Promise(resolve => setImmediate(resolve));
+  await assert.rejects(() => session.evaluate({
+    build: BASE_BUILD,
+    buildSchemaVersion: profile.supportedBuildSchemaVersion,
+  }), error => error.code === ERROR_CODES.SESSION_INVALIDATED);
 });
