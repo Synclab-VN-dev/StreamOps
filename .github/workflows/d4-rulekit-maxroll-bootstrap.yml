@@ -1,0 +1,136 @@
+name: D4 Rule Kit Exact-SHA Real E2E Bootstrap
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_REF: refs/heads/feat/127-128-real-maxroll-provider
+  CANDIDATE_SHA: 166fde6c2a676a551a15d85b2ff95589d0b08401
+
+jobs:
+  exact-candidate-offline:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: maxroll-fixture-trusted
+    steps:
+      - name: Checkout trusted bootstrap from default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Verify exact candidate ref and SHA
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(gh api "repos/${{ github.repository }}/git/ref/heads/feat/127-128-real-maxroll-provider" --jq .object.sha)"
+          if [[ "$CANDIDATE_REF" != 'refs/heads/feat/127-128-real-maxroll-provider' ||
+                "$CANDIDATE_SHA" != '166fde6c2a676a551a15d85b2ff95589d0b08401' ||
+                "$actual_sha" != "$CANDIDATE_SHA" ]]; then
+            echo '::error::UNTRUSTED_CANDIDATE_REF_OR_SHA'
+            exit 1
+          fi
+
+      - name: Checkout exact reviewed candidate without credentials
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: candidate
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: candidate/utility/d4-rulekit/providers/maxroll/package-lock.json
+
+      - name: Install exact candidate dependencies
+        working-directory: candidate/utility/d4-rulekit/providers/maxroll
+        run: npm ci
+
+      - name: Install verified age v1.3.2 binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/age-v1.3.2-linux-amd64.tar.gz"
+          curl --fail --location --silent --show-error --output "$archive" \
+            https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-linux-amd64.tar.gz
+          echo 'cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10  '"$archive" | sha256sum --check
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          chmod 700 "$RUNNER_TEMP/age/age"
+
+      - name: Download exact encrypted fixture
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/encrypted"
+          gh release download 'test-fixture/enc-e2e-20261023-r01' \
+            --repo '${{ github.repository }}' --dir "$RUNNER_TEMP/encrypted" \
+            --pattern 'ci-data-pack-20261023-r01.zip.age'
+
+      - name: Materialize identity and provision with trusted bootstrap
+        shell: bash
+        env:
+          AGE_IDENTITY_SECRET: ${{ secrets.MAXROLL_FIXTURE_AGE_IDENTITY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$AGE_IDENTITY_SECRET" ]]; then
+            echo '::error::BLOCKED_KEY_PROVISIONING'
+            exit 1
+          fi
+          umask 077
+          identity="$RUNNER_TEMP/fixture-identity.txt"
+          printf '%s' "$AGE_IDENTITY_SECRET" > "$identity"
+          node .github/scripts/provision-maxroll-fixture.js \
+            "$RUNNER_TEMP/encrypted/ci-data-pack-20261023-r01.zip.age" \
+            "$RUNNER_TEMP/age/age" "$identity" "$RUNNER_TEMP/plaintext"
+
+      - name: Discover preinstalled Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          browser=''
+          for candidate in chromium chromium-browser google-chrome google-chrome-stable; do
+            if command -v "$candidate" >/dev/null 2>&1; then browser="$(command -v "$candidate")"; break; fi
+          done
+          if [[ -z "$browser" ]]; then echo '::error::No preinstalled Chromium/Chrome'; exit 1; fi
+          "$browser" --version
+          echo "BROWSER_INFRA_CHROMIUM_PATH=$browser" >> "$GITHUB_ENV"
+
+      - name: Run exact candidate without decryption credentials
+        working-directory: candidate/utility/d4-rulekit/providers/maxroll
+        env:
+          MAXROLL_AUTHORIZED_SNAPSHOT_ROOT: ${{ runner.temp }}/plaintext
+          MAXROLL_AUTHORIZED_SNAPSHOT_ID: maxroll-20261023T034150Z
+          MAXROLL_AUTHORIZED_MANIFEST_SHA256: 638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54
+          MAXROLL_SNAPSHOT_AUTHORIZATION_REF: StreamOps#132-exact-sha-bootstrap
+          MAXROLL_SOURCE_URL: https://maxroll.gg/d4/planner/1g1any0x
+          MAXROLL_REAL_PROFILE_ID: d12am6kt-candidate
+        run: npm run test:real
+
+      - name: Upload sanitized evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maxroll-exact-sha-sanitized-evidence
+          path: |
+            candidate/utility/d4-rulekit/providers/maxroll/artifacts/real.json
+            candidate/utility/d4-rulekit/providers/maxroll/artifacts/real.junit.xml
+            candidate/utility/d4-rulekit/providers/maxroll/artifacts/real-acceptance.json
+          if-no-files-found: warn
+
+      - name: Cleanup plaintext and credentials
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f "$RUNNER_TEMP/fixture-identity.txt" "$RUNNER_TEMP/plaintext.zip"
+          rm -rf "$RUNNER_TEMP/plaintext" "$RUNNER_TEMP/encrypted" "$RUNNER_TEMP/age"
