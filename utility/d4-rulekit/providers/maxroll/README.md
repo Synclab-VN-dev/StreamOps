@@ -90,6 +90,10 @@ they are absent.
 `npm run e2e:real:offline -- --identity ... --age-bin ... --chromium ...` is the preferred full
 acceptance entry point. It provisions only the pinned encrypted Release, verifies it, selects the
 candidate profile explicitly, runs MXP-09/MXP-10/APP-07, and removes plaintext temporary data.
+Trusted CI adds `--ephemeral-identity`, restricts the normal workflow to `master`, and removes secret
+material from the real-test child environment. Pre-merge execution requires the separately reviewed
+default-branch bootstrap workflow plus approval of the exact candidate SHA in the protected
+Environment; a matching feature-branch name alone is never sufficient.
 
 The package sets npm `install-links=true` so the sibling file dependency is packed into this
 package's `node_modules` on a clean install. This lets `browser-infra` resolve its own declared

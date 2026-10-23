@@ -34,8 +34,9 @@ async function runOfflineRealE2e(options, dependencies = {}) {
     report = await withDecryptedFixture({
       encrypted, checksum, ageBin: options.ageBin, identity: options.identity,
     }, async provisioned => {
+      if (options.ephemeralIdentity) fs.rmSync(options.identity, { force: true });
       const env = {
-        ...process.env,
+        ...sanitizeChildEnvironment(process.env),
         BROWSER_INFRA_CHROMIUM_PATH: options.chromium,
         MAXROLL_AUTHORIZED_SNAPSHOT_ROOT: provisioned.rootDir,
         MAXROLL_AUTHORIZED_SNAPSHOT_ID: provisioned.snapshotId,
@@ -83,6 +84,12 @@ async function runOfflineRealE2e(options, dependencies = {}) {
   return report;
 }
 
+function sanitizeChildEnvironment(environment) {
+  return Object.fromEntries(Object.entries(environment).filter(([name]) =>
+    !/(?:^|_)(?:authorization|cookie|credential|identity|password|private_?key|secret|token)(?:_|$)/i
+      .test(name)));
+}
+
 function validateOptions(options) {
   for (const key of ['identity', 'ageBin', 'chromium']) {
     if (typeof options?.[key] !== 'string' || !options[key]) {
@@ -106,4 +113,6 @@ function run(command, args, options = {}) {
   return result.stdout ?? '';
 }
 
-module.exports = { PROFILE_ID, RELEASE, SOURCE_URL, runOfflineRealE2e };
+module.exports = {
+  PROFILE_ID, RELEASE, SOURCE_URL, runOfflineRealE2e, sanitizeChildEnvironment,
+};

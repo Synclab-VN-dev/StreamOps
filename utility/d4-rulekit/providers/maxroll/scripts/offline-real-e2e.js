@@ -11,6 +11,10 @@ function parse(argv, env = process.env) {
   };
   for (let index = 0; index < argv.length; index += 1) {
     const key = argv[index];
+    if (key === '--ephemeral-identity') {
+      options.ephemeralIdentity = true;
+      continue;
+    }
     const value = argv[index + 1];
     if (!['--identity', '--age-bin', '--chromium', '--gh-bin'].includes(key) || !value) {
       throw new Error(`unsupported or incomplete argument: ${key}`);

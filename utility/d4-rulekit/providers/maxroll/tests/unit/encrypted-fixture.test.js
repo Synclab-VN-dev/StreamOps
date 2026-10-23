@@ -7,6 +7,10 @@ const test = require('node:test');
 const { FIXTURE, assertSafeArchiveEntries } = require('../../src/encrypted-fixture');
 const { parse } = require('../../scripts/encrypted-fixture');
 const { parse: parseOffline } = require('../../scripts/offline-real-e2e');
+const {
+  runOfflineRealE2e,
+  sanitizeChildEnvironment,
+} = require('../../src/offline-real-e2e');
 
 test('encrypted fixture trust anchors and public X25519 recipient are immutable', () => {
   assert.equal(FIXTURE.manifestSha256,
@@ -55,9 +59,12 @@ test('encrypted fixture workflow is trusted-dispatch only and pins ciphertext wi
   assert.match(workflow, /BLOCKED_KEY_PROVISIONING/);
   assert.doesNotMatch(workflow, /e2e:real:live-capture|snapshot:capture|maxroll\.gg/);
   assert.match(workflow, /github\.ref == 'refs\/heads\/master'/);
-  assert.match(workflow, /refs\/heads\/feat\/127-128-real-maxroll-provider/);
+  assert.doesNotMatch(workflow, /refs\/heads\/feat\/127-128-real-maxroll-provider/);
   assert.match(workflow, /environment: maxroll-fixture-trusted/);
+  assert.match(workflow, /--ephemeral-identity/);
   assert.match(workflow, /e2e:real:offline/);
+  assert.match(workflow, /if: always\(\)/);
+  assert.doesNotMatch(workflow, /artifacts\/(?:snapshot|blobs|fixture)|\.zip\.age\s*$/m);
   assert.doesNotMatch(workflow, /RUNTIME_COMPATIBILITY=PATCH_DRIFT|OFFLINE_E2E=NOT_RUN/);
 });
 
@@ -70,6 +77,33 @@ test('offline real CLI accepts only explicit identity, age and Chromium paths', 
     identity: '/private/identity', ageBin: '/tools/age', chromium: '/tools/chromium',
   });
   assert.throws(() => parseOffline(['--password', 'bad'], {}), /unsupported/);
+  assert.deepEqual(parseOffline([
+    '--identity', '/tmp/one-use-key', '--age-bin', '/tools/age',
+    '--chromium', '/tools/chromium', '--ephemeral-identity',
+  ], {}), {
+    identity: '/tmp/one-use-key', ageBin: '/tools/age', chromium: '/tools/chromium',
+    ephemeralIdentity: true,
+  });
+});
+
+test('SEC-01 missing identity fails before release download or child execution', async () => {
+  let commands = 0;
+  await assert.rejects(() => runOfflineRealE2e({
+    ageBin: '/tools/age', chromium: '/tools/chromium',
+  }, { run: () => { commands += 1; } }), /identity is required/);
+  assert.equal(commands, 0);
+});
+
+test('SEC-01 strips identity, token and credential material from real-test child environment', () => {
+  const sanitized = sanitizeChildEnvironment({
+    PATH: '/bin', HOME: '/tmp/home', GH_TOKEN: 'secret', GITHUB_TOKEN: 'secret',
+    AGE_IDENTITY_FILE: '/tmp/key', MAXROLL_FIXTURE_AGE_IDENTITY: 'private',
+    NPM_CONFIG_USERCONFIG: '/tmp/npmrc', NORMAL_VALUE: 'kept',
+  });
+  assert.deepEqual(sanitized, {
+    PATH: '/bin', HOME: '/tmp/home', NPM_CONFIG_USERCONFIG: '/tmp/npmrc', NORMAL_VALUE: 'kept',
+  });
+  assert.doesNotMatch(JSON.stringify(sanitized), /secret|private|\/tmp\/key/);
 });
 
 test('REV-04 full real acceptance selects the candidate by explicit asset identity', () => {

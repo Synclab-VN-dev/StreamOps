@@ -26,8 +26,11 @@ const {
 const {
   NetworkEgressProbe,
   cleanupOwnedRuntime,
-  throwAfterCleanup,
 } = require('../helpers/adapter-acceptance');
+const {
+  initializeOwnedRuntime,
+  runOwnedAcceptance,
+} = require('../helpers/acceptance-lifecycle');
 const { BASE_BUILD } = require('../helpers/fixtures');
 
 const acceptancePath = path.resolve(__dirname, '../../artifacts/real-acceptance.json');
@@ -129,64 +132,68 @@ function assertMetrics(result) {
 
 async function fixture() {
   requireAuthorizedEnvironment();
-  const browser = new BrowserInfrastructure({
-    executablePath: process.env.BROWSER_INFRA_CHROMIUM_PATH,
-    headless: true,
-    maxContexts: 1,
-    maxQueue: 1,
-    contextOptions: { serviceWorkers: 'block' },
-  });
-  await browser.start();
-  const resources = {
-    lease: null, mount: null, networkProbe: null,
-    ownedPid: browser.getStatus().pid,
-  };
-  const snapshots = new WebSnapshotManager({
-    browser,
-    store: new FileSystemSnapshotStore({ rootDir: process.env.MAXROLL_AUTHORIZED_SNAPSHOT_ROOT }),
-  });
-  const providerBrowser = {
-    acquire: async options => {
-      const lease = await browser.acquire(options);
-      resources.lease = lease;
-      try {
-        resources.networkProbe = await NetworkEgressProbe.attach(lease);
-      } catch (error) {
-        await lease.release();
-        throw error;
-      }
-      return lease;
-    },
-  };
-  const observedSnapshots = {
-    verify: snapshotId => snapshots.verify(snapshotId),
-    load: snapshotId => snapshots.load(snapshotId),
-    mount: async (...args) => {
-      resources.mount = await snapshots.mount(...args);
-      return resources.mount;
-    },
-  };
   const profileFactory = PROFILE_FACTORIES[process.env.MAXROLL_REAL_PROFILE_ID];
-  const profile = profileFactory({
-    snapshotId: process.env.MAXROLL_AUTHORIZED_SNAPSHOT_ID,
-    snapshotManifestSha256: process.env.MAXROLL_AUTHORIZED_MANIFEST_SHA256,
-    sourceUrl: process.env.MAXROLL_SOURCE_URL,
-    authorizationRef: process.env.MAXROLL_SNAPSHOT_AUTHORIZATION_REF,
-    metricCatalog: METRIC_CATALOG,
-  });
-  acceptance.profileId = process.env.MAXROLL_REAL_PROFILE_ID;
-  return {
-    browser,
-    resources,
-    profile,
-    provider: new MaxrollProvider({
-      browser: providerBrowser,
-      snapshots: observedSnapshots,
-      profile,
-      componentFactory: REAL_MAXROLL_COMPONENT_FACTORY,
-      sessionTimeoutMs: 90_000,
+  return initializeOwnedRuntime({
+    createBrowser: () => new BrowserInfrastructure({
+      executablePath: process.env.BROWSER_INFRA_CHROMIUM_PATH,
+      headless: true,
+      maxContexts: 1,
+      maxQueue: 1,
+      contextOptions: { serviceWorkers: 'block' },
     }),
-  };
+    createSnapshots: browser => new WebSnapshotManager({
+      browser,
+      store: new FileSystemSnapshotStore({ rootDir: process.env.MAXROLL_AUTHORIZED_SNAPSHOT_ROOT }),
+    }),
+    createProfile: () => profileFactory({
+      snapshotId: process.env.MAXROLL_AUTHORIZED_SNAPSHOT_ID,
+      snapshotManifestSha256: process.env.MAXROLL_AUTHORIZED_MANIFEST_SHA256,
+      sourceUrl: process.env.MAXROLL_SOURCE_URL,
+      authorizationRef: process.env.MAXROLL_SNAPSHOT_AUTHORIZATION_REF,
+      metricCatalog: METRIC_CATALOG,
+    }),
+    createProvider: runtime => {
+      const providerBrowser = {
+        acquire: async options => {
+          const lease = await runtime.browser.acquire(options);
+          runtime.resources.lease = lease;
+          try {
+            runtime.resources.networkProbe = await NetworkEgressProbe.attach(lease);
+          } catch (primaryError) {
+            try {
+              await lease.release();
+            } catch (cleanupError) {
+              throw new AggregateError([primaryError, cleanupError],
+                'network probe initialization and lease cleanup both failed');
+            }
+            throw primaryError;
+          }
+          return lease;
+        },
+      };
+      const observedSnapshots = {
+        verify: snapshotId => runtime.snapshots.verify(snapshotId),
+        load: snapshotId => runtime.snapshots.load(snapshotId),
+        mount: async (...args) => {
+          runtime.resources.mount = await runtime.snapshots.mount(...args);
+          return runtime.resources.mount;
+        },
+      };
+      return new MaxrollProvider({
+        browser: providerBrowser,
+        snapshots: observedSnapshots,
+        profile: runtime.profile,
+        componentFactory: REAL_MAXROLL_COMPONENT_FACTORY,
+        sessionTimeoutMs: 90_000,
+      });
+    },
+    cleanup: runtime => cleanupOwnedRuntime({
+      browser: runtime.browser, ...runtime.resources,
+    }),
+  }).then(runtime => {
+    acceptance.profileId = process.env.MAXROLL_REAL_PROFILE_ID;
+    return runtime;
+  });
 }
 
 async function cleanupFixture(label, runtime, session) {
@@ -197,12 +204,11 @@ async function cleanupFixture(label, runtime, session) {
 test('MXP-09 authorized candidate runtime preserves three exact A→B→A cycles', {
   timeout: 150_000,
 }, async () => {
-  const runtime = await fixture();
-  let session;
-  let primaryError = null;
-  let cleanupError = null;
-  try {
-    session = await runtime.provider.createSession(sessionOptions(runtime.profile));
+  await runOwnedAcceptance({
+    initialize: fixture,
+    execute: async runtime => {
+    runtime.session = await runtime.provider.createSession(sessionOptions(runtime.profile));
+    const session = runtime.session;
     const checkpoint = await session.checkpoint();
     let canonicalA = null;
     let canonicalB = null;
@@ -253,30 +259,28 @@ test('MXP-09 authorized candidate runtime preserves three exact A→B→A cycles
     assert.equal(acceptance.networkEvidence.mxp09.requestAttempts > 0, true);
     assert.equal(acceptance.networkEvidence.mxp09.externalEgressCompleted, 0);
     assert.equal(acceptance.networkEvidence.mxp09.webSocketHandshakes, 0);
-  } catch (error) {
-    primaryError = error;
-  } finally {
-    try {
-      await cleanupFixture('mxp09', runtime, session);
-    } catch (error) {
-      cleanupError = error;
-      acceptance.cleanup.mxp09 = { status: 'FAIL', error: error.name };
-    }
-  }
-  throwAfterCleanup(primaryError, cleanupError);
+    },
+    cleanup: async runtime => {
+      try {
+        await cleanupFixture('mxp09', runtime, runtime.session);
+      } catch (error) {
+        acceptance.cleanup.mxp09 = { status: 'FAIL', error: error.name };
+        throw error;
+      }
+    },
+  });
 });
 
 test('MXP-10 and APP-07 exercise all eight APIs through the authorized real provider', {
   timeout: 150_000,
 }, async () => {
-  const runtime = await fixture();
-  const application = new D4RuleKitApplication({
-    providers: [runtime.provider], operationTimeoutMs: 90_000, cleanupTimeoutMs: 15_000,
-  });
-  let sessionId = null;
-  let primaryError = null;
-  let cleanupError = null;
-  try {
+  await runOwnedAcceptance({
+    initialize: fixture,
+    execute: async runtime => {
+    const application = new D4RuleKitApplication({
+      providers: [runtime.provider], operationTimeoutMs: 90_000, cleanupTimeoutMs: 15_000,
+    });
+    let sessionId = null;
     const listed = application.listProviders();
     assert.deepEqual(listed.map(value => value.id), ['maxroll']);
     assert.equal(listed[0].version, runtime.profile.providerVersion);
@@ -286,6 +290,7 @@ test('MXP-10 and APP-07 exercise all eight APIs through the authorized real prov
       ...sessionOptions(runtime.profile), providerId: 'maxroll',
     });
     sessionId = created.sessionId;
+    runtime.session = { close: () => application.closeSession(sessionId) };
     assert.equal(created.revision, 0);
     assert.equal(created.snapshotManifestSha256, runtime.profile.snapshotManifestSha256);
     acceptance.applicationApis.push('createSession');
@@ -354,17 +359,14 @@ test('MXP-10 and APP-07 exercise all eight APIs through the authorized real prov
     assert.equal(closedAgain.closed, true);
     assert.equal(closedAgain.alreadyClosed, true);
     acceptance.applicationApis.push('closeSession');
-  } catch (error) {
-    primaryError = error;
-  } finally {
-    const applicationSession = sessionId
-      ? { close: () => application.closeSession(sessionId) } : null;
-    try {
-      await cleanupFixture('app07', runtime, applicationSession);
-    } catch (error) {
-      cleanupError = error;
-      acceptance.cleanup.app07 = { status: 'FAIL', error: error.name };
-    }
-  }
-  throwAfterCleanup(primaryError, cleanupError);
+    },
+    cleanup: async runtime => {
+      try {
+        await cleanupFixture('app07', runtime, runtime.session);
+      } catch (error) {
+        acceptance.cleanup.app07 = { status: 'FAIL', error: error.name };
+        throw error;
+      }
+    },
+  });
 });

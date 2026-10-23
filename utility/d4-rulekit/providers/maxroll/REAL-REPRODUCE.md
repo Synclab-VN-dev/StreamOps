@@ -90,3 +90,18 @@ npm run e2e:real:offline -- \
 The pinned tag is `test-fixture/enc-e2e-20261023-r01`. The command does not accept a snapshot path,
 does not contact Maxroll, and does not retain the downloaded ciphertext or decrypted snapshot after
 completion. It emits only sanitized acceptance summaries under ignored `artifacts/`.
+
+## Trusted CI boundary
+
+The repository workflow is manual-only and accepts secrets only on `refs/heads/master` through the
+protected `maxroll-fixture-trusted` Environment. Feature-branch name matching is not a trust signal.
+For a pre-merge candidate, a separate one-purpose bootstrap workflow on the default branch must pin
+both the exact reviewed branch and its exact commit SHA. Environment approval is the checkpoint at
+which a reviewer authorizes that immutable candidate to receive the decrypted fixture.
+
+The workflow passes `--ephemeral-identity`: after successful decryption and integrity validation,
+the one-use identity file is deleted before the candidate test child starts. Token, credential,
+identity, password, private-key and secret variables are removed from the child environment. The
+candidate necessarily receives the decrypted fixture to execute the approved test, which is why
+exact-SHA review and Environment approval are both required. Environment deployment-branch rules
+and required reviewers live in GitHub Settings and cannot be proven by repository source alone.

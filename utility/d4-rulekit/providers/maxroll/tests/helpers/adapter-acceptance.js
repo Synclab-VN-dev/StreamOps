@@ -58,8 +58,8 @@ async function cleanupOwnedRuntime({ session, networkProbe, mount, lease, browse
 
   const beforeStop = browser.getStatus();
   const metrics = browser.getMetrics();
-  if (mount?.mounted !== false) failures.push(new Error('snapshot mount remained active'));
-  if (lease?.valid !== false) failures.push(new Error('browser lease remained valid'));
+  if (mount && mount.mounted !== false) failures.push(new Error('snapshot mount remained active'));
+  if (lease && lease.valid !== false) failures.push(new Error('browser lease remained valid'));
   if (beforeStop.activeLeases !== 0) failures.push(new Error('browser retained active leases'));
   if (metrics.currentContexts !== 0) failures.push(new Error('browser retained owned contexts'));
 
