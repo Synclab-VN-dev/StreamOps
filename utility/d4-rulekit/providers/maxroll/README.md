@@ -1,5 +1,9 @@
 # Maxroll Calculation Provider
 
+Build export and engine/input/output attestation are documented in
+[`BUILD-EXPORT.md`](./BUILD-EXPORT.md) and
+[`BUILD-ATTESTATION.md`](./BUILD-ATTESTATION.md).
+
 Version-pinned Calculation Provider for D4 Rule Kit. It composes the generic Chromium and Web
 Snapshot infrastructure from Issue #124 and exposes the provider/session port expected by Issue
 #127. It does not own Application registry, revision, preview tokens, cache or delta logic.
@@ -62,6 +66,43 @@ not a Real E2E PASS. Snapshot assets stay outside Git and must not be uploaded a
 
 Automatic sync, fetch and runtime upgrade are disabled. The live workflow is manual-only; PRs do
 not contact Maxroll. See `RUNTIME-COMPATIBILITY.md` and `REAL-REPRODUCE.md`.
+
+## Offline native build export
+
+Issue #134 adds provider tooling—not an Application API—to inventory and export native build state
+already present in an approved snapshot. The exporter verifies the complete snapshot package and an
+external manifest trust anchor, resolves only the captured `profiles/load/d4/<id>` response, checks
+native item references, and writes an immutable `maxroll-native-build-export/v1` file atomically.
+It never fetches a missing URL and refuses to overwrite an existing fixture.
+
+```bash
+npm run build:export -- \
+  --url https://maxroll.gg/d4/planner/1g1any0x \
+  --snapshot-root /approved/snapshot-store \
+  --snapshot-id maxroll-20261023T034150Z \
+  --manifest-sha256 <trusted-sha256> \
+  --list-profiles
+
+npm run build:export -- \
+  --url https://maxroll.gg/d4/planner/1g1any0x \
+  --snapshot-root /approved/snapshot-store \
+  --snapshot-id maxroll-20261023T034150Z \
+  --manifest-sha256 <trusted-sha256> \
+  --profile 3 \
+  --output /private/fixtures/rogue-midgame.json
+```
+
+`--profile` is the native index printed by `--list-profiles`. A numeric URL fragment is also
+supported as a one-based visible-variant selector when `--profile` is omitted. The exported file
+contains complete proprietary native state and loader metadata needed for exact offline replay; it
+must remain in a private, Git-ignored location. CLI output contains only sanitized hashes,
+selection metadata and provenance. This tool does not claim a canonical D4 build format or generic
+import support and does not alter the eight Application APIs.
+
+The two GB-E1-ATT input/output pairs are available only as a pinned age-encrypted test artifact.
+See [`BUILD-FIXTURE-RELEASE.md`](BUILD-FIXTURE-RELEASE.md) for the direct Release links, ciphertext
+checksum, separately provisioned-key workflow, and manifest verification requirements. Plaintext
+fixtures and the ciphertext itself are intentionally absent from Git.
 
 The pinned CI test fixture is published only as an age/X25519-encrypted ZIP plus its ciphertext
 checksum. `npm run fixture:encrypted` verifies the source snapshot, packages/encrypts it, or

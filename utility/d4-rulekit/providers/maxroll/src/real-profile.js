@@ -43,6 +43,9 @@ function createMaxroll32173552D12aM6KTCandidateProfile(config) {
     discardChangesPrompt: 'Discard unsaved changes and start from a blank profile?',
     discardChangesDialogSelector: '[class*="_Dialog_"]',
     discardChangesConfirmButton: 'Yes',
+    attestationReadbackExpression:
+      '({profile:JSON.parse(JSON.stringify(l.profile)),items:JSON.parse(JSON.stringify(l.items))})',
+    calculationEpochExpression: 'l.context',
   });
 }
 
@@ -89,6 +92,8 @@ function createRealProfile(config, reference, strategy) {
       discardChangesDialogSelector: strategy.discardChangesDialogSelector ?? null,
       discardChangesConfirmButton: strategy.discardChangesConfirmButton ?? null,
       gamePatchPattern: 'Game version:\\s*([^\\n]+)',
+      attestationReadbackExpression: strategy.attestationReadbackExpression ?? null,
+      calculationEpochExpression: strategy.calculationEpochExpression ?? null,
       classPattern: 'Class\\s*\\n([^\\n]+)',
       difficultyPattern: 'Stats\\s*\\n([^\\n]+)',
       categoryLabels: {
