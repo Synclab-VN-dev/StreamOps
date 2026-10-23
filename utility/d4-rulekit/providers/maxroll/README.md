@@ -44,13 +44,24 @@ Golden `VERIFIED` evidence.
 The repository contains only a synthetic Maxroll-shaped website used to test architecture and real
 Chromium lifecycle. It contains no Maxroll asset body. A separate `maxroll-ui-cdp-v1` strategy now
 implements the bounded historical UI/CDP protocol. Snapshot provisioning is automated by Issue
-#132; real acceptance still fails closed when the live runtime differs from that historical pin.
+#132 only when explicitly requested by the Owner; real acceptance still fails closed when the live
+runtime differs from that historical pin.
 
-Issue #132 adds an automated ephemeral provisioning path. Run
-`npm run e2e:real:live-capture` from this package (or the repository-root `npm --prefix` form) to
-perform online read-only capture, independent pin verification, fresh-process strict-offline real
-tests, sanitized reporting and cleanup in one command. It never commits or uploads snapshot bodies.
-See `RUNTIME-COMPATIBILITY.md` and `REAL-REPRODUCE.md`.
+Issue #132 provides an explicit, Owner-requested persistent capture command:
+
+```bash
+npm run snapshot:capture -- --output /private/snapshot-store/maxroll-YYYYMMDD
+```
+
+It launches an anonymous Chromium context, captures only allowlisted read-only resources through the
+generic Snapshot Manager, atomically saves `manifest.json`, `manifest.sha256` and content-addressed
+`blobs/`, verifies every blob, then writes `capture-report.json` and `resource-inventory.json`.
+The output folder must not already exist and is never removed after a successful capture. A runtime
+different from the historical pin is retained with `CAPTURED_UNVALIDATED` / `PATCH_DRIFT`; this is
+not a Real E2E PASS. Snapshot assets stay outside Git and must not be uploaded as CI artifacts.
+
+Automatic sync, fetch and runtime upgrade are disabled. The live workflow is manual-only; PRs do
+not contact Maxroll. See `RUNTIME-COMPATIBILITY.md` and `REAL-REPRODUCE.md`.
 
 ## Local tests
 
@@ -74,7 +85,8 @@ Tests are deterministic and bounded. The E2E suite starts a local synthetic orig
 the generic Snapshot Manager, then evaluates three A→B→A cycles from offline-strict replay with zero
 origin requests. It also exercises all eight D4 Rule Kit Application APIs through provider dependency
 injection, including immutable preview, commit, reset and cleanup. This is architecture/lifecycle
-evidence only; only `e2e:real:live-capture` can provide real acceptance.
+evidence only. `snapshot:capture` produces a verified but unvalidated runtime package; a separate
+offline `test:real` run with a compatible reviewed profile is required for real acceptance.
 
 The MXP-08 E2E writes local launch/load/calculation/queue/RSS observations to ignored
 `artifacts/performance.json`; these measurements are evidence, not performance thresholds.

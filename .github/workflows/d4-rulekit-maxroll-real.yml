@@ -1,12 +1,6 @@
 name: D4 Rule Kit Maxroll Real E2E
 
 on:
-  pull_request:
-    paths:
-      - 'utility/d4-rulekit/providers/maxroll/**'
-      - 'utility/d4-rulekit/browser-infra/**'
-      - 'utility/d4-rulekit/application/**'
-      - '.github/workflows/d4-rulekit-maxroll-real.yml'
   workflow_dispatch:
 
 permissions:

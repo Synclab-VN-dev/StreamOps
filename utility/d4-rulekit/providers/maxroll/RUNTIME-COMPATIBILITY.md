@@ -3,10 +3,10 @@
 ## Current decision
 
 The production package now has separate `synthetic-dom-v1` and `maxroll-ui-cdp-v1` strategies.
-The real strategy is implemented for the bounded historical `3.2.1.73552` protocol. Issue #132 now
-provisions and removes an authorized ephemeral snapshot automatically, but the real acceptance gate
-is **BLOCKED_PATCH_DRIFT**: the live application asset identity changed. The adapter does not fall
-back to the synthetic runtime or auto-retarget its compatibility pin.
+The real strategy is implemented for the bounded historical `3.2.1.73552` protocol. Issue #132 can
+persist an Owner-requested capture for offline review, but the real acceptance gate is
+**BLOCKED_PATCH_DRIFT**: the live application asset identity changed. The adapter does not fall back
+to the synthetic runtime or auto-retarget its compatibility pin.
 
 ## Evidence boundary
 
@@ -40,17 +40,17 @@ closed.
   independently, and never fills missing displays or promotes `OBSERVED` to `VERIFIED`.
 - `tests/real/authorized-runtime.test.js` is a reusable offline-only MXP-09/MXP-10/APP-07 contract.
   It intentionally fails with `BLOCKED_AUTHORIZED_SNAPSHOT` when its trust inputs are absent.
-- `e2e:real:live-capture` supplies those inputs automatically from a verified ephemeral capture and
-  fails before offline execution if the live identity differs from the independent checked-in pin.
+- `snapshot:capture -- --output <folder>` creates and verifies an immutable persistent package.
+  It records drift without deleting the package or pretending that capture equals real acceptance.
 
 ## Permission and safety
 
 No Maxroll response body, bundle, cookie, token, session storage or profile data is added to the
-repository or CI artifacts. The online phase uses a fresh anonymous context, read-only methods and
-bounded allowlisted origins; it does not expose request headers to the orchestrator. The Generic
-Snapshot Manager validates the temporary package, then mounts it in `offline-strict` mode in a new
-browser process. A missing resource is aborted without network fallback and cleanup runs on PASS or
-FAIL.
+repository or CI artifacts. An explicitly requested online capture uses a fresh anonymous context,
+read-only methods and bounded allowlisted origins; it does not expose request headers to the
+orchestrator. The Generic Snapshot Manager validates the persistent local package. A later approved
+real test mounts it in `offline-strict` mode in a new browser process; a missing resource is aborted
+without network fallback.
 
 ## Remaining blocker
 

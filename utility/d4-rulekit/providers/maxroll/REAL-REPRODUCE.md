@@ -1,25 +1,30 @@
-# Automated live capture to authorized real runtime test
+# Persistent authorized capture and offline real runtime test
 
-The primary real acceptance command now performs the whole ephemeral lifecycle:
+An Owner-requested capture is persisted with one command:
 
 ```bash
-npm --prefix utility/d4-rulekit/providers/maxroll run e2e:real:live-capture
+npm --prefix utility/d4-rulekit/providers/maxroll run snapshot:capture -- \
+  --output /private/snapshot-store/maxroll-YYYYMMDD
 ```
 
 It discovers an existing Chromium/Chrome executable, captures the public planner with a fresh
-read-only context, verifies the immutable snapshot and the independently checked-in patch/asset
-pin, stops the online browser, then starts the existing `test:real` contract in a fresh browser
-against an `offline-strict` mount. The temporary snapshot is removed on PASS and FAIL. Only
-sanitized JSON/JUnit summaries are retained; captured website resources are never placed in Git or
-CI artifacts.
+read-only context, and atomically saves an immutable `web-snapshot/v1` package. The command verifies
+the manifest and every content-addressed blob before writing its report. The folder contains
+`manifest.json`, `manifest.sha256`, `blobs/`, `capture-report.json` and
+`resource-inventory.json`; it must not already exist and is not deleted after success.
+
+Capture success is `CAPTURED_UNVALIDATED`, never Real E2E PASS. A patch or asset different from the
+historical pin is reported as `PATCH_DRIFT` while the valid package is retained for review. The
+snapshot folder must remain outside Git and must not be uploaded as a GitHub Actions artifact.
+Automatic capture on pull requests is disabled; online capture occurs only after an explicit Owner
+request.
 
 Authorization policy reference: `StreamOps#132-owner-directive-2026-10-23`. This names the project
 decision and does not claim a separate Maxroll agreement identifier.
 
-Any patch, asset hash, breakpoint, selector or read-back drift fails closed. The command does not
-auto-retarget the historical `3.2.1.73552` profile.
+The command does not auto-retarget the historical `3.2.1.73552` profile.
 
-## Low-level pre-provisioned contract
+## Offline real acceptance contract
 
 The lower-level command remains available for diagnostics with an already provisioned package:
 
@@ -37,7 +42,9 @@ npm run test:real
 ```
 
 `MAXROLL_SOURCE_URL` is optional and defaults to the bounded historical planner URL. It must match
-the saved snapshot manifest. The test does not capture, download or update website assets.
+the saved snapshot manifest. The test does not capture, download or update website assets. Use the
+manifest anchor written by `snapshot:capture` as the trust input only after reviewing the captured
+runtime identity and compatibility status.
 
 The command runs two bounded tests with 150-second per-test timeouts and a three-minute suite
 process bound:
