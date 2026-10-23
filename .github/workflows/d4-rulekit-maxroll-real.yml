@@ -1,0 +1,81 @@
+name: D4 Rule Kit Maxroll Real E2E
+
+on:
+  pull_request:
+    paths:
+      - 'utility/d4-rulekit/providers/maxroll/**'
+      - 'utility/d4-rulekit/browser-infra/**'
+      - 'utility/d4-rulekit/application/**'
+      - '.github/workflows/d4-rulekit-maxroll-real.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  maxroll-real-live-capture:
+    name: Maxroll live capture to strict-offline real E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: utility/d4-rulekit/providers/maxroll
+    env:
+      MAXROLL_SNAPSHOT_AUTHORIZATION_REF: 'StreamOps#132-owner-directive-2026-10-23'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: utility/d4-rulekit/providers/maxroll/package-lock.json
+
+      - name: Install pinned provider and local infrastructure dependencies
+        run: npm ci
+
+      - name: Discover preinstalled Chromium or Chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          browser_path=""
+          for browser_command in chromium chromium-browser google-chrome google-chrome-stable; do
+            candidate=$(command -v "$browser_command" || true)
+            echo "probe_${browser_command}=${candidate:-NOT_FOUND}"
+            if [[ -z "$browser_path" && -n "$candidate" && -x "$candidate" ]]; then
+              browser_path="$candidate"
+            fi
+          done
+          if [[ -z "$browser_path" ]]; then
+            echo "::error::BROWSER_UNAVAILABLE: no preinstalled Chromium/Chrome found"
+            exit 1
+          fi
+          echo "runner_os=${{ runner.os }}"
+          echo "image_os=${ImageOS:-unknown}"
+          echo "image_version=${ImageVersion:-unknown}"
+          echo "browser_path=$browser_path"
+          "$browser_path" --version
+          node --version
+          node -e "console.log('playwright-core ' + require('playwright-core/package.json').version)"
+          echo "BROWSER_INFRA_CHROMIUM_PATH=$browser_path" >> "$GITHUB_ENV"
+
+      - name: Browser compatibility and cleanup smoke
+        run: npm run smoke:browser
+
+      - name: Online read-only capture to fresh strict-offline real E2E
+        timeout-minutes: 8
+        run: npm run e2e:real:live-capture
+
+      - name: Upload sanitized real-E2E evidence on PASS or FAIL
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d4-rulekit-maxroll-real-evidence
+          path: |
+            utility/d4-rulekit/providers/maxroll/artifacts/browser-smoke.json
+            utility/d4-rulekit/providers/maxroll/artifacts/live-capture-real.json
+            utility/d4-rulekit/providers/maxroll/artifacts/live-capture-real.junit.xml
+            utility/d4-rulekit/providers/maxroll/artifacts/real.json
+            utility/d4-rulekit/providers/maxroll/artifacts/real.junit.xml
+            utility/d4-rulekit/providers/maxroll/artifacts/real-acceptance.json
+          if-no-files-found: warn
+          retention-days: 14

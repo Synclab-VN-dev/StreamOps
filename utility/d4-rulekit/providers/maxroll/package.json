@@ -11,6 +11,7 @@
     "test:contract": "node scripts/run-suite.js contract",
     "test:e2e": "node scripts/run-suite.js e2e",
     "test:real": "node scripts/run-suite.js real",
+    "e2e:real:live-capture": "node scripts/live-capture-real-e2e.js",
     "smoke:browser": "node scripts/browser-smoke.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "npm run typecheck && npm run test:unit && npm run test:contract && npm run test:e2e"

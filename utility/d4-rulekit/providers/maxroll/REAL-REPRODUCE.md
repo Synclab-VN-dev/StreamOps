@@ -1,7 +1,27 @@
-# Authorized real runtime test
+# Automated live capture to authorized real runtime test
 
-This is an offline test contract, not a snapshot acquisition workflow. Provisioning and permission
-are Owner-controlled and intentionally outside this repository.
+The primary real acceptance command now performs the whole ephemeral lifecycle:
+
+```bash
+npm --prefix utility/d4-rulekit/providers/maxroll run e2e:real:live-capture
+```
+
+It discovers an existing Chromium/Chrome executable, captures the public planner with a fresh
+read-only context, verifies the immutable snapshot and the independently checked-in patch/asset
+pin, stops the online browser, then starts the existing `test:real` contract in a fresh browser
+against an `offline-strict` mount. The temporary snapshot is removed on PASS and FAIL. Only
+sanitized JSON/JUnit summaries are retained; captured website resources are never placed in Git or
+CI artifacts.
+
+Authorization policy reference: `StreamOps#132-owner-directive-2026-10-23`. This names the project
+decision and does not claim a separate Maxroll agreement identifier.
+
+Any patch, asset hash, breakpoint, selector or read-back drift fails closed. The command does not
+auto-retarget the historical `3.2.1.73552` profile.
+
+## Low-level pre-provisioned contract
+
+The lower-level command remains available for diagnostics with an already provisioned package:
 
 ```bash
 cd utility/d4-rulekit/providers/maxroll

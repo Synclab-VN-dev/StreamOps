@@ -78,6 +78,11 @@ function hasSensitiveRequestHeaders(headers) {
   return Object.keys(headers ?? {}).some(name => SENSITIVE_REQUEST_HEADERS.has(name.toLowerCase()));
 }
 
+function stripSensitiveRequestHeaders(headers) {
+  return Object.freeze(Object.fromEntries(Object.entries(headers ?? {})
+    .filter(([name]) => !SENSITIVE_REQUEST_HEADERS.has(name.toLowerCase()))));
+}
+
 function sanitizeResponseHeaders(headers) {
   const sanitized = {};
   for (const [name, value] of Object.entries(headers ?? {})) {
@@ -171,6 +176,7 @@ module.exports = {
   hasSensitiveRequestHeaders,
   normalizeOrigins,
   sanitizeResponseHeaders,
+  stripSensitiveRequestHeaders,
   sanitizeUrlForDiagnostics,
   redactSensitiveJson,
   validateSafeUrl,

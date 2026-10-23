@@ -1,7 +1,11 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
+const { after } = test;
 const {
   BrowserInfrastructure,
   FileSystemSnapshotStore,
@@ -15,6 +19,31 @@ const {
   createMaxroll32173552RealProfile,
 } = require('../../src');
 const { BASE_BUILD } = require('../helpers/fixtures');
+
+const acceptancePath = path.resolve(__dirname, '../../artifacts/real-acceptance.json');
+const acceptance = {
+  schemaVersion: 'maxroll-real-acceptance/1',
+  status: 'FAIL',
+  rawCoverage: 0,
+  displayCoverage: 0,
+  cycles: 0,
+  rollbackExact: false,
+  phaseOutputSha256: [],
+  transportOfflineEveryEvaluation: false,
+  externalEgressCompleted: 0,
+  blockedOfflineRequests: 0,
+  applicationApis: 0,
+  cleanup: 'UNVERIFIED',
+};
+
+after(() => {
+  acceptance.status = acceptance.cycles === 3 && acceptance.rollbackExact &&
+    acceptance.rawCoverage === 50 && acceptance.displayCoverage === 34 &&
+    acceptance.transportOfflineEveryEvaluation && acceptance.applicationApis === 8 &&
+    acceptance.cleanup === 'PASS' ? 'PASS' : 'FAIL';
+  fs.mkdirSync(path.dirname(acceptancePath), { recursive: true });
+  fs.writeFileSync(acceptancePath, `${JSON.stringify(acceptance, null, 2)}\n`);
+});
 
 const REQUIRED_ENV = [
   'BROWSER_INFRA_CHROMIUM_PATH',
@@ -47,6 +76,9 @@ function sessionOptions(profile) {
 }
 
 function raw(metrics) { return metrics.map(metric => metric.rawValue); }
+function digest(values) {
+  return crypto.createHash('sha256').update(JSON.stringify(values)).digest('hex');
+}
 function fire(metrics) {
   return metrics.find(metric => metric.id === 'maxroll.heroDetails.446')?.rawValue;
 }
@@ -109,13 +141,29 @@ test('MXP-09 authorized offline runtime preserves three exact A→B→A cycles',
     assert.equal(fire(a.metrics), 22);
     assert.equal(fire(b.metrics), 2822);
     assert.equal(a.provenance.networkReplay.transportOffline, true);
+    assert.equal(b.provenance.networkReplay.transportOffline, true);
+    assert.equal(a2.provenance.networkReplay.transportOffline, true);
     assert.deepEqual(raw(a2.metrics), raw(a.metrics));
     canonicalA ??= raw(a.metrics);
     canonicalB ??= raw(b.metrics);
     assert.deepEqual(raw(a.metrics), canonicalA);
     assert.deepEqual(raw(b.metrics), canonicalB);
+    acceptance.rawCoverage = a.metrics.length;
+    acceptance.displayCoverage = a.metrics.filter(metric => metric.displayValue !== null).length;
+    acceptance.cycles = cycle + 1;
+    acceptance.rollbackExact = true;
+    acceptance.transportOfflineEveryEvaluation = true;
+    acceptance.blockedOfflineRequests += a.provenance.networkReplay.aborted +
+      b.provenance.networkReplay.aborted + a2.provenance.networkReplay.aborted;
+    acceptance.phaseOutputSha256.push({
+      cycle: cycle + 1,
+      a: digest(raw(a.metrics)),
+      b: digest(raw(b.metrics)),
+      a2: digest(raw(a2.metrics)),
+    });
   }
   await session.close();
+  acceptance.cleanup = 'PASS';
 });
 
 test('MXP-10 and APP-07 exercise all eight APIs through the authorized real provider', {
@@ -149,4 +197,5 @@ test('MXP-10 and APP-07 exercise all eight APIs through the authorized real prov
     raw(a.metrics));
   const closed = await application.closeSession(created.sessionId);
   assert.equal(closed.closed, true);
+  acceptance.applicationApis = 8;
 });

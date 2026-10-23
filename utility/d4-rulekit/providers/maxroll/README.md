@@ -37,12 +37,19 @@ Golden `VERIFIED` evidence.
 - Desired state is applied through the runtime UI contract and read back before metric extraction.
 - Every extraction requires a new phase marker and the complete profile metric catalog.
 - A timeout/cancel, browser disconnect or failed recovery invalidates and cleans the session.
-- No login, Save/Publish, cookie/token access or formula implementation exists in this package.
+- No login, Save/Publish, credential extraction/persistence or formula implementation exists in
+  this package. Live capture uses only browser-managed anonymous state in a fresh context and never
+  exposes request headers to the orchestrator or artifacts.
 
 The repository contains only a synthetic Maxroll-shaped website used to test architecture and real
 Chromium lifecycle. It contains no Maxroll asset body. A separate `maxroll-ui-cdp-v1` strategy now
-implements the bounded historical UI/CDP protocol, but real Maxroll E2E remains
-`BLOCKED_AUTHORIZED_SNAPSHOT` until a permitted generic snapshot package is provisioned and pinned.
+implements the bounded historical UI/CDP protocol. Snapshot provisioning is automated by Issue
+#132; real acceptance still fails closed when the live runtime differs from that historical pin.
+
+Issue #132 adds an automated ephemeral provisioning path. Run
+`npm run e2e:real:live-capture` from this package (or the repository-root `npm --prefix` form) to
+perform online read-only capture, independent pin verification, fresh-process strict-offline real
+tests, sanitized reporting and cleanup in one command. It never commits or uploads snapshot bodies.
 See `RUNTIME-COMPATIBILITY.md` and `REAL-REPRODUCE.md`.
 
 ## Local tests
@@ -67,7 +74,7 @@ Tests are deterministic and bounded. The E2E suite starts a local synthetic orig
 the generic Snapshot Manager, then evaluates three A→B→A cycles from offline-strict replay with zero
 origin requests. It also exercises all eight D4 Rule Kit Application APIs through provider dependency
 injection, including immutable preview, commit, reset and cleanup. This is architecture/lifecycle
-evidence only; real Maxroll integration remains `BLOCKED_AUTHORIZED_SNAPSHOT`.
+evidence only; only `e2e:real:live-capture` can provide real acceptance.
 
 The MXP-08 E2E writes local launch/load/calculation/queue/RSS observations to ignored
 `artifacts/performance.json`; these measurements are evidence, not performance thresholds.
