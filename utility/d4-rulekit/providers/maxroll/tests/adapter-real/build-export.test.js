@@ -92,7 +92,12 @@ async function importAndObserve({ executablePath, snapshotRoot, exported }) {
       });
     });
     await lease.page.goto(SOURCE_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-    await lease.page.waitForTimeout(7_000);
+    await lease.page.waitForFunction(() => {
+      const sections = document.querySelectorAll('div[class*="stats_StatSection"]');
+      const rows = [...sections].reduce((count, section) =>
+        count + section.querySelectorAll('li').length, 0);
+      return sections.length >= 7 && rows >= 50;
+    }, undefined, { timeout: 30_000 });
     const observed = await lease.page.evaluate(() => {
       const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
       const sections = [...document.querySelectorAll('div[class*="stats_StatSection"]')]

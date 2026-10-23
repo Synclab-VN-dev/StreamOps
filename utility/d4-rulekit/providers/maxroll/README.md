@@ -1,5 +1,9 @@
 # Maxroll Calculation Provider
 
+Build export and engine/input/output attestation are documented in
+[`BUILD-EXPORT.md`](./BUILD-EXPORT.md) and
+[`BUILD-ATTESTATION.md`](./BUILD-ATTESTATION.md).
+
 Version-pinned Calculation Provider for D4 Rule Kit. It composes the generic Chromium and Web
 Snapshot infrastructure from Issue #124 and exposes the provider/session port expected by Issue
 #127. It does not own Application registry, revision, preview tokens, cache or delta logic.

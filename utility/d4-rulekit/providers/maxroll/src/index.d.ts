@@ -4,7 +4,31 @@ export type MaxrollProviderErrorCode =
   | 'METRICS_INCOMPLETE' | 'STALE_METRICS' | 'SESSION_INVALIDATED'
   | 'TIMEOUT' | 'CANCELLED' | 'CLEANUP_FAILED'
   | 'PROFILE_NOT_IN_SNAPSHOT' | 'PROFILE_VARIANT_NOT_FOUND'
-  | 'NATIVE_BUILD_INVALID' | 'OUTPUT_EXISTS' | 'EXPORT_FAILED';
+  | 'NATIVE_BUILD_INVALID' | 'OUTPUT_EXISTS' | 'EXPORT_FAILED'
+  | 'ENGINE_IDENTITY_UNVERIFIED' | 'INPUT_READBACK_UNVERIFIED' | 'OUTPUT_NOT_LINKED';
+
+export interface MaxrollBuildAttestationOptions {
+  readonly inputPath: string;
+  readonly outputPath: string;
+  readonly snapshotRoot: string;
+  readonly snapshotId: string;
+  readonly expectedManifestSha256: string;
+  readonly chromiumExecutablePath: string;
+  readonly timeoutMs?: number;
+}
+
+export interface MaxrollBuildAttestationResult {
+  readonly outputPath: string;
+  readonly outputSha256: string;
+  readonly rawCount: number;
+  readonly displayCount: number;
+  readonly sourceReplay: 'EXACT';
+}
+
+export const ATTESTATION_SCHEMA_VERSION: 'maxroll-character-stats-attestation/v1';
+export function attestMaxrollBuildFixture(
+  options: MaxrollBuildAttestationOptions,
+): Promise<MaxrollBuildAttestationResult>;
 
 export interface MaxrollBuildExportOptions {
   readonly url: string;
