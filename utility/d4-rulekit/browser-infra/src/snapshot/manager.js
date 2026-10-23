@@ -13,6 +13,7 @@ const {
   redactSensitiveJson,
   sanitizeResponseHeaders,
   sanitizeUrlForDiagnostics,
+  stripSensitiveRequestHeaders,
   validateSafeUrl,
   validateSnapshotId,
 } = require('./policy');
@@ -20,6 +21,7 @@ const { sha256 } = require('./store');
 
 const DEFAULT_CAPTURE_OPTIONS = Object.freeze({
   timeoutMs: 30_000,
+  responseBodyTimeoutMs: 30_000,
   maxResources: 5_000,
   maxResourceBytes: 32 * 1024 * 1024,
   maxTotalBytes: 256 * 1024 * 1024,
@@ -76,7 +78,6 @@ class WebSnapshotManager {
         leaseTimeoutMs: Math.max(normalized.timeoutMs + 1_000, normalized.timeoutMs * 2),
       }, lease => this.#captureWithLease(lease, normalized, controller.signal, started));
     } catch (error) {
-      if (error instanceof WebSnapshotError) throw error;
       if (abortKind === 'timeout') {
         throw snapshotError(SNAPSHOT_ERROR_CODES.CAPTURE_TIMEOUT,
           'snapshot capture timed out', error);
@@ -85,6 +86,7 @@ class WebSnapshotManager {
         throw snapshotError(SNAPSHOT_ERROR_CODES.CAPTURE_CANCELLED,
           'snapshot capture was cancelled', error);
       }
+      if (error instanceof WebSnapshotError) throw error;
       throw error;
     } finally {
       clearTimeout(timer);
@@ -123,6 +125,7 @@ class WebSnapshotManager {
     let blockedWebSocketCount = 0;
     let excludedResponseCount = 0;
     let redactedResponseCount = 0;
+    let strippedSensitiveRequestCount = 0;
     const fail = error => {
       if (!fatalError) fatalError = error;
       void lease.page.close().catch(() => {});
@@ -140,8 +143,14 @@ class WebSnapshotManager {
           await route.abort('blockedbyclient').catch(() => {});
           return;
         }
+        const freshAnonymous = options.requestHeaderPolicy === 'fresh-anonymous-context';
+        const requestHeaders = freshAnonymous ? null : request.headers();
+        const hasSensitiveHeaders = freshAnonymous ? false :
+          hasSensitiveRequestHeaders(requestHeaders);
+        const stripSensitiveHeaders = hasSensitiveHeaders &&
+          options.requestHeaderPolicy === 'strip-sensitive';
         const requestAllowed = ['GET', 'HEAD'].includes(method)
-          && !hasSensitiveRequestHeaders(request.headers())
+          && (!hasSensitiveHeaders || stripSensitiveHeaders)
           && (!options.allowResource || await options.allowResource(Object.freeze({
             method, url: safeUrl, resourceType: request.resourceType(),
           })));
@@ -150,7 +159,12 @@ class WebSnapshotManager {
           await route.abort('blockedbyclient').catch(() => {});
           return;
         }
-        await route.continue();
+        if (stripSensitiveHeaders) {
+          strippedSensitiveRequestCount += 1;
+          await route.continue({ headers: stripSensitiveRequestHeaders(requestHeaders) });
+        } else {
+          await route.continue();
+        }
       } catch (error) {
         fail(error);
         await route.abort('failed').catch(() => {});
@@ -208,12 +222,13 @@ class WebSnapshotManager {
     try {
       const work = (async () => {
         await lease.page.goto(options.url, {
-          waitUntil: 'networkidle',
+          waitUntil: options.navigationWaitUntil,
           timeout: options.timeoutMs,
         });
         if (options.interact) {
           await options.interact(Object.freeze({ page: lease.page, signal }));
-          await lease.page.waitForLoadState('networkidle', { timeout: options.timeoutMs });
+          await lease.page.waitForLoadState(options.settleWaitUntil,
+            { timeout: options.timeoutMs });
         }
         await Promise.all([...pending]);
         if (fatalError) throw fatalError;
@@ -244,6 +259,7 @@ class WebSnapshotManager {
           blockedWebSocketCount,
           excludedResponseCount,
           redactedResponseCount,
+          strippedSensitiveRequestCount,
           blockedRequests: Object.freeze(blocked),
           serviceWorkerPolicy: 'block',
         }),
@@ -274,7 +290,7 @@ class WebSnapshotManager {
     }
     let body = method === 'HEAD' || [204, 205, 304].includes(response.status())
       || (response.status() >= 300 && response.status() < 400)
-      ? Buffer.alloc(0) : await response.body();
+      ? Buffer.alloc(0) : await this.#readResponseBody(response, options.responseBodyTimeoutMs);
     if (body.length > options.maxResourceBytes) {
       throw snapshotError(SNAPSHOT_ERROR_CODES.RESOURCE_LIMIT,
         'captured resource exceeds maxResourceBytes');
@@ -403,10 +419,14 @@ class WebSnapshotManager {
       interact: options.interact,
       allowResource: options.capturePolicy?.allowResource,
       responsePolicy: options.capturePolicy?.responsePolicy,
+      requestHeaderPolicy: options.capturePolicy?.requestHeaderPolicy ?? 'block-sensitive',
+      navigationWaitUntil: options.capturePolicy?.navigationWaitUntil ?? 'networkidle',
+      settleWaitUntil: options.capturePolicy?.settleWaitUntil ?? 'networkidle',
       sensitiveJsonFields,
       sensitiveResponseNames,
     };
-    for (const name of ['timeoutMs', 'maxResources', 'maxResourceBytes', 'maxTotalBytes']) {
+    for (const name of ['timeoutMs', 'responseBodyTimeoutMs', 'maxResources',
+      'maxResourceBytes', 'maxTotalBytes']) {
       if (!Number.isInteger(normalized[name]) || normalized[name] < 1) {
         throw snapshotError(SNAPSHOT_ERROR_CODES.INVALID_OPTIONS,
           `${name} must be a positive integer`);
@@ -423,6 +443,20 @@ class WebSnapshotManager {
       throw snapshotError(SNAPSHOT_ERROR_CODES.INVALID_OPTIONS,
         'capturePolicy.responsePolicy must be a function');
     }
+    if (!['block-sensitive', 'strip-sensitive', 'fresh-anonymous-context']
+      .includes(normalized.requestHeaderPolicy)) {
+      throw snapshotError(SNAPSHOT_ERROR_CODES.INVALID_OPTIONS,
+        'capturePolicy.requestHeaderPolicy is invalid');
+    }
+    if (!['load', 'domcontentloaded', 'networkidle', 'commit']
+      .includes(normalized.navigationWaitUntil)) {
+      throw snapshotError(SNAPSHOT_ERROR_CODES.INVALID_OPTIONS,
+        'capturePolicy.navigationWaitUntil is invalid');
+    }
+    if (!['load', 'domcontentloaded', 'networkidle'].includes(normalized.settleWaitUntil)) {
+      throw snapshotError(SNAPSHOT_ERROR_CODES.INVALID_OPTIONS,
+        'capturePolicy.settleWaitUntil is invalid');
+    }
     for (const name of ['sensitiveJsonFields', 'sensitiveResponseNames']) {
       if (!Array.isArray(normalized[name])
           || normalized[name].some(value => typeof value !== 'string' || value.length === 0)) {
@@ -434,6 +468,23 @@ class WebSnapshotManager {
       throw snapshotError(SNAPSHOT_ERROR_CODES.INVALID_OPTIONS, 'signal must be an AbortSignal');
     }
     return Object.freeze(normalized);
+  }
+
+  async #readResponseBody(response, timeoutMs) {
+    let timer;
+    try {
+      return await Promise.race([
+        response.body(),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(snapshotError(
+            SNAPSHOT_ERROR_CODES.CAPTURE_TIMEOUT,
+            `response body capture timed out: ${sanitizeUrlForDiagnostics(response.url())}`)),
+          timeoutMs);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   #log(event, fields) {

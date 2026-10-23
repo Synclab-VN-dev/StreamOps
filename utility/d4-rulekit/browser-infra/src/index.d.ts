@@ -148,6 +148,7 @@ export interface SnapshotLimits {
 export const DEFAULT_STORE_LIMITS: Readonly<Required<SnapshotLimits>>;
 export const DEFAULT_CAPTURE_OPTIONS: Readonly<Required<Omit<SnapshotLimits, 'maxSnapshots'>> & {
   timeoutMs: number;
+  responseBodyTimeoutMs: number;
 }>;
 
 export interface SnapshotResourceDraft {
@@ -183,6 +184,7 @@ export interface WebSnapshotDraft {
     blockedWebSocketCount: number;
     excludedResponseCount: number;
     redactedResponseCount: number;
+    strippedSensitiveRequestCount: number;
     blockedRequests: readonly Readonly<{ method: string; url: string }>[];
     serviceWorkerPolicy: 'block';
   }>;
@@ -230,6 +232,10 @@ export interface CaptureResourceDescriptor {
 }
 
 export interface CapturePolicy extends Omit<SnapshotLimits, 'maxSnapshots'> {
+  responseBodyTimeoutMs?: number;
+  requestHeaderPolicy?: 'block-sensitive' | 'strip-sensitive' | 'fresh-anonymous-context';
+  navigationWaitUntil?: 'load' | 'domcontentloaded' | 'networkidle' | 'commit';
+  settleWaitUntil?: 'load' | 'domcontentloaded' | 'networkidle';
   sensitiveQueryParameters?: readonly string[];
   sensitiveJsonFields?: readonly string[];
   sensitiveResponseNames?: readonly string[];

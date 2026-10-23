@@ -139,6 +139,27 @@ test('hung evaluation times out, invalidates and cleans provider resources', asy
   }), ERROR_CODES.SESSION_INVALIDATED);
 });
 
+test('MXP-R3 runtime failure invalidates immediately without retrying business evaluation', async () => {
+  const profile = createProfile();
+  const deps = makeSessionDependencies();
+  const session = new MaxrollSession({
+    ...deps, profile, mapper: new MaxrollBuildMapper(profile), timeoutMs: 50,
+  });
+  await session.initialize(BASE_BUILD, 'maxroll-build/rogue-l50-v1');
+  assert.equal(deps.controls.phase, 1);
+  deps.controls.runtimeFailure = true;
+  await rejectsCode(session.evaluate({
+    build: MODIFIED_BUILD, changes: [], buildSchemaVersion: 'maxroll-build/rogue-l50-v1',
+  }), ERROR_CODES.RUNTIME_NOT_READY);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(deps.controls.phase, 1, 'runtime failure must not retry a non-idempotent apply');
+  assert.equal(deps.controls.adapterCloses, 1);
+  assert.equal(deps.controls.releases, 1);
+  await rejectsCode(session.evaluate({
+    build: BASE_BUILD, changes: [], buildSchemaVersion: 'maxroll-build/rogue-l50-v1',
+  }), ERROR_CODES.SESSION_INVALIDATED);
+});
+
 test('provider rejects snapshot digest/resource mismatch before acquiring Chromium', async () => {
   let acquires = 0;
   const profile = createProfile();

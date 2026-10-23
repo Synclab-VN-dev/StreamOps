@@ -18,6 +18,7 @@ const {
   hasSensitiveRequestHeaders,
   redactSensitiveJson,
   sanitizeResponseHeaders,
+  stripSensitiveRequestHeaders,
   validateSafeUrl,
 } = require('../../src/snapshot/policy');
 
@@ -195,6 +196,9 @@ test('SNAP-07 excludes sensitive URLs/headers and strips unsafe response headers
     ['https://site.example']), error => error.code === SNAPSHOT_ERROR_CODES.POLICY_BLOCKED);
   assert.equal(hasSensitiveRequestHeaders({ Cookie: 'session=secret' }), true);
   assert.equal(hasSensitiveRequestHeaders({ accept: 'text/html' }), false);
+  assert.deepEqual(stripSensitiveRequestHeaders({
+    Cookie: 'session=secret', Authorization: 'Bearer secret', accept: 'text/html',
+  }), { accept: 'text/html' });
   assert.deepEqual(sanitizeResponseHeaders({
     'Content-Type': 'text/plain', 'Set-Cookie': 'secret=1', authorization: 'secret', etag: 'abc',
   }), { 'content-type': 'text/plain', etag: 'abc' });

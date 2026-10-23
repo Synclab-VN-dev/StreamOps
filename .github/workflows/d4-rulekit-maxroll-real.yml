@@ -1,0 +1,99 @@
+name: D4 Rule Kit Encrypted Offline Fixture
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  encrypted-fixture-offline:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/master'
+    name: Pinned encrypted fixture full offline acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: maxroll-fixture-trusted
+    defaults:
+      run:
+        working-directory: utility/d4-rulekit/providers/maxroll
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: utility/d4-rulekit/providers/maxroll/package-lock.json
+
+      - name: Install pinned provider dependencies
+        run: npm ci
+
+      - name: Install verified age v1.3.2 binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/age-v1.3.2-linux-amd64.tar.gz"
+          curl --fail --location --silent --show-error \
+            --output "$archive" \
+            https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-linux-amd64.tar.gz
+          echo 'cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10  '"$archive" | sha256sum --check
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          chmod 700 "$RUNNER_TEMP/age/age"
+          echo "AGE_BIN=$RUNNER_TEMP/age/age" >> "$GITHUB_ENV"
+
+      - name: Materialize age identity without logging it
+        shell: bash
+        env:
+          AGE_IDENTITY_SECRET: ${{ secrets.MAXROLL_FIXTURE_AGE_IDENTITY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$AGE_IDENTITY_SECRET" ]]; then
+            echo '::error::BLOCKED_KEY_PROVISIONING: MAXROLL_FIXTURE_AGE_IDENTITY is missing'
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$AGE_IDENTITY_SECRET" > "$RUNNER_TEMP/fixture-identity.txt"
+          echo "AGE_IDENTITY_FILE=$RUNNER_TEMP/fixture-identity.txt" >> "$GITHUB_ENV"
+
+      - name: Discover preinstalled Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          browser=''
+          for candidate in chromium chromium-browser google-chrome google-chrome-stable; do
+            if command -v "$candidate" >/dev/null 2>&1; then browser="$(command -v "$candidate")"; break; fi
+          done
+          if [[ -z "$browser" ]]; then echo '::error::No preinstalled Chromium/Chrome'; exit 1; fi
+          "$browser" --version
+          echo "BROWSER_INFRA_CHROMIUM_PATH=$browser" >> "$GITHUB_ENV"
+
+      - name: Download, decrypt, verify and run full offline acceptance
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          npm run e2e:real:offline -- \
+            --identity "$AGE_IDENTITY_FILE" --age-bin "$AGE_BIN" \
+            --chromium "$BROWSER_INFRA_CHROMIUM_PATH" --ephemeral-identity
+
+      - name: Upload sanitized test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maxroll-real-sanitized-evidence
+          path: |
+            utility/d4-rulekit/providers/maxroll/artifacts/real.json
+            utility/d4-rulekit/providers/maxroll/artifacts/real.junit.xml
+            utility/d4-rulekit/providers/maxroll/artifacts/real-acceptance.json
+            utility/d4-rulekit/providers/maxroll/artifacts/offline-real-e2e.json
+          if-no-files-found: warn
+
+      - name: Cleanup decrypted identity and fixture files
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f "$RUNNER_TEMP/fixture-identity.txt"
+          rm -rf "$RUNNER_TEMP/age"

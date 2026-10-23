@@ -6,8 +6,8 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const suite = process.argv[2];
-if (!['unit', 'contract', 'e2e'].includes(suite)) {
-  process.stderr.write('usage: node scripts/run-suite.js <unit|contract|e2e>\n');
+if (!['unit', 'contract', 'e2e', 'adapter-real', 'real'].includes(suite)) {
+  process.stderr.write('usage: node scripts/run-suite.js <unit|contract|e2e|adapter-real|real>\n');
   process.exit(2);
 }
 const root = path.resolve(__dirname, '..');
