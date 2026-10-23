@@ -143,6 +143,9 @@ function validateCaptureEvidence(capture) {
       'capture is not linked to exact runtime semantic read-back');
   }
   if (!capture.captureId || capture.phase.captureId !== capture.captureId
+      || !capture.phase.epochIdentitySha256
+      || capture.phase.epochIdentitySource !== 'CDP_RUNTIME_OBJECT_IDENTITY:l.context'
+      || capture.phase.coherentMetricCount !== 50
       || capture.phase.firstMetricPauseOrdinal < capture.phase.matchedPauseOrdinal
       || capture.phase.lastMetricPauseOrdinal < capture.phase.firstMetricPauseOrdinal) {
     throw fail(ERROR_CODES.STALE_METRICS,

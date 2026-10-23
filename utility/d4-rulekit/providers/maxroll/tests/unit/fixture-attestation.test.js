@@ -7,6 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { ERROR_CODES, attestMaxrollBuildFixture } = require('../../src');
 const { compareCaptures } = require('../../src/fixture-attestation');
+const { CalculationEpochAccumulator } = require('../../src/runtime-attestation');
 
 let ordinal = 0;
 function capture(overrides = {}) {
@@ -29,7 +30,10 @@ function capture(overrides = {}) {
       resolvedItemsSha256: 'c'.repeat(64) },
     phase: { captureId: `capture-${ordinal}`, inputProfileSha256: 'b'.repeat(64),
       inputItemsSha256: 'c'.repeat(64), matchedPauseOrdinal: 1,
-      firstMetricPauseOrdinal: 1, lastMetricPauseOrdinal: 50 },
+      firstMetricPauseOrdinal: 1, lastMetricPauseOrdinal: 50,
+      epochIdentitySha256: 'e'.repeat(64),
+      epochIdentitySource: 'CDP_RUNTIME_OBJECT_IDENTITY:l.context',
+      coherentMetricCount: 50 },
     network: { externalEgressCompleted: 0, webSocketHandshakes: 0 },
     ...overrides,
   };
@@ -117,4 +121,39 @@ test('GB-E1 refuses an existing output before browser or snapshot work', async t
     expectedManifestSha256: 'a'.repeat(64),
     chromiumExecutablePath: '/missing/chromium',
   }), error => error.code === ERROR_CODES.OUTPUT_EXISTS);
+});
+
+test('GB-REV-ATT-01 accepts 50 metrics from one runtime epoch', () => {
+  const accumulator = new CalculationEpochAccumulator(Array.from({ length: 50 }, (_, id) => id));
+  for (let id = 0; id < 50; id += 1) {
+    accumulator.observe({ epochKey: 'epoch-A', internalId: id, rawValue: id, label: `m${id}` });
+  }
+  accumulator.assertComplete();
+  assert.equal(accumulator.size, 50);
+});
+
+test('GB-REV-ATT-01 rejects 30 metrics from epoch A plus 20 from epoch B', () => {
+  const accumulator = new CalculationEpochAccumulator(Array.from({ length: 50 }, (_, id) => id));
+  for (let id = 0; id < 30; id += 1) {
+    accumulator.observe({ epochKey: 'epoch-A', internalId: id, rawValue: id, label: `m${id}` });
+  }
+  assert.throws(() => accumulator.observe({ epochKey: 'epoch-B', internalId: 30,
+    rawValue: 30, label: 'm30' }), error => error.code === ERROR_CODES.STALE_METRICS);
+  assert.equal(accumulator.size, 30);
+});
+
+test('GB-REV-ATT-01 rejects an incomplete epoch', () => {
+  const accumulator = new CalculationEpochAccumulator([1, 2]);
+  accumulator.observe({ epochKey: 'epoch-A', internalId: 1, rawValue: 1, label: 'one' });
+  assert.throws(() => accumulator.assertComplete(), error =>
+    error.code === ERROR_CODES.METRICS_INCOMPLETE);
+});
+
+test('GB-REV-ATT-01 allows proven consistent duplicates but rejects inconsistent duplicates', () => {
+  const accumulator = new CalculationEpochAccumulator([1, 2]);
+  accumulator.observe({ epochKey: 'epoch-A', internalId: 1, rawValue: 1, label: 'one' });
+  accumulator.observe({ epochKey: 'epoch-A', internalId: 1, rawValue: 1, label: 'one' });
+  assert.equal(accumulator.consistentDuplicates, 1);
+  assert.throws(() => accumulator.observe({ epochKey: 'epoch-A', internalId: 1,
+    rawValue: 2, label: 'one' }), error => error.code === ERROR_CODES.OUTPUT_NOT_LINKED);
 });

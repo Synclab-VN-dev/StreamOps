@@ -55,6 +55,69 @@ function inputSemantics(nativeState, profileIndex) {
   });
 }
 
+class CalculationEpochAccumulator {
+  #expected;
+  #epochKey = null;
+  #values = new Map();
+  #labels = new Map();
+  #consistentDuplicates = 0;
+
+  constructor(expectedInternalIds) {
+    this.#expected = new Set(expectedInternalIds);
+    if (this.#expected.size === 0) {
+      throw new MaxrollProviderError(ERROR_CODES.INVALID_CONFIG,
+        'calculation epoch requires at least one expected metric');
+    }
+  }
+
+  bindEpoch(epochKey) {
+    if (typeof epochKey !== 'string' || !epochKey) {
+      throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
+        'calculation epoch identity is unavailable');
+    }
+    this.#epochKey ??= epochKey;
+    if (this.#epochKey !== epochKey) {
+      throw new MaxrollProviderError(ERROR_CODES.STALE_METRICS,
+        'calculation epoch changed before the metric vector was complete');
+    }
+  }
+
+  observe({ epochKey, internalId, rawValue, label }) {
+    this.bindEpoch(epochKey);
+    if (!this.#expected.has(internalId)) return this.complete;
+    if (typeof rawValue !== 'number' || !Number.isFinite(rawValue)) {
+      throw new MaxrollProviderError(ERROR_CODES.METRICS_INCOMPLETE,
+        `attested raw metric is invalid: ${internalId}`);
+    }
+    if (this.#values.has(internalId)) {
+      if (!Object.is(this.#values.get(internalId), rawValue)
+          || this.#labels.get(internalId) !== label) {
+        throw new MaxrollProviderError(ERROR_CODES.OUTPUT_NOT_LINKED,
+          `metric ${internalId} changed within one calculation epoch`);
+      }
+      this.#consistentDuplicates += 1;
+      return this.complete;
+    }
+    this.#values.set(internalId, rawValue);
+    this.#labels.set(internalId, label);
+    return this.complete;
+  }
+
+  get complete() { return this.#values.size === this.#expected.size; }
+  get size() { return this.#values.size; }
+  get epochKey() { return this.#epochKey; }
+  get consistentDuplicates() { return this.#consistentDuplicates; }
+  value(internalId) { return this.#values.get(internalId); }
+  label(internalId) { return this.#labels.get(internalId); }
+
+  assertComplete() {
+    if (!this.complete) {
+      throw new MaxrollProviderError(ERROR_CODES.METRICS_INCOMPLETE,
+        `calculation epoch ended with ${this.#values.size}/${this.#expected.size} metrics`);
+    }
+  }
+}
+
 class MaxrollRuntimeAttestationObserver {
   #lease;
   #profile;
@@ -87,9 +150,9 @@ class MaxrollRuntimeAttestationObserver {
     if (!this.#lease?.valid) throw new MaxrollProviderError(ERROR_CODES.SESSION_INVALIDATED,
       'attestation requires a valid browser lease');
     const runtime = this.#profile.realRuntime;
-    if (!runtime?.attestationReadbackExpression) {
+    if (!runtime?.attestationReadbackExpression || !runtime?.calculationEpochExpression) {
       throw new MaxrollProviderError(ERROR_CODES.INVALID_CONFIG,
-        'runtime profile has no attestation read-back expression');
+        'runtime profile has no attestation read-back or calculation epoch expression');
     }
     this.#cdp = await this.#lease.createCDPSession();
     await Promise.all([
@@ -166,9 +229,9 @@ class MaxrollRuntimeAttestationObserver {
         rawMetrics: Object.freeze(this.#profile.metricCatalog.map(definition => Object.freeze({
           metricId: definition.id,
           internalId: definition.internalId,
-          label: capture.observedMetricLabels.get(definition.internalId) ?? definition.name,
+          label: capture.accumulator.label(definition.internalId) ?? definition.name,
           category: definition.category,
-          rawValue: capture.values.get(definition.internalId),
+          rawValue: capture.accumulator.value(definition.internalId),
           unit: null,
           status: 'OBSERVED',
           provenance: 'MAXROLL_CDP_RUNTIME',
@@ -180,6 +243,11 @@ class MaxrollRuntimeAttestationObserver {
           firstMetricPauseOrdinal: capture.firstMetricPauseOrdinal,
           lastMetricPauseOrdinal: capture.lastMetricPauseOrdinal,
           totalPauseEvents: capture.pauseOrdinal,
+          epochIdentitySha256: capture.epochIdentitySha256,
+          epochIdentitySource: 'CDP_RUNTIME_OBJECT_IDENTITY:l.context',
+          epochComparisons: capture.epochComparisons,
+          consistentDuplicateMetrics: capture.accumulator.consistentDuplicates,
+          coherentMetricCount: capture.accumulator.size,
           inputProfileSha256: this.#semantics.profileSha256,
           inputItemsSha256: this.#semantics.itemsSha256,
         }),
@@ -192,15 +260,18 @@ class MaxrollRuntimeAttestationObserver {
       clearTimeout(capture.timer);
       this.#capture = null;
     }
-    let cleanupError;
+    const cleanupErrors = [];
+    try { await this.#releaseEpochObject(capture); } catch (error) { cleanupErrors.push(error); }
     if (replayResponse) {
-      try { await this.#lease.page.unroute(replayResponse.url); } catch (error) { cleanupError = error; }
+      try { await this.#lease.page.unroute(replayResponse.url); } catch (error) { cleanupErrors.push(error); }
     }
-    if (primaryError && cleanupError) {
-      throw new AggregateError([primaryError, cleanupError],
+    if (primaryError && cleanupErrors.length) {
+      throw new AggregateError([primaryError, ...cleanupErrors],
         'attestation capture and route cleanup both failed');
     }
-    if (cleanupError) throw cleanupError;
+    if (cleanupErrors.length === 1) throw cleanupErrors[0];
+    if (cleanupErrors.length > 1) throw new AggregateError(cleanupErrors,
+      'attestation capture cleanup failed');
     if (primaryError) throw primaryError;
     return result;
   }
@@ -230,9 +301,11 @@ class MaxrollRuntimeAttestationObserver {
     const capture = {
       id: crypto.randomUUID(),
       expected,
-      values: new Map(),
+      accumulator: new CalculationEpochAccumulator(expected),
       observedMetricDefinitions: new Map(),
-      observedMetricLabels: new Map(),
+      epochObjectId: null,
+      epochIdentitySha256: null,
+      epochComparisons: 0,
       pauseOrdinal: 0,
       matchedPauseOrdinal: null,
       firstMetricPauseOrdinal: null,
@@ -320,22 +393,21 @@ class MaxrollRuntimeAttestationObserver {
         });
         capture.matchedPauseOrdinal = capture.pauseOrdinal;
       }
+      const epochObject = await this.#evaluateObject(frame.callFrameId,
+        this.#profile.realRuntime.calculationEpochExpression);
+      const epochKey = await this.#bindCalculationEpoch(capture, epochObject.objectId,
+        frame.location?.scriptId);
       const metric = await this.#evaluate(frame.callFrameId,
         this.#profile.realRuntime.captureExpression);
       const internalId = Number(metric?.id);
       if (Number.isInteger(internalId) && typeof metric?.label === 'string' && metric.label) {
         capture.observedMetricDefinitions.set(metric.label, internalId);
-        capture.observedMetricLabels.set(internalId, metric.label);
       }
       if (!capture.expected.has(internalId)) return;
-      if (typeof metric.raw !== 'number' || !Number.isFinite(metric.raw)) {
-        throw new MaxrollProviderError(ERROR_CODES.METRICS_INCOMPLETE,
-          `attested raw metric is invalid: ${internalId}`);
-      }
       capture.firstMetricPauseOrdinal ??= capture.pauseOrdinal;
       capture.lastMetricPauseOrdinal = capture.pauseOrdinal;
-      capture.values.set(internalId, metric.raw);
-      if (capture.values.size === capture.expected.size) capture.resolve();
+      if (capture.accumulator.observe({ epochKey, internalId, rawValue: metric.raw,
+        label: metric.label })) capture.resolve();
     } catch (error) {
       failure = error;
     } finally {
@@ -360,6 +432,56 @@ class MaxrollRuntimeAttestationObserver {
         'attestation call-frame expression failed');
     }
     return evaluated.result?.value;
+  }
+
+  async #evaluateObject(callFrameId, expression) {
+    const evaluated = await this.#cdp.send('Debugger.evaluateOnCallFrame', {
+      callFrameId,
+      expression,
+      returnByValue: false,
+    });
+    if (evaluated.exceptionDetails || !evaluated.result?.objectId) {
+      throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
+        'calculation epoch object is unavailable');
+    }
+    return evaluated.result;
+  }
+
+  async #bindCalculationEpoch(capture, currentObjectId, scriptId) {
+    if (!capture.epochObjectId) {
+      capture.epochObjectId = currentObjectId;
+      capture.epochIdentitySha256 = sha256(Buffer.from(`${scriptId}:${currentObjectId}`));
+      capture.accumulator.bindEpoch(capture.epochIdentitySha256);
+      return capture.epochIdentitySha256;
+    }
+    if (currentObjectId === capture.epochObjectId) return capture.epochIdentitySha256;
+    let comparison;
+    let releaseError;
+    try {
+      comparison = await this.#cdp.send('Runtime.callFunctionOn', {
+        objectId: capture.epochObjectId,
+        functionDeclaration: 'function(other){return this===other}',
+        arguments: [{ objectId: currentObjectId }],
+        returnByValue: true,
+      });
+    } finally {
+      try { await this.#cdp.send('Runtime.releaseObject', { objectId: currentObjectId }); }
+      catch (error) { releaseError = error; }
+    }
+    if (releaseError) throw new MaxrollProviderError(ERROR_CODES.RUNTIME_NOT_READY,
+      'calculation epoch comparison object could not be released', { cause: releaseError });
+    capture.epochComparisons += 1;
+    if (comparison?.result?.value !== true) {
+      capture.accumulator.bindEpoch(sha256(Buffer.from(`${scriptId}:${currentObjectId}`)));
+    }
+    return capture.epochIdentitySha256;
+  }
+
+  async #releaseEpochObject(capture) {
+    if (!capture.epochObjectId) return;
+    const objectId = capture.epochObjectId;
+    capture.epochObjectId = null;
+    await this.#cdp.send('Runtime.releaseObject', { objectId });
   }
 
   async #captureWireBytes(requestId) {
@@ -488,6 +610,7 @@ function isNetworkUrl(value) {
 }
 
 module.exports = {
+  CalculationEpochAccumulator,
   MaxrollRuntimeAttestationObserver,
   inputSemantics,
   normalizedProfile,

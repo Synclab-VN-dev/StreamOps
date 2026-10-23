@@ -24,8 +24,13 @@ Chromium processes:
   frame, then compares normalized semantic hashes for equipment, skills,
   skill-bar, Paragon, War Plans, world, specialization, and mercenary state.
 - G4 requires a new single-use capture phase after matching G3, 50 unique finite
-  raw metrics, all rendered display rows, exact source/replay equality, zero
-  completed external egress, and verified teardown.
+  raw metrics from one calculation epoch, all rendered display rows, exact
+  source/replay equality, zero completed external egress, and verified teardown.
+  The epoch boundary is the underlying `l.context` object observed read-only in
+  the calculation call frame. CDP strict object-identity comparison must remain
+  true for every accepted metric; an identity change rejects the partial vector.
+  Consistent duplicate renders are counted without overwriting, while a duplicate
+  whose value or label changes fails closed.
 
 Outputs have schema `maxroll-character-stats-attestation/v1` and remain
 `OBSERVED`. Build exports and stats references contain proprietary state and

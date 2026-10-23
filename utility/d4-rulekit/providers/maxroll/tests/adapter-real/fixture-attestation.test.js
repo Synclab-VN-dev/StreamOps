@@ -60,6 +60,13 @@ test('GB-E1 attests Midgame and Endgame source/replay through the executing engi
     assert.equal(observed.rawMetrics.every(metric => Number.isFinite(metric.rawValue)), true);
     assert.equal(observed.displayMetrics.every(metric => metric.metricId), true);
     assert.equal(result.sourceReplay, 'EXACT');
+    for (const phase of [observed.gates.G4.source, observed.gates.G4.replay]) {
+      assert.equal(phase.coherentMetricCount, 50);
+      assert.equal(phase.epochIdentitySource, 'CDP_RUNTIME_OBJECT_IDENTITY:l.context');
+      assert.match(phase.epochIdentitySha256, /^[a-f0-9]{64}$/);
+      assert.equal(phase.epochComparisons > 0, true);
+      assert.equal(phase.consistentDuplicateMetrics, 50);
+    }
     assert.equal(observed.network.source.externalEgressCompleted, 0);
     assert.equal(observed.network.replay.externalEgressCompleted, 0);
     assert.equal(observed.cleanup.source.status, 'PASS');
@@ -67,6 +74,7 @@ test('GB-E1 attests Midgame and Endgame source/replay through the executing engi
     report.fixtures.push({ name: fixture.name, inputSha256: exported.sha256,
       outputSha256: result.outputSha256, rawCount: result.rawCount,
       displayCount: result.displayCount, gates: 'G1-G4_PASS',
+      coherentEpoch: 'CDP_RUNTIME_OBJECT_IDENTITY:l.context',
       sourceReplay: result.sourceReplay, externalEgressCompleted: 0,
       cleanup: 'PASS' });
   }
