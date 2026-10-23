@@ -1,6 +1,11 @@
 'use strict';
 
 const { MaxrollBuildMapper } = require('./build-mapper');
+const {
+  EXPORT_SCHEMA_VERSION,
+  exportMaxrollBuildFromSnapshot,
+  listMaxrollBuildProfilesFromSnapshot,
+} = require('./build-export');
 const { MaxrollComponentFactory } = require('./component-factory');
 const { ERROR_CODES, MaxrollProviderError } = require('./errors');
 const { METRIC_CATALOG } = require('./metric-catalog');
@@ -22,6 +27,7 @@ const {
 module.exports = {
   MAXROLL_32173552_D12AM6KT_REFERENCE,
   ERROR_CODES,
+  EXPORT_SCHEMA_VERSION,
   METRIC_CATALOG,
   MaxrollBuildMapper,
   MaxrollComponentFactory,
@@ -37,4 +43,6 @@ module.exports = {
   REAL_MAXROLL_COMPONENT_FACTORY,
   createMaxroll32173552D12aM6KTCandidateProfile,
   createMaxroll32173552RealProfile,
+  exportMaxrollBuildFromSnapshot,
+  listMaxrollBuildProfilesFromSnapshot,
 };
