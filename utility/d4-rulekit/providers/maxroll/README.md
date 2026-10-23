@@ -99,6 +99,11 @@ must remain in a private, Git-ignored location. CLI output contains only sanitiz
 selection metadata and provenance. This tool does not claim a canonical D4 build format or generic
 import support and does not alter the eight Application APIs.
 
+The two GB-E1-ATT input/output pairs are available only as a pinned age-encrypted test artifact.
+See [`BUILD-FIXTURE-RELEASE.md`](BUILD-FIXTURE-RELEASE.md) for the direct Release links, ciphertext
+checksum, separately provisioned-key workflow, and manifest verification requirements. Plaintext
+fixtures and the ciphertext itself are intentionally absent from Git.
+
 The pinned CI test fixture is published only as an age/X25519-encrypted ZIP plus its ciphertext
 checksum. `npm run fixture:encrypted` verifies the source snapshot, packages/encrypts it, or
 decrypts a pinned Release asset into a temporary directory for full manifest/blob verification.
