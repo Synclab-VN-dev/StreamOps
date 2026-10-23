@@ -75,3 +75,18 @@ npm run fixture:encrypted -- verify \
 The plaintext ZIP exists only inside a mode-restricted temporary directory and is removed on both
 success and failure. The Release must contain only the `.zip.age` ciphertext and its `.sha256` file.
 The workflow never resolves `latest`, captures a website, or runs on pull requests.
+
+Full local acceptance downloads that exact immutable Release, verifies the ciphertext trust anchor,
+decrypts into a private temporary directory, verifies every snapshot resource, selects the candidate
+profile by exact asset identity, runs the real tests, and removes all plaintext with one command:
+
+```bash
+npm run e2e:real:offline -- \
+  --identity /private/fixture-identity \
+  --age-bin /approved/age \
+  --chromium /approved/chromium
+```
+
+The pinned tag is `test-fixture/enc-e2e-20261023-r01`. The command does not accept a snapshot path,
+does not contact Maxroll, and does not retain the downloaded ciphertext or decrypted snapshot after
+completion. It emits only sanitized acceptance summaries under ignored `artifacts/`.

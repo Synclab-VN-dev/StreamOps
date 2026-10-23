@@ -8,7 +8,11 @@ permissions:
 
 jobs:
   encrypted-fixture-offline:
-    name: Pinned encrypted fixture integrity (offline runtime blocked by patch drift)
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      (github.ref == 'refs/heads/master' ||
+       github.ref == 'refs/heads/feat/127-128-real-maxroll-provider')
+    name: Pinned encrypted fixture full offline acceptance
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: maxroll-fixture-trusted
@@ -39,18 +43,6 @@ jobs:
           chmod 700 "$RUNNER_TEMP/age/age"
           echo "AGE_BIN=$RUNNER_TEMP/age/age" >> "$GITHUB_ENV"
 
-      - name: Download exact immutable encrypted fixture release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/encrypted-fixture"
-          gh release download 'test-fixture/enc-e2e-20261023-r01' \
-            --repo '${{ github.repository }}' --dir "$RUNNER_TEMP/encrypted-fixture" \
-            --pattern 'ci-data-pack-20261023-r01.zip.age' \
-            --pattern 'ci-data-pack-20261023-r01.zip.age.sha256'
-
       - name: Materialize age identity without logging it
         shell: bash
         env:
@@ -65,16 +57,39 @@ jobs:
           printf '%s' "$AGE_IDENTITY_SECRET" > "$RUNNER_TEMP/fixture-identity.txt"
           echo "AGE_IDENTITY_FILE=$RUNNER_TEMP/fixture-identity.txt" >> "$GITHUB_ENV"
 
-      - name: Download, decrypt and verify pinned snapshot package
+      - name: Discover preinstalled Chromium
         shell: bash
         run: |
           set -euo pipefail
-          npm run fixture:encrypted -- verify \
-            --encrypted "$RUNNER_TEMP/encrypted-fixture/ci-data-pack-20261023-r01.zip.age" \
-            --checksum "$RUNNER_TEMP/encrypted-fixture/ci-data-pack-20261023-r01.zip.age.sha256" \
-            --age-bin "$AGE_BIN" --identity "$AGE_IDENTITY_FILE"
-          echo 'RUNTIME_COMPATIBILITY=PATCH_DRIFT'
-          echo 'OFFLINE_E2E=NOT_RUN'
+          browser=''
+          for candidate in chromium chromium-browser google-chrome google-chrome-stable; do
+            if command -v "$candidate" >/dev/null 2>&1; then browser="$(command -v "$candidate")"; break; fi
+          done
+          if [[ -z "$browser" ]]; then echo '::error::No preinstalled Chromium/Chrome'; exit 1; fi
+          "$browser" --version
+          echo "BROWSER_INFRA_CHROMIUM_PATH=$browser" >> "$GITHUB_ENV"
+
+      - name: Download, decrypt, verify and run full offline acceptance
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          npm run e2e:real:offline -- \
+            --identity "$AGE_IDENTITY_FILE" --age-bin "$AGE_BIN" \
+            --chromium "$BROWSER_INFRA_CHROMIUM_PATH"
+
+      - name: Upload sanitized test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maxroll-real-sanitized-evidence
+          path: |
+            utility/d4-rulekit/providers/maxroll/artifacts/real.json
+            utility/d4-rulekit/providers/maxroll/artifacts/real.junit.xml
+            utility/d4-rulekit/providers/maxroll/artifacts/real-acceptance.json
+            utility/d4-rulekit/providers/maxroll/artifacts/offline-real-e2e.json
+          if-no-files-found: warn
 
       - name: Cleanup decrypted identity and fixture files
         if: always()
@@ -82,4 +97,4 @@ jobs:
         run: |
           set -euo pipefail
           rm -f "$RUNNER_TEMP/fixture-identity.txt"
-          rm -rf "$RUNNER_TEMP/encrypted-fixture" "$RUNNER_TEMP/age"
+          rm -rf "$RUNNER_TEMP/age"

@@ -69,7 +69,9 @@ decrypts a pinned Release asset into a temporary directory for full manifest/blo
 Only the public recipient is stored in source; the identity is held in the
 `MAXROLL_FIXTURE_AGE_IDENTITY` GitHub Secret and is never logged or uploaded. The dedicated workflow
 is `workflow_dispatch` only, so fork pull requests cannot execute untrusted code with that secret.
-The current captured runtime remains `PATCH_DRIFT`; fixture verification does not claim Real E2E.
+The captured runtime is selected explicitly as the `d12am6kt-candidate` profile for acceptance; it
+is not silently promoted over the historical default. Local encrypted-Release Real E2E now passes,
+while production trust-policy approval remains an Owner decision.
 
 ## Local tests
 
@@ -84,6 +86,10 @@ BROWSER_INFRA_CHROMIUM_PATH=/path/to/pinned/chrome npm run test:e2e
 `npm run test:real` is deliberately outside the default synthetic gate. It requires all explicit
 snapshot trust/provenance inputs documented in `REAL-REPRODUCE.md` and fails rather than skips when
 they are absent.
+
+`npm run e2e:real:offline -- --identity ... --age-bin ... --chromium ...` is the preferred full
+acceptance entry point. It provisions only the pinned encrypted Release, verifies it, selects the
+candidate profile explicitly, runs MXP-09/MXP-10/APP-07, and removes plaintext temporary data.
 
 The package sets npm `install-links=true` so the sibling file dependency is packed into this
 package's `node_modules` on a clean install. This lets `browser-infra` resolve its own declared

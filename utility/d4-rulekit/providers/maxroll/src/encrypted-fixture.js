@@ -131,6 +131,16 @@ async function decryptAndVerify({
   encrypted, checksum, ageBin, identity,
   expectedEncryptedSha256 = FIXTURE.encryptedSha256,
 }) {
+  return withDecryptedFixture({
+    encrypted, checksum, ageBin, identity, expectedEncryptedSha256,
+  }, async provisioned => provisioned.verified);
+}
+
+async function withDecryptedFixture({
+  encrypted, checksum, ageBin, identity,
+  expectedEncryptedSha256 = FIXTURE.encryptedSha256,
+}, operation) {
+  if (typeof operation !== 'function') throw new Error('fixture operation callback is required');
   const expectedLine = fs.readFileSync(checksum, 'utf8').trim().split(/\s+/);
   if (expectedLine.length < 2 || expectedLine[1].replace(/^\*/, '') !== path.basename(encrypted) ||
       expectedLine[0] !== expectedEncryptedSha256 ||
@@ -145,7 +155,12 @@ async function decryptAndVerify({
     fs.mkdirSync(extracted);
     run('unzip', ['-q', plaintext, '-d', extracted]);
     const verified = await verifySnapshot(extracted);
-    return Object.freeze({ ...verified, archiveEntries: entries.length });
+    fs.rmSync(plaintext, { force: true });
+    return await operation(Object.freeze({
+      rootDir: extracted,
+      snapshotId: FIXTURE.snapshotId,
+      verified: Object.freeze({ ...verified, archiveEntries: entries.length }),
+    }));
   } finally {
     fs.rmSync(temporary, { recursive: true, force: true });
   }
@@ -203,5 +218,5 @@ async function packageEncrypted({ snapshot, outputDir, ageBin, identity }) {
 
 module.exports = {
   FIXTURE, assertSafeArchiveEntries, compareTrees, decryptAndVerify,
-  digestFile, packageEncrypted, verifySnapshot,
+  digestFile, packageEncrypted, verifySnapshot, withDecryptedFixture,
 };
