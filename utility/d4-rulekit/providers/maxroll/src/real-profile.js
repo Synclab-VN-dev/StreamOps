@@ -13,24 +13,56 @@ const MAXROLL_32173552_REFERENCE = Object.freeze({
   breakpoint: Object.freeze({ lineNumber: 762, columnNumber: 226096 }),
 });
 
+const MAXROLL_32173552_D12AM6KT_REFERENCE = Object.freeze({
+  gamePatch: '3.2.1.73552',
+  applicationAssetPath: '/assets/export-D12aM6KT.js',
+  applicationAssetSha256: '891c1f82717c50e598450575068394c6d2fe1c8d26de26f2eeed028d028997db',
+  breakpoint: Object.freeze({ lineNumber: 762, columnNumber: 226096 }),
+});
+
 function createMaxroll32173552RealProfile(config) {
+  return createRealProfile(config, MAXROLL_32173552_REFERENCE, {
+    providerVersion: 'maxroll-provider/3.2.1.73552-real-v1',
+    runtimeVersion: 'maxroll-export-DOjdL1l3/e796b927',
+    assetUrlRegex: 'https://maxroll\\.gg/assets/export-DOjdL1l3\\.js(?:[?#].*)?$',
+    requireLevelResetTransition: true,
+  });
+}
+
+function createMaxroll32173552D12aM6KTCandidateProfile(config) {
+  return createRealProfile(config, MAXROLL_32173552_D12AM6KT_REFERENCE, {
+    providerVersion: 'maxroll-provider/3.2.1.73552-D12aM6KT-candidate-v1',
+    runtimeVersion: 'maxroll-export-D12aM6KT/891c1f82-candidate',
+    assetUrlRegex: 'https://maxroll\\.gg/assets/export-D12aM6KT\\.js(?:[?#].*)?$',
+    requireLevelResetTransition: false,
+    slotItemSelector: '[class*="equipment_slot-4"]',
+    itemEditorSelector: '.d4t-ItemEditor',
+    itemEditorDialogSelector: '[class*="_Dialog_"]',
+    itemEditorCloseSelector: ':scope > [class*="DialogHeader"] button',
+    discardChangesPrompt: 'Discard unsaved changes and start from a blank profile?',
+    discardChangesDialogSelector: '[class*="_Dialog_"]',
+    discardChangesConfirmButton: 'Yes',
+  });
+}
+
+function createRealProfile(config, reference, strategy) {
   if (!config || typeof config !== 'object') {
     return new MaxrollPatchProfile(config);
   }
   return new MaxrollPatchProfile({
     ...config,
-    providerVersion: config.providerVersion ?? 'maxroll-provider/3.2.1.73552-real-v1',
-    runtimeVersion: config.runtimeVersion ?? 'maxroll-export-DOjdL1l3/e796b927',
-    gamePatch: MAXROLL_32173552_REFERENCE.gamePatch,
+    providerVersion: config.providerVersion ?? strategy.providerVersion,
+    runtimeVersion: config.runtimeVersion ?? strategy.runtimeVersion,
+    gamePatch: reference.gamePatch,
     assetUrl: config.assetUrl ??
-      `https://maxroll.gg${MAXROLL_32173552_REFERENCE.applicationAssetPath}`,
-    assetSha256: MAXROLL_32173552_REFERENCE.applicationAssetSha256,
+      `https://maxroll.gg${reference.applicationAssetPath}`,
+    assetSha256: reference.applicationAssetSha256,
     runtimeKind: 'maxroll-ui-cdp-v1',
     provenanceSource: 'MAXROLL_CDP_RUNTIME',
     displayProvenanceSource: 'MAXROLL_UI_DOM',
     realRuntime: {
-      assetUrlRegex: 'https://maxroll\\.gg/assets/export-DOjdL1l3\\.js(?:[?#].*)?$',
-      breakpoint: MAXROLL_32173552_REFERENCE.breakpoint,
+      assetUrlRegex: strategy.assetUrlRegex,
+      breakpoint: reference.breakpoint,
       captureExpression: '({id:u&&u.id,label:f,raw:_,values:u&&u.values})',
       expectedRawMetrics: 50,
       captureTimeoutMs: 30_000,
@@ -46,6 +78,14 @@ function createMaxroll32173552RealProfile(config) {
       expectedModifierEffect: '+2800 Fire Resistance',
       statsSectionSelector: 'div[class*="stats_StatSection"]',
       itemModifierSelector: 'ul.d4t-item-mods > li:not(.d4t-empty)',
+      requireLevelResetTransition: strategy.requireLevelResetTransition,
+      slotItemSelector: strategy.slotItemSelector ?? null,
+      itemEditorSelector: strategy.itemEditorSelector ?? null,
+      itemEditorDialogSelector: strategy.itemEditorDialogSelector ?? null,
+      itemEditorCloseSelector: strategy.itemEditorCloseSelector ?? null,
+      discardChangesPrompt: strategy.discardChangesPrompt ?? null,
+      discardChangesDialogSelector: strategy.discardChangesDialogSelector ?? null,
+      discardChangesConfirmButton: strategy.discardChangesConfirmButton ?? null,
       gamePatchPattern: 'Game version:\\s*([^\\n]+)',
       classPattern: 'Class\\s*\\n([^\\n]+)',
       difficultyPattern: 'Stats\\s*\\n([^\\n]+)',
@@ -66,7 +106,9 @@ const REAL_MAXROLL_COMPONENT_FACTORY = new MaxrollComponentFactory({
 });
 
 module.exports = {
+  MAXROLL_32173552_D12AM6KT_REFERENCE,
   MAXROLL_32173552_REFERENCE,
   REAL_MAXROLL_COMPONENT_FACTORY,
+  createMaxroll32173552D12aM6KTCandidateProfile,
   createMaxroll32173552RealProfile,
 };

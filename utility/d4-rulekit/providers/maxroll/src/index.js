@@ -12,12 +12,15 @@ const { MaxrollSession } = require('./session');
 const { RealMaxrollMetricsExtractor } = require('./real-metrics-extractor');
 const { RealMaxrollRuntimeAdapter } = require('./real-runtime-adapter');
 const {
+  MAXROLL_32173552_D12AM6KT_REFERENCE,
   MAXROLL_32173552_REFERENCE,
   REAL_MAXROLL_COMPONENT_FACTORY,
+  createMaxroll32173552D12aM6KTCandidateProfile,
   createMaxroll32173552RealProfile,
 } = require('./real-profile');
 
 module.exports = {
+  MAXROLL_32173552_D12AM6KT_REFERENCE,
   ERROR_CODES,
   METRIC_CATALOG,
   MaxrollBuildMapper,
@@ -32,5 +35,6 @@ module.exports = {
   RealMaxrollRuntimeAdapter,
   MAXROLL_32173552_REFERENCE,
   REAL_MAXROLL_COMPONENT_FACTORY,
+  createMaxroll32173552D12aM6KTCandidateProfile,
   createMaxroll32173552RealProfile,
 };

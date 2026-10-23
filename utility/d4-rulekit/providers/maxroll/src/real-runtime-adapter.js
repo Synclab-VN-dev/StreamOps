@@ -82,15 +82,19 @@ class RealMaxrollRuntimeAdapter {
     this.#assertRuntimeHealthy();
     const runtime = this.#profile.realRuntime;
     await this.#dismissOptionalOverlay();
+    await this.#closeItemEditorIfPresent(runtime);
     await this.#lease.page.getByRole('button', {
       name: runtime.newProfileButton, exact: true,
     }).click();
+    await this.#confirmDiscardIfPresent(runtime);
     const level = this.#lease.page.locator(runtime.levelSelector).first();
     await level.waitFor({ state: 'visible', timeout: runtime.interactionTimeoutMs ?? 10_000 });
-    await this.#lease.page.waitForFunction(({ selector, desired }) =>
-      Number(document.querySelector(selector)?.value) !== desired,
-    { selector: runtime.levelSelector, desired: desired.level },
-    { timeout: runtime.interactionTimeoutMs ?? 10_000 });
+    if (runtime.requireLevelResetTransition) {
+      await this.#lease.page.waitForFunction(({ selector, desired }) =>
+        Number(document.querySelector(selector)?.value) !== desired,
+      { selector: runtime.levelSelector, desired: desired.level },
+      { timeout: runtime.interactionTimeoutMs ?? 10_000 });
+    }
     await level.fill(String(desired.level));
     await level.press('Enter');
     await this.#lease.page.waitForFunction(({ selector, expected }) =>
@@ -98,11 +102,17 @@ class RealMaxrollRuntimeAdapter {
     { selector: runtime.levelSelector, expected: desired.level },
     { timeout: runtime.interactionTimeoutMs ?? 10_000 });
 
-    await this.#lease.page.getByText(runtime.slotLabel, { exact: true }).first().evaluate(element => {
-      const target = element.parentElement?.querySelector('[class*=Slot__item]');
-      if (!target) throw new Error('slot item target not found');
-      target.click();
-    });
+    if (runtime.slotItemSelector) {
+      const slot = this.#lease.page.locator(runtime.slotItemSelector).first();
+      await slot.waitFor({ state: 'visible', timeout: runtime.interactionTimeoutMs ?? 10_000 });
+      await slot.click();
+    } else {
+      await this.#lease.page.getByText(runtime.slotLabel, { exact: true }).first().evaluate(element => {
+        const target = element.parentElement?.querySelector('[class*=Slot__item]');
+        if (!target) throw new Error('slot item target not found');
+        target.click();
+      });
+    }
     const item = this.#lease.page.getByText(runtime.itemBaseName, { exact: true }).first();
     await item.waitFor({ state: 'visible', timeout: runtime.interactionTimeoutMs ?? 10_000 });
 
@@ -116,6 +126,9 @@ class RealMaxrollRuntimeAdapter {
         await addModifier.waitFor({ state: 'visible', timeout: runtime.interactionTimeoutMs ?? 10_000 });
         await addModifier.click();
         const option = this.#lease.page.getByText(runtime.modifierPickerLabel, { exact: true });
+        await option.first().waitFor({
+          state: 'visible', timeout: runtime.interactionTimeoutMs ?? 10_000,
+        });
         if (await option.count() !== 1) {
           throw new MaxrollProviderError(ERROR_CODES.APPLY_FAILED,
             'real modifier identity is missing or ambiguous');
@@ -308,6 +321,43 @@ class RealMaxrollRuntimeAdapter {
     if (await button.count() && await button.isVisible()) await button.click();
   }
 
+  async #confirmDiscardIfPresent(runtime) {
+    if (!runtime.discardChangesPrompt) return;
+    const prompt = this.#lease.page.getByText(runtime.discardChangesPrompt, { exact: true }).first();
+    if (!await prompt.count() || !await prompt.isVisible()) return;
+    const dialog = this.#lease.page.locator(runtime.discardChangesDialogSelector).filter({ has: prompt });
+    if (await dialog.count() !== 1) {
+      throw new MaxrollProviderError(ERROR_CODES.APPLY_FAILED,
+        'discard confirmation dialog is missing or ambiguous');
+    }
+    const confirm = dialog.getByRole('button', {
+      name: runtime.discardChangesConfirmButton, exact: true,
+    });
+    if (await confirm.count() !== 1) {
+      throw new MaxrollProviderError(ERROR_CODES.APPLY_FAILED,
+        'discard confirmation action is missing or ambiguous');
+    }
+    await confirm.click();
+  }
+
+  async #closeItemEditorIfPresent(runtime) {
+    if (!runtime.itemEditorSelector) return;
+    const editor = this.#lease.page.locator(runtime.itemEditorSelector).first();
+    if (!await editor.count() || !await editor.isVisible()) return;
+    await editor.evaluate((element, config) => {
+      const dialog = element.closest(config.dialogSelector);
+      const close = dialog?.querySelector(config.closeSelector);
+      if (!close) throw new Error('item editor close action not found');
+      close.click();
+    }, {
+      dialogSelector: runtime.itemEditorDialogSelector,
+      closeSelector: runtime.itemEditorCloseSelector,
+    });
+    await editor.waitFor({
+      state: 'hidden', timeout: runtime.interactionTimeoutMs ?? 10_000,
+    });
+  }
+
   async #readUi() {
     const runtime = this.#profile.realRuntime;
     return this.#lease.page.evaluate(config => {
@@ -329,10 +379,13 @@ class RealMaxrollRuntimeAdapter {
         class: body.match(new RegExp(config.classPattern))?.[1]?.trim() ?? null,
         level: Number(document.querySelector(config.levelSelector)?.value),
         difficulty: body.match(new RegExp(config.difficultyPattern))?.[1]?.trim() ?? null,
-        itemPresent: [...document.querySelectorAll('*')]
-          .filter(element => element.children.length === 0 && element.textContent?.trim() === config.slotLabel)
-          .some(element => element.parentElement?.querySelector('[class*=Slot__item]')
-            ?.textContent?.includes(config.itemBaseName)),
+        itemPresent: config.slotItemSelector
+          ? document.querySelector(config.slotItemSelector)?.parentElement?.textContent
+            ?.includes(config.itemBaseName) === true
+          : [...document.querySelectorAll('*')]
+            .filter(element => element.children.length === 0 && element.textContent?.trim() === config.slotLabel)
+            .some(element => element.parentElement?.querySelector('[class*=Slot__item]')
+              ?.textContent?.includes(config.itemBaseName)),
         modifierPresent: modifiers.some(value => value.includes(config.expectedModifierEffect)),
         modifierCount: modifiers.length,
         displays: stats,

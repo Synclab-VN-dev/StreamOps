@@ -174,6 +174,12 @@ export const MAXROLL_32173552_REFERENCE: Readonly<{
   applicationAssetSha256: string;
   breakpoint: Readonly<{ lineNumber: number; columnNumber: number }>;
 }>;
+export const MAXROLL_32173552_D12AM6KT_REFERENCE: Readonly<{
+  gamePatch: '3.2.1.73552';
+  applicationAssetPath: string;
+  applicationAssetSha256: string;
+  breakpoint: Readonly<{ lineNumber: number; columnNumber: number }>;
+}>;
 export const REAL_MAXROLL_COMPONENT_FACTORY: MaxrollComponentFactory;
 export interface Maxroll32173552RealProfileConfig {
   snapshotId: string;
@@ -189,5 +195,8 @@ export interface Maxroll32173552RealProfileConfig {
   authorizationRef: string;
 }
 export function createMaxroll32173552RealProfile(
+  config: Maxroll32173552RealProfileConfig,
+): MaxrollPatchProfile;
+export function createMaxroll32173552D12aM6KTCandidateProfile(
   config: Maxroll32173552RealProfileConfig,
 ): MaxrollPatchProfile;

@@ -74,10 +74,31 @@ function validateRealRuntime(runtime, metricCatalogLength) {
       !Number.isInteger(runtime.expectedRawMetrics) || runtime.expectedRawMetrics <= 0 ||
       runtime.expectedRawMetrics !== metricCatalogLength ||
       !Number.isFinite(runtime.captureTimeoutMs) || runtime.captureTimeoutMs <= 0 ||
+      typeof runtime.requireLevelResetTransition !== 'boolean' ||
+      !validOptionalString(runtime.slotItemSelector) ||
+      !validOptionalStringSet([
+        runtime.itemEditorSelector,
+        runtime.itemEditorDialogSelector,
+        runtime.itemEditorCloseSelector,
+      ]) ||
+      !validOptionalStringSet([
+        runtime.discardChangesPrompt,
+        runtime.discardChangesDialogSelector,
+        runtime.discardChangesConfirmButton,
+      ]) ||
       !runtime.categoryLabels || typeof runtime.categoryLabels !== 'object') {
     throw new MaxrollProviderError(ERROR_CODES.INVALID_CONFIG,
       'maxroll-ui-cdp-v1 runtime contract is incomplete');
   }
+}
+
+function validOptionalString(value) {
+  return value == null || (typeof value === 'string' && value.length > 0);
+}
+
+function validOptionalStringSet(values) {
+  if (values.every(value => value == null)) return true;
+  return values.every(value => typeof value === 'string' && value.length > 0);
 }
 
 module.exports = { MaxrollPatchProfile };

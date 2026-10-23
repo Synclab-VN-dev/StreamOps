@@ -5,6 +5,7 @@ const test = require('node:test');
 const {
   ERROR_CODES,
   METRIC_CATALOG,
+  MAXROLL_32173552_D12AM6KT_REFERENCE,
   MAXROLL_32173552_REFERENCE,
   MaxrollProvider,
   MaxrollBuildMapper,
@@ -12,6 +13,7 @@ const {
   REAL_MAXROLL_COMPONENT_FACTORY,
   RealMaxrollMetricsExtractor,
   RealMaxrollRuntimeAdapter,
+  createMaxroll32173552D12aM6KTCandidateProfile,
   createMaxroll32173552RealProfile,
 } = require('../../src');
 const { BASE_BUILD, MODIFIED_BUILD } = require('../helpers/fixtures');
@@ -168,6 +170,24 @@ test('real 3.2.1 profile pins historical runtime identity and selects injected c
   }) instanceof RealMaxrollRuntimeAdapter, true);
   assert.equal(REAL_MAXROLL_COMPONENT_FACTORY.createMetricsExtractor(profile)
     instanceof RealMaxrollMetricsExtractor, true);
+});
+
+test('D12aM6KT candidate pins asset identity and version-specific UI semantics', () => {
+  const profile = createMaxroll32173552D12aM6KTCandidateProfile({
+    snapshotId: 'maxroll-20261023T034150Z',
+    snapshotManifestSha256: 'a'.repeat(64),
+    sourceUrl: 'https://maxroll.gg/d4/planner/1g1any0x',
+    authorizationRef: 'StreamOps#132-owner-directive-2026-10-23',
+    metricCatalog: METRIC_CATALOG,
+  });
+  assert.equal(profile.assetSha256,
+    MAXROLL_32173552_D12AM6KT_REFERENCE.applicationAssetSha256);
+  assert.match(profile.runtimeVersion, /candidate/);
+  assert.equal(profile.realRuntime.requireLevelResetTransition, false);
+  assert.equal(profile.realRuntime.slotItemSelector, '[class*="equipment_slot-4"]');
+  assert.equal(profile.realRuntime.itemEditorSelector, '.d4t-ItemEditor');
+  assert.equal(profile.realRuntime.discardChangesDialogSelector, '[class*="_Dialog_"]');
+  assert.equal(profile.realRuntime.discardChangesConfirmButton, 'Yes');
 });
 
 test('real profile rejects incomplete CDP/UI protocol configuration', () => {
