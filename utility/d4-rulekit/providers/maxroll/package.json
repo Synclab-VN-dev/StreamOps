@@ -12,6 +12,7 @@
     "test:e2e": "node scripts/run-suite.js e2e",
     "test:real": "node scripts/run-suite.js real",
     "snapshot:capture": "node scripts/snapshot-capture.js",
+    "fixture:encrypted": "node scripts/encrypted-fixture.js",
     "e2e:real:live-capture": "node scripts/live-capture-real-e2e.js",
     "smoke:browser": "node scripts/browser-smoke.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",

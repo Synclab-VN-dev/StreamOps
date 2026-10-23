@@ -63,6 +63,14 @@ not a Real E2E PASS. Snapshot assets stay outside Git and must not be uploaded a
 Automatic sync, fetch and runtime upgrade are disabled. The live workflow is manual-only; PRs do
 not contact Maxroll. See `RUNTIME-COMPATIBILITY.md` and `REAL-REPRODUCE.md`.
 
+The pinned CI test fixture is published only as an age/X25519-encrypted ZIP plus its ciphertext
+checksum. `npm run fixture:encrypted` verifies the source snapshot, packages/encrypts it, or
+decrypts a pinned Release asset into a temporary directory for full manifest/blob verification.
+Only the public recipient is stored in source; the identity is held in the
+`MAXROLL_FIXTURE_AGE_IDENTITY` GitHub Secret and is never logged or uploaded. The dedicated workflow
+is `workflow_dispatch` only, so fork pull requests cannot execute untrusted code with that secret.
+The current captured runtime remains `PATCH_DRIFT`; fixture verification does not claim Real E2E.
+
 ## Local tests
 
 ```bash

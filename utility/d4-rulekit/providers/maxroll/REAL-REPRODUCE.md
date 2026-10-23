@@ -54,3 +54,24 @@ process bound:
 
 Missing trust inputs are a hard failure named `BLOCKED_AUTHORIZED_SNAPSHOT`; no test is skipped and
 no synthetic fallback is selected.
+
+## Encrypted Release fixture
+
+The immutable Release asset is encrypted to the public age recipient pinned in
+`src/encrypted-fixture.js`. Local packaging and round-trip verification use:
+
+```bash
+npm run fixture:encrypted -- package \
+  --snapshot /private/snapshot-store/maxroll-20261023T034150Z \
+  --output-dir /private/release-staging \
+  --age-bin /approved/age --identity /private/fixture-identity
+
+npm run fixture:encrypted -- verify \
+  --encrypted /private/release-staging/ci-data-pack-20261023-r01.zip.age \
+  --checksum /private/release-staging/ci-data-pack-20261023-r01.zip.age.sha256 \
+  --age-bin /approved/age --identity /private/fixture-identity
+```
+
+The plaintext ZIP exists only inside a mode-restricted temporary directory and is removed on both
+success and failure. The Release must contain only the `.zip.age` ciphertext and its `.sha256` file.
+The workflow never resolves `latest`, captures a website, or runs on pull requests.
