@@ -145,7 +145,8 @@ function createFakeLease({
       }
       return {
         class: 'Rogue', level: state.level, difficulty: 'Torment I',
-        itemPresent: state.itemPresent, modifierPresent: state.modifierActive,
+        legacyItemPresent: state.itemPresent, slotCount: 0, itemNames: [],
+        modifierPresent: state.modifierActive,
         modifierCount: reportedModifierCount ?? (state.modifierActive ? 1 : 0), displays,
       };
     },
@@ -185,6 +186,7 @@ test('D12aM6KT candidate pins asset identity and version-specific UI semantics',
   assert.match(profile.runtimeVersion, /candidate/);
   assert.equal(profile.realRuntime.requireLevelResetTransition, false);
   assert.equal(profile.realRuntime.slotItemSelector, '[class*="equipment_slot-4"]');
+  assert.equal(profile.realRuntime.slotItemNameSelector, '[class*="Slot__title"]');
   assert.equal(profile.realRuntime.itemEditorSelector, '.d4t-ItemEditor');
   assert.equal(profile.realRuntime.discardChangesDialogSelector, '[class*="_Dialog_"]');
   assert.equal(profile.realRuntime.discardChangesConfirmButton, 'Yes');

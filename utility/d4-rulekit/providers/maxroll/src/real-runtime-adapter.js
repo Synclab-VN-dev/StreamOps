@@ -144,6 +144,12 @@ class RealMaxrollRuntimeAdapter {
 
     const raw = await capturePromise;
     const observedUi = await this.#readUi();
+    if (runtime.slotItemNameSelector && observedUi.itemIdentity.status !== 'EXACT') {
+      throw new MaxrollProviderError(ERROR_CODES.READBACK_MISMATCH,
+        'real Maxroll item identity is missing, wrong or ambiguous', {
+          details: { itemIdentityStatus: observedUi.itemIdentity.status },
+        });
+    }
     const expectedModifierCount = modifierActive ? 1 : 0;
     if (observedUi.modifierCount !== expectedModifierCount ||
         observedUi.modifierPresent !== modifierActive) {
@@ -360,7 +366,7 @@ class RealMaxrollRuntimeAdapter {
 
   async #readUi() {
     const runtime = this.#profile.realRuntime;
-    return this.#lease.page.evaluate(config => {
+    const observed = await this.#lease.page.evaluate(config => {
       const categories = config.categoryLabels;
       const stats = {};
       for (const section of document.querySelectorAll(config.statsSectionSelector)) {
@@ -375,22 +381,36 @@ class RealMaxrollRuntimeAdapter {
       const body = document.body?.innerText ?? '';
       const modifiers = [...document.querySelectorAll(config.itemModifierSelector)]
         .map(row => (row.innerText ?? '').trim()).filter(Boolean);
+      const slots = config.slotItemSelector
+        ? [...document.querySelectorAll(config.slotItemSelector)] : [];
+      const slotContainer = slots.length === 1 ? slots[0].parentElement : null;
+      const itemNames = slotContainer
+        ? [...slotContainer.querySelectorAll(config.slotItemNameSelector)]
+          .map(element => element.textContent ?? '') : [];
       return {
         class: body.match(new RegExp(config.classPattern))?.[1]?.trim() ?? null,
         level: Number(document.querySelector(config.levelSelector)?.value),
         difficulty: body.match(new RegExp(config.difficultyPattern))?.[1]?.trim() ?? null,
-        itemPresent: config.slotItemSelector
-          ? document.querySelector(config.slotItemSelector)?.parentElement?.textContent
-            ?.includes(config.itemBaseName) === true
+        legacyItemPresent: config.slotItemSelector
+          ? null
           : [...document.querySelectorAll('*')]
             .filter(element => element.children.length === 0 && element.textContent?.trim() === config.slotLabel)
             .some(element => element.parentElement?.querySelector('[class*=Slot__item]')
               ?.textContent?.includes(config.itemBaseName)),
+        slotCount: slots.length,
+        itemNames,
         modifierPresent: modifiers.some(value => value.includes(config.expectedModifierEffect)),
         modifierCount: modifiers.length,
         displays: stats,
       };
     }, runtime);
+    const itemIdentity = runtime.slotItemNameSelector
+      ? classifyExactSlotItemIdentity(observed.slotCount, observed.itemNames, runtime.itemBaseName)
+      : Object.freeze({
+        status: observed.legacyItemPresent ? 'EXACT' : 'MISSING',
+        normalizedName: observed.legacyItemPresent ? normalizeUiText(runtime.itemBaseName) : null,
+      });
+    return { ...observed, itemPresent: itemIdentity.status === 'EXACT', itemIdentity };
   }
 
   #assertLease() {
@@ -399,4 +419,26 @@ class RealMaxrollRuntimeAdapter {
   }
 }
 
-module.exports = { RealMaxrollRuntimeAdapter };
+function classifyExactSlotItemIdentity(slotCount, itemNames, expectedName) {
+  if (slotCount !== 1) {
+    return Object.freeze({ status: slotCount === 0 ? 'MISSING_SLOT' : 'AMBIGUOUS_SLOT', normalizedName: null });
+  }
+  const normalizedNames = itemNames.map(normalizeUiText).filter(Boolean);
+  if (normalizedNames.length === 0) {
+    return Object.freeze({ status: 'MISSING_ITEM', normalizedName: null });
+  }
+  if (normalizedNames.length !== 1) {
+    return Object.freeze({ status: 'AMBIGUOUS_ITEM', normalizedName: null });
+  }
+  const normalizedExpected = normalizeUiText(expectedName);
+  return Object.freeze({
+    status: normalizedNames[0] === normalizedExpected ? 'EXACT' : 'WRONG_ITEM',
+    normalizedName: normalizedNames[0],
+  });
+}
+
+function normalizeUiText(value) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+module.exports = { RealMaxrollRuntimeAdapter, classifyExactSlotItemIdentity };

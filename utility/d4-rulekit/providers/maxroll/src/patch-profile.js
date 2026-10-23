@@ -75,7 +75,10 @@ function validateRealRuntime(runtime, metricCatalogLength) {
       runtime.expectedRawMetrics !== metricCatalogLength ||
       !Number.isFinite(runtime.captureTimeoutMs) || runtime.captureTimeoutMs <= 0 ||
       typeof runtime.requireLevelResetTransition !== 'boolean' ||
-      !validOptionalString(runtime.slotItemSelector) ||
+      !validOptionalStringSet([
+        runtime.slotItemSelector,
+        runtime.slotItemNameSelector,
+      ]) ||
       !validOptionalStringSet([
         runtime.itemEditorSelector,
         runtime.itemEditorDialogSelector,

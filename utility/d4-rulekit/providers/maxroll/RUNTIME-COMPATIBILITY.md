@@ -20,7 +20,7 @@ synthetic runtime or auto-retargets a compatibility pin.
 | Raw capture | 50/50 through render-time CDP closure | 50/50 finite values in targeted offline run |
 | UI display | 34/50 | 34/50 read independently; missing displays remain `null` |
 | Mutation | unsaved Rogue L50/Torment I Runic Skullcap, optional Of Dampening | targeted 22→2822→22 Fire Resistance and exact A rollback |
-| Offline replay | 354-entry, ~59 MB temporary PoC package | verified 365-resource snapshot outside Git; 191 requests aborted locally with zero completed egress |
+| Offline replay | 354-entry, ~59 MB temporary PoC package | verified 365-resource snapshot outside Git; final cumulative abort count 75; CDP observed 449 request attempts and zero completed transport egress |
 | Authorization | old research was bounded and temporary | project policy reference `StreamOps#132-owner-directive-2026-10-23` |
 
 The PoC data is compatibility input, not current Maxroll evidence. The version profile owns the
@@ -61,6 +61,12 @@ the item name beside the semantic slot node rather than inside the historical sl
 current editor also needs an explicit close action, optional discard confirmation, asynchronous
 modifier-picker readiness, and no mandatory level-reset transition. These differences live in the
 new version-specific candidate profile while the generic adapter preserves fail-closed behavior.
+The candidate read-back scopes one exact normalized item-title element to the single Helm slot;
+missing, wrong, duplicate or ambiguous identities fail with `READBACK_MISMATCH`.
+
+Targeted acceptance independently observes Chromium networking through CDP `Network` events rather
+than assuming that an initialized zero means no egress. Teardown propagates failures and verifies
+the snapshot mount, lease, context count, browser state and owned Chromium process before PASS.
 
 Targeted adapter coverage is complete, but the full MXP-09 three-cycle gate, MXP-10 Application
 integration and APP-07 eight-API gate were deliberately not run in this phase. They remain pending
