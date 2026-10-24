@@ -46,3 +46,7 @@ pairs, `fixture-matrix.json`, and `manifest.sha256` only to the requested privat
 This evidence resolves the independent-class-fixture gap. It does not resolve the separate
 catalog relationship gaps documented in `UNIVERSAL-IMPORT-COVERAGE.json`, and it does not by
 itself prove every valid build combination.
+
+The eight private input/output pairs are available through the immutable age-encrypted prerelease
+documented in [`MULTICLASS-FIXTURE-RELEASE.md`](MULTICLASS-FIXTURE-RELEASE.md). The public Release
+contains ciphertext and its checksum only.

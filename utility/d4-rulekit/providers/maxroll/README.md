@@ -118,7 +118,9 @@ The owner-triggered multi-class capture command is documented in
 [`MULTICLASS-FIXTURES.md`](MULTICLASS-FIXTURES.md). It captures seven current Season 15 planner
 sources read-only, verifies their executing engine, replays each through the pinned offline
 snapshot, and combines them with the verified Rogue evidence for 8/8 class coverage. Fixture
-plaintext remains outside Git.
+plaintext remains outside Git. The resulting eight pairs are distributed only through the pinned
+age-encrypted artifact documented in
+[`MULTICLASS-FIXTURE-RELEASE.md`](MULTICLASS-FIXTURE-RELEASE.md).
 
 The pinned CI test fixture is published only as an age/X25519-encrypted ZIP plus its ciphertext
 checksum. `npm run fixture:encrypted` verifies the source snapshot, packages/encrypts it, or
