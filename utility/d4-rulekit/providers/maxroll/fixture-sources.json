@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "maxroll-class-fixture-matrix/v1",
+  "fixtures": [
+    {
+      "action": "CAPTURE",
+      "class": "Sorcerer",
+      "slug": "sorcerer-firewall-endgame",
+      "expectedRawMetrics": 50,
+      "url": "https://maxroll.gg/d4/planner/j849ij0q"
+    },
+    {
+      "action": "CAPTURE",
+      "class": "Druid",
+      "slug": "druid-lacerate-endgame",
+      "expectedRawMetrics": 47,
+      "url": "https://maxroll.gg/d4/planner/6p33iv0e#2"
+    },
+    {
+      "action": "CAPTURE",
+      "class": "Barbarian",
+      "slug": "barbarian-upheaval-endgame",
+      "expectedRawMetrics": 47,
+      "url": "https://maxroll.gg/d4/planner/134cn80q#3"
+    },
+    {
+      "action": "CAPTURE",
+      "class": "Necromancer",
+      "slug": "necromancer-blood-wave-endgame",
+      "expectedRawMetrics": 49,
+      "url": "https://maxroll.gg/d4/planner/xf9um40q#3"
+    },
+    {
+      "action": "CAPTURE",
+      "class": "Spiritborn",
+      "slug": "spiritborn-counterswarm-endgame",
+      "expectedRawMetrics": 50,
+      "url": "https://maxroll.gg/d4/planner/5zxmig0x#3"
+    },
+    {
+      "action": "CAPTURE",
+      "class": "Paladin",
+      "slug": "paladin-zeal-push",
+      "expectedRawMetrics": 46,
+      "url": "https://maxroll.gg/d4/planner/m9369d0t#4"
+    },
+    {
+      "action": "CAPTURE",
+      "class": "Warlock",
+      "slug": "warlock-blazing-scream-endgame",
+      "expectedRawMetrics": 44,
+      "url": "https://maxroll.gg/d4/planner/to4erl0e#3"
+    }
+  ],
+  "reuse": [
+    {
+      "class": "Rogue",
+      "sourceUrl": "https://maxroll.gg/d4/planner/1g1any0x#3",
+      "fixture": "rogue-endgame",
+      "evidence": "issue-134-gb-e1-att-v2"
+    }
+  ]
+}

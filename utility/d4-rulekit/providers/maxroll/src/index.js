@@ -2,6 +2,11 @@
 
 const { MaxrollBuildMapper } = require('./build-mapper');
 const {
+  CLASS_FIXTURE_SCHEMA_VERSION,
+  MATRIX_SCHEMA_VERSION,
+  MaxrollClassFixtureCapturer,
+} = require('./class-fixture-capture');
+const {
   CANONICAL_SCHEMA_VERSION,
   CODEC_VERSION,
   D12_COMPATIBILITY,
@@ -46,13 +51,16 @@ const {
 module.exports = {
   ATTESTATION_SCHEMA_VERSION,
   CANONICAL_SCHEMA_VERSION,
+  CLASS_FIXTURE_SCHEMA_VERSION,
   CODEC_VERSION,
   D12_COMPATIBILITY,
   MAXROLL_32173552_D12AM6KT_REFERENCE,
   ERROR_CODES,
   EXPORT_SCHEMA_VERSION,
+  MATRIX_SCHEMA_VERSION,
   METRIC_CATALOG,
   MaxrollBuildMapper,
+  MaxrollClassFixtureCapturer,
   MaxrollD12CanonicalCodec,
   MaxrollEntityCatalog,
   MaxrollComponentFactory,

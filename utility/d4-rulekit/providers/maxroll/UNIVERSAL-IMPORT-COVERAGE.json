@@ -1,6 +1,6 @@
 {
   "schemaVersion": "universal-import-coverage/v2",
-  "status": "PARTIAL_BLOCKED_COVERAGE",
+  "status": "PARTIAL_BLOCKED_CATALOG_RELATIONSHIPS",
   "snapshotId": "maxroll-20261023T034150Z",
   "snapshotManifestSha256": "638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54",
   "engineAssetSha256": "891c1f82717c50e598450575068394c6d2fe1c8d26de26f2eeed028d028997db",
@@ -21,11 +21,29 @@
     "conditionalOptionSchema": { "numerator": 0, "denominator": null, "status": "BLOCKED_MISSING_VERSIONED_SCHEMA" }
   },
   "realEvidence": {
-    "classes": { "numerator": 1, "denominator": 8, "percent": 12.5 },
-    "independentBuildSources": { "numerator": 1, "denominator": 8, "status": "BLOCKED_INDEPENDENT_FIXTURE" },
-    "profiles": 2,
-    "rawMetrics": "50/50 each",
-    "displayRows": [51, 50],
+    "classes": { "numerator": 8, "denominator": 8, "percent": 100 },
+    "independentBuildSources": { "numerator": 8, "denominator": 8, "percent": 100 },
+    "profiles": 9,
+    "rawMetricsByClass": {
+      "Rogue": 50,
+      "Sorcerer": 50,
+      "Druid": 47,
+      "Barbarian": 47,
+      "Necromancer": 49,
+      "Spiritborn": 50,
+      "Paladin": 46,
+      "Warlock": 44
+    },
+    "displayRowsByClass": {
+      "Rogue": 50,
+      "Sorcerer": 51,
+      "Druid": 47,
+      "Barbarian": 49,
+      "Necromancer": 49,
+      "Spiritborn": 57,
+      "Paladin": 46,
+      "Warlock": 44
+    },
     "referenceParity": "EXACT",
     "externalEgressCompleted": 0,
     "cleanup": "PASS"
@@ -35,8 +53,8 @@
     "B2": "PARTIAL_BLOCKED_RELATIONSHIPS",
     "B3": "DONE_FOR_CANONICAL_STATES_ACCEPTED_BY_CODEC",
     "B4": "PARTIAL_PROFILE_AND_ITEMS_EXACT_GLOBAL_OPTIONS_UNVERIFIED",
-    "B5": "DONE_FOR_TWO_ROGUE_PROFILES",
+    "B5": "DONE_FOR_AT_LEAST_ONE_REAL_FIXTURE_PER_CLASS",
     "B6": "DONE_FOR_REAL_BUILD_REPLACE_AND_GENERIC_MUTATION_CONTRACT",
-    "B7": "BLOCKED_INDEPENDENT_FIXTURE_AND_COVERAGE"
+    "B7": "PARTIAL_ALL_CLASSES_REAL_FIXTURE_CATALOG_COVERAGE_BLOCKED"
   }
 }

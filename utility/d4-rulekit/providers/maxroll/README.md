@@ -114,6 +114,12 @@ the machine-readable [`UNIVERSAL-IMPORT-B0-COVERAGE.json`](UNIVERSAL-IMPORT-B0-C
 This is `B0_VERTICAL_SLICE_PASS / UNIVERSAL_COVERAGE_PENDING`, not a universal-import completion
 claim. The existing eight Application APIs are unchanged.
 
+The owner-triggered multi-class capture command is documented in
+[`MULTICLASS-FIXTURES.md`](MULTICLASS-FIXTURES.md). It captures seven current Season 15 planner
+sources read-only, verifies their executing engine, replays each through the pinned offline
+snapshot, and combines them with the verified Rogue evidence for 8/8 class coverage. Fixture
+plaintext remains outside Git.
+
 The pinned CI test fixture is published only as an age/X25519-encrypted ZIP plus its ciphertext
 checksum. `npm run fixture:encrypted` verifies the source snapshot, packages/encrypts it, or
 decrypts a pinned Release asset into a temporary directory for full manifest/blob verification.

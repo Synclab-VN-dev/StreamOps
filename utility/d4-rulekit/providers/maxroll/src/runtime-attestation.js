@@ -15,7 +15,10 @@ function canonicalize(value) {
 }
 
 function semanticHash(value) {
-  return sha256(Buffer.from(JSON.stringify(canonicalize(value))));
+  const normalized = value === undefined
+    ? { $streamopsSemanticValue: 'ABSENT' }
+    : canonicalize(value);
+  return sha256(Buffer.from(JSON.stringify(normalized)));
 }
 
 function normalizedProfile(profile) {
@@ -57,14 +60,21 @@ function inputSemantics(nativeState, profileIndex) {
 
 class CalculationEpochAccumulator {
   #expected;
+  #expectedCount;
   #epochKey = null;
   #values = new Map();
   #labels = new Map();
   #consistentDuplicates = 0;
 
   constructor(expectedInternalIds) {
-    this.#expected = new Set(expectedInternalIds);
-    if (this.#expected.size === 0) {
+    if (Number.isInteger(expectedInternalIds?.count) && expectedInternalIds.count > 0) {
+      this.#expected = null;
+      this.#expectedCount = expectedInternalIds.count;
+    } else {
+      this.#expected = new Set(expectedInternalIds);
+      this.#expectedCount = this.#expected.size;
+    }
+    if (this.#expectedCount === 0) {
       throw new MaxrollProviderError(ERROR_CODES.INVALID_CONFIG,
         'calculation epoch requires at least one expected metric');
     }
@@ -84,7 +94,7 @@ class CalculationEpochAccumulator {
 
   observe({ epochKey, internalId, rawValue, label }) {
     this.bindEpoch(epochKey);
-    if (!this.#expected.has(internalId)) return this.complete;
+    if (this.#expected && !this.#expected.has(internalId)) return this.complete;
     if (typeof rawValue !== 'number' || !Number.isFinite(rawValue)) {
       throw new MaxrollProviderError(ERROR_CODES.METRICS_INCOMPLETE,
         `attested raw metric is invalid: ${internalId}`);
@@ -103,17 +113,21 @@ class CalculationEpochAccumulator {
     return this.complete;
   }
 
-  get complete() { return this.#values.size === this.#expected.size; }
+  get complete() { return this.#values.size === this.#expectedCount; }
   get size() { return this.#values.size; }
   get epochKey() { return this.#epochKey; }
   get consistentDuplicates() { return this.#consistentDuplicates; }
+  get missingIds() {
+    return this.#expected ? [...this.#expected].filter(id => !this.#values.has(id)) : [];
+  }
+  get observedIds() { return [...this.#values.keys()]; }
   value(internalId) { return this.#values.get(internalId); }
   label(internalId) { return this.#labels.get(internalId); }
 
   assertComplete() {
     if (!this.complete) {
       throw new MaxrollProviderError(ERROR_CODES.METRICS_INCOMPLETE,
-        `calculation epoch ended with ${this.#values.size}/${this.#expected.size} metrics`);
+        `calculation epoch ended with ${this.#values.size}/${this.#expectedCount} metrics`);
     }
   }
 }
@@ -229,11 +243,12 @@ class MaxrollRuntimeAttestationObserver {
       await this.#pauseChain;
       const engine = await this.#engineEvidence();
       const displayMetrics = await this.#readDisplayMetrics(capture.observedMetricDefinitions);
+      const rawMetrics = this.#rawMetrics(capture, displayMetrics);
       result = Object.freeze({
         captureId: capture.id,
         profileReadback: Object.freeze({ ...capture.profileReadback }),
         engine,
-        rawMetrics: Object.freeze(this.#profile.metricCatalog.map(definition => Object.freeze({
+        rawMetrics: Object.freeze(rawMetrics.map(definition => Object.freeze({
           metricId: definition.id,
           internalId: definition.internalId,
           label: capture.accumulator.label(definition.internalId) ?? definition.name,
@@ -255,6 +270,9 @@ class MaxrollRuntimeAttestationObserver {
           epochComparisons: capture.epochComparisons,
           consistentDuplicateMetrics: capture.accumulator.consistentDuplicates,
           coherentMetricCount: capture.accumulator.size,
+          expectedMetricCount: this.#profile.realRuntime.discoverMetricCatalog === true
+            ? this.#profile.realRuntime.expectedRawMetrics
+            : this.#profile.metricCatalog.length,
           inputProfileSha256: this.#semantics.profileSha256,
           inputItemsSha256: this.#semantics.itemsSha256,
         }),
@@ -299,6 +317,7 @@ class MaxrollRuntimeAttestationObserver {
 
   #newCapture() {
     const expected = new Set(this.#profile.metricCatalog.map(metric => metric.internalId));
+    const discover = this.#profile.realRuntime.discoverMetricCatalog === true;
     let resolveCompletion;
     let rejectCompletion;
     const completion = new Promise((resolve, reject) => {
@@ -308,7 +327,9 @@ class MaxrollRuntimeAttestationObserver {
     const capture = {
       id: crypto.randomUUID(),
       expected,
-      accumulator: new CalculationEpochAccumulator(expected),
+      accumulator: new CalculationEpochAccumulator(discover
+        ? { count: this.#profile.realRuntime.expectedRawMetrics }
+        : expected),
       observedMetricDefinitions: new Map(),
       epochObjectId: null,
       epochIdentitySha256: null,
@@ -339,7 +360,11 @@ class MaxrollRuntimeAttestationObserver {
       capture.profileReadback
         ? 'timed out waiting for a complete fresh metric phase'
         : 'timed out waiting for exact runtime semantic read-back', {
-        details: { lastObservedIdentity: capture.lastObservedIdentity },
+        details: {
+          lastObservedIdentity: capture.lastObservedIdentity,
+          observedMetricIds: capture.accumulator.observedIds,
+          missingMetricIds: capture.accumulator.missingIds,
+        },
       })),
     this.#profile.realRuntime.captureTimeoutMs ?? 30_000);
     return capture;
@@ -362,7 +387,8 @@ class MaxrollRuntimeAttestationObserver {
     try {
       const capture = this.#capture;
       const frame = event.callFrames?.[0];
-      if (!capture || !frame) return;
+      if (!capture || !frame
+          || (capture.settled && this.#profile.realRuntime.discoverMetricCatalog === true)) return;
       capture.pauseOrdinal += 1;
       capture.pauseScriptId ??= frame.location?.scriptId ?? null;
       const readback = await this.#evaluate(frame.callFrameId,
@@ -417,7 +443,11 @@ class MaxrollRuntimeAttestationObserver {
       if (Number.isInteger(internalId) && typeof metric?.label === 'string' && metric.label) {
         capture.observedMetricDefinitions.set(metric.label, internalId);
       }
-      if (!capture.expected.has(internalId)) return;
+      if (this.#profile.realRuntime.discoverMetricCatalog !== true
+          && !capture.expected.has(internalId)) return;
+      const labelAllowlist = this.#profile.realRuntime.metricLabelAllowlist;
+      if (this.#profile.realRuntime.discoverMetricCatalog === true
+          && Array.isArray(labelAllowlist) && !labelAllowlist.includes(metric?.label)) return;
       capture.firstMetricPauseOrdinal ??= capture.pauseOrdinal;
       capture.lastMetricPauseOrdinal = capture.pauseOrdinal;
       if (capture.accumulator.observe({ epochKey, internalId, rawValue: metric.raw,
@@ -594,20 +624,48 @@ class MaxrollRuntimeAttestationObserver {
     });
     const catalog = new Map(this.#profile.metricCatalog
       .map(metric => [`${metric.category}|${metric.name}`, metric]));
+    const totals = new Map();
+    for (const row of rows) {
+      const key = `${row.section}|${row.label}`;
+      totals.set(key, (totals.get(key) ?? 0) + 1);
+    }
+    const occurrences = new Map();
     return rows.map(row => {
       const definition = catalog.get(`${row.section}|${row.label}`);
       const observedInternalId = observedMetricDefinitions.get(row.label);
       const internalId = definition?.internalId ?? observedInternalId ?? null;
+      const baseAnchor = `${row.section}|${row.label}`;
+      const occurrence = (occurrences.get(baseAnchor) ?? 0) + 1;
+      occurrences.set(baseAnchor, occurrence);
       return Object.freeze({
         metricId: internalId == null ? null : `maxroll.heroDetails.${internalId}`,
         internalId,
-        labelAnchor: `${row.section}|${row.label}`,
+        labelAnchor: totals.get(baseAnchor) > 1 ? `${baseAnchor}#${occurrence}` : baseAnchor,
         section: row.section,
         label: row.label,
         displayValue: row.displayValue,
         unit: row.displayValue.endsWith('%') ? '%' : null,
         status: 'OBSERVED',
         provenance: 'MAXROLL_UI_DOM',
+      });
+    });
+  }
+
+  #rawMetrics(capture, displayMetrics) {
+    if (this.#profile.realRuntime.discoverMetricCatalog !== true) {
+      return this.#profile.metricCatalog;
+    }
+    const displayed = new Map(displayMetrics
+      .filter(metric => Number.isInteger(metric.internalId))
+      .map(metric => [metric.internalId, metric]));
+    return capture.accumulator.observedIds.map(internalId => {
+      const display = displayed.get(internalId);
+      return Object.freeze({
+        id: `maxroll.heroDetails.${internalId}`,
+        internalId,
+        category: display?.section ?? 'runtime',
+        name: capture.accumulator.label(internalId) ?? display?.label ?? String(internalId),
+        rawValueType: 'finite-number',
       });
     });
   }

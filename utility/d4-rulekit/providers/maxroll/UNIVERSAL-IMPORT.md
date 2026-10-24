@@ -55,8 +55,9 @@ The pinned game catalog is rich but is not a complete legal-build specification:
 2. Sixty equippable item records and one glyph lack complete eight-class filter evidence.
 3. No dedicated specialization catalog or versioned conditional-options schema was found.
 4. Rune/charm/stone identities exist, but a complete semantic taxonomy is not proven.
-5. Only Rogue has an independently captured real fixture. Seven classes remain
-   `BLOCKED_INDEPENDENT_FIXTURE`; synthetic/catalog tests do not replace real acceptance.
+5. All eight classes now have at least one independently captured real fixture with exact
+   online-source/offline-replay parity. This closes the class-fixture gap, but one build per class
+   does not replace catalog-wide combination coverage.
 6. The proven calculation frame exposes `profile` and resolved `items`, but not native top-level
    `season/options` under the same object. A bounded probe failed closed, so exact read-back for
    those global fields remains unverified rather than being inferred from the request.

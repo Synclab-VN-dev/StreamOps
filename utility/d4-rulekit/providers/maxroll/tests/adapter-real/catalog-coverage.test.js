@@ -37,5 +37,7 @@ test('B2-B7 pinned catalog coverage inventory is exhaustive and machine-readable
     audit.families.equippableItems.numerator);
   assert.equal(documented.catalog.paragonGlyphsWithClassEvidence.numerator,
     audit.families.paragonGlyphs.numerator);
-  assert.equal(documented.status, 'PARTIAL_BLOCKED_COVERAGE');
+  assert.equal(documented.status, 'PARTIAL_BLOCKED_CATALOG_RELATIONSHIPS');
+  assert.equal(documented.realEvidence.classes.percent, 100);
+  assert.equal(documented.realEvidence.independentBuildSources.percent, 100);
 });

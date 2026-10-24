@@ -139,6 +139,22 @@ export function listMaxrollBuildProfilesFromSnapshot(
   options: MaxrollBuildProfileInventoryOptions,
 ): Promise<Readonly<Record<string, unknown>>>;
 
+export const CLASS_FIXTURE_SCHEMA_VERSION: 'maxroll-class-fixture-capture/v1';
+export const MATRIX_SCHEMA_VERSION: 'maxroll-class-fixture-matrix/v1';
+export class MaxrollClassFixtureCapturer {
+  constructor(dependencies?: Readonly<Record<string, unknown>>);
+  capture(options: Readonly<{
+    outputRoot: string;
+    snapshotRoot: string;
+    snapshotId: string;
+    expectedManifestSha256: string;
+    chromiumExecutablePath: string;
+    matrix: Readonly<Record<string, unknown>>;
+    reuseRoot?: string;
+    timeoutMs?: number;
+  }>): Promise<Readonly<Record<string, unknown>>>;
+}
+
 export interface MetricDefinition {
   readonly id: string;
   readonly internalId: number;

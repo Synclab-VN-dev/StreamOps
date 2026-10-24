@@ -7,7 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { ERROR_CODES, attestMaxrollBuildFixture } = require('../../src');
 const { compareCaptures } = require('../../src/fixture-attestation');
-const { CalculationEpochAccumulator } = require('../../src/runtime-attestation');
+const { CalculationEpochAccumulator, semanticHash } = require('../../src/runtime-attestation');
 
 let ordinal = 0;
 function capture(overrides = {}) {
@@ -44,6 +44,11 @@ test('GB-E1 source and replay vectors require exact output linkage', () => {
   assert.equal(result.status, 'EXACT');
   assert.equal(result.rawExact, true);
   assert.equal(result.displayExact, true);
+});
+
+test('semantic section hashing distinguishes an absent field from null', () => {
+  assert.match(semanticHash(undefined), /^[a-f0-9]{64}$/);
+  assert.notEqual(semanticHash(undefined), semanticHash(null));
 });
 
 test('GB-E1 rejects swapped or stale output', () => {
@@ -108,6 +113,19 @@ test('GB-E1 rejects any completed egress', () => {
   })), error => error.code === ERROR_CODES.OUTPUT_NOT_LINKED);
 });
 
+test('multi-class source/replay comparison permits measured online source traffic only', () => {
+  const source = capture({
+    network: { externalEgressCompleted: 4, webSocketHandshakes: 0 },
+  });
+  const replay = capture();
+  assert.equal(compareCaptures(source, replay, { sourceOnline: true }).status, 'EXACT');
+  const replayWithEgress = capture({
+    network: { externalEgressCompleted: 1, webSocketHandshakes: 0 },
+  });
+  assert.throws(() => compareCaptures(source, replayWithEgress, { sourceOnline: true }),
+    error => error.code === ERROR_CODES.OUTPUT_NOT_LINKED);
+});
+
 test('GB-E1 refuses an existing output before browser or snapshot work', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gb-e1-output-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
@@ -130,6 +148,15 @@ test('GB-REV-ATT-01 accepts 50 metrics from one runtime epoch', () => {
   }
   accumulator.assertComplete();
   assert.equal(accumulator.size, 50);
+});
+
+test('class metric discovery accepts 50 runtime IDs without a Rogue-specific whitelist', () => {
+  const accumulator = new CalculationEpochAccumulator({ count: 3 });
+  accumulator.observe({ epochKey: 'epoch-A', internalId: 1001, rawValue: 1, label: 'one' });
+  accumulator.observe({ epochKey: 'epoch-A', internalId: 1002, rawValue: 2, label: 'two' });
+  accumulator.observe({ epochKey: 'epoch-A', internalId: 1003, rawValue: 3, label: 'three' });
+  accumulator.assertComplete();
+  assert.deepEqual(accumulator.observedIds, [1001, 1002, 1003]);
 });
 
 test('GB-REV-ATT-01 rejects 30 metrics from epoch A plus 20 from epoch B', () => {
