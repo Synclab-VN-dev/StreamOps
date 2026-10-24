@@ -190,6 +190,10 @@ test('D12aM6KT candidate pins asset identity and version-specific UI semantics',
   assert.equal(profile.realRuntime.itemEditorSelector, '.d4t-ItemEditor');
   assert.equal(profile.realRuntime.discardChangesDialogSelector, '[class*="_Dialog_"]');
   assert.equal(profile.realRuntime.discardChangesConfirmButton, 'Yes');
+  assert.deepEqual(profile.realRuntime.inputStateBreakpoint,
+    { lineNumber: 670, columnNumber: 42067 });
+  assert.match(profile.realRuntime.inputStateReadbackExpression, /options/);
+  assert.equal(profile.realRuntime.inputStateEpochExpression, 'K.context');
 });
 
 test('real profile rejects incomplete CDP/UI protocol configuration', () => {
@@ -200,6 +204,14 @@ test('real profile rejects incomplete CDP/UI protocol configuration', () => {
     snapshotManifestSha256: 'a'.repeat(64),
     sourceUrl: 'https://maxroll.gg/d4/planner/1g1any0x#3',
     metricCatalog: METRIC_CATALOG,
+  }), error => error.code === ERROR_CODES.INVALID_CONFIG);
+  assert.throws(() => createMaxroll32173552D12aM6KTCandidateProfile({
+    snapshotId: 'maxroll-20261023T034150Z',
+    snapshotManifestSha256: 'a'.repeat(64),
+    sourceUrl: 'https://maxroll.gg/d4/planner/1g1any0x',
+    authorizationRef: 'owner-approved-test-fixture',
+    metricCatalog: METRIC_CATALOG,
+    realRuntime: { inputStateReadbackExpression: null },
   }), error => error.code === ERROR_CODES.INVALID_CONFIG);
 });
 

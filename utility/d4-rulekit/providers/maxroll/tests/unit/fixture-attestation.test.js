@@ -7,6 +7,8 @@ const path = require('node:path');
 const test = require('node:test');
 const { ERROR_CODES, attestMaxrollBuildFixture } = require('../../src');
 const { compareCaptures } = require('../../src/fixture-attestation');
+const { D12_OPTION_READBACK_RULES } = require('../../src/d12-option-readback');
+const { D12_SHARED_OPTION_DEFINITIONS } = require('../../src/d12-shared-options');
 const { CalculationEpochAccumulator, exactOptionReadback,
   normalizedExpectedOptions, resolveApplicableMetricInventory, resolveSharedOptionControls,
   semanticHash } = require('../../src/runtime-attestation');
@@ -237,6 +239,46 @@ test('FINAL-01 option read-back never normalizes toward expected without pinned 
     options: { flags: [] } }], {}), error => error.code === ERROR_CODES.READBACK_MISMATCH);
   assert.throws(() => exactOptionReadback({ Legacy_Option: { params: [6] } }, [], {}),
     error => error.code === ERROR_CODES.INPUT_READBACK_UNVERIFIED);
+});
+
+test('FINAL-01 production definitions cannot turn missing observations into EXACT', () => {
+  assert.throws(() => resolveSharedOptionControls({ enemy_burning: true }, [],
+    D12_SHARED_OPTION_DEFINITIONS),
+  error => error.code === ERROR_CODES.INPUT_READBACK_UNVERIFIED);
+  const productionDruidDefinition = {
+    applicability: { kind: 'pinned-engine-enumeration', registered: true,
+      authority: 'sha256:891c1f82717c50e598450575068394c6d2fe1c8d26de26f2eeed028d028997db' },
+    ...D12_OPTION_READBACK_RULES.Druid_WolfPack,
+  };
+  assert.throws(() => exactOptionReadback({ Druid_WolfPack: { active: true } }, [], {}, {
+    Druid_WolfPack: productionDruidDefinition,
+  }), error => error.code === ERROR_CODES.INPUT_READBACK_UNVERIFIED);
+
+  const storedShared = resolveSharedOptionControls({ enemy_burning: true }, [],
+    D12_SHARED_OPTION_DEFINITIONS, { enemy_burning: true });
+  assert.deepEqual(storedShared.values, { enemy_burning: true });
+  assert.deepEqual(storedShared.rawValues.enemy_burning, { status: 'OBSERVED',
+    source: 'MAXROLL_CALCULATION_INPUT_STORE', value: true });
+  const storedInactive = exactOptionReadback({ Druid_WolfPack: { active: true } }, [], {}, {
+    Druid_WolfPack: productionDruidDefinition,
+  }, [], { Druid_WolfPack: { active: true } });
+  assert.equal(storedInactive.status, 'EXACT');
+  assert.deepEqual(storedInactive.rawObserved.Druid_WolfPack, { active: true });
+  assert.deepEqual(storedInactive.observationEvidence, [{
+    optionId: 'Druid_WolfPack', source: 'MAXROLL_CALCULATION_INPUT_STORE',
+    applicability: 'INACTIVE', authority: 'CURRENT_CALCULATION_FRAME:options',
+  }]);
+});
+
+test('FINAL-01 missing or stale production observations fail closed', () => {
+  const definitions = { Skill_A: { applicability: {
+    kind: 'pinned-engine-enumeration', registered: true, authority: 'pinned-engine-test',
+  } } };
+  assert.throws(() => exactOptionReadback({ Skill_A: { params: [2] } }, [], {}, definitions),
+    error => error.code === ERROR_CODES.INPUT_READBACK_UNVERIFIED);
+  assert.throws(() => exactOptionReadback({ Skill_A: { params: [2] } }, [{ power: 'Skill_A',
+    options: { params: [1] } }], {}, definitions),
+  error => error.code === ERROR_CODES.READBACK_MISMATCH);
 });
 
 test('FINAL-01 applies only versioned per-option normalization rules and records raw evidence', () => {

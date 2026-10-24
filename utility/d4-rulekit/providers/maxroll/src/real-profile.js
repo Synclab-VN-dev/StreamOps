@@ -46,6 +46,10 @@ function createMaxroll32173552D12aM6KTCandidateProfile(config) {
     discardChangesPrompt: 'Discard unsaved changes and start from a blank profile?',
     discardChangesDialogSelector: '[class*="_Dialog_"]',
     discardChangesConfirmButton: 'Yes',
+    inputStateBreakpoint: Object.freeze({ lineNumber: 670, columnNumber: 42067 }),
+    inputStateReadbackExpression:
+      '({profile:JSON.parse(JSON.stringify(N)),options:JSON.parse(JSON.stringify(T||{}))})',
+    inputStateEpochExpression: 'K.context',
     attestationReadbackExpression:
       '({profile:JSON.parse(JSON.stringify(l.profile)),items:JSON.parse(JSON.stringify(l.items)),'
       + 'optionEntries:JSON.parse(JSON.stringify(l.optionEntries||[])),'
@@ -140,6 +144,9 @@ function createRealProfile(config, reference, strategy) {
       gamePatchPattern: 'Game version:\\s*([^\\n]+)',
       attestationReadbackExpression: strategy.attestationReadbackExpression ?? null,
       calculationEpochExpression: strategy.calculationEpochExpression ?? null,
+      inputStateBreakpoint: strategy.inputStateBreakpoint ?? null,
+      inputStateReadbackExpression: strategy.inputStateReadbackExpression ?? null,
+      inputStateEpochExpression: strategy.inputStateEpochExpression ?? null,
       sharedOptionReadback: strategy.sharedOptionReadback ?? null,
       metricDisplayCatalog: strategy.metricDisplayCatalog ?? null,
       displayOnlyMetricInventory: strategy.displayOnlyMetricInventory ?? [],

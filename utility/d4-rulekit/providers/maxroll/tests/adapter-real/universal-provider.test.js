@@ -131,6 +131,34 @@ test('B6 all eight Application APIs operate through the real universal provider'
   let sessionId;
   try {
     await browser.start();
+    for (const [inputStateReadbackExpression, expectedCode] of [[
+      '({profile:JSON.parse(JSON.stringify(N)),options:{}})',
+      'INPUT_READBACK_UNVERIFIED',
+    ], [
+      '({profile:JSON.parse(JSON.stringify(N)),options:{...JSON.parse(JSON.stringify(T||{})),'
+        + 'S05_BSK_Generic_002:{params:[5]}}})',
+      'READBACK_MISMATCH',
+    ]]) {
+      const negativeProfile = createMaxroll32173552D12aM6KTUniversalProfile({
+        snapshotId: SNAPSHOT_ID, snapshotManifestSha256: MANIFEST_SHA,
+        sourceUrl: midgame.provenance.sourceUrl,
+        assetUrl: `https://maxroll.gg${MAXROLL_32173552_D12AM6KT_REFERENCE.applicationAssetPath}`,
+        catalog, metricCatalog: METRIC_CATALOG,
+        authorizationRef: 'issue-134-universal-approved-offline-snapshot',
+        realRuntime: { inputStateReadbackExpression },
+      });
+      const negativeProvider = new MaxrollProvider({
+        browser, snapshots, profile: negativeProfile,
+        componentFactory: new UniversalMaxrollComponentFactory({
+          codec, profileUrl, plannerId: midgame.provenance.plannerId,
+        }), sessionTimeoutMs: 60_000,
+      });
+      await assert.rejects(() => negativeProvider.createSession({
+        build: buildA, buildSchemaVersion: CANONICAL_SCHEMA_VERSION,
+        snapshotId: SNAPSHOT_ID, snapshotManifestSha256: MANIFEST_SHA,
+        timeoutMs: 60_000,
+      }), error => error.code === expectedCode);
+    }
     assert.equal(app.listProviders().length, 1);
     const created = await app.createSession({
       contractVersion: 'd4-rulekit-application/v1',
@@ -142,6 +170,14 @@ test('B6 all eight Application APIs operate through the real universal provider'
     sessionId = created.sessionId;
     const baseline = await app.evaluate(sessionId, { timeoutMs: 60_000 });
     assertMetricVector(baseline.metrics, midgameStats.rawMetrics);
+    const optionReadback = baseline.provenance.provider.runtimeAttestation
+      .profileReadback.calculationOptions;
+    assert.equal(optionReadback.status, 'EXACT');
+    assert.equal(optionReadback.notApplicable.length, 0);
+    assert.equal(optionReadback.observationEvidence.some(evidence =>
+      evidence.optionId === 'S05_BSK_Generic_002'
+        && evidence.source === 'MAXROLL_CALCULATION_INPUT_STORE'
+        && evidence.authority === 'CURRENT_CALCULATION_FRAME:options'), true);
     assert.equal(app.getSession(sessionId).revision, 0);
     const changes = [{ type: 'build.replace', build: buildB }];
     const preview = await app.previewChanges(sessionId, {

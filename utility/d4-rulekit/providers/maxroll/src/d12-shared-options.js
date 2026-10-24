@@ -1,8 +1,7 @@
 'use strict';
 
 const APPLICABILITY = Object.freeze({ kind: 'pinned-engine-rendered-control',
-  absence: 'not-applicable',
-  authority: 'sha256:891c1f82717c50e598450575068394c6d2fe1c8d26de26f2eeed028d028997db:effects-ui-applicable-option-enumeration' });
+  authority: 'sha256:891c1f82717c50e598450575068394c6d2fe1c8d26de26f2eeed028d028997db:effects-ui-option-identity' });
 const flag = (group, label) => Object.freeze({ group, labels: Object.freeze([label]),
   types: Object.freeze(['boolean']), applicability: APPLICABILITY });
 const number = (group, label, min, max, extra = {}) => Object.freeze({ group,

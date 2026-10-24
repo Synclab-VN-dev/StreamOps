@@ -98,10 +98,25 @@ function validateRealRuntime(runtime, metricCatalogLength) {
         runtime.discardChangesDialogSelector,
         runtime.discardChangesConfirmButton,
       ]) ||
+      !validOptionalInputStateContract(runtime) ||
       !runtime.categoryLabels || typeof runtime.categoryLabels !== 'object') {
     throw new MaxrollProviderError(ERROR_CODES.INVALID_CONFIG,
       'maxroll-ui-cdp-v1 runtime contract is incomplete');
   }
+}
+
+function validOptionalInputStateContract(runtime) {
+  const values = [runtime.inputStateBreakpoint, runtime.inputStateReadbackExpression,
+    runtime.inputStateEpochExpression];
+  if (values.every(value => value == null)) return true;
+  return Number.isInteger(runtime.inputStateBreakpoint?.lineNumber)
+    && runtime.inputStateBreakpoint.lineNumber >= 0
+    && Number.isInteger(runtime.inputStateBreakpoint?.columnNumber)
+    && runtime.inputStateBreakpoint.columnNumber >= 0
+    && typeof runtime.inputStateReadbackExpression === 'string'
+    && runtime.inputStateReadbackExpression.length > 0
+    && typeof runtime.inputStateEpochExpression === 'string'
+    && runtime.inputStateEpochExpression.length > 0;
 }
 
 function validOptionalString(value) {

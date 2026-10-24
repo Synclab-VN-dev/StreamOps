@@ -83,7 +83,7 @@ function inputSemantics(nativeState, profileIndex) {
   });
 }
 
-function resolveSharedOptionControls(expectedShared, controls, definitions) {
+function resolveSharedOptionControls(expectedShared, controls, definitions, storedShared) {
   const expected = expectedShared ?? {};
   if (!expected || typeof expected !== 'object' || Array.isArray(expected)
       || !Array.isArray(controls) || !definitions || typeof definitions !== 'object') {
@@ -103,15 +103,14 @@ function resolveSharedOptionControls(expectedShared, controls, definitions) {
     const matches = controls.filter(control => control.group === definition.group
       && definition.labels.includes(control.label));
     if (matches.length === 0) {
-      const applicability = definition.applicability;
-      if (applicability?.kind === 'pinned-engine-rendered-control'
-          && applicability.absence === 'not-applicable'
-          && typeof applicability.authority === 'string') {
-        observed[key] = structuredClone(expectedValue);
-        rawValues[key] = Object.freeze({ status: 'NOT_APPLICABLE', control: null });
-        notApplicable.push(key);
-        applicabilityEvidence.push({ key, rule: applicability.kind,
-          authority: applicability.authority });
+      if (storedShared && typeof storedShared === 'object' && !Array.isArray(storedShared)
+          && Object.hasOwn(storedShared, key)) {
+        const storedValue = structuredClone(storedShared[key]);
+        observed[key] = storedValue;
+        rawValues[key] = Object.freeze({ status: 'OBSERVED',
+          source: 'MAXROLL_CALCULATION_INPUT_STORE', value: storedValue });
+        applicabilityEvidence.push({ key, rule: 'calculation-input-store',
+          authority: 'CURRENT_CALCULATION_FRAME:options.shared' });
         continue;
       }
       throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
@@ -141,6 +140,8 @@ function resolveSharedOptionControls(expectedShared, controls, definitions) {
     }
     observed[key] = value;
     rawValues[key] = value;
+    applicabilityEvidence.push({ key, rule: 'ui-control-observation',
+      authority: 'CURRENT_MAXROLL_UI_DOM' });
   }
   return Object.freeze({ values: Object.freeze(observed),
     rawValues: Object.freeze(rawValues),
@@ -149,7 +150,7 @@ function resolveSharedOptionControls(expectedShared, controls, definitions) {
 }
 
 function exactOptionReadback(expectedOptions, optionEntries, sharedReadback = {},
-  optionDefinitions = {}, runtimeControls = []) {
+  optionDefinitions = {}, runtimeControls = [], storedOptions = null) {
   const expected = expectedOptions ?? {};
   if (!Array.isArray(optionEntries) || !sharedReadback
       || typeof sharedReadback !== 'object' || Array.isArray(sharedReadback)) {
@@ -160,6 +161,7 @@ function exactOptionReadback(expectedOptions, optionEntries, sharedReadback = {}
   const notApplicable = [];
   const normalized = [];
   const normalizationEvidence = [];
+  const observationEvidence = [];
   const rawObserved = {};
   const sharedValues = sharedReadback.values ?? sharedReadback;
   const sharedNotApplicable = new Set(sharedReadback.notApplicable ?? []);
@@ -176,37 +178,36 @@ function exactOptionReadback(expectedOptions, optionEntries, sharedReadback = {}
       }
       observed.shared = shared;
       rawObserved.shared = structuredClone(sharedReadback.rawValues ?? shared);
-      normalizationEvidence.push(...(sharedReadback.applicabilityEvidence ?? []).map(entry => ({
-        optionId: `shared.${entry.key}`, field: '$', rule: entry.rule,
-        rawValue: null, semanticValue: structuredClone(shared[entry.key]),
+      observationEvidence.push(...(sharedReadback.applicabilityEvidence ?? []).map(entry => ({
+        optionId: `shared.${entry.key}`,
+        source: entry.rule === 'calculation-input-store'
+          ? 'MAXROLL_CALCULATION_INPUT_STORE' : 'MAXROLL_UI_DOM',
+        applicability: entry.rule === 'calculation-input-store' ? 'UNOBSERVED_ACTIVITY' : 'ACTIVE',
         authority: entry.authority,
       })));
       continue;
     }
     const matches = optionEntries.filter(entry =>
       String(entry?.power ?? entry?.id ?? entry?.key) === optionId);
-    if (matches.length === 0) {
-      const applicability = optionDefinitions[optionId]?.applicability;
-      if (['pinned-engine-enumeration', 'pinned-game-catalog-option']
-        .includes(applicability?.kind)
-          && applicability.registered === true && typeof applicability.authority === 'string') {
-        observed[optionId] = structuredClone(value);
-        rawObserved[optionId] = Object.freeze({ status: 'NOT_APPLICABLE', runtimeEntry: null });
-        notApplicable.push(optionId);
-        normalizationEvidence.push({ optionId, field: '$',
-          rule: 'pinned-engine-non-applicability', rawValue: null,
-          semanticValue: structuredClone(value), authority: applicability.authority });
-        continue;
-      }
+    const stored = storedOptions && typeof storedOptions === 'object'
+      && !Array.isArray(storedOptions) && Object.hasOwn(storedOptions, optionId)
+      ? storedOptions[optionId] : undefined;
+    if (matches.length === 0 && stored === undefined) {
       throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
         `calculation option has no runtime observation: ${optionId}`);
     }
     if (matches.length > 1) throw new MaxrollProviderError(ERROR_CODES.READBACK_MISMATCH,
       `runtime calculation option is ambiguous: ${optionId}`);
     const entry = matches[0];
-    const runtimeValue = entry.options ?? entry;
+    const runtimeValue = entry ? (entry.options ?? entry) : stored;
     const definition = optionDefinitions[optionId] ?? {};
     rawObserved[optionId] = structuredClone(runtimeValue);
+    observationEvidence.push(Object.freeze({ optionId,
+      source: entry ? 'MAXROLL_RESOLVED_OPTION_ENTRY' : 'MAXROLL_CALCULATION_INPUT_STORE',
+      applicability: entry ? 'ACTIVE' : 'INACTIVE',
+      authority: entry ? 'CURRENT_CALCULATION_FRAME:ProfileStats.optionEntries'
+        : 'CURRENT_CALCULATION_FRAME:options',
+    }));
     observed[optionId] = Object.fromEntries(Object.keys(value).map(key => {
       const actual = structuredClone(runtimeValue[key]);
       if (key === 'params' && Array.isArray(value.params) && Array.isArray(actual)) {
@@ -284,6 +285,7 @@ function exactOptionReadback(expectedOptions, optionEntries, sharedReadback = {}
     notApplicable: Object.freeze(notApplicable),
     normalized: Object.freeze(normalized),
     normalizationEvidence: Object.freeze(normalizationEvidence.map(Object.freeze)),
+    observationEvidence: Object.freeze(observationEvidence),
     rawObserved: Object.freeze(structuredClone(rawObserved)),
     observed: structuredClone(observed) });
 }
@@ -463,6 +465,7 @@ class MaxrollRuntimeAttestationObserver {
   #runtimeFailure = null;
   #closed = false;
   #script = null;
+  #inputStateBreakpointId = null;
   #wire = null;
   #wireWaiters = [];
   #requestIds = new Map();
@@ -527,7 +530,22 @@ class MaxrollRuntimeAttestationObserver {
       lineNumber: runtime.breakpoint.lineNumber,
       columnNumber: runtime.breakpoint.columnNumber,
     });
-    return Object.freeze({ initialBreakpointLocations: breakpoint.locations?.length ?? 0 });
+    let inputStateBreakpointLocations = 0;
+    if (runtime.inputStateBreakpoint) {
+      if (!runtime.inputStateReadbackExpression || !runtime.inputStateEpochExpression) {
+        throw new MaxrollProviderError(ERROR_CODES.INVALID_CONFIG,
+          'runtime input-state breakpoint has no read-back contract');
+      }
+      const inputBreakpoint = await this.#cdp.send('Debugger.setBreakpointByUrl', {
+        urlRegex: runtime.assetUrlRegex,
+        lineNumber: runtime.inputStateBreakpoint.lineNumber,
+        columnNumber: runtime.inputStateBreakpoint.columnNumber,
+      });
+      this.#inputStateBreakpointId = inputBreakpoint.breakpointId;
+      inputStateBreakpointLocations = inputBreakpoint.locations?.length ?? 0;
+    }
+    return Object.freeze({ initialBreakpointLocations: breakpoint.locations?.length ?? 0,
+      inputStateBreakpointLocations });
   }
 
   setInput(nativeState, profileIndex) {
@@ -567,12 +585,17 @@ class MaxrollRuntimeAttestationObserver {
       await this.#pauseChain;
       const engine = await this.#engineEvidence();
       const displayMetrics = await this.#readDisplayMetrics(capture.observedMetricDefinitions);
-      const globalReadback = await this.#readGlobalContext();
+      if (!capture.storedOptions || typeof capture.storedOptions !== 'object'
+          || Array.isArray(capture.storedOptions)) {
+        throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
+          'calculation input option store was not observed in the current runtime frame');
+      }
+      const globalReadback = await this.#readGlobalContext(capture.storedOptions);
       const optionDefinitions = this.#profile.realRuntime.optionReadbackDefinitions ?? {};
       const optionReadback = exactOptionReadback(
         normalizedExpectedOptions(this.#semantics.options, optionDefinitions),
         capture.optionEntries, globalReadback.shared,
-        optionDefinitions, globalReadback.controls);
+        optionDefinitions, globalReadback.controls, capture.storedOptions);
       if (globalReadback.season !== this.#semantics.season) {
         throw new MaxrollProviderError(ERROR_CODES.READBACK_MISMATCH,
           'runtime season does not match the requested state', {
@@ -683,6 +706,8 @@ class MaxrollRuntimeAttestationObserver {
       profileReadback: null,
       runtimeState: null,
       optionEntries: null,
+      storedOptions: null,
+      pendingInputState: null,
       lastObservedIdentity: null,
       settled: false,
       completion,
@@ -735,6 +760,11 @@ class MaxrollRuntimeAttestationObserver {
           || (capture.settled && this.#profile.realRuntime.discoverMetricCatalog === true)) return;
       capture.pauseOrdinal += 1;
       capture.pauseScriptId ??= frame.location?.scriptId ?? null;
+      if (this.#inputStateBreakpointId
+          && event.hitBreakpoints?.includes(this.#inputStateBreakpointId)) {
+        await this.#captureInputState(capture, frame);
+        return;
+      }
       const readback = await this.#evaluate(frame.callFrameId,
         this.#profile.realRuntime.attestationReadbackExpression);
       const observedProfile = readback?.profile;
@@ -835,6 +865,37 @@ class MaxrollRuntimeAttestationObserver {
     return evaluated.result?.value;
   }
 
+  async #captureInputState(capture, frame) {
+    const runtime = this.#profile.realRuntime;
+    const readback = await this.#evaluate(frame.callFrameId,
+      runtime.inputStateReadbackExpression);
+    const observedProfile = readback?.profile;
+    const sameIdentity = observedProfile?.name === this.#semantics.identity.name
+      && observedProfile?.class === this.#semantics.identity.class
+      && observedProfile?.level === this.#semantics.identity.level
+      && observedProfile?.worldTier === this.#semantics.identity.worldTier;
+    if (!sameIdentity
+        || semanticHash(normalizedProfile(observedProfile)) !== this.#semantics.profileSha256) return;
+    if (!readback.options || typeof readback.options !== 'object'
+        || Array.isArray(readback.options)) {
+      throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
+        'calculation input option store is unavailable at the invocation boundary');
+    }
+    const epoch = await this.#evaluateObject(frame.callFrameId,
+      runtime.inputStateEpochExpression);
+    if (capture.pendingInputState?.epochObjectId) {
+      await this.#cdp.send('Runtime.releaseObject', {
+        objectId: capture.pendingInputState.epochObjectId,
+      });
+    }
+    capture.pendingInputState = Object.freeze({
+      epochObjectId: epoch.objectId,
+      options: structuredClone(readback.options),
+      profileSha256: this.#semantics.profileSha256,
+      pauseOrdinal: capture.pauseOrdinal,
+    });
+  }
+
   async #evaluateObject(callFrameId, expression) {
     const evaluated = await this.#cdp.send('Debugger.evaluateOnCallFrame', {
       callFrameId,
@@ -850,7 +911,25 @@ class MaxrollRuntimeAttestationObserver {
 
   async #bindCalculationEpoch(capture, currentObjectId, scriptId) {
     if (!capture.epochObjectId) {
-      capture.epochObjectId = currentObjectId;
+      const pending = capture.pendingInputState;
+      if (!pending?.epochObjectId) {
+        throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
+          'metric epoch has no matching calculation input-state observation');
+      }
+      const comparison = await this.#cdp.send('Runtime.callFunctionOn', {
+        objectId: pending.epochObjectId,
+        functionDeclaration: 'function(other){return this===other}',
+        arguments: [{ objectId: currentObjectId }],
+        returnByValue: true,
+      });
+      await this.#cdp.send('Runtime.releaseObject', { objectId: currentObjectId });
+      if (comparison?.result?.value !== true) {
+        throw new MaxrollProviderError(ERROR_CODES.STALE_METRICS,
+          'calculation input state and metric epoch belong to different invocations');
+      }
+      capture.epochObjectId = pending.epochObjectId;
+      capture.storedOptions = structuredClone(pending.options);
+      capture.pendingInputState = null;
       capture.epochIdentitySha256 = sha256(Buffer.from(`${scriptId}:${currentObjectId}`));
       capture.accumulator.bindEpoch(capture.epochIdentitySha256);
       return capture.epochIdentitySha256;
@@ -879,10 +958,13 @@ class MaxrollRuntimeAttestationObserver {
   }
 
   async #releaseEpochObject(capture) {
-    if (!capture.epochObjectId) return;
-    const objectId = capture.epochObjectId;
+    const objectIds = [capture.epochObjectId, capture.pendingInputState?.epochObjectId]
+      .filter(Boolean);
     capture.epochObjectId = null;
-    await this.#cdp.send('Runtime.releaseObject', { objectId });
+    capture.pendingInputState = null;
+    for (const objectId of new Set(objectIds)) {
+      await this.#cdp.send('Runtime.releaseObject', { objectId });
+    }
   }
 
   async #captureWireBytes(requestId) {
@@ -945,7 +1027,7 @@ class MaxrollRuntimeAttestationObserver {
     });
   }
 
-  async #readGlobalContext() {
+  async #readGlobalContext(storedOptions) {
     const runtime = this.#profile.realRuntime;
     const season = await this.#lease.page.evaluate(() => {
       const matches = [...document.body.innerText.matchAll(/Season\s+(\d+)\s*:/g)]
@@ -1006,7 +1088,7 @@ class MaxrollRuntimeAttestationObserver {
       controls: Object.freeze(controls.map(Object.freeze)),
       shared: Object.keys(expectedShared).length === 0 ? {}
         : resolveSharedOptionControls(expectedShared, controls,
-          runtime.sharedOptionReadback) });
+          runtime.sharedOptionReadback, storedOptions.shared) });
   }
 
   async #readDisplayMetrics(observedMetricDefinitions) {
