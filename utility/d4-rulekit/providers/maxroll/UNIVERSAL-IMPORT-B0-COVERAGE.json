@@ -10,6 +10,21 @@
     "encryptedFixtureSha256": "94e9bc3c494cdc66f02fd272faf7fcbe59ca3cd68d308acef5c550a05394e107",
     "gameDataSha256": "889facd9fa21a0a2baba3f8c28d53ac66b6e28a7514994f82ab8f00a3a5e1f93"
   },
+  "compatibilityContract": {
+    "gamePatch": "3.2.1.73552",
+    "engineIdentity": {
+      "assetSha256": "891c1f82717c50e598450575068394c6d2fe1c8d26de26f2eeed028d028997db"
+    },
+    "catalogIdentity": {
+      "version": "3.2.1.73552",
+      "resourceSha256": "889facd9fa21a0a2baba3f8c28d53ac66b6e28a7514994f82ab8f00a3a5e1f93"
+    },
+    "snapshotIdentity": {
+      "id": "maxroll-20261023T034150Z",
+      "manifestSha256": "638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54"
+    },
+    "policy": "EXACT_MATCH_FAIL_CLOSED"
+  },
   "catalogInventory": {
     "classes": 8,
     "items": 12195,
@@ -171,6 +186,23 @@
     "pinned UI stats",
     "unselected profile loadouts"
   ],
+  "nestedFieldPolicy": {
+    "transformedObjects": "ALLOWLIST_AND_REJECT_UNKNOWN",
+    "transformedObjectFamilies": [
+      "items",
+      "item modifiers",
+      "Paragon boards",
+      "mercenary"
+    ],
+    "opaquePreservedObjects": [
+      "calculation options",
+      "world progression",
+      "War Plans payloads",
+      "elixir payloads",
+      "Paragon board position",
+      "modifier values"
+    ]
+  },
   "knownBlockers": [
     "No independently authorized non-Rogue fixture exists in the approved snapshot.",
     "The snapshot has catalogs but no standalone canonical schema or legal-combination specification.",

@@ -30,6 +30,24 @@ skills, Paragon, effects, world progression, and calculation options. Item regis
 loadout positions, editor notes, other profiles, and response metadata are not copied into the
 canonical build. Unknown native/canonical fields and missing catalog entities fail closed.
 
+Every native object that the B0 codec transforms has an observed-field allowlist. In particular,
+Paragon boards and mercenary state reject future/unknown keys with
+`CANONICAL_MAPPING_INCOMPLETE`. Deliberately opaque sections—calculation options, world state, War
+Plans payloads, elixirs, board positions, and modifier value arrays—are cloned without normalization
+and have no-loss tests. Their semantics are still coverage gaps, not declarations of universal
+support.
+
+Compatibility is an exact multi-part contract rather than a version label copied from input:
+
+- game patch: `3.2.1.73552`;
+- executing-engine identity: asset SHA-256 `891c1f82…28d028997db`;
+- catalog identity: catalog version `3.2.1.73552` plus resource SHA-256 `889facd9…a5e1f93`;
+- snapshot identity: `maxroll-20261023T034150Z` plus manifest SHA-256 `638a283b…39e54`.
+
+The catalog is accepted only after SnapshotStore verification supplies the trusted provenance.
+Native exports and canonical inputs must match all relevant identities. Missing or mismatched
+patch, engine, catalog, snapshot, or codec identity fails closed; the codec never rewrites them.
+
 ## Real proof
 
 The local real test downloads the pinned encrypted Release independently, verifies ciphertext and

@@ -6,6 +6,14 @@ const { immutable, sha256 } = require('./value');
 
 const CANONICAL_SCHEMA_VERSION = 'd4-build/v1alpha1';
 const CODEC_VERSION = 'maxroll-native/3.2.1.73552-D12aM6KT-b0';
+const D12_COMPATIBILITY = Object.freeze({
+  gamePatch: '3.2.1.73552',
+  snapshotId: 'maxroll-20261023T034150Z',
+  snapshotManifestSha256: '638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54',
+  engineAssetSha256: '891c1f82717c50e598450575068394c6d2fe1c8d26de26f2eeed028d028997db',
+  catalogVersion: '3.2.1.73552',
+  catalogResourceSha256: '889facd9fa21a0a2baba3f8c28d53ac66b6e28a7514994f82ab8f00a3a5e1f93',
+});
 const DATA_URL_PATTERN = /\/d4-tools\/game\/data\.min\.json(?:[?#].*)?$/;
 const EXPORT_SCHEMA_VERSION = 'maxroll-native-build-export/v1';
 const KNOWN_STATE_FIELDS = new Set([
@@ -29,6 +37,12 @@ const CANONICAL_ITEM_FIELDS = new Set([
 ]);
 const CANONICAL_MODIFIER_FIELDS = new Set([
   'entityId', 'greater', 'hidden', 'uniquePriority', 'upgradeRank', 'values',
+]);
+const KNOWN_PARAGON_BOARD_FIELDS = new Set([
+  'glyph', 'glyphLevel', 'id', 'nodes', 'position', 'rotation',
+]);
+const KNOWN_MERCENARY_FIELDS = new Set([
+  'id', 'support', 'supportSkills', 'tree',
 ]);
 
 function fail(code, message, details) {
@@ -178,6 +192,7 @@ class MaxrollD12CanonicalCodec {
     if (!(catalog instanceof MaxrollEntityCatalog)) {
       fail(ERROR_CODES.INVALID_CONFIG, 'MaxrollEntityCatalog is required');
     }
+    assertCatalogCompatibility(catalog.provenance);
     this.#catalog = catalog;
   }
 
@@ -185,6 +200,7 @@ class MaxrollD12CanonicalCodec {
     if (fixture?.schemaVersion !== EXPORT_SCHEMA_VERSION || fixture.format !== 'MAXROLL_NATIVE_STATE') {
       fail(ERROR_CODES.NATIVE_BUILD_INVALID, 'input is not a Maxroll native build export');
     }
+    assertFixtureCompatibility(fixture.provenance);
     const state = fixture.nativeState;
     const index = fixture.selection?.profileIndex;
     const profile = state?.profiles?.[index];
@@ -225,7 +241,7 @@ class MaxrollD12CanonicalCodec {
 
     return immutable({
       schemaVersion: CANONICAL_SCHEMA_VERSION,
-      game: { id: 'diablo-iv', patch: fixture.provenance?.runtimeVersion ?? null },
+      game: { id: 'diablo-iv', patch: D12_COMPATIBILITY.gamePatch },
       character: {
         classId: String(profile.class), level: profile.level, worldTier: profile.worldTier,
       },
@@ -241,7 +257,7 @@ class MaxrollD12CanonicalCodec {
       provenance: {
         codecVersion: CODEC_VERSION,
         sourceNativeStateSha256: fixture.integrity?.nativeStateSha256 ?? null,
-        catalog: clone(this.#catalog.provenance),
+        compatibility: clone(D12_COMPATIBILITY),
       },
     });
   }
@@ -365,6 +381,7 @@ class MaxrollD12CanonicalCodec {
 
   #decodeBoard(board, index) {
     assertPlain(board, `paragon.boards.${index}`);
+    rejectUnknown(board, KNOWN_PARAGON_BOARD_FIELDS, `paragon.boards.${index}`);
     const catalogBoard = this.#catalog.board(board.id);
     const allocations = sortedEntries(board.nodes ?? {}).map(([nodeId, value]) => {
       if (catalogBoard.nodes?.[Number(nodeId)] == null) fail(ERROR_CODES.ENTITY_NOT_FOUND,
@@ -403,6 +420,8 @@ class MaxrollD12CanonicalCodec {
   }
 
   #decodeMercenary(mercenary) {
+    assertPlain(mercenary, 'effects.mercenary');
+    rejectUnknown(mercenary, KNOWN_MERCENARY_FIELDS, 'effects.mercenary');
     this.#catalog.require('mercenaries', mercenary.id, 'effects.mercenary.id');
     return {
       id: String(mercenary.id), support: clone(mercenary.support),
@@ -430,6 +449,12 @@ class MaxrollD12CanonicalCodec {
     if (build.schemaVersion !== CANONICAL_SCHEMA_VERSION || build.game?.id !== 'diablo-iv') {
       fail(ERROR_CODES.CANONICAL_BUILD_INVALID, 'unsupported canonical build schema or game');
     }
+    if (build.game.patch !== D12_COMPATIBILITY.gamePatch) {
+      fail(ERROR_CODES.RUNTIME_MISMATCH,
+        'canonical build game patch is incompatible with this codec', {
+          expected: D12_COMPATIBILITY.gamePatch, actual: build.game.patch ?? null,
+        });
+    }
     for (const name of ['character', 'equipment', 'skills', 'paragon', 'effects',
       'world', 'calculationContext']) assertPlain(build[name], name);
     rejectUnknown(build.game, new Set(['id', 'patch']), 'game');
@@ -440,6 +465,7 @@ class MaxrollD12CanonicalCodec {
     rejectUnknown(build.effects,
       new Set(['elixirs', 'warPlans', 'specialization', 'mercenary']), 'effects');
     rejectUnknown(build.calculationContext, new Set(['season', 'options']), 'calculationContext');
+    assertCanonicalCompatibility(build.provenance);
     this.#catalog.require('classes', build.character.classId, 'character.classId');
     if (!Number.isFinite(build.character.level) || !Number.isFinite(build.character.worldTier)
         || !Array.isArray(build.equipment.slots) || !Array.isArray(build.skills.allocations)
@@ -535,9 +561,64 @@ function emptyGlobalNotes() {
   return { changelog: emptyNote(), faqs: emptyNote(), intro: emptyNote(), summary: emptyNote() };
 }
 
+function assertCatalogCompatibility(provenance) {
+  const mismatches = [];
+  for (const [field, expected] of [
+    ['snapshotId', D12_COMPATIBILITY.snapshotId],
+    ['snapshotManifestSha256', D12_COMPATIBILITY.snapshotManifestSha256],
+    ['gameDataVersion', D12_COMPATIBILITY.catalogVersion],
+    ['resourceSha256', D12_COMPATIBILITY.catalogResourceSha256],
+  ]) if (provenance?.[field] !== expected) {
+    mismatches.push({ field, expected, actual: provenance?.[field] ?? null });
+  }
+  if (mismatches.length) fail(ERROR_CODES.SNAPSHOT_MISMATCH,
+    'catalog provenance is incompatible with the approved codec contract', { mismatches });
+}
+
+function assertFixtureCompatibility(provenance) {
+  const snapshotMismatches = [];
+  for (const [field, expected] of [
+    ['snapshotId', D12_COMPATIBILITY.snapshotId],
+    ['snapshotManifestSha256', D12_COMPATIBILITY.snapshotManifestSha256],
+  ]) if (provenance?.[field] !== expected) {
+    snapshotMismatches.push({ field, expected, actual: provenance?.[field] ?? null });
+  }
+  if (snapshotMismatches.length) fail(ERROR_CODES.SNAPSHOT_MISMATCH,
+    'native fixture snapshot provenance is incompatible with this codec', {
+      mismatches: snapshotMismatches,
+    });
+  const runtimeMismatches = [];
+  for (const [field, expected] of [
+    ['runtimeVersion', D12_COMPATIBILITY.gamePatch],
+    ['runtimeAssetSha256', D12_COMPATIBILITY.engineAssetSha256],
+  ]) if (provenance?.[field] !== expected) {
+    runtimeMismatches.push({ field, expected, actual: provenance?.[field] ?? null });
+  }
+  if (runtimeMismatches.length) fail(ERROR_CODES.RUNTIME_MISMATCH,
+    'native fixture runtime provenance is incompatible with this codec', {
+      mismatches: runtimeMismatches,
+    });
+}
+
+function assertCanonicalCompatibility(provenance) {
+  if (!provenance || provenance.codecVersion !== CODEC_VERSION) {
+    fail(ERROR_CODES.RUNTIME_MISMATCH,
+      'canonical build is missing the required codec identity');
+  }
+  const observed = provenance.compatibility;
+  const mismatches = Object.entries(D12_COMPATIBILITY)
+    .filter(([field, expected]) => observed?.[field] !== expected)
+    .map(([field, expected]) => ({ field, expected, actual: observed?.[field] ?? null }));
+  if (mismatches.length) fail(ERROR_CODES.RUNTIME_MISMATCH,
+    'canonical build compatibility provenance does not match the approved contract', {
+      mismatches,
+    });
+}
+
 module.exports = {
   CANONICAL_SCHEMA_VERSION,
   CODEC_VERSION,
+  D12_COMPATIBILITY,
   MaxrollD12CanonicalCodec,
   MaxrollEntityCatalog,
   loadMaxrollEntityCatalog,

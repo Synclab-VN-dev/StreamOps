@@ -9,7 +9,7 @@ const {
   MaxrollEntityCatalog,
 } = require('../../src');
 
-function catalog() {
+function catalog(provenanceOverrides = {}) {
   return new MaxrollEntityCatalog({
     version: 'test',
     classes: { 3: { id: 3, tree: 'rogue-tree' } },
@@ -22,14 +22,25 @@ function catalog() {
     mercenaries: { merc: { id: 'merc-a' } },
     paragonBoards: { board: { id: 'board-a', nodes: [null, { id: 'node-a' }] } },
     paragonGlyphs: { glyph: { id: 'glyph-a' } },
-  }, { snapshotId: 'snapshot-a', resourceSha256: 'a'.repeat(64) });
+  }, {
+    snapshotId: 'maxroll-20261023T034150Z',
+    snapshotManifestSha256: '638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54',
+    resourceSha256: '889facd9fa21a0a2baba3f8c28d53ac66b6e28a7514994f82ab8f00a3a5e1f93',
+    gameDataVersion: '3.2.1.73552',
+    ...provenanceOverrides,
+  });
 }
 
 function fixture() {
   return {
     schemaVersion: 'maxroll-native-build-export/v1',
     format: 'MAXROLL_NATIVE_STATE',
-    provenance: { runtimeVersion: '3.2.1.73552' },
+    provenance: {
+      snapshotId: 'maxroll-20261023T034150Z',
+      snapshotManifestSha256: '638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54',
+      runtimeVersion: '3.2.1.73552',
+      runtimeAssetSha256: '891c1f82717c50e598450575068394c6d2fe1c8d26de26f2eeed028d028997db',
+    },
     selection: { profileIndex: 1 },
     integrity: { nativeStateSha256: 'b'.repeat(64) },
     nativeState: {
@@ -122,4 +133,71 @@ test('unknown native fields and missing catalog entities fail closed with typed 
     invalidCanonical.equipment.slots[0].item.baseItemId = 'cannot-mutate-frozen';
   }, TypeError);
   assert.equal(invalidCanonical.equipment.slots[0].item.baseItemId, 'item-a');
+});
+
+test('B0-REV-01 rejects unknown transformed nested fields and preserves opaque options', () => {
+  const codec = new MaxrollD12CanonicalCodec({ catalog: catalog() });
+  const unknownBoard = fixture();
+  unknownBoard.nativeState.profiles[1].paragon.steps[0].data[0].futureMechanic = {
+    enabled: true,
+  };
+  assert.throws(() => codec.nativeToCanonical(unknownBoard),
+    error => error.code === ERROR_CODES.CANONICAL_MAPPING_INCOMPLETE);
+
+  const unknownMercenary = fixture();
+  unknownMercenary.nativeState.profiles[1].mercenary.futureEffect = { stacks: 2 };
+  assert.throws(() => codec.nativeToCanonical(unknownMercenary),
+    error => error.code === ERROR_CODES.CANONICAL_MAPPING_INCOMPLETE);
+
+  const opaque = fixture();
+  opaque.nativeState.options.futureOption = { nested: ['kept', { exactly: true }] };
+  opaque.nativeState.profiles[1].paragon.steps[0].data[0].position.futureCoordinate = {
+    axis: 'kept', value: 42,
+  };
+  const canonical = codec.nativeToCanonical(opaque);
+  const roundTrip = codec.canonicalToNative(canonical);
+  assert.deepEqual(roundTrip.options.futureOption,
+    opaque.nativeState.options.futureOption);
+  assert.deepEqual(roundTrip.profiles[0].paragon.steps[0].data[0].position,
+    opaque.nativeState.profiles[1].paragon.steps[0].data[0].position);
+});
+
+test('B0-REV-02 rejects wrong/missing patch and mismatched trusted provenance', () => {
+  const codec = new MaxrollD12CanonicalCodec({ catalog: catalog() });
+  const valid = codec.nativeToCanonical(fixture());
+  assert.doesNotThrow(() => codec.canonicalToNative(valid));
+
+  const wrongPatch = structuredClone(valid);
+  wrongPatch.game.patch = '9.9.9.99999';
+  assert.throws(() => codec.canonicalToNative(wrongPatch),
+    error => error.code === ERROR_CODES.RUNTIME_MISMATCH);
+
+  const missingPatch = structuredClone(valid);
+  delete missingPatch.game.patch;
+  assert.throws(() => codec.canonicalToNative(missingPatch),
+    error => error.code === ERROR_CODES.RUNTIME_MISMATCH);
+
+  const wrongProvenance = fixture();
+  wrongProvenance.provenance.snapshotManifestSha256 = 'f'.repeat(64);
+  assert.throws(() => codec.nativeToCanonical(wrongProvenance),
+    error => error.code === ERROR_CODES.SNAPSHOT_MISMATCH);
+
+  const wrongEngine = fixture();
+  wrongEngine.provenance.runtimeAssetSha256 = 'e'.repeat(64);
+  assert.throws(() => codec.nativeToCanonical(wrongEngine),
+    error => error.code === ERROR_CODES.RUNTIME_MISMATCH);
+
+  const missingRuntimeVersion = fixture();
+  delete missingRuntimeVersion.provenance.runtimeVersion;
+  assert.throws(() => codec.nativeToCanonical(missingRuntimeVersion),
+    error => error.code === ERROR_CODES.RUNTIME_MISMATCH);
+
+  const wrongCatalogVersion = structuredClone(valid);
+  wrongCatalogVersion.provenance.compatibility.catalogVersion = '0.0.0';
+  assert.throws(() => codec.canonicalToNative(wrongCatalogVersion),
+    error => error.code === ERROR_CODES.RUNTIME_MISMATCH);
+
+  assert.throws(() => new MaxrollD12CanonicalCodec({
+    catalog: catalog({ resourceSha256: '0'.repeat(64) }),
+  }), error => error.code === ERROR_CODES.SNAPSHOT_MISMATCH);
 });

@@ -10,10 +10,18 @@ export type MaxrollProviderErrorCode =
 
 export const CANONICAL_SCHEMA_VERSION: 'd4-build/v1alpha1';
 export const CODEC_VERSION: 'maxroll-native/3.2.1.73552-D12aM6KT-b0';
+export const D12_COMPATIBILITY: Readonly<{
+  gamePatch: '3.2.1.73552';
+  snapshotId: 'maxroll-20261023T034150Z';
+  snapshotManifestSha256: string;
+  engineAssetSha256: string;
+  catalogVersion: '3.2.1.73552';
+  catalogResourceSha256: string;
+}>;
 
 export interface CanonicalD4Build {
   readonly schemaVersion: 'd4-build/v1alpha1';
-  readonly game: Readonly<{ id: 'diablo-iv'; patch: string | null }>;
+  readonly game: Readonly<{ id: 'diablo-iv'; patch: '3.2.1.73552' }>;
   readonly character: Readonly<{ classId: string; level: number; worldTier: number }>;
   readonly equipment: Readonly<{ slots: readonly Readonly<Record<string, unknown>>[] }>;
   readonly skills: Readonly<Record<string, unknown>>;

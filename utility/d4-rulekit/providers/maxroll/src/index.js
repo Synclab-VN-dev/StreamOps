@@ -4,6 +4,7 @@ const { MaxrollBuildMapper } = require('./build-mapper');
 const {
   CANONICAL_SCHEMA_VERSION,
   CODEC_VERSION,
+  D12_COMPATIBILITY,
   MaxrollD12CanonicalCodec,
   MaxrollEntityCatalog,
   loadMaxrollEntityCatalog,
@@ -39,6 +40,7 @@ module.exports = {
   ATTESTATION_SCHEMA_VERSION,
   CANONICAL_SCHEMA_VERSION,
   CODEC_VERSION,
+  D12_COMPATIBILITY,
   MAXROLL_32173552_D12AM6KT_REFERENCE,
   ERROR_CODES,
   EXPORT_SCHEMA_VERSION,
