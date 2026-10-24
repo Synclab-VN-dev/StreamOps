@@ -5,7 +5,9 @@
   "description": "Version-pinned Maxroll calculation provider for D4 Rule Kit",
   "main": "src/index.js",
   "types": "src/index.d.ts",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "test:unit": "node scripts/run-suite.js unit",
     "test:contract": "node scripts/run-suite.js contract",
@@ -17,6 +19,7 @@
     "build:export": "node scripts/build-export.js",
     "build:attest": "node scripts/build-attest.js",
     "fixtures:capture-classes": "node scripts/class-fixture-capture.js",
+    "acceptance:issue134": "node scripts/issue134-acceptance.js",
     "fixture:encrypted": "node scripts/encrypted-fixture.js",
     "e2e:real:live-capture": "node scripts/live-capture-real-e2e.js",
     "smoke:browser": "node scripts/browser-smoke.js",
@@ -25,6 +28,7 @@
   },
   "dependencies": {
     "@streamops/browser-infrastructure": "file:../../browser-infra",
+    "ajv": "^8.17.1",
     "playwright-core": "1.64.1"
   },
   "devDependencies": {

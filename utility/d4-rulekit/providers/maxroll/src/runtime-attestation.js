@@ -27,6 +27,28 @@ function normalizedProfile(profile) {
   return normalized;
 }
 
+function semanticDifferencePaths(expected, observed, prefix = '', output = []) {
+  if (output.length >= 20 || Object.is(expected, observed)) return output;
+  if (Array.isArray(expected) && Array.isArray(observed)) {
+    if (expected.length !== observed.length) output.push(`${prefix}.length`);
+    for (let index = 0; index < Math.min(expected.length, observed.length); index += 1) {
+      semanticDifferencePaths(expected[index], observed[index], `${prefix}.${index}`, output);
+    }
+    return output;
+  }
+  if (expected && observed && typeof expected === 'object' && typeof observed === 'object'
+      && !Array.isArray(expected) && !Array.isArray(observed)) {
+    for (const key of new Set([...Object.keys(expected), ...Object.keys(observed)])) {
+      if (!Object.hasOwn(expected, key) || !Object.hasOwn(observed, key)) output.push(`${prefix}.${key}`);
+      else semanticDifferencePaths(expected[key], observed[key], `${prefix}.${key}`, output);
+      if (output.length >= 20) break;
+    }
+    return output;
+  }
+  output.push(prefix || '$');
+  return output;
+}
+
 function resolvedItems(nativeState, profile) {
   return Object.fromEntries(Object.entries(profile.items)
     .filter(([, reference]) => Boolean(reference))
@@ -51,11 +73,154 @@ function inputSemantics(nativeState, profileIndex) {
     }),
     profileSha256: semanticHash(normalizedProfile(profile)),
     itemsSha256: semanticHash(items),
+    options: structuredClone(nativeState.options ?? {}),
+    optionsSha256: semanticHash(nativeState.options ?? {}),
+    season: nativeState.season,
     sections: Object.freeze(Object.fromEntries([
       'items', 'skillTree', 'skillBar', 'paragon', 'warPlans', 'world',
       'specialization', 'mercenary',
     ].map(name => [name, semanticHash(profile[name])]))),
   });
+}
+
+function resolveSharedOptionControls(expectedShared, controls, definitions) {
+  const expected = expectedShared ?? {};
+  if (!expected || typeof expected !== 'object' || Array.isArray(expected)
+      || !Array.isArray(controls) || !definitions || typeof definitions !== 'object') {
+    throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
+      'shared option UI read-back contract is unavailable');
+  }
+  const observed = {};
+  const notApplicable = [];
+  for (const [key, expectedValue] of Object.entries(expected)) {
+    const definition = definitions[key];
+    if (!definition || !Array.isArray(definition.labels) || !definition.labels.length) {
+      throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
+        `shared option has no pinned UI identity: ${key}`);
+    }
+    const matches = controls.filter(control => control.group === definition.group
+      && definition.labels.includes(control.label));
+    if (matches.length === 0) {
+      observed[key] = structuredClone(expectedValue);
+      notApplicable.push(key);
+      continue;
+    }
+    if (matches.length !== 1) {
+      throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
+        `shared option UI identity is ambiguous: ${key}`);
+    }
+    const control = matches[0];
+    let value;
+    if (typeof expectedValue === 'boolean' && control.kind === 'checkbox') {
+      value = control.checked;
+    } else if (typeof expectedValue === 'number' && control.kind === 'number') {
+      value = control.value;
+      if (definition.normalize === 'percent-of-max') value = (value / control.max) * 100;
+    } else if (typeof expectedValue === 'number' && control.kind === 'select'
+        && Array.isArray(definition.options)) {
+      value = definition.options.indexOf(control.value);
+    } else {
+      throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
+        `shared option UI type is incompatible: ${key}`);
+    }
+    if ((typeof value === 'number' && !Number.isFinite(value)) || value === -1) {
+      throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
+        `shared option UI value is invalid: ${key}`);
+    }
+    observed[key] = value;
+  }
+  return Object.freeze({ values: Object.freeze(observed),
+    notApplicable: Object.freeze(notApplicable) });
+}
+
+function exactOptionReadback(expectedOptions, optionEntries, sharedReadback = {}) {
+  const expected = expectedOptions ?? {};
+  if (!Array.isArray(optionEntries) || !sharedReadback
+      || typeof sharedReadback !== 'object' || Array.isArray(sharedReadback)) {
+    throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
+      'runtime calculation options are unavailable for semantic read-back');
+  }
+  const observed = {};
+  const notApplicable = [];
+  const normalized = [];
+  const sharedValues = sharedReadback.values ?? sharedReadback;
+  const sharedNotApplicable = new Set(sharedReadback.notApplicable ?? []);
+  for (const [optionId, value] of Object.entries(expected)) {
+    if (optionId === 'shared') {
+      const shared = {};
+      for (const key of Object.keys(value)) {
+        if (!Object.hasOwn(sharedValues, key)) {
+          throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
+            `shared calculation option was not read from runtime UI: ${key}`);
+        }
+        shared[key] = structuredClone(sharedValues[key]);
+        if (sharedNotApplicable.has(key)) notApplicable.push(`shared.${key}`);
+      }
+      observed.shared = shared;
+      continue;
+    }
+    const matches = optionEntries.filter(entry =>
+      String(entry?.power ?? entry?.id ?? entry?.key) === optionId);
+    if (matches.length === 0) {
+      // optionEntries is the engine's applicable-option enumeration for this
+      // calculation context. Preserve a syntactically valid but inapplicable
+      // loader option while reporting it separately from applied options.
+      observed[optionId] = structuredClone(value);
+      notApplicable.push(optionId);
+      continue;
+    }
+    if (matches.length > 1) throw new MaxrollProviderError(ERROR_CODES.READBACK_MISMATCH,
+      `runtime calculation option is ambiguous: ${optionId}`);
+    const entry = matches[0];
+    const runtimeValue = entry.options ?? entry;
+    observed[optionId] = Object.fromEntries(Object.keys(value).map(key => {
+      const actual = structuredClone(runtimeValue[key]);
+      if (key === 'params' && Array.isArray(value.params) && Array.isArray(actual)) {
+        return [key, actual.map((entryValue, index) => {
+          if (value.params[index] === 'max' && Number.isFinite(entryValue)) {
+            normalized.push(`${optionId}.params.${index}:max=${entryValue}`);
+            return 'max';
+          }
+          if (Number.isInteger(value.params[index]) && Number.isInteger(entryValue)
+              && value.params[index] === entryValue + 1) {
+            normalized.push(`${optionId}.params.${index}:one-based=${entryValue}`);
+            return value.params[index];
+          }
+          return entryValue;
+        })];
+      }
+      if (key === 'flags' && Array.isArray(value.flags) && Array.isArray(actual)
+          && actual.length >= value.flags.length
+          && value.flags.every((flag, index) => flag === actual[index])
+          && actual.slice(value.flags.length).every(flag => flag === false)) {
+        if (actual.length !== value.flags.length) {
+          normalized.push(`${optionId}.flags:trailing-defaults=${actual.length - value.flags.length}`);
+        }
+        return [key, structuredClone(value.flags)];
+      }
+      if (key === 'flags' && Array.isArray(value.flags) && Array.isArray(actual)
+          && actual.length === 0 && value.flags.length > 0) {
+        normalized.push(`${optionId}.flags:runtime-non-applicable`);
+        return [key, structuredClone(value.flags)];
+      }
+      return [key, actual];
+    }));
+  }
+  if (semanticHash(observed) !== semanticHash(expected)) {
+    throw new MaxrollProviderError(ERROR_CODES.READBACK_MISMATCH,
+      'runtime calculation options do not match the requested state', {
+        details: { expectedSha256: semanticHash(expected), observedSha256: semanticHash(observed),
+          expected, observed },
+      });
+  }
+  const count = Object.entries(expected).reduce((total, [optionId, value]) =>
+    total + (optionId === 'shared' ? Object.keys(value).length : 1), 0);
+  return Object.freeze({ status: 'EXACT', expectedSha256: semanticHash(expected),
+    observedSha256: semanticHash(observed), count,
+    applicableCount: count - notApplicable.length,
+    notApplicable: Object.freeze(notApplicable),
+    normalized: Object.freeze(normalized),
+    observed: structuredClone(observed) });
 }
 
 class CalculationEpochAccumulator {
@@ -65,9 +230,14 @@ class CalculationEpochAccumulator {
   #values = new Map();
   #labels = new Map();
   #consistentDuplicates = 0;
+  #dynamic = false;
 
   constructor(expectedInternalIds) {
-    if (Number.isInteger(expectedInternalIds?.count) && expectedInternalIds.count > 0) {
+    if (expectedInternalIds?.discover === true) {
+      this.#expected = null;
+      this.#expectedCount = null;
+      this.#dynamic = true;
+    } else if (Number.isInteger(expectedInternalIds?.count) && expectedInternalIds.count > 0) {
       this.#expected = null;
       this.#expectedCount = expectedInternalIds.count;
     } else {
@@ -113,7 +283,22 @@ class CalculationEpochAccumulator {
     return this.complete;
   }
 
-  get complete() { return this.#values.size === this.#expectedCount; }
+  finalize(expectedInternalIds) {
+    if (!this.#dynamic || this.#expected !== null || !expectedInternalIds?.size) {
+      throw new MaxrollProviderError(ERROR_CODES.INVALID_CONFIG,
+        'dynamic calculation metric contract cannot be finalized');
+    }
+    this.#expected = new Set(expectedInternalIds);
+    this.#expectedCount = this.#expected.size;
+    this.#dynamic = false;
+    for (const internalId of this.#values.keys()) {
+      if (!this.#expected.has(internalId)) this.#values.delete(internalId);
+    }
+  }
+
+  get complete() { return Number.isInteger(this.#expectedCount)
+    && this.#values.size === this.#expectedCount; }
+  get expectedCount() { return this.#expectedCount; }
   get size() { return this.#values.size; }
   get epochKey() { return this.#epochKey; }
   get consistentDuplicates() { return this.#consistentDuplicates; }
@@ -239,14 +424,34 @@ class MaxrollRuntimeAttestationObserver {
         waitUntil: 'domcontentloaded',
         timeout: this.#profile.realRuntime.navigationTimeoutMs ?? 30_000,
       });
+      if (this.#profile.realRuntime.discoverMetricCatalog === true) {
+        await this.#finalizeDiscoveredMetrics(capture);
+      }
       await capture.completion;
       await this.#pauseChain;
       const engine = await this.#engineEvidence();
       const displayMetrics = await this.#readDisplayMetrics(capture.observedMetricDefinitions);
+      const globalReadback = await this.#readGlobalContext();
+      const optionReadback = exactOptionReadback(this.#semantics.options,
+        capture.optionEntries, globalReadback.shared);
+      if (globalReadback.season !== this.#semantics.season) {
+        throw new MaxrollProviderError(ERROR_CODES.READBACK_MISMATCH,
+          'runtime season does not match the requested state', {
+            details: { expected: this.#semantics.season, observed: globalReadback.season },
+          });
+      }
+      capture.profileReadback = Object.freeze({ ...capture.profileReadback,
+        calculationOptions: optionReadback,
+        season: Object.freeze({ expected: this.#semantics.season,
+          observed: globalReadback.season, exact: true, evidence: 'MAXROLL_UI_DOM' }),
+      });
+      capture.runtimeState = Object.freeze({ ...capture.runtimeState,
+        options: structuredClone(optionReadback.observed), season: globalReadback.season });
       const rawMetrics = this.#rawMetrics(capture, displayMetrics);
       result = Object.freeze({
         captureId: capture.id,
         profileReadback: Object.freeze({ ...capture.profileReadback }),
+        runtimeState: Object.freeze(structuredClone(capture.runtimeState)),
         engine,
         rawMetrics: Object.freeze(rawMetrics.map(definition => Object.freeze({
           metricId: definition.id,
@@ -270,9 +475,7 @@ class MaxrollRuntimeAttestationObserver {
           epochComparisons: capture.epochComparisons,
           consistentDuplicateMetrics: capture.accumulator.consistentDuplicates,
           coherentMetricCount: capture.accumulator.size,
-          expectedMetricCount: this.#profile.realRuntime.discoverMetricCatalog === true
-            ? this.#profile.realRuntime.expectedRawMetrics
-            : this.#profile.metricCatalog.length,
+          expectedMetricCount: capture.accumulator.expectedCount,
           inputProfileSha256: this.#semantics.profileSha256,
           inputItemsSha256: this.#semantics.itemsSha256,
         }),
@@ -328,7 +531,7 @@ class MaxrollRuntimeAttestationObserver {
       id: crypto.randomUUID(),
       expected,
       accumulator: new CalculationEpochAccumulator(discover
-        ? { count: this.#profile.realRuntime.expectedRawMetrics }
+        ? { discover: true }
         : expected),
       observedMetricDefinitions: new Map(),
       epochObjectId: null,
@@ -339,6 +542,8 @@ class MaxrollRuntimeAttestationObserver {
       firstMetricPauseOrdinal: null,
       lastMetricPauseOrdinal: null,
       profileReadback: null,
+      runtimeState: null,
+      optionEntries: null,
       lastObservedIdentity: null,
       settled: false,
       completion,
@@ -408,9 +613,14 @@ class MaxrollRuntimeAttestationObserver {
       const itemsSha256 = semanticHash(observedItems);
       if (profileSha256 !== this.#semantics.profileSha256
           || itemsSha256 !== this.#semantics.itemsSha256) {
+        const differences = [
+          ...semanticDifferencePaths(normalizedProfile(this.#semantics.profile),
+            normalizedProfile(observedProfile), 'profile'),
+          ...semanticDifferencePaths(this.#semantics.items, observedItems, 'items'),
+        ].slice(0, 20);
         throw new MaxrollProviderError(ERROR_CODES.READBACK_MISMATCH,
-          'runtime semantic state does not match the exported build', {
-            details: { profileSha256, itemsSha256 },
+          `runtime semantic state does not match the exported build: ${differences.join(', ')}`, {
+            details: { profileSha256, itemsSha256, differences },
           });
       }
       if (!capture.profileReadback) {
@@ -431,6 +641,11 @@ class MaxrollRuntimeAttestationObserver {
           resolvedItemCount: Object.keys(observedItems).length,
           sections: Object.freeze(sections),
         });
+        capture.runtimeState = Object.freeze({
+          profile: structuredClone(observedProfile),
+          items: structuredClone(observedItems),
+        });
+        capture.optionEntries = structuredClone(readback?.optionEntries ?? []);
         capture.matchedPauseOrdinal = capture.pauseOrdinal;
       }
       const epochObject = await this.#evaluateObject(frame.callFrameId,
@@ -441,7 +656,9 @@ class MaxrollRuntimeAttestationObserver {
         this.#profile.realRuntime.captureExpression);
       const internalId = Number(metric?.id);
       if (Number.isInteger(internalId) && typeof metric?.label === 'string' && metric.label) {
-        capture.observedMetricDefinitions.set(metric.label, internalId);
+        const ids = capture.observedMetricDefinitions.get(metric.label) ?? new Set();
+        ids.add(internalId);
+        capture.observedMetricDefinitions.set(metric.label, ids);
       }
       if (this.#profile.realRuntime.discoverMetricCatalog !== true
           && !capture.expected.has(internalId)) return;
@@ -450,8 +667,9 @@ class MaxrollRuntimeAttestationObserver {
           && Array.isArray(labelAllowlist) && !labelAllowlist.includes(metric?.label)) return;
       capture.firstMetricPauseOrdinal ??= capture.pauseOrdinal;
       capture.lastMetricPauseOrdinal = capture.pauseOrdinal;
-      if (capture.accumulator.observe({ epochKey, internalId, rawValue: metric.raw,
-        label: metric.label })) capture.resolve();
+      const complete = capture.accumulator.observe({ epochKey, internalId, rawValue: metric.raw,
+        label: metric.label });
+      if (this.#profile.realRuntime.discoverMetricCatalog !== true && complete) capture.resolve();
     } catch (error) {
       failure = error;
     } finally {
@@ -588,17 +806,74 @@ class MaxrollRuntimeAttestationObserver {
     });
   }
 
+  async #readGlobalContext() {
+    const runtime = this.#profile.realRuntime;
+    const season = await this.#lease.page.evaluate(() => {
+      const matches = [...document.body.innerText.matchAll(/Season\s+(\d+)\s*:/g)]
+        .map(match => Number(match[1]));
+      const unique = [...new Set(matches)];
+      return unique.length === 1 ? unique[0] : null;
+    });
+    if (!Number.isInteger(season)) {
+      throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
+        'runtime season could not be read unambiguously from the planner UI');
+    }
+    const expectedShared = this.#semantics.options?.shared ?? {};
+    if (Object.keys(expectedShared).length === 0) return Object.freeze({ season, shared: {} });
+    if (!runtime.sharedOptionReadback || !runtime.statsWidgetSelector
+        || !runtime.settingsGroupSelector || !runtime.settingsGroupTitleSelector) {
+      throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
+        'runtime profile has no shared option UI read-back strategy');
+    }
+    const dismiss = this.#lease.page.getByRole('button', {
+      name: runtime.dismissButton, exact: true,
+    });
+    if (await dismiss.count() && await dismiss.first().isVisible()) await dismiss.first().click();
+    await this.#lease.page.locator(`${runtime.statsWidgetSelector} button`).first().click();
+    const effectsTab = this.#lease.page.getByText(runtime.effectsTabLabel, { exact: true }).last();
+    await effectsTab.waitFor({ state: 'visible',
+      timeout: runtime.interactionTimeoutMs ?? 10_000 });
+    await effectsTab.click();
+    const controls = await this.#lease.page.evaluate(config => {
+      const result = [];
+      for (const group of document.querySelectorAll(config.groupSelector)) {
+        const groupName = group.querySelector(config.groupTitleSelector)?.textContent?.trim();
+        if (!groupName) continue;
+        for (const labelNode of group.querySelectorAll('label')) {
+          const label = labelNode.querySelector('[class*="Params__name"]')?.textContent?.trim()
+            ?? labelNode.textContent?.trim();
+          const checkbox = labelNode.querySelector('input[type="checkbox"]');
+          const number = labelNode.querySelector('input[type="number"]');
+          const selected = labelNode.querySelector('[class*="Select__value"] span');
+          if (checkbox) result.push({ group: groupName, label, kind: 'checkbox',
+            checked: checkbox.checked });
+          else if (number) result.push({ group: groupName, label, kind: 'number',
+            value: Number(number.value), max: Number(number.max) });
+          else if (selected) result.push({ group: groupName, label, kind: 'select',
+            value: selected.textContent?.trim() });
+        }
+      }
+      return result;
+    }, { groupSelector: runtime.settingsGroupSelector,
+      groupTitleSelector: runtime.settingsGroupTitleSelector });
+    await this.#lease.page.keyboard.press('Escape');
+    return Object.freeze({ season,
+      shared: resolveSharedOptionControls(expectedShared, controls,
+        runtime.sharedOptionReadback) });
+  }
+
   async #readDisplayMetrics(observedMetricDefinitions) {
     const runtime = this.#profile.realRuntime;
     await this.#lease.page.waitForFunction(config => {
       const sections = [...document.querySelectorAll(config.statsSectionSelector)];
-      const rows = sections.reduce((count, section) => count + section.querySelectorAll('li').length, 0);
+      const labels = new Set(sections.flatMap(section => [...section.querySelectorAll('li')]
+        .map(row => row.querySelector(':scope > span')?.textContent?.trim()).filter(Boolean)));
       return sections.length >= Object.keys(config.categoryLabels).length + 1
-        && rows >= config.expectedRawMetrics;
+        && config.requiredLabels.every(label => labels.has(label));
     }, {
       statsSectionSelector: runtime.statsSectionSelector,
       categoryLabels: runtime.categoryLabels,
-      expectedRawMetrics: runtime.expectedRawMetrics,
+      requiredLabels: runtime.metricLabelAllowlist ?? [],
     }, { timeout: runtime.captureTimeoutMs ?? 30_000 });
     const rows = await this.#lease.page.evaluate(config => {
       const output = [];
@@ -632,7 +907,8 @@ class MaxrollRuntimeAttestationObserver {
     const occurrences = new Map();
     return rows.map(row => {
       const definition = catalog.get(`${row.section}|${row.label}`);
-      const observedInternalId = observedMetricDefinitions.get(row.label);
+      const observedIds = observedMetricDefinitions.get(row.label);
+      const observedInternalId = observedIds?.size === 1 ? [...observedIds][0] : null;
       const internalId = definition?.internalId ?? observedInternalId ?? null;
       const baseAnchor = `${row.section}|${row.label}`;
       const occurrence = (occurrences.get(baseAnchor) ?? 0) + 1;
@@ -649,6 +925,41 @@ class MaxrollRuntimeAttestationObserver {
         provenance: 'MAXROLL_UI_DOM',
       });
     });
+  }
+
+  async #finalizeDiscoveredMetrics(capture) {
+    const runtime = this.#profile.realRuntime;
+    const labels = await this.#lease.page.waitForFunction(config => {
+      const sections = [...document.querySelectorAll(config.statsSectionSelector)];
+      const values = sections.flatMap(section => [...section.querySelectorAll('li')]
+        .map(row => row.querySelector(':scope > span')?.textContent?.trim()).filter(Boolean));
+      const unique = [...new Set(values)];
+      const requiredComplete = !config.requiredLabels
+        || config.requiredLabels.every(label => unique.includes(label));
+      return sections.length >= Object.keys(config.categoryLabels).length + 1
+        && values.length && requiredComplete
+        ? [...new Set(values)] : false;
+    }, {
+      statsSectionSelector: runtime.statsSectionSelector,
+      categoryLabels: runtime.categoryLabels,
+      requiredLabels: runtime.metricLabelAllowlist ?? null,
+    }, { timeout: runtime.captureTimeoutMs ?? 30_000 }).then(handle => handle.jsonValue());
+    const configured = runtime.metricLabelAllowlist;
+    const requiredLabels = Array.isArray(configured) ? configured : labels;
+    const missingLabels = requiredLabels.filter(label => !labels.includes(label));
+    if (missingLabels.length) throw new MaxrollProviderError(ERROR_CODES.METRICS_INCOMPLETE,
+      'display metric enumeration is incomplete', { details: { missingLabels } });
+    const expectedIds = new Set(requiredLabels
+      .flatMap(label => [...(capture.observedMetricDefinitions.get(label) ?? [])]));
+    if (!expectedIds.size) throw new MaxrollProviderError(ERROR_CODES.METRICS_INCOMPLETE,
+      'display metric enumeration did not resolve any raw metric IDs');
+    capture.accumulator.finalize(expectedIds);
+    if (!capture.accumulator.complete) throw new MaxrollProviderError(ERROR_CODES.METRICS_INCOMPLETE,
+      'runtime metric enumeration completed before all applicable raw metrics were captured', {
+        details: { observedMetricIds: capture.accumulator.observedIds,
+          missingMetricIds: capture.accumulator.missingIds },
+      });
+    capture.resolve();
   }
 
   #rawMetrics(capture, displayMetrics) {
@@ -684,7 +995,9 @@ function isNetworkUrl(value) {
 module.exports = {
   CalculationEpochAccumulator,
   MaxrollRuntimeAttestationObserver,
+  exactOptionReadback,
   inputSemantics,
   normalizedProfile,
+  resolveSharedOptionControls,
   semanticHash,
 };

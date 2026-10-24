@@ -7,7 +7,8 @@ const path = require('node:path');
 const test = require('node:test');
 const { ERROR_CODES, attestMaxrollBuildFixture } = require('../../src');
 const { compareCaptures } = require('../../src/fixture-attestation');
-const { CalculationEpochAccumulator, semanticHash } = require('../../src/runtime-attestation');
+const { CalculationEpochAccumulator, exactOptionReadback,
+  resolveSharedOptionControls, semanticHash } = require('../../src/runtime-attestation');
 
 let ordinal = 0;
 function capture(overrides = {}) {
@@ -150,11 +151,14 @@ test('GB-REV-ATT-01 accepts 50 metrics from one runtime epoch', () => {
   assert.equal(accumulator.size, 50);
 });
 
-test('class metric discovery accepts 50 runtime IDs without a Rogue-specific whitelist', () => {
-  const accumulator = new CalculationEpochAccumulator({ count: 3 });
+test('MC-REV-02 metric discovery waits for the independently enumerated set, not a low count', () => {
+  const accumulator = new CalculationEpochAccumulator({ discover: true });
   accumulator.observe({ epochKey: 'epoch-A', internalId: 1001, rawValue: 1, label: 'one' });
+  assert.equal(accumulator.complete, false);
   accumulator.observe({ epochKey: 'epoch-A', internalId: 1002, rawValue: 2, label: 'two' });
   accumulator.observe({ epochKey: 'epoch-A', internalId: 1003, rawValue: 3, label: 'three' });
+  assert.equal(accumulator.complete, false);
+  accumulator.finalize(new Set([1001, 1002, 1003]));
   accumulator.assertComplete();
   assert.deepEqual(accumulator.observedIds, [1001, 1002, 1003]);
 });
@@ -183,4 +187,49 @@ test('GB-REV-ATT-01 allows proven consistent duplicates but rejects inconsistent
   assert.equal(accumulator.consistentDuplicates, 1);
   assert.throws(() => accumulator.observe({ epochKey: 'epoch-A', internalId: 1,
     rawValue: 2, label: 'one' }), error => error.code === ERROR_CODES.OUTPUT_NOT_LINKED);
+});
+
+test('FULL-REV-02 calculation option read-back rejects ignored or altered applicable state', () => {
+  const expected = { Skill_A: { flags: [true], params: [2] },
+    shared: { enemy_burning: true } };
+  const exact = exactOptionReadback(expected, [{ power: 'Skill_A',
+    options: { flags: [true], params: [2] } }], { enemy_burning: true });
+  assert.equal(exact.status, 'EXACT');
+  assert.deepEqual(exact.notApplicable, []);
+  assert.throws(() => exactOptionReadback(expected, [{ power: 'Skill_A',
+    options: { flags: [false], params: [2] } }], { enemy_burning: true }),
+  error => error.code === ERROR_CODES.READBACK_MISMATCH);
+  assert.throws(() => exactOptionReadback(expected, [{ power: 'Skill_A',
+    options: { flags: [true], params: [2] } }], {}),
+  error => error.code === ERROR_CODES.INPUT_READBACK_UNVERIFIED);
+});
+
+test('FULL-REV-02 shared options are read from exact scoped UI controls, never input echo', () => {
+  const definitions = {
+    enemy_burning: { group: 'Enemy', labels: ['Burning'] },
+    enemy_type: { group: 'Enemy', labels: ['Type'], options: ['Normal', 'Boss'] },
+    primary_resource: { group: 'Player', labels: ['Mana'], normalize: 'percent-of-max' },
+  };
+  const observed = resolveSharedOptionControls({ enemy_burning: true, enemy_type: 1,
+    primary_resource: 50 }, [
+    { group: 'Enemy', label: 'Burning', kind: 'checkbox', checked: true },
+    { group: 'Enemy', label: 'Type', kind: 'select', value: 'Boss' },
+    { group: 'Player', label: 'Mana', kind: 'number', value: 75, max: 150 },
+  ], definitions);
+  assert.deepEqual(observed.values,
+    { enemy_burning: true, enemy_type: 1, primary_resource: 50 });
+  assert.deepEqual(observed.notApplicable, []);
+  const absent = resolveSharedOptionControls({ enemy_burning: true }, [], definitions);
+  assert.deepEqual(absent.values, { enemy_burning: true });
+  assert.deepEqual(absent.notApplicable, ['enemy_burning']);
+  assert.throws(() => resolveSharedOptionControls({ enemy_burning: true }, [
+    { group: 'Enemy', label: 'Burning', kind: 'checkbox', checked: true },
+    { group: 'Enemy', label: 'Burning', kind: 'checkbox', checked: true },
+  ], definitions), error => error.code === ERROR_CODES.INPUT_READBACK_UNVERIFIED);
+});
+
+test('FULL-REV-02 engine enumeration distinguishes a non-applicable option from missing capture', () => {
+  const result = exactOptionReadback({ Legacy_Option: { params: [6] } }, [], {});
+  assert.deepEqual(result.notApplicable, ['Legacy_Option']);
+  assert.equal(result.applicableCount, 0);
 });

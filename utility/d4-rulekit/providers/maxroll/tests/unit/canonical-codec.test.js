@@ -16,7 +16,7 @@ function catalog(provenanceOverrides = {}) {
     version: 'test',
     classes: Object.fromEntries(Array.from({ length: 8 }, (_, id) => [id, {
       id, name: `Class ${id}`, tree: id === 3 ? 'rogue-tree' : `tree-${id}`,
-      paragonBoards: id === 3 ? ['board-a'] : [],
+      paragonBoards: ['board-a'],
     }])),
     items: { 'item-a': { id: 'item-a', type: 'Helm' }, 'socket-a': { id: 'socket-a' } },
     itemTypes: { Helm: { id: 'Helm', bodySlots: [4], itemLabels: [] } },
@@ -30,7 +30,10 @@ function catalog(provenanceOverrides = {}) {
       ...Array.from({ length: 8 }, (_, id) => [`tree-${id}`, { id: `tree-${id}`, nodes: [] }]),
     ]),
     stones: {},
-    mercenaries: { merc: { id: 'merc-a', tree: 'merc-tree' } },
+    mercenaries: {
+      merc: { id: 'merc-a', tree: 'merc-tree' },
+      support: { id: 'support-a', tree: 'merc-tree' },
+    },
     paragonNodes: {}, temperingRecipes: {}, itemSets: {}, attributes: {}, warPlans: [],
     paragonBoards: { board: { id: 'board-a', nodes: [null, { id: 'node-a' }] } },
     paragonGlyphs: { glyph: { id: 'glyph-a' } },
@@ -228,13 +231,61 @@ test('B1 scratch canonical builds for all eight pinned classes need no native fi
       game: { id: 'diablo-iv', patch: '3.2.1.73552' },
       character: { classId: String(classId), level: 1, worldTier: 0 },
       equipment: { slots: [] }, skills: { allocations: [], bar: [] },
-      paragon: { boards: [] }, effects: { elixirs: [], warPlans: [] },
-      world: {}, calculationContext: { season: 15, options: {} },
+      paragon: { boards: [{ boardId: 'board-a', rotation: 0,
+        allocations: [], position: { x: 0, y: 0 } }] },
+      effects: { elixirs: [], warPlans: [] },
+      world: { renownSkills: 0, renownParagon: 0 },
+      calculationContext: { season: 15, options: {} },
     };
     const native = codec.canonicalToNative(build);
     assert.equal(native.profiles[0].class, classId);
     assert.equal(native.profiles[0].name, 'Canonical Import');
     assert.deepEqual(codec.loaderIdentity(build), { className: `Class ${classId}`, season: 15 });
+    const unknownShared = structuredClone(build);
+    unknownShared.calculationContext.options.shared = { future_unknown: true };
+    assert.throws(() => codec.canonicalToNative(unknownShared),
+      error => error.code === ERROR_CODES.ENTITY_NOT_FOUND);
+    const outOfRangeShared = structuredClone(build);
+    outOfRangeShared.calculationContext.options.shared = { fortify: 101 };
+    assert.throws(() => codec.canonicalToNative(outOfRangeShared),
+      error => error.code === ERROR_CODES.CANONICAL_BUILD_INVALID);
+  }
+});
+
+test('B7 deterministic property matrix round-trips authored canonical boundaries', () => {
+  const codec = new MaxrollD12CanonicalCodec({ catalog: catalog() });
+  let seed = 0x134b7;
+  const next = maximum => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed % maximum;
+  };
+  for (let iteration = 0; iteration < 128; iteration += 1) {
+    const classId = next(8);
+    const build = {
+      schemaVersion: CANONICAL_SCHEMA_VERSION,
+      game: { id: 'diablo-iv', patch: '3.2.1.73552' },
+      character: { classId: String(classId), level: next(70) + 1, worldTier: next(9) },
+      equipment: { slots: [] }, skills: { allocations: [], bar: [] },
+      paragon: { boards: [{ boardId: 'board-a', rotation: next(4), allocations: [],
+        position: { x: next(9) - 4, y: next(9) - 4 } }] },
+      effects: { elixirs: [], warPlans: [] },
+      world: { renownSkills: next(15), renownParagon: next(43) },
+      calculationContext: { season: 15, options: {} },
+    };
+    const native = codec.canonicalToNative(build);
+    const decoded = codec.nativeToCanonical({
+      schemaVersion: 'maxroll-native-build-export/v1', format: 'MAXROLL_NATIVE_STATE',
+      provenance: {
+        snapshotId: 'maxroll-20261023T034150Z',
+        snapshotManifestSha256: '638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54',
+        runtimeVersion: '3.2.1.73552',
+        runtimeAssetSha256: '891c1f82717c50e598450575068394c6d2fe1c8d26de26f2eeed028d028997db',
+      },
+      selection: { profileIndex: 0 }, integrity: { nativeStateSha256: null }, nativeState: native,
+    });
+    const semantic = structuredClone(decoded);
+    delete semantic.provenance;
+    assert.deepEqual(semantic, build, `seed 0x134b7 iteration ${iteration}`);
   }
 });
 
@@ -268,7 +319,7 @@ test('B2 catalog resolver rejects wrong class, slot, board and forged trust prov
     families: {
       classes: 8, items: 2, itemTypes: 1, affixes: 3, oldAffixes: 0,
       skills: 3, skillTrees: 10, paragonBoards: 1, paragonGlyphs: 1,
-      paragonNodes: 0, stones: 0, mercenaries: 1, warPlans: 0,
+      paragonNodes: 0, stones: 0, mercenaries: 2, warPlans: 0,
       temperingRecipes: 0, itemSets: 0, attributes: 0,
     }, present: 16, total: 16, percent: 100,
   });
@@ -287,6 +338,12 @@ test('B6 universal mapper applies generic build and section mutations without fi
   assert.equal(mapped.desired.skills.allocations[0].rank, 3);
   assert.deepEqual(mapped.desired.calculationContext.options['skill-a'], { params: [2] });
   assert.doesNotThrow(() => codec.canonicalToNative(mapped.desired));
+  const removed = mapper.map(mapped.desired, [
+    { type: 'calculationOption.set', optionId: 'skill-a', value: null },
+    { type: 'effect.set', effect: 'mercenary', value: null },
+  ], CANONICAL_SCHEMA_VERSION);
+  assert.equal(Object.hasOwn(removed.desired.calculationContext.options, 'skill-a'), false);
+  assert.equal(Object.hasOwn(removed.desired.effects, 'mercenary'), false);
   assert.throws(() => mapper.map(baseline, [{ type: 'skill.setRank', nodeId: 'unknown', rank: 1 }],
     CANONICAL_SCHEMA_VERSION), error => error.code === ERROR_CODES.ENTITY_NOT_FOUND);
   const malformed = structuredClone(baseline);

@@ -80,11 +80,9 @@ class NativeStateMaxrollRuntimeAdapter {
     this.#captures.set(phase, Object.freeze({
       phase,
       inputFingerprint: expectedFingerprint,
-      raw: capture.rawMetrics.map(metric => Object.freeze({
-        internalId: metric.internalId,
-        rawValue: metric.rawValue,
-      })),
+      raw: capture.rawMetrics.map(metric => Object.freeze({ ...metric })),
       displays: Object.freeze(displays),
+      displayMetrics: Object.freeze(capture.displayMetrics.map(metric => Object.freeze({ ...metric }))),
       attestation: Object.freeze({
         engine: capture.engine,
         profileReadback: capture.profileReadback,
@@ -92,7 +90,12 @@ class NativeStateMaxrollRuntimeAdapter {
         network: capture.network,
       }),
     }));
-    return Object.freeze({ phase, observed: desired, inputFingerprint: expectedFingerprint });
+    const observed = this.#codec.runtimeStateToCanonical(capture.runtimeState,
+      desired.provenance);
+    return Object.freeze({ phase, observed, inputFingerprint: expectedFingerprint,
+      attestation: Object.freeze({ engine: capture.engine,
+        profileReadback: capture.profileReadback, calculationPhase: capture.phase,
+        network: capture.network, displayMetrics: capture.displayMetrics }) });
   }
 
   takeCapture(phase, expectedFingerprint) {

@@ -14,6 +14,7 @@ class MaxrollPatchProfile {
         !/^[a-f0-9]{64}$/i.test(config.snapshotManifestSha256) ||
         !/^[a-f0-9]{64}$/i.test(config.assetSha256) ||
         !Array.isArray(config.metricCatalog) || config.metricCatalog.length === 0 ||
+        !['EXACT', 'DYNAMIC_APPLICABLE'].includes(config.metricCoverage ?? 'EXACT') ||
         !['synthetic-dom-v1', 'maxroll-ui-cdp-v1'].includes(runtimeKind)) {
       throw new MaxrollProviderError(ERROR_CODES.INVALID_CONFIG, 'invalid Maxroll patch profile');
     }
@@ -52,6 +53,7 @@ class MaxrollPatchProfile {
       version: `maxroll-capabilities/${this.providerVersion}`,
       policyVersion: `maxroll-profile/${this.runtimeVersion}`,
       stateModel: 'stateful',
+      metricCoverage: this.metricCoverage ?? 'EXACT',
       metricIds: this.metricCatalog.map(metric => metric.id),
       changeTypes: [...this.supportedChangeTypes],
       restrictions: {
@@ -77,6 +79,10 @@ function validateRealRuntime(runtime, metricCatalogLength) {
       !Number.isInteger(runtime.expectedRawMetrics) || runtime.expectedRawMetrics <= 0 ||
       runtime.expectedRawMetrics !== metricCatalogLength ||
       !Number.isFinite(runtime.captureTimeoutMs) || runtime.captureTimeoutMs <= 0 ||
+      (runtime.metricLabelAllowlist !== undefined
+        && (!Array.isArray(runtime.metricLabelAllowlist)
+          || runtime.metricLabelAllowlist.length === 0
+          || new Set(runtime.metricLabelAllowlist).size !== runtime.metricLabelAllowlist.length)) ||
       typeof runtime.requireLevelResetTransition !== 'boolean' ||
       !validOptionalStringSet([
         runtime.slotItemSelector,

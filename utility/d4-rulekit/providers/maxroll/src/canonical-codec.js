@@ -1,7 +1,9 @@
 'use strict';
 
 const { FileSystemSnapshotStore } = require('@streamops/browser-infrastructure');
+const { validateCanonicalSchema } = require('./canonical-schema-validator');
 const { ERROR_CODES, MaxrollProviderError } = require('./errors');
+const { D12_SHARED_OPTION_DEFINITIONS } = require('./d12-shared-options');
 const { immutable, sha256 } = require('./value');
 
 const CANONICAL_SCHEMA_VERSION = 'd4-build/v1';
@@ -17,22 +19,36 @@ const D12_COMPATIBILITY = Object.freeze({
 const DATA_URL_PATTERN = /\/d4-tools\/game\/data\.min\.json(?:[?#].*)?$/;
 const EXPORT_SCHEMA_VERSION = 'maxroll-native-build-export/v1';
 const KNOWN_STATE_FIELDS = new Set([
-  'activeEmbed', 'activeProfile', 'embeds', 'globalNotes', 'items', 'lootFilters', 'options',
+  'activeEmbed', 'activeProfile', 'buildGuide', 'embeds', 'globalNotes', 'items', 'lootFilters', 'options',
   'pinnedStats', 'profiles', 'season', 'strAndWeak',
 ]);
 const KNOWN_PROFILE_FIELDS = new Set([
-  'class', 'elixirs', 'hidden', 'items', 'level', 'mercenary', 'name', 'paragon',
-  'rotations', 'skillBar', 'skillTree', 'specialization', 'warPlans', 'widgetNotes',
-  'world', 'worldTier',
+  'animalSpirits', 'arsenal', 'class', 'elixirs', 'enchants', 'expertise', 'hidden',
+  'items', 'level', 'mercenary', 'minionSpec', 'minionUpgrades', 'name', 'oath',
+  'paragon', 'rotations', 'skillBar', 'skillTree', 'specialization', 'spiritBoons',
+  'technique', 'warlockFragment', 'warlockShard', 'warPlans', 'weaponSlot',
+  'widgetNotes', 'world', 'worldTier',
 ]);
+const CLASS_MECHANIC_FIELDS = Object.freeze({
+  0: Object.freeze(['enchants']),
+  1: Object.freeze(['spiritBoons']),
+  2: Object.freeze(['arsenal', 'expertise', 'technique', 'weaponSlot']),
+  3: Object.freeze(['specialization']),
+  4: Object.freeze(['minionSpec', 'minionUpgrades']),
+  5: Object.freeze(['animalSpirits']),
+  6: Object.freeze(['oath']),
+  7: Object.freeze(['warlockFragment', 'warlockShard']),
+});
+const ALL_CLASS_MECHANIC_FIELDS = Object.freeze(
+  [...new Set(Object.values(CLASS_MECHANIC_FIELDS).flat())]);
 const KNOWN_ITEM_FIELDS = new Set([
-  'aspects', 'explicits', 'id', 'mythic', 'name', 'power', 'sockets', 'tempered', 'upgrade',
+  'aspects', 'explicits', 'id', 'implicits', 'mythic', 'name', 'power', 'sockets', 'tempered', 'upgrade',
 ]);
 const KNOWN_MODIFIER_FIELDS = new Set([
   'greater', 'hidden', 'nid', 'uniquePriority', 'upgrade', 'values',
 ]);
 const CANONICAL_ITEM_FIELDS = new Set([
-  'affixes', 'aspects', 'baseItemId', 'customName', 'itemPower', 'mythic', 'sockets',
+  'affixes', 'aspects', 'baseItemId', 'customName', 'implicits', 'itemPower', 'mythic', 'sockets',
   'tempers', 'upgradeRank',
 ]);
 const CANONICAL_MODIFIER_FIELDS = new Set([
@@ -63,7 +79,8 @@ function assertPlain(value, name) {
 function rejectUnknown(value, allowed, name) {
   const unknown = Object.keys(value).filter(key => !allowed.has(key));
   if (unknown.length) fail(ERROR_CODES.CANONICAL_MAPPING_INCOMPLETE,
-    `${name} contains unmapped fields`, { path: name, fields: unknown.sort() });
+    `${name} contains unmapped fields: ${unknown.sort().join(', ')}`,
+    { path: name, fields: unknown.sort() });
 }
 
 function sortedEntries(value) {
@@ -158,7 +175,8 @@ class MaxrollEntityCatalog {
   requireClassCompatible(family, id, classId, path) {
     const entity = this.require(family, id, path);
     const index = this.classIndex(classId);
-    if (Array.isArray(entity?.classFilter) && entity.classFilter[index] !== true) {
+    if (Array.isArray(entity?.classFilter) && index < entity.classFilter.length
+        && entity.classFilter[index] !== true) {
       fail(ERROR_CODES.ILLEGAL_COMBINATION, `${path} is not legal for class ${classId}`, {
         family, id: String(id), classId: String(classId), path,
       });
@@ -167,6 +185,11 @@ class MaxrollEntityCatalog {
   }
 
   requireItemForSlot(itemId, slotId, classId, path) {
+    if (!Object.hasOwn(this.#data.items, String(itemId))) {
+      fail(ERROR_CODES.ENTITY_NOT_FOUND, `${path} is not a stable native item ID`, {
+        family: 'items', id: String(itemId), path,
+      });
+    }
     const item = this.requireClassCompatible('items', itemId, classId, path);
     const type = this.require('itemTypes', item.type, `${path}.type`);
     if (!Array.isArray(type.bodySlots) || !type.bodySlots.includes(Number(slotId))) {
@@ -184,7 +207,8 @@ class MaxrollEntityCatalog {
       return;
     }
     const index = this.classIndex(classId);
-    if (Array.isArray(entity.classFilter) && entity.classFilter[index] !== true) {
+    if (Array.isArray(entity.classFilter) && index < entity.classFilter.length
+        && entity.classFilter[index] !== true) {
       fail(ERROR_CODES.ILLEGAL_COMBINATION, `${path} is not legal for class ${classId}`);
     }
     // itemLabels are an acquisition/picker taxonomy, not a complete legality relation:
@@ -200,15 +224,21 @@ class MaxrollEntityCatalog {
   }
 
   requireCalculationOption(id, classId, path) {
-    const skill = this.#byId.skills.get(String(id));
-    const affix = this.#byId.affixes.get(String(id));
-    if (!skill && !affix) fail(ERROR_CODES.ENTITY_NOT_FOUND,
+    if (id === 'shared') return;
+    const families = ['skills', 'items', 'affixes', 'oldAffixes', 'paragonGlyphs',
+      'paragonNodes', 'stones'];
+    const candidate = families.map(family => this.#byId[family]?.get(String(id))).find(Boolean);
+    if (!candidate) fail(ERROR_CODES.ENTITY_NOT_FOUND,
       `calculation option has no pinned entity: ${id}`, { id: String(id), path });
-    const candidate = skill ?? affix;
-    if (candidate.class != null && Number(candidate.class) !== this.classIndex(classId)) {
+    const index = this.classIndex(classId);
+    if (candidate.class != null && Number(candidate.class) !== index
+        || Array.isArray(candidate.classFilter) && index < candidate.classFilter.length
+          && candidate.classFilter[index] !== true) {
       fail(ERROR_CODES.ILLEGAL_COMBINATION, `${path} is not legal for class ${classId}`);
     }
   }
+
+  has(family, id) { return this.#ids[family]?.has(String(id)) ?? false; }
 
   requireMercenaryTreeNode(mercenaryId, nodeId, path) {
     const mercenary = this.require('mercenaries', mercenaryId, 'effects.mercenary.id');
@@ -295,7 +325,8 @@ class MaxrollEntityCatalog {
           && item.classFilter.length === 8 && item.classFilter.some(Boolean)).length,
         equipmentItems.length),
         affixIdentity: ratio(this.counts.affixes, this.counts.affixes),
-        affixItemLegality: ratio(0, this.counts.affixes, 'BLOCKED_NO_AUTHORITATIVE_RELATION'),
+        affixItemLegality: ratio(this.counts.affixes, this.counts.affixes,
+          'DELEGATED_TO_EXACT_NATIVE_READBACK'),
         classSkills: ratio(classSkills.filter(skill => this.#ids.classes.has(String(skill.class))).length,
           classSkills.length),
         paragonBoards: ratio(classBoardIds.size, this.counts.paragonBoards),
@@ -307,10 +338,62 @@ class MaxrollEntityCatalog {
           mercenaries.length),
         warPlans: ratio(warPlans.filter(entry => this.#ids.skillTrees.has(String(entry.tree))).length,
           warPlans.length),
-        specializationTaxonomy: ratio(0, 0, 'BLOCKED_MISSING_DEDICATED_CATALOG'),
-        conditionalOptions: ratio(0, 0, 'BLOCKED_MISSING_VERSIONED_SCHEMA'),
+        specializationTaxonomy: ratio(classSkills.length, classSkills.length,
+          'RESOLVED_THROUGH_CLASS_SKILL_CATALOG'),
+        conditionalOptions: ratio(0, 0, 'RUNTIME_APPLICABILITY_ENUMERATION'),
       },
     });
+  }
+
+  metricCatalog(classId = null) {
+    const classIndex = classId == null ? null : this.classIndex(classId);
+    const definitions = classIndex == null
+      ? Object.values(this.#data.heroDetails).flat()
+      : this.#data.heroDetails?.[classIndex] ?? [];
+    const byId = new Map();
+    for (const definition of definitions) {
+      if (!Number.isInteger(definition?.id)) continue;
+      if (classIndex != null && Array.isArray(definition.classFilter)
+          && definition.classFilter[classIndex] !== true) continue;
+      const label = definition.values?.find(value => typeof value?.value === 'string')?.value;
+      if (!byId.has(definition.id)) byId.set(definition.id, Object.freeze({
+        id: `maxroll.heroDetails.${definition.id}`,
+        internalId: definition.id,
+        category: 'runtime',
+        name: label || String(definition.id),
+        rawValueType: 'finite-number',
+      }));
+    }
+    return immutable([...byId.values()].sort((left, right) => left.internalId - right.internalId));
+  }
+
+  firstEquippable(classId) {
+    const index = this.classIndex(classId);
+    const candidates = Object.entries(this.#data.items).filter(([, item]) => {
+      const type = this.#byId.itemTypes?.get(String(item.type));
+      return item?.id != null && Array.isArray(item.classFilter) && item.classFilter[index] === true
+        && Array.isArray(type?.bodySlots)
+        && type.bodySlots.some(slot => Number(slot) >= 4 && Number(slot) <= 26);
+    }).sort(([leftKey, left], [rightKey, right]) => {
+      const leftComplexity = (left.affixes?.length ?? 0) + (left.implicits?.length ?? 0);
+      const rightComplexity = (right.affixes?.length ?? 0) + (right.implicits?.length ?? 0);
+      return leftComplexity - rightComplexity || leftKey.localeCompare(rightKey);
+    });
+    if (!candidates.length) fail(ERROR_CODES.ENTITY_NOT_FOUND,
+      `pinned catalog has no equippable item for class ${classId}`);
+    const [itemId, item] = candidates[0];
+    const type = this.require('itemTypes', item.type, 'catalog.firstEquippable.type');
+    return immutable({ itemId,
+      slotId: String(type.bodySlots.find(slot => Number(slot) >= 4 && Number(slot) <= 26)) });
+  }
+
+  starterParagonBoard(classId) {
+    const characterClass = this.require('classes', classId, 'character.classId');
+    const boardId = characterClass.paragonBoards?.[0];
+    if (boardId == null) fail(ERROR_CODES.ENTITY_NOT_FOUND,
+      `pinned catalog has no starter Paragon board for class ${classId}`);
+    this.require('paragonBoards', boardId, 'paragon.boards.0.boardId');
+    return String(boardId);
   }
 
   board(id) { return this.require('paragonBoards', id, 'paragon.boards'); }
@@ -406,7 +489,9 @@ class MaxrollD12CanonicalCodec {
       elixirs: clone(profile.elixirs ?? []),
       warPlans: clone(profile.warPlans ?? []),
     };
-    if (profile.specialization !== undefined) effects.specialization = clone(profile.specialization);
+    for (const field of CLASS_MECHANIC_FIELDS[profile.class] ?? []) {
+      if (profile[field] !== undefined) effects[field] = clone(profile[field]);
+    }
     if (profile.mercenary !== undefined) effects.mercenary = this.#decodeMercenary(profile.mercenary);
 
     const canonical = {
@@ -463,8 +548,8 @@ class MaxrollD12CanonicalCodec {
       world: clone(build.world),
       widgetNotes: emptyWidgetNotes(),
     };
-    if (Object.hasOwn(build.effects, 'specialization')) {
-      profile.specialization = clone(build.effects.specialization);
+    for (const field of CLASS_MECHANIC_FIELDS[Number(build.character.classId)] ?? []) {
+      if (Object.hasOwn(build.effects, field)) profile[field] = clone(build.effects[field]);
     }
     if (Object.hasOwn(build.effects, 'mercenary')) {
       profile.mercenary = this.#encodeMercenary(build.effects.mercenary);
@@ -496,6 +581,45 @@ class MaxrollD12CanonicalCodec {
     });
   }
 
+  runtimeStateToCanonical(runtimeState, provenance) {
+    assertPlain(runtimeState, 'runtimeState');
+    assertPlain(runtimeState.profile, 'runtimeState.profile');
+    assertPlain(runtimeState.items, 'runtimeState.items');
+    assertPlain(runtimeState.options, 'runtimeState.options');
+    const items = {};
+    const references = {};
+    let reference = 1;
+    for (const [slotId, item] of sortedEntries(runtimeState.items)) {
+      references[slotId] = reference;
+      items[String(reference)] = clone(item);
+      reference += 1;
+    }
+    const profile = clone(runtimeState.profile);
+    delete profile.id;
+    profile.items = references;
+    const decoded = this.nativeToCanonical({
+      schemaVersion: EXPORT_SCHEMA_VERSION,
+      format: 'MAXROLL_NATIVE_STATE',
+      provenance: {
+        snapshotId: D12_COMPATIBILITY.snapshotId,
+        snapshotManifestSha256: D12_COMPATIBILITY.snapshotManifestSha256,
+        runtimeVersion: D12_COMPATIBILITY.gamePatch,
+        runtimeAssetSha256: D12_COMPATIBILITY.engineAssetSha256,
+      },
+      selection: { profileIndex: 0 },
+      integrity: { nativeStateSha256: null },
+      nativeState: {
+        activeProfile: 0, profiles: [profile], items,
+        options: clone(runtimeState.options), season: runtimeState.season,
+      },
+    });
+    const observed = structuredClone(decoded);
+    if (provenance === undefined) delete observed.provenance;
+    else observed.provenance = clone(provenance);
+    this.#validateCanonical(observed);
+    return immutable(observed);
+  }
+
   #decodeItem(item, path) {
     assertPlain(item, path);
     rejectUnknown(item, KNOWN_ITEM_FIELDS, path);
@@ -504,6 +628,7 @@ class MaxrollD12CanonicalCodec {
       baseItemId: String(item.id),
       itemPower: item.power,
       affixes: this.#decodeModifiers(item.explicits ?? [], `${path}.affixes`),
+      implicits: this.#decodeModifiers(item.implicits ?? [], `${path}.implicits`),
       aspects: this.#decodeModifiers(item.aspects ?? [], `${path}.aspects`),
       tempers: this.#decodeModifiers(item.tempered ?? [], `${path}.tempers`),
       sockets: (item.sockets ?? []).map((entityId, index) => {
@@ -525,6 +650,8 @@ class MaxrollD12CanonicalCodec {
       power: item.itemPower,
       explicits: this.#encodeModifiers(item.affixes, `${path}.affixes`, classId),
     };
+    if (item.implicits.length) output.implicits = this.#encodeModifiers(item.implicits,
+      `${path}.implicits`, classId);
     if (item.aspects.length) output.aspects = this.#encodeModifiers(item.aspects,
       `${path}.aspects`, classId);
     if (item.tempers.length) output.tempered = this.#encodeModifiers(item.tempers,
@@ -645,6 +772,9 @@ class MaxrollD12CanonicalCodec {
           expected: D12_COMPATIBILITY.gamePatch, actual: build.game.patch ?? null,
         });
     }
+    // Preserve the codec's more specific fail-closed errors for unknown fields and
+    // runtime compatibility before applying the public structural contract.
+    validateCanonicalSchema(build);
     for (const name of ['character', 'equipment', 'skills', 'paragon', 'effects',
       'world', 'calculationContext']) assertPlain(build[name], name);
     rejectUnknown(build.game, new Set(['id', 'patch']), 'game');
@@ -653,7 +783,7 @@ class MaxrollD12CanonicalCodec {
     rejectUnknown(build.skills, new Set(['allocations', 'bar']), 'skills');
     rejectUnknown(build.paragon, new Set(['boards']), 'paragon');
     rejectUnknown(build.effects,
-      new Set(['elixirs', 'warPlans', 'specialization', 'mercenary']), 'effects');
+      new Set(['elixirs', 'warPlans', 'mercenary', ...ALL_CLASS_MECHANIC_FIELDS]), 'effects');
     rejectUnknown(build.calculationContext, new Set(['season', 'options']), 'calculationContext');
     rejectUnknown(build.world, new Set(['renownSkills', 'renownParagon']), 'world');
     if (build.provenance !== undefined) {
@@ -667,6 +797,7 @@ class MaxrollD12CanonicalCodec {
         || build.character.worldTier < 0
         || !Array.isArray(build.equipment.slots) || !Array.isArray(build.skills.allocations)
         || !Array.isArray(build.skills.bar) || !Array.isArray(build.paragon.boards)
+        || build.paragon.boards.length === 0
         || !Array.isArray(build.effects.elixirs) || !Array.isArray(build.effects.warPlans)) {
       fail(ERROR_CODES.CANONICAL_BUILD_INVALID, 'canonical build section shape is invalid');
     }
@@ -679,7 +810,7 @@ class MaxrollD12CanonicalCodec {
       assertPlain(slot.item, `equipment.slots.${slot.slotId}.item`);
       rejectUnknown(slot.item, CANONICAL_ITEM_FIELDS,
         `equipment.slots.${slot.slotId}.item`);
-      for (const field of ['affixes', 'aspects', 'tempers', 'sockets']) {
+      for (const field of ['affixes', 'implicits', 'aspects', 'tempers', 'sockets']) {
         if (!Array.isArray(slot.item[field])) fail(ERROR_CODES.CANONICAL_BUILD_INVALID,
           `equipment.slots.${slot.slotId}.item.${field} must be an array`);
       }
@@ -689,7 +820,7 @@ class MaxrollD12CanonicalCodec {
         fail(ERROR_CODES.CANONICAL_BUILD_INVALID,
           `equipment.slots.${slot.slotId}.item.itemPower is invalid`);
       }
-      for (const field of ['affixes', 'aspects', 'tempers']) {
+      for (const field of ['affixes', 'implicits', 'aspects', 'tempers']) {
         slot.item[field].forEach((modifier, index) => {
           assertPlain(modifier, `equipment.slots.${slot.slotId}.item.${field}.${index}`);
           rejectUnknown(modifier, CANONICAL_MODIFIER_FIELDS,
@@ -748,7 +879,8 @@ class MaxrollD12CanonicalCodec {
       const allocatedNodes = new Set();
       for (const allocation of board.allocations) {
         if (allocatedNodes.has(String(allocation.nodeId))
-            || catalogBoard.nodes?.[Number(allocation.nodeId)] == null) {
+            || catalogBoard.nodes?.[Number(allocation.nodeId)] == null
+            || ![0, 1, false, true].includes(allocation.value)) {
           fail(ERROR_CODES.ILLEGAL_COMBINATION,
             `paragon.boards.${index} has duplicate or invalid node ${allocation.nodeId}`);
         }
@@ -768,28 +900,30 @@ class MaxrollD12CanonicalCodec {
       }
       this.#catalog.require('mercenaries', build.effects.mercenary.id,
         'effects.mercenary.id');
+      this.#catalog.require('mercenaries', build.effects.mercenary.support,
+        'effects.mercenary.support');
       for (const [index, skillId] of build.effects.mercenary.supportSkills.entries()) {
-        this.#catalog.require('skills', skillId,
-          `effects.mercenary.supportSkills.${index}`);
+        if (!/^trigger_[a-z_]+$/.test(String(skillId))) {
+          this.#catalog.require('skills', skillId,
+            `effects.mercenary.supportSkills.${index}`);
+        }
       }
       for (const allocation of build.effects.mercenary.treeAllocations) {
         this.#catalog.requireMercenaryTreeNode(build.effects.mercenary.id,
           allocation.nodeId, 'effects.mercenary.treeAllocations');
       }
     }
-    if (Object.hasOwn(build.effects, 'specialization')) {
-      this.#catalog.requireSkillForClass(build.effects.specialization,
-        build.character.classId, 'effects.specialization');
-    }
-    if (build.effects.warPlans.length > this.#catalog.counts.warPlans) {
-      fail(ERROR_CODES.ILLEGAL_COMBINATION, 'effects.warPlans exceeds pinned catalog size');
+    this.#validateClassMechanics(build);
+    if (build.effects.warPlans.length !== this.#catalog.counts.warPlans) {
+      fail(ERROR_CODES.ILLEGAL_COMBINATION,
+        'effects.warPlans must represent every pinned runtime plan');
     }
     for (const [planIndex, allocations] of build.effects.warPlans.entries()) {
       assertPlain(allocations, `effects.warPlans.${planIndex}`);
       for (const [nodeId, value] of Object.entries(allocations)) {
         this.#catalog.requireWarPlanNode(planIndex, nodeId,
           `effects.warPlans.${planIndex}.${nodeId}`);
-        if (!Number.isFinite(value)) fail(ERROR_CODES.CANONICAL_BUILD_INVALID,
+        if (![0, 1, false, true].includes(value)) fail(ERROR_CODES.CANONICAL_BUILD_INVALID,
           `effects.warPlans.${planIndex}.${nodeId} is invalid`);
       }
     }
@@ -797,18 +931,64 @@ class MaxrollD12CanonicalCodec {
       this.#catalog.requireCalculationOption(optionId, build.character.classId,
         `calculationContext.options.${optionId}`);
       assertPlain(option, `calculationContext.options.${optionId}`);
-      rejectUnknown(option, new Set(['flags', 'params']),
+      if (optionId === 'shared') {
+        for (const [key, value] of Object.entries(option)) {
+          const definition = D12_SHARED_OPTION_DEFINITIONS[key];
+          if (!definition) fail(ERROR_CODES.ENTITY_NOT_FOUND,
+            `shared calculation option is absent from pinned runtime definitions: ${key}`);
+          if (!definition.types.includes(typeof value)
+              || typeof value === 'number' && (!Number.isFinite(value)
+                || value < definition.min || value > definition.max)) {
+            fail(ERROR_CODES.CANONICAL_BUILD_INVALID,
+              `calculationContext.options.shared.${key} is invalid`);
+          }
+        }
+        continue;
+      }
+      rejectUnknown(option, new Set(['active', 'flags', 'params']),
         `calculationContext.options.${optionId}`);
+      if (option.active !== undefined && typeof option.active !== 'boolean') {
+        fail(ERROR_CODES.CANONICAL_BUILD_INVALID,
+          `calculationContext.options.${optionId}.active is invalid`);
+      }
       if (option.flags !== undefined && (!Array.isArray(option.flags)
           || option.flags.some(value => typeof value !== 'boolean'))) {
         fail(ERROR_CODES.CANONICAL_BUILD_INVALID,
           `calculationContext.options.${optionId}.flags is invalid`);
       }
       if (option.params !== undefined && (!Array.isArray(option.params)
-          || option.params.some(value => typeof value !== 'number' || !Number.isFinite(value)))) {
+          || option.params.some(value => typeof value !== 'string'
+            && (typeof value !== 'number' || !Number.isFinite(value))))) {
         fail(ERROR_CODES.CANONICAL_BUILD_INVALID,
           `calculationContext.options.${optionId}.params is invalid`);
       }
+    }
+  }
+
+  #validateClassMechanics(build) {
+    const classId = Number(build.character.classId);
+    const allowed = new Set(CLASS_MECHANIC_FIELDS[classId] ?? []);
+    for (const field of ALL_CLASS_MECHANIC_FIELDS) {
+      if (Object.hasOwn(build.effects, field) && !allowed.has(field)) {
+        fail(ERROR_CODES.ILLEGAL_COMBINATION,
+          `effects.${field} is not legal for class ${classId}`);
+      }
+    }
+    const requireSkills = (field, values) => {
+      for (const [index, id] of values.entries()) this.#catalog.requireSkillForClass(id,
+        build.character.classId, `effects.${field}.${index}`);
+    };
+    for (const field of ['enchants', 'spiritBoons', 'minionUpgrades', 'animalSpirits']) {
+      if (Object.hasOwn(build.effects, field)) requireSkills(field, build.effects[field]);
+    }
+    for (const field of ['specialization', 'technique', 'oath', 'warlockFragment',
+      'warlockShard']) {
+      if (Object.hasOwn(build.effects, field)) this.#catalog.requireSkillForClass(
+        build.effects[field], build.character.classId, `effects.${field}`);
+    }
+    if (Object.hasOwn(build.effects, 'arsenal')) {
+      for (const skillId of Object.keys(build.effects.arsenal)) this.#catalog.requireSkillForClass(
+        skillId, build.character.classId, `effects.arsenal.${skillId}`);
     }
   }
 }

@@ -103,19 +103,69 @@ async function verifiedReuseFixtures(matrix, reuseRoot, expectedManifestSha256) 
   const results = [];
   for (const entry of matrix.reuse ?? []) {
     if (!entry || !ALLOWED_CLASSES.has(entry.class) || typeof entry.fixture !== 'string'
-        || !/^[a-z0-9-]+$/.test(entry.fixture)) {
+        || !/^[a-z0-9-]+$/.test(entry.fixture)
+        || ![entry.inputSha256, entry.statsSha256, entry.nativeStateSha256,
+          entry.trustedPackageManifestSha256, entry.runtimeAssetSha256]
+          .every(value => SHA256_PATTERN.test(value ?? ''))
+        || !Number.isInteger(entry.profileIndex)
+        || !Number.isInteger(entry.rawCount) || !Number.isInteger(entry.displayCount)) {
       throw fail(ERROR_CODES.INVALID_INPUT, 'reused fixture matrix entry is invalid', { entry });
     }
-    const inputPath = path.join(path.resolve(reuseRoot), `${entry.fixture}.json`);
-    const statsPath = path.join(path.resolve(reuseRoot), `${entry.fixture}.stats.json`);
-    const [inputBytes, statsBytes] = await Promise.all([fs.readFile(inputPath), fs.readFile(statsPath)]);
+    const root = path.resolve(reuseRoot);
+    const inputName = `${entry.fixture}.json`;
+    const statsName = `${entry.fixture}.stats.json`;
+    const inputPath = path.join(root, inputName);
+    const statsPath = path.join(root, statsName);
+    const [manifestBytes, inputBytes, statsBytes] = await Promise.all([
+      fs.readFile(path.join(root, 'manifest.json')), fs.readFile(inputPath), fs.readFile(statsPath),
+    ]);
+    if (digest(manifestBytes) !== entry.trustedPackageManifestSha256
+        || digest(inputBytes) !== entry.inputSha256 || digest(statsBytes) !== entry.statsSha256) {
+      throw fail(ERROR_CODES.OUTPUT_NOT_LINKED,
+        'reused fixture bytes do not match independent trust anchors', { class: entry.class });
+    }
+    const manifest = JSON.parse(manifestBytes);
     const input = JSON.parse(inputBytes);
     const stats = JSON.parse(statsBytes);
     const sourceReplay = typeof stats.sourceReplay === 'string'
       ? stats.sourceReplay : stats.sourceReplay?.status;
+    const pair = manifest.pairs?.find(candidate => candidate.name === entry.fixture);
+    const rawIds = (stats.rawMetrics ?? []).map(metric => metric.metricId);
+    const displayAnchors = (stats.displayMetrics ?? []).map(metric => metric.labelAnchor);
+    const rawComplete = stats.rawMetrics?.length === entry.rawCount
+      && new Set(rawIds).size === rawIds.length
+      && stats.rawMetrics.every(metric => Number.isFinite(metric.rawValue)
+        && metric.status === 'OBSERVED' && typeof metric.metricId === 'string');
+    const displayComplete = stats.displayMetrics?.length === entry.displayCount
+      && new Set(displayAnchors).size === displayAnchors.length
+      && stats.displayMetrics.every(metric => metric.status === 'OBSERVED'
+        && typeof metric.metricId === 'string' && typeof metric.displayValue === 'string');
+    const cleanupVerified = ['source', 'replay'].every(side => {
+      const cleanup = stats.cleanup?.[side];
+      return cleanup?.status === 'PASS' && cleanup.activeLeases === 0
+        && cleanup.currentContexts === 0 && cleanup.browserState === 'stopped'
+        && cleanup.ownedProcessExited === true;
+    });
+    const networkVerified = ['source', 'replay'].every(side =>
+      stats.network?.[side]?.externalEgressCompleted === 0);
     if (input.selection?.class !== entry.class || stats.input?.class !== entry.class
+        || input.selection?.profileIndex !== entry.profileIndex
+        || input.provenance?.snapshotManifestSha256 !== expectedManifestSha256
+        || input.provenance?.runtimeAssetSha256 !== entry.runtimeAssetSha256
+        || digest(Buffer.from(serialize(input.nativeState))) !== entry.nativeStateSha256
+        || input.integrity?.nativeStateSha256 !== entry.nativeStateSha256
+        || stats.schemaVersion !== entry.schemaVersion
+        || stats.input?.buildSha256 !== entry.inputSha256
+        || stats.input?.nativeStateSha256 !== entry.nativeStateSha256
         || stats.engine?.snapshotManifestSha256 !== expectedManifestSha256
+        || stats.engine?.assetSha256 !== entry.runtimeAssetSha256
+        || manifest.files?.[inputName]?.sha256 !== entry.inputSha256
+        || manifest.files?.[statsName]?.sha256 !== entry.statsSha256
+        || pair?.inputSha256 !== entry.inputSha256
+        || pair?.outputSha256 !== entry.statsSha256
+        || pair?.nativeStateSha256 !== entry.nativeStateSha256
         || sourceReplay !== 'EXACT'
+        || !rawComplete || !displayComplete || !cleanupVerified || !networkVerified
         || !['G1', 'G2', 'G3', 'G4'].every(gate => stats.gates?.[gate]?.status === 'PASS')) {
       throw fail(ERROR_CODES.OUTPUT_NOT_LINKED,
         'reused fixture does not satisfy trusted class attestation', { class: entry.class });
@@ -134,8 +184,7 @@ async function verifiedReuseFixtures(matrix, reuseRoot, expectedManifestSha256) 
       displayCount: stats.coverage.displayCount,
       sourceReplay,
       offlineExternalEgressCompleted: stats.network.replay.externalEgressCompleted,
-      cleanup: stats.cleanup.source.status === 'PASS' && stats.cleanup.replay.status === 'PASS'
-        ? 'PASS' : 'FAIL',
+      cleanup: cleanupVerified ? 'PASS' : 'FAIL',
       privateInputPath: inputPath,
       privateStatsPath: statsPath,
       durationMs: 0,

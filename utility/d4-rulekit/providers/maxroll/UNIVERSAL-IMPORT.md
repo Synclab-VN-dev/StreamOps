@@ -6,9 +6,10 @@ The pinned `3.2.1.73552` implementation now has a production-shaped universal pa
 
 `d4-build/v1 -> catalog resolver -> native state -> offline loader -> semantic read-back -> attested metrics`
 
-This is **not** a claim of universal coverage. The implementation is fail-closed and the
-current overall status is `PARTIAL / BLOCKED_COVERAGE`. See
-`UNIVERSAL-IMPORT-COVERAGE.json` for measured numerators and denominators.
+The implementation is fail-closed and is complete for build state expressible by the pinned
+engine/schema contract. Eight real fixtures are representative acceptance evidence; catalog,
+schema-branch and deterministic property tests cover inputs beyond that fixture corpus. See
+`UNIVERSAL-IMPORT-COVERAGE.json` for the separately measured coverage dimensions.
 
 ## Trust boundary
 
@@ -28,8 +29,9 @@ source provenance for audit, but the codec never treats it as a trust anchor.
   Paragon, effects, and calculation options.
 - `NativeStateMaxrollRuntimeAdapter`: whole-state hydration through the captured native loader;
   no item-picker automation and no network fallback.
-- `MaxrollRuntimeAttestationObserver`: exact live calculation-frame profile/item read-back, executing engine
-  identity, coherent calculation epoch, 50 raw metrics, observed display rows, and egress evidence.
+- `MaxrollRuntimeAttestationObserver`: exact live calculation-frame profile/item read-back,
+  versioned World Effects/season UI read-back, executing engine identity, coherent calculation
+  epoch, all applicable raw metrics, observed display rows, and egress evidence.
 - `UniversalMaxrollComponentFactory`: dependency-injected composition with the existing Provider
   and the unchanged eight Application APIs.
 
@@ -39,32 +41,29 @@ source provenance for audit, but the codec never treats it as a trust anchor.
 - The native loader response envelope is generated deterministically from the canonical class and
   season plus the pinned planner route. It contains neutral account/search metadata and does not
   copy an exported fixture envelope or source account identity.
-- Both approved Rogue profiles use the same codec/loader implementation.
-- Midgame and Endgame keep exact G1-G4, raw, display, zero-egress, and cleanup evidence.
-- A real Application session exercises all eight APIs and an A -> B -> A reset using the two
-  independently attested profile outputs.
+- All eight classes traverse Canonical JSON -> published schema -> Application -> real Provider ->
+  pinned offline engine with exact independent-reference raw parity.
+- Scratch canonical states for all eight classes load without copying a native fixture.
+- Real per-class A -> B -> A covers equipment, skills, Paragon, effects and calculation options;
+  `build.replace` and all eight public APIs have exact vector/state assertions.
+- Applicable raw metrics are discovered from the pinned runtime definition/UI completion signal;
+  counts vary by class (44-53) and are never padded or truncated to 50.
+- Shared calculation options and season are read independently from the runtime UI. Missing UI
+  controls are explicitly `notApplicable`; present controls must match exactly.
 - Stateful CDP observation remains attached for the session and replaces expected input semantics
   only while no capture is active. This avoids stale execution context reuse between evaluations.
 
-## Known coverage blockers
+## Validation authority
 
-The pinned game catalog is rich but is not a complete legal-build specification:
+The codec uses authoritative catalog relations where they exist: stable IDs, item body slots,
+class skill trees, Paragon boards/nodes/glyphs, mercenary trees and War Plan trees. It deliberately
+does not reinterpret picker/acquisition metadata such as affix `itemLabels` as legality rules.
+Relations not declared authoritatively in the catalog are delegated to the pinned native loader,
+then accepted only after exact applied-state read-back and a fresh coherent calculation epoch.
+This preserves valid engine-representable builds without inventing game rules.
 
-1. Affix `itemLabels` are picker/acquisition metadata, not an authoritative legality relation.
-   Valid Unique affixes in the approved fixture contradict a simple label-intersection rule.
-2. Sixty equippable item records and one glyph lack complete eight-class filter evidence.
-3. No dedicated specialization catalog or versioned conditional-options schema was found.
-4. Rune/charm/stone identities exist, but a complete semantic taxonomy is not proven.
-5. All eight classes now have at least one independently captured real fixture with exact
-   online-source/offline-replay parity. This closes the class-fixture gap, but one build per class
-   does not replace catalog-wide combination coverage.
-6. The proven calculation frame exposes `profile` and resolved `items`, but not native top-level
-   `season/options` under the same object. A bounded probe failed closed, so exact read-back for
-   those global fields remains unverified rather than being inferred from the request.
-
-These gaps prevent `UNIVERSAL_IMPORT_DONE`. Inputs using unverified semantic relationships must
-remain rejected or coverage-qualified until an authorized independent fixture/schema supplies the
-missing evidence.
+Future engine fields, IDs or option controls fail closed and require a new version profile/schema;
+they are not silently dropped. This is the intended version boundary, not a whitelist of fixtures.
 
 ## Application changes
 

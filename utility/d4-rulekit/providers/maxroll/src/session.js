@@ -114,6 +114,10 @@ class MaxrollSession {
     return bounded(async () => {
       if (options.signal?.aborted) throw new MaxrollProviderError(ERROR_CODES.CANCELLED, 'evaluation cancelled');
       const applied = await this.#adapter.apply(mapped.desired, mapped.fingerprint);
+      if (!applied?.observed || sha256(applied.observed) !== mapped.fingerprint) {
+        throw new MaxrollProviderError(ERROR_CODES.READBACK_MISMATCH,
+          'provider runtime semantic read-back does not match the requested build');
+      }
       if (options.signal?.aborted) throw new MaxrollProviderError(ERROR_CODES.CANCELLED, 'evaluation cancelled');
       const metrics = await this.#extractor.extract(this.#adapter, applied);
       const networkReplay = this.#mount?.getDiagnostics?.() ?? null;
@@ -133,6 +137,7 @@ class MaxrollSession {
           authorizationRef: this.#profile.authorizationRef ?? null,
           inputFingerprint: mapped.fingerprint,
           phase: applied.phase,
+          runtimeAttestation: applied.attestation ?? null,
           networkReplay,
         },
       });

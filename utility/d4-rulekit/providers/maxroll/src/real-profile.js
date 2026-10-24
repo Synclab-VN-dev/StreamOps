@@ -5,6 +5,7 @@ const { MaxrollPatchProfile } = require('./patch-profile');
 const { RealMaxrollMetricsExtractor } = require('./real-metrics-extractor');
 const { RealMaxrollRuntimeAdapter } = require('./real-runtime-adapter');
 const { MaxrollBuildMapper } = require('./build-mapper');
+const { D12_SHARED_OPTION_DEFINITIONS } = require('./d12-shared-options');
 
 const MAXROLL_32173552_REFERENCE = Object.freeze({
   gamePatch: '3.2.1.73552',
@@ -44,15 +45,25 @@ function createMaxroll32173552D12aM6KTCandidateProfile(config) {
     discardChangesDialogSelector: '[class*="_Dialog_"]',
     discardChangesConfirmButton: 'Yes',
     attestationReadbackExpression:
-      '({profile:JSON.parse(JSON.stringify(l.profile)),items:JSON.parse(JSON.stringify(l.items))})',
+      '({profile:JSON.parse(JSON.stringify(l.profile)),items:JSON.parse(JSON.stringify(l.items)),'
+      + 'optionEntries:JSON.parse(JSON.stringify(l.optionEntries||[])),'
+      + 'contextPrimitives:(()=>{const out={},seen=new WeakSet();const walk=(value,path,depth)=>{'
+      + 'if(!value||typeof value!=="object"||depth>4||seen.has(value))return;seen.add(value);'
+      + 'for(const [key,child] of Object.entries(value)){const next=path?path+"."+key:key;'
+      + 'if(["boolean","number","string"].includes(typeof child))out[next]=child;'
+      + 'else walk(child,next,depth+1)}};walk(l.context||{},"",0);return out})()})',
     calculationEpochExpression: 'l.context',
+    sharedOptionReadback: D12_SHARED_OPTION_DEFINITIONS,
   });
 }
 
 function createMaxroll32173552D12aM6KTUniversalProfile(config) {
+  const metricCatalog = config?.metricCatalog ?? config?.catalog?.metricCatalog?.();
+  const { catalog: _catalog, ...profileConfig } = config ?? {};
   return createMaxroll32173552D12aM6KTCandidateProfile({
-    ...config,
-    providerVersion: config?.providerVersion
+    ...profileConfig,
+    metricCatalog,
+    providerVersion: profileConfig.providerVersion
       ?? 'maxroll-provider/3.2.1.73552-D12aM6KT-universal-v1',
     supportedBuildSchemaVersion: 'd4-build/v1',
     supportedChangeTypes: [
@@ -65,6 +76,7 @@ function createMaxroll32173552D12aM6KTUniversalProfile(config) {
       authorizedSnapshotRequired: true,
       coverageStatus: 'BLOCKED_COVERAGE',
     },
+    metricCoverage: 'DYNAMIC_APPLICABLE',
   });
 }
 
@@ -113,6 +125,11 @@ function createRealProfile(config, reference, strategy) {
       gamePatchPattern: 'Game version:\\s*([^\\n]+)',
       attestationReadbackExpression: strategy.attestationReadbackExpression ?? null,
       calculationEpochExpression: strategy.calculationEpochExpression ?? null,
+      sharedOptionReadback: strategy.sharedOptionReadback ?? null,
+      statsWidgetSelector: '.StatsTest',
+      effectsTabLabel: 'Effects',
+      settingsGroupSelector: 'div[class*="settings_Group__1UIcq"]',
+      settingsGroupTitleSelector: ':scope > div[class*="settings_Group__title"]',
       classPattern: 'Class\\s*\\n([^\\n]+)',
       difficultyPattern: 'Stats\\s*\\n([^\\n]+)',
       categoryLabels: {

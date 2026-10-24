@@ -56,7 +56,16 @@
       "class": "Rogue",
       "sourceUrl": "https://maxroll.gg/d4/planner/1g1any0x#3",
       "fixture": "rogue-endgame",
-      "evidence": "issue-134-gb-e1-att-v2"
+      "evidence": "issue-134-gb-e1-att-v2",
+      "profileIndex": 4,
+      "inputSha256": "4e30f9d5cc359f14a8b46fc3a277c5b5631bfa4edceb49efeb73771821e859fd",
+      "statsSha256": "d2d625de53e6ce55529270b53264ba5955db1f372a628a3d8ed1d9ecc2604d05",
+      "nativeStateSha256": "2c48958f3a6e84c7a40fa4dce3c403a3eb10c1036b8f2480ae8c5674093c1e1a",
+      "trustedPackageManifestSha256": "c04629bde372b3b05604c0c57e3d78ba23f6a85bac85e41ebdb5a915a7dc644b",
+      "runtimeAssetSha256": "891c1f82717c50e598450575068394c6d2fe1c8d26de26f2eeed028d028997db",
+      "schemaVersion": "maxroll-character-stats-attestation/v1",
+      "rawCount": 50,
+      "displayCount": 50
     }
   ]
 }

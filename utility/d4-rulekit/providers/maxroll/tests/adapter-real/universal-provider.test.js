@@ -93,8 +93,10 @@ test('B6 all eight Application APIs operate through the real universal provider'
   if (!chromiumExecutablePath || !snapshotRoot || !fixtureRoot) {
     throw new Error('real universal provider environment is required');
   }
-  const [midgame, endgame] = await Promise.all(['rogue-midgame', 'rogue-endgame']
-    .map(name => fs.readFile(path.join(fixtureRoot, `${name}.json`), 'utf8').then(JSON.parse)));
+  const [midgame, endgame, midgameStats, endgameStats] = await Promise.all([
+    'rogue-midgame.json', 'rogue-endgame.json', 'rogue-midgame.stats.json',
+    'rogue-endgame.stats.json',
+  ].map(name => fs.readFile(path.join(fixtureRoot, name), 'utf8').then(JSON.parse)));
   const catalog = await loadMaxrollEntityCatalog({
     snapshotRoot, snapshotId: SNAPSHOT_ID, expectedManifestSha256: MANIFEST_SHA,
   });
@@ -139,23 +141,35 @@ test('B6 all eight Application APIs operate through the real universal provider'
     });
     sessionId = created.sessionId;
     const baseline = await app.evaluate(sessionId, { timeoutMs: 60_000 });
-    assert.equal(baseline.metrics.length, 50);
+    assertMetricVector(baseline.metrics, midgameStats.rawMetrics);
     assert.equal(app.getSession(sessionId).revision, 0);
     const changes = [{ type: 'build.replace', build: buildB }];
     const preview = await app.previewChanges(sessionId, {
       expectedRevision: 0, changes, timeoutMs: 60_000,
     });
     assert.notEqual(preview.baseBuildFingerprint, preview.candidateBuildFingerprint);
+    assertMetricVector(preview.before, midgameStats.rawMetrics);
+    assertMetricVector(preview.after, endgameStats.rawMetrics);
+    const beforeById = new Map(preview.before.map(metric => [metric.id, metric.rawValue]));
+    const afterById = new Map(preview.after.map(metric => [metric.id, metric.rawValue]));
+    for (const delta of preview.delta) {
+      assert.equal(delta.before, beforeById.get(delta.id));
+      assert.equal(delta.after, afterById.get(delta.id));
+      assert.equal(delta.delta, delta.after - delta.before);
+    }
     assert.equal(app.getSession(sessionId).revision, 0);
+    const afterPreview = await app.evaluate(sessionId, { timeoutMs: 60_000, bypassCache: true });
+    assertMetricVector(afterPreview.metrics, midgameStats.rawMetrics);
     const committed = await app.commitChanges(sessionId, {
       expectedRevision: 0, changes, previewToken: preview.previewToken, timeoutMs: 60_000,
     });
     assert.equal(committed.session.revision, 1);
-    assert.equal(committed.result.metrics.length, 50);
+    assertMetricVector(committed.result.metrics, endgameStats.rawMetrics);
     const reset = await app.resetSession(sessionId, { expectedRevision: 1, timeoutMs: 60_000 });
     assert.equal(reset.revision, 2);
     const restored = await app.evaluate(sessionId, { timeoutMs: 60_000, bypassCache: true });
     assert.equal(restored.inputFingerprint, baseline.inputFingerprint);
+    assertMetricVector(restored.metrics, midgameStats.rawMetrics);
     await app.closeSession(sessionId);
     sessionId = null;
   } finally {
@@ -174,4 +188,12 @@ async function cleanupAll(steps) {
   if (failures.length === 1) throw failures[0];
   if (failures.length > 1) throw new AggregateError(failures,
     'universal provider test cleanup failed');
+}
+
+function assertMetricVector(actual, expected) {
+  const left = new Map(actual.map(metric => [metric.id, metric.rawValue]));
+  const right = new Map(expected.map(metric => [metric.metricId, metric.rawValue]));
+  assert.equal(left.size, actual.length);
+  assert.equal(right.size, expected.length);
+  assert.deepEqual([...left].sort(), [...right].sort());
 }

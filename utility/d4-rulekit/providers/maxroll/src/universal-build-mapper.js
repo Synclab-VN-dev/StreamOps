@@ -12,6 +12,11 @@ const CHANGE_TYPES = Object.freeze([
   'effect.set',
   'calculationOption.set',
 ]);
+const EFFECT_SECTIONS = Object.freeze([
+  'elixirs', 'warPlans', 'mercenary', 'specialization', 'enchants', 'spiritBoons',
+  'arsenal', 'expertise', 'technique', 'weaponSlot', 'minionSpec', 'minionUpgrades',
+  'animalSpirits', 'oath', 'warlockFragment', 'warlockShard',
+]);
 
 class UniversalMaxrollBuildMapper {
   #codec;
@@ -75,15 +80,15 @@ function applyChange(build, change) {
     if (!Array.isArray(change.boards)) invalid('paragon.setBoards.boards');
     next.paragon.boards = structuredClone(change.boards);
   } else if (change.type === 'effect.set') {
-    if (!['elixirs', 'warPlans', 'specialization', 'mercenary'].includes(change.effect)) {
+    if (!EFFECT_SECTIONS.includes(change.effect)) {
       throw new MaxrollProviderError(ERROR_CODES.UNSUPPORTED_INPUT,
         `unsupported effect section: ${change.effect}`);
     }
-    if (change.value === undefined) delete next.effects[change.effect];
+    if (change.value === null) delete next.effects[change.effect];
     else next.effects[change.effect] = structuredClone(change.value);
   } else if (change.type === 'calculationOption.set') {
     requireString(change.optionId, 'calculationOption.set.optionId');
-    if (change.value === undefined) delete next.calculationContext.options[change.optionId];
+    if (change.value === null) delete next.calculationContext.options[change.optionId];
     else next.calculationContext.options[change.optionId] = structuredClone(change.value);
   }
   return next;
@@ -97,4 +102,4 @@ function invalid(path) {
   throw new MaxrollProviderError(ERROR_CODES.INVALID_INPUT, `${path} is invalid`);
 }
 
-module.exports = { CHANGE_TYPES, UniversalMaxrollBuildMapper };
+module.exports = { CHANGE_TYPES, EFFECT_SECTIONS, UniversalMaxrollBuildMapper };

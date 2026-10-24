@@ -32,19 +32,31 @@
     },
     "paragon": {
       "type": "object", "additionalProperties": false, "required": ["boards"],
-      "properties": { "boards": { "type": "array", "items": { "$ref": "#/$defs/board" } } }
+      "properties": { "boards": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/board" } } }
     },
     "effects": {
       "type": "object", "additionalProperties": false, "required": ["elixirs", "warPlans"],
       "properties": {
-        "elixirs": { "type": "array" },
-        "warPlans": { "type": "array", "items": { "type": "object", "additionalProperties": { "type": "number" } } },
+        "elixirs": { "type": "array", "items": { "type": ["string", "number"] } },
+        "warPlans": { "type": "array", "items": { "type": "object", "additionalProperties": { "$ref": "#/$defs/nodeAllocationValue" } } },
         "specialization": { "type": ["string", "number"] },
+        "enchants": { "type": "array", "items": { "type": "string" } },
+        "spiritBoons": { "type": "array", "items": { "type": "string" } },
+        "arsenal": { "type": "object", "additionalProperties": { "type": "string" } },
+        "expertise": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] } },
+        "technique": { "type": "string" },
+        "weaponSlot": { "type": "integer" },
+        "minionSpec": { "type": "array", "items": { "type": "integer" } },
+        "minionUpgrades": { "type": "array", "items": { "type": "string" } },
+        "animalSpirits": { "type": "array", "items": { "type": "string" } },
+        "oath": { "type": "string" },
+        "warlockFragment": { "type": "string" },
+        "warlockShard": { "type": "string" },
         "mercenary": {
           "type": "object", "additionalProperties": false,
           "required": ["id", "support", "supportSkills", "treeAllocations"],
           "properties": {
-            "id": { "type": "string" }, "support": {},
+            "id": { "type": "string" }, "support": { "type": "string" },
             "supportSkills": { "type": "array", "items": { "type": ["string", "number"] } },
             "treeAllocations": { "type": "array", "items": { "$ref": "#/$defs/valueAllocation" } }
           }
@@ -52,14 +64,32 @@
       }
     },
     "world": {
-      "type": "object", "additionalProperties": false,
+      "type": "object", "additionalProperties": false, "required": ["renownSkills", "renownParagon"],
       "properties": { "renownSkills": { "type": "number" }, "renownParagon": { "type": "number" } }
     },
     "calculationContext": {
       "type": "object", "additionalProperties": false, "required": ["season", "options"],
-      "properties": { "season": { "type": ["integer", "null"] }, "options": { "type": "object" } }
+      "properties": {
+        "season": { "type": "integer", "const": 15 },
+        "options": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              { "$ref": "#/$defs/calculationOption" },
+              { "$ref": "#/$defs/sharedOptions" }
+            ]
+          }
+        }
+      }
     },
-    "provenance": { "type": "object", "readOnly": true }
+    "provenance": {
+      "type": "object", "readOnly": true, "additionalProperties": false,
+      "properties": {
+        "codecVersion": { "type": "string" },
+        "sourceNativeStateSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "source": { "type": "string" }
+      }
+    }
   },
   "$defs": {
     "allocation": {
@@ -68,7 +98,21 @@
     },
     "valueAllocation": {
       "type": "object", "additionalProperties": false, "required": ["nodeId", "value"],
-      "properties": { "nodeId": { "type": "string" }, "value": { "type": "number" } }
+      "properties": { "nodeId": { "type": "string" }, "value": { "$ref": "#/$defs/nodeAllocationValue" } }
+    },
+    "nodeAllocationValue": { "type": ["boolean", "integer"], "enum": [false, true, 0, 1] },
+    "calculationOption": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "active": { "type": "boolean" },
+        "flags": { "type": "array", "items": { "type": "boolean" } },
+        "params": { "type": "array", "items": { "type": ["number", "string"] } }
+      },
+      "minProperties": 1
+    },
+    "sharedOptions": {
+      "type": "object",
+      "additionalProperties": { "type": ["boolean", "number", "string"] }
     },
     "modifier": {
       "type": "object", "additionalProperties": false, "required": ["entityId", "values"],
@@ -80,10 +124,11 @@
     },
     "item": {
       "type": "object", "additionalProperties": false,
-      "required": ["baseItemId", "itemPower", "affixes", "aspects", "tempers", "sockets"],
+      "required": ["baseItemId", "itemPower", "affixes", "implicits", "aspects", "tempers", "sockets"],
       "properties": {
         "baseItemId": { "type": "string" }, "itemPower": { "type": "number", "minimum": 0 },
         "affixes": { "type": "array", "items": { "$ref": "#/$defs/modifier" } },
+        "implicits": { "type": "array", "items": { "$ref": "#/$defs/modifier" } },
         "aspects": { "type": "array", "items": { "$ref": "#/$defs/modifier" } },
         "tempers": { "type": "array", "items": { "$ref": "#/$defs/modifier" } },
         "sockets": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["entityId"], "properties": { "entityId": { "type": "string" } } } },
@@ -98,7 +143,7 @@
       "type": "object", "additionalProperties": false, "required": ["boardId", "rotation", "allocations"],
       "properties": {
         "boardId": { "type": "string" }, "rotation": { "enum": [0, 1, 2, 3] },
-        "allocations": { "type": "array", "items": { "$ref": "#/$defs/allocation" } },
+        "allocations": { "type": "array", "items": { "$ref": "#/$defs/valueAllocation" } },
         "position": { "type": "object" },
         "glyph": { "type": "object", "additionalProperties": false, "required": ["glyphId", "level"], "properties": { "glyphId": { "type": "string" }, "level": { "type": "number", "minimum": 0 } } }
       }

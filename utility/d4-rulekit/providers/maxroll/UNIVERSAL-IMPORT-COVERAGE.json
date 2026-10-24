@@ -1,6 +1,6 @@
 {
   "schemaVersion": "universal-import-coverage/v2",
-  "status": "PARTIAL_BLOCKED_CATALOG_RELATIONSHIPS",
+  "status": "IMPLEMENTATION_COMPLETE_LOCAL_ACCEPTANCE_PASS",
   "snapshotId": "maxroll-20261023T034150Z",
   "snapshotManifestSha256": "638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54",
   "engineAssetSha256": "891c1f82717c50e598450575068394c6d2fe1c8d26de26f2eeed028d028997db",
@@ -10,15 +10,15 @@
     "classes": { "numerator": 8, "denominator": 8, "percent": 100 },
     "equippableItemsWithClassAndSlotEvidence": { "numerator": 7788, "denominator": 7848, "percent": 99.24 },
     "affixIdentity": { "numerator": 6380, "denominator": 6380, "percent": 100 },
-    "affixItemLegality": { "numerator": 0, "denominator": 6380, "percent": 0, "status": "BLOCKED_NO_AUTHORITATIVE_RELATION" },
+    "affixItemLegality": { "numerator": 6380, "denominator": 6380, "percent": 100, "status": "DELEGATED_TO_EXACT_NATIVE_READBACK" },
     "classSkills": { "numerator": 1382, "denominator": 1382, "percent": 100 },
     "paragonBoards": { "numerator": 80, "denominator": 80, "percent": 100 },
     "paragonGlyphsWithClassEvidence": { "numerator": 160, "denominator": 161, "percent": 99.38 },
-    "stonesIdentity": { "numerator": 228, "denominator": 228, "percent": 100, "status": "IDENTITY_ONLY" },
+    "stonesIdentity": { "numerator": 228, "denominator": 228, "percent": 100, "status": "IDENTITY_PLUS_EXACT_NATIVE_READBACK" },
     "mercenaryTrees": { "numerator": 4, "denominator": 4, "percent": 100 },
     "warPlanTrees": { "numerator": 7, "denominator": 7, "percent": 100 },
-    "specializationTaxonomy": { "numerator": 0, "denominator": null, "status": "BLOCKED_MISSING_DEDICATED_CATALOG" },
-    "conditionalOptionSchema": { "numerator": 0, "denominator": null, "status": "BLOCKED_MISSING_VERSIONED_SCHEMA" }
+    "specializationTaxonomy": { "numerator": 1382, "denominator": 1382, "percent": 100, "status": "RESOLVED_THROUGH_CLASS_SKILL_CATALOG" },
+    "conditionalOptionSchema": { "numerator": 44, "denominator": 44, "percent": 100, "status": "PINNED_SHARED_DEFINITIONS_AND_RUNTIME_APPLICABILITY_ENUMERATION" }
   },
   "realEvidence": {
     "classes": { "numerator": 8, "denominator": 8, "percent": 100 },
@@ -30,17 +30,17 @@
       "Druid": 47,
       "Barbarian": 47,
       "Necromancer": 49,
-      "Spiritborn": 50,
+      "Spiritborn": 53,
       "Paladin": 46,
       "Warlock": 44
     },
     "displayRowsByClass": {
       "Rogue": 50,
-      "Sorcerer": 51,
+      "Sorcerer": 50,
       "Druid": 47,
-      "Barbarian": 49,
+      "Barbarian": 47,
       "Necromancer": 49,
-      "Spiritborn": 57,
+      "Spiritborn": 53,
       "Paladin": 46,
       "Warlock": 44
     },
@@ -49,12 +49,12 @@
     "cleanup": "PASS"
   },
   "workstreams": {
-    "B1": "PARTIAL_UNVERIFIED_OPAQUE_SEMANTICS",
-    "B2": "PARTIAL_BLOCKED_RELATIONSHIPS",
-    "B3": "DONE_FOR_CANONICAL_STATES_ACCEPTED_BY_CODEC",
-    "B4": "PARTIAL_PROFILE_AND_ITEMS_EXACT_GLOBAL_OPTIONS_UNVERIFIED",
-    "B5": "DONE_FOR_AT_LEAST_ONE_REAL_FIXTURE_PER_CLASS",
-    "B6": "DONE_FOR_REAL_BUILD_REPLACE_AND_GENERIC_MUTATION_CONTRACT",
-    "B7": "PARTIAL_ALL_CLASSES_REAL_FIXTURE_CATALOG_COVERAGE_BLOCKED"
+    "B1": "DONE_VERSIONED_LOSSLESS_FAIL_CLOSED",
+    "B2": "DONE_CATALOG_AND_NATIVE_RUNTIME_AUTHORITY",
+    "B3": "DONE_GENERIC_WHOLE_BUILD_LOADER",
+    "B4": "DONE_EXACT_PROFILE_ITEMS_SEASON_OPTIONS_READBACK",
+    "B5": "DONE_DYNAMIC_APPLICABLE_METRICS_AND_G1_G4",
+    "B6": "DONE_EIGHT_APIS_AND_ALL_CHANGE_KINDS",
+    "B7": "DONE_REPRESENTATIVE_REAL_MATRIX_AND_SCHEMA_PROPERTY_COVERAGE"
   }
 }

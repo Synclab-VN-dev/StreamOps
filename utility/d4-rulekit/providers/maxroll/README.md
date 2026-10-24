@@ -108,11 +108,26 @@ See [`BUILD-FIXTURE-RELEASE.md`](BUILD-FIXTURE-RELEASE.md) for the direct Releas
 checksum, separately provisioned-key workflow, and manifest verification requirements. Plaintext
 fixtures and the ciphertext itself are intentionally absent from Git.
 
-Phase B0 proves a bounded native-to-canonical-to-native vertical slice without wrapping the native
-response or hardcoding either fixture. See [`UNIVERSAL-IMPORT-B0.md`](UNIVERSAL-IMPORT-B0.md) and
-the machine-readable [`UNIVERSAL-IMPORT-B0-COVERAGE.json`](UNIVERSAL-IMPORT-B0-COVERAGE.json).
-This is `B0_VERTICAL_SLICE_PASS / UNIVERSAL_COVERAGE_PENDING`, not a universal-import completion
-claim. The existing eight Application APIs are unchanged.
+Phase B0 established the initial native-to-canonical-to-native slice without wrapping a native
+response or hardcoding either fixture. The current B1-B7 contract and evidence are documented in
+[`UNIVERSAL-IMPORT.md`](UNIVERSAL-IMPORT.md); the historical checkpoint remains in
+[`UNIVERSAL-IMPORT-B0.md`](UNIVERSAL-IMPORT-B0.md).
+
+Issue #134 has a release-pinned local acceptance runner. It downloads the encrypted snapshot plus
+the immutable r01/r02 build/reference packages, verifies every trust anchor, decrypts only inside
+private temporary directories, runs selected bounded suites, and removes plaintext on every exit:
+
+```bash
+npm run acceptance:issue134 -- \
+  --identity /private/fixture.agekey \
+  --age-bin /approved/age \
+  --chromium /approved/chromium \
+  --resume all
+```
+
+`--resume` also accepts comma-separated `static,synthetic,multiclass,mutations,application,regression`.
+The runner never captures or syncs Maxroll and writes only a sanitized ignored report under
+`artifacts/issue134-acceptance.json`.
 
 The owner-triggered multi-class capture command is documented in
 [`MULTICLASS-FIXTURES.md`](MULTICLASS-FIXTURES.md). It captures seven current Season 15 planner

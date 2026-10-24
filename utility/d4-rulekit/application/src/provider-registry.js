@@ -51,13 +51,15 @@ class ProviderRegistry {
 function sanitizeCapabilities(capabilities) {
   if (!capabilities || typeof capabilities.version !== 'string' ||
       !['stateful', 'stateless'].includes(capabilities.stateModel) ||
-      !Array.isArray(capabilities.metricIds) || !Array.isArray(capabilities.changeTypes)) {
+      !Array.isArray(capabilities.metricIds) || !Array.isArray(capabilities.changeTypes) ||
+      !['EXACT', 'DYNAMIC_APPLICABLE'].includes(capabilities.metricCoverage ?? 'EXACT')) {
     throw new ApplicationError(ERROR_CODES.INVALID_INPUT, 'provider capabilities are invalid');
   }
   return {
     version: capabilities.version,
     policyVersion: capabilities.policyVersion ?? null,
     stateModel: capabilities.stateModel,
+    metricCoverage: capabilities.metricCoverage ?? 'EXACT',
     metricIds: [...capabilities.metricIds],
     changeTypes: [...capabilities.changeTypes],
   };
