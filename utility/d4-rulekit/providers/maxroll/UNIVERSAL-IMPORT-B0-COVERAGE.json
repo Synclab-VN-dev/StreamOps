@@ -1,0 +1,213 @@
+{
+  "schemaVersion": "universal-import-coverage/v1",
+  "status": "B0_VERTICAL_SLICE_PASS",
+  "universalCoverage": "PENDING",
+  "snapshot": {
+    "id": "maxroll-20261023T034150Z",
+    "manifestSha256": "638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54",
+    "gamePatch": "3.2.1.73552",
+    "engineAssetSha256": "891c1f82717c50e598450575068394c6d2fe1c8d26de26f2eeed028d028997db",
+    "encryptedFixtureSha256": "94e9bc3c494cdc66f02fd272faf7fcbe59ca3cd68d308acef5c550a05394e107",
+    "gameDataSha256": "889facd9fa21a0a2baba3f8c28d53ac66b6e28a7514994f82ab8f00a3a5e1f93"
+  },
+  "compatibilityContract": {
+    "gamePatch": "3.2.1.73552",
+    "engineIdentity": {
+      "assetSha256": "891c1f82717c50e598450575068394c6d2fe1c8d26de26f2eeed028d028997db"
+    },
+    "catalogIdentity": {
+      "version": "3.2.1.73552",
+      "resourceSha256": "889facd9fa21a0a2baba3f8c28d53ac66b6e28a7514994f82ab8f00a3a5e1f93"
+    },
+    "snapshotIdentity": {
+      "id": "maxroll-20261023T034150Z",
+      "manifestSha256": "638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54"
+    },
+    "policy": "EXACT_MATCH_FAIL_CLOSED"
+  },
+  "catalogInventory": {
+    "classes": 8,
+    "items": 12195,
+    "affixes": 6380,
+    "oldAffixes": 803,
+    "skills": 2910,
+    "skillTrees": 19,
+    "stones": 228,
+    "mercenaries": 4,
+    "warPlans": 7,
+    "paragonBoards": 80,
+    "paragonGlyphs": 161,
+    "paragonNodes": 566,
+    "temperingRecipes": 187,
+    "itemTypes": 160,
+    "itemSets": 45,
+    "attributes": 1693
+  },
+  "coverageSummary": {
+    "requiredCatalogFamiliesPresent": "16/16 (100%)",
+    "b0DeclaredSemanticSectionsRoundTrip": "9/9 (100%)",
+    "engineClassesWithRealRuntimeEvidence": "1/8 (12.5%)",
+    "independentCapturedBuildSources": 1,
+    "capturedProfilesExercised": 2,
+    "universallyCompleteSections": "0/9 (0%)"
+  },
+  "baselineReferenceResolution": {
+    "rogue-midgame": {
+      "classes": "1/1",
+      "items": "17/17",
+      "affixAspectTemperIds": "51/51",
+      "socketEntities": "8/8",
+      "skillBar": "6/6",
+      "skillTreeNodes": "61/61",
+      "paragonBoards": "5/5",
+      "paragonGlyphs": "5/5",
+      "paragonAllocatedNodePositions": "231/231",
+      "mercenaries": "1/1"
+    },
+    "rogue-endgame": {
+      "classes": "1/1",
+      "items": "17/17",
+      "affixAspectTemperIds": "54/54",
+      "socketEntities": "8/8",
+      "skillBar": "6/6",
+      "skillTreeNodes": "61/61",
+      "paragonBoards": "5/5",
+      "paragonGlyphs": "5/5",
+      "mercenaries": "1/1"
+    }
+  },
+  "nativeSchemaClassification": {
+    "buildState": [
+      "profile.class/level/worldTier",
+      "profile.items plus resolved item registry entries",
+      "profile.skillTree active step and skillBar",
+      "profile.paragon active step",
+      "profile.elixirs/specialization/warPlans/mercenary/world",
+      "state.season/options"
+    ],
+    "catalogReferences": [
+      "class IDs",
+      "base item IDs",
+      "affix/aspect/temper nids",
+      "socket entity IDs",
+      "skill and skill-tree node IDs",
+      "Paragon board/node/glyph IDs",
+      "mercenary IDs"
+    ],
+    "runtimeGeneratedMetadata": [
+      "calculation epoch object identity",
+      "raw metric render invocations",
+      "script and response request IDs"
+    ],
+    "loaderMetadata": [
+      "profile response envelope fields outside data",
+      "active profile/loadout positions",
+      "native item-registry reference numbers"
+    ],
+    "calculationNonAffectingObserved": [
+      "profile name/hidden state",
+      "widget/global notes",
+      "loot filters",
+      "embeds",
+      "pinned UI stats",
+      "unselected profile loadouts"
+    ]
+  },
+  "sectionCoverage": [
+    {
+      "section": "identity-level-world-tier-season",
+      "catalogOrSchema": "PRESENT",
+      "b0Codec": "IMPLEMENTED",
+      "realRuntime": "ROGUE_ONLY",
+      "universalStatus": "PENDING_7_OF_8_CLASSES_UNTESTED"
+    },
+    {
+      "section": "equipment-items-affixes-aspects-tempers-sockets-charms",
+      "catalogOrSchema": "PRESENT",
+      "b0Codec": "IMPLEMENTED_FOR_OBSERVED_SHAPES",
+      "realRuntime": "TWO_ROGUE_PROFILES",
+      "universalStatus": "PENDING_SHAPE_AND_LEGAL_COMBINATION_COVERAGE"
+    },
+    {
+      "section": "skills-ranks-skill-bar",
+      "catalogOrSchema": "PRESENT",
+      "b0Codec": "IMPLEMENTED",
+      "realRuntime": "ONE_CLASS_TREE",
+      "universalStatus": "PENDING_OTHER_CLASS_TREES"
+    },
+    {
+      "section": "paragon-boards-nodes-glyphs",
+      "catalogOrSchema": "PRESENT",
+      "b0Codec": "IMPLEMENTED",
+      "realRuntime": "ONE_CLASS_BOARD_SET",
+      "universalStatus": "PENDING_OTHER_CLASS_BOARD_SETS_AND_BOUNDARIES"
+    },
+    {
+      "section": "runes-gems",
+      "catalogOrSchema": "PRESENT_AS_STONES_OR_ITEMS",
+      "b0Codec": "PRESERVED_AS_SOCKET_ENTITY_IDS",
+      "realRuntime": "ROGUE_ONLY",
+      "universalStatus": "PENDING_TAXONOMY_CLASSIFICATION"
+    },
+    {
+      "section": "specialization",
+      "catalogOrSchema": "NATIVE_FIELD_PRESENT_NO_DEDICATED_CATALOG_FOUND",
+      "b0Codec": "OPAQUE_PRESERVE",
+      "realRuntime": "ROGUE_ONLY",
+      "universalStatus": "BLOCKED_SEMANTIC_ENTITY_MAPPING"
+    },
+    {
+      "section": "mercenary",
+      "catalogOrSchema": "PRESENT",
+      "b0Codec": "IMPLEMENTED",
+      "realRuntime": "ONE_MERCENARY_CONFIGURATION",
+      "universalStatus": "PENDING_TREE_AND_SUPPORT_COMBINATION_COVERAGE"
+    },
+    {
+      "section": "war-plans",
+      "catalogOrSchema": "PRESENT",
+      "b0Codec": "OPAQUE_PRESERVE",
+      "realRuntime": "EMPTY_CHOICES_ONLY",
+      "universalStatus": "BLOCKED_NONEMPTY_NATIVE_SHAPE_EVIDENCE"
+    },
+    {
+      "section": "conditional-calculation-options",
+      "catalogOrSchema": "NATIVE_OPTIONS_PRESENT",
+      "b0Codec": "OPAQUE_PRESERVE",
+      "realRuntime": "ROGUE_FIXTURE_OPTIONS_ONLY",
+      "universalStatus": "BLOCKED_VERSIONED_OPTION_SCHEMA"
+    }
+  ],
+  "nonBuildNativeState": [
+    "profile name/hidden state",
+    "widget/global notes",
+    "loot filters",
+    "embeds",
+    "pinned UI stats",
+    "unselected profile loadouts"
+  ],
+  "nestedFieldPolicy": {
+    "transformedObjects": "ALLOWLIST_AND_REJECT_UNKNOWN",
+    "transformedObjectFamilies": [
+      "items",
+      "item modifiers",
+      "Paragon boards",
+      "mercenary"
+    ],
+    "opaquePreservedObjects": [
+      "calculation options",
+      "world progression",
+      "War Plans payloads",
+      "elixir payloads",
+      "Paragon board position",
+      "modifier values"
+    ]
+  },
+  "knownBlockers": [
+    "No independently authorized non-Rogue fixture exists in the approved snapshot.",
+    "The snapshot has catalogs but no standalone canonical schema or legal-combination specification.",
+    "Specialization and conditional option IDs lack a proven dedicated semantic catalog mapping.",
+    "Non-empty War Plans and cross-class native shapes have not been observed through runtime read-back.",
+    "A neutral loader response envelope independent of captured profile metadata remains unverified."
+  ]
+}

@@ -183,6 +183,43 @@ function loaderMetadata(response) {
   return Object.fromEntries(Object.entries(response).filter(([key]) => key !== 'data'));
 }
 
+function createNativeBuildExport({ response, state, parsedUrl, profile, provenance }) {
+  validateNativeState(state);
+  const selection = selectProfile(state, profile, parsedUrl.fragmentProfile);
+  const nativeState = structuredClone(state);
+  nativeState.activeProfile = selection.index;
+  validateNativeState(nativeState);
+  const selectedProfile = nativeState.profiles[selection.index];
+  const nativeStateSha256 = sha256(Buffer.from(serialize(nativeState)));
+  return {
+    schemaVersion: EXPORT_SCHEMA_VERSION,
+    format: 'MAXROLL_NATIVE_STATE',
+    provenance: {
+      requestedUrl: parsedUrl.requestedUrl,
+      sourceUrl: parsedUrl.sourceUrl,
+      plannerId: parsedUrl.plannerId,
+      ...provenance,
+    },
+    selection: {
+      profileIndex: selection.index,
+      selectedBy: selection.selectedBy,
+      profileName: selectedProfile.name,
+      class: response.class ?? null,
+      nativeClassId: selectedProfile.class ?? null,
+      level: selectedProfile.level,
+      worldTier: selectedProfile.worldTier ?? null,
+      equipmentReferences: Object.values(selectedProfile.items).filter(Boolean).length,
+      sections: sectionPresence(selectedProfile),
+    },
+    loaderMetadata: loaderMetadata(response),
+    nativeState,
+    integrity: {
+      algorithm: 'sha256',
+      nativeStateSha256,
+    },
+  };
+}
+
 async function loadSource(options) {
   validateOptions(options);
   const parsedUrl = parsePlannerUrl(options.url);
@@ -244,20 +281,13 @@ async function listMaxrollBuildProfilesFromSnapshot(options) {
 async function exportMaxrollBuildFromSnapshot(options) {
   validateOptions(options, { requireOutput: true });
   const source = await loadSource(options);
-  const selection = selectProfile(source.state, options.profile, source.parsedUrl.fragmentProfile);
-  const nativeState = structuredClone(source.state);
-  nativeState.activeProfile = selection.index;
-  validateNativeState(nativeState);
-  const selectedProfile = nativeState.profiles[selection.index];
-  const nativeStateSha256 = sha256(Buffer.from(serialize(nativeState)));
-  const output = {
-    schemaVersion: EXPORT_SCHEMA_VERSION,
-    format: 'MAXROLL_NATIVE_STATE',
+  const output = createNativeBuildExport({
+    response: source.response,
+    state: source.state,
+    parsedUrl: source.parsedUrl,
+    profile: options.profile,
     provenance: {
       source: 'APPROVED_OFFLINE_SNAPSHOT',
-      requestedUrl: source.parsedUrl.requestedUrl,
-      sourceUrl: source.parsedUrl.sourceUrl,
-      plannerId: source.parsedUrl.plannerId,
       snapshotId: source.manifest.snapshotId,
       snapshotCapturedAt: source.manifest.capturedAt,
       snapshotManifestSha256: source.verified.manifestSha256,
@@ -266,24 +296,8 @@ async function exportMaxrollBuildFromSnapshot(options) {
       runtimeAssetUrl: source.runtimeAsset.url,
       runtimeAssetSha256: source.runtimeAsset.sha256,
     },
-    selection: {
-      profileIndex: selection.index,
-      selectedBy: selection.selectedBy,
-      profileName: selectedProfile.name,
-      class: source.response.class ?? null,
-      nativeClassId: selectedProfile.class ?? null,
-      level: selectedProfile.level,
-      worldTier: selectedProfile.worldTier ?? null,
-      equipmentReferences: Object.values(selectedProfile.items).filter(Boolean).length,
-      sections: sectionPresence(selectedProfile),
-    },
-    loaderMetadata: loaderMetadata(source.response),
-    nativeState,
-    integrity: {
-      algorithm: 'sha256',
-      nativeStateSha256,
-    },
-  };
+  });
+  const nativeStateSha256 = output.integrity.nativeStateSha256;
   const bytes = Buffer.from(serialize(output));
   const outputPath = path.resolve(options.outputPath);
   await writeAtomicExclusive(outputPath, bytes);
@@ -319,6 +333,13 @@ async function writeAtomicExclusive(outputPath, bytes) {
 
 module.exports = {
   EXPORT_SCHEMA_VERSION,
+  createNativeBuildExport,
   exportMaxrollBuildFromSnapshot,
   listMaxrollBuildProfilesFromSnapshot,
+  parseNativeResponse,
+  parsePlannerUrl,
+  selectProfile,
+  serialize,
+  validateNativeState,
+  writeAtomicExclusive,
 };

@@ -434,9 +434,15 @@ class D4RuleKitApplication {
       }, options);
       const actualIds = new Set(output.metrics.map(metric => metric.id));
       const missingIds = (session.capabilities.metricIds ?? []).filter(id => !actualIds.has(id));
-      if (missingIds.length > 0) {
+      const metricCoverage = session.capabilities.metricCoverage ?? 'EXACT';
+      const unknownIds = metricCoverage === 'DYNAMIC_APPLICABLE'
+        ? [...actualIds].filter(id => !(session.capabilities.metricIds ?? []).includes(id)) : [];
+      if (missingIds.length > 0 && metricCoverage === 'EXACT' || unknownIds.length > 0) {
         throw new ApplicationError(ERROR_CODES.PROVIDER_FAILURE, 'provider metric coverage mismatch', {
-          details: { expected: session.capabilities.metricIds.length, actual: actualIds.size, missingIds },
+          details: {
+            coverage: metricCoverage, expected: session.capabilities.metricIds.length,
+            actual: actualIds.size, missingIds, unknownIds,
+          },
         });
       }
       return output;

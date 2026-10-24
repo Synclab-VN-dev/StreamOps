@@ -5,7 +5,119 @@ export type MaxrollProviderErrorCode =
   | 'TIMEOUT' | 'CANCELLED' | 'CLEANUP_FAILED'
   | 'PROFILE_NOT_IN_SNAPSHOT' | 'PROFILE_VARIANT_NOT_FOUND'
   | 'NATIVE_BUILD_INVALID' | 'OUTPUT_EXISTS' | 'EXPORT_FAILED'
-  | 'ENGINE_IDENTITY_UNVERIFIED' | 'INPUT_READBACK_UNVERIFIED' | 'OUTPUT_NOT_LINKED';
+  | 'ENGINE_IDENTITY_UNVERIFIED' | 'INPUT_READBACK_UNVERIFIED' | 'OUTPUT_NOT_LINKED'
+  | 'CANONICAL_BUILD_INVALID' | 'CANONICAL_MAPPING_INCOMPLETE' | 'ENTITY_NOT_FOUND'
+  | 'ILLEGAL_COMBINATION';
+
+export const CANONICAL_SCHEMA_VERSION: 'd4-build/v1';
+export const CODEC_VERSION: 'maxroll-native/3.2.1.73552-D12aM6KT-v1';
+export const D12_COMPATIBILITY: Readonly<{
+  gamePatch: '3.2.1.73552';
+  snapshotId: 'maxroll-20261023T034150Z';
+  snapshotManifestSha256: string;
+  engineAssetSha256: string;
+  catalogVersion: '3.2.1.73552';
+  catalogResourceSha256: string;
+}>;
+
+export interface CanonicalD4Build {
+  readonly schemaVersion: 'd4-build/v1';
+  readonly game: Readonly<{ id: 'diablo-iv'; patch: '3.2.1.73552' }>;
+  readonly character: Readonly<{ classId: string; level: number; worldTier: number }>;
+  readonly equipment: Readonly<{ slots: readonly CanonicalEquipmentSlot[] }>;
+  readonly skills: Readonly<{ allocations: readonly CanonicalRankAllocation[];
+    bar: readonly (string | null)[] }>;
+  readonly paragon: Readonly<{ boards: readonly CanonicalParagonBoard[] }>;
+  readonly effects: CanonicalEffects;
+  readonly world: Readonly<{ renownSkills?: number; renownParagon?: number }>;
+  readonly calculationContext: Readonly<{ season: 15;
+    options: Readonly<Record<string, CanonicalCalculationOption>> }>;
+  readonly provenance?: Readonly<{ codecVersion?: string;
+    sourceNativeStateSha256?: string | null; source?: string }>;
+}
+
+export interface CanonicalModifier { readonly entityId: string; readonly values: readonly number[];
+  readonly greater?: boolean; readonly hidden?: boolean; readonly uniquePriority?: number;
+  readonly upgradeRank?: number }
+export interface CanonicalItem { readonly baseItemId: string; readonly itemPower: number;
+  readonly affixes: readonly CanonicalModifier[]; readonly implicits: readonly CanonicalModifier[];
+  readonly aspects: readonly CanonicalModifier[]; readonly tempers: readonly CanonicalModifier[];
+  readonly sockets: readonly Readonly<{ entityId: string }>[]; readonly customName?: string;
+  readonly upgradeRank?: number; readonly mythic?: boolean }
+export interface CanonicalEquipmentSlot { readonly slotId: string; readonly item: CanonicalItem }
+export interface CanonicalRankAllocation { readonly nodeId: string; readonly rank: number }
+export interface CanonicalValueAllocation { readonly nodeId: string;
+  readonly value: boolean | 0 | 1 }
+export interface CanonicalParagonBoard { readonly boardId: string; readonly rotation: 0 | 1 | 2 | 3;
+  readonly allocations: readonly CanonicalValueAllocation[]; readonly position?: Readonly<Record<string, unknown>>;
+  readonly glyph?: Readonly<{ glyphId: string; level: number }> }
+export type CanonicalCalculationOption = Readonly<{ active?: boolean; flags?: readonly boolean[];
+  params?: readonly (number | string)[] }> | Readonly<Record<string, boolean | number | string>>;
+export interface CanonicalEffects extends Readonly<Record<string, unknown>> {
+  readonly elixirs: readonly (string | number)[];
+  readonly warPlans: readonly Readonly<Record<string, boolean | 0 | 1>>[];
+}
+
+export class MaxrollEntityCatalog {
+  constructor(data: Readonly<Record<string, unknown>>, provenance?: Readonly<Record<string, unknown>>,
+    runtimeDefinitions?: Readonly<Record<string, unknown>>);
+  readonly counts: Readonly<Record<string, number>>;
+  readonly provenance: Readonly<Record<string, unknown>>;
+  coverageInventory(): Readonly<Record<string, unknown>>;
+  auditCoverage(): Readonly<Record<string, unknown>>;
+  metricCatalog(classId?: string | number | null): readonly MetricDefinition[];
+  firstEquippable(classId: string | number): Readonly<{ itemId: string; slotId: string }>;
+  starterParagonBoard(classId: string | number): string;
+  optionReadbackDefinitions(): Readonly<Record<string, unknown>>;
+  canonicalCalculationOptions(options: Readonly<Record<string, unknown>>):
+    Readonly<Record<string, unknown>>;
+}
+
+export class MaxrollD12CanonicalCodec {
+  constructor(options: Readonly<{ catalog: MaxrollEntityCatalog }>);
+  nativeToCanonical(fixture: Readonly<Record<string, unknown>>): CanonicalD4Build;
+  canonicalToNative(build: CanonicalD4Build): Readonly<Record<string, unknown>>;
+  runtimeStateToCanonical(runtimeState: Readonly<Record<string, unknown>>,
+    provenance?: CanonicalD4Build['provenance']): CanonicalD4Build;
+  loaderIdentity(build: CanonicalD4Build): Readonly<{ className: string; season: number }>;
+}
+
+export const CHANGE_TYPES: readonly string[];
+export class UniversalMaxrollBuildMapper {
+  constructor(profile: Readonly<Record<string, unknown>>, options: Readonly<{
+    codec: MaxrollD12CanonicalCodec;
+  }>);
+  map(build: CanonicalD4Build, changes: readonly Readonly<Record<string, unknown>>[],
+    buildSchemaVersion: string): Readonly<Record<string, unknown>>;
+}
+export class UniversalMaxrollComponentFactory {
+  constructor(options: Readonly<{
+    codec: MaxrollD12CanonicalCodec;
+    plannerId: string;
+    profileUrl: string;
+  }>);
+}
+export class NativeStateMaxrollRuntimeAdapter {
+  constructor(options: Readonly<Record<string, unknown>>);
+}
+export function createD12NativeLoaderMetadata(options: Readonly<{
+  plannerId: string;
+  className: string;
+  season: number;
+}>): Readonly<Record<string, unknown>>;
+
+export function loadMaxrollEntityCatalog(options: Readonly<{
+  snapshotRoot: string;
+  snapshotId: string;
+  expectedManifestSha256: string;
+  store?: unknown;
+}>): Promise<MaxrollEntityCatalog>;
+
+export function createMaxroll32173552D12aM6KTUniversalProfile(
+  config: MaxrollPatchProfileConfig | (Omit<MaxrollPatchProfileConfig, 'metricCatalog'> & {
+    catalog: MaxrollEntityCatalog;
+  }),
+): MaxrollPatchProfile;
 
 export interface MaxrollBuildAttestationOptions {
   readonly inputPath: string;
@@ -63,6 +175,22 @@ export function listMaxrollBuildProfilesFromSnapshot(
   options: MaxrollBuildProfileInventoryOptions,
 ): Promise<Readonly<Record<string, unknown>>>;
 
+export const CLASS_FIXTURE_SCHEMA_VERSION: 'maxroll-class-fixture-capture/v1';
+export const MATRIX_SCHEMA_VERSION: 'maxroll-class-fixture-matrix/v1';
+export class MaxrollClassFixtureCapturer {
+  constructor(dependencies?: Readonly<Record<string, unknown>>);
+  capture(options: Readonly<{
+    outputRoot: string;
+    snapshotRoot: string;
+    snapshotId: string;
+    expectedManifestSha256: string;
+    chromiumExecutablePath: string;
+    matrix: Readonly<Record<string, unknown>>;
+    reuseRoot?: string;
+    timeoutMs?: number;
+  }>): Promise<Readonly<Record<string, unknown>>>;
+}
+
 export interface MetricDefinition {
   readonly id: string;
   readonly internalId: number;
@@ -81,6 +209,7 @@ export interface MaxrollPatchProfileConfig {
   assetUrl: string;
   assetSha256: string;
   metricCatalog: readonly MetricDefinition[];
+  metricCoverage?: 'EXACT' | 'DYNAMIC_APPLICABLE';
   supportedBuildSchemaVersion?: string;
   supportedChangeTypes?: readonly string[];
   provenanceSource?: string;
@@ -173,6 +302,7 @@ export class MaxrollPatchProfile {
   readonly assetUrl: string;
   readonly assetSha256: string;
   readonly metricCatalog: readonly MetricDefinition[];
+  readonly metricCoverage: 'EXACT' | 'DYNAMIC_APPLICABLE';
   readonly supportedBuildSchemaVersion: string;
   readonly runtimeKind: 'synthetic-dom-v1' | 'maxroll-ui-cdp-v1';
   readonly realRuntime?: Readonly<Record<string, unknown>>;

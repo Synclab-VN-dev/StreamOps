@@ -65,6 +65,44 @@ test('APP-R3 incomplete provider metric coverage fails and is never cached', asy
   assert.equal(evaluations, 2);
 });
 
+test('dynamic applicable metric coverage accepts a runtime-proven subset', async () => {
+  const provider = {
+    id: 'dynamic.synthetic', version: '1',
+    getCapabilities: () => ({
+      ...capabilities('stateless', ['synthetic.one', 'synthetic.two']),
+      metricCoverage: 'DYNAMIC_APPLICABLE',
+    }),
+    createSession: async () => ({
+      evaluate: async ({ build }) => ({ build, metrics: [metric('synthetic.two')] }),
+      close: async () => {},
+    }),
+  };
+  const app = new D4RuleKitApplication({ providers: [provider] });
+  assert.equal(app.listProviders()[0].capabilities.metricCoverage, 'DYNAMIC_APPLICABLE');
+  const session = await app.createSession(createOptions('dynamic.synthetic', '1'));
+  const result = await app.evaluate(session.sessionId);
+  assert.deepEqual(result.metrics.map(entry => entry.id), ['synthetic.two']);
+  await app.closeSession(session.sessionId);
+});
+
+test('dynamic applicable metric coverage rejects IDs outside its pinned universe', async () => {
+  const provider = {
+    id: 'dynamic-unknown.synthetic', version: '1',
+    getCapabilities: () => ({
+      ...capabilities('stateless', ['synthetic.one']), metricCoverage: 'DYNAMIC_APPLICABLE',
+    }),
+    createSession: async () => ({
+      evaluate: async ({ build }) => ({ build, metrics: [metric('synthetic.unknown')] }),
+      close: async () => {},
+    }),
+  };
+  const app = new D4RuleKitApplication({ providers: [provider] });
+  const session = await app.createSession(createOptions('dynamic-unknown.synthetic', '1'));
+  await assert.rejects(app.evaluate(session.sessionId), error =>
+    error.code === ERROR_CODES.PROVIDER_FAILURE
+      && error.details?.unknownIds?.[0] === 'synthetic.unknown');
+});
+
 test('APP-R4 stateful evaluate failure restores checkpoint before reuse', async () => {
   let state = structuredClone(BASE_BUILD);
   let fail = false;

@@ -88,8 +88,9 @@ async function verifiedSnapshot(options) {
   return { store, verified, snapshotPackage, runtimeBytes: body.length };
 }
 
-function compareCaptures(source, replay) {
-  for (const capture of [source, replay]) validateCaptureEvidence(capture);
+function compareCaptures(source, replay, options = {}) {
+  validateCaptureEvidence(source, { requireZeroEgress: options.sourceOnline !== true });
+  validateCaptureEvidence(replay);
   if (source.captureId === replay.captureId
       || source.phase.inputProfileSha256 !== replay.phase.inputProfileSha256
       || source.phase.inputItemsSha256 !== replay.phase.inputItemsSha256
@@ -104,9 +105,10 @@ function compareCaptures(source, replay) {
   const replayRaw = metricsBy(replay.rawMetrics, 'metricId', 'rawValue');
   const display = metricsBy(source.displayMetrics, 'labelAnchor', 'displayValue');
   const replayDisplay = metricsBy(replay.displayMetrics, 'labelAnchor', 'displayValue');
-  if (source.rawMetrics.length !== 50 || replay.rawMetrics.length !== 50
-      || raw.size !== 50 || replayRaw.size !== 50) {
-    throw fail(ERROR_CODES.METRICS_INCOMPLETE, 'attestation requires 50 unique raw metrics');
+  if (source.rawMetrics.length === 0 || replay.rawMetrics.length !== source.rawMetrics.length
+      || raw.size !== source.rawMetrics.length || replayRaw.size !== replay.rawMetrics.length) {
+    throw fail(ERROR_CODES.METRICS_INCOMPLETE,
+      'attestation requires equal non-empty unique source/replay raw metric vectors');
   }
   for (const [id, value] of raw) {
     if (!replayRaw.has(id) || !Object.is(replayRaw.get(id), value)) {
@@ -127,7 +129,7 @@ function compareCaptures(source, replay) {
   });
 }
 
-function validateCaptureEvidence(capture) {
+function validateCaptureEvidence(capture, options = {}) {
   if (capture.engine?.status !== 'EXECUTED'
       || !capture.engine.scriptId
       || capture.engine.scriptId !== capture.engine.pauseScriptId
@@ -142,17 +144,33 @@ function validateCaptureEvidence(capture) {
     throw fail(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
       'capture is not linked to exact runtime semantic read-back');
   }
-  if (!capture.captureId || capture.phase.captureId !== capture.captureId
-      || !capture.phase.epochIdentitySha256
-      || capture.phase.epochIdentitySource !== 'CDP_RUNTIME_OBJECT_IDENTITY:l.context'
-      || capture.phase.coherentMetricCount !== 50
-      || capture.phase.firstMetricPauseOrdinal < capture.phase.matchedPauseOrdinal
-      || capture.phase.lastMetricPauseOrdinal < capture.phase.firstMetricPauseOrdinal) {
-    throw fail(ERROR_CODES.STALE_METRICS,
-      'capture phase does not prove fresh output after matching input');
+  const phaseFailures = [];
+  if (!capture.captureId) phaseFailures.push('captureId');
+  if (capture.phase?.captureId !== capture.captureId) phaseFailures.push('phase.captureId');
+  if (!capture.phase?.epochIdentitySha256) phaseFailures.push('epochIdentitySha256');
+  if (capture.phase?.epochIdentitySource !== 'CDP_RUNTIME_OBJECT_IDENTITY:l.context') {
+    phaseFailures.push('epochIdentitySource');
   }
-  if (capture.network?.externalEgressCompleted !== 0
-      || capture.network?.webSocketHandshakes !== 0) {
+  const expectedMetricCount = capture.phase?.expectedMetricCount ?? 50;
+  if (capture.phase?.coherentMetricCount !== expectedMetricCount) {
+    phaseFailures.push('coherentMetricCount');
+  }
+  if (capture.phase?.firstMetricPauseOrdinal < capture.phase?.matchedPauseOrdinal) {
+    phaseFailures.push('firstMetricPauseOrdinal');
+  }
+  if (capture.phase?.lastMetricPauseOrdinal < capture.phase?.firstMetricPauseOrdinal) {
+    phaseFailures.push('lastMetricPauseOrdinal');
+  }
+  if (phaseFailures.length) {
+    throw fail(ERROR_CODES.STALE_METRICS,
+      'capture phase does not prove fresh output after matching input', {
+        phaseFailures,
+        phase: capture.phase ?? null,
+      });
+  }
+  if (options.requireZeroEgress !== false
+      && (capture.network?.externalEgressCompleted !== 0
+      || capture.network?.webSocketHandshakes !== 0)) {
     throw fail(ERROR_CODES.OUTPUT_NOT_LINKED,
       'offline capture completed external network egress');
   }
@@ -371,5 +389,7 @@ module.exports = {
   ATTESTATION_SCHEMA_VERSION,
   attestMaxrollBuildFixture,
   compareCaptures,
+  runCapture,
+  verifiedSnapshot,
   validateCaptureEvidence,
 };

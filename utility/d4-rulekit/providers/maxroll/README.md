@@ -1,5 +1,9 @@
 # Maxroll Calculation Provider
 
+Universal canonical/native import status and its measured coverage are documented in
+[`UNIVERSAL-IMPORT.md`](./UNIVERSAL-IMPORT.md) and
+[`UNIVERSAL-IMPORT-COVERAGE.json`](./UNIVERSAL-IMPORT-COVERAGE.json).
+
 Build export and engine/input/output attestation are documented in
 [`BUILD-EXPORT.md`](./BUILD-EXPORT.md) and
 [`BUILD-ATTESTATION.md`](./BUILD-ATTESTATION.md).
@@ -103,6 +107,50 @@ The two GB-E1-ATT input/output pairs are available only as a pinned age-encrypte
 See [`BUILD-FIXTURE-RELEASE.md`](BUILD-FIXTURE-RELEASE.md) for the direct Release links, ciphertext
 checksum, separately provisioned-key workflow, and manifest verification requirements. Plaintext
 fixtures and the ciphertext itself are intentionally absent from Git.
+
+Phase B0 established the initial native-to-canonical-to-native slice without wrapping a native
+response or hardcoding either fixture. The current B1-B7 contract and evidence are documented in
+[`UNIVERSAL-IMPORT.md`](UNIVERSAL-IMPORT.md); the historical checkpoint remains in
+[`UNIVERSAL-IMPORT-B0.md`](UNIVERSAL-IMPORT-B0.md).
+
+Issue #134 has a release-pinned local acceptance runner. It downloads the encrypted snapshot plus
+the immutable r01/r02 build/reference packages, verifies every trust anchor, decrypts only inside
+private temporary directories, runs selected bounded suites, and removes plaintext on every exit:
+
+```bash
+npm run acceptance:issue134 -- \
+  --identity /private/fixture.agekey \
+  --age-bin /approved/age \
+  --chromium /approved/chromium \
+  --resume all
+```
+
+`--resume` also accepts comma-separated `static,synthetic,multiclass,mutations,application,regression`.
+`--resume all` always runs all eight real mutation shards and ignores inherited
+`MAXROLL_TEST_CLASS`. For targeted debugging, select the mutation group and classes explicitly:
+
+```bash
+npm run acceptance:issue134 -- \
+  --identity /private/fixture.agekey \
+  --age-bin /path/to/age \
+  --chromium /path/to/chromium \
+  --resume mutations \
+  --mutation-classes Rogue,Sorcerer
+```
+
+Targeted runs report `PARTIAL_PASS`; only an unfiltered `--resume all` can report `FULL_PASS`.
+Every mutation class is a separate bounded shard. Missing, failed or timed-out shards fail the
+aggregate rather than being treated as skipped acceptance.
+The runner never captures or syncs Maxroll and writes only a sanitized ignored report under
+`artifacts/issue134-acceptance.json`.
+
+The owner-triggered multi-class capture command is documented in
+[`MULTICLASS-FIXTURES.md`](MULTICLASS-FIXTURES.md). It captures seven current Season 15 planner
+sources read-only, verifies their executing engine, replays each through the pinned offline
+snapshot, and combines them with the verified Rogue evidence for 8/8 class coverage. Fixture
+plaintext remains outside Git. The resulting eight pairs are distributed only through the pinned
+age-encrypted artifact documented in
+[`MULTICLASS-FIXTURE-RELEASE.md`](MULTICLASS-FIXTURE-RELEASE.md).
 
 The pinned CI test fixture is published only as an age/X25519-encrypted ZIP plus its ciphertext
 checksum. `npm run fixture:encrypted` verifies the source snapshot, packages/encrypts it, or

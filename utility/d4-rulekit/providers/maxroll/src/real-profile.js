@@ -5,6 +5,9 @@ const { MaxrollPatchProfile } = require('./patch-profile');
 const { RealMaxrollMetricsExtractor } = require('./real-metrics-extractor');
 const { RealMaxrollRuntimeAdapter } = require('./real-runtime-adapter');
 const { MaxrollBuildMapper } = require('./build-mapper');
+const { D12_SHARED_OPTION_DEFINITIONS } = require('./d12-shared-options');
+const { D12_OPTION_READBACK_RULES } = require('./d12-option-readback');
+const { METRIC_CATALOG } = require('./metric-catalog');
 
 const MAXROLL_32173552_REFERENCE = Object.freeze({
   gamePatch: '3.2.1.73552',
@@ -43,9 +46,56 @@ function createMaxroll32173552D12aM6KTCandidateProfile(config) {
     discardChangesPrompt: 'Discard unsaved changes and start from a blank profile?',
     discardChangesDialogSelector: '[class*="_Dialog_"]',
     discardChangesConfirmButton: 'Yes',
+    inputStateBreakpoint: Object.freeze({ lineNumber: 670, columnNumber: 42067 }),
+    inputStateReadbackExpression:
+      '({profile:JSON.parse(JSON.stringify(N)),options:JSON.parse(JSON.stringify(T||{}))})',
+    inputStateEpochExpression: 'K.context',
     attestationReadbackExpression:
-      '({profile:JSON.parse(JSON.stringify(l.profile)),items:JSON.parse(JSON.stringify(l.items))})',
+      '({profile:JSON.parse(JSON.stringify(l.profile)),items:JSON.parse(JSON.stringify(l.items)),'
+      + 'optionEntries:JSON.parse(JSON.stringify(l.optionEntries||[])),'
+      + 'contextPrimitives:(()=>{const out={},seen=new WeakSet();const walk=(value,path,depth)=>{'
+      + 'if(!value||typeof value!=="object"||depth>4||seen.has(value))return;seen.add(value);'
+      + 'for(const [key,child] of Object.entries(value)){const next=path?path+"."+key:key;'
+      + 'if(["boolean","number","string"].includes(typeof child))out[next]=child;'
+      + 'else walk(child,next,depth+1)}};walk(l.context||{},"",0);return out})()})',
     calculationEpochExpression: 'l.context',
+    sharedOptionReadback: D12_SHARED_OPTION_DEFINITIONS,
+    metricDisplayCatalog: METRIC_CATALOG,
+    displayOnlyMetricInventory: Object.freeze([
+      ['summary', 'Damage'], ['summary', 'Poison Damage'], ['summary', 'Ring Damage'],
+      ['summary', 'Shrapnel Damage'], ['summary', 'Swarm Damage'],
+      ['summary', 'Swarm Poison Damage'], ['utility', 'Maximum Ferocity'],
+      ['utility', 'Maximum Resolve'],
+    ].map(([section, label]) => Object.freeze({ section, label,
+      reason: 'pinned-D12-runtime-ui-row-without-heroDetails-id' }))),
+  });
+}
+
+function createMaxroll32173552D12aM6KTUniversalProfile(config) {
+  const metricCatalog = config?.metricCatalog ?? config?.catalog?.metricCatalog?.();
+  const optionReadbackDefinitions = config?.realRuntime?.optionReadbackDefinitions
+    ?? Object.fromEntries(Object.entries(config?.catalog?.optionReadbackDefinitions?.() ?? {})
+      .map(([optionId, definition]) => [optionId,
+        { ...definition, ...(D12_OPTION_READBACK_RULES[optionId] ?? {}) }]));
+  const { catalog: _catalog, ...profileConfig } = config ?? {};
+  return createMaxroll32173552D12aM6KTCandidateProfile({
+    ...profileConfig,
+    metricCatalog,
+    providerVersion: profileConfig.providerVersion
+      ?? 'maxroll-provider/3.2.1.73552-D12aM6KT-universal-v1',
+    supportedBuildSchemaVersion: 'd4-build/v1',
+    supportedChangeTypes: [
+      'build.replace', 'equipment.setSlot', 'skill.setRank', 'paragon.setBoards',
+      'effect.set', 'calculationOption.set',
+    ],
+    capabilityRestrictions: {
+      gamePatch: '3.2.1.73552',
+      classes: 'catalog-driven:8',
+      authorizedSnapshotRequired: true,
+      coverageStatus: 'BLOCKED_COVERAGE',
+    },
+    metricCoverage: 'DYNAMIC_APPLICABLE',
+    realRuntime: { ...profileConfig.realRuntime, optionReadbackDefinitions },
   });
 }
 
@@ -94,6 +144,16 @@ function createRealProfile(config, reference, strategy) {
       gamePatchPattern: 'Game version:\\s*([^\\n]+)',
       attestationReadbackExpression: strategy.attestationReadbackExpression ?? null,
       calculationEpochExpression: strategy.calculationEpochExpression ?? null,
+      inputStateBreakpoint: strategy.inputStateBreakpoint ?? null,
+      inputStateReadbackExpression: strategy.inputStateReadbackExpression ?? null,
+      inputStateEpochExpression: strategy.inputStateEpochExpression ?? null,
+      sharedOptionReadback: strategy.sharedOptionReadback ?? null,
+      metricDisplayCatalog: strategy.metricDisplayCatalog ?? null,
+      displayOnlyMetricInventory: strategy.displayOnlyMetricInventory ?? [],
+      statsWidgetSelector: '.StatsTest',
+      effectsTabLabel: 'Effects',
+      settingsGroupSelector: 'div[class*="settings_Group__1UIcq"]',
+      settingsGroupTitleSelector: ':scope > div[class*="settings_Group__title"]',
       classPattern: 'Class\\s*\\n([^\\n]+)',
       difficultyPattern: 'Stats\\s*\\n([^\\n]+)',
       categoryLabels: {
@@ -117,5 +177,6 @@ module.exports = {
   MAXROLL_32173552_REFERENCE,
   REAL_MAXROLL_COMPONENT_FACTORY,
   createMaxroll32173552D12aM6KTCandidateProfile,
+  createMaxroll32173552D12aM6KTUniversalProfile,
   createMaxroll32173552RealProfile,
 };

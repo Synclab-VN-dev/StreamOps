@@ -14,6 +14,7 @@ class MaxrollPatchProfile {
         !/^[a-f0-9]{64}$/i.test(config.snapshotManifestSha256) ||
         !/^[a-f0-9]{64}$/i.test(config.assetSha256) ||
         !Array.isArray(config.metricCatalog) || config.metricCatalog.length === 0 ||
+        !['EXACT', 'DYNAMIC_APPLICABLE'].includes(config.metricCoverage ?? 'EXACT') ||
         !['synthetic-dom-v1', 'maxroll-ui-cdp-v1'].includes(runtimeKind)) {
       throw new MaxrollProviderError(ERROR_CODES.INVALID_CONFIG, 'invalid Maxroll patch profile');
     }
@@ -38,6 +39,9 @@ class MaxrollPatchProfile {
       runtimeKind,
       supportedBuildSchemaVersion: config.supportedBuildSchemaVersion ?? 'maxroll-build/rogue-l50-v1',
       supportedChangeTypes: config.supportedChangeTypes ?? ['effect.set'],
+      capabilityRestrictions: config.capabilityRestrictions ?? {
+        class: 'Rogue', level: 50, difficulty: 'Torment I',
+      },
       provenanceSource: config.provenanceSource ?? 'MAXROLL_CDP_RUNTIME',
       displayProvenanceSource: config.displayProvenanceSource ?? 'MAXROLL_UI_DOM',
     }));
@@ -49,10 +53,11 @@ class MaxrollPatchProfile {
       version: `maxroll-capabilities/${this.providerVersion}`,
       policyVersion: `maxroll-profile/${this.runtimeVersion}`,
       stateModel: 'stateful',
+      metricCoverage: this.metricCoverage ?? 'EXACT',
       metricIds: this.metricCatalog.map(metric => metric.id),
       changeTypes: [...this.supportedChangeTypes],
       restrictions: {
-        class: 'Rogue', level: 50, difficulty: 'Torment I',
+        ...this.capabilityRestrictions,
         buildSchemaVersion: this.supportedBuildSchemaVersion,
         authorizedSnapshotRequired: true,
         runtimeKind: this.runtimeKind,
@@ -74,6 +79,10 @@ function validateRealRuntime(runtime, metricCatalogLength) {
       !Number.isInteger(runtime.expectedRawMetrics) || runtime.expectedRawMetrics <= 0 ||
       runtime.expectedRawMetrics !== metricCatalogLength ||
       !Number.isFinite(runtime.captureTimeoutMs) || runtime.captureTimeoutMs <= 0 ||
+      (runtime.metricLabelAllowlist !== undefined
+        && (!Array.isArray(runtime.metricLabelAllowlist)
+          || runtime.metricLabelAllowlist.length === 0
+          || new Set(runtime.metricLabelAllowlist).size !== runtime.metricLabelAllowlist.length)) ||
       typeof runtime.requireLevelResetTransition !== 'boolean' ||
       !validOptionalStringSet([
         runtime.slotItemSelector,
@@ -89,10 +98,25 @@ function validateRealRuntime(runtime, metricCatalogLength) {
         runtime.discardChangesDialogSelector,
         runtime.discardChangesConfirmButton,
       ]) ||
+      !validOptionalInputStateContract(runtime) ||
       !runtime.categoryLabels || typeof runtime.categoryLabels !== 'object') {
     throw new MaxrollProviderError(ERROR_CODES.INVALID_CONFIG,
       'maxroll-ui-cdp-v1 runtime contract is incomplete');
   }
+}
+
+function validOptionalInputStateContract(runtime) {
+  const values = [runtime.inputStateBreakpoint, runtime.inputStateReadbackExpression,
+    runtime.inputStateEpochExpression];
+  if (values.every(value => value == null)) return true;
+  return Number.isInteger(runtime.inputStateBreakpoint?.lineNumber)
+    && runtime.inputStateBreakpoint.lineNumber >= 0
+    && Number.isInteger(runtime.inputStateBreakpoint?.columnNumber)
+    && runtime.inputStateBreakpoint.columnNumber >= 0
+    && typeof runtime.inputStateReadbackExpression === 'string'
+    && runtime.inputStateReadbackExpression.length > 0
+    && typeof runtime.inputStateEpochExpression === 'string'
+    && runtime.inputStateEpochExpression.length > 0;
 }
 
 function validOptionalString(value) {

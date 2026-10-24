@@ -22,14 +22,19 @@ class RealMaxrollMetricsExtractor {
       }
       byInternalId.set(metric.internalId, metric.rawValue);
     }
-    const missing = this.#profile.metricCatalog.filter(metric => !byInternalId.has(metric.internalId));
+    const definitions = this.#profile.realRuntime?.discoverMetricCatalog === true
+      ? capture.raw.map(metric => ({ id: metric.metricId,
+        internalId: metric.internalId, category: metric.category, name: metric.label,
+        rawValueType: 'finite-number' }))
+      : this.#profile.metricCatalog;
+    const missing = definitions.filter(metric => !byInternalId.has(metric.internalId));
     if (missing.length) {
       throw new MaxrollProviderError(ERROR_CODES.METRICS_INCOMPLETE,
         'real provider-supported metric set is incomplete', {
           details: { missingCount: missing.length },
         });
     }
-    return immutable(this.#profile.metricCatalog.map(definition => {
+    return immutable(definitions.map(definition => {
       const rawValue = byInternalId.get(definition.internalId);
       if (definition.rawValueType !== 'finite-number' ||
           typeof rawValue !== 'number' || !Number.isFinite(rawValue)) {

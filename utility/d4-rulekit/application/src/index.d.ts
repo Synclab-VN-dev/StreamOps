@@ -11,6 +11,7 @@ export interface ProviderCapabilities {
   readonly version: string;
   readonly policyVersion?: string;
   readonly stateModel: 'stateful' | 'stateless';
+  readonly metricCoverage?: 'EXACT' | 'DYNAMIC_APPLICABLE';
   readonly metricIds: readonly string[];
   readonly changeTypes: readonly string[];
 }
