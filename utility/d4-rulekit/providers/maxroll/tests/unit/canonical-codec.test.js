@@ -7,19 +7,31 @@ const {
   ERROR_CODES,
   MaxrollD12CanonicalCodec,
   MaxrollEntityCatalog,
+  UniversalMaxrollBuildMapper,
+  createD12NativeLoaderMetadata,
 } = require('../../src');
 
 function catalog(provenanceOverrides = {}) {
   return new MaxrollEntityCatalog({
     version: 'test',
-    classes: { 3: { id: 3, tree: 'rogue-tree' } },
-    items: { 'item-a': { id: 'item-a' }, 'socket-a': { id: 'socket-a' } },
+    classes: Object.fromEntries(Array.from({ length: 8 }, (_, id) => [id, {
+      id, name: `Class ${id}`, tree: id === 3 ? 'rogue-tree' : `tree-${id}`,
+      paragonBoards: id === 3 ? ['board-a'] : [],
+    }])),
+    items: { 'item-a': { id: 'item-a', type: 'Helm' }, 'socket-a': { id: 'socket-a' } },
+    itemTypes: { Helm: { id: 'Helm', bodySlots: [4], itemLabels: [] } },
     affixes: { affix: { id: 101 }, aspect: { id: 102 }, temper: { id: 103 } },
     oldAffixes: {},
-    skills: { skill: { id: 'skill-a' } },
-    skillTrees: { 'rogue-tree': { id: 'rogue-tree', nodes: [{ id: 10 }, { id: 11 }] } },
+    skills: { skill: { id: 'skill-a' }, specialization: { id: 'combo-points' },
+      support: { id: 'support-skill' } },
+    skillTrees: Object.fromEntries([
+      ['rogue-tree', { id: 'rogue-tree', nodes: [{ id: 10 }, { id: 11 }] }],
+      ['merc-tree', { id: 'merc-tree', nodes: [{ id: 1 }] }],
+      ...Array.from({ length: 8 }, (_, id) => [`tree-${id}`, { id: `tree-${id}`, nodes: [] }]),
+    ]),
     stones: {},
-    mercenaries: { merc: { id: 'merc-a' } },
+    mercenaries: { merc: { id: 'merc-a', tree: 'merc-tree' } },
+    paragonNodes: {}, temperingRecipes: {}, itemSets: {}, attributes: {}, warPlans: [],
     paragonBoards: { board: { id: 'board-a', nodes: [null, { id: 'node-a' }] } },
     paragonGlyphs: { glyph: { id: 'glyph-a' } },
   }, {
@@ -44,7 +56,7 @@ function fixture() {
     selection: { profileIndex: 1 },
     integrity: { nativeStateSha256: 'b'.repeat(64) },
     nativeState: {
-      activeProfile: 1, season: 15, options: { optionA: true },
+      activeProfile: 1, season: 15, options: { 'skill-a': { flags: [true] } },
       items: { 9: {
         id: 'item-a', name: 'Named item', power: 800, upgrade: 2,
         explicits: [{ nid: 101, values: [1], greater: true }],
@@ -135,7 +147,7 @@ test('unknown native fields and missing catalog entities fail closed with typed 
   assert.equal(invalidCanonical.equipment.slots[0].item.baseItemId, 'item-a');
 });
 
-test('B0-REV-01 rejects unknown transformed nested fields and preserves opaque options', () => {
+test('B0-REV-01 rejects unknown transformed nested fields and preserves board position', () => {
   const codec = new MaxrollD12CanonicalCodec({ catalog: catalog() });
   const unknownBoard = fixture();
   unknownBoard.nativeState.profiles[1].paragon.steps[0].data[0].futureMechanic = {
@@ -150,16 +162,18 @@ test('B0-REV-01 rejects unknown transformed nested fields and preserves opaque o
     error => error.code === ERROR_CODES.CANONICAL_MAPPING_INCOMPLETE);
 
   const opaque = fixture();
-  opaque.nativeState.options.futureOption = { nested: ['kept', { exactly: true }] };
   opaque.nativeState.profiles[1].paragon.steps[0].data[0].position.futureCoordinate = {
     axis: 'kept', value: 42,
   };
   const canonical = codec.nativeToCanonical(opaque);
   const roundTrip = codec.canonicalToNative(canonical);
-  assert.deepEqual(roundTrip.options.futureOption,
-    opaque.nativeState.options.futureOption);
   assert.deepEqual(roundTrip.profiles[0].paragon.steps[0].data[0].position,
     opaque.nativeState.profiles[1].paragon.steps[0].data[0].position);
+
+  const unknownOption = fixture();
+  unknownOption.nativeState.options.futureOption = { flags: [true] };
+  assert.throws(() => codec.nativeToCanonical(unknownOption),
+    error => error.code === ERROR_CODES.ENTITY_NOT_FOUND);
 });
 
 test('B0-REV-02 rejects wrong/missing patch and mismatched trusted provenance', () => {
@@ -192,12 +206,92 @@ test('B0-REV-02 rejects wrong/missing patch and mismatched trusted provenance', 
   assert.throws(() => codec.nativeToCanonical(missingRuntimeVersion),
     error => error.code === ERROR_CODES.RUNTIME_MISMATCH);
 
-  const wrongCatalogVersion = structuredClone(valid);
-  wrongCatalogVersion.provenance.compatibility.catalogVersion = '0.0.0';
-  assert.throws(() => codec.canonicalToNative(wrongCatalogVersion),
-    error => error.code === ERROR_CODES.RUNTIME_MISMATCH);
+  const scratch = structuredClone(valid);
+  delete scratch.provenance;
+  assert.doesNotThrow(() => codec.canonicalToNative(scratch));
+
+  const forgedUserTrust = structuredClone(valid);
+  forgedUserTrust.provenance.compatibility = { catalogVersion: '0.0.0' };
+  assert.throws(() => codec.canonicalToNative(forgedUserTrust),
+    error => error.code === ERROR_CODES.CANONICAL_MAPPING_INCOMPLETE);
 
   assert.throws(() => new MaxrollD12CanonicalCodec({
     catalog: catalog({ resourceSha256: '0'.repeat(64) }),
   }), error => error.code === ERROR_CODES.SNAPSHOT_MISMATCH);
+});
+
+test('B1 scratch canonical builds for all eight pinned classes need no native fixture provenance', () => {
+  const codec = new MaxrollD12CanonicalCodec({ catalog: catalog() });
+  for (let classId = 0; classId < 8; classId += 1) {
+    const build = {
+      schemaVersion: CANONICAL_SCHEMA_VERSION,
+      game: { id: 'diablo-iv', patch: '3.2.1.73552' },
+      character: { classId: String(classId), level: 1, worldTier: 0 },
+      equipment: { slots: [] }, skills: { allocations: [], bar: [] },
+      paragon: { boards: [] }, effects: { elixirs: [], warPlans: [] },
+      world: {}, calculationContext: { season: 15, options: {} },
+    };
+    const native = codec.canonicalToNative(build);
+    assert.equal(native.profiles[0].class, classId);
+    assert.equal(native.profiles[0].name, 'Canonical Import');
+    assert.deepEqual(codec.loaderIdentity(build), { className: `Class ${classId}`, season: 15 });
+  }
+});
+
+test('B3 versioned loader envelope is deterministic and contains no source account metadata', () => {
+  const metadata = createD12NativeLoaderMetadata({
+    plannerId: '1g1any0x', className: 'Sorcerer', season: 15,
+  });
+  assert.equal(metadata.class, 'Sorcerer');
+  assert.equal(metadata.season, '15');
+  assert.equal(metadata.user.id, 0);
+  assert.equal(metadata.userId, 0);
+  assert.deepEqual(metadata.user, { active: 0, id: 0, username: 'Offline Fixture' });
+  assert.throws(() => createD12NativeLoaderMetadata({
+    plannerId: '', className: 'Rogue', season: 15,
+  }), error => error.code === ERROR_CODES.INVALID_INPUT);
+});
+
+test('B2 catalog resolver rejects wrong class, slot, board and forged trust provenance', () => {
+  const strictCatalog = catalog();
+  const codec = new MaxrollD12CanonicalCodec({ catalog: strictCatalog });
+  const build = codec.nativeToCanonical(fixture());
+  const wrongSlot = structuredClone(build);
+  wrongSlot.equipment.slots[0].slotId = '5';
+  assert.throws(() => codec.canonicalToNative(wrongSlot),
+    error => error.code === ERROR_CODES.ILLEGAL_COMBINATION);
+  const wrongClass = structuredClone(build);
+  wrongClass.character.classId = '0';
+  assert.throws(() => codec.canonicalToNative(wrongClass),
+    error => [ERROR_CODES.ENTITY_NOT_FOUND, ERROR_CODES.ILLEGAL_COMBINATION].includes(error.code));
+  assert.deepEqual(strictCatalog.coverageInventory(), {
+    families: {
+      classes: 8, items: 2, itemTypes: 1, affixes: 3, oldAffixes: 0,
+      skills: 3, skillTrees: 10, paragonBoards: 1, paragonGlyphs: 1,
+      paragonNodes: 0, stones: 0, mercenaries: 1, warPlans: 0,
+      temperingRecipes: 0, itemSets: 0, attributes: 0,
+    }, present: 16, total: 16, percent: 100,
+  });
+});
+
+test('B6 universal mapper applies generic build and section mutations without fixture branches', () => {
+  const codec = new MaxrollD12CanonicalCodec({ catalog: catalog() });
+  const mapper = new UniversalMaxrollBuildMapper({
+    supportedBuildSchemaVersion: CANONICAL_SCHEMA_VERSION,
+  }, { codec });
+  const baseline = codec.nativeToCanonical(fixture());
+  const mapped = mapper.map(baseline, [
+    { type: 'skill.setRank', nodeId: '10', rank: 3 },
+    { type: 'calculationOption.set', optionId: 'skill-a', value: { params: [2] } },
+  ], CANONICAL_SCHEMA_VERSION);
+  assert.equal(mapped.desired.skills.allocations[0].rank, 3);
+  assert.deepEqual(mapped.desired.calculationContext.options['skill-a'], { params: [2] });
+  assert.doesNotThrow(() => codec.canonicalToNative(mapped.desired));
+  assert.throws(() => mapper.map(baseline, [{ type: 'skill.setRank', nodeId: 'unknown', rank: 1 }],
+    CANONICAL_SCHEMA_VERSION), error => error.code === ERROR_CODES.ENTITY_NOT_FOUND);
+  const malformed = structuredClone(baseline);
+  delete malformed.skills;
+  assert.throws(() => mapper.map(malformed,
+    [{ type: 'skill.setRank', nodeId: '10', rank: 1 }], CANONICAL_SCHEMA_VERSION),
+  error => error.code === ERROR_CODES.CANONICAL_BUILD_INVALID);
 });

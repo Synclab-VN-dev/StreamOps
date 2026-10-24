@@ -1,5 +1,9 @@
 # Maxroll Calculation Provider
 
+Universal canonical/native import status and its measured coverage are documented in
+[`UNIVERSAL-IMPORT.md`](./UNIVERSAL-IMPORT.md) and
+[`UNIVERSAL-IMPORT-COVERAGE.json`](./UNIVERSAL-IMPORT-COVERAGE.json).
+
 Build export and engine/input/output attestation are documented in
 [`BUILD-EXPORT.md`](./BUILD-EXPORT.md) and
 [`BUILD-ATTESTATION.md`](./BUILD-ATTESTATION.md).

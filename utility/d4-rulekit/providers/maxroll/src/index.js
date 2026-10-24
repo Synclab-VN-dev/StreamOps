@@ -29,10 +29,17 @@ const { MaxrollSession } = require('./session');
 const { RealMaxrollMetricsExtractor } = require('./real-metrics-extractor');
 const { RealMaxrollRuntimeAdapter } = require('./real-runtime-adapter');
 const {
+  NativeStateMaxrollRuntimeAdapter,
+  createD12NativeLoaderMetadata,
+} = require('./native-state-runtime-adapter');
+const { UniversalMaxrollBuildMapper, CHANGE_TYPES } = require('./universal-build-mapper');
+const { UniversalMaxrollComponentFactory } = require('./universal-component-factory');
+const {
   MAXROLL_32173552_D12AM6KT_REFERENCE,
   MAXROLL_32173552_REFERENCE,
   REAL_MAXROLL_COMPONENT_FACTORY,
   createMaxroll32173552D12aM6KTCandidateProfile,
+  createMaxroll32173552D12aM6KTUniversalProfile,
   createMaxroll32173552RealProfile,
 } = require('./real-profile');
 
@@ -54,12 +61,18 @@ module.exports = {
   MaxrollProvider,
   MaxrollProviderError,
   MaxrollRuntimeAdapter,
+  NativeStateMaxrollRuntimeAdapter,
+  createD12NativeLoaderMetadata,
   MaxrollSession,
   RealMaxrollMetricsExtractor,
   RealMaxrollRuntimeAdapter,
+  UniversalMaxrollBuildMapper,
+  UniversalMaxrollComponentFactory,
+  CHANGE_TYPES,
   MAXROLL_32173552_REFERENCE,
   REAL_MAXROLL_COMPONENT_FACTORY,
   createMaxroll32173552D12aM6KTCandidateProfile,
+  createMaxroll32173552D12aM6KTUniversalProfile,
   createMaxroll32173552RealProfile,
   attestMaxrollBuildFixture,
   exportMaxrollBuildFromSnapshot,

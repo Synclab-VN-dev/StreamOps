@@ -38,6 +38,9 @@ class MaxrollPatchProfile {
       runtimeKind,
       supportedBuildSchemaVersion: config.supportedBuildSchemaVersion ?? 'maxroll-build/rogue-l50-v1',
       supportedChangeTypes: config.supportedChangeTypes ?? ['effect.set'],
+      capabilityRestrictions: config.capabilityRestrictions ?? {
+        class: 'Rogue', level: 50, difficulty: 'Torment I',
+      },
       provenanceSource: config.provenanceSource ?? 'MAXROLL_CDP_RUNTIME',
       displayProvenanceSource: config.displayProvenanceSource ?? 'MAXROLL_UI_DOM',
     }));
@@ -52,7 +55,7 @@ class MaxrollPatchProfile {
       metricIds: this.metricCatalog.map(metric => metric.id),
       changeTypes: [...this.supportedChangeTypes],
       restrictions: {
-        class: 'Rogue', level: 50, difficulty: 'Torment I',
+        ...this.capabilityRestrictions,
         buildSchemaVersion: this.supportedBuildSchemaVersion,
         authorizedSnapshotRequired: true,
         runtimeKind: this.runtimeKind,

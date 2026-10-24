@@ -49,6 +49,25 @@ function createMaxroll32173552D12aM6KTCandidateProfile(config) {
   });
 }
 
+function createMaxroll32173552D12aM6KTUniversalProfile(config) {
+  return createMaxroll32173552D12aM6KTCandidateProfile({
+    ...config,
+    providerVersion: config?.providerVersion
+      ?? 'maxroll-provider/3.2.1.73552-D12aM6KT-universal-v1',
+    supportedBuildSchemaVersion: 'd4-build/v1',
+    supportedChangeTypes: [
+      'build.replace', 'equipment.setSlot', 'skill.setRank', 'paragon.setBoards',
+      'effect.set', 'calculationOption.set',
+    ],
+    capabilityRestrictions: {
+      gamePatch: '3.2.1.73552',
+      classes: 'catalog-driven:8',
+      authorizedSnapshotRequired: true,
+      coverageStatus: 'BLOCKED_COVERAGE',
+    },
+  });
+}
+
 function createRealProfile(config, reference, strategy) {
   if (!config || typeof config !== 'object') {
     return new MaxrollPatchProfile(config);
@@ -117,5 +136,6 @@ module.exports = {
   MAXROLL_32173552_REFERENCE,
   REAL_MAXROLL_COMPONENT_FACTORY,
   createMaxroll32173552D12aM6KTCandidateProfile,
+  createMaxroll32173552D12aM6KTUniversalProfile,
   createMaxroll32173552RealProfile,
 };

@@ -195,6 +195,13 @@ class MaxrollRuntimeAttestationObserver {
     return Object.freeze({ initialBreakpointLocations: breakpoint.locations?.length ?? 0 });
   }
 
+  setInput(nativeState, profileIndex) {
+    this.#assertHealthy();
+    if (this.#capture) throw new MaxrollProviderError(ERROR_CODES.RUNTIME_NOT_READY,
+      'cannot replace attestation input while capture is active');
+    this.#semantics = inputSemantics(nativeState, profileIndex);
+  }
+
   async capture({ navigateUrl, replayResponse = null }) {
     this.#assertHealthy();
     if (this.#capture) throw new MaxrollProviderError(ERROR_CODES.RUNTIME_NOT_READY,
@@ -311,6 +318,7 @@ class MaxrollRuntimeAttestationObserver {
       firstMetricPauseOrdinal: null,
       lastMetricPauseOrdinal: null,
       profileReadback: null,
+      lastObservedIdentity: null,
       settled: false,
       completion,
       resolve: () => {
@@ -330,7 +338,9 @@ class MaxrollRuntimeAttestationObserver {
       capture.profileReadback ? ERROR_CODES.METRICS_INCOMPLETE : ERROR_CODES.INPUT_READBACK_UNVERIFIED,
       capture.profileReadback
         ? 'timed out waiting for a complete fresh metric phase'
-        : 'timed out waiting for exact runtime semantic read-back')),
+        : 'timed out waiting for exact runtime semantic read-back', {
+        details: { lastObservedIdentity: capture.lastObservedIdentity },
+      })),
     this.#profile.realRuntime.captureTimeoutMs ?? 30_000);
     return capture;
   }
@@ -359,6 +369,10 @@ class MaxrollRuntimeAttestationObserver {
         this.#profile.realRuntime.attestationReadbackExpression);
       const observedProfile = readback?.profile;
       const observedItems = readback?.items;
+      capture.lastObservedIdentity = observedProfile ? {
+        name: observedProfile.name, class: observedProfile.class,
+        level: observedProfile.level, worldTier: observedProfile.worldTier,
+      } : null;
       const sameIdentity = observedProfile?.name === this.#semantics.identity.name
         && observedProfile?.class === this.#semantics.identity.class
         && observedProfile?.level === this.#semantics.identity.level

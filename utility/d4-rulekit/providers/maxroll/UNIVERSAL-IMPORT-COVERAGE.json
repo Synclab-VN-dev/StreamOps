@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "universal-import-coverage/v2",
+  "status": "PARTIAL_BLOCKED_COVERAGE",
+  "snapshotId": "maxroll-20261023T034150Z",
+  "snapshotManifestSha256": "638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54",
+  "engineAssetSha256": "891c1f82717c50e598450575068394c6d2fe1c8d26de26f2eeed028d028997db",
+  "catalogResourceSha256": "889facd9fa21a0a2baba3f8c28d53ac66b6e28a7514994f82ab8f00a3a5e1f93",
+  "catalog": {
+    "familiesPresent": { "numerator": 16, "denominator": 16, "percent": 100 },
+    "classes": { "numerator": 8, "denominator": 8, "percent": 100 },
+    "equippableItemsWithClassAndSlotEvidence": { "numerator": 7788, "denominator": 7848, "percent": 99.24 },
+    "affixIdentity": { "numerator": 6380, "denominator": 6380, "percent": 100 },
+    "affixItemLegality": { "numerator": 0, "denominator": 6380, "percent": 0, "status": "BLOCKED_NO_AUTHORITATIVE_RELATION" },
+    "classSkills": { "numerator": 1382, "denominator": 1382, "percent": 100 },
+    "paragonBoards": { "numerator": 80, "denominator": 80, "percent": 100 },
+    "paragonGlyphsWithClassEvidence": { "numerator": 160, "denominator": 161, "percent": 99.38 },
+    "stonesIdentity": { "numerator": 228, "denominator": 228, "percent": 100, "status": "IDENTITY_ONLY" },
+    "mercenaryTrees": { "numerator": 4, "denominator": 4, "percent": 100 },
+    "warPlanTrees": { "numerator": 7, "denominator": 7, "percent": 100 },
+    "specializationTaxonomy": { "numerator": 0, "denominator": null, "status": "BLOCKED_MISSING_DEDICATED_CATALOG" },
+    "conditionalOptionSchema": { "numerator": 0, "denominator": null, "status": "BLOCKED_MISSING_VERSIONED_SCHEMA" }
+  },
+  "realEvidence": {
+    "classes": { "numerator": 1, "denominator": 8, "percent": 12.5 },
+    "independentBuildSources": { "numerator": 1, "denominator": 8, "status": "BLOCKED_INDEPENDENT_FIXTURE" },
+    "profiles": 2,
+    "rawMetrics": "50/50 each",
+    "displayRows": [51, 50],
+    "referenceParity": "EXACT",
+    "externalEgressCompleted": 0,
+    "cleanup": "PASS"
+  },
+  "workstreams": {
+    "B1": "PARTIAL_UNVERIFIED_OPAQUE_SEMANTICS",
+    "B2": "PARTIAL_BLOCKED_RELATIONSHIPS",
+    "B3": "DONE_FOR_CANONICAL_STATES_ACCEPTED_BY_CODEC",
+    "B4": "PARTIAL_PROFILE_AND_ITEMS_EXACT_GLOBAL_OPTIONS_UNVERIFIED",
+    "B5": "DONE_FOR_TWO_ROGUE_PROFILES",
+    "B6": "DONE_FOR_REAL_BUILD_REPLACE_AND_GENERIC_MUTATION_CONTRACT",
+    "B7": "BLOCKED_INDEPENDENT_FIXTURE_AND_COVERAGE"
+  }
+}

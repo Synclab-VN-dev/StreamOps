@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://streamops.local/schemas/d4-build/v1",
+  "title": "D4 Rule Kit canonical Diablo IV build",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "game", "character", "equipment", "skills", "paragon", "effects", "world", "calculationContext"],
+  "properties": {
+    "schemaVersion": { "const": "d4-build/v1" },
+    "game": {
+      "type": "object", "additionalProperties": false, "required": ["id", "patch"],
+      "properties": { "id": { "const": "diablo-iv" }, "patch": { "const": "3.2.1.73552" } }
+    },
+    "character": {
+      "type": "object", "additionalProperties": false, "required": ["classId", "level", "worldTier"],
+      "properties": {
+        "classId": { "type": "string", "pattern": "^[0-7]$" },
+        "level": { "type": "integer", "minimum": 1, "maximum": 70 },
+        "worldTier": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "equipment": {
+      "type": "object", "additionalProperties": false, "required": ["slots"],
+      "properties": { "slots": { "type": "array", "items": { "$ref": "#/$defs/slot" } } }
+    },
+    "skills": {
+      "type": "object", "additionalProperties": false, "required": ["allocations", "bar"],
+      "properties": {
+        "allocations": { "type": "array", "items": { "$ref": "#/$defs/allocation" } },
+        "bar": { "type": "array", "items": { "type": ["string", "null"] } }
+      }
+    },
+    "paragon": {
+      "type": "object", "additionalProperties": false, "required": ["boards"],
+      "properties": { "boards": { "type": "array", "items": { "$ref": "#/$defs/board" } } }
+    },
+    "effects": {
+      "type": "object", "additionalProperties": false, "required": ["elixirs", "warPlans"],
+      "properties": {
+        "elixirs": { "type": "array" },
+        "warPlans": { "type": "array", "items": { "type": "object", "additionalProperties": { "type": "number" } } },
+        "specialization": { "type": ["string", "number"] },
+        "mercenary": {
+          "type": "object", "additionalProperties": false,
+          "required": ["id", "support", "supportSkills", "treeAllocations"],
+          "properties": {
+            "id": { "type": "string" }, "support": {},
+            "supportSkills": { "type": "array", "items": { "type": ["string", "number"] } },
+            "treeAllocations": { "type": "array", "items": { "$ref": "#/$defs/valueAllocation" } }
+          }
+        }
+      }
+    },
+    "world": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "renownSkills": { "type": "number" }, "renownParagon": { "type": "number" } }
+    },
+    "calculationContext": {
+      "type": "object", "additionalProperties": false, "required": ["season", "options"],
+      "properties": { "season": { "type": ["integer", "null"] }, "options": { "type": "object" } }
+    },
+    "provenance": { "type": "object", "readOnly": true }
+  },
+  "$defs": {
+    "allocation": {
+      "type": "object", "additionalProperties": false, "required": ["nodeId", "rank"],
+      "properties": { "nodeId": { "type": "string" }, "rank": { "type": "integer", "minimum": 0 } }
+    },
+    "valueAllocation": {
+      "type": "object", "additionalProperties": false, "required": ["nodeId", "value"],
+      "properties": { "nodeId": { "type": "string" }, "value": { "type": "number" } }
+    },
+    "modifier": {
+      "type": "object", "additionalProperties": false, "required": ["entityId", "values"],
+      "properties": {
+        "entityId": { "type": "string" }, "values": { "type": "array", "items": { "type": "number" } },
+        "greater": { "type": "boolean" }, "hidden": { "type": "boolean" },
+        "uniquePriority": { "type": "number" }, "upgradeRank": { "type": "number" }
+      }
+    },
+    "item": {
+      "type": "object", "additionalProperties": false,
+      "required": ["baseItemId", "itemPower", "affixes", "aspects", "tempers", "sockets"],
+      "properties": {
+        "baseItemId": { "type": "string" }, "itemPower": { "type": "number", "minimum": 0 },
+        "affixes": { "type": "array", "items": { "$ref": "#/$defs/modifier" } },
+        "aspects": { "type": "array", "items": { "$ref": "#/$defs/modifier" } },
+        "tempers": { "type": "array", "items": { "$ref": "#/$defs/modifier" } },
+        "sockets": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["entityId"], "properties": { "entityId": { "type": "string" } } } },
+        "customName": { "type": "string" }, "upgradeRank": { "type": "number" }, "mythic": { "type": "boolean" }
+      }
+    },
+    "slot": {
+      "type": "object", "additionalProperties": false, "required": ["slotId", "item"],
+      "properties": { "slotId": { "type": "string" }, "item": { "$ref": "#/$defs/item" } }
+    },
+    "board": {
+      "type": "object", "additionalProperties": false, "required": ["boardId", "rotation", "allocations"],
+      "properties": {
+        "boardId": { "type": "string" }, "rotation": { "enum": [0, 1, 2, 3] },
+        "allocations": { "type": "array", "items": { "$ref": "#/$defs/allocation" } },
+        "position": { "type": "object" },
+        "glyph": { "type": "object", "additionalProperties": false, "required": ["glyphId", "level"], "properties": { "glyphId": { "type": "string" }, "level": { "type": "number", "minimum": 0 } } }
+      }
+    }
+  }
+}
