@@ -45,7 +45,7 @@ test('B3-B5 generic native-state provider loads a canonical build with attested 
     snapshotManifestSha256: MANIFEST_SHA,
     sourceUrl: fixture.provenance.sourceUrl,
     assetUrl: `https://maxroll.gg${MAXROLL_32173552_D12AM6KT_REFERENCE.applicationAssetPath}`,
-    metricCatalog: METRIC_CATALOG,
+    catalog, metricCatalog: METRIC_CATALOG,
     authorizationRef: 'issue-134-universal-approved-offline-snapshot',
   });
   const browser = new BrowserInfrastructure({
@@ -109,7 +109,7 @@ test('B6 all eight Application APIs operate through the real universal provider'
     snapshotManifestSha256: MANIFEST_SHA,
     sourceUrl: midgame.provenance.sourceUrl,
     assetUrl: `https://maxroll.gg${MAXROLL_32173552_D12AM6KT_REFERENCE.applicationAssetPath}`,
-    metricCatalog: METRIC_CATALOG,
+    catalog, metricCatalog: METRIC_CATALOG,
     authorizationRef: 'issue-134-universal-approved-offline-snapshot',
   });
   const browser = new BrowserInfrastructure({
