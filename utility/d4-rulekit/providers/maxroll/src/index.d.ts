@@ -59,7 +59,8 @@ export interface CanonicalEffects extends Readonly<Record<string, unknown>> {
 }
 
 export class MaxrollEntityCatalog {
-  constructor(data: Readonly<Record<string, unknown>>, provenance?: Readonly<Record<string, unknown>>);
+  constructor(data: Readonly<Record<string, unknown>>, provenance?: Readonly<Record<string, unknown>>,
+    runtimeDefinitions?: Readonly<Record<string, unknown>>);
   readonly counts: Readonly<Record<string, number>>;
   readonly provenance: Readonly<Record<string, unknown>>;
   coverageInventory(): Readonly<Record<string, unknown>>;
@@ -67,6 +68,9 @@ export class MaxrollEntityCatalog {
   metricCatalog(classId?: string | number | null): readonly MetricDefinition[];
   firstEquippable(classId: string | number): Readonly<{ itemId: string; slotId: string }>;
   starterParagonBoard(classId: string | number): string;
+  optionReadbackDefinitions(): Readonly<Record<string, unknown>>;
+  canonicalCalculationOptions(options: Readonly<Record<string, unknown>>):
+    Readonly<Record<string, unknown>>;
 }
 
 export class MaxrollD12CanonicalCodec {

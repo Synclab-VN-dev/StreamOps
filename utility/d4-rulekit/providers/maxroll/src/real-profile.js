@@ -6,6 +6,8 @@ const { RealMaxrollMetricsExtractor } = require('./real-metrics-extractor');
 const { RealMaxrollRuntimeAdapter } = require('./real-runtime-adapter');
 const { MaxrollBuildMapper } = require('./build-mapper');
 const { D12_SHARED_OPTION_DEFINITIONS } = require('./d12-shared-options');
+const { D12_OPTION_READBACK_RULES } = require('./d12-option-readback');
+const { METRIC_CATALOG } = require('./metric-catalog');
 
 const MAXROLL_32173552_REFERENCE = Object.freeze({
   gamePatch: '3.2.1.73552',
@@ -54,11 +56,23 @@ function createMaxroll32173552D12aM6KTCandidateProfile(config) {
       + 'else walk(child,next,depth+1)}};walk(l.context||{},"",0);return out})()})',
     calculationEpochExpression: 'l.context',
     sharedOptionReadback: D12_SHARED_OPTION_DEFINITIONS,
+    metricDisplayCatalog: METRIC_CATALOG,
+    displayOnlyMetricInventory: Object.freeze([
+      ['summary', 'Damage'], ['summary', 'Poison Damage'], ['summary', 'Ring Damage'],
+      ['summary', 'Shrapnel Damage'], ['summary', 'Swarm Damage'],
+      ['summary', 'Swarm Poison Damage'], ['utility', 'Maximum Ferocity'],
+      ['utility', 'Maximum Resolve'],
+    ].map(([section, label]) => Object.freeze({ section, label,
+      reason: 'pinned-D12-runtime-ui-row-without-heroDetails-id' }))),
   });
 }
 
 function createMaxroll32173552D12aM6KTUniversalProfile(config) {
   const metricCatalog = config?.metricCatalog ?? config?.catalog?.metricCatalog?.();
+  const optionReadbackDefinitions = config?.realRuntime?.optionReadbackDefinitions
+    ?? Object.fromEntries(Object.entries(config?.catalog?.optionReadbackDefinitions?.() ?? {})
+      .map(([optionId, definition]) => [optionId,
+        { ...definition, ...(D12_OPTION_READBACK_RULES[optionId] ?? {}) }]));
   const { catalog: _catalog, ...profileConfig } = config ?? {};
   return createMaxroll32173552D12aM6KTCandidateProfile({
     ...profileConfig,
@@ -77,6 +91,7 @@ function createMaxroll32173552D12aM6KTUniversalProfile(config) {
       coverageStatus: 'BLOCKED_COVERAGE',
     },
     metricCoverage: 'DYNAMIC_APPLICABLE',
+    realRuntime: { ...profileConfig.realRuntime, optionReadbackDefinitions },
   });
 }
 
@@ -126,6 +141,8 @@ function createRealProfile(config, reference, strategy) {
       attestationReadbackExpression: strategy.attestationReadbackExpression ?? null,
       calculationEpochExpression: strategy.calculationEpochExpression ?? null,
       sharedOptionReadback: strategy.sharedOptionReadback ?? null,
+      metricDisplayCatalog: strategy.metricDisplayCatalog ?? null,
+      displayOnlyMetricInventory: strategy.displayOnlyMetricInventory ?? [],
       statsWidgetSelector: '.StatsTest',
       effectsTabLabel: 'Effects',
       settingsGroupSelector: 'div[class*="settings_Group__1UIcq"]',

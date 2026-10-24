@@ -126,6 +126,21 @@ npm run acceptance:issue134 -- \
 ```
 
 `--resume` also accepts comma-separated `static,synthetic,multiclass,mutations,application,regression`.
+`--resume all` always runs all eight real mutation shards and ignores inherited
+`MAXROLL_TEST_CLASS`. For targeted debugging, select the mutation group and classes explicitly:
+
+```bash
+npm run acceptance:issue134 -- \
+  --identity /private/fixture.agekey \
+  --age-bin /path/to/age \
+  --chromium /path/to/chromium \
+  --resume mutations \
+  --mutation-classes Rogue,Sorcerer
+```
+
+Targeted runs report `PARTIAL_PASS`; only an unfiltered `--resume all` can report `FULL_PASS`.
+Every mutation class is a separate bounded shard. Missing, failed or timed-out shards fail the
+aggregate rather than being treated as skipped acceptance.
 The runner never captures or syncs Maxroll and writes only a sanitized ignored report under
 `artifacts/issue134-acceptance.json`.
 

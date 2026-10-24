@@ -92,6 +92,8 @@ function resolveSharedOptionControls(expectedShared, controls, definitions) {
   }
   const observed = {};
   const notApplicable = [];
+  const rawValues = {};
+  const applicabilityEvidence = [];
   for (const [key, expectedValue] of Object.entries(expected)) {
     const definition = definitions[key];
     if (!definition || !Array.isArray(definition.labels) || !definition.labels.length) {
@@ -101,9 +103,19 @@ function resolveSharedOptionControls(expectedShared, controls, definitions) {
     const matches = controls.filter(control => control.group === definition.group
       && definition.labels.includes(control.label));
     if (matches.length === 0) {
-      observed[key] = structuredClone(expectedValue);
-      notApplicable.push(key);
-      continue;
+      const applicability = definition.applicability;
+      if (applicability?.kind === 'pinned-engine-rendered-control'
+          && applicability.absence === 'not-applicable'
+          && typeof applicability.authority === 'string') {
+        observed[key] = structuredClone(expectedValue);
+        rawValues[key] = Object.freeze({ status: 'NOT_APPLICABLE', control: null });
+        notApplicable.push(key);
+        applicabilityEvidence.push({ key, rule: applicability.kind,
+          authority: applicability.authority });
+        continue;
+      }
+      throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
+        `shared option has no runtime UI observation: ${key}`);
     }
     if (matches.length !== 1) {
       throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
@@ -128,12 +140,16 @@ function resolveSharedOptionControls(expectedShared, controls, definitions) {
         `shared option UI value is invalid: ${key}`);
     }
     observed[key] = value;
+    rawValues[key] = value;
   }
   return Object.freeze({ values: Object.freeze(observed),
+    rawValues: Object.freeze(rawValues),
+    applicabilityEvidence: Object.freeze(applicabilityEvidence.map(Object.freeze)),
     notApplicable: Object.freeze(notApplicable) });
 }
 
-function exactOptionReadback(expectedOptions, optionEntries, sharedReadback = {}) {
+function exactOptionReadback(expectedOptions, optionEntries, sharedReadback = {},
+  optionDefinitions = {}, runtimeControls = []) {
   const expected = expectedOptions ?? {};
   if (!Array.isArray(optionEntries) || !sharedReadback
       || typeof sharedReadback !== 'object' || Array.isArray(sharedReadback)) {
@@ -143,6 +159,8 @@ function exactOptionReadback(expectedOptions, optionEntries, sharedReadback = {}
   const observed = {};
   const notApplicable = [];
   const normalized = [];
+  const normalizationEvidence = [];
+  const rawObserved = {};
   const sharedValues = sharedReadback.values ?? sharedReadback;
   const sharedNotApplicable = new Set(sharedReadback.notApplicable ?? []);
   for (const [optionId, value] of Object.entries(expected)) {
@@ -157,60 +175,105 @@ function exactOptionReadback(expectedOptions, optionEntries, sharedReadback = {}
         if (sharedNotApplicable.has(key)) notApplicable.push(`shared.${key}`);
       }
       observed.shared = shared;
+      rawObserved.shared = structuredClone(sharedReadback.rawValues ?? shared);
+      normalizationEvidence.push(...(sharedReadback.applicabilityEvidence ?? []).map(entry => ({
+        optionId: `shared.${entry.key}`, field: '$', rule: entry.rule,
+        rawValue: null, semanticValue: structuredClone(shared[entry.key]),
+        authority: entry.authority,
+      })));
       continue;
     }
     const matches = optionEntries.filter(entry =>
       String(entry?.power ?? entry?.id ?? entry?.key) === optionId);
     if (matches.length === 0) {
-      // optionEntries is the engine's applicable-option enumeration for this
-      // calculation context. Preserve a syntactically valid but inapplicable
-      // loader option while reporting it separately from applied options.
-      observed[optionId] = structuredClone(value);
-      notApplicable.push(optionId);
-      continue;
+      const applicability = optionDefinitions[optionId]?.applicability;
+      if (['pinned-engine-enumeration', 'pinned-game-catalog-option']
+        .includes(applicability?.kind)
+          && applicability.registered === true && typeof applicability.authority === 'string') {
+        observed[optionId] = structuredClone(value);
+        rawObserved[optionId] = Object.freeze({ status: 'NOT_APPLICABLE', runtimeEntry: null });
+        notApplicable.push(optionId);
+        normalizationEvidence.push({ optionId, field: '$',
+          rule: 'pinned-engine-non-applicability', rawValue: null,
+          semanticValue: structuredClone(value), authority: applicability.authority });
+        continue;
+      }
+      throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
+        `calculation option has no runtime observation: ${optionId}`);
     }
     if (matches.length > 1) throw new MaxrollProviderError(ERROR_CODES.READBACK_MISMATCH,
       `runtime calculation option is ambiguous: ${optionId}`);
     const entry = matches[0];
     const runtimeValue = entry.options ?? entry;
+    const definition = optionDefinitions[optionId] ?? {};
+    rawObserved[optionId] = structuredClone(runtimeValue);
     observed[optionId] = Object.fromEntries(Object.keys(value).map(key => {
       const actual = structuredClone(runtimeValue[key]);
       if (key === 'params' && Array.isArray(value.params) && Array.isArray(actual)) {
         return [key, actual.map((entryValue, index) => {
-          if (value.params[index] === 'max' && Number.isFinite(entryValue)) {
-            normalized.push(`${optionId}.params.${index}:max=${entryValue}`);
+          const rule = definition.params?.[index];
+          if (rule?.kind === 'max' && value.params[index] === 'max') {
+            const boundMatches = runtimeControls.filter(control => control.kind === 'number'
+              && control.group === rule.boundControl?.group
+              && control.label === rule.boundControl?.label);
+            if (boundMatches.length !== 1 || !Number.isFinite(entryValue)
+                || !Object.is(boundMatches[0].value, entryValue)
+                || !Object.is(boundMatches[0].max, entryValue)) return entryValue;
+            const bound = boundMatches[0].max;
+            const evidence = `${optionId}.params.${index}:max=${bound}`;
+            normalized.push(evidence);
+            normalizationEvidence.push({ optionId, field: `params.${index}`,
+              rule: 'pinned-ui-bound-max',
+              rawValue: entryValue, boundValue: bound, semanticValue: 'max',
+              authority: rule.authority });
             return 'max';
           }
-          if (Number.isInteger(value.params[index]) && Number.isInteger(entryValue)
-              && value.params[index] === entryValue + 1) {
-            normalized.push(`${optionId}.params.${index}:one-based=${entryValue}`);
-            return value.params[index];
+          if (rule?.kind === 'loader-offset' && Number.isInteger(entryValue)
+              && entryValue >= rule.min && entryValue <= rule.max) {
+            const semantic = entryValue + rule.offset;
+            normalizationEvidence.push({ optionId, field: `params.${index}`,
+              rule: 'pinned-loader-offset', rawValue: entryValue, semanticValue: semantic,
+              authority: rule.authority });
+            normalized.push(`${optionId}.params.${index}:loader-offset=${rule.offset}`);
+            return semantic;
+          }
+          if (rule?.kind === 'enum-index' && Number.isInteger(entryValue)) {
+            const semantic = entryValue - rule.runtimeBase + rule.canonicalBase;
+            if (!Array.isArray(rule.values) || entryValue < rule.runtimeBase
+                || entryValue - rule.runtimeBase >= rule.values.length) return entryValue;
+            normalizationEvidence.push({ optionId, field: `params.${index}`,
+              rule: 'pinned-enum-index', rawValue: entryValue, semanticValue: semantic,
+              authority: rule.authority });
+            normalized.push(`${optionId}.params.${index}:enum-index=${entryValue}`);
+            return semantic;
           }
           return entryValue;
         })];
       }
       if (key === 'flags' && Array.isArray(value.flags) && Array.isArray(actual)
+          && Object.hasOwn(definition, 'flags')
+          && Object.hasOwn(definition.flags, 'trailingDefault')
           && actual.length >= value.flags.length
           && value.flags.every((flag, index) => flag === actual[index])
-          && actual.slice(value.flags.length).every(flag => flag === false)) {
+          && actual.slice(value.flags.length)
+            .every(flag => flag === definition.flags.trailingDefault)) {
         if (actual.length !== value.flags.length) {
           normalized.push(`${optionId}.flags:trailing-defaults=${actual.length - value.flags.length}`);
+          normalizationEvidence.push({ optionId, field: 'flags',
+            rule: 'pinned-trailing-default', rawValue: actual,
+            semanticValue: structuredClone(value.flags), authority: definition.flags.authority });
         }
-        return [key, structuredClone(value.flags)];
-      }
-      if (key === 'flags' && Array.isArray(value.flags) && Array.isArray(actual)
-          && actual.length === 0 && value.flags.length > 0) {
-        normalized.push(`${optionId}.flags:runtime-non-applicable`);
         return [key, structuredClone(value.flags)];
       }
       return [key, actual];
     }));
   }
   if (semanticHash(observed) !== semanticHash(expected)) {
+    const differences = semanticDifferencePaths(expected, observed, 'options');
     throw new MaxrollProviderError(ERROR_CODES.READBACK_MISMATCH,
-      'runtime calculation options do not match the requested state', {
+      `runtime calculation options do not match the requested state: ${differences.join(', ')}`, {
         details: { expectedSha256: semanticHash(expected), observedSha256: semanticHash(observed),
-          expected, observed },
+          expected, observed, rawObserved, differences },
       });
   }
   const count = Object.entries(expected).reduce((total, [optionId, value]) =>
@@ -220,7 +283,80 @@ function exactOptionReadback(expectedOptions, optionEntries, sharedReadback = {}
     applicableCount: count - notApplicable.length,
     notApplicable: Object.freeze(notApplicable),
     normalized: Object.freeze(normalized),
+    normalizationEvidence: Object.freeze(normalizationEvidence.map(Object.freeze)),
+    rawObserved: Object.freeze(structuredClone(rawObserved)),
     observed: structuredClone(observed) });
+}
+
+function normalizedExpectedOptions(options, definitions = {}) {
+  const output = structuredClone(options ?? {});
+  for (const [optionId, option] of Object.entries(output)) {
+    const definition = definitions[optionId];
+    for (const field of definition?.ignoredNativeFields ?? []) delete option[field];
+    for (const [index, rule] of Object.entries(
+      definition?.nativeParamCanonicalization ?? {})) {
+      if (rule.kind === 'clamp-max' && Number.isFinite(option.params?.[index])) {
+        option.params[index] = Math.min(option.params[index], rule.max);
+      }
+    }
+    if (Object.keys(option).length === 0) delete output[optionId];
+  }
+  return output;
+}
+
+function resolveApplicableMetricInventory({ rows, observedMetricDefinitions, metricCatalog,
+  displayOnly = [] }) {
+  if (!Array.isArray(rows) || !(observedMetricDefinitions instanceof Map)
+      || !Array.isArray(metricCatalog) || !Array.isArray(displayOnly)) {
+    throw new MaxrollProviderError(ERROR_CODES.INVALID_CONFIG,
+      'applicable metric inventory contract is invalid');
+  }
+  const displayOnlyByAnchor = new Map(displayOnly.map(entry =>
+    [`${entry.section}|${entry.label}`, entry]));
+  const catalogByAnchor = new Map(metricCatalog
+    .filter(metric => metric.category !== 'runtime')
+    .map(metric => [`${metric.category}|${metric.name}`, metric.internalId]));
+  const expectedIds = new Set();
+  const classifiedDisplayOnly = [];
+  const unresolved = [];
+  for (const row of rows) {
+    const anchor = `${row.section}|${row.label}`;
+    const displayClassification = displayOnlyByAnchor.get(anchor);
+    if (displayClassification) {
+      classifiedDisplayOnly.push(displayClassification);
+      continue;
+    }
+    const catalogId = catalogByAnchor.get(anchor);
+    const observedIds = observedMetricDefinitions.get(row.label) ?? new Set();
+    if (observedIds.size === 1) {
+      expectedIds.add([...observedIds][0]);
+      continue;
+    }
+    if (observedIds.size > 1 && Number.isInteger(catalogId) && observedIds.has(catalogId)) {
+      expectedIds.add(catalogId);
+    }
+    else unresolved.push({ ...row, reason: observedIds.size === 0
+      ? 'raw-id-unresolved' : 'raw-id-ambiguous', observedInternalIds: [...observedIds] });
+  }
+  if (unresolved.length) throw new MaxrollProviderError(ERROR_CODES.METRICS_INCOMPLETE,
+    `applicable display inventory could not be linked to stable raw metric IDs: ${unresolved
+      .slice(0, 5).map(row => `${row.section}|${row.label}:${row.reason}`
+        + `[${row.observedInternalIds.join(',')}]`).join(', ')}`, {
+      details: { unresolved },
+    });
+  const rawOnly = [];
+  for (const [label, ids] of observedMetricDefinitions) {
+    for (const internalId of ids) {
+      if (!expectedIds.has(internalId)) rawOnly.push({ internalId, label,
+        reason: 'coherent-runtime-definition-without-display-row' });
+      expectedIds.add(internalId);
+    }
+  }
+  if (!expectedIds.size) throw new MaxrollProviderError(ERROR_CODES.METRICS_INCOMPLETE,
+    'applicable metric inventory contains no raw metrics');
+  return Object.freeze({ expectedIds,
+    rawOnly: Object.freeze(rawOnly.map(Object.freeze)),
+    displayOnly: Object.freeze(classifiedDisplayOnly.map(entry => Object.freeze({ ...entry }))) });
 }
 
 class CalculationEpochAccumulator {
@@ -432,8 +568,11 @@ class MaxrollRuntimeAttestationObserver {
       const engine = await this.#engineEvidence();
       const displayMetrics = await this.#readDisplayMetrics(capture.observedMetricDefinitions);
       const globalReadback = await this.#readGlobalContext();
-      const optionReadback = exactOptionReadback(this.#semantics.options,
-        capture.optionEntries, globalReadback.shared);
+      const optionDefinitions = this.#profile.realRuntime.optionReadbackDefinitions ?? {};
+      const optionReadback = exactOptionReadback(
+        normalizedExpectedOptions(this.#semantics.options, optionDefinitions),
+        capture.optionEntries, globalReadback.shared,
+        optionDefinitions, globalReadback.controls);
       if (globalReadback.season !== this.#semantics.season) {
         throw new MaxrollProviderError(ERROR_CODES.READBACK_MISMATCH,
           'runtime season does not match the requested state', {
@@ -819,7 +958,13 @@ class MaxrollRuntimeAttestationObserver {
         'runtime season could not be read unambiguously from the planner UI');
     }
     const expectedShared = this.#semantics.options?.shared ?? {};
-    if (Object.keys(expectedShared).length === 0) return Object.freeze({ season, shared: {} });
+    const optionDefinitions = runtime.optionReadbackDefinitions ?? {};
+    const needsBoundControls = Object.entries(this.#semantics.options ?? {})
+      .some(([optionId]) => Object.values(optionDefinitions[optionId]?.params ?? {})
+        .some(rule => rule?.kind === 'max' && rule.boundControl));
+    if (Object.keys(expectedShared).length === 0 && !needsBoundControls) {
+      return Object.freeze({ season, shared: {}, controls: Object.freeze([]) });
+    }
     if (!runtime.sharedOptionReadback || !runtime.statsWidgetSelector
         || !runtime.settingsGroupSelector || !runtime.settingsGroupTitleSelector) {
       throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED,
@@ -858,8 +1003,10 @@ class MaxrollRuntimeAttestationObserver {
       groupTitleSelector: runtime.settingsGroupTitleSelector });
     await this.#lease.page.keyboard.press('Escape');
     return Object.freeze({ season,
-      shared: resolveSharedOptionControls(expectedShared, controls,
-        runtime.sharedOptionReadback) });
+      controls: Object.freeze(controls.map(Object.freeze)),
+      shared: Object.keys(expectedShared).length === 0 ? {}
+        : resolveSharedOptionControls(expectedShared, controls,
+          runtime.sharedOptionReadback) });
   }
 
   async #readDisplayMetrics(observedMetricDefinitions) {
@@ -897,7 +1044,9 @@ class MaxrollRuntimeAttestationObserver {
       statsSectionSelector: runtime.statsSectionSelector,
       categoryLabels: runtime.categoryLabels,
     });
-    const catalog = new Map(this.#profile.metricCatalog
+    const displayCatalog = this.#profile.realRuntime.metricDisplayCatalog
+      ?? this.#profile.metricCatalog;
+    const catalog = new Map(displayCatalog
       .map(metric => [`${metric.category}|${metric.name}`, metric]));
     const totals = new Map();
     for (const row of rows) {
@@ -929,31 +1078,40 @@ class MaxrollRuntimeAttestationObserver {
 
   async #finalizeDiscoveredMetrics(capture) {
     const runtime = this.#profile.realRuntime;
-    const labels = await this.#lease.page.waitForFunction(config => {
+    const rows = await this.#lease.page.waitForFunction(config => {
       const sections = [...document.querySelectorAll(config.statsSectionSelector)];
-      const values = sections.flatMap(section => [...section.querySelectorAll('li')]
-        .map(row => row.querySelector(':scope > span')?.textContent?.trim()).filter(Boolean));
-      const unique = [...new Set(values)];
+      const values = sections.flatMap(section => {
+        const heading = (section.querySelector('h3')?.textContent ?? '').trim();
+        const sectionKey = config.categoryLabels[heading.toUpperCase()]
+          ?? (heading === '' ? 'summary' : null);
+        if (!sectionKey) return [];
+        return [...section.querySelectorAll('li')].map(row => ({ section: sectionKey,
+          label: row.querySelector(':scope > span')?.textContent?.trim() }))
+          .filter(row => Boolean(row.label));
+      });
+      const unique = [...new Set(values.map(row => row.label))];
       const requiredComplete = !config.requiredLabels
         || config.requiredLabels.every(label => unique.includes(label));
       return sections.length >= Object.keys(config.categoryLabels).length + 1
         && values.length && requiredComplete
-        ? [...new Set(values)] : false;
+        ? values : false;
     }, {
       statsSectionSelector: runtime.statsSectionSelector,
       categoryLabels: runtime.categoryLabels,
       requiredLabels: runtime.metricLabelAllowlist ?? null,
     }, { timeout: runtime.captureTimeoutMs ?? 30_000 }).then(handle => handle.jsonValue());
     const configured = runtime.metricLabelAllowlist;
+    const labels = [...new Set(rows.map(row => row.label))];
     const requiredLabels = Array.isArray(configured) ? configured : labels;
     const missingLabels = requiredLabels.filter(label => !labels.includes(label));
     if (missingLabels.length) throw new MaxrollProviderError(ERROR_CODES.METRICS_INCOMPLETE,
       'display metric enumeration is incomplete', { details: { missingLabels } });
-    const expectedIds = new Set(requiredLabels
-      .flatMap(label => [...(capture.observedMetricDefinitions.get(label) ?? [])]));
-    if (!expectedIds.size) throw new MaxrollProviderError(ERROR_CODES.METRICS_INCOMPLETE,
-      'display metric enumeration did not resolve any raw metric IDs');
-    capture.accumulator.finalize(expectedIds);
+    const applicableRows = rows.filter(row => requiredLabels.includes(row.label));
+    const inventory = resolveApplicableMetricInventory({ rows: applicableRows,
+      observedMetricDefinitions: capture.observedMetricDefinitions,
+      metricCatalog: runtime.metricDisplayCatalog ?? this.#profile.metricCatalog,
+      displayOnly: runtime.displayOnlyMetricInventory ?? [] });
+    capture.accumulator.finalize(inventory.expectedIds);
     if (!capture.accumulator.complete) throw new MaxrollProviderError(ERROR_CODES.METRICS_INCOMPLETE,
       'runtime metric enumeration completed before all applicable raw metrics were captured', {
         details: { observedMetricIds: capture.accumulator.observedIds,
@@ -996,7 +1154,9 @@ module.exports = {
   CalculationEpochAccumulator,
   MaxrollRuntimeAttestationObserver,
   exactOptionReadback,
+  resolveApplicableMetricInventory,
   inputSemantics,
+  normalizedExpectedOptions,
   normalizedProfile,
   resolveSharedOptionControls,
   semanticHash,

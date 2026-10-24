@@ -4,6 +4,7 @@ const { FileSystemSnapshotStore } = require('@streamops/browser-infrastructure')
 const { validateCanonicalSchema } = require('./canonical-schema-validator');
 const { ERROR_CODES, MaxrollProviderError } = require('./errors');
 const { D12_SHARED_OPTION_DEFINITIONS } = require('./d12-shared-options');
+const { D12_OPTION_READBACK_RULES } = require('./d12-option-readback');
 const { immutable, sha256 } = require('./value');
 
 const CANONICAL_SCHEMA_VERSION = 'd4-build/v1';
@@ -115,7 +116,7 @@ class MaxrollEntityCatalog {
   #ids;
   #byId;
 
-  constructor(data, provenance = {}) {
+  constructor(data, provenance = {}, runtimeDefinitions = {}) {
     assertPlain(data, 'catalog');
     for (const family of [
       'affixes', 'classes', 'items', 'mercenaries', 'paragonBoards', 'paragonGlyphs',
@@ -133,6 +134,7 @@ class MaxrollEntityCatalog {
     this.#byId = Object.fromEntries(Object.keys(this.#ids)
       .map(key => [key, catalogById(data[key])]));
     this.provenance = immutable(provenance);
+    this.runtimeDefinitions = immutable(runtimeDefinitions);
     this.counts = immutable(Object.fromEntries(Object.entries(data)
       .filter(([, value]) => value && typeof value === 'object')
       .map(([key, value]) => [key, Array.isArray(value) ? value.length : Object.keys(value).length])));
@@ -397,6 +399,26 @@ class MaxrollEntityCatalog {
   }
 
   board(id) { return this.require('paragonBoards', id, 'paragon.boards'); }
+
+  optionReadbackDefinitions() {
+    return immutable(clone(this.runtimeDefinitions.calculationOptions ?? {}));
+  }
+
+  canonicalCalculationOptions(options) {
+    const output = clone(options ?? {});
+    for (const [optionId, option] of Object.entries(output)) {
+      const definition = this.runtimeDefinitions.calculationOptions?.[optionId];
+      for (const field of definition?.ignoredNativeFields ?? []) delete option[field];
+      for (const [index, rule] of Object.entries(
+        definition?.nativeParamCanonicalization ?? {})) {
+        if (rule.kind === 'clamp-max' && Number.isFinite(option.params?.[index])) {
+          option.params[index] = Math.min(option.params[index], rule.max);
+        }
+      }
+      if (Object.keys(option).length === 0) delete output[optionId];
+    }
+    return immutable(output);
+  }
 }
 
 async function loadMaxrollEntityCatalog(options) {
@@ -429,13 +451,49 @@ async function loadMaxrollEntityCatalog(options) {
     throw new MaxrollProviderError(ERROR_CODES.CANONICAL_MAPPING_INCOMPLETE,
       'game data catalog is invalid JSON', { cause });
   }
+  const engineResource = snapshotPackage.manifest.resources.find(entry =>
+    entry.sha256 === D12_COMPATIBILITY.engineAssetSha256);
+  const engineBody = engineResource
+    ? snapshotPackage.resources.get(engineResource.key)?.body : null;
+  if (!engineBody || sha256(engineBody) !== D12_COMPATIBILITY.engineAssetSha256) {
+    fail(ERROR_CODES.SNAPSHOT_MISMATCH,
+      'pinned calculation engine bytes are unavailable for option authority');
+  }
+  const calculationOptions = {};
+  const registration = /\.register(?:Power|Skill)\)\("([^"]+)"/g;
+  let match;
+  const source = engineBody.toString('utf8');
+  while ((match = registration.exec(source)) !== null) {
+    calculationOptions[match[1]] = {
+      applicability: { kind: 'pinned-engine-enumeration', registered: true,
+        authority: `sha256:${D12_COMPATIBILITY.engineAssetSha256}` },
+      ...(D12_OPTION_READBACK_RULES[match[1]] ?? {}),
+    };
+  }
+  for (const [family, entries] of Object.entries(data)) {
+    if (!entries || typeof entries !== 'object') continue;
+    for (const [key, entry] of Object.entries(entries)) {
+      for (const id of [key, entry?.id].filter(value => value != null).map(String)) {
+        calculationOptions[id] ??= {
+          applicability: { kind: 'pinned-game-catalog-option', registered: true,
+            family, authority: `sha256:${resource.sha256}` },
+        };
+      }
+    }
+  }
+  for (const [optionId, rule] of Object.entries(D12_OPTION_READBACK_RULES)) {
+    calculationOptions[optionId] = { ...(calculationOptions[optionId] ?? {}), ...rule };
+  }
+  if (Object.keys(calculationOptions).length === 0) fail(
+    ERROR_CODES.CANONICAL_MAPPING_INCOMPLETE,
+    'pinned calculation engine contains no registered option definitions');
   return new MaxrollEntityCatalog(data, {
     snapshotId: options.snapshotId,
     snapshotManifestSha256: verified.manifestSha256,
     resourceUrl: resource.url,
     resourceSha256: resource.sha256,
     gameDataVersion: data.version ?? null,
-  });
+  }, { calculationOptions });
 }
 
 class MaxrollD12CanonicalCodec {
@@ -507,7 +565,7 @@ class MaxrollD12CanonicalCodec {
       world: clone(profile.world ?? {}),
       calculationContext: {
         season: state.season ?? null,
-        options: clone(state.options ?? {}),
+          options: clone(this.#catalog.canonicalCalculationOptions(state.options ?? {})),
       },
       provenance: {
         codecVersion: CODEC_VERSION,

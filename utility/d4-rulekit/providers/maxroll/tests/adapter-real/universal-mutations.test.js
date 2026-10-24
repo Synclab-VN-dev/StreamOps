@@ -18,6 +18,7 @@ const {
 } = require('../../src');
 const { D4RuleKitApplication } = require('../../../../application/src');
 const { runCapture, verifiedSnapshot } = require('../../src/fixture-attestation');
+const { applyIndependentNativeMutation } = require('../helpers/native-mutation-oracle');
 
 const SNAPSHOT_ID = 'maxroll-20261023T034150Z';
 const MANIFEST_SHA = '638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54';
@@ -68,7 +69,7 @@ function mutationFor(className, build) {
 }
 
 test('C06-C09 every class performs an independently observed real A to B to A mutation', {
-  timeout: 540_000,
+  timeout: 300_000,
 }, async () => {
   const chromiumExecutablePath = process.env.BROWSER_INFRA_CHROMIUM_PATH;
   const snapshotRoot = process.env.MAXROLL_AUTHORIZED_SNAPSHOT_ROOT;
@@ -77,9 +78,10 @@ test('C06-C09 every class performs an independently observed real A to B to A mu
     throw new Error('real universal mutation environment is required');
   }
   const matrix = JSON.parse(await fs.readFile(path.join(fixtureRoot, 'fixture-matrix.json')));
-  const selected = process.env.MAXROLL_TEST_CLASS
-    ? matrix.fixtures.filter(row => row.class === process.env.MAXROLL_TEST_CLASS)
-    : matrix.fixtures;
+  if (!process.env.MAXROLL_TEST_CLASS) {
+    throw new Error('MAXROLL_TEST_CLASS is required; use acceptance:issue134 for the full matrix');
+  }
+  const selected = matrix.fixtures.filter(row => row.class === process.env.MAXROLL_TEST_CLASS);
   assert.ok(selected.length > 0, 'selected class is absent from fixture matrix');
   const catalog = await loadMaxrollEntityCatalog({ snapshotRoot, snapshotId: SNAPSHOT_ID,
     expectedManifestSha256: MANIFEST_SHA });
@@ -115,9 +117,10 @@ test('C06-C09 every class performs an independently observed real A to B to A mu
       const mapper = new UniversalMaxrollBuildMapper(profile, { codec });
       assert.deepEqual(mapper.map(buildA, [change], CANONICAL_SCHEMA_VERSION).desired, buildB);
       const directFixture = structuredClone(fixture);
-      directFixture.nativeState = codec.canonicalToNative(buildB);
-      directFixture.selection = { ...fixture.selection, profileIndex: 0,
-        profileName: 'Independent Mutation Oracle' };
+      directFixture.nativeState = applyIndependentNativeMutation(fixture.nativeState,
+        fixture.selection, change);
+      directFixture.selection = { ...fixture.selection,
+        profileName: 'Independent Native Mutation Oracle' };
       directFixture.provenance.sourceUrl = SOURCE_URL;
       directFixture.provenance.plannerId = PLANNER_ID;
       const oracleB = await runCapture({ options: { snapshotRoot, snapshotId: SNAPSHOT_ID,
@@ -169,18 +172,14 @@ test('C06-C09 every class performs an independently observed real A to B to A mu
   } finally {
     await browser.stop();
   }
-  if (!process.env.MAXROLL_TEST_CLASS) {
-    assert.deepEqual([...kinds].sort(), [
-      'calculationOption.set', 'effect.set', 'equipment.setSlot',
-      'paragon.setBoards', 'skill.setRank',
-    ]);
-    const artifact = path.resolve(__dirname, '../../artifacts/issue134-mutations.json');
-    await fs.mkdir(path.dirname(artifact), { recursive: true });
-    await fs.writeFile(artifact, `${JSON.stringify({
-      schemaVersion: 'issue-134-mutation-evidence/v1', status: 'PASS',
-      classes: evidence, cleanup: 'PASS',
-    }, null, 2)}\n`, { mode: 0o600 });
-  }
+  const artifact = path.resolve(__dirname, '../../artifacts',
+    `issue134-mutations-${process.env.MAXROLL_TEST_CLASS.toLowerCase()}.json`);
+  await fs.mkdir(path.dirname(artifact), { recursive: true });
+  await fs.writeFile(artifact, `${JSON.stringify({
+    schemaVersion: 'issue-134-mutation-shard-evidence/v2', status: 'PASS',
+    requestedClass: process.env.MAXROLL_TEST_CLASS, classes: evidence,
+    changeKinds: [...kinds], cleanup: 'PASS',
+  }, null, 2)}\n`, { mode: 0o600 });
   assert.equal(browser.getStatus().state, 'stopped');
   assert.equal(browser.getMetrics().currentContexts, 0);
 });

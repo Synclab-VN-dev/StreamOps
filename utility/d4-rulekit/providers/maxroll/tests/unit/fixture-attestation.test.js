@@ -8,7 +8,8 @@ const test = require('node:test');
 const { ERROR_CODES, attestMaxrollBuildFixture } = require('../../src');
 const { compareCaptures } = require('../../src/fixture-attestation');
 const { CalculationEpochAccumulator, exactOptionReadback,
-  resolveSharedOptionControls, semanticHash } = require('../../src/runtime-attestation');
+  normalizedExpectedOptions, resolveApplicableMetricInventory, resolveSharedOptionControls,
+  semanticHash } = require('../../src/runtime-attestation');
 
 let ordinal = 0;
 function capture(overrides = {}) {
@@ -219,17 +220,99 @@ test('FULL-REV-02 shared options are read from exact scoped UI controls, never i
   assert.deepEqual(observed.values,
     { enemy_burning: true, enemy_type: 1, primary_resource: 50 });
   assert.deepEqual(observed.notApplicable, []);
-  const absent = resolveSharedOptionControls({ enemy_burning: true }, [], definitions);
-  assert.deepEqual(absent.values, { enemy_burning: true });
-  assert.deepEqual(absent.notApplicable, ['enemy_burning']);
+  assert.throws(() => resolveSharedOptionControls({ enemy_burning: true }, [], definitions),
+    error => error.code === ERROR_CODES.INPUT_READBACK_UNVERIFIED);
   assert.throws(() => resolveSharedOptionControls({ enemy_burning: true }, [
     { group: 'Enemy', label: 'Burning', kind: 'checkbox', checked: true },
     { group: 'Enemy', label: 'Burning', kind: 'checkbox', checked: true },
   ], definitions), error => error.code === ERROR_CODES.INPUT_READBACK_UNVERIFIED);
 });
 
-test('FULL-REV-02 engine enumeration distinguishes a non-applicable option from missing capture', () => {
-  const result = exactOptionReadback({ Legacy_Option: { params: [6] } }, [], {});
-  assert.deepEqual(result.notApplicable, ['Legacy_Option']);
-  assert.equal(result.applicableCount, 0);
+test('FINAL-01 option read-back never normalizes toward expected without pinned authority', () => {
+  assert.throws(() => exactOptionReadback({ Skill_A: { params: [5] } }, [{ power: 'Skill_A',
+    options: { params: [4] } }], {}), error => error.code === ERROR_CODES.READBACK_MISMATCH);
+  assert.throws(() => exactOptionReadback({ Skill_Max: { params: ['max'] } }, [{ power: 'Skill_Max',
+    options: { params: [0] } }], {}), error => error.code === ERROR_CODES.READBACK_MISMATCH);
+  assert.throws(() => exactOptionReadback({ Skill_Flag: { flags: [true] } }, [{ power: 'Skill_Flag',
+    options: { flags: [] } }], {}), error => error.code === ERROR_CODES.READBACK_MISMATCH);
+  assert.throws(() => exactOptionReadback({ Legacy_Option: { params: [6] } }, [], {}),
+    error => error.code === ERROR_CODES.INPUT_READBACK_UNVERIFIED);
+});
+
+test('FINAL-01 applies only versioned per-option normalization rules and records raw evidence', () => {
+  const result = exactOptionReadback({ Skill_Max: { params: ['max'] },
+    Skill_Enum: { params: [2] }, Skill_Flags: { flags: [true] } }, [
+    { power: 'Skill_Max', options: { params: [10] } },
+    { power: 'Skill_Enum', options: { params: [1] } },
+    { power: 'Skill_Flags', options: { flags: [true, false] } },
+  ], {}, {
+    Skill_Max: { params: { 0: { kind: 'max', boundControl: {
+      group: 'Skill Max', label: 'Stacks' } } } },
+    Skill_Enum: { params: { 0: { kind: 'enum-index', runtimeBase: 0, canonicalBase: 1,
+      values: ['a', 'b', 'c'] } } },
+    Skill_Flags: { flags: { trailingDefault: false } },
+  }, [{ group: 'Skill Max', label: 'Stacks', kind: 'number', value: 10, max: 10 }]);
+  assert.equal(result.status, 'EXACT');
+  assert.deepEqual(result.rawObserved.Skill_Max.params, [10]);
+  assert.deepEqual(result.observed.Skill_Max.params, ['max']);
+  assert.equal(result.normalizationEvidence.length, 3);
+  assert.throws(() => exactOptionReadback({ Skill_Max: { params: ['max'] } }, [
+    { power: 'Skill_Max', options: { params: [10] } },
+  ], {}, { Skill_Max: { params: { 0: { kind: 'max', boundControl: {
+    group: 'Skill Max', label: 'Stacks' } } } } }, []),
+  error => error.code === ERROR_CODES.READBACK_MISMATCH);
+});
+
+test('FINAL-01 native loader metadata normalization is versioned and never inferred from expected', () => {
+  const normalized = normalizedExpectedOptions({
+    ignored: { active: true, flags: [true] }, clamped: { params: [6] }, untouched: { params: [4] },
+  }, {
+    ignored: { ignoredNativeFields: ['flags'] },
+    clamped: { nativeParamCanonicalization: { 0: { kind: 'clamp-max', max: 5 } } },
+  });
+  assert.deepEqual(normalized, {
+    ignored: { active: true }, clamped: { params: [5] }, untouched: { params: [4] },
+  });
+});
+
+test('FINAL-02 required display inventory cannot silently shrink around unresolved raw IDs', () => {
+  const definitions = new Map([['Strength', new Set([1])]]);
+  assert.throws(() => resolveApplicableMetricInventory({
+    rows: [{ section: 'core', label: 'Strength' },
+      { section: 'core', label: 'Intelligence' }],
+    observedMetricDefinitions: definitions,
+    metricCatalog: [{ internalId: 1, category: 'core', name: 'Strength' }],
+  }), error => error.code === ERROR_CODES.METRICS_INCOMPLETE
+    && error.details.unresolved.some(row => row.label === 'Intelligence'));
+});
+
+test('FINAL-02 rejects ambiguous mappings but permits pinned display-only classification', () => {
+  assert.throws(() => resolveApplicableMetricInventory({
+    rows: [{ section: 'core', label: 'Power' }],
+    observedMetricDefinitions: new Map([['Power', new Set([1, 2])]]),
+    metricCatalog: [],
+  }), error => error.code === ERROR_CODES.METRICS_INCOMPLETE);
+  const result = resolveApplicableMetricInventory({
+    rows: [{ section: 'summary', label: 'Build Name' },
+      { section: 'core', label: 'Strength' }],
+    observedMetricDefinitions: new Map([['Strength', new Set([1])]]),
+    metricCatalog: [{ internalId: 1, category: 'core', name: 'Strength' }],
+    displayOnly: [{ section: 'summary', label: 'Build Name', reason: 'pinned-ui-summary' }],
+  });
+  assert.deepEqual([...result.expectedIds], [1]);
+  assert.deepEqual(result.displayOnly, [{ section: 'summary', label: 'Build Name',
+    reason: 'pinned-ui-summary' }]);
+});
+
+test('FINAL-02 retains coherent raw-only runtime definitions instead of shrinking coverage', () => {
+  const result = resolveApplicableMetricInventory({
+    rows: [{ section: 'core', label: 'Strength' }],
+    observedMetricDefinitions: new Map([
+      ['Strength', new Set([1])], ['Late Runtime Stat', new Set([99])],
+    ]),
+    metricCatalog: [{ internalId: 1, category: 'core', name: 'Strength' }],
+  });
+  assert.deepEqual([...result.expectedIds], [1, 99]);
+  assert.deepEqual(result.rawOnly, [{ internalId: 99, label: 'Late Runtime Stat',
+    reason: 'coherent-runtime-definition-without-display-row' }]);
 });

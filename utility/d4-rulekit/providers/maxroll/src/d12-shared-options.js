@@ -1,9 +1,12 @@
 'use strict';
 
+const APPLICABILITY = Object.freeze({ kind: 'pinned-engine-rendered-control',
+  absence: 'not-applicable',
+  authority: 'sha256:891c1f82717c50e598450575068394c6d2fe1c8d26de26f2eeed028d028997db:effects-ui-applicable-option-enumeration' });
 const flag = (group, label) => Object.freeze({ group, labels: Object.freeze([label]),
-  types: Object.freeze(['boolean']) });
+  types: Object.freeze(['boolean']), applicability: APPLICABILITY });
 const number = (group, label, min, max, extra = {}) => Object.freeze({ group,
-  labels: Object.freeze(Array.isArray(label) ? label : [label]),
+  labels: Object.freeze(Array.isArray(label) ? label : [label]), applicability: APPLICABILITY,
   types: Object.freeze(['number']), min, max, ...extra });
 
 // Versioned from export-D12aM6KT.js sharedFlags/sharedParams/sharedOptions. These
@@ -11,7 +14,8 @@ const number = (group, label, min, max, extra = {}) => Object.freeze({ group,
 const definitions = {
   barrier: Object.freeze({ group: 'Player',
     labels: Object.freeze(['Barrier (%)', 'Barrier active']),
-    types: Object.freeze(['boolean', 'number']), min: 0, max: 100 }),
+    types: Object.freeze(['boolean', 'number']), min: 0, max: 100,
+    applicability: APPLICABILITY }),
   unhindered: flag('Player', 'Unhindered'),
   unstoppable: flag('Player', 'Unstoppable'),
   weapon_swapping: flag('Misc', 'Weapon swapping'),
@@ -51,7 +55,8 @@ for (const [key, label] of Object.entries({
 })) definitions[key] = flag('Enemy', label);
 
 definitions.enemy_hexed = Object.freeze({ group: 'Enemy', labels: Object.freeze(['Hexed']),
-  types: Object.freeze(['boolean', 'number']), min: 0, max: 4 });
+  types: Object.freeze(['boolean', 'number']), min: 0, max: 4,
+  applicability: APPLICABILITY });
 
 const D12_SHARED_OPTION_DEFINITIONS = Object.freeze(definitions);
 
