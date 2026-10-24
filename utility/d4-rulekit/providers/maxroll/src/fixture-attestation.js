@@ -371,5 +371,7 @@ module.exports = {
   ATTESTATION_SCHEMA_VERSION,
   attestMaxrollBuildFixture,
   compareCaptures,
+  runCapture,
+  verifiedSnapshot,
   validateCaptureEvidence,
 };

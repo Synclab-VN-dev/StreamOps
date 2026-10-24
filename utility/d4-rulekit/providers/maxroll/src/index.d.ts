@@ -5,7 +5,43 @@ export type MaxrollProviderErrorCode =
   | 'TIMEOUT' | 'CANCELLED' | 'CLEANUP_FAILED'
   | 'PROFILE_NOT_IN_SNAPSHOT' | 'PROFILE_VARIANT_NOT_FOUND'
   | 'NATIVE_BUILD_INVALID' | 'OUTPUT_EXISTS' | 'EXPORT_FAILED'
-  | 'ENGINE_IDENTITY_UNVERIFIED' | 'INPUT_READBACK_UNVERIFIED' | 'OUTPUT_NOT_LINKED';
+  | 'ENGINE_IDENTITY_UNVERIFIED' | 'INPUT_READBACK_UNVERIFIED' | 'OUTPUT_NOT_LINKED'
+  | 'CANONICAL_BUILD_INVALID' | 'CANONICAL_MAPPING_INCOMPLETE' | 'ENTITY_NOT_FOUND';
+
+export const CANONICAL_SCHEMA_VERSION: 'd4-build/v1alpha1';
+export const CODEC_VERSION: 'maxroll-native/3.2.1.73552-D12aM6KT-b0';
+
+export interface CanonicalD4Build {
+  readonly schemaVersion: 'd4-build/v1alpha1';
+  readonly game: Readonly<{ id: 'diablo-iv'; patch: string | null }>;
+  readonly character: Readonly<{ classId: string; level: number; worldTier: number }>;
+  readonly equipment: Readonly<{ slots: readonly Readonly<Record<string, unknown>>[] }>;
+  readonly skills: Readonly<Record<string, unknown>>;
+  readonly paragon: Readonly<Record<string, unknown>>;
+  readonly effects: Readonly<Record<string, unknown>>;
+  readonly world: Readonly<Record<string, unknown>>;
+  readonly calculationContext: Readonly<Record<string, unknown>>;
+  readonly provenance: Readonly<Record<string, unknown>>;
+}
+
+export class MaxrollEntityCatalog {
+  constructor(data: Readonly<Record<string, unknown>>, provenance?: Readonly<Record<string, unknown>>);
+  readonly counts: Readonly<Record<string, number>>;
+  readonly provenance: Readonly<Record<string, unknown>>;
+}
+
+export class MaxrollD12CanonicalCodec {
+  constructor(options: Readonly<{ catalog: MaxrollEntityCatalog }>);
+  nativeToCanonical(fixture: Readonly<Record<string, unknown>>): CanonicalD4Build;
+  canonicalToNative(build: CanonicalD4Build): Readonly<Record<string, unknown>>;
+}
+
+export function loadMaxrollEntityCatalog(options: Readonly<{
+  snapshotRoot: string;
+  snapshotId: string;
+  expectedManifestSha256: string;
+  store?: unknown;
+}>): Promise<MaxrollEntityCatalog>;
 
 export interface MaxrollBuildAttestationOptions {
   readonly inputPath: string;

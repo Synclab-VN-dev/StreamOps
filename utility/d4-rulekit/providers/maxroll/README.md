@@ -104,6 +104,12 @@ See [`BUILD-FIXTURE-RELEASE.md`](BUILD-FIXTURE-RELEASE.md) for the direct Releas
 checksum, separately provisioned-key workflow, and manifest verification requirements. Plaintext
 fixtures and the ciphertext itself are intentionally absent from Git.
 
+Phase B0 proves a bounded native-to-canonical-to-native vertical slice without wrapping the native
+response or hardcoding either fixture. See [`UNIVERSAL-IMPORT-B0.md`](UNIVERSAL-IMPORT-B0.md) and
+the machine-readable [`UNIVERSAL-IMPORT-B0-COVERAGE.json`](UNIVERSAL-IMPORT-B0-COVERAGE.json).
+This is `B0_VERTICAL_SLICE_PASS / UNIVERSAL_COVERAGE_PENDING`, not a universal-import completion
+claim. The existing eight Application APIs are unchanged.
+
 The pinned CI test fixture is published only as an age/X25519-encrypted ZIP plus its ciphertext
 checksum. `npm run fixture:encrypted` verifies the source snapshot, packages/encrypts it, or
 decrypts a pinned Release asset into a temporary directory for full manifest/blob verification.

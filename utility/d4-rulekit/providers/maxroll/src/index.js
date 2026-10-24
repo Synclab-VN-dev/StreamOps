@@ -2,6 +2,13 @@
 
 const { MaxrollBuildMapper } = require('./build-mapper');
 const {
+  CANONICAL_SCHEMA_VERSION,
+  CODEC_VERSION,
+  MaxrollD12CanonicalCodec,
+  MaxrollEntityCatalog,
+  loadMaxrollEntityCatalog,
+} = require('./canonical-codec');
+const {
   EXPORT_SCHEMA_VERSION,
   exportMaxrollBuildFromSnapshot,
   listMaxrollBuildProfilesFromSnapshot,
@@ -30,11 +37,15 @@ const {
 
 module.exports = {
   ATTESTATION_SCHEMA_VERSION,
+  CANONICAL_SCHEMA_VERSION,
+  CODEC_VERSION,
   MAXROLL_32173552_D12AM6KT_REFERENCE,
   ERROR_CODES,
   EXPORT_SCHEMA_VERSION,
   METRIC_CATALOG,
   MaxrollBuildMapper,
+  MaxrollD12CanonicalCodec,
+  MaxrollEntityCatalog,
   MaxrollComponentFactory,
   MaxrollMetricsExtractor,
   MaxrollPatchProfile,
@@ -51,4 +62,5 @@ module.exports = {
   attestMaxrollBuildFixture,
   exportMaxrollBuildFromSnapshot,
   listMaxrollBuildProfilesFromSnapshot,
+  loadMaxrollEntityCatalog,
 };
