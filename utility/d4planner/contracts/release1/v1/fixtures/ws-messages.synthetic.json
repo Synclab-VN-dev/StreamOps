@@ -1,0 +1,106 @@
+{
+  "fixtureType": "SYNTHETIC_WS_MESSAGES",
+  "messages": [
+    {
+      "protocolVersion": "d4planner-ws/v1",
+      "messageId": "m-hello-1",
+      "type": "hello",
+      "correlationId": null,
+      "backendGeneration": 3,
+      "credential": "SYNTHETIC_TEST_CREDENTIAL_NOT_A_SECRET_0001",
+      "origin": "tauri://localhost",
+      "lastSeen": { "hudRevision": 10 }
+    },
+    {
+      "protocolVersion": "d4planner-ws/v1",
+      "messageId": "m-hello-accepted-1",
+      "type": "hello.accepted",
+      "correlationId": "m-hello-1",
+      "backendGeneration": 3,
+      "sessionId": "ws-session-synthetic-1",
+      "limits": { "maxMessageBytes": 262144, "maxPendingMessages": 32 }
+    },
+    {
+      "protocolVersion": "d4planner-ws/v1",
+      "messageId": "m-list-request-1",
+      "type": "target.list.request",
+      "correlationId": null,
+      "backendGeneration": 3
+    },
+    {
+      "protocolVersion": "d4planner-ws/v1",
+      "messageId": "m-list-result-1",
+      "type": "target.list.result",
+      "correlationId": "m-list-request-1",
+      "backendGeneration": 3,
+      "listRevision": 7,
+      "targets": [
+        {
+          "targetId": "synthetic-charge-bolt",
+          "displayName": "Synthetic Charge Bolt Equipment Target",
+          "contentSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "byteLength": 4096,
+          "validation": "VALID",
+          "errorCodes": []
+        }
+      ]
+    },
+    {
+      "protocolVersion": "d4planner-ws/v1",
+      "messageId": "m-select-1",
+      "type": "target.select.request",
+      "correlationId": null,
+      "backendGeneration": 3,
+      "targetId": "synthetic-charge-bolt",
+      "expectedSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expectedListRevision": 7
+    },
+    {
+      "protocolVersion": "d4planner-ws/v1",
+      "messageId": "m-select-result-1",
+      "type": "target.select.result",
+      "correlationId": "m-select-1",
+      "backendGeneration": 3,
+      "status": "ACTIVATED",
+      "targetId": "synthetic-charge-bolt",
+      "contentSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "selectionRevision": 8,
+      "hudRevision": 14
+    },
+    {
+      "protocolVersion": "d4planner-ws/v1",
+      "messageId": "m-resync-1",
+      "type": "resync.required",
+      "correlationId": null,
+      "backendGeneration": 4,
+      "reason": "BACKEND_GENERATION_CHANGED",
+      "latestHudRevision": 2
+    },
+    {
+      "protocolVersion": "d4planner-ws/v1",
+      "messageId": "m-error-1",
+      "type": "error",
+      "correlationId": "m-select-1",
+      "backendGeneration": 3,
+      "code": "TARGET_CHANGED",
+      "message": "Target bytes changed after listing",
+      "retryable": true
+    },
+    {
+      "protocolVersion": "d4planner-ws/v1",
+      "messageId": "m-ping-1",
+      "type": "ping",
+      "correlationId": null,
+      "backendGeneration": 3,
+      "sentAt": "2026-10-25T05:00:00Z"
+    },
+    {
+      "protocolVersion": "d4planner-ws/v1",
+      "messageId": "m-pong-1",
+      "type": "pong",
+      "correlationId": "m-ping-1",
+      "backendGeneration": 3,
+      "sentAt": "2026-10-25T05:00:00Z"
+    }
+  ]
+}

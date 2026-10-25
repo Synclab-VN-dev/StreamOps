@@ -1,0 +1,52 @@
+{
+  "fixtureType": "SYNTHETIC_LIFECYCLE_SEQUENCES",
+  "cases": [
+    {
+      "id": "ready-graceful-stop",
+      "expectedFinalState": "STOPPED",
+      "events": [
+        { "contractVersion": "d4planner-process/v1", "wrapper": "BACKEND", "ownerInstanceId": "fe-a", "childInstanceId": null, "generation": 1, "sequence": 1, "event": "START_REQUESTED", "reason": "user start", "protocolVersion": null, "healthVerified": null },
+        { "contractVersion": "d4planner-process/v1", "wrapper": "BACKEND", "ownerInstanceId": "fe-a", "childInstanceId": "be-a-1", "generation": 1, "sequence": 2, "event": "SPAWNED", "reason": "owned child created", "protocolVersion": null, "healthVerified": false },
+        { "contractVersion": "d4planner-process/v1", "wrapper": "BACKEND", "ownerInstanceId": "fe-a", "childInstanceId": "be-a-1", "generation": 1, "sequence": 3, "event": "READY", "reason": "handshake and dependencies healthy", "protocolVersion": "d4planner-be/v1", "healthVerified": true },
+        { "contractVersion": "d4planner-process/v1", "wrapper": "BACKEND", "ownerInstanceId": "fe-a", "childInstanceId": "be-a-1", "generation": 1, "sequence": 4, "event": "STOP_REQUESTED", "reason": "owner exit", "protocolVersion": "d4planner-be/v1", "healthVerified": true },
+        { "contractVersion": "d4planner-process/v1", "wrapper": "BACKEND", "ownerInstanceId": "fe-a", "childInstanceId": "be-a-1", "generation": 1, "sequence": 5, "event": "EXITED", "reason": "graceful exit code 0", "protocolVersion": "d4planner-be/v1", "healthVerified": false },
+        { "contractVersion": "d4planner-process/v1", "wrapper": "BACKEND", "ownerInstanceId": "fe-a", "childInstanceId": "be-a-1", "generation": 1, "sequence": 6, "event": "CLEANED", "reason": "handles and credential revoked", "protocolVersion": "d4planner-be/v1", "healthVerified": false }
+      ]
+    },
+    {
+      "id": "startup-failure",
+      "expectedFinalState": "STOPPED",
+      "events": [
+        { "contractVersion": "d4planner-process/v1", "wrapper": "RULE_KIT", "ownerInstanceId": "be-a", "childInstanceId": null, "generation": 2, "sequence": 1, "event": "START_REQUESTED", "reason": "backend start", "protocolVersion": null, "healthVerified": null },
+        { "contractVersion": "d4planner-process/v1", "wrapper": "RULE_KIT", "ownerInstanceId": "be-a", "childInstanceId": "rk-a-2", "generation": 2, "sequence": 2, "event": "SPAWNED", "reason": "worker pid exists", "protocolVersion": null, "healthVerified": false },
+        { "contractVersion": "d4planner-process/v1", "wrapper": "RULE_KIT", "ownerInstanceId": "be-a", "childInstanceId": "rk-a-2", "generation": 2, "sequence": 3, "event": "START_FAILED", "reason": "readiness protocol mismatch", "protocolVersion": "wrong/v1", "healthVerified": false },
+        { "contractVersion": "d4planner-process/v1", "wrapper": "RULE_KIT", "ownerInstanceId": "be-a", "childInstanceId": "rk-a-2", "generation": 2, "sequence": 4, "event": "EXITED", "reason": "owned child terminated", "protocolVersion": "wrong/v1", "healthVerified": false },
+        { "contractVersion": "d4planner-process/v1", "wrapper": "RULE_KIT", "ownerInstanceId": "be-a", "childInstanceId": "rk-a-2", "generation": 2, "sequence": 5, "event": "CLEANED", "reason": "startup resources revoked", "protocolVersion": "wrong/v1", "healthVerified": false }
+      ]
+    },
+    {
+      "id": "crash-bounded-restart",
+      "expectedFinalState": "READY",
+      "events": [
+        { "contractVersion": "d4planner-process/v1", "wrapper": "RULE_KIT", "ownerInstanceId": "be-a", "childInstanceId": "rk-a-3", "generation": 3, "sequence": 1, "event": "READY", "reason": "healthy", "protocolVersion": "d4-rulekit-ipc/v1", "healthVerified": true },
+        { "contractVersion": "d4planner-process/v1", "wrapper": "RULE_KIT", "ownerInstanceId": "be-a", "childInstanceId": "rk-a-3", "generation": 3, "sequence": 2, "event": "CRASHED", "reason": "unexpected exit", "protocolVersion": "d4-rulekit-ipc/v1", "healthVerified": false },
+        { "contractVersion": "d4planner-process/v1", "wrapper": "RULE_KIT", "ownerInstanceId": "be-a", "childInstanceId": "rk-a-3", "generation": 3, "sequence": 3, "event": "SESSIONS_INVALIDATED", "reason": "worker generation ended", "protocolVersion": "d4-rulekit-ipc/v1", "healthVerified": false },
+        { "contractVersion": "d4planner-process/v1", "wrapper": "RULE_KIT", "ownerInstanceId": "be-a", "childInstanceId": null, "generation": 4, "sequence": 4, "event": "RESTART_SCHEDULED", "reason": "budget allows attempt", "protocolVersion": null, "healthVerified": null },
+        { "contractVersion": "d4planner-process/v1", "wrapper": "RULE_KIT", "ownerInstanceId": "be-a", "childInstanceId": null, "generation": 4, "sequence": 5, "event": "START_REQUESTED", "reason": "bounded restart", "protocolVersion": null, "healthVerified": null },
+        { "contractVersion": "d4planner-process/v1", "wrapper": "RULE_KIT", "ownerInstanceId": "be-a", "childInstanceId": "rk-a-4", "generation": 4, "sequence": 6, "event": "SPAWNED", "reason": "new owned worker", "protocolVersion": null, "healthVerified": false },
+        { "contractVersion": "d4planner-process/v1", "wrapper": "RULE_KIT", "ownerInstanceId": "be-a", "childInstanceId": "rk-a-4", "generation": 4, "sequence": 7, "event": "READY", "reason": "new generation healthy", "protocolVersion": "d4-rulekit-ipc/v1", "healthVerified": true }
+      ]
+    },
+    {
+      "id": "parent-death",
+      "expectedFinalState": "STOPPED",
+      "events": [
+        { "contractVersion": "d4planner-process/v1", "wrapper": "BACKEND", "ownerInstanceId": "fe-b", "childInstanceId": "be-b-1", "generation": 1, "sequence": 1, "event": "READY", "reason": "healthy", "protocolVersion": "d4planner-be/v1", "healthVerified": true },
+        { "contractVersion": "d4planner-process/v1", "wrapper": "BACKEND", "ownerInstanceId": "fe-b", "childInstanceId": "be-b-1", "generation": 1, "sequence": 2, "event": "PARENT_LOST", "reason": "owner death channel closed", "protocolVersion": "d4planner-be/v1", "healthVerified": false },
+        { "contractVersion": "d4planner-process/v1", "wrapper": "BACKEND", "ownerInstanceId": "fe-b", "childInstanceId": "be-b-1", "generation": 1, "sequence": 3, "event": "STOP_REQUESTED", "reason": "parent lost", "protocolVersion": "d4planner-be/v1", "healthVerified": false },
+        { "contractVersion": "d4planner-process/v1", "wrapper": "BACKEND", "ownerInstanceId": "fe-b", "childInstanceId": "be-b-1", "generation": 1, "sequence": 4, "event": "EXITED", "reason": "self terminated", "protocolVersion": "d4planner-be/v1", "healthVerified": false },
+        { "contractVersion": "d4planner-process/v1", "wrapper": "BACKEND", "ownerInstanceId": "fe-b", "childInstanceId": "be-b-1", "generation": 1, "sequence": 5, "event": "CLEANED", "reason": "child cleanup", "protocolVersion": "d4planner-be/v1", "healthVerified": false }
+      ]
+    }
+  ]
+}
