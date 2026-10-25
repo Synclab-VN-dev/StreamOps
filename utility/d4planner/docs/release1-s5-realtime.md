@@ -1,6 +1,6 @@
 # D4Planner Release 1 — S5 realtime transport
 
-Source contract: `d4planner-r1/1.2.0` at
+Source contract: `d4planner-r1-contract/1.0.0-candidate.5` at
 `459cd0e1fb41f8421cf93f5009272bfab20b5a2c`.
 
 This workstream implements the loopback WebSocket transport and the FE HUD
