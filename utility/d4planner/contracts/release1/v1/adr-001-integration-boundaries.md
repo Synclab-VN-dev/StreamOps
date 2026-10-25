@@ -1,7 +1,7 @@
 # ADR-001: Release 1 integration boundaries and lifecycle
 
 - Status: `CANDIDATE`, technical review corrections complete; downstream evidence is recorded in `decisions-and-dependencies.md`
-- Contract: `d4planner-r1-contract/1.0.0-candidate.3`
+- Contract: `d4planner-r1-contract/1.0.0-candidate.4`
 - Scope baseline: `R1-EQUIPMENT-20261025`
 - References: Epic #137, S1 #138
 
@@ -234,12 +234,36 @@ An authoritative full snapshot follows one of two explicit request modes:
 
 Both modes require the pending correlation, matching runtime instance and
 generation, and a revision at least the request minimum and current local
-revision. Equal known-context resync confirms/resubscribes idempotently. Older,
-late after the request was consumed, wrong-generation, wrong-instance or
-wrong-known-context snapshots cannot roll state back. The closed HUD schema and
-semantic validation ensure a discovery snapshot's internal selected Target,
-character and assessment binding agree. A newly accepted BE generation resets
-local transport state before its first discovery snapshot.
+revision. These guards are checked before interpreting a context difference, so
+a stale or unrelated snapshot cannot trigger recovery. Equal known-context
+resync confirms/resubscribes idempotently.
+
+If a fresh, correlated `RESYNC_KNOWN_CONTEXT` snapshot has a different valid
+context, FE treats it as evidence that the single active context changed while
+updates were missed. FE does not apply that snapshot directly. It consumes the
+old request/subscription, marks the old assessment non-renderable, and sends a
+new `DISCOVER_ACTIVE_CONTEXT` request with a fresh correlation, reason
+`KNOWN_CONTEXT_CHANGED`, attempt 1, and `minimumHudRevision` at least the
+mismatching authoritative revision. Until discovery succeeds, the old identity
+may remain labelled as stale but its score/equipment cannot be shown or relabelled.
+
+Discovery has a positive operation timeout and finite `maxDiscoveryAttempts`
+from `SnapshotRecoveryPolicy`; these are distinct from WS session/lease lifetime
+and are deployment configuration, not a polling interval. A timeout consumes
+that pending correlation. A retry uses reason `TIMEOUT_RETRY`, increments
+`attempt`, and preserves the revision floor. Exhaustion stops issuing requests
+for that authenticated session and leaves assessment invalid; it cannot form an
+infinite resync loop. A later authenticated connection starts a new bounded
+discovery episode. Late responses for consumed correlations, wrong generation,
+wrong instance, attempts beyond budget, or responses below the floor cannot
+roll state back.
+
+Successful discovery atomically installs the new character/Target/binding,
+assessment and subscription. Incremental updates then resume only when they
+join that subscription and revision. The closed HUD schema and semantic
+validation ensure the selected Target, character and assessment binding agree.
+A newly accepted BE generation resets local transport/recovery state before its
+first discovery snapshot.
 
 Target selection carries listed hash/revision. The activation commit increments
 selection and HUD revision atomically; any computation for the prior binding is

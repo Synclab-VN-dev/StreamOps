@@ -9,5 +9,5 @@
   "health": { "capture": "HEALTHY", "scoreFreshness": "NO_DATA", "ruleKit": "READY" },
   "score": { "status": "NO_DATA", "value": null, "passedWeight": 0, "evaluableWeight": 0, "evaluationCounts": { "evaluatedCriteria": 0, "totalCriteria": 0, "evaluatedWeight": 0, "totalWeight": 0 }, "failIssueCount": 0, "warnCount": 0, "itemsPassing": 0, "itemsTargeted": 0 },
   "equipment": [], "recommendation": null,
-  "provenance": { "producer": "D4PLANNER_BE", "assessmentVersion": "d4planner-r1-contract/1.0.0-candidate.3", "captureRevision": 2, "lastObservedAt": "2026-10-25T05:00:02Z" }
+  "provenance": { "producer": "D4PLANNER_BE", "assessmentVersion": "d4planner-r1-contract/1.0.0-candidate.4", "captureRevision": 2, "lastObservedAt": "2026-10-25T05:00:02Z" }
 }

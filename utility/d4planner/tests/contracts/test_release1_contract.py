@@ -240,7 +240,7 @@ def test_selection_rechecks_exact_bytes_hash_and_validity() -> None:
 def test_discriminated_hud_states_validate_without_fake_ids(fixture_name: str) -> None:
     hud = load(FIXTURES / fixture_name)
     validate_hud_semantics(hud)
-    assert hud["provenance"]["assessmentVersion"] == "d4planner-r1-contract/1.0.0-candidate.3"
+    assert hud["provenance"]["assessmentVersion"] == "d4planner-r1-contract/1.0.0-candidate.4"
 
 
 def test_no_data_is_not_zero_and_backend_can_be_ready_before_context() -> None:
@@ -432,6 +432,10 @@ def test_all_sample_ws_messages_and_startup_snapshot_validate() -> None:
     }
     with pytest.raises(ValidationError):
         validator(WS_SCHEMA).validate(ambiguous_old_request)
+    invalid_attempt = copy.deepcopy(request)
+    invalid_attempt["requestContext"]["attempt"] = 0
+    with pytest.raises(ValidationError):
+        validator(WS_SCHEMA).validate(invalid_attempt)
 
 
 def test_schema_request_to_reducer_initial_context_discovery() -> None:
@@ -472,17 +476,138 @@ def test_schema_request_to_reducer_initial_context_discovery() -> None:
     )
 
 
+def test_schema_to_reducer_recovers_changed_context_then_accepts_update() -> None:
+    hud = load(FIXTURES / "hud.partial.synthetic.json")
+    resync_request = {
+        "protocolVersion": "d4planner-ws/v1", "messageId": "req-known-old-target",
+        "type": "hud.snapshot.request", "correlationId": None, "backendGeneration": 3,
+        "requestContext": {
+            "mode": "RESYNC_KNOWN_CONTEXT", "runtimeInstanceId": "backend-synthetic-a",
+            "minimumHudRevision": 10,
+            "expectedContext": {
+                "state": "BOUND", "characterId": "character-synthetic-a",
+                "targetId": "synthetic-old-target", "selectionRevision": 6,
+            },
+        },
+    }
+    changed_snapshot = {
+        "protocolVersion": "d4planner-ws/v1", "messageId": "snapshot-reveals-target-change",
+        "type": "hud.snapshot", "correlationId": resync_request["messageId"], "backendGeneration": 3,
+        "authoritative": True, "subscriptionId": "sub-not-yet-accepted", "subscriptionAfterRevision": 12,
+        "requestContext": resync_request["requestContext"], "hud": hud,
+    }
+    validator(WS_SCHEMA).validate(resync_request)
+    validator(WS_SCHEMA).validate(changed_snapshot)
+    state = {
+        "runtimeInstanceId": "backend-synthetic-a", "generation": 3, "hudRevision": 10,
+        "contextState": "BOUND", "selectionRevision": 6, "targetId": "synthetic-old-target",
+        "characterId": "character-synthetic-a", "subscriptionId": None, "pendingRequestId": None,
+        "assessmentValid": True, "assessmentTargetId": "synthetic-old-target", "maxRecoveryAttempts": 2,
+    }
+    assert apply_ws_event(state, {
+        "kind": "REQUEST", "mode": "RESYNC_KNOWN_CONTEXT", "requestId": resync_request["messageId"],
+        "minimumRevision": 10, "expectedContext": resync_request["requestContext"]["expectedContext"],
+    }) == "REQUEST_RECORDED"
+    changed_context = hud["context"]
+    snapshot_event = {
+        "kind": "SNAPSHOT", "requestId": changed_snapshot["correlationId"],
+        "runtimeInstanceId": hud["backend"]["runtimeInstanceId"], "generation": 3,
+        "subscriptionId": changed_snapshot["subscriptionId"], "revision": hud["hudRevision"],
+        "contextState": changed_context["state"], "selectionRevision": changed_context["target"]["selectionRevision"],
+        "targetId": changed_context["target"]["targetId"],
+        "characterId": changed_context["character"]["characterId"],
+    }
+    assert apply_ws_event(state, snapshot_event) == "REQUEST_CONTEXT_DISCOVERY"
+    assert (state["targetId"], state["hudRevision"], state["assessmentValid"], state["recoveryFloor"]) == (
+        "synthetic-old-target", 10, False, 12,
+    )
+
+    discovery_request = {
+        "protocolVersion": "d4planner-ws/v1", "messageId": "req-discover-changed-target",
+        "type": "hud.snapshot.request", "correlationId": None, "backendGeneration": 3,
+        "requestContext": {
+            "mode": "DISCOVER_ACTIVE_CONTEXT", "reason": "KNOWN_CONTEXT_CHANGED", "attempt": 1,
+            "runtimeInstanceId": "backend-synthetic-a", "minimumHudRevision": 12,
+        },
+    }
+    recovery_snapshot = copy.deepcopy(changed_snapshot)
+    recovery_snapshot.update(messageId="snapshot-recovered-target", correlationId=discovery_request["messageId"],
+                             subscriptionId="sub-recovered")
+    recovery_snapshot["requestContext"] = discovery_request["requestContext"]
+    validator(WS_SCHEMA).validate(discovery_request)
+    validator(WS_SCHEMA).validate(recovery_snapshot)
+    assert apply_ws_event(state, {
+        "kind": "REQUEST", "mode": "DISCOVER_ACTIVE_CONTEXT", "reason": "KNOWN_CONTEXT_CHANGED", "attempt": 1,
+        "requestId": discovery_request["messageId"], "minimumRevision": 12,
+    }) == "REQUEST_RECORDED"
+    recovery_event = dict(snapshot_event, requestId=discovery_request["messageId"], subscriptionId="sub-recovered")
+    assert apply_ws_event(state, recovery_event) == "APPLY_RECOVERY_DISCOVERY"
+    assert (state["targetId"], state["assessmentTargetId"], state["assessmentValid"]) == (
+        "synthetic-charge-bolt", "synthetic-charge-bolt", True,
+    )
+
+    update_hud = copy.deepcopy(hud)
+    update_hud["hudRevision"] = 13
+    update_message = {
+        "protocolVersion": "d4planner-ws/v1", "messageId": "update-after-recovery", "type": "hud.update",
+        "correlationId": None, "backendGeneration": 3, "subscriptionId": "sub-recovered",
+        "previousHudRevision": 12, "hud": update_hud,
+    }
+    validator(WS_SCHEMA).validate(update_message)
+    assert apply_ws_event(state, dict(recovery_event, kind="UPDATE", previous=12, revision=13)) == "APPLY_UPDATE"
+    assert state["hudRevision"] == 13
+
+
 def apply_ws_event(state: dict[str, Any], event: dict[str, Any]) -> str:
+    state.setdefault("maxRecoveryAttempts", 2)
+    state.setdefault("recoveryAttempts", 0)
+    state.setdefault("recoveryRequired", False)
+    state.setdefault("recoveryExhausted", False)
+    state.setdefault("recoveryFloor", None)
+    state.setdefault("assessmentValid", state.get("contextState") == "BOUND")
+    state.setdefault("assessmentTargetId", state.get("targetId") if state["assessmentValid"] else None)
+    state.setdefault("assessmentCharacterId", state.get("characterId") if state["assessmentValid"] else None)
     kind = event["kind"]
     if kind == "HELLO_ACCEPTED":
         state.update(runtimeInstanceId=event["runtimeInstanceId"], generation=event["generation"], hudRevision=-1,
                      subscriptionId=None, pendingRequestId=None, pendingMode=None, contextState=None,
-                     targetId=None, characterId=None, selectionRevision=None)
+                     targetId=None, characterId=None, selectionRevision=None, recoveryAttempts=0,
+                     recoveryRequired=False, recoveryExhausted=False, recoveryFloor=None,
+                     assessmentValid=False, assessmentTargetId=None, assessmentCharacterId=None)
         return "RESET_GENERATION"
     if kind == "REQUEST":
+        if event["mode"] == "DISCOVER_ACTIVE_CONTEXT":
+            attempt = event.get("attempt", 1)
+            if state["recoveryExhausted"] or attempt > state["maxRecoveryAttempts"]:
+                return "RECOVERY_EXHAUSTED"
+            if state["recoveryRequired"]:
+                if attempt != state["recoveryAttempts"] + 1:
+                    return "REJECT_RECOVERY_ATTEMPT"
+                if event["minimumRevision"] < state["recoveryFloor"]:
+                    return "REJECT_RECOVERY_FLOOR"
+            elif attempt != 1:
+                return "REJECT_RECOVERY_ATTEMPT"
+            state["recoveryAttempts"] = attempt
+            if state["recoveryFloor"] is None:
+                state["recoveryFloor"] = event["minimumRevision"]
         state.update(pendingRequestId=event["requestId"], pendingMode=event["mode"],
                      minimumRevision=event["minimumRevision"], expectedContext=event.get("expectedContext"))
         return "REQUEST_RECORDED"
+    if kind == "REQUEST_TIMEOUT":
+        if event["requestId"] != state.get("pendingRequestId"):
+            return "IGNORE_LATE_TIMEOUT"
+        timed_out_mode = state["pendingMode"]
+        state.update(pendingRequestId=None, pendingMode=None, expectedContext=None)
+        if timed_out_mode == "RESYNC_KNOWN_CONTEXT":
+            state.update(subscriptionId=None, recoveryAttempts=0, recoveryRequired=True,
+                         recoveryFloor=max(state["hudRevision"], state["minimumRevision"]),
+                         assessmentValid=False, assessmentTargetId=None, assessmentCharacterId=None)
+            return "REQUEST_CONTEXT_DISCOVERY"
+        if state["recoveryAttempts"] < state["maxRecoveryAttempts"]:
+            state["recoveryRequired"] = True
+            return "RETRY_CONTEXT_DISCOVERY"
+        state.update(recoveryRequired=False, recoveryExhausted=True)
+        return "RECOVERY_EXHAUSTED"
     if event["runtimeInstanceId"] != state["runtimeInstanceId"]:
         return "REJECT_RUNTIME_INSTANCE"
     if event["generation"] != state["generation"]:
@@ -494,18 +619,28 @@ def apply_ws_event(state: dict[str, Any], event: dict[str, Any]) -> str:
             "state": event["contextState"], "targetId": event["targetId"],
             "characterId": event["characterId"], "selectionRevision": event["selectionRevision"],
         }
-        if state["pendingMode"] == "RESYNC_KNOWN_CONTEXT" and actual_context != state["expectedContext"]:
-            return "REJECT_CONTEXT"
         if event["revision"] < state["hudRevision"] or event["revision"] < state["minimumRevision"]:
             return "IGNORE_STALE_SNAPSHOT"
+        if state["pendingMode"] == "RESYNC_KNOWN_CONTEXT" and actual_context != state["expectedContext"]:
+            state.update(subscriptionId=None, pendingRequestId=None, pendingMode=None, expectedContext=None,
+                         recoveryAttempts=0, recoveryRequired=True, recoveryExhausted=False,
+                         recoveryFloor=event["revision"], assessmentValid=False,
+                         assessmentTargetId=None, assessmentCharacterId=None)
+            return "REQUEST_CONTEXT_DISCOVERY"
+        recovering = state["pendingMode"] == "DISCOVER_ACTIVE_CONTEXT" and state["recoveryRequired"]
         if state["pendingMode"] == "DISCOVER_ACTIVE_CONTEXT":
-            outcome = "APPLY_DISCOVERY_SNAPSHOT"
+            outcome = "APPLY_RECOVERY_DISCOVERY" if recovering else "APPLY_DISCOVERY_SNAPSHOT"
         else:
             outcome = "CONFIRM_EQUAL_SNAPSHOT" if event["revision"] == state["hudRevision"] else "APPLY_SNAPSHOT"
+        assessment_valid = event["contextState"] == "BOUND"
         state.update(hudRevision=event["revision"], subscriptionId=event["subscriptionId"],
                      contextState=event["contextState"], targetId=event["targetId"],
                      characterId=event["characterId"], selectionRevision=event["selectionRevision"],
-                     pendingRequestId=None, pendingMode=None, expectedContext=None)
+                     pendingRequestId=None, pendingMode=None, expectedContext=None,
+                     recoveryAttempts=0, recoveryRequired=False, recoveryExhausted=False, recoveryFloor=None,
+                     assessmentValid=assessment_valid,
+                     assessmentTargetId=event["targetId"] if assessment_valid else None,
+                     assessmentCharacterId=event["characterId"] if assessment_valid else None)
         return outcome
     if event["subscriptionId"] != state["subscriptionId"]:
         return "REJECT_SUBSCRIPTION"
@@ -516,8 +651,12 @@ def apply_ws_event(state: dict[str, Any], event: dict[str, Any]) -> str:
     context_changed = (event["contextState"], event["targetId"], event["characterId"], event["selectionRevision"]) != (
         state["contextState"], state["targetId"], state["characterId"], state["selectionRevision"]
     )
+    assessment_valid = event["contextState"] == "BOUND"
     state.update(hudRevision=event["revision"], contextState=event["contextState"], targetId=event["targetId"],
-                 characterId=event["characterId"], selectionRevision=event["selectionRevision"])
+                 characterId=event["characterId"], selectionRevision=event["selectionRevision"],
+                 assessmentValid=assessment_valid,
+                 assessmentTargetId=event["targetId"] if assessment_valid else None,
+                 assessmentCharacterId=event["characterId"] if assessment_valid else None)
     return "APPLY_CONTEXT_UPDATE" if context_changed else "APPLY_UPDATE"
 
 
@@ -527,6 +666,8 @@ def test_ws_authoritative_snapshot_resync_reconnect_and_anti_rollback_vectors() 
         state = copy.deepcopy(case["initial"])
         for event in case["events"]:
             assert apply_ws_event(state, event) == event["expected"], (case["id"], event, state)
+            for key, expected_value in event.get("expectedState", {}).items():
+                assert state.get(key) == expected_value, (case["id"], key, state)
 
 
 def test_lifecycle_sequences_validate_ownership_generation_and_ready_health() -> None:

@@ -29,6 +29,8 @@
       "backendGeneration": 3,
       "requestContext": {
         "mode": "DISCOVER_ACTIVE_CONTEXT",
+        "reason": "INITIAL_CONNECTION",
+        "attempt": 1,
         "runtimeInstanceId": "backend-synthetic-a",
         "minimumHudRevision": 0
       }
