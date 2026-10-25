@@ -48,6 +48,14 @@ Tauri packaging supplies these native-only variables:
 - the allow-listed Windows runtime environment (`SYSTEMROOT`, `WINDIR`,
   `TEMP`, `TMP`, `PATH`) needed by that executable.
 
+`D4PLANNER_BACKEND_PYTHON` must resolve to the interpreter process that remains
+alive and emits READY, not a console-script or virtual-environment redirector
+which launches a second Python PID. The strict READY PID check rejects an
+intermediate launcher because force-stopping its handle would not prove that
+the Backend child was contained. Windows tests bypass the venv redirector via
+the base interpreter and an explicit source path; S7 packaging must provision
+an equivalent direct executable (and separately prove process-group cleanup).
+
 The managed process creates/opens DataDir and Target folder before READY.
 Empty Target folders therefore produce READY with `targetJsonCount=0`; Target
 validity/selection remains S4 domain state. S2 does not pretend sibling work is

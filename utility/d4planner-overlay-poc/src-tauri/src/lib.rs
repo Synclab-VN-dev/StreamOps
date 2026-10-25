@@ -267,8 +267,12 @@ pub fn run() {
         }
         if matches!(&event, tauri::RunEvent::ExitRequested { .. }) {
             let state = handle.state::<BackendState>();
-            if let Ok(slot) = state.0.lock() {
-                if let Some(wrapper) = slot.clone() { let _ = wrapper.stop(); }
+            // Clone the owned wrapper out of the slot before the guard is
+            // dropped. This avoids extending the temporary guard to the end
+            // of the event block and never holds BackendState while stop waits.
+            let wrapper = state.0.lock().ok().and_then(|slot| slot.clone());
+            if let Some(wrapper) = wrapper {
+                let _ = wrapper.stop();
             }
         }
     });
