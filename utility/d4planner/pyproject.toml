@@ -7,10 +7,10 @@ name = "d4planner"
 version = "0.2.0"
 description = "Diablo IV NVDA capture runtime and CLI for StreamOps."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["jsonschema>=4.23,<5"]
 
 [project.optional-dependencies]
-dev = ["pytest>=9.1.1", "jsonschema>=4.23,<5"]
+dev = ["pytest>=9.1.1"]
 
 [project.scripts]
 d4planner = "d4planner.cli:main"
