@@ -77,7 +77,7 @@ class SyntheticDomain:
     ) -> dict[str, Any]:
         self.activations.append((target_id, expected_sha256, expected_list_revision))
         if target_id != "synthetic-charge-bolt":
-            raise TargetActivationError("TARGET_INVALID", "Target cannot be activated.")
+            raise TargetActivationError("TARGET_INVALID", "/private/path/must-not-leak.json")
         if expected_sha256 != "a" * 64 or expected_list_revision != self.list_revision:
             raise TargetActivationError("TARGET_CHANGED", "Target bytes changed.", retryable=True)
         return {
@@ -248,6 +248,13 @@ def test_target_selection_validates_safe_id_hash_and_domain_result() -> None:
                 rejected_type = json.loads(await ws.recv())
                 assert rejected_type["code"] == "INVALID_MESSAGE"
                 assert len(domain.activations) == 2
+
+                invalid = dict(select, messageId="select-5", targetId="synthetic-invalid")
+                await ws.send(json.dumps(invalid))
+                safe_error = json.loads(await ws.recv())
+                assert safe_error["code"] == "TARGET_INVALID"
+                assert safe_error["message"] == "Target cannot be activated."
+                assert "/private/" not in json.dumps(safe_error)
         finally:
             await server.close()
 

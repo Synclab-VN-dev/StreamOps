@@ -16,6 +16,12 @@ from uuid import uuid4
 PROTOCOL_VERSION = "d4planner-ws/v1"
 TARGET_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,63}$")
 SHA256 = re.compile(r"^[a-f0-9]{64}$")
+PUBLIC_TARGET_ERRORS = {
+    "TARGET_INVALID": "Target cannot be activated.",
+    "TARGET_CHANGED": "Target changed after listing; refresh the list.",
+    "TARGET_NOT_FOUND": "Target is no longer available.",
+    "TARGET_POLICY_INVALID": "Target assessment policy is invalid.",
+}
 
 
 class ProtocolViolation(Exception):
@@ -168,7 +174,8 @@ class D4PlannerProtocolSession:
         cursor = last_seen["hudRevision"]
         if cursor is not None and (not isinstance(cursor, int) or isinstance(cursor, bool) or cursor < 0):
             raise ProtocolViolation("INVALID_MESSAGE", "Invalid lastSeen revision.")
-        if not hmac.compare_digest(str(message["credential"]), self._credential):
+        credential = message["credential"]
+        if not isinstance(credential, str) or not hmac.compare_digest(credential, self._credential):
             raise ProtocolViolation("AUTH_FAILED", "Authentication failed.")
         self.authenticated = True
         return {
@@ -305,6 +312,9 @@ class D4PlannerProtocolSession:
         self.subscription_queue = None
 
     def error(self, exc: ProtocolViolation | TargetActivationError, correlation_id: str | None) -> dict[str, Any]:
+        message = str(exc)
+        if isinstance(exc, TargetActivationError):
+            message = PUBLIC_TARGET_ERRORS.get(exc.code, "Target activation failed.")
         return {
             "protocolVersion": PROTOCOL_VERSION,
             "messageId": f"error-{uuid4().hex}",
@@ -312,7 +322,7 @@ class D4PlannerProtocolSession:
             "correlationId": correlation_id,
             "backendGeneration": self.backend_generation,
             "code": exc.code,
-            "message": str(exc),
+            "message": message,
             "retryable": exc.retryable,
         }
 
