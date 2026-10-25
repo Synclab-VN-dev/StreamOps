@@ -1,5 +1,20 @@
 # Contract changelog
 
+## 1.0.0-candidate.5 — 2026-10-25
+
+- Fixed S1-REV-08: `hello.accepted` now distinguishes a reconnect to the same
+  runtime instance/generation from a new backend identity. Same-backend
+  reconnect preserves the HUD revision high-water mark and known context while
+  clearing connection-bound correlation/subscription/recovery state.
+- Marked the retained assessment non-current until an authoritative resync
+  confirms or advances it. Older snapshots, and snapshots/updates from the old
+  connection, cannot roll state back.
+- Kept fresh discovery/reset semantics only when runtime instance or generation
+  changes, allowing the new backend's revision sequence to restart safely.
+- Added HELLO_ACCEPTED-driven vectors for stale/equal/newer snapshots,
+  subsequent updates, backend restart, late old-connection traffic and
+  REV-07 context-change recovery after reconnect.
+
 ## 1.0.0-candidate.4 — 2026-10-25
 
 - Fixed S1-REV-07: a fresh, correlated known-context snapshot that reveals an

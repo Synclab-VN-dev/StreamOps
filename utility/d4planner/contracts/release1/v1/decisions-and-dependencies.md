@@ -6,7 +6,7 @@ and [`6396082595`](https://github.com/Synclab-VN-dev/StreamOps/pull/145#issuecom
 
 ## Applied decision ledger
 
-| Decision | Status | Contract applied in candidate.4 | Remaining downstream evidence |
+| Decision | Status | Contract applied in candidate.5 | Remaining downstream evidence |
 | --- | --- | --- | --- |
 | D1 weights | `APPROVED` | Named `r1-equipment-weights/1.0.0`; core=3, non-core=1; user-authored core flag; approval link in Target policy | Production S4 implementation/E2E |
 | D2 aggregation | `APPROVED` | Item PASS iff all criteria PASS; issues count distinct FAIL; Issues-only shows FAIL+WARN; exact transport score/final half-up display; recommendation order core FAIL → core WARN → non-core WARN → target order/ID | Production S4/S6 implementation/E2E |
@@ -25,10 +25,10 @@ downstream gates, not unresolved S1 policy decisions.
 
 ## S1 acceptance mapping
 
-| Gate | Deliverable/evidence | Status at candidate.4 |
+| Gate | Deliverable/evidence | Status at candidate.5 |
 | --- | --- | --- |
 | S1-01 | ADR state machine/sequences, launch/driver/template interfaces, synthetic lifecycle traces/tests | PASS |
-| S1-02 | Target/WS schemas, safe list/select, explicit initial discovery/known-context resync, bounded context-change recovery, startup/context transitions and changed-file vectors/tests | PASS |
+| S1-02 | Target/WS schemas, safe list/select, explicit initial discovery/known-context resync, same-backend reconnect high-water guard, bounded context-change recovery, startup/context transitions and changed-file vectors/tests | PASS |
 | S1-03 | Display-complete Equipment HUD, discriminated partial/NO_DATA contexts, provenance/freshness/binding tests | PASS |
 | S1-04 | Approved weighted formula, typed/multi-parameter truth vectors, issue/item/rounding/recommendation rules | PASS |
 | S1-05 | Lifecycle/security/capacity/compatibility, ASAP latency policy, stage measurements and existing window-capture reuse boundary | PASS contract; runtime E2E/measurements NOT_RUN and owned by S2/S3/S6/S7 |
@@ -41,7 +41,7 @@ downstream gates, not unresolved S1 policy decisions.
 | S2 #139 | FE; lifecycle ADR/interfaces | Managed BE entrypoint, private bootstrap, READY/stop/parent-death wrapper | #100 shell/runtime; do not count #100 acceptance twice |
 | S3 #140 | BE/Rule Kit; lifecycle + existing eight APIs | Reused worker, bounded contexts/sessions/leases, IPC, generation invalidation | Rule Kit #124/#127/#128/#132/#134/#136 remain source baselines |
 | S4 #141 | BE; approved policy, typed Target/HUD schemas and raw truth vectors | Safe folder repository, activation hash, multi-parameter assessor and durable commit | #102 real data integration; #101 fixture adapters are not scorer acceptance |
-| S5 #142 | BE+FE; WS schema/sequences | Authenticated loopback server/client, initial active-context discovery, same-generation known-context resync, bounded mismatch→discovery recovery, push/backpressure | #102 transport integration; no polling/DB/file fallback |
+| S5 #142 | BE+FE; WS schema/sequences | Authenticated loopback server/client, monotonic same-backend reconnect, initial active-context discovery, known-context resync, bounded mismatch→discovery recovery, push/backpressure | #102 transport integration; no polling/DB/file fallback |
 | S6 #143 | FE; display-complete HUD and approved MagicPath revision `464988421014827008` | Equipment-only native window, Target menu, always-on-top Pin; no Coverage HUD; existing `window_capture` compatibility and independent Golden | #97/#98/#99/#101; runtime capture/visual evidence still required |
 | S7 #144 | Integration/release; all pinned contracts | Windows packaging, process/WS/equipment E2E, ASAP stage P50/P95 and actual existing-window capture verification | #103/#104/#76; report separately |
 

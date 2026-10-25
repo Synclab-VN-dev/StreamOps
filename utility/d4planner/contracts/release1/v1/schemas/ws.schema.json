@@ -82,7 +82,7 @@
       "required": ["mode", "reason", "attempt", "runtimeInstanceId", "minimumHudRevision"],
       "properties": {
         "mode": { "const": "DISCOVER_ACTIVE_CONTEXT" }, "runtimeInstanceId": { "$ref": "#/$defs/id" },
-        "reason": { "enum": ["INITIAL_CONNECTION", "BACKEND_GENERATION_CHANGED", "KNOWN_CONTEXT_CHANGED", "TIMEOUT_RETRY"] },
+        "reason": { "enum": ["INITIAL_CONNECTION", "BACKEND_GENERATION_CHANGED", "BACKEND_IDENTITY_CHANGED", "KNOWN_CONTEXT_CHANGED", "TIMEOUT_RETRY"] },
         "attempt": { "type": "integer", "minimum": 1 },
         "minimumHudRevision": { "type": "integer", "minimum": 0 }
       }

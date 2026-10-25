@@ -1,8 +1,8 @@
 # S1 review correction handoff
 
-- Reviewed HEAD: `5b2956735b0e19775689b0cd1caf8db81c5f8c96`
+- Reviewed HEAD: `157882f927930488013067be2984e262f5bc0fc4`
 - Regression base: `010e563daee0e037695aa506d160eedcf60ab43d`
-- Corrected contract: `d4planner-r1-contract/1.0.0-candidate.4`
+- Corrected contract: `d4planner-r1-contract/1.0.0-candidate.5`
 - Scope: schema/interfaces/docs/fixtures/contract-model tests only
 
 | Finding | Severity | Root cause | Impact tới user nếu không sửa | Fix | Before/after evidence | Status |
@@ -14,6 +14,7 @@
 | S1-REV-05 | P1 | Null expected IDs in one snapshot shape ambiguously meant discovery and exact absence; reducer therefore rejected the BE's active character on a fresh FE connection. | HUD can remain empty although BE already has the playing character and selected Target. | Split `DISCOVER_ACTIVE_CONTEXT` from `RESYNC_KNOWN_CONTEXT`; accept discovery only with pending correlation/runtime/generation/revision guards, keep exact known-context resync and single-active-character transitions. | Before reviewer probe returned `REJECT_CONTEXT`. After schema→reducer discovery applies BOUND context; STARTUP/TARGET_ONLY activation, reidentification, reconnect, stale/wrong correlation/generation/Target/late vectors pass. | FIXED / LOCAL PASS |
 | S1-REV-06 | P2 | `EQUAL` returned boolean false for incompatible typed values; Python can also treat `True == 1`. | Incomparable evidence became WARN/evaluable weight and incorrectly lowered score. | Return non-evaluable before equality when type or unit differs; compare value only after both match. | Before NUMBER 1 vs BOOLEAN true produced WARN/SCORED/evaluable=3. After NUMBER↔BOOLEAN/TEXT and unit mismatch are UNKNOWN/NO_DATA/evaluable=0; same type/unit unequal is WARN and equal is PASS. | FIXED / LOCAL PASS |
 | S1-REV-07 | P1 | A valid known-context resync snapshot with a changed character/Target returned `REJECT_CONTEXT`, leaving the old pending request without a recovery transition. | HUD could retain stale character/Target data after a missed update until backend restart or manual action. | Consume the mismatched request, invalidate old assessment, preserve the authoritative revision as a floor, then issue bounded `DISCOVER_ACTIVE_CONTEXT` with fresh correlation; atomically install the discovered context/subscription. | Fail-first TARGET_ONLY→BOUND vector returned `REJECT_CONTEXT` instead of `REQUEST_CONTEXT_DISCOVERY`. After: schema→reducer Target switch, TARGET_ONLY→BOUND, unchanged resync, stale/late/correlation/runtime/generation guards, post-recovery update and two-attempt timeout exhaustion pass. | FIXED / LOCAL PASS |
+| S1-REV-08 | P1 | `HELLO_ACCEPTED` unconditionally reset revision/context even when runtime instance and generation were unchanged. | A same-backend transport reconnect could accept an older snapshot and roll HUD Target, Equipment and score backward. | Compare retained checkpoint with accepted backend identity; same identity preserves revision/context but clears connection state and marks assessment non-current, while changed identity performs fresh reset/discovery. | Fail-first sequence went through `HELLO_ACCEPTED` at revision 20 and returned `RESET_GENERATION` with revision -1. After: HELLO-driven stale/equal/newer/update/restart/old-traffic/context-change vectors pass. | FIXED / LOCAL PASS |
 | D3 sync | Policy | Ledger still treated latency and OBS/Steam Link scope as Owner blockers. | Downstream work could wait unnecessarily or build a duplicate capture adapter. | Apply ASAP pipeline policy and reuse existing StreamOps `window_capture`; retain stage telemetry and downstream real-window verification. | Owner decision `6396082595`; repository source catalog/input reconciliation referenced, no production capture code changed. | RESOLVED / CONTRACT PASS |
 
 ## S1-REV-07 acceptance
@@ -28,6 +29,21 @@
 | REV07-06 | Incremental update continues after recovery. | Updates 8 and 23 join the new subscription/revision and return `APPLY_UPDATE`. | PASS |
 | REV07-07 | Timeout/retry is finite. | Attempt 1 timeout retries once; attempt 2 exhausts; below-floor and attempt 3 reject, with no pending request/loop. | PASS |
 | REV07-08 | REV-01…06 do not regress. | Complete schema/semantic/state-model contract suite passes. | PASS |
+
+## S1-REV-08 acceptance
+
+| Test ID | Expected | Actual/evidence | Status |
+| --- | --- | --- | --- |
+| REV08-01 | Same instance/generation preserves revision 20. | `HELLO_ACCEPTED` returns `RECONNECT_SAME_GENERATION`; high-water remains 20 while connection state clears. | PASS |
+| REV08-02 | Snapshot revision 18 after reconnect is stale. | Snapshot rejects as `IGNORE_STALE_SNAPSHOT`; high-water remains 20. | PASS |
+| REV08-03 | Equal revision 20 confirms idempotently. | Correct binding returns `CONFIRM_EQUAL_SNAPSHOT` and installs the new subscription. | PASS |
+| REV08-04 | Newer revision 21 applies. | Authoritative same-context snapshot returns `APPLY_SNAPSHOT`. | PASS |
+| REV08-05 | Incremental revision 22 continues. | New subscription plus predecessor 21 returns `APPLY_UPDATE`. | PASS |
+| REV08-06 | Changed backend identity permits lower revision. | HELLO resets high-water/context; fresh discovery accepts new backend revision 1. | PASS |
+| REV08-07 | Old connection traffic cannot apply. | Old correlation/subscription and old backend traffic reject without changing high-water. | PASS |
+| REV08-08 | Context change during reconnect uses REV-07. | Old assessment remains non-current; mismatch starts bounded discovery which atomically installs Target/character B. | PASS |
+| REV08-09 | Recovery remains bounded. | Existing attempt/floor/timeout/exhaustion sequence remains green. | PASS |
+| REV08-10 | REV-01…07 do not regress. | Complete contract suite passes. | PASS |
 
 ## Base-vs-PR targeted regression
 
@@ -44,7 +60,7 @@ Base result: 3 failed in 2.21s (2.33s wall). PR comparison result: 3 failed
 in 2.11s (2.23s wall). These results establish parity; they do not make the
 full Linux suite PASS and do not replace Windows runtime gates in S2-S7.
 
-The candidate.4 delta changes only versioned contracts, fixtures, documentation
+The candidate.5 delta changes only versioned contracts, fixtures, documentation
 and their model tests, so the already-established Windows-only A/B was not
 repeated. Final affected validation is recorded in the PR and issue handoff for
 the exact delivered HEAD.

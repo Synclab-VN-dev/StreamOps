@@ -1,7 +1,7 @@
 # ADR-001: Release 1 integration boundaries and lifecycle
 
 - Status: `CANDIDATE`, technical review corrections complete; downstream evidence is recorded in `decisions-and-dependencies.md`
-- Contract: `d4planner-r1-contract/1.0.0-candidate.4`
+- Contract: `d4planner-r1-contract/1.0.0-candidate.5`
 - Scope baseline: `R1-EQUIPMENT-20261025`
 - References: Epic #137, S1 #138
 
@@ -213,6 +213,32 @@ sequenceDiagram
   DB-->>WS: commit R+1
   WS-->>FE: hud.update(previous=R, hud=R+1)
 ```
+
+On every `hello.accepted`, FE compares its retained
+`HudReconnectCheckpoint` with the accepted runtime instance and backend
+generation:
+
+- If both values match, this is `SAME_BACKEND_RECONNECT`, not a backend
+  restart. FE preserves `hudRevisionHighWater` and the known context needed for
+  resync, but discards the old connection's subscription, pending correlation
+  and recovery timers. The retained assessment is immediately non-current and
+  must not render as CURRENT until an authoritative snapshot is accepted. FE
+  requests `RESYNC_KNOWN_CONTEXT` with `minimumHudRevision` equal to the retained
+  high-water mark.
+- If either value changes, this is `NEW_BACKEND_IDENTITY`. FE invalidates the
+  old checkpoint, context, assessment, subscription/correlation and recovery
+  state, permits the new backend revision sequence to start from zero, and sends
+  fresh `DISCOVER_ACTIVE_CONTEXT` with reason `BACKEND_GENERATION_CHANGED` or
+  `BACKEND_IDENTITY_CHANGED`, matching the changed identity component.
+
+The same-backend high-water mark is monotonic across transport connections. A
+snapshot below it is stale; an equal snapshot may confirm the binding and
+establish a new subscription idempotently; a newer snapshot may advance state.
+Traffic carrying an old subscription/correlation is rejected even when the
+backend identity is unchanged. After a backend identity change, traffic from
+the prior instance/generation is rejected. This prevents reconnect from
+relabeling an old score while still allowing a restarted backend to use a lower
+revision.
 
 Snapshot and subscription share one durable revision boundary: take the latest
 committed R and register delivery for commits `>R` without a gap. Push occurs

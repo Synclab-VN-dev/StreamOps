@@ -1,4 +1,4 @@
-/** Normative port shapes for d4planner-r1-contract/1.0.0-candidate.4.
+/** Normative port shapes for d4planner-r1-contract/1.0.0-candidate.5.
  * Implementations may use another language, but must preserve these boundaries.
  */
 
@@ -114,7 +114,7 @@ export interface HudSnapshot {
 export interface DiscoverActiveContextRequest {
   readonly mode: 'DISCOVER_ACTIVE_CONTEXT';
   readonly reason: 'INITIAL_CONNECTION' | 'BACKEND_GENERATION_CHANGED' |
-    'KNOWN_CONTEXT_CHANGED' | 'TIMEOUT_RETRY';
+    'BACKEND_IDENTITY_CHANGED' | 'KNOWN_CONTEXT_CHANGED' | 'TIMEOUT_RETRY';
   /** Starts at one; a timeout retry increments it and may not exceed policy. */
   readonly attempt: number;
   readonly runtimeInstanceId: string;
@@ -127,6 +127,18 @@ export interface SnapshotRecoveryPolicy {
   readonly requestTimeoutMs: number;
   readonly maxDiscoveryAttempts: number;
 }
+
+/** Retained across a transport reconnect; never retained across backend identity change. */
+export interface HudReconnectCheckpoint {
+  readonly runtimeInstanceId: string;
+  readonly backendGeneration: number;
+  readonly hudRevisionHighWater: number;
+  readonly knownContext: KnownHudContext;
+}
+
+export type HelloAcceptedDisposition =
+  | 'SAME_BACKEND_RECONNECT'
+  | 'NEW_BACKEND_IDENTITY';
 
 export interface KnownHudContext {
   readonly state: HudContextState;
