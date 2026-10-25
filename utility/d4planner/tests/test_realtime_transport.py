@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from copy import deepcopy
 import json
+import logging
 from pathlib import Path
 from statistics import median
 import time
@@ -270,6 +271,13 @@ def test_auth_origin_generation_size_and_malformed_are_fail_closed() -> None:
                     pass
 
             async with connect(f"ws://127.0.0.1:{server.port}", origin=ORIGIN) as ws:
+                await ws.send("not-json")
+                error = json.loads(await ws.recv())
+                assert error["code"] == "INVALID_MESSAGE"
+                await ws.wait_closed()
+                assert ws.close_code == 1008
+
+            async with connect(f"ws://127.0.0.1:{server.port}", origin=ORIGIN) as ws:
                 await ws.send(json.dumps(hello(credential="wrong-credential-that-is-still-long-enough")))
                 error = json.loads(await ws.recv())
                 assert error["code"] == "AUTH_FAILED"
@@ -301,22 +309,85 @@ def test_auth_origin_generation_size_and_malformed_are_fail_closed() -> None:
     asyncio.run(scenario())
 
 
+def test_pre_auth_timeout_and_connection_budget_are_bounded() -> None:
+    async def scenario() -> None:
+        hud = load(FIXTURES / "hud.partial.synthetic.json")
+        domain = SyntheticDomain(hud)
+        server = D4PlannerWebSocketServer(
+            WebSocketServerConfig(
+                credential=CREDENTIAL,
+                runtime_instance_id="backend-synthetic-a",
+                backend_generation=3,
+                origin=ORIGIN,
+                handshake_timeout_seconds=0.08,
+                max_connections=1,
+            ),
+            domain,
+            HudHub(hud, backend_generation=3),
+        )
+        await server.start()
+        try:
+            first = await connect(f"ws://127.0.0.1:{server.port}", origin=ORIGIN)
+            second = await connect(f"ws://127.0.0.1:{server.port}", origin=ORIGIN)
+            try:
+                await second.wait_closed()
+                assert second.close_code == 1013
+                await first.wait_closed()
+                assert first.close_code == 1008
+            finally:
+                await first.close()
+                await second.close()
+        finally:
+            await server.close()
+
+    asyncio.run(scenario())
+
+
 def test_slow_consumer_coalesces_to_resync_and_old_commit_is_ignored() -> None:
     async def scenario() -> None:
         hud = load(FIXTURES / "hud.partial.synthetic.json")
         hub = HudHub(hud, backend_generation=3)
         _snapshot, _subscription, queue = await hub.snapshot_and_subscribe()
-        for revision in range(13, 513):
-            assert await hub.publish_after_commit(bumped_hud(hud, revision)) is True
+        assert await hub.publish_after_commit(bumped_hud(hud, 13)) is True
+        assert await hub.publish_after_commit(bumped_hud(hud, 14)) is True
         message = queue.get_nowait()
         assert message["type"] == "resync.required"
         assert message["reason"] == "SLOW_CONSUMER"
-        assert message["latestHudRevision"] == 512
+        assert message["latestHudRevision"] == 14
         assert queue.qsize() == 0
+        assert await hub.publish_after_commit(bumped_hud(hud, 15)) is True
+        assert await hub.publish_after_commit(bumped_hud(hud, 16)) is True
+        close_signal = queue.get_nowait()
+        assert close_signal == {"_d4planner_close_slow_consumer": True}
         assert await hub.publish_after_commit(bumped_hud(hud, 13)) is False
         assert queue.empty()
 
     asyncio.run(scenario())
+
+
+def test_internal_exception_log_and_wire_error_are_sanitized(caplog: pytest.LogCaptureFixture) -> None:
+    async def scenario() -> None:
+        server, domain, _hub = await start_server()
+
+        async def fail_with_private_path() -> dict[str, Any]:
+            raise RuntimeError("/private/target/path/must-not-leak.json")
+
+        domain.list_targets = fail_with_private_path  # type: ignore[method-assign]
+        try:
+            async with connect(f"ws://127.0.0.1:{server.port}", origin=ORIGIN) as ws:
+                await ws.send(json.dumps(hello()))
+                await ws.recv()
+                await ws.send(json.dumps(request("list-error", "target.list.request")))
+                error = json.loads(await ws.recv())
+                assert error["code"] == "INTERNAL"
+                assert error["message"] == "Internal transport error."
+        finally:
+            await server.close()
+
+    caplog.set_level(logging.ERROR)
+    asyncio.run(scenario())
+    assert "exception_type=RuntimeError" in caplog.text
+    assert "/private/" not in caplog.text
 
 
 def test_loopback_and_private_credential_configuration_are_enforced() -> None:
