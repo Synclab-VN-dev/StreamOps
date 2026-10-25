@@ -12,7 +12,7 @@ import pytest
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 from websockets.asyncio.client import connect
-from websockets.exceptions import InvalidStatus
+from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 from d4planner.transport import (
     D4PlannerWebSocketServer,
@@ -287,6 +287,14 @@ def test_auth_origin_generation_size_and_malformed_are_fail_closed() -> None:
                 await ws.send(json.dumps(stale))
                 conflict = json.loads(await ws.recv())
                 assert conflict["code"] == "REVISION_CONFLICT"
+
+            async with connect(f"ws://127.0.0.1:{server.port}", origin=ORIGIN) as ws:
+                await ws.send(json.dumps(hello()))
+                await ws.recv()
+                await ws.send("x" * 262_145)
+                with pytest.raises(ConnectionClosed):
+                    await ws.recv()
+                assert ws.close_code == 1009
         finally:
             await server.close()
 
