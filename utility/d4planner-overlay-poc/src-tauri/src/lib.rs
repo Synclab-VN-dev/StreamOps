@@ -2,9 +2,14 @@ mod overlay_core;
 mod backend_process;
 
 use std::{collections::BTreeMap, env, fs, path::PathBuf, sync::{Arc, Mutex}, time::Duration};
-use tauri::{Emitter, Manager, State, WebviewWindow};
+use tauri::{
+    Emitter, LogicalSize, Manager, PhysicalPosition, Position, Size, State, WebviewWindow,
+};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
-use overlay_core::{exit_shortcut, shortcut_action, toggle_shortcut, transition_mode, ShortcutAction};
+use overlay_core::{
+    clamp_origin, exit_shortcut, shortcut_action, toggle_shortcut, transition_mode,
+    validated_extent, ShortcutAction,
+};
 use backend_process::{BackendProcessWrapper, LaunchSpecification, ProcessState, ReadyInfo, StdProcessDriver};
 
 const MODE_EVENT: &str = "overlay-mode-changed";
@@ -22,6 +27,14 @@ struct OverlayStatus {
 struct BackendStatus {
     state: ProcessState,
     ready: Option<ReadyInfo>,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HudWsBootstrap {
+    endpoint: String,
+    credential: String,
+    origin: String,
 }
 
 fn required_env(name: &str) -> Result<String, String> {
@@ -63,6 +76,47 @@ fn backend_from_environment() -> Result<BackendProcessWrapper<StdProcessDriver>,
             kill_timeout: Duration::from_secs(3),
         },
     ))
+}
+
+/// Return the private loopback transport bootstrap only to this application
+/// webview. The descriptor remains owned by the native composition root and
+/// is never logged or exposed through a public HTTP endpoint.
+#[tauri::command]
+fn get_hud_ws_bootstrap() -> Result<HudWsBootstrap, String> {
+    let bootstrap_path = PathBuf::from(required_env("D4PLANNER_BOOTSTRAP_FILE")?);
+    let bootstrap: serde_json::Value = serde_json::from_slice(
+        &fs::read(&bootstrap_path)
+            .map_err(|error| format!("cannot read bootstrap descriptor: {error}"))?,
+    )
+    .map_err(|error| format!("invalid bootstrap descriptor: {error}"))?;
+    let endpoint = bootstrap
+        .get("wsEndpoint")
+        .and_then(serde_json::Value::as_object)
+        .ok_or("bootstrap wsEndpoint is missing")?;
+    let host = endpoint
+        .get("host")
+        .and_then(serde_json::Value::as_str)
+        .ok_or("bootstrap wsEndpoint.host is missing")?;
+    if !matches!(host, "127.0.0.1" | "::1" | "localhost") {
+        return Err("bootstrap WebSocket endpoint must be loopback".into());
+    }
+    let port = endpoint
+        .get("port")
+        .and_then(serde_json::Value::as_u64)
+        .filter(|port| *port <= u16::MAX as u64)
+        .ok_or("bootstrap wsEndpoint.port is invalid")?;
+    let credential = bootstrap
+        .get("credential")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| value.len() >= 32)
+        .ok_or("bootstrap credential is invalid")?
+        .to_owned();
+    let address = if host == "::1" { format!("[{host}]") } else { host.to_owned() };
+    Ok(HudWsBootstrap {
+        endpoint: format!("ws://{address}:{port}"),
+        credential,
+        origin: "tauri://localhost".into(),
+    })
 }
 
 #[tauri::command]
@@ -135,6 +189,40 @@ fn drag_overlay(window: WebviewWindow, state: State<'_, ModeState>) -> Result<()
     window.start_dragging().map_err(|error| error.to_string())
 }
 
+fn clamp_to_current_monitor(window: &WebviewWindow) -> Result<(), String> {
+    let Some(monitor) = window.current_monitor().map_err(|error| error.to_string())? else {
+        return Ok(());
+    };
+    let origin = window.outer_position().map_err(|error| error.to_string())?;
+    let extent = window.outer_size().map_err(|error| error.to_string())?;
+    let monitor_origin = monitor.position();
+    let monitor_extent = monitor.size();
+    let next = clamp_origin(
+        (origin.x, origin.y),
+        (extent.width, extent.height),
+        (monitor_origin.x, monitor_origin.y),
+        (monitor_extent.width, monitor_extent.height),
+    );
+    window.set_position(Position::Physical(PhysicalPosition::new(next.0, next.1)))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_overlay_extent(window: WebviewWindow, width: u32, height: u32) -> Result<(), String> {
+    let (width, height) = validated_extent(width, height)?;
+    window.set_size(Size::Logical(LogicalSize::new(width as f64, height as f64)))
+        .map_err(|error| error.to_string())?;
+    clamp_to_current_monitor(&window)
+}
+
+#[tauri::command]
+fn set_overlay_pin(window: WebviewWindow, pinned: bool) -> Result<(), String> {
+    if !pinned {
+        return Err("Release 1 Pin is always-on-top and cannot be disabled".into());
+    }
+    window.set_always_on_top(true).map_err(|error| error.to_string())
+}
+
 /// Actual Tauri + native-window smoke. Requires a Windows desktop session.
 /// It exercises OS APIs rather than just validating the executable's PE header.
 fn runtime_smoke(handle: &tauri::AppHandle) -> Result<Vec<String>, String> {
@@ -197,12 +285,16 @@ pub fn run() {
             drag_overlay,
             start_backend,
             stop_backend,
-            get_backend_status
+            get_backend_status,
+            get_hud_ws_bootstrap,
+            set_overlay_extent,
+            set_overlay_pin
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").expect("configured main window");
             window.set_always_on_top(true)?;
             window.set_ignore_cursor_events(false)?;
+            clamp_to_current_monitor(&window).map_err(std::io::Error::other)?;
 
             // Packaged S2 launches the managed Backend before the UI consumes
             // S5 data. Developer visual-only runs omit the bootstrap descriptor

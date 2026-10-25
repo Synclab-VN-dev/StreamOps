@@ -1,6 +1,8 @@
 import Ajv2020 from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
+import { invoke } from '@tauri-apps/api/core';
 import hudSchema from '../../d4planner/contracts/release1/v1/schemas/hud.schema.json';
+import type { HudSnapshot, SelectionResult, TargetListEntry } from './hud-model';
 
 export type SocketMessage = Record<string, unknown>;
 
@@ -39,13 +41,19 @@ type PendingSnapshot = {
   expectedContext?: Record<string, unknown>;
 };
 
+type PendingTargetSelection = {
+  resolve: (result: SelectionResult) => void;
+  reject: (reason: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
+
 export class HudWebSocketDataSource {
   private socket: WebSocketLike | null = null;
   private sequence = 0;
   private pendingHello: string | null = null;
   private pendingTargetList: string | null = null;
   private pendingSnapshot: PendingSnapshot | null = null;
-  private pendingTarget = new Set<string>();
+  private pendingTarget = new Map<string, PendingTargetSelection>();
   private readonly listeners = new Set<(state: HudDataState) => void>();
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -135,6 +143,7 @@ export class HudWebSocketDataSource {
     this.pendingTargetList = null;
     this.pendingHello = null;
     this.clearSnapshotTimer();
+    this.rejectPendingTargets('Backend connection closed before Target activation completed.');
     if (this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -150,7 +159,7 @@ export class HudWebSocketDataSource {
     this.send(this.envelope(messageId, 'target.list.request'));
   }
 
-  selectTarget(targetId: string): void {
+  selectTarget(targetId: string): Promise<SelectionResult> {
     this.requireBackend();
     const target = this.state.targets.find(item => item.targetId === targetId);
     if (!target || target.validation !== 'VALID' || typeof target.contentSha256 !== 'string') {
@@ -159,13 +168,29 @@ export class HudWebSocketDataSource {
     if (this.state.listRevision === null) throw new Error('Target list is unavailable.');
     if (this.pendingTarget.size >= 32) throw new Error('TARGET_REQUEST_LIMIT');
     const messageId = this.id('select');
-    this.pendingTarget.add(messageId);
-    this.send({
-      ...this.envelope(messageId, 'target.select.request'),
-      targetId,
-      expectedSha256: target.contentSha256,
-      expectedListRevision: this.state.listRevision,
+    const result = new Promise<SelectionResult>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingTarget.delete(messageId);
+        reject(new Error('Target selection timed out.'));
+      }, this.config.snapshotOperationTimeoutMs ?? 2_000);
+      this.pendingTarget.set(messageId, { resolve, reject, timer });
     });
+    try {
+      this.send({
+        ...this.envelope(messageId, 'target.select.request'),
+        targetId,
+        expectedSha256: target.contentSha256,
+        expectedListRevision: this.state.listRevision,
+      });
+    } catch (error) {
+      const pending = this.pendingTarget.get(messageId);
+      if (pending) {
+        clearTimeout(pending.timer);
+        this.pendingTarget.delete(messageId);
+      }
+      throw error;
+    }
+    return result;
   }
 
   private receive(message: Record<string, any>): void {
@@ -191,9 +216,29 @@ export class HudWebSocketDataSource {
       return;
     }
     if (message.type === 'target.select.result') {
-      if (!this.pendingTarget.delete(message.correlationId)) return;
+      const pending = this.pendingTarget.get(message.correlationId);
+      if (!pending) return;
+      this.pendingTarget.delete(message.correlationId);
+      clearTimeout(pending.timer);
       // Activation acknowledgement never relabels the existing HUD. The next
       // committed HUD snapshot/update carries the new binding atomically.
+      const status = String(message.status ?? 'REJECTED') as SelectionResult['status'];
+      if (status === 'ACTIVATED') {
+        pending.resolve({
+          status,
+          targetId: String(message.targetId),
+          contentSha256: String(message.contentSha256),
+          selectionRevision: Number(message.selectionRevision),
+        });
+      } else {
+        pending.resolve({
+          status: ['TARGET_CHANGED', 'TARGET_NOT_FOUND', 'TARGET_INVALID'].includes(status)
+            ? status as 'TARGET_CHANGED' | 'TARGET_NOT_FOUND' | 'TARGET_INVALID'
+            : 'REJECTED',
+          targetId: String(message.targetId ?? ''),
+          message: String(message.message ?? message.error?.message ?? status),
+        });
+      }
       return;
     }
     if (message.type === 'hud.snapshot') {
@@ -239,7 +284,7 @@ export class HudWebSocketDataSource {
     }
     this.pendingSnapshot = null;
     this.pendingTargetList = null;
-    this.pendingTarget.clear();
+    this.rejectPendingTargets('Backend connection changed before Target activation completed.');
     this.emit();
   }
 
@@ -325,6 +370,14 @@ export class HudWebSocketDataSource {
       clearTimeout(this.snapshotTimer);
       this.snapshotTimer = null;
     }
+  }
+
+  private rejectPendingTargets(message: string): void {
+    for (const pending of this.pendingTarget.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error(message));
+    }
+    this.pendingTarget.clear();
   }
 
   private acceptSnapshot(message: Record<string, any>): void {
@@ -454,4 +507,95 @@ function contextKey(context: Record<string, any> | undefined): Record<string, un
 
 function sameContext(actual: Record<string, unknown>, expected?: Record<string, unknown>): boolean {
   return expected !== undefined && JSON.stringify(actual) === JSON.stringify(expected);
+}
+
+export type HudDataEvent =
+  | { type: "CONNECTION"; state: "CONNECTED" | "DISCONNECTED"; reason?: string }
+  | { type: "SNAPSHOT"; snapshot: HudSnapshot }
+  | { type: "TARGETS"; targets: TargetListEntry[] };
+
+export interface IHudDataSource {
+  connect(listener: (event: HudDataEvent) => void): Promise<() => void>;
+  refreshTargets(): Promise<void>;
+  selectTarget(request: { targetId: string; expectedSha256: string }): Promise<SelectionResult>;
+}
+
+declare global {
+  interface Window {
+    __D4PLANNER_HUD_DATA_SOURCE__?: IHudDataSource;
+  }
+}
+
+type NativeHudBootstrap = { endpoint: string; credential: string; origin: string };
+
+class TauriHudDataSource implements IHudDataSource {
+  private source: HudWebSocketDataSource | null = null;
+  private unsubscribe: (() => void) | null = null;
+
+  async connect(listener: (event: HudDataEvent) => void): Promise<() => void> {
+    if (this.source) throw new Error('HUD data source is already connected.');
+    const bootstrap = await invoke<NativeHudBootstrap>('get_hud_ws_bootstrap');
+    if (!bootstrap.endpoint.startsWith('ws://') || bootstrap.credential.length < 32) {
+      throw new Error('Native Backend returned an invalid WebSocket bootstrap.');
+    }
+    const source = new HudWebSocketDataSource({
+      ...bootstrap,
+      socketFactory: endpoint => new WebSocket(endpoint) as unknown as WebSocketLike,
+    });
+    this.source = source;
+    let lastRevision: number | null = null;
+    let lastListRevision: number | null = null;
+    let connected = false;
+    this.unsubscribe = source.subscribe(state => {
+      const isConnected = state.backend !== null && state.error === null;
+      if (isConnected !== connected) {
+        connected = isConnected;
+        listener(isConnected
+          ? { type: 'CONNECTION', state: 'CONNECTED' }
+          : { type: 'CONNECTION', state: 'DISCONNECTED', reason: state.error ?? 'Backend handshake pending' });
+      }
+      if (state.listRevision !== null && state.listRevision !== lastListRevision) {
+        lastListRevision = state.listRevision;
+        listener({ type: 'TARGETS', targets: structuredClone(state.targets) as TargetListEntry[] });
+      }
+      if (state.freshness === 'CURRENT' && state.hud && state.hud.hudRevision !== lastRevision) {
+        lastRevision = state.hud.hudRevision;
+        listener({ type: 'SNAPSHOT', snapshot: structuredClone(state.hud) as HudSnapshot });
+      }
+      if (state.freshness === 'STALE' && connected) {
+        connected = false;
+        listener({ type: 'CONNECTION', state: 'DISCONNECTED', reason: state.error ?? 'Resynchronizing Backend state' });
+      }
+    });
+    source.connect();
+    return () => {
+      this.unsubscribe?.();
+      this.unsubscribe = null;
+      source.disconnect();
+      if (this.source === source) this.source = null;
+    };
+  }
+
+  async refreshTargets(): Promise<void> {
+    if (!this.source) throw new Error('Backend WebSocket data source is not connected.');
+    this.source.requestTargets();
+  }
+
+  async selectTarget(request: { targetId: string; expectedSha256: string }): Promise<SelectionResult> {
+    if (!this.source) throw new Error('Backend WebSocket data source is not connected.');
+    const target = this.source.snapshot().targets.find(item => item.targetId === request.targetId);
+    if (!target || target.contentSha256 !== request.expectedSha256) {
+      return { status: 'TARGET_CHANGED', targetId: request.targetId, message: 'Target list/hash changed before activation.' };
+    }
+    return this.source.selectTarget(request.targetId);
+  }
+}
+
+let productionSource: IHudDataSource | null = null;
+
+/** Native bootstrap + strict S5 WebSocket validation; never substitutes demo data. */
+export function productionHudDataSource(): IHudDataSource {
+  if (window.__D4PLANNER_HUD_DATA_SOURCE__) return window.__D4PLANNER_HUD_DATA_SOURCE__;
+  productionSource ??= new TauriHudDataSource();
+  return productionSource;
 }
