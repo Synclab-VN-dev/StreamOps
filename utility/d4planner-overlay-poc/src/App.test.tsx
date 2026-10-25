@@ -1,117 +1,145 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { OverlayStatus } from "./overlay-mode";
+import partialFixture from "../../d4planner/contracts/release1/v1/fixtures/hud.partial.synthetic.json";
+import noDataFixture from "../../d4planner/contracts/release1/v1/fixtures/hud.no-data.synthetic.json";
 import App from "./App";
+import type { HudDataEvent, IHudDataSource } from "./hud-data-source";
+import type { HudSnapshot, SelectionResult, TargetListEntry } from "./hud-model";
 
-const mocks = vi.hoisted(() => ({
-  invoke: vi.fn(),
-  listen: vi.fn(),
-  unlisten: vi.fn(),
-}));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
-vi.mock("@tauri-apps/api/event", () => ({ listen: mocks.listen }));
 
-let onMode: ((event: { payload: OverlayStatus }) => void) | undefined;
+const partial = partialFixture as unknown as HudSnapshot;
+const noData = noDataFixture as unknown as HudSnapshot;
+const targets: TargetListEntry[] = [
+  { targetId: "synthetic-charge-bolt", displayName: "Charge Bolt", contentSha256: "a".repeat(64), byteLength: 100, validation: "VALID", errorCodes: [] },
+  { targetId: "invalid-target", displayName: "Broken target", contentSha256: "b".repeat(64), byteLength: 10, validation: "INVALID", errorCodes: ["SCHEMA_INVALID"] },
+  { targetId: "target-b", displayName: "Firewall", contentSha256: "c".repeat(64), byteLength: 120, validation: "VALID", errorCodes: [] },
+];
 
-beforeEach(() => {
-  cleanup();
-  vi.clearAllMocks();
-  onMode = undefined;
-  mocks.listen.mockImplementation(async (_event: string, callback: typeof onMode) => {
-    onMode = callback;
-    return mocks.unlisten;
+class FakeDataSource implements IHudDataSource {
+  listener?: (event: HudDataEvent) => void;
+  selections: Array<{ targetId: string; expectedSha256: string }> = [];
+  result: SelectionResult | null = null;
+  holdSelection = false;
+  finishSelection?: (result: SelectionResult) => void;
+  constructor(private initial: HudSnapshot = partial) {}
+  async connect(listener: (event: HudDataEvent) => void) {
+    this.listener = listener;
+    listener({ type: "CONNECTION", state: "CONNECTED" });
+    listener({ type: "SNAPSHOT", snapshot: this.initial });
+    return () => { this.listener = undefined; };
+  }
+  async refreshTargets() { this.listener?.({ type: "TARGETS", targets }); }
+  async selectTarget(request: { targetId: string; expectedSha256: string }) {
+    this.selections.push(request);
+    if (this.holdSelection) return await new Promise<SelectionResult>(resolve => { this.finishSelection = resolve; });
+    return this.result ?? { status: "ACTIVATED", targetId: request.targetId, contentSha256: request.expectedSha256, selectionRevision: 8 };
+  }
+  emit(event: HudDataEvent) { this.listener?.(event); }
+}
+
+function targetBSnapshot(revision = 13): HudSnapshot {
+  return {
+    ...partial, hudRevision: revision,
+    context: {
+      ...partial.context,
+      target: { ...partial.context.target!, targetId: "target-b", displayName: "Firewall", buildDisplayName: "Synthetic Firewall", contentSha256: "c".repeat(64), selectionRevision: 8 },
+      binding: { ...partial.context.binding!, targetId: "target-b", targetSha256: "c".repeat(64), selectionRevision: 8 },
+    },
+  };
+}
+
+beforeEach(() => { cleanup(); vi.clearAllMocks(); mocks.invoke.mockResolvedValue(undefined); });
+
+describe("Release 1 Equipment HUD", () => {
+  it("renders BE score, item counts and partial Equipment without client-side coverage UI", async () => {
+    render(<App dataSource={new FakeDataSource()} />);
+    await screen.findByText("SYNTHETIC CHARGE BOLT BUILD");
+    expect(screen.getByText("50")).toBeTruthy();
+    expect(screen.getByText("0/1")).toBeTruthy();
+    expect(screen.getByText("Gloves")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("Coverage");
+    expect(document.body.textContent).not.toContain("Charms");
+    expect(document.body.textContent).not.toContain("Torment");
   });
-  mocks.invoke.mockImplementation(async (command: string, args?: { interactive: boolean }) => {
-    if (command === "get_overlay_status") return { interactive: true };
-    if (command === "set_overlay_mode") return { interactive: args!.interactive };
-    if (command === "drag_overlay") return undefined;
-    throw new Error("unexpected IPC " + command);
-  });
-});
 
-describe("HUD / Tauri IPC interaction", () => {
-  it("renders mock score and starts interactive, then enters passive click-through", async () => {
-    render(<App />);
-    expect(screen.getByText("CHARGE BOLT")).toBeTruthy();
-    expect(screen.getByText("8 / 10")).toBeTruthy();
-    expect(screen.getByText("6 / 8")).toBeTruthy();
-    await screen.findByText("INTERACTIVE");
-    fireEvent.click(screen.getByRole("button", { name: "Enable pass-through" }));
-    await screen.findByText("PASSIVE");
-    expect(mocks.invoke).toHaveBeenCalledWith("set_overlay_mode", { interactive: false });
-    expect((screen.getByRole("button") as HTMLButtonElement).disabled).toBe(true);
-    await act(async () => onMode?.({ payload: { interactive: true } }));
-    expect(screen.getByText("INTERACTIVE")).toBeTruthy();
-    expect((screen.getByRole("button") as HTMLButtonElement).disabled).toBe(false);
+  it("lists targets but permits only valid ID/hash selection", async () => {
+    const source = new FakeDataSource();
+    render(<App dataSource={source} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open target menu" }));
+    const invalid = await screen.findByRole("menuitem", { name: /Broken target/ });
+    expect((invalid as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("menuitem", { name: /Firewall/ }));
+    await waitFor(() => expect(source.selections).toEqual([{ targetId: "target-b", expectedSha256: "c".repeat(64) }]));
   });
 
-  it("refuses repeated clicks while IPC is pending", async () => {
-    let finish!: (value: OverlayStatus) => void;
-    const pending = new Promise<OverlayStatus>((resolve) => { finish = resolve; });
-    mocks.invoke.mockImplementation(async (command: string) =>
-      command === "get_overlay_status" ? { interactive: true } : pending);
-    render(<App />);
-    await screen.findByText("INTERACTIVE");
-    const button = screen.getByRole("button");
-    fireEvent.click(button);
-    fireEvent.click(button);
-    expect(mocks.invoke.mock.calls.filter((args) => args[0] === "set_overlay_mode")).toHaveLength(1);
-    await act(async () => finish({ interactive: false }));
-    expect(screen.getByText("PASSIVE")).toBeTruthy();
-  });
-
-  it("preserves interactive controls when Windows rejects the cursor mode switch", async () => {
-    mocks.invoke.mockImplementation(async (command: string) => {
-      if (command === "get_overlay_status") return { interactive: true };
-      throw new Error("native hit-testing rejected");
-    });
-    render(<App />);
-    await screen.findByText("INTERACTIVE");
-    fireEvent.click(screen.getByRole("button"));
+  it("keeps the old target label and score when server rejects changed bytes", async () => {
+    const source = new FakeDataSource();
+    source.result = { status: "TARGET_CHANGED", targetId: "target-b", message: "Target changed after listing" };
+    render(<App dataSource={source} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open target menu" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Firewall/ }));
     await screen.findByRole("alert");
-    expect(screen.getByText("INTERACTIVE")).toBeTruthy();
-    expect((screen.getByRole("button") as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByText("SYNTHETIC CHARGE BOLT BUILD")).toBeTruthy();
+    expect(screen.getByText("50")).toBeTruthy();
   });
 
-  it("global hotkey event beats stale initial get-status response", async () => {
-    let finish!: (value: OverlayStatus) => void;
-    mocks.invoke.mockImplementation(async (command: string) =>
-      command === "get_overlay_status"
-        ? new Promise<OverlayStatus>((resolve) => { finish = resolve; })
-        : undefined);
-    render(<App />);
-    await waitFor(() => expect(onMode).toBeDefined());
-    await act(async () => onMode?.({ payload: { interactive: false } }));
-    await act(async () => finish({ interactive: true }));
-    expect(screen.getByText("PASSIVE")).toBeTruthy();
-    expect((screen.getByRole("button") as HTMLButtonElement).disabled).toBe(true);
+  it("bounds racing target choices to one pending server activation", async () => {
+    const source = new FakeDataSource();
+    source.holdSelection = true;
+    render(<App dataSource={source} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open target menu" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Firewall/ }));
+    await waitFor(() => expect(source.selections).toHaveLength(1));
+    const first = screen.getByRole("menuitem", { name: /Charge Bolt/ });
+    expect((first as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(first);
+    expect(source.selections).toHaveLength(1);
+    await act(async () => source.finishSelection?.({ status: "ACTIVATED", targetId: "target-b", contentSha256: "c".repeat(64), selectionRevision: 8 }));
   });
 
-  it("only allows dragging in interactive mode with left mouse button", async () => {
-    render(<App />);
-    await screen.findByText("INTERACTIVE");
-    const header = screen.getByText("CHARGE BOLT").closest("header")!;
-    fireEvent.mouseDown(header, { button: 2 });
-    expect(mocks.invoke).not.toHaveBeenCalledWith("drag_overlay");
-    fireEvent.mouseDown(header, { button: 0 });
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith("drag_overlay"));
-    await act(async () => onMode?.({ payload: { interactive: false } }));
-    mocks.invoke.mockClear();
-    fireEvent.mouseDown(header, { button: 0 });
-    expect(mocks.invoke).not.toHaveBeenCalledWith("drag_overlay");
+  it("does not show an activated target until an authoritative bound snapshot arrives", async () => {
+    const source = new FakeDataSource();
+    render(<App dataSource={source} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open target menu" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Firewall/ }));
+    await waitFor(() => expect(source.selections).toHaveLength(1));
+    expect(screen.getByText("SYNTHETIC CHARGE BOLT BUILD")).toBeTruthy();
+    act(() => source.emit({ type: "SNAPSHOT", snapshot: targetBSnapshot() }));
+    await screen.findByText("SYNTHETIC FIREWALL");
   });
 
-  it("fails safe if event subscription fails, and unsubscribes on unmount", async () => {
-    mocks.listen.mockRejectedValueOnce(new Error("global event unavailable"));
-    const { unmount } = render(<App />);
-    await screen.findByRole("alert");
-    expect((screen.getByRole("button") as HTMLButtonElement).disabled).toBe(true);
-    unmount();
+  it("ignores stale same-generation snapshots and marks disconnect as not current", async () => {
+    const source = new FakeDataSource(targetBSnapshot(20));
+    render(<App dataSource={source} />);
+    await screen.findByText("SYNTHETIC FIREWALL");
+    act(() => source.emit({ type: "SNAPSHOT", snapshot: { ...partial, hudRevision: 18 } }));
+    expect(screen.getByText("SYNTHETIC FIREWALL")).toBeTruthy();
+    act(() => source.emit({ type: "CONNECTION", state: "DISCONNECTED", reason: "socket closed" }));
+    expect(screen.getByText(/assessment is not current/)).toBeTruthy();
+  });
 
-    const next = render(<App />);
-    await screen.findByText("INTERACTIVE");
-    next.unmount();
-    expect(mocks.unlisten).toHaveBeenCalledTimes(1);
+  it("renders NO_DATA distinctly from a valid zero or fabricated 100", async () => {
+    render(<App dataSource={new FakeDataSource(noData)} />);
+    await screen.findByText("NO DATA");
+    expect(screen.getByText("—")).toBeTruthy();
+    expect(screen.queryByText("100")).toBeNull();
+  });
+
+  it("Issues-only includes WARN but excludes UNKNOWN until All is selected", async () => {
+    render(<App dataSource={new FakeDataSource()} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Gloves/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Affixes/ }));
+    expect(screen.queryByText(/Core Skill Ranks ·/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    expect(screen.getByText(/Core Skill Ranks ·/)).toBeTruthy();
+  });
+
+  it("keeps Pin always-on-top and requests only the approved true state", async () => {
+    render(<App dataSource={new FakeDataSource()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "⌖ Pinned" }));
+    expect(mocks.invoke).toHaveBeenCalledWith("set_overlay_pin", { pinned: true });
   });
 });
