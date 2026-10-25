@@ -1,4 +1,4 @@
-/** Normative port shapes for d4planner-r1-contract/1.0.0-candidate.1.
+/** Normative port shapes for d4planner-r1-contract/1.0.0-candidate.2.
  * Implementations may use another language, but must preserve these boundaries.
  */
 
@@ -72,6 +72,70 @@ export interface TargetListEntry {
   readonly errorCodes: readonly string[];
 }
 
+export interface ApprovedWeightProfile {
+  readonly profileId: 'r1-equipment-weights/1.0.0';
+  readonly coreWeight: 3;
+  readonly nonCoreWeight: 1;
+  readonly approval: Readonly<{
+    status: 'APPROVED';
+    decisionRef: 'https://github.com/Synclab-VN-dev/StreamOps/issues/138#issuecomment-6394334041';
+  }>;
+}
+
+export type HudContextState =
+  | 'STARTUP' | 'TARGET_ONLY' | 'CHARACTER_ONLY' | 'BOUND' | 'TARGET_UNAVAILABLE';
+
+export type TypedValue =
+  | Readonly<{ type: 'NUMBER'; value: number; unit: 'PERCENT' | 'FLAT' | 'RANK' | 'SECONDS' | 'NONE' }>
+  | Readonly<{ type: 'TEXT'; value: string; unit: 'NONE' }>
+  | Readonly<{ type: 'BOOLEAN'; value: boolean; unit: 'NONE' }>;
+
+export interface HudSnapshot {
+  readonly schemaVersion: 'd4planner-hud/v1';
+  readonly hudRevision: number;
+  readonly backend: Readonly<{ runtimeInstanceId: string; generation: number }>;
+  readonly context: Readonly<{
+    state: HudContextState;
+    character: Readonly<{ characterId: string; displayName: string; currentRevision: number }> | null;
+    target: Readonly<{ targetId: string; displayName: string; buildDisplayName: string;
+      contentSha256: string; selectionRevision: number; policyVersion: string }> | null;
+    binding: Readonly<{ runtimeInstanceId: string; characterId: string; currentRevision: number;
+      targetId: string; targetSha256: string; selectionRevision: number;
+      policyVersion: string }> | null;
+    selectionError: Readonly<{ code: 'TARGET_NOT_FOUND' | 'TARGET_CHANGED' | 'TARGET_INVALID';
+      attemptedTargetId: string; occurredAt: string }> | null;
+  }>;
+  readonly score: Readonly<{ status: 'SCORED' | 'NO_DATA'; value: number | null;
+    passedWeight: number; evaluableWeight: number; failIssueCount: number;
+    warnCount: number; itemsPassing: number; itemsTargeted: number }>;
+  readonly equipment: readonly unknown[];
+}
+
+export interface SnapshotRequestContext {
+  readonly runtimeInstanceId: string;
+  readonly minimumHudRevision: number;
+  readonly expectedCharacterId: string | null;
+  readonly expectedTargetId: string | null;
+  readonly expectedSelectionRevision: number | null;
+}
+
+export interface AuthoritativeHudSnapshot {
+  readonly authoritative: true;
+  readonly correlationId: string;
+  readonly backendGeneration: number;
+  readonly subscriptionId: string;
+  readonly subscriptionAfterRevision: number;
+  readonly requestContext: SnapshotRequestContext;
+  readonly hud: HudSnapshot;
+}
+
+export interface IncrementalHudUpdate {
+  readonly backendGeneration: number;
+  readonly subscriptionId: string;
+  readonly previousHudRevision: number;
+  readonly hud: HudSnapshot;
+}
+
 /** Paths never cross this boundary. IDs are resolved beneath configuredRoot. */
 export interface TargetRepository {
   readonly configuredRoot: string;
@@ -92,16 +156,17 @@ export interface EquipmentAssessmentService {
     policyVersion: string;
     currentEquipmentEvidence: unknown;
     target: unknown;
-  }>): Promise<unknown>;
+  }>): Promise<HudSnapshot>;
 }
 
 /** Reads only durable committed BE state. FE never reads DB/files through it. */
 export interface HudDataSource {
-  snapshot(): Promise<unknown>;
-  subscribe(afterHudRevision: number, sink: (snapshot: unknown) => Promise<void>): Promise<() => void>;
+  snapshot(requestId: string, context: SnapshotRequestContext): Promise<AuthoritativeHudSnapshot>;
+  subscribe(subscriptionId: string, afterHudRevision: number,
+    sink: (update: IncrementalHudUpdate) => Promise<void>): Promise<() => void>;
 }
 
 export interface HudPublisher {
-  publishAfterCommit(snapshot: unknown): Promise<void>;
+  publishAfterCommit(snapshot: HudSnapshot): Promise<void>;
   forceResync(reason: 'REVISION_GAP' | 'BACKEND_GENERATION_CHANGED' | 'SLOW_CONSUMER'): Promise<void>;
 }

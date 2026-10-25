@@ -32,14 +32,21 @@
     },
     "helloAccepted": {
       "type": "object", "additionalProperties": false,
-      "required": ["protocolVersion", "messageId", "type", "correlationId", "backendGeneration", "sessionId", "limits"],
+      "required": ["protocolVersion", "messageId", "type", "correlationId", "runtimeInstanceId", "backendGeneration", "sessionId", "limits"],
       "properties": {
-        "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "const": "hello.accepted" }, "correlationId": { "$ref": "#/$defs/id" }, "backendGeneration": { "type": "integer", "minimum": 1 }, "sessionId": { "$ref": "#/$defs/id" },
+        "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "const": "hello.accepted" }, "correlationId": { "$ref": "#/$defs/id" }, "runtimeInstanceId": { "$ref": "#/$defs/id" }, "backendGeneration": { "type": "integer", "minimum": 1 }, "sessionId": { "$ref": "#/$defs/id" },
         "limits": { "type": "object", "additionalProperties": false, "required": ["maxMessageBytes", "maxPendingMessages"], "properties": { "maxMessageBytes": { "type": "integer", "minimum": 1024 }, "maxPendingMessages": { "type": "integer", "minimum": 1 } } }
       }
     },
     "targetListRequest": { "$ref": "#/$defs/simpleRequest", "unevaluatedProperties": false, "properties": { "type": { "const": "target.list.request" } } },
-    "snapshotRequest": { "$ref": "#/$defs/simpleRequest", "unevaluatedProperties": false, "properties": { "type": { "const": "hud.snapshot.request" } } },
+    "snapshotRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocolVersion", "messageId", "type", "correlationId", "backendGeneration", "requestContext"],
+      "properties": {
+        "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "const": "hud.snapshot.request" },
+        "correlationId": { "type": "null" }, "backendGeneration": { "type": "integer", "minimum": 1 }, "requestContext": { "$ref": "#/$defs/snapshotRequestContext" }
+      }
+    },
     "simpleRequest": {
       "type": "object", "additionalProperties": false,
       "required": ["protocolVersion", "messageId", "type", "correlationId", "backendGeneration"],
@@ -67,12 +74,38 @@
       "required": ["protocolVersion", "messageId", "type", "correlationId", "backendGeneration", "status", "targetId", "contentSha256", "selectionRevision", "hudRevision"],
       "properties": { "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "const": "target.select.result" }, "correlationId": { "$ref": "#/$defs/id" }, "backendGeneration": { "type": "integer", "minimum": 1 }, "status": { "const": "ACTIVATED" }, "targetId": { "$ref": "#/$defs/targetId" }, "contentSha256": { "$ref": "#/$defs/sha256" }, "selectionRevision": { "type": "integer", "minimum": 1 }, "hudRevision": { "type": "integer", "minimum": 0 } }
     },
-    "snapshot": { "$ref": "#/$defs/hudEnvelope", "unevaluatedProperties": false, "properties": { "type": { "const": "hud.snapshot" } } },
-    "update": { "$ref": "#/$defs/hudEnvelope", "unevaluatedProperties": false, "properties": { "type": { "const": "hud.update" } } },
-    "hudEnvelope": {
+    "snapshotRequestContext": {
       "type": "object", "additionalProperties": false,
-      "required": ["protocolVersion", "messageId", "type", "correlationId", "backendGeneration", "previousHudRevision", "hud"],
-      "properties": { "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "type": "string" }, "correlationId": { "type": ["string", "null"] }, "backendGeneration": { "type": "integer", "minimum": 1 }, "previousHudRevision": { "type": ["integer", "null"], "minimum": 0 }, "hud": { "$ref": "https://streamops.local/schemas/d4planner-hud/v1" } }
+      "required": ["runtimeInstanceId", "minimumHudRevision", "expectedCharacterId", "expectedTargetId", "expectedSelectionRevision"],
+      "properties": {
+        "runtimeInstanceId": { "$ref": "#/$defs/id" }, "minimumHudRevision": { "type": "integer", "minimum": 0 },
+        "expectedCharacterId": { "type": ["string", "null"], "minLength": 1 },
+        "expectedTargetId": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/targetId" }] },
+        "expectedSelectionRevision": { "type": ["integer", "null"], "minimum": 1 }
+      },
+      "allOf": [
+        { "if": { "properties": { "expectedTargetId": { "type": "null" } }, "required": ["expectedTargetId"] }, "then": { "properties": { "expectedSelectionRevision": { "type": "null" } } } },
+        { "if": { "properties": { "expectedTargetId": { "type": "string" } }, "required": ["expectedTargetId"] }, "then": { "properties": { "expectedSelectionRevision": { "type": "integer", "minimum": 1 } } } }
+      ]
+    },
+    "snapshot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocolVersion", "messageId", "type", "correlationId", "backendGeneration", "authoritative", "subscriptionId", "subscriptionAfterRevision", "requestContext", "hud"],
+      "properties": {
+        "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "const": "hud.snapshot" },
+        "correlationId": { "$ref": "#/$defs/id" }, "backendGeneration": { "type": "integer", "minimum": 1 }, "authoritative": { "const": true },
+        "subscriptionId": { "$ref": "#/$defs/id" }, "subscriptionAfterRevision": { "type": "integer", "minimum": 0 },
+        "requestContext": { "$ref": "#/$defs/snapshotRequestContext" }, "hud": { "$ref": "https://streamops.local/schemas/d4planner-hud/v1" }
+      }
+    },
+    "update": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocolVersion", "messageId", "type", "correlationId", "backendGeneration", "subscriptionId", "previousHudRevision", "hud"],
+      "properties": {
+        "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "const": "hud.update" },
+        "correlationId": { "type": "null" }, "backendGeneration": { "type": "integer", "minimum": 1 }, "subscriptionId": { "$ref": "#/$defs/id" },
+        "previousHudRevision": { "type": "integer", "minimum": 0 }, "hud": { "$ref": "https://streamops.local/schemas/d4planner-hud/v1" }
+      }
     },
     "resyncRequired": {
       "type": "object", "additionalProperties": false,

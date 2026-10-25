@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://streamops.local/schemas/d4planner-hud/v1",
-  "title": "D4Planner Release 1 committed HUD model",
+  "title": "D4Planner Release 1 committed Equipment HUD model",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "hudRevision", "producedAt", "backend", "binding", "selectedTarget", "health", "score", "equipment", "recommendation"],
+  "required": ["schemaVersion", "hudRevision", "producedAt", "backend", "context", "health", "score", "equipment", "recommendation", "provenance"],
   "properties": {
     "schemaVersion": { "const": "d4planner-hud/v1" },
     "hudRevision": { "type": "integer", "minimum": 0 },
@@ -13,19 +13,7 @@
       "type": "object", "additionalProperties": false, "required": ["runtimeInstanceId", "generation"],
       "properties": { "runtimeInstanceId": { "$ref": "#/$defs/id" }, "generation": { "type": "integer", "minimum": 1 } }
     },
-    "binding": {
-      "type": "object", "additionalProperties": false,
-      "required": ["characterId", "currentRevision", "targetId", "targetSha256", "selectionRevision", "policyVersion"],
-      "properties": {
-        "characterId": { "$ref": "#/$defs/id" }, "currentRevision": { "type": "integer", "minimum": 0 },
-        "targetId": { "$ref": "#/$defs/id" }, "targetSha256": { "$ref": "#/$defs/sha256" },
-        "selectionRevision": { "type": "integer", "minimum": 1 }, "policyVersion": { "type": "string", "minLength": 1 }
-      }
-    },
-    "selectedTarget": {
-      "type": "object", "additionalProperties": false, "required": ["targetId", "displayName", "contentSha256"],
-      "properties": { "targetId": { "$ref": "#/$defs/id" }, "displayName": { "type": "string", "minLength": 1 }, "contentSha256": { "$ref": "#/$defs/sha256" } }
-    },
+    "context": { "$ref": "#/$defs/context" },
     "health": {
       "type": "object", "additionalProperties": false, "required": ["capture", "scoreFreshness", "ruleKit"],
       "properties": {
@@ -36,54 +24,150 @@
     },
     "score": { "$ref": "#/$defs/score" },
     "equipment": { "type": "array", "items": { "$ref": "#/$defs/equipmentRow" } },
-    "recommendation": {
-      "anyOf": [
-        { "type": "null" },
-        { "type": "object", "additionalProperties": false, "required": ["action", "reasonCodes", "criterionIds"],
-          "properties": { "action": { "enum": ["KEEP", "REPLACE", "CHANGE_EFFECT", "IMPROVE_ROLL", "INSUFFICIENT_EVIDENCE"] }, "reasonCodes": { "type": "array", "minItems": 1, "items": { "type": "string" } }, "criterionIds": { "type": "array", "items": { "$ref": "#/$defs/id" } } } }
-      ]
+    "recommendation": { "$ref": "#/$defs/recommendation" },
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["producer", "assessmentVersion", "captureRevision", "lastObservedAt"],
+      "properties": {
+        "producer": { "const": "D4PLANNER_BE" }, "assessmentVersion": { "type": "string", "minLength": 1 },
+        "captureRevision": { "type": ["integer", "null"], "minimum": 0 },
+        "lastObservedAt": { "type": ["string", "null"], "format": "date-time" }
+      }
     }
   },
   "$defs": {
     "id": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "targetId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$" },
     "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-    "countRatio": {
-      "type": "object", "additionalProperties": false, "required": ["numerator", "denominator", "ratio"],
-      "properties": { "numerator": { "type": "integer", "minimum": 0 }, "denominator": { "type": "integer", "minimum": 0 }, "ratio": { "type": ["number", "null"], "minimum": 0, "maximum": 1 } }
+    "character": {
+      "type": "object", "additionalProperties": false, "required": ["characterId", "displayName", "currentRevision"],
+      "properties": { "characterId": { "$ref": "#/$defs/id" }, "displayName": { "type": "string", "minLength": 1 }, "currentRevision": { "type": "integer", "minimum": 0 } }
+    },
+    "target": {
+      "type": "object", "additionalProperties": false,
+      "required": ["targetId", "displayName", "buildDisplayName", "contentSha256", "selectionRevision", "policyVersion"],
+      "properties": {
+        "targetId": { "$ref": "#/$defs/targetId" }, "displayName": { "type": "string", "minLength": 1 },
+        "buildDisplayName": { "type": "string", "minLength": 1 }, "contentSha256": { "$ref": "#/$defs/sha256" },
+        "selectionRevision": { "type": "integer", "minimum": 1 }, "policyVersion": { "type": "string", "minLength": 1 }
+      }
+    },
+    "binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["runtimeInstanceId", "characterId", "currentRevision", "targetId", "targetSha256", "selectionRevision", "policyVersion"],
+      "properties": {
+        "runtimeInstanceId": { "$ref": "#/$defs/id" }, "characterId": { "$ref": "#/$defs/id" }, "currentRevision": { "type": "integer", "minimum": 0 },
+        "targetId": { "$ref": "#/$defs/targetId" }, "targetSha256": { "$ref": "#/$defs/sha256" },
+        "selectionRevision": { "type": "integer", "minimum": 1 }, "policyVersion": { "type": "string", "minLength": 1 }
+      }
+    },
+    "selectionError": {
+      "type": "object", "additionalProperties": false, "required": ["code", "attemptedTargetId", "occurredAt"],
+      "properties": {
+        "code": { "enum": ["TARGET_NOT_FOUND", "TARGET_CHANGED", "TARGET_INVALID"] },
+        "attemptedTargetId": { "$ref": "#/$defs/targetId" }, "occurredAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "emptyContext": {
+      "type": "object", "additionalProperties": false, "required": ["state", "character", "target", "binding", "selectionError"],
+      "properties": { "state": { "const": "STARTUP" }, "character": { "type": "null" }, "target": { "type": "null" }, "binding": { "type": "null" }, "selectionError": { "type": "null" } }
+    },
+    "targetOnlyContext": {
+      "type": "object", "additionalProperties": false, "required": ["state", "character", "target", "binding", "selectionError"],
+      "properties": { "state": { "const": "TARGET_ONLY" }, "character": { "type": "null" }, "target": { "$ref": "#/$defs/target" }, "binding": { "type": "null" }, "selectionError": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/selectionError" }] } }
+    },
+    "characterOnlyContext": {
+      "type": "object", "additionalProperties": false, "required": ["state", "character", "target", "binding", "selectionError"],
+      "properties": { "state": { "const": "CHARACTER_ONLY" }, "character": { "$ref": "#/$defs/character" }, "target": { "type": "null" }, "binding": { "type": "null" }, "selectionError": { "type": "null" } }
+    },
+    "boundContext": {
+      "type": "object", "additionalProperties": false, "required": ["state", "character", "target", "binding", "selectionError"],
+      "properties": { "state": { "const": "BOUND" }, "character": { "$ref": "#/$defs/character" }, "target": { "$ref": "#/$defs/target" }, "binding": { "$ref": "#/$defs/binding" }, "selectionError": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/selectionError" }] } }
+    },
+    "unavailableContext": {
+      "type": "object", "additionalProperties": false, "required": ["state", "character", "target", "binding", "selectionError"],
+      "properties": { "state": { "const": "TARGET_UNAVAILABLE" }, "character": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/character" }] }, "target": { "type": "null" }, "binding": { "type": "null" }, "selectionError": { "$ref": "#/$defs/selectionError" } }
+    },
+    "context": { "oneOf": [{ "$ref": "#/$defs/emptyContext" }, { "$ref": "#/$defs/targetOnlyContext" }, { "$ref": "#/$defs/characterOnlyContext" }, { "$ref": "#/$defs/boundContext" }, { "$ref": "#/$defs/unavailableContext" }] },
+    "evaluationCounts": {
+      "type": "object", "additionalProperties": false, "required": ["evaluatedCriteria", "totalCriteria", "evaluatedWeight", "totalWeight"],
+      "properties": {
+        "evaluatedCriteria": { "type": "integer", "minimum": 0 }, "totalCriteria": { "type": "integer", "minimum": 0 },
+        "evaluatedWeight": { "type": "number", "minimum": 0 }, "totalWeight": { "type": "number", "minimum": 0 }
+      }
     },
     "score": {
       "type": "object", "additionalProperties": false,
-      "required": ["status", "value", "passedWeight", "evaluableWeight", "coverage", "failIssueCount", "warnCount", "itemsPassing", "itemsTargeted"],
+      "required": ["status", "value", "passedWeight", "evaluableWeight", "evaluationCounts", "failIssueCount", "warnCount", "itemsPassing", "itemsTargeted"],
       "properties": {
         "status": { "enum": ["SCORED", "NO_DATA"] }, "value": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
         "passedWeight": { "type": "number", "minimum": 0 }, "evaluableWeight": { "type": "number", "minimum": 0 },
-        "coverage": { "$ref": "#/$defs/countRatio" }, "failIssueCount": { "type": "integer", "minimum": 0 }, "warnCount": { "type": "integer", "minimum": 0 },
-        "itemsPassing": { "type": "integer", "minimum": 0 }, "itemsTargeted": { "type": "integer", "minimum": 0 }
+        "evaluationCounts": { "$ref": "#/$defs/evaluationCounts" }, "failIssueCount": { "type": "integer", "minimum": 0 },
+        "warnCount": { "type": "integer", "minimum": 0 }, "itemsPassing": { "type": "integer", "minimum": 0 }, "itemsTargeted": { "type": "integer", "minimum": 0 }
       },
       "allOf": [
-        { "if": { "properties": { "status": { "const": "NO_DATA" } }, "required": ["status"] }, "then": { "properties": { "value": { "type": "null" }, "evaluableWeight": { "const": 0 } } } },
+        { "if": { "properties": { "status": { "const": "NO_DATA" } }, "required": ["status"] }, "then": { "properties": { "value": { "type": "null" }, "passedWeight": { "const": 0 }, "evaluableWeight": { "const": 0 } } } },
         { "if": { "properties": { "status": { "const": "SCORED" } }, "required": ["status"] }, "then": { "properties": { "value": { "type": "number" }, "evaluableWeight": { "exclusiveMinimum": 0 } } } }
+      ]
+    },
+    "numberValue": { "type": "object", "additionalProperties": false, "required": ["type", "value", "unit"], "properties": { "type": { "const": "NUMBER" }, "value": { "type": "number" }, "unit": { "enum": ["PERCENT", "FLAT", "RANK", "SECONDS", "NONE"] } } },
+    "textValue": { "type": "object", "additionalProperties": false, "required": ["type", "value", "unit"], "properties": { "type": { "const": "TEXT" }, "value": { "type": "string" }, "unit": { "const": "NONE" } } },
+    "booleanValue": { "type": "object", "additionalProperties": false, "required": ["type", "value", "unit"], "properties": { "type": { "const": "BOOLEAN" }, "value": { "type": "boolean" }, "unit": { "const": "NONE" } } },
+    "typedValue": { "oneOf": [{ "$ref": "#/$defs/numberValue" }, { "$ref": "#/$defs/textValue" }, { "$ref": "#/$defs/booleanValue" }] },
+    "numberOperand": { "type": "object", "additionalProperties": false, "required": ["type", "value", "unit"], "properties": { "type": { "const": "NUMBER" }, "value": { "type": "number" }, "unit": { "enum": ["PERCENT", "FLAT", "RANK", "SECONDS", "NONE"] } } },
+    "rangeOperand": { "type": "object", "additionalProperties": false, "required": ["type", "minimum", "maximum", "unit"], "properties": { "type": { "const": "NUMBER_RANGE" }, "minimum": { "type": "number" }, "maximum": { "type": "number" }, "unit": { "enum": ["PERCENT", "FLAT", "RANK", "SECONDS"] } } },
+    "textOperand": { "type": "object", "additionalProperties": false, "required": ["type", "value", "unit"], "properties": { "type": { "const": "TEXT" }, "value": { "type": "string" }, "unit": { "const": "NONE" } } },
+    "booleanOperand": { "type": "object", "additionalProperties": false, "required": ["type", "value", "unit"], "properties": { "type": { "const": "BOOLEAN" }, "value": { "type": "boolean" }, "unit": { "const": "NONE" } } },
+    "presenceOperand": { "type": "object", "additionalProperties": false, "required": ["type", "value", "unit"], "properties": { "type": { "const": "PRESENCE" }, "value": { "const": true }, "unit": { "const": "NONE" } } },
+    "typedOperand": { "oneOf": [{ "$ref": "#/$defs/numberOperand" }, { "$ref": "#/$defs/rangeOperand" }, { "$ref": "#/$defs/textOperand" }, { "$ref": "#/$defs/booleanOperand" }, { "$ref": "#/$defs/presenceOperand" }] },
+    "parameterComparison": {
+      "type": "object", "additionalProperties": false,
+      "required": ["parameterId", "label", "index", "comparator", "expected", "actual", "evidence", "status", "reasonCode"],
+      "properties": {
+        "parameterId": { "$ref": "#/$defs/id" }, "label": { "type": "string", "minLength": 1 }, "index": { "type": "integer", "minimum": 0 },
+        "comparator": { "enum": ["AT_LEAST", "AT_MOST", "EQUAL", "BETWEEN", "PRESENT"] },
+        "expected": { "$ref": "#/$defs/typedOperand" }, "actual": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/typedValue" }] },
+        "evidence": { "enum": ["OBSERVED", "CONFIRMED_ABSENT", "INCOMPLETE", "UNAVAILABLE", "UNIT_MISMATCH"] },
+        "status": { "enum": ["PASS", "WARN", "UNKNOWN"] }, "reasonCode": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        { "if": { "properties": { "comparator": { "enum": ["AT_LEAST", "AT_MOST"] } }, "required": ["comparator"] }, "then": { "properties": { "expected": { "$ref": "#/$defs/numberOperand" }, "actual": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/numberValue" }] } } } },
+        { "if": { "properties": { "comparator": { "const": "BETWEEN" } }, "required": ["comparator"] }, "then": { "properties": { "expected": { "$ref": "#/$defs/rangeOperand" }, "actual": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/numberValue" }] } } } },
+        { "if": { "properties": { "comparator": { "const": "PRESENT" } }, "required": ["comparator"] }, "then": { "properties": { "expected": { "$ref": "#/$defs/presenceOperand" }, "actual": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/booleanValue" }] } } } }
       ]
     },
     "comparison": {
       "type": "object", "additionalProperties": false,
-      "required": ["criterionId", "kind", "entityId", "core", "status", "reasonCode", "comparator", "unit", "targetValue", "currentValue", "evidence"],
+      "required": ["criterionId", "targetOrder", "kind", "source", "entityId", "label", "displayText", "core", "status", "reasonCode", "parameters"],
       "properties": {
-        "criterionId": { "$ref": "#/$defs/id" }, "kind": { "enum": ["AFFIX", "EFFECT"] }, "entityId": { "$ref": "#/$defs/id" }, "core": { "type": "boolean" },
+        "criterionId": { "$ref": "#/$defs/id" }, "targetOrder": { "type": "integer", "minimum": 0 }, "kind": { "enum": ["AFFIX", "EFFECT"] },
+        "source": { "type": "object", "additionalProperties": false, "required": ["group", "occurrence"], "properties": { "group": { "enum": ["AFFIXES", "IMPLICITS", "ASPECTS", "TEMPERS"] }, "occurrence": { "type": "integer", "minimum": 0 } } },
+        "entityId": { "$ref": "#/$defs/id" }, "label": { "type": "string", "minLength": 1 }, "displayText": { "type": "string", "minLength": 1 }, "core": { "type": "boolean" },
         "status": { "enum": ["PASS", "FAIL", "WARN", "UNKNOWN"] }, "reasonCode": { "type": "string", "minLength": 1 },
-        "comparator": { "enum": ["AT_LEAST", "AT_MOST", "EQUAL", "BETWEEN", "PRESENT"] }, "unit": { "enum": ["PERCENT", "FLAT", "RANK", "SECONDS", "NONE"] },
-        "targetValue": {}, "currentValue": {},
-        "evidence": { "enum": ["OBSERVED", "CONFIRMED_ABSENT", "INCOMPLETE", "UNAVAILABLE"] }
+        "parameters": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/parameterComparison" } }
       }
+    },
+    "itemDisplay": { "type": "object", "additionalProperties": false, "required": ["itemId", "displayName"], "properties": { "itemId": { "$ref": "#/$defs/id" }, "displayName": { "type": "string", "minLength": 1 } } },
+    "currentItemDisplay": {
+      "type": "object", "additionalProperties": false, "required": ["itemId", "displayName", "observedAt", "source"],
+      "properties": { "itemId": { "$ref": "#/$defs/id" }, "displayName": { "type": "string", "minLength": 1 }, "observedAt": { "type": "string", "format": "date-time" }, "source": { "enum": ["CAPTURE", "MATERIALIZED_CAPTURE"] } }
     },
     "equipmentRow": {
       "type": "object", "additionalProperties": false,
-      "required": ["slotId", "targetItemId", "currentItemId", "currentPresence", "status", "reasonCode", "comparisons"],
+      "required": ["slotId", "slotLabel", "targetItem", "currentItem", "currentPresence", "status", "reasonCode", "comparisons"],
       "properties": {
-        "slotId": { "$ref": "#/$defs/id" }, "targetItemId": { "$ref": "#/$defs/id" }, "currentItemId": { "type": ["string", "null"] },
-        "currentPresence": { "enum": ["OBSERVED", "CONFIRMED_ABSENT", "UNKNOWN"] }, "status": { "enum": ["PASS", "FAIL", "WARN", "UNKNOWN"] }, "reasonCode": { "type": "string", "minLength": 1 },
-        "comparisons": { "type": "array", "items": { "$ref": "#/$defs/comparison" } }
+        "slotId": { "$ref": "#/$defs/id" }, "slotLabel": { "type": "string", "minLength": 1 }, "targetItem": { "$ref": "#/$defs/itemDisplay" },
+        "currentItem": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/currentItemDisplay" }] },
+        "currentPresence": { "enum": ["OBSERVED", "CONFIRMED_ABSENT", "UNKNOWN"] }, "status": { "enum": ["PASS", "FAIL", "WARN", "UNKNOWN"] },
+        "reasonCode": { "type": "string", "minLength": 1 }, "comparisons": { "type": "array", "items": { "$ref": "#/$defs/comparison" } }
       }
+    },
+    "recommendation": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "object", "additionalProperties": false, "required": ["action", "displayText", "reasonCodes", "criterionIds"],
+          "properties": { "action": { "enum": ["KEEP", "REPLACE", "CHANGE_EFFECT", "IMPROVE_ROLL", "INSUFFICIENT_EVIDENCE"] }, "displayText": { "type": "string", "minLength": 1 }, "reasonCodes": { "type": "array", "minItems": 1, "items": { "type": "string" } }, "criterionIds": { "type": "array", "items": { "$ref": "#/$defs/id" } } } }
+      ]
     }
   }
 }

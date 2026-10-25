@@ -16,9 +16,24 @@
       "messageId": "m-hello-accepted-1",
       "type": "hello.accepted",
       "correlationId": "m-hello-1",
+      "runtimeInstanceId": "backend-synthetic-a",
       "backendGeneration": 3,
       "sessionId": "ws-session-synthetic-1",
       "limits": { "maxMessageBytes": 262144, "maxPendingMessages": 32 }
+    },
+    {
+      "protocolVersion": "d4planner-ws/v1",
+      "messageId": "m-snapshot-request-1",
+      "type": "hud.snapshot.request",
+      "correlationId": null,
+      "backendGeneration": 3,
+      "requestContext": {
+        "runtimeInstanceId": "backend-synthetic-a",
+        "minimumHudRevision": 10,
+        "expectedCharacterId": "character-synthetic-a",
+        "expectedTargetId": "synthetic-charge-bolt",
+        "expectedSelectionRevision": 7
+      }
     },
     {
       "protocolVersion": "d4planner-ws/v1",

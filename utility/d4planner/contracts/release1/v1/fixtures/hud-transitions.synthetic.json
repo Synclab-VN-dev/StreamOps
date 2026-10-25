@@ -1,0 +1,33 @@
+{
+  "fixtureType": "SYNTHETIC_HUD_TRANSITIONS",
+  "cases": [
+    {
+      "id": "startup-to-evaluable-equipment",
+      "states": [
+        { "fixture": "hud.no-data.synthetic.json", "expectedContext": "STARTUP", "expectedScore": "NO_DATA" },
+        { "fixture": "hud.target-only.synthetic.json", "expectedContext": "TARGET_ONLY", "expectedScore": "NO_DATA" },
+        { "derive": "BOUND_NO_CAPTURE", "expectedContext": "BOUND", "expectedScore": "NO_DATA" },
+        { "fixture": "hud.partial.synthetic.json", "expectedContext": "BOUND", "expectedScore": "SCORED" }
+      ]
+    },
+    {
+      "id": "character-change-invalidates-old-assessment",
+      "from": "hud.partial.synthetic.json",
+      "newCharacterId": "character-synthetic-b",
+      "expected": { "context": "BOUND", "score": "NO_DATA", "equipmentRows": 0, "oldBindingRejected": true }
+    },
+    {
+      "id": "active-target-selection-failure-keeps-old-label-and-binding",
+      "from": "hud.partial.synthetic.json",
+      "attemptedTargetId": "synthetic-missing-target",
+      "errorCode": "TARGET_NOT_FOUND",
+      "expected": { "activeTargetId": "synthetic-charge-bolt", "scoreBindingTargetId": "synthetic-charge-bolt" }
+    },
+    {
+      "id": "active-target-deleted-invalidates-assessment",
+      "from": "hud.partial.synthetic.json",
+      "expectedFixture": "hud.target-unavailable.synthetic.json",
+      "expected": { "context": "TARGET_UNAVAILABLE", "score": "NO_DATA", "equipmentRows": 0 }
+    }
+  ]
+}

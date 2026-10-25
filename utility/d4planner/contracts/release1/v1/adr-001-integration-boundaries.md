@@ -1,7 +1,7 @@
 # ADR-001: Release 1 integration boundaries and lifecycle
 
-- Status: `CANDIDATE`, pending only decisions recorded in `decisions-and-dependencies.md`
-- Contract: `d4planner-r1-contract/1.0.0-candidate.1`
+- Status: `CANDIDATE`, technical review corrections complete; remaining Owner decisions are recorded in `decisions-and-dependencies.md`
+- Contract: `d4planner-r1-contract/1.0.0-candidate.2`
 - Scope baseline: `R1-EQUIPMENT-20261025`
 - References: Epic #137, S1 #138
 
@@ -29,6 +29,12 @@ The Release 1 equipment score does not require full Character Stats or a Rule
 Kit evaluation. Skills, Paragon, Charms, Torment, DPS, inventory/stash search,
 and Workspace are not scoring inputs. This does not remove the S3 lifecycle and
 compatibility boundary.
+
+The approved S6 review baseline is MagicPath project `458763473602621440`,
+component `458765764401446912`, revision `464988421014827008`: Target menu
+replaces LIVE, Charms is hidden, Equipment/Compare/Affixes/Effects/score/issues
+and Pin remain, and Coverage is not a HUD element. Exported sources, hashes and
+visual Goldens are separate S6 evidence and are not claimed by S1.
 
 ## Lifecycle state machine
 
@@ -128,10 +134,19 @@ revision. Startup revalidates before restoring it.
 
 ## Assessment invariants
 
-Identity (`slotId`, criterion `kind`, stable `entityId`) is established before
-values are compared. Names are display-only and fuzzy matching cannot establish
-identity. Comparator and unit are explicit: `AT_LEAST`, `AT_MOST`, `EQUAL`,
-`BETWEEN`, or `PRESENT`; no global `>=` rule exists.
+Identity (`slotId`, criterion `kind`, stable `entityId`, source group and
+occurrence) is established before values are compared. Names are display-only
+and fuzzy matching cannot establish identity. Each criterion contains one or
+more typed parameters with stable parameter ID/index, comparator, operand and
+unit. `AT_LEAST`/`AT_MOST` accept numbers only; `BETWEEN` requires an ordered
+numeric range; typed equality and presence have distinct shapes. No global `>=`
+rule exists.
+
+All parameters use `ALL` aggregation. A missing parameter or unit/type mismatch
+leaves the whole criterion UNKNOWN; all parameters must pass for criterion PASS;
+an observed low/out-of-range parameter produces criterion WARN under the R1
+rules. The criterion—not each parameter—is the unit of weight, issue counting
+and recommendation priority.
 
 Evidence distinguishes observed value, confirmed absence, incomplete evidence,
 and unavailable evidence. A missing tooltip line is not confirmed absence; an
@@ -145,15 +160,27 @@ evaluableWeight = weights(PASS + FAIL + WARN); UNKNOWN excluded
 ```
 
 WARN has no partial credit and over-target is capped at the criterion weight.
-Zero evaluable weight is `NO_DATA` with `value=null`. FAIL issues count unique
-criterion IDs only. Coverage is evaluated criteria / total target criteria and
-is never score or item x/y. The item-PASS aggregation remains a named policy
-candidate in the decision ledger; no implementation may infer it from score.
+Zero evaluable weight is `NO_DATA` with `value=null`; evaluable data with no PASS
+is score `0`. FAIL issues count distinct criterion IDs only. An item contributes
+to x/y only when every target criterion for it is PASS; WARN, UNKNOWN or FAIL
+prevents item PASS. “Issues only” contains FAIL and WARN. Recommendation order
+is core FAIL, core WARN, non-core WARN, then target order and stable criterion
+ID. Transport retains the exact score and weights; half-up rounding occurs only
+for final presentation. Evaluation counts remain internal diagnostics and must
+not become a Coverage row/bar/badge in the approved HUD.
 
 Every result binds runtime instance, character identity/current revision,
 target ID/exact hash/selection revision, policy version and HUD revision. A
 late result whose binding no longer matches is discarded. Switching target or
 character publishes no old score under the new label.
+
+BE may be READY before a game, character, Target or capture exists. The HUD
+context is a closed union: `STARTUP`, `TARGET_ONLY`, `CHARACTER_ONLY`, `BOUND`,
+or `TARGET_UNAVAILABLE`. Only `BOUND` contains an assessment binding. Other
+states carry `NO_DATA`, no equipment rows and no invented IDs. A failed attempt
+to select another Target may be reported beside the unchanged active Target;
+the old label/binding remain paired with the old score. If the active Target is
+deleted/invalidated, the binding and result are cleared atomically.
 
 ## WebSocket protocol and revision boundary
 
@@ -172,10 +199,10 @@ sequenceDiagram
   WS-->>FE: hello.accepted(generation, limits)
   FE->>WS: target.list.request
   WS-->>FE: target.list.result(valid + safe invalid entries)
-  FE->>WS: hud.snapshot.request
+  FE->>WS: hud.snapshot.request(request ID, minimum revision, expected context)
   WS->>DB: begin consistent read / establish subscription boundary
   DB-->>WS: latest committed snapshot R
-  WS-->>FE: hud.snapshot(R)
+  WS-->>FE: authoritative hud.snapshot(R, correlation, subscription)
   Note over WS: subscription includes commits after R
   DB-->>WS: commit R+1
   WS-->>FE: hud.update(previous=R, hud=R+1)
@@ -183,10 +210,18 @@ sequenceDiagram
 
 Snapshot and subscription share one durable revision boundary: take the latest
 committed R and register delivery for commits `>R` without a gap. Push occurs
-only after commit. The FE applies a message only when backend generation matches
-and `previousHudRevision` equals its current revision. Duplicate revisions are
-ignored; older/out-of-order revisions are ignored; a gap requests a fresh
-snapshot. A new BE generation always resets transport state and resyncs.
+only after commit. Incremental updates require matching runtime instance,
+generation, subscription, binding, and `previousHudRevision == current`; a gap
+starts a correlated snapshot request.
+
+An authoritative full snapshot follows different rules: it may replace local
+state within the same runtime instance/generation after a gap or reconnect when
+its correlation is still pending, revision is at least the request minimum and
+current local revision, and its selected-target/character context matches the
+request. Equal revision confirms/resubscribes idempotently. Older, late after the
+request was consumed, wrong-generation, wrong-instance or wrong-context
+snapshots cannot roll state back. A newly accepted BE generation resets local
+transport state before its first authoritative snapshot.
 
 Target selection carries listed hash/revision. The activation commit increments
 selection and HUD revision atomically; any computation for the prior binding is
@@ -205,6 +240,8 @@ as separate timestamps. Rule Kit operation latency is measured separately when
 called. No three-second or other product threshold is approved in S1. S7 must
 record configured budgets and actual percentiles after Owner chooses D3.
 
-This ADR does not choose ports, DataDir, tasks, OS pin behavior, or OBS/Steam
-Link scope. Those values must be decided before UAT; ports must not be derived by
+Pin is approved as always-on-top only; it does not imply position locking or
+persistence after restart. This ADR does not choose ports, DataDir, tasks,
+latency acceptance thresholds, or OBS/Steam Link acceptance scope. Those open
+values must be decided before their UAT gates; ports must not be derived by
 concatenating `187` with a three-digit PR number.
