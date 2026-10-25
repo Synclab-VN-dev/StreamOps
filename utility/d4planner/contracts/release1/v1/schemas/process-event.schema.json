@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://streamops.local/schemas/d4planner-process-event/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "wrapper", "ownerInstanceId", "childInstanceId", "generation", "sequence", "event", "reason"],
+  "properties": {
+    "contractVersion": { "const": "d4planner-process/v1" },
+    "wrapper": { "enum": ["BACKEND", "RULE_KIT"] },
+    "ownerInstanceId": { "type": "string", "minLength": 1 },
+    "childInstanceId": { "type": ["string", "null"] },
+    "generation": { "type": "integer", "minimum": 1 },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "event": { "enum": ["START_REQUESTED", "SPAWNED", "READY", "START_FAILED", "STOP_REQUESTED", "EXITED", "CLEANED", "CRASHED", "RESTART_SCHEDULED", "PARENT_LOST", "SESSIONS_INVALIDATED"] },
+    "reason": { "type": "string", "minLength": 1 },
+    "protocolVersion": { "type": ["string", "null"] },
+    "healthVerified": { "type": ["boolean", "null"] }
+  }
+}

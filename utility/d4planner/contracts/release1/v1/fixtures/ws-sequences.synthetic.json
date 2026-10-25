@@ -1,0 +1,32 @@
+{
+  "fixtureType": "SYNTHETIC_WS_SEQUENCES",
+  "cases": [
+    {
+      "id": "duplicate-and-out-of-order",
+      "initial": { "generation": 3, "hudRevision": 10, "selectionRevision": 7, "targetId": "target-a" },
+      "events": [
+        { "generation": 3, "previous": 10, "revision": 11, "selectionRevision": 7, "targetId": "target-a", "expected": "APPLY" },
+        { "generation": 3, "previous": 10, "revision": 11, "selectionRevision": 7, "targetId": "target-a", "expected": "IGNORE_DUPLICATE" },
+        { "generation": 3, "previous": 9, "revision": 10, "selectionRevision": 7, "targetId": "target-a", "expected": "IGNORE_OLD" },
+        { "generation": 3, "previous": 12, "revision": 13, "selectionRevision": 7, "targetId": "target-a", "expected": "RESYNC_GAP" }
+      ]
+    },
+    {
+      "id": "target-switch-race",
+      "initial": { "generation": 3, "hudRevision": 20, "selectionRevision": 7, "targetId": "target-a" },
+      "events": [
+        { "generation": 3, "previous": 20, "revision": 21, "selectionRevision": 8, "targetId": "target-b", "expected": "APPLY" },
+        { "generation": 3, "previous": 19, "revision": 20, "selectionRevision": 7, "targetId": "target-a", "expected": "IGNORE_OLD" },
+        { "generation": 3, "previous": 21, "revision": 22, "selectionRevision": 7, "targetId": "target-a", "expected": "RESYNC_BINDING_MISMATCH" }
+      ]
+    },
+    {
+      "id": "reconnect-new-generation",
+      "initial": { "generation": 3, "hudRevision": 30, "selectionRevision": 8, "targetId": "target-b" },
+      "events": [
+        { "generation": 4, "previous": null, "revision": 1, "selectionRevision": 1, "targetId": "target-b", "expected": "RESET_AND_APPLY_SNAPSHOT" },
+        { "generation": 3, "previous": 30, "revision": 31, "selectionRevision": 8, "targetId": "target-b", "expected": "IGNORE_OLD_GENERATION" }
+      ]
+    }
+  ]
+}

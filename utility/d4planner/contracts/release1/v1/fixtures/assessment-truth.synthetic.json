@@ -1,0 +1,43 @@
+{
+  "fixtureType": "SYNTHETIC_ASSESSMENT_TRUTH",
+  "weightProfile": { "approval": "TEST_ONLY", "core": 3, "nonCore": 1 },
+  "cases": [
+    {
+      "id": "partial-score",
+      "criteria": [
+        { "criterionId": "c1", "core": true, "identity": "MATCH", "valueRelation": "MEETS", "evidence": "COMPLETE", "expectedStatus": "PASS" },
+        { "criterionId": "c2", "core": true, "identity": "MATCH", "valueRelation": "BELOW", "evidence": "COMPLETE", "expectedStatus": "WARN" },
+        { "criterionId": "c3", "core": false, "identity": "UNKNOWN", "valueRelation": "UNKNOWN", "evidence": "INCOMPLETE", "expectedStatus": "UNKNOWN" }
+      ],
+      "expected": { "scoreStatus": "SCORED", "score": 50, "passedWeight": 3, "evaluableWeight": 6, "evaluatedCriteria": 2, "totalCriteria": 3, "failIssues": 0, "warnings": 1 }
+    },
+    {
+      "id": "confirmed-missing-core",
+      "criteria": [{ "criterionId": "c1", "core": true, "identity": "ABSENT", "valueRelation": "UNKNOWN", "evidence": "COMPLETE", "expectedStatus": "FAIL" }],
+      "expected": { "scoreStatus": "SCORED", "score": 0, "passedWeight": 0, "evaluableWeight": 3, "evaluatedCriteria": 1, "totalCriteria": 1, "failIssues": 1, "warnings": 0 }
+    },
+    {
+      "id": "unobserved-core",
+      "criteria": [{ "criterionId": "c1", "core": true, "identity": "UNKNOWN", "valueRelation": "UNKNOWN", "evidence": "INCOMPLETE", "expectedStatus": "UNKNOWN" }],
+      "expected": { "scoreStatus": "NO_DATA", "score": null, "passedWeight": 0, "evaluableWeight": 0, "evaluatedCriteria": 0, "totalCriteria": 1, "failIssues": 0, "warnings": 0 }
+    },
+    {
+      "id": "non-core-below",
+      "criteria": [{ "criterionId": "c1", "core": false, "identity": "MATCH", "valueRelation": "BELOW", "evidence": "COMPLETE", "expectedStatus": "WARN" }],
+      "expected": { "scoreStatus": "SCORED", "score": 0, "passedWeight": 0, "evaluableWeight": 1, "evaluatedCriteria": 1, "totalCriteria": 1, "failIssues": 0, "warnings": 1 }
+    },
+    {
+      "id": "all-fail",
+      "criteria": [
+        { "criterionId": "c1", "core": true, "identity": "WRONG", "valueRelation": "UNKNOWN", "evidence": "COMPLETE", "expectedStatus": "FAIL" },
+        { "criterionId": "c2", "core": true, "identity": "ABSENT", "valueRelation": "UNKNOWN", "evidence": "COMPLETE", "expectedStatus": "FAIL" }
+      ],
+      "expected": { "scoreStatus": "SCORED", "score": 0, "passedWeight": 0, "evaluableWeight": 6, "evaluatedCriteria": 2, "totalCriteria": 2, "failIssues": 2, "warnings": 0 }
+    },
+    {
+      "id": "over-target-capped",
+      "criteria": [{ "criterionId": "c1", "core": true, "identity": "MATCH", "valueRelation": "ABOVE", "evidence": "COMPLETE", "expectedStatus": "PASS" }],
+      "expected": { "scoreStatus": "SCORED", "score": 100, "passedWeight": 3, "evaluableWeight": 3, "evaluatedCriteria": 1, "totalCriteria": 1, "failIssues": 0, "warnings": 0 }
+    }
+  ]
+}

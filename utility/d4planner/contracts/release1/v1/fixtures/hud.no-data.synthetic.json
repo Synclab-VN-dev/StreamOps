@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "d4planner-hud/v1",
+  "hudRevision": 13,
+  "producedAt": "2026-10-25T05:00:01Z",
+  "backend": { "runtimeInstanceId": "backend-synthetic-a", "generation": 3 },
+  "binding": {
+    "characterId": "character-synthetic-a",
+    "currentRevision": 42,
+    "targetId": "synthetic-charge-bolt",
+    "targetSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "selectionRevision": 7,
+    "policyVersion": "d4planner-equipment-policy/v1+synthetic-3-to-1"
+  },
+  "selectedTarget": {
+    "targetId": "synthetic-charge-bolt",
+    "displayName": "Synthetic Charge Bolt Equipment Target",
+    "contentSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "health": { "capture": "UNKNOWN", "scoreFreshness": "NO_DATA", "ruleKit": "READY" },
+  "score": {
+    "status": "NO_DATA",
+    "value": null,
+    "passedWeight": 0,
+    "evaluableWeight": 0,
+    "coverage": { "numerator": 0, "denominator": 4, "ratio": 0 },
+    "failIssueCount": 0,
+    "warnCount": 0,
+    "itemsPassing": 0,
+    "itemsTargeted": 2
+  },
+  "equipment": [
+    {
+      "slotId": "gloves",
+      "targetItemId": "synthetic-gloves-a",
+      "currentItemId": null,
+      "currentPresence": "UNKNOWN",
+      "status": "UNKNOWN",
+      "reasonCode": "SLOT_NOT_OBSERVED",
+      "comparisons": []
+    }
+  ],
+  "recommendation": {
+    "action": "INSUFFICIENT_EVIDENCE",
+    "reasonCodes": ["SLOT_NOT_OBSERVED"],
+    "criterionIds": []
+  }
+}

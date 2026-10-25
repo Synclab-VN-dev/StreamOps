@@ -1,0 +1,107 @@
+{
+  "schemaVersion": "d4planner-target/v1",
+  "targetId": "synthetic-charge-bolt",
+  "displayName": "Synthetic Charge Bolt Equipment Target",
+  "canonicalBuild": {
+    "schemaVersion": "d4-build/v1",
+    "game": { "id": "diablo-iv", "patch": "3.2.1.73552" },
+    "character": { "classId": "2", "level": 60, "worldTier": 4 },
+    "equipment": {
+      "slots": [
+        {
+          "slotId": "gloves",
+          "item": {
+            "baseItemId": "synthetic-gloves-a",
+            "itemPower": 800,
+            "affixes": [
+              { "entityId": "attack-speed", "values": [8] },
+              { "entityId": "core-skill-ranks", "values": [2] }
+            ],
+            "implicits": [],
+            "aspects": [{ "entityId": "charge-bolt-core-effect", "values": [1] }],
+            "tempers": [],
+            "sockets": []
+          }
+        },
+        {
+          "slotId": "ring-1",
+          "item": {
+            "baseItemId": "synthetic-ring-a",
+            "itemPower": 800,
+            "affixes": [{ "entityId": "resource-cost-reduction", "values": [6] }],
+            "implicits": [], "aspects": [], "tempers": [], "sockets": []
+          }
+        }
+      ]
+    },
+    "skills": { "allocations": [{ "nodeId": "synthetic-skill", "rank": 1 }], "bar": ["synthetic-skill", null] },
+    "paragon": { "boards": [{ "boardId": "synthetic-board", "rotation": 0, "allocations": [] }] },
+    "effects": { "elixirs": [], "warPlans": [] },
+    "world": { "renownSkills": 0, "renownParagon": 0 },
+    "calculationContext": { "season": 15, "options": {} }
+  },
+  "preservedSections": {
+    "charms": [{ "id": "synthetic-charm-not-scored", "rank": 7 }],
+    "sourceMetadata": { "fixture": "SYNTHETIC", "notLiveData": true }
+  },
+  "assessmentPolicy": {
+    "version": "d4planner-equipment-policy/v1",
+    "scope": "EQUIPMENT_ONLY",
+    "weightProfile": {
+      "profileId": "synthetic-3-to-1",
+      "approval": "TEST_ONLY",
+      "coreWeight": 3,
+      "nonCoreWeight": 1
+    },
+    "criteria": [
+      {
+        "criterionId": "gloves.attack-speed",
+        "slotId": "gloves",
+        "kind": "AFFIX",
+        "entityId": "attack-speed",
+        "core": true,
+        "weightClass": "CORE",
+        "comparator": "AT_LEAST",
+        "unit": "PERCENT",
+        "expected": { "value": 8 },
+        "evidenceRequirement": "COMPLETE_CATEGORY"
+      },
+      {
+        "criterionId": "gloves.core-ranks",
+        "slotId": "gloves",
+        "kind": "AFFIX",
+        "entityId": "core-skill-ranks",
+        "core": false,
+        "weightClass": "NON_CORE",
+        "comparator": "AT_LEAST",
+        "unit": "RANK",
+        "expected": { "value": 2 },
+        "evidenceRequirement": "COMPLETE_CATEGORY"
+      },
+      {
+        "criterionId": "gloves.charge-bolt-effect",
+        "slotId": "gloves",
+        "kind": "EFFECT",
+        "entityId": "charge-bolt-core-effect",
+        "core": true,
+        "weightClass": "CORE",
+        "comparator": "PRESENT",
+        "unit": "NONE",
+        "expected": {},
+        "evidenceRequirement": "COMPLETE_SLOT"
+      },
+      {
+        "criterionId": "ring-1.resource-cost",
+        "slotId": "ring-1",
+        "kind": "AFFIX",
+        "entityId": "resource-cost-reduction",
+        "core": false,
+        "weightClass": "NON_CORE",
+        "comparator": "AT_MOST",
+        "unit": "PERCENT",
+        "expected": { "value": 6 },
+        "evidenceRequirement": "PRESENT_VALUE"
+      }
+    ]
+  }
+}

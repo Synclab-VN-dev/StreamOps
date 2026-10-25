@@ -1,0 +1,14 @@
+{
+  "fixtureType": "SYNTHETIC_MUTATIONS",
+  "base": "target.valid.synthetic.json",
+  "cases": [
+    { "id": "unknown-schema-version", "operation": "replace", "path": "/schemaVersion", "value": "d4planner-target/v2", "expected": "SCHEMA_INVALID" },
+    { "id": "policy-wrong-scope", "operation": "replace", "path": "/assessmentPolicy/scope", "value": "FULL_BUILD", "expected": "SCHEMA_INVALID" },
+    { "id": "core-weight-not-higher", "operation": "replace", "path": "/assessmentPolicy/weightProfile/coreWeight", "value": 1, "expected": "POLICY_INVALID" },
+    { "id": "duplicate-criterion", "operation": "append-copy", "path": "/assessmentPolicy/criteria", "from": "/assessmentPolicy/criteria/0", "expected": "DUPLICATE_CRITERION_ID" },
+    { "id": "duplicate-link-different-id", "operation": "append-copy-with-id", "path": "/assessmentPolicy/criteria", "from": "/assessmentPolicy/criteria/0", "value": "gloves.attack-speed-copy", "expected": "POLICY_INVALID" },
+    { "id": "criterion-not-linked-to-target", "operation": "replace", "path": "/assessmentPolicy/criteria/0/entityId", "value": "not-in-target-equipment", "expected": "POLICY_INVALID" },
+    { "id": "core-weight-class-mismatch", "operation": "replace", "path": "/assessmentPolicy/criteria/0/weightClass", "value": "NON_CORE", "expected": "SCHEMA_INVALID" },
+    { "id": "between-missing-maximum", "operation": "replace", "path": "/assessmentPolicy/criteria/0/comparator", "value": "BETWEEN", "expected": "SCHEMA_INVALID" }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://streamops.local/schemas/d4planner-hud/v1",
+  "title": "D4Planner Release 1 committed HUD model",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "hudRevision", "producedAt", "backend", "binding", "selectedTarget", "health", "score", "equipment", "recommendation"],
+  "properties": {
+    "schemaVersion": { "const": "d4planner-hud/v1" },
+    "hudRevision": { "type": "integer", "minimum": 0 },
+    "producedAt": { "type": "string", "format": "date-time" },
+    "backend": {
+      "type": "object", "additionalProperties": false, "required": ["runtimeInstanceId", "generation"],
+      "properties": { "runtimeInstanceId": { "$ref": "#/$defs/id" }, "generation": { "type": "integer", "minimum": 1 } }
+    },
+    "binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["characterId", "currentRevision", "targetId", "targetSha256", "selectionRevision", "policyVersion"],
+      "properties": {
+        "characterId": { "$ref": "#/$defs/id" }, "currentRevision": { "type": "integer", "minimum": 0 },
+        "targetId": { "$ref": "#/$defs/id" }, "targetSha256": { "$ref": "#/$defs/sha256" },
+        "selectionRevision": { "type": "integer", "minimum": 1 }, "policyVersion": { "type": "string", "minLength": 1 }
+      }
+    },
+    "selectedTarget": {
+      "type": "object", "additionalProperties": false, "required": ["targetId", "displayName", "contentSha256"],
+      "properties": { "targetId": { "$ref": "#/$defs/id" }, "displayName": { "type": "string", "minLength": 1 }, "contentSha256": { "$ref": "#/$defs/sha256" } }
+    },
+    "health": {
+      "type": "object", "additionalProperties": false, "required": ["capture", "scoreFreshness", "ruleKit"],
+      "properties": {
+        "capture": { "enum": ["HEALTHY", "STALE", "UNKNOWN", "ERROR"] },
+        "scoreFreshness": { "enum": ["CURRENT", "STALE", "NO_DATA"] },
+        "ruleKit": { "enum": ["READY", "DEGRADED", "UNAVAILABLE", "NOT_REQUIRED"] }
+      }
+    },
+    "score": { "$ref": "#/$defs/score" },
+    "equipment": { "type": "array", "items": { "$ref": "#/$defs/equipmentRow" } },
+    "recommendation": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "object", "additionalProperties": false, "required": ["action", "reasonCodes", "criterionIds"],
+          "properties": { "action": { "enum": ["KEEP", "REPLACE", "CHANGE_EFFECT", "IMPROVE_ROLL", "INSUFFICIENT_EVIDENCE"] }, "reasonCodes": { "type": "array", "minItems": 1, "items": { "type": "string" } }, "criterionIds": { "type": "array", "items": { "$ref": "#/$defs/id" } } } }
+      ]
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "countRatio": {
+      "type": "object", "additionalProperties": false, "required": ["numerator", "denominator", "ratio"],
+      "properties": { "numerator": { "type": "integer", "minimum": 0 }, "denominator": { "type": "integer", "minimum": 0 }, "ratio": { "type": ["number", "null"], "minimum": 0, "maximum": 1 } }
+    },
+    "score": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "value", "passedWeight", "evaluableWeight", "coverage", "failIssueCount", "warnCount", "itemsPassing", "itemsTargeted"],
+      "properties": {
+        "status": { "enum": ["SCORED", "NO_DATA"] }, "value": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "passedWeight": { "type": "number", "minimum": 0 }, "evaluableWeight": { "type": "number", "minimum": 0 },
+        "coverage": { "$ref": "#/$defs/countRatio" }, "failIssueCount": { "type": "integer", "minimum": 0 }, "warnCount": { "type": "integer", "minimum": 0 },
+        "itemsPassing": { "type": "integer", "minimum": 0 }, "itemsTargeted": { "type": "integer", "minimum": 0 }
+      },
+      "allOf": [
+        { "if": { "properties": { "status": { "const": "NO_DATA" } }, "required": ["status"] }, "then": { "properties": { "value": { "type": "null" }, "evaluableWeight": { "const": 0 } } } },
+        { "if": { "properties": { "status": { "const": "SCORED" } }, "required": ["status"] }, "then": { "properties": { "value": { "type": "number" }, "evaluableWeight": { "exclusiveMinimum": 0 } } } }
+      ]
+    },
+    "comparison": {
+      "type": "object", "additionalProperties": false,
+      "required": ["criterionId", "kind", "entityId", "core", "status", "reasonCode", "comparator", "unit", "targetValue", "currentValue", "evidence"],
+      "properties": {
+        "criterionId": { "$ref": "#/$defs/id" }, "kind": { "enum": ["AFFIX", "EFFECT"] }, "entityId": { "$ref": "#/$defs/id" }, "core": { "type": "boolean" },
+        "status": { "enum": ["PASS", "FAIL", "WARN", "UNKNOWN"] }, "reasonCode": { "type": "string", "minLength": 1 },
+        "comparator": { "enum": ["AT_LEAST", "AT_MOST", "EQUAL", "BETWEEN", "PRESENT"] }, "unit": { "enum": ["PERCENT", "FLAT", "RANK", "SECONDS", "NONE"] },
+        "targetValue": {}, "currentValue": {},
+        "evidence": { "enum": ["OBSERVED", "CONFIRMED_ABSENT", "INCOMPLETE", "UNAVAILABLE"] }
+      }
+    },
+    "equipmentRow": {
+      "type": "object", "additionalProperties": false,
+      "required": ["slotId", "targetItemId", "currentItemId", "currentPresence", "status", "reasonCode", "comparisons"],
+      "properties": {
+        "slotId": { "$ref": "#/$defs/id" }, "targetItemId": { "$ref": "#/$defs/id" }, "currentItemId": { "type": ["string", "null"] },
+        "currentPresence": { "enum": ["OBSERVED", "CONFIRMED_ABSENT", "UNKNOWN"] }, "status": { "enum": ["PASS", "FAIL", "WARN", "UNKNOWN"] }, "reasonCode": { "type": "string", "minLength": 1 },
+        "comparisons": { "type": "array", "items": { "$ref": "#/$defs/comparison" } }
+      }
+    }
+  }
+}
