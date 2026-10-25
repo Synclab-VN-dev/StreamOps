@@ -1,6 +1,6 @@
 # D4Planner Release 1 integration contract
 
-Contract revision: `d4planner-r1-contract/1.0.0-candidate.3`
+Contract revision: `d4planner-r1-contract/1.0.0-candidate.4`
 
 This directory is the versioned S1 handoff for issue #138 and scope baseline
 `R1-EQUIPMENT-20261025`. It specifies contracts only; it does not implement a
@@ -19,7 +19,7 @@ Windows process wrapper, WebSocket server, assessment runtime, or HUD.
 | `fixtures/` | Synthetic examples and independent truth/sequence vectors |
 | `ui-data-dictionary.md` | UI field provenance and MagicPath delta constraints |
 | `decisions-and-dependencies.md` | One decision table and S1/S2-S7 acceptance ownership |
-| `review-handoff.md` | S1-REV-01…04 root cause/fix evidence and base-vs-PR regression comparison |
+| `review-handoff.md` | S1 review findings, correction evidence and base-vs-PR regression comparison |
 
 JSON Schemas use JSON Schema Draft 2020-12 and are closed by default. The
 canonical build is validated against

@@ -1,5 +1,18 @@
 # Contract changelog
 
+## 1.0.0-candidate.4 — 2026-10-25
+
+- Fixed S1-REV-07: a fresh, correlated known-context snapshot that reveals an
+  active character/Target change is not applied directly. It consumes the old
+  request, invalidates the old assessment and starts bounded active-context
+  discovery with a revision floor at the observed authoritative revision.
+- Added discovery reason/attempt fields, finite operation timeout/retry policy,
+  late-response rejection and exhaustion behavior. Recovery accepts subsequent
+  incremental updates only on the newly established subscription.
+- Added schema-to-reducer and synthetic sequence coverage for TARGET_ONLY→BOUND,
+  Target A→B, unchanged context, stale/correlation/instance/generation guards,
+  post-recovery updates and bounded timeout exhaustion.
+
 ## 1.0.0-candidate.3 — 2026-10-25
 
 - Split snapshot requests into `DISCOVER_ACTIVE_CONTEXT` for a newly connected

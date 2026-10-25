@@ -1,4 +1,4 @@
-/** Normative port shapes for d4planner-r1-contract/1.0.0-candidate.3.
+/** Normative port shapes for d4planner-r1-contract/1.0.0-candidate.4.
  * Implementations may use another language, but must preserve these boundaries.
  */
 
@@ -113,8 +113,19 @@ export interface HudSnapshot {
 
 export interface DiscoverActiveContextRequest {
   readonly mode: 'DISCOVER_ACTIVE_CONTEXT';
+  readonly reason: 'INITIAL_CONNECTION' | 'BACKEND_GENERATION_CHANGED' |
+    'KNOWN_CONTEXT_CHANGED' | 'TIMEOUT_RETRY';
+  /** Starts at one; a timeout retry increments it and may not exceed policy. */
+  readonly attempt: number;
   readonly runtimeInstanceId: string;
   readonly minimumHudRevision: number;
+}
+
+/** Operation timeout is distinct from WS session/lease lifetime. */
+export interface SnapshotRecoveryPolicy {
+  /** Both values are finite positive deployment configuration. */
+  readonly requestTimeoutMs: number;
+  readonly maxDiscoveryAttempts: number;
 }
 
 export interface KnownHudContext {
