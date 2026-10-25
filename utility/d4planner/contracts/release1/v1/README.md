@@ -1,6 +1,6 @@
 # D4Planner Release 1 integration contract
 
-Contract revision: `d4planner-r1-contract/1.0.0-candidate.4`
+Contract revision: `d4planner-r1-contract/1.0.0-candidate.5`
 
 This directory is the versioned S1 handoff for issue #138 and scope baseline
 `R1-EQUIPMENT-20261025`. It specifies contracts only; it does not implement a

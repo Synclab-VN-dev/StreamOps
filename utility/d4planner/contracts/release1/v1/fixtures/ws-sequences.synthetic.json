@@ -31,12 +31,36 @@
       ]
     },
     {
-      "id": "reconnect-without-backend-restart",
-      "initial": { "runtimeInstanceId": "backend-a", "generation": 3, "hudRevision": 14, "contextState": "BOUND", "selectionRevision": 7, "targetId": "target-a", "characterId": "character-a", "subscriptionId": null, "pendingRequestId": null },
+      "id": "rev08-02-03-same-generation-reconnect-rejects-stale-and-confirms-equal",
+      "initial": { "runtimeInstanceId": "backend-a", "generation": 3, "hudRevision": 20, "contextState": "BOUND", "selectionRevision": 7, "targetId": "target-a", "characterId": "character-a", "subscriptionId": "sub-old-connection", "pendingRequestId": "req-old-connection", "assessmentValid": true, "assessmentTargetId": "target-a", "assessmentCharacterId": "character-a" },
       "events": [
-        { "kind": "REQUEST", "mode": "RESYNC_KNOWN_CONTEXT", "requestId": "req-reconnect", "minimumRevision": 14, "expectedContext": { "state": "BOUND", "targetId": "target-a", "characterId": "character-a", "selectionRevision": 7 }, "expected": "REQUEST_RECORDED" },
-        { "kind": "SNAPSHOT", "requestId": "req-reconnect", "runtimeInstanceId": "backend-a", "generation": 3, "subscriptionId": "sub-reconnected", "revision": 14, "contextState": "BOUND", "selectionRevision": 7, "targetId": "target-a", "characterId": "character-a", "expected": "CONFIRM_EQUAL_SNAPSHOT" },
-        { "kind": "UPDATE", "runtimeInstanceId": "backend-a", "generation": 3, "subscriptionId": "sub-reconnected", "previous": 14, "revision": 15, "contextState": "BOUND", "selectionRevision": 7, "targetId": "target-a", "characterId": "character-a", "expected": "APPLY_UPDATE" }
+        { "kind": "HELLO_ACCEPTED", "runtimeInstanceId": "backend-a", "generation": 3, "expected": "RECONNECT_SAME_GENERATION", "expectedState": { "hudRevision": 20, "targetId": "target-a", "characterId": "character-a", "subscriptionId": null, "pendingRequestId": null, "assessmentValid": false } },
+        { "kind": "SNAPSHOT", "requestId": "req-old-connection", "runtimeInstanceId": "backend-a", "generation": 3, "subscriptionId": "sub-old-connection", "revision": 21, "contextState": "BOUND", "selectionRevision": 7, "targetId": "target-a", "characterId": "character-a", "expected": "REJECT_UNEXPECTED_SNAPSHOT", "expectedState": { "hudRevision": 20 } },
+        { "kind": "UPDATE", "runtimeInstanceId": "backend-a", "generation": 3, "subscriptionId": "sub-old-connection", "previous": 20, "revision": 21, "contextState": "BOUND", "selectionRevision": 7, "targetId": "target-a", "characterId": "character-a", "expected": "REJECT_SUBSCRIPTION", "expectedState": { "hudRevision": 20 } },
+        { "kind": "REQUEST", "mode": "RESYNC_KNOWN_CONTEXT", "requestId": "req-reconnect-equal", "minimumRevision": 20, "expectedContext": { "state": "BOUND", "targetId": "target-a", "characterId": "character-a", "selectionRevision": 7 }, "expected": "REQUEST_RECORDED" },
+        { "kind": "SNAPSHOT", "requestId": "req-reconnect-equal", "runtimeInstanceId": "backend-a", "generation": 3, "subscriptionId": "sub-stale", "revision": 18, "contextState": "BOUND", "selectionRevision": 7, "targetId": "target-a", "characterId": "character-a", "expected": "IGNORE_STALE_SNAPSHOT", "expectedState": { "hudRevision": 20, "assessmentValid": false } },
+        { "kind": "SNAPSHOT", "requestId": "req-reconnect-equal", "runtimeInstanceId": "backend-a", "generation": 3, "subscriptionId": "sub-reconnected-equal", "revision": 20, "contextState": "BOUND", "selectionRevision": 7, "targetId": "target-a", "characterId": "character-a", "expected": "CONFIRM_EQUAL_SNAPSHOT", "expectedState": { "hudRevision": 20, "subscriptionId": "sub-reconnected-equal", "assessmentValid": true } }
+      ]
+    },
+    {
+      "id": "rev08-04-05-same-generation-reconnect-applies-newer-then-update",
+      "initial": { "runtimeInstanceId": "backend-a", "generation": 3, "hudRevision": 20, "contextState": "BOUND", "selectionRevision": 7, "targetId": "target-a", "characterId": "character-a", "subscriptionId": "sub-old", "pendingRequestId": null, "assessmentValid": true },
+      "events": [
+        { "kind": "HELLO_ACCEPTED", "runtimeInstanceId": "backend-a", "generation": 3, "expected": "RECONNECT_SAME_GENERATION", "expectedState": { "hudRevision": 20, "subscriptionId": null, "assessmentValid": false } },
+        { "kind": "REQUEST", "mode": "RESYNC_KNOWN_CONTEXT", "requestId": "req-reconnect-newer", "minimumRevision": 20, "expectedContext": { "state": "BOUND", "targetId": "target-a", "characterId": "character-a", "selectionRevision": 7 }, "expected": "REQUEST_RECORDED" },
+        { "kind": "SNAPSHOT", "requestId": "req-reconnect-newer", "runtimeInstanceId": "backend-a", "generation": 3, "subscriptionId": "sub-reconnected-newer", "revision": 21, "contextState": "BOUND", "selectionRevision": 7, "targetId": "target-a", "characterId": "character-a", "expected": "APPLY_SNAPSHOT", "expectedState": { "hudRevision": 21, "assessmentValid": true } },
+        { "kind": "UPDATE", "runtimeInstanceId": "backend-a", "generation": 3, "subscriptionId": "sub-reconnected-newer", "previous": 21, "revision": 22, "contextState": "BOUND", "selectionRevision": 7, "targetId": "target-a", "characterId": "character-a", "expected": "APPLY_UPDATE", "expectedState": { "hudRevision": 22 } }
+      ]
+    },
+    {
+      "id": "rev08-08-reconnect-context-change-uses-rev07-recovery",
+      "initial": { "runtimeInstanceId": "backend-a", "generation": 3, "hudRevision": 20, "contextState": "BOUND", "selectionRevision": 5, "targetId": "target-a", "characterId": "character-a", "subscriptionId": "sub-old", "pendingRequestId": null, "assessmentValid": true, "assessmentTargetId": "target-a", "assessmentCharacterId": "character-a", "maxRecoveryAttempts": 2 },
+      "events": [
+        { "kind": "HELLO_ACCEPTED", "runtimeInstanceId": "backend-a", "generation": 3, "expected": "RECONNECT_SAME_GENERATION", "expectedState": { "hudRevision": 20, "targetId": "target-a", "assessmentValid": false } },
+        { "kind": "REQUEST", "mode": "RESYNC_KNOWN_CONTEXT", "requestId": "req-reconnect-target-a", "minimumRevision": 20, "expectedContext": { "state": "BOUND", "targetId": "target-a", "characterId": "character-a", "selectionRevision": 5 }, "expected": "REQUEST_RECORDED" },
+        { "kind": "SNAPSHOT", "requestId": "req-reconnect-target-a", "runtimeInstanceId": "backend-a", "generation": 3, "subscriptionId": "sub-unaccepted-b", "revision": 21, "contextState": "BOUND", "selectionRevision": 6, "targetId": "target-b", "characterId": "character-b", "expected": "REQUEST_CONTEXT_DISCOVERY", "expectedState": { "hudRevision": 20, "targetId": "target-a", "characterId": "character-a", "assessmentValid": false, "recoveryFloor": 21 } },
+        { "kind": "REQUEST", "mode": "DISCOVER_ACTIVE_CONTEXT", "reason": "KNOWN_CONTEXT_CHANGED", "attempt": 1, "requestId": "req-reconnect-discover-b", "minimumRevision": 21, "expected": "REQUEST_RECORDED" },
+        { "kind": "SNAPSHOT", "requestId": "req-reconnect-discover-b", "runtimeInstanceId": "backend-a", "generation": 3, "subscriptionId": "sub-recovered-b", "revision": 21, "contextState": "BOUND", "selectionRevision": 6, "targetId": "target-b", "characterId": "character-b", "expected": "APPLY_RECOVERY_DISCOVERY", "expectedState": { "hudRevision": 21, "targetId": "target-b", "characterId": "character-b", "assessmentTargetId": "target-b", "assessmentCharacterId": "character-b", "assessmentValid": true } }
       ]
     },
     {
@@ -97,10 +121,20 @@
       "id": "new-generation-authoritative-reset",
       "initial": { "runtimeInstanceId": "backend-a", "generation": 3, "hudRevision": 30, "contextState": "BOUND", "selectionRevision": 8, "targetId": "target-b", "characterId": "character-a", "subscriptionId": "sub-old", "pendingRequestId": null },
       "events": [
-        { "kind": "HELLO_ACCEPTED", "runtimeInstanceId": "backend-b", "generation": 4, "expected": "RESET_GENERATION" },
+        { "kind": "HELLO_ACCEPTED", "runtimeInstanceId": "backend-a", "generation": 4, "expected": "RESET_GENERATION", "expectedState": { "hudRevision": -1, "contextState": null, "targetId": null, "characterId": null, "subscriptionId": null, "assessmentValid": false } },
         { "kind": "REQUEST", "mode": "DISCOVER_ACTIVE_CONTEXT", "reason": "BACKEND_GENERATION_CHANGED", "attempt": 1, "requestId": "req-new-generation", "minimumRevision": 0, "expected": "REQUEST_RECORDED" },
-        { "kind": "SNAPSHOT", "requestId": "req-new-generation", "runtimeInstanceId": "backend-b", "generation": 4, "subscriptionId": "sub-new", "revision": 1, "contextState": "BOUND", "selectionRevision": 1, "targetId": "target-b", "characterId": "character-a", "expected": "APPLY_DISCOVERY_SNAPSHOT" },
-        { "kind": "UPDATE", "runtimeInstanceId": "backend-a", "generation": 3, "subscriptionId": "sub-old", "previous": 30, "revision": 31, "contextState": "BOUND", "selectionRevision": 8, "targetId": "target-b", "characterId": "character-a", "expected": "REJECT_RUNTIME_INSTANCE" }
+        { "kind": "SNAPSHOT", "requestId": "req-new-generation", "runtimeInstanceId": "backend-a", "generation": 4, "subscriptionId": "sub-new", "revision": 1, "contextState": "BOUND", "selectionRevision": 1, "targetId": "target-b", "characterId": "character-a", "expected": "APPLY_DISCOVERY_SNAPSHOT" },
+        { "kind": "UPDATE", "runtimeInstanceId": "backend-a", "generation": 3, "subscriptionId": "sub-old", "previous": 30, "revision": 31, "contextState": "BOUND", "selectionRevision": 8, "targetId": "target-b", "characterId": "character-a", "expected": "REJECT_GENERATION" }
+      ]
+    },
+    {
+      "id": "rev08-06-instance-change-same-generation-reset",
+      "initial": { "runtimeInstanceId": "backend-a", "generation": 3, "hudRevision": 20, "contextState": "BOUND", "selectionRevision": 7, "targetId": "target-a", "characterId": "character-a", "subscriptionId": "sub-old", "pendingRequestId": null, "assessmentValid": true },
+      "events": [
+        { "kind": "HELLO_ACCEPTED", "runtimeInstanceId": "backend-b", "generation": 3, "expected": "RESET_GENERATION", "expectedState": { "hudRevision": -1, "contextState": null, "targetId": null, "characterId": null, "assessmentValid": false } },
+        { "kind": "REQUEST", "mode": "DISCOVER_ACTIVE_CONTEXT", "reason": "BACKEND_IDENTITY_CHANGED", "attempt": 1, "requestId": "req-new-instance", "minimumRevision": 0, "expected": "REQUEST_RECORDED" },
+        { "kind": "SNAPSHOT", "requestId": "req-new-instance", "runtimeInstanceId": "backend-b", "generation": 3, "subscriptionId": "sub-new-instance", "revision": 1, "contextState": "TARGET_ONLY", "selectionRevision": 1, "targetId": "target-b", "characterId": null, "expected": "APPLY_DISCOVERY_SNAPSHOT", "expectedState": { "hudRevision": 1, "targetId": "target-b", "assessmentValid": false } },
+        { "kind": "UPDATE", "runtimeInstanceId": "backend-a", "generation": 3, "subscriptionId": "sub-old", "previous": 20, "revision": 21, "contextState": "BOUND", "selectionRevision": 7, "targetId": "target-a", "characterId": "character-a", "expected": "REJECT_RUNTIME_INSTANCE", "expectedState": { "hudRevision": 1 } }
       ]
     }
   ]

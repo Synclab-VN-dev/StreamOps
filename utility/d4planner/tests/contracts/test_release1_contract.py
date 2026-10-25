@@ -240,7 +240,7 @@ def test_selection_rechecks_exact_bytes_hash_and_validity() -> None:
 def test_discriminated_hud_states_validate_without_fake_ids(fixture_name: str) -> None:
     hud = load(FIXTURES / fixture_name)
     validate_hud_semantics(hud)
-    assert hud["provenance"]["assessmentVersion"] == "d4planner-r1-contract/1.0.0-candidate.4"
+    assert hud["provenance"]["assessmentVersion"] == "d4planner-r1-contract/1.0.0-candidate.5"
 
 
 def test_no_data_is_not_zero_and_backend_can_be_ready_before_context() -> None:
@@ -476,6 +476,30 @@ def test_schema_request_to_reducer_initial_context_discovery() -> None:
     )
 
 
+def test_schema_hello_accepted_same_backend_preserves_high_water() -> None:
+    hello = next(
+        message for message in load(FIXTURES / "ws-messages.synthetic.json")["messages"]
+        if message["type"] == "hello.accepted"
+    )
+    validator(WS_SCHEMA).validate(hello)
+    state = {
+        "runtimeInstanceId": hello["runtimeInstanceId"], "generation": hello["backendGeneration"],
+        "hudRevision": 20, "contextState": "BOUND", "selectionRevision": 7,
+        "targetId": "synthetic-charge-bolt", "characterId": "character-synthetic-a",
+        "subscriptionId": "sub-old", "pendingRequestId": "req-old", "assessmentValid": True,
+        "assessmentTargetId": "synthetic-charge-bolt", "assessmentCharacterId": "character-synthetic-a",
+    }
+    assert apply_ws_event(state, {
+        "kind": "HELLO_ACCEPTED", "runtimeInstanceId": hello["runtimeInstanceId"],
+        "generation": hello["backendGeneration"],
+    }) == "RECONNECT_SAME_GENERATION"
+    assert (state["hudRevision"], state["targetId"], state["characterId"]) == (
+        20, "synthetic-charge-bolt", "character-synthetic-a",
+    )
+    assert state["subscriptionId"] is None and state["pendingRequestId"] is None
+    assert state["assessmentValid"] is False
+
+
 def test_schema_to_reducer_recovers_changed_context_then_accepts_update() -> None:
     hud = load(FIXTURES / "hud.partial.synthetic.json")
     resync_request = {
@@ -569,6 +593,16 @@ def apply_ws_event(state: dict[str, Any], event: dict[str, Any]) -> str:
     state.setdefault("assessmentCharacterId", state.get("characterId") if state["assessmentValid"] else None)
     kind = event["kind"]
     if kind == "HELLO_ACCEPTED":
+        same_backend = (
+            event["runtimeInstanceId"] == state.get("runtimeInstanceId")
+            and event["generation"] == state.get("generation")
+        )
+        if same_backend:
+            state.update(subscriptionId=None, pendingRequestId=None, pendingMode=None, expectedContext=None,
+                         minimumRevision=None, recoveryAttempts=0, recoveryRequired=False,
+                         recoveryExhausted=False, recoveryFloor=None, assessmentValid=False,
+                         assessmentTargetId=None, assessmentCharacterId=None)
+            return "RECONNECT_SAME_GENERATION"
         state.update(runtimeInstanceId=event["runtimeInstanceId"], generation=event["generation"], hudRevision=-1,
                      subscriptionId=None, pendingRequestId=None, pendingMode=None, contextState=None,
                      targetId=None, characterId=None, selectionRevision=None, recoveryAttempts=0,
