@@ -3,7 +3,7 @@
 - Reviewed HEAD: `157882f927930488013067be2984e262f5bc0fc4`
 - Regression base: `010e563daee0e037695aa506d160eedcf60ab43d`
 - Corrected contract: `d4planner-r1-contract/1.0.0-candidate.5`
-- Scope: schema/interfaces/docs/fixtures/contract-model tests only
+- Scope: schema/interfaces/docs/fixtures/contract-model tests plus isolated CI compatibility harness; no production runtime change
 
 | Finding | Severity | Root cause | Impact tới user nếu không sửa | Fix | Before/after evidence | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -44,6 +44,13 @@
 | REV08-08 | Context change during reconnect uses REV-07. | Old assessment remains non-current; mismatch starts bounded discovery which atomically installs Target/character B. | PASS |
 | REV08-09 | Recovery remains bounded. | Existing attempt/floor/timeout/exhaustion sequence remains green. | PASS |
 | REV08-10 | REV-01…07 do not regress. | Complete contract suite passes. | PASS |
+
+## PR #145 isolated CI compatibility
+
+| Finding | Before evidence | Fix | After evidence | Status |
+| --- | --- | --- | --- | --- |
+| CI-145-01 | Fresh Python 3.12 venv plus only `pytest>=9.1.1` reproduced collection exit 2: `ModuleNotFoundError: No module named 'jsonschema'`. | Install editable `utility/d4planner[dev]` inside the PR95 venv, then import-check `jsonschema`/`referencing`, run `pip check`, and re-run exact-checkout `-I` verification. Child PATH is scoped to the venv and restored. | Fresh isolated venv: dependency install/import and pip check PASS; 37 targeted contract/harness/entrypoint tests PASS; exact checkout resolves despite foreign `PYTHONPATH`. | FIXED / LOCAL PASS |
+| CI-145-02 | Failed pytest wrote `local-pytest.log`, but CI output/report exposed only exit 2 and log path. | Record command/exit/classification in log entries; classify missing modules as `DEPENDENCY_FAILURE`; print the unchanged pytest log on failure before retaining fail-closed exit/no-supervisor behavior. | PowerShell parser and static harness regression tests PASS. Windows-specific `-RunLocalCI` smoke is NOT_RUN on Linux. | FIXED / LOCAL PASS |
 
 ## Base-vs-PR targeted regression
 

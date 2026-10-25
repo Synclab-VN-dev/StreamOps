@@ -60,16 +60,43 @@ function Run-Python([string]$name,[string[]]$argv) {
   # worktree (#82). Put this SHA-pinned PR95 source ahead of site-packages
   # for this child process ONLY. Never mutate global pip or user PYTHONPATH.
   $oldPythonPath=$env:PYTHONPATH
+  $oldPath=$env:PATH
   try {
     $env:PYTHONPATH=$sourceRoot
+    # Commands spawned by tests (for example shutil.which('d4planner')) must
+    # resolve only the isolated venv entrypoints, never a global installation.
+    $venvBin=Split-Path -Parent $script:probePython
+    $env:PATH=$venvBin+[IO.Path]::PathSeparator+$oldPath
     & $script:probePython @argv *> $file
     $code=$LASTEXITCODE
   } finally {
     $env:PYTHONPATH=$oldPythonPath
+    $env:PATH=$oldPath
   }
-  $r=[ordered]@{name=$name;code=$code;log=$file;python=$script:probePython;source=$sourceRoot}
+  $command=@($script:probePython)+@($argv)
+  $r=[ordered]@{
+    name=$name;code=$code;log=$file;python=$script:probePython;source=$sourceRoot
+    command=$command;classification='UNCLASSIFIED'
+  }
   $logs.Add($r)
   return $r
+}
+function Get-LocalPytestClassification([object]$run) {
+  if($run.code -eq 0){return 'PASS'}
+  $text=if(Test-Path -LiteralPath $run.log -PathType Leaf){Get-Content -LiteralPath $run.log -Raw}else{''}
+  if($text -match 'ModuleNotFoundError|DistributionNotFound|pkg_resources\.DistributionNotFound'){
+    return 'DEPENDENCY_FAILURE'
+  }
+  if($run.code -eq 2){return 'HARNESS_FAILURE'}
+  return 'PRODUCT_FAILURE'
+}
+function Write-LocalPytestFailure([object]$run) {
+  if($run.code -eq 0 -or !(Test-Path -LiteralPath $run.log -PathType Leaf)){return}
+  # This log contains only the local pytest command output; never dump process
+  # environment, credentials, bootstrap tokens or other runtime evidence.
+  Write-Host "::group::local-pytest failure (exit=$($run.code), classification=$($run.classification))"
+  Get-Content -LiteralPath $run.log | ForEach-Object {Write-Host $_}
+  Write-Host '::endgroup::'
 }
 function Ensure-PR-Python {
   # Review/local CI requires a process image that persists our PR95 package
@@ -237,14 +264,33 @@ try {
   # Optional dependency mutation is explicit. Default preflight only reads.
   if($RunLocalCI){
     Ensure-PR-Python
-    # pytest dependencies are installed only in the PR95 venv; NEVER global.
-    $install=Run-Python 'local-pr95-pytest-install' @('-m','pip','install','pytest>=9.1.1')
-    if($install.code -ne 0){throw 'Cannot install pytest in PR95 isolated venv'}
+    # Install this checkout plus its declared dev dependency set only in the
+    # PR95 venv. Do not duplicate individual packages or mutate global Python.
+    $install=Run-Python 'local-pr95-dev-install' @(
+      '-m','pip','install','--editable','utility/d4planner[dev]'
+    )
+    $install['classification']=if($install.code -eq 0){'PASS'}else{'DEPENDENCY_FAILURE'}
+    if($install.code -ne 0){throw 'Cannot install D4Planner dev dependencies in PR95 isolated venv'}
+    # pip may replace editable metadata; verify -I still resolves this exact
+    # worktree and refuses a foreign editable checkout after installation.
+    Ensure-PR-Python
+    $dependencyImport=Run-Python 'local-pr95-dependency-import' @(
+      '-c','import jsonschema, referencing; from importlib.metadata import version; print(version("jsonschema")); print(referencing.__file__)'
+    )
+    $dependencyImport['classification']=if($dependencyImport.code -eq 0){'PASS'}else{'DEPENDENCY_FAILURE'}
+    $pipCheck=Run-Python 'local-pr95-pip-check' @('-m','pip','check')
+    $pipCheck['classification']=if($pipCheck.code -eq 0){'PASS'}else{'DEPENDENCY_FAILURE'}
     $unit=Run-Python 'local-pytest' @('-m','pytest','-q','utility/d4planner/tests')
+    $unit['classification']=Get-LocalPytestClassification $unit
+    Write-LocalPytestFailure $unit
     $compile=Run-Python 'local-compile' @('-m','compileall','-q','utility/d4planner')
     $addon=Run-Python 'local-addon-build' @('utility/d4planner/tools/build_nvda_addon.py')
-    $good=($unit.code -eq 0 -and $compile.code -eq 0 -and $addon.code -eq 0)
-    Set-Result 'DF-02' 'Local full pytest/compile/addon build in isolated PR95 venv' @{install=$install;unit=$unit;compile=$compile;addon=$addon} $(if($good){'PASS'}else{'FAIL'})
+    $good=($dependencyImport.code -eq 0 -and $pipCheck.code -eq 0 -and
+      $unit.code -eq 0 -and $compile.code -eq 0 -and $addon.code -eq 0)
+    Set-Result 'DF-02' 'Local full pytest/compile/addon build in isolated PR95 venv' @{
+      install=$install;dependencyImport=$dependencyImport;pipCheck=$pipCheck
+      unit=$unit;compile=$compile;addon=$addon
+    } $(if($good){'PASS'}else{'FAIL'})
     if(!$good){throw 'Local CI failed; no supervisor started'}
   }
   $installed=Run-Python 'module-path' @('-c','import d4planner;print(d4planner.__file__)')
