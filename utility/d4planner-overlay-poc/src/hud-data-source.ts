@@ -29,6 +29,8 @@ type PendingSnapshot = {
 export class HudWebSocketDataSource {
   private socket: WebSocketLike | null = null;
   private sequence = 0;
+  private pendingHello: string | null = null;
+  private pendingTargetList: string | null = null;
   private pendingSnapshot: PendingSnapshot | null = null;
   private pendingTarget = new Set<string>();
   private readonly listeners = new Set<(state: HudDataState) => void>();
@@ -74,17 +76,30 @@ export class HudWebSocketDataSource {
     }
     const socket = this.config.socketFactory(this.config.endpoint);
     this.socket = socket;
-    socket.onopen = () => this.send({
-      protocolVersion: 'd4planner-ws/v1',
-      messageId: this.id('hello'),
-      type: 'hello',
-      correlationId: null,
-      backendGeneration: this.state.backend?.generation ?? 1,
-      credential: this.config.credential,
-      origin: this.config.origin,
-      lastSeen: { hudRevision: this.state.hud?.hudRevision ?? null },
-    });
-    socket.onmessage = event => this.receive(JSON.parse(event.data));
+    socket.onopen = () => {
+      const messageId = this.id('hello');
+      this.pendingHello = messageId;
+      this.send({
+        protocolVersion: 'd4planner-ws/v1',
+        messageId,
+        type: 'hello',
+        correlationId: null,
+        backendGeneration: this.state.backend?.generation ?? 1,
+        credential: this.config.credential,
+        origin: this.config.origin,
+        lastSeen: { hudRevision: this.state.hud?.hudRevision ?? null },
+      });
+    };
+    socket.onmessage = event => {
+      if (socket !== this.socket) return;
+      try {
+        const message: unknown = JSON.parse(event.data);
+        if (message && typeof message === 'object') this.receive(message as Record<string, any>);
+      } catch {
+        this.state = { ...this.state, error: 'INVALID_MESSAGE' };
+        this.emit();
+      }
+    };
     socket.onclose = () => {
       if (socket !== this.socket) return;
       this.state = { ...this.state, freshness: 'STALE', subscriptionId: null };
@@ -106,7 +121,9 @@ export class HudWebSocketDataSource {
 
   requestTargets(): void {
     this.requireBackend();
-    this.send(this.envelope(this.id('targets'), 'target.list.request'));
+    const messageId = this.id('targets');
+    this.pendingTargetList = messageId;
+    this.send(this.envelope(messageId, 'target.list.request'));
   }
 
   selectTarget(targetId: string): void {
@@ -129,6 +146,8 @@ export class HudWebSocketDataSource {
   private receive(message: Record<string, any>): void {
     if (message.protocolVersion !== 'd4planner-ws/v1') return;
     if (message.type === 'hello.accepted') {
+      if (message.correlationId !== this.pendingHello) return;
+      this.pendingHello = null;
       this.acceptHello(message);
       this.requestTargets();
       this.requestSnapshot();
@@ -136,6 +155,8 @@ export class HudWebSocketDataSource {
     }
     if (!this.state.backend || message.backendGeneration !== this.state.backend.generation) return;
     if (message.type === 'target.list.result') {
+      if (message.correlationId !== this.pendingTargetList) return;
+      this.pendingTargetList = null;
       this.state = {
         ...this.state,
         targets: structuredClone(message.targets),
@@ -184,6 +205,7 @@ export class HudWebSocketDataSource {
       };
     }
     this.pendingSnapshot = null;
+    this.pendingTargetList = null;
     this.pendingTarget.clear();
     this.emit();
   }
