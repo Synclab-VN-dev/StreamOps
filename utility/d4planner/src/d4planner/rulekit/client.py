@@ -51,6 +51,8 @@ class RuleKitClient:
         self._pending: dict[str, asyncio.Future[Any]] = {}
         self._sessions: set[str] = set()
         self._write_lock = asyncio.Lock()
+        self._writer_close_lock = asyncio.Lock()
+        self._writer_cleanup_complete = False
         self._closed = False
         self._reader_task = asyncio.create_task(self._read_loop())
 
@@ -163,10 +165,43 @@ class RuleKitClient:
             if not future.done():
                 future.set_exception(error)
         self._pending.clear()
-        if not self._writer.is_closing():
-            self._writer.close()
-        with contextlib.suppress(OSError, ConnectionError):
-            await self._writer.wait_closed()
+        await self._close_writer()
+
+    async def _close_writer(self) -> None:
+        """Close/abort the pipe within one operation-timeout budget.
+
+        Windows Proactor transports may never resolve wait_closed after the
+        child has already exited. Keep cleanup explicit, but never let that OS
+        completion stall the BE shutdown path indefinitely.
+        """
+        async with self._writer_close_lock:
+            if self._writer_cleanup_complete:
+                return
+            try:
+                if not self._writer.is_closing():
+                    self._writer.close()
+                waiter = asyncio.create_task(self._writer.wait_closed())
+                first_wait = self._operation_timeout / 2
+                try:
+                    await asyncio.wait_for(asyncio.shield(waiter), first_wait)
+                    return
+                except TimeoutError:
+                    transport = getattr(self._writer, "transport", None)
+                    abort = getattr(transport, "abort", None)
+                    if callable(abort):
+                        abort()
+                    try:
+                        await asyncio.wait_for(
+                            asyncio.shield(waiter), self._operation_timeout - first_wait
+                        )
+                    except TimeoutError:
+                        waiter.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await waiter
+            except (OSError, ConnectionError):
+                return
+            finally:
+                self._writer_cleanup_complete = True
 
     async def _send(self, message: dict) -> None:
         payload = json.dumps(message, separators=(",", ":"), allow_nan=False).encode() + b"\n"
