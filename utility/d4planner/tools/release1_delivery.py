@@ -192,7 +192,14 @@ def rollback_install(app_dir: Path, data_dir: Path) -> dict:
     return {"appDir": str(app_dir), "dataDir": str(data_dir), "rollback": "APPLIED"}
 
 
-def run_acceptance(plan_path: Path, package: Path | None, selected: set[str], prior: Path | None) -> dict:
+def run_acceptance(
+    plan_path: Path,
+    package: Path | None,
+    selected: set[str],
+    prior: Path | None,
+    *,
+    platform: str | None = None,
+) -> dict:
     plan = load_json(plan_path)
     if plan.get("schemaVersion") != "d4planner-acceptance-plan/v1":
         raise DeliveryError("ACCEPTANCE_PLAN_VERSION_MISMATCH")
@@ -205,6 +212,7 @@ def run_acceptance(plan_path: Path, package: Path | None, selected: set[str], pr
     ):
         raise DeliveryError("RESUME_CONTEXT_MISMATCH")
     previous_cases = {case["id"]: case for case in previous.get("cases", []) if case.get("status") == "PASS"}
+    runtime_platform = sys.platform if platform is None else platform
     results = []
     for case in plan["cases"]:
         case_id = case["id"]
@@ -223,7 +231,7 @@ def run_acceptance(plan_path: Path, package: Path | None, selected: set[str], pr
                 except DeliveryError as exc:
                     results.append({"id": case_id, "status": "FAIL", "classification": "PRODUCT_FAILURE", "error": str(exc)})
         elif kind == "WINDOWS_PREFLIGHT":
-            status = "PASS" if sys.platform == "win32" else "BLOCKED"
+            status = "PASS" if runtime_platform == "win32" else "BLOCKED"
             results.append({"id": case_id, "status": status, "classification": "AUTOMATED" if status == "PASS" else "ENVIRONMENT_FAILURE"})
         elif kind == "OWNER_MANUAL":
             results.append({"id": case_id, "status": "NOT_RUN", "classification": "OWNER_MANUAL"})
