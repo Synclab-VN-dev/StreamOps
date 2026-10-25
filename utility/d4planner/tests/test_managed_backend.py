@@ -12,6 +12,30 @@ import pytest
 from d4planner.managed_backend import CONTRACT, PROTOCOL, BootstrapError, load_bootstrap
 
 
+SOURCE_ROOT = Path(__file__).resolve().parents[1] / "src"
+
+
+def managed_process_environment() -> tuple[str, dict[str, str]]:
+    """Return a direct interpreter command and explicit checkout import path.
+
+    A Windows virtual environment ``python.exe`` is a redirector process: the
+    PID held by Popen can differ from the interpreter PID that emits READY.
+    Lifecycle ownership must not silently accept that intermediate launcher,
+    so real-process tests deliberately bypass it via ``sys._base_executable``.
+    Packaged S2/S7 configuration has the same requirement: the configured
+    executable is the actual managed interpreter, not a console/venv shim.
+    """
+    executable = sys.executable
+    if os.name == "nt":
+        base_executable = getattr(sys, "_base_executable", None)
+        if isinstance(base_executable, str) and base_executable:
+            executable = base_executable
+    env = os.environ.copy()
+    existing = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = str(SOURCE_ROOT) + (os.pathsep + existing if existing else "")
+    return executable, env
+
+
 def descriptor(tmp_path: Path) -> tuple[Path, dict]:
     data = {
         "protocol": PROTOCOL,
@@ -48,10 +72,10 @@ def test_bootstrap_requires_owner_only_permissions(tmp_path: Path) -> None:
 
 def test_real_managed_process_ready_empty_folder_and_owned_shutdown(tmp_path: Path) -> None:
     path, expected = descriptor(tmp_path)
-    env = os.environ.copy()
+    executable, env = managed_process_environment()
     env["D4PLANNER_BOOTSTRAP_FILE"] = str(path)
     process = subprocess.Popen(
-        [sys.executable, "-m", "d4planner.managed_backend"],
+        [executable, "-m", "d4planner.managed_backend"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -84,10 +108,10 @@ def test_invalid_target_file_is_domain_state_not_startup_failure(tmp_path: Path)
     target_folder = Path(expected["targetFolder"])
     target_folder.mkdir()
     (target_folder / "invalid.json").write_text("{not-json", encoding="utf-8")
-    env = os.environ.copy()
+    executable, env = managed_process_environment()
     env["D4PLANNER_BOOTSTRAP_FILE"] = str(path)
     process = subprocess.Popen(
-        [sys.executable, "-m", "d4planner.managed_backend"],
+        [executable, "-m", "d4planner.managed_backend"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, env=env,
     )
@@ -103,10 +127,10 @@ def test_invalid_target_file_is_domain_state_not_startup_failure(tmp_path: Path)
 
 def test_parent_pipe_eof_stops_child_without_detaching(tmp_path: Path) -> None:
     path, _ = descriptor(tmp_path)
-    env = os.environ.copy()
+    executable, env = managed_process_environment()
     env["D4PLANNER_BOOTSTRAP_FILE"] = str(path)
     process = subprocess.Popen(
-        [sys.executable, "-m", "d4planner.managed_backend"],
+        [executable, "-m", "d4planner.managed_backend"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, env=env,
     )
@@ -119,10 +143,10 @@ def test_parent_pipe_eof_stops_child_without_detaching(tmp_path: Path) -> None:
 
 def test_wrong_owner_cannot_stop_owned_process(tmp_path: Path) -> None:
     path, expected = descriptor(tmp_path)
-    env = os.environ.copy()
+    executable, env = managed_process_environment()
     env["D4PLANNER_BOOTSTRAP_FILE"] = str(path)
     process = subprocess.Popen(
-        [sys.executable, "-m", "d4planner.managed_backend"],
+        [executable, "-m", "d4planner.managed_backend"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, env=env,
     )
