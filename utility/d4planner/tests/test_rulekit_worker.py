@@ -10,6 +10,7 @@ import pytest
 from d4planner.rulekit import (
     LaunchSpecification,
     ProcessState,
+    RuleKitClient,
     RuleKitProcessWrapper,
     RuleKitRemoteError,
 )
@@ -256,6 +257,44 @@ def test_parent_pipe_eof_stops_worker_without_orphan():
         assert await asyncio.wait_for(process.wait(), 2) == 0
         assert await process.stdout.read() == b""
         assert await process.stderr.read() == b""
+
+    run(scenario())
+
+
+def test_client_close_aborts_a_writer_that_never_reports_closed_within_budget():
+    class NeverClosingWriter:
+        def __init__(self):
+            self.transport = self
+            self.close_calls = 0
+            self.abort_calls = 0
+
+        def is_closing(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+        async def wait_closed(self):
+            await asyncio.Event().wait()
+
+        def abort(self):
+            self.abort_calls += 1
+
+    async def scenario():
+        writer = NeverClosingWriter()
+        client = RuleKitClient(
+            reader=asyncio.StreamReader(), writer=writer,
+            worker_instance_id="hung-writer", worker_generation=1,
+            operation_timeout=0.04,
+        )
+        started = asyncio.get_running_loop().time()
+        await client.close()
+        elapsed = asyncio.get_running_loop().time() - started
+        assert elapsed < 0.2
+        assert writer.close_calls == 1
+        assert writer.abort_calls == 1
+        await client.close()
+        assert writer.abort_calls == 1
 
     run(scenario())
 
