@@ -31,6 +31,7 @@ hardcoded sample names.
 | Equipment x/y | BE assessment service | `itemsPassing/itemsTargeted` | Item passes only when every target criterion PASS |
 | Recommendation | BE assessment service | action, display text, reason/criterion IDs | Core FAIL → core WARN → non-core WARN → target order/ID |
 | Pin | Native FE shell | approved always-on-top toggle | No implied lock-position or persistence after restart |
+| Capture eligibility | Native FE window identity/title | Existing StreamOps `window_capture` source settings | Normal selectable native window; no D4Planner-specific OBS/Steam Link adapter |
 | Capture health | Capture pipeline | `health.capture` | Separate from score/Rule Kit health |
 | Score freshness | Binding coordinator | `health.scoreFreshness` | CURRENT only while runtime/character/current/target/policy binding matches |
 | Rule Kit health | RuleKit wrapper/client | `health.ruleKit` | `NOT_REQUIRED` may accompany a valid Equipment score |
@@ -43,3 +44,7 @@ The FE may own expand/collapse, selected row, Issues-only filtering and the
 always-on-top command. It cannot calculate score/status, read Target/DB/catalog,
 or replace missing data with MagicPath mock values. Production screenshots
 cannot be promoted as independent MagicPath Goldens.
+
+S6/S7 verify the packaged HUD window through the existing StreamOps
+`window_capture` flow. This contract does not claim that runtime verification
+has run and does not add a capture subsystem.

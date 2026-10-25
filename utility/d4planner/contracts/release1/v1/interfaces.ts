@@ -1,4 +1,4 @@
-/** Normative port shapes for d4planner-r1-contract/1.0.0-candidate.2.
+/** Normative port shapes for d4planner-r1-contract/1.0.0-candidate.3.
  * Implementations may use another language, but must preserve these boundaries.
  */
 
@@ -111,13 +111,28 @@ export interface HudSnapshot {
   readonly equipment: readonly unknown[];
 }
 
-export interface SnapshotRequestContext {
+export interface DiscoverActiveContextRequest {
+  readonly mode: 'DISCOVER_ACTIVE_CONTEXT';
   readonly runtimeInstanceId: string;
   readonly minimumHudRevision: number;
-  readonly expectedCharacterId: string | null;
-  readonly expectedTargetId: string | null;
-  readonly expectedSelectionRevision: number | null;
 }
+
+export interface KnownHudContext {
+  readonly state: HudContextState;
+  readonly characterId: string | null;
+  readonly targetId: string | null;
+  readonly selectionRevision: number | null;
+}
+
+export interface ResyncKnownContextRequest {
+  readonly mode: 'RESYNC_KNOWN_CONTEXT';
+  readonly runtimeInstanceId: string;
+  readonly minimumHudRevision: number;
+  /** Nulls here assert known absence according to state; they never mean wildcard. */
+  readonly expectedContext: KnownHudContext;
+}
+
+export type SnapshotRequestContext = DiscoverActiveContextRequest | ResyncKnownContextRequest;
 
 export interface AuthoritativeHudSnapshot {
   readonly authoritative: true;
