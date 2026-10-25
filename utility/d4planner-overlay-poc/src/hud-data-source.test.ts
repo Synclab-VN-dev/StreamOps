@@ -196,8 +196,10 @@ describe('HudWebSocketDataSource', () => {
   it('allows only server-listed valid target IDs and waits for committed HUD binding', () => {
     const { source, socket } = setup();
     accept(socket);
+    const listRequest = socket.sent.find(message => message.type === 'target.list.request')!;
     socket.receive({
       protocolVersion: 'd4planner-ws/v1', type: 'target.list.result', backendGeneration: 3,
+      correlationId: listRequest.messageId,
       listRevision: 4,
       targets: [
         { targetId: 'target-a', validation: 'VALID', contentSha256: 'a'.repeat(64) },
@@ -231,5 +233,26 @@ describe('HudWebSocketDataSource', () => {
     expect(source.snapshot()).toMatchObject({
       freshness: 'STALE', error: 'RECONNECT_EXHAUSTED',
     });
+  });
+
+  it('rejects wrong handshake correlation and late messages from an old connection', () => {
+    const { source, socket, sockets } = setup();
+    socket.receive({
+      protocolVersion: 'd4planner-ws/v1', type: 'hello.accepted', correlationId: 'wrong',
+      backendGeneration: 3, runtimeInstanceId: 'backend-a',
+    });
+    expect(source.snapshot().backend).toBeNull();
+    accept(socket);
+    socket.close();
+    source.connect();
+    const reconnect = sockets[1];
+    reconnect.onopen?.();
+    accept(reconnect);
+    socket.receive({
+      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
+      correlationId: pendingSnapshot(reconnect).messageId, backendGeneration: 3,
+      subscriptionId: 'late-old-connection', hud: hud(99),
+    });
+    expect(source.snapshot().hud).toBeNull();
   });
 });
