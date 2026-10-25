@@ -152,18 +152,21 @@ class RuleKitClient:
         await self._send({"type": "shutdown", "protocolVersion": PROTOCOL_VERSION})
 
     async def close(self) -> None:
-        if self._closed:
-            return
         self._closed = True
         self._sessions.clear()
-        self._reader_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await self._reader_task
+        if not self._reader_task.done():
+            self._reader_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._reader_task
         error = ProtocolError("Rule Kit client closed")
         for future in self._pending.values():
             if not future.done():
                 future.set_exception(error)
         self._pending.clear()
+        if not self._writer.is_closing():
+            self._writer.close()
+        with contextlib.suppress(OSError, ConnectionError):
+            await self._writer.wait_closed()
 
     async def _send(self, message: dict) -> None:
         payload = json.dumps(message, separators=(",", ":"), allow_nan=False).encode() + b"\n"
