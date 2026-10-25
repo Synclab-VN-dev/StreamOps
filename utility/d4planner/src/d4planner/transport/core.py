@@ -16,6 +16,7 @@ from uuid import uuid4
 PROTOCOL_VERSION = "d4planner-ws/v1"
 TARGET_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,63}$")
 SHA256 = re.compile(r"^[a-f0-9]{64}$")
+INTERNAL_CLOSE_SLOW_CONSUMER = "_d4planner_close_slow_consumer"
 PUBLIC_TARGET_ERRORS = {
     "TARGET_INVALID": "Target cannot be activated.",
     "TARGET_CHANGED": "Target changed after listing; refresh the list.",
@@ -50,6 +51,7 @@ class D4PlannerDomain(Protocol):
 class _Subscriber:
     queue: asyncio.Queue[dict[str, Any] | None]
     last_revision: int
+    overflow_count: int = 0
 
 
 class HudHub:
@@ -109,15 +111,19 @@ class HudHub:
                         subscriber.queue.get_nowait()
                     except asyncio.QueueEmpty:
                         pass
-                    message = {
-                        "protocolVersion": PROTOCOL_VERSION,
-                        "messageId": f"resync-{uuid4().hex}",
-                        "type": "resync.required",
-                        "correlationId": None,
-                        "backendGeneration": self._generation,
-                        "reason": "SLOW_CONSUMER",
-                        "latestHudRevision": revision,
-                    }
+                    subscriber.overflow_count += 1
+                    if subscriber.overflow_count == 1:
+                        message = {
+                            "protocolVersion": PROTOCOL_VERSION,
+                            "messageId": f"resync-{uuid4().hex}",
+                            "type": "resync.required",
+                            "correlationId": None,
+                            "backendGeneration": self._generation,
+                            "reason": "SLOW_CONSUMER",
+                            "latestHudRevision": revision,
+                        }
+                    else:
+                        message = {INTERNAL_CLOSE_SLOW_CONSUMER: True}
                 subscriber.queue.put_nowait(message)
                 subscriber.last_revision = revision
             return True

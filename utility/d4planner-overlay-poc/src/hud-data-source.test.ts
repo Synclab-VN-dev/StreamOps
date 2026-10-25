@@ -27,13 +27,17 @@ function hud(revision: number, targetId = 'target-a', characterId = 'character-a
   };
 }
 
-function setup(reconnectDelaysMs?: readonly number[]) {
+function setup(
+  reconnectDelaysMs?: readonly number[],
+  recovery?: { snapshotOperationTimeoutMs: number; maxDiscoveryAttempts: number },
+) {
   const sockets: FakeSocket[] = [];
   const source = new HudWebSocketDataSource({
     endpoint: 'ws://127.0.0.1:12345',
     credential,
     origin: 'tauri://localhost',
     reconnectDelaysMs,
+    ...recovery,
     socketFactory: () => {
       const socket = new FakeSocket();
       sockets.push(socket);
@@ -252,6 +256,38 @@ describe('HudWebSocketDataSource', () => {
       protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
       correlationId: pendingSnapshot(reconnect).messageId, backendGeneration: 3,
       subscriptionId: 'late-old-connection', hud: hud(99),
+    });
+    expect(source.snapshot().hud).toBeNull();
+  });
+
+  it('bounds snapshot timeout recovery and consumes late correlations', () => {
+    vi.useFakeTimers();
+    const { source, socket } = setup(undefined, {
+      snapshotOperationTimeoutMs: 10, maxDiscoveryAttempts: 2,
+    });
+    accept(socket);
+    const first = pendingSnapshot(socket);
+    expect(first.requestContext).toMatchObject({
+      mode: 'DISCOVER_ACTIVE_CONTEXT', attempt: 1, reason: 'INITIAL_CONNECTION',
+    });
+    vi.advanceTimersByTime(10);
+    const retry = pendingSnapshot(socket);
+    expect(retry.messageId).not.toBe(first.messageId);
+    expect(retry.requestContext).toMatchObject({
+      mode: 'DISCOVER_ACTIVE_CONTEXT', attempt: 2, reason: 'TIMEOUT_RETRY',
+      minimumHudRevision: 0,
+    });
+    vi.advanceTimersByTime(10);
+    expect(source.snapshot()).toMatchObject({
+      freshness: 'STALE', error: 'SNAPSHOT_RECOVERY_EXHAUSTED', subscriptionId: null,
+    });
+    const requestCount = socket.sent.filter(message => message.type === 'hud.snapshot.request').length;
+    vi.runAllTimers();
+    expect(socket.sent.filter(message => message.type === 'hud.snapshot.request')).toHaveLength(requestCount);
+    socket.receive({
+      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
+      correlationId: first.messageId, backendGeneration: 3,
+      subscriptionId: 'late', hud: hud(99),
     });
     expect(source.snapshot().hud).toBeNull();
   });

@@ -23,6 +23,7 @@ type PendingSnapshot = {
   requestId: string;
   mode: 'DISCOVER_ACTIVE_CONTEXT' | 'RESYNC_KNOWN_CONTEXT';
   minimumRevision: number;
+  attempt: number;
   expectedContext?: Record<string, unknown>;
 };
 
@@ -36,6 +37,7 @@ export class HudWebSocketDataSource {
   private readonly listeners = new Set<(state: HudDataState) => void>();
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private snapshotTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
   private state: HudDataState = {
     backend: null,
@@ -54,6 +56,8 @@ export class HudWebSocketDataSource {
       origin: string;
       socketFactory: (endpoint: string) => WebSocketLike;
       reconnectDelaysMs?: readonly number[];
+      snapshotOperationTimeoutMs?: number;
+      maxDiscoveryAttempts?: number;
     },
   ) {}
 
@@ -102,6 +106,7 @@ export class HudWebSocketDataSource {
     };
     socket.onclose = () => {
       if (socket !== this.socket) return;
+      this.clearSnapshotTimer();
       this.state = { ...this.state, freshness: 'STALE', subscriptionId: null };
       this.pendingSnapshot = null;
       this.emit();
@@ -111,6 +116,7 @@ export class HudWebSocketDataSource {
 
   disconnect(): void {
     this.stopped = true;
+    this.clearSnapshotTimer();
     if (this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -190,6 +196,7 @@ export class HudWebSocketDataSource {
   }
 
   private acceptHello(message: Record<string, any>): void {
+    this.clearSnapshotTimer();
     const sameBackend = this.state.backend?.runtimeInstanceId === message.runtimeInstanceId
       && this.state.backend?.generation === message.backendGeneration;
     if (sameBackend) {
@@ -226,8 +233,14 @@ export class HudWebSocketDataSource {
     }, delay);
   }
 
-  private requestSnapshot(minimumOverride?: number, forceDiscovery = false): void {
+  private requestSnapshot(
+    minimumOverride?: number,
+    forceDiscovery = false,
+    attempt = 1,
+    discoveryReason?: 'KNOWN_CONTEXT_CHANGED' | 'TIMEOUT_RETRY',
+  ): void {
     this.requireBackend();
+    this.clearSnapshotTimer();
     const minimumRevision = Math.max(this.state.hud?.hudRevision ?? 0, minimumOverride ?? 0);
     const context = this.state.hud?.context;
     const messageId = this.id('snapshot');
@@ -240,8 +253,8 @@ export class HudWebSocketDataSource {
         }
       : {
           mode: 'DISCOVER_ACTIVE_CONTEXT' as const,
-          reason: forceDiscovery ? 'KNOWN_CONTEXT_CHANGED' : 'INITIAL_CONNECTION',
-          attempt: 1,
+          reason: discoveryReason ?? (forceDiscovery ? 'KNOWN_CONTEXT_CHANGED' : 'INITIAL_CONNECTION'),
+          attempt,
           runtimeInstanceId: this.state.backend!.runtimeInstanceId,
           minimumHudRevision: minimumRevision,
         };
@@ -249,12 +262,43 @@ export class HudWebSocketDataSource {
       requestId: messageId,
       mode: requestContext.mode,
       minimumRevision,
+      attempt: requestContext.mode === 'DISCOVER_ACTIVE_CONTEXT' ? requestContext.attempt : 0,
       ...('expectedContext' in requestContext ? { expectedContext: requestContext.expectedContext } : {}),
     };
     this.send({
       ...this.envelope(messageId, 'hud.snapshot.request'),
       requestContext,
     });
+    const timeout = this.config.snapshotOperationTimeoutMs ?? 2_000;
+    if (!(timeout > 0)) throw new Error('snapshotOperationTimeoutMs must be positive.');
+    this.snapshotTimer = setTimeout(() => this.snapshotTimedOut(messageId), timeout);
+  }
+
+  private snapshotTimedOut(requestId: string): void {
+    const pending = this.pendingSnapshot;
+    if (!pending || pending.requestId !== requestId) return;
+    this.snapshotTimer = null;
+    this.pendingSnapshot = null;
+    const nextAttempt = pending.attempt > 0 ? pending.attempt + 1 : 1;
+    const maxAttempts = this.config.maxDiscoveryAttempts ?? 3;
+    if (!(maxAttempts > 0) || nextAttempt > maxAttempts) {
+      this.state = {
+        ...this.state, freshness: 'STALE', subscriptionId: null,
+        error: 'SNAPSHOT_RECOVERY_EXHAUSTED',
+      };
+      this.emit();
+      return;
+    }
+    this.state = { ...this.state, freshness: 'STALE', subscriptionId: null };
+    this.requestSnapshot(pending.minimumRevision, true, nextAttempt, 'TIMEOUT_RETRY');
+    this.emit();
+  }
+
+  private clearSnapshotTimer(): void {
+    if (this.snapshotTimer !== null) {
+      clearTimeout(this.snapshotTimer);
+      this.snapshotTimer = null;
+    }
   }
 
   private acceptSnapshot(message: Record<string, any>): void {
@@ -266,6 +310,7 @@ export class HudWebSocketDataSource {
     if (pending.mode === 'RESYNC_KNOWN_CONTEXT'
         && !sameContext(contextKey(message.hud?.context), pending.expectedContext)) {
       this.pendingSnapshot = null;
+      this.clearSnapshotTimer();
       this.state = { ...this.state, freshness: 'STALE', subscriptionId: null };
       // Do not apply the mismatched snapshot. Discover the authoritative active
       // context using its revision as the new anti-rollback floor.
@@ -274,6 +319,7 @@ export class HudWebSocketDataSource {
       return;
     }
     this.pendingSnapshot = null;
+    this.clearSnapshotTimer();
     this.reconnectAttempt = 0;
     this.state = {
       ...this.state,
