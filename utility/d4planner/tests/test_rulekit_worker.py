@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import signal
 from pathlib import Path
 
 import pytest
@@ -70,11 +69,10 @@ def test_ready_concurrent_start_and_graceful_owned_stop():
         assert first is second
         assert wrapper.state is ProcessState.READY
         assert (await wrapper.inspect_health())["ready"] is True
-        pid = wrapper._child.pid
+        child = wrapper._child
         await wrapper.stop()
         assert wrapper.state is ProcessState.STOPPED
-        with pytest.raises(ProcessLookupError):
-            os.kill(pid, 0)
+        assert child.process.returncode is not None
 
     run(scenario())
 
@@ -225,7 +223,7 @@ def test_crash_is_detected_and_restart_budget_is_bounded():
         wrapper = RuleKitProcessWrapper(specification())
         await wrapper.start()
         child = wrapper._child
-        os.kill(child.pid, signal.SIGKILL)
+        child.process.kill()
         await asyncio.wait_for(child.process.wait(), 2)
         await asyncio.sleep(0)
         assert wrapper.state is ProcessState.FAILED
@@ -256,6 +254,8 @@ def test_parent_pipe_eof_stops_worker_without_orphan():
         process.stdin.close()
         await process.stdin.wait_closed()
         assert await asyncio.wait_for(process.wait(), 2) == 0
+        assert await process.stdout.read() == b""
+        assert await process.stderr.read() == b""
 
     run(scenario())
 
