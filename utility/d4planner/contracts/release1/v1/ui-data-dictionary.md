@@ -1,34 +1,45 @@
 # Equipment HUD source and UI acceptance map
 
-Baseline is MagicPath project `458763473602621440`, component
-`458765764401446912`, revision `458808549301174272`, handed off on the separate
-`docs/ui-design` branch at `docs/ui/d4-planner/build-overlay`. It approves the
-Equipment concept/layout, not runtime fixtures or an API contract. Target
-selector, Equipment-only navigation, coverage, partial/NO_DATA, stale/error and
-health separation are a minimal S6 delta requiring a new Owner-pinned reference.
+Approved S6 review baseline: MagicPath project `458763473602621440`, component
+`458765764401446912`, revision `464988421014827008`. This revision replaces
+LIVE with the top-right Target menu, hides Charms for Release 1, and retains
+Equipment, Compare, Affixes, Effects, score, issues and Pin. Pin means
+always-on-top only. **Coverage is not a HUD row, bar or badge.**
+
+S1 records this reference and data contract only. Exported source/hash/Golden
+and visual acceptance remain `NOT_RUN` work for S6. Approval of this revision
+does not prove that every NO_DATA/error/stale state has an independent Golden.
+
+Display metadata is embedded in each committed HUD snapshot. BE resolves stable
+IDs to labels/text; FE does not read a catalog, Target file, DB, Maxroll data or
+hardcoded sample names.
 
 | UI field | Producer/source | Contract field/type/unit | Status/reason rule |
 | --- | --- | --- | --- |
-| Selected Target | BE TargetRepository activated record | `selectedTarget.{targetId,displayName,contentSha256}` strings | Never display a listed-but-not-activated file as selected |
-| Target selector options | BE folder listing over WS | `target.list.result.targets[]` | Invalid entries disabled with safe `errorCodes`; FE never receives/opens paths |
-| Equipment row | BE assessment committed model | `equipment[]`, stable `slotId`, status enum | Current and Target identities remain distinct; unknown slot is not empty |
-| Current item | Capture/equipment projector evidence | `currentItemId`, `currentPresence` | `UNKNOWN` unless observed or confirmed absent; never copied from Target |
-| Target item | Activated canonical target | `targetItemId` | Display context only; matching does not require sample item name |
-| Affix/effect pair | BE assessment service | comparison identity, comparator, typed values and unit | FE formats only; no fuzzy identity or numeric scoring in FE |
-| Criterion status | BE assessment service | `PASS/WARN/FAIL/UNKNOWN` + `reasonCode` | Must have text/icon, not color only; UNKNOWN stays distinct |
-| Headline score | BE assessment service | `score.status`, `value` (0..100 or null) | `NO_DATA` renders no numeric score; FE never recomputes |
-| Score numerator/denominator | BE assessment service | `passedWeight`, `evaluableWeight` | Optional presentation, mandatory model; UNKNOWN excluded |
-| Coverage | BE assessment service | criteria count ratio | Separate label from score and x/y; null ratio only when denominator zero |
-| Issues | BE assessment service | `failIssueCount` count | Unique FAIL criterion count; WARN excluded |
-| Warnings | BE assessment service | `warnCount` count | Separate from issues; issues-only filter behavior awaits D2 |
-| Equipment x/y | BE assessment service | `itemsPassing/itemsTargeted` items | Not capture coverage; aggregation awaits D2 approval |
-| Recommendation | BE assessment service | action + reason/criterion IDs | Current-vs-Target only; no inventory/stash suggestion |
-| Capture health | Capture pipeline | `health.capture` | Describes evidence producer, not score/worker health |
-| Score freshness | Binding/revision coordinator | `health.scoreFreshness` | CURRENT only when all binding keys still match |
-| Rule Kit health | RuleKitProcessWrapper/client | `health.ruleKit` | Independent; `NOT_REQUIRED` may accompany valid Equipment score |
-| LIVE badge replacement | BE binding/health model | three health fields + revisions | Do not collapse the three meanings into one green LIVE badge |
+| Target menu label | BE activated Target | `context.target.{targetId,displayName,buildDisplayName}` | Null in no-target/unavailable states; failed attempt does not relabel active Target |
+| Target menu options | BE folder listing over WS | `target.list.result.targets[]` | Invalid entries disabled with safe codes; no client paths |
+| Build display name | Activated Target metadata | `context.target.buildDisplayName` | Synthetic fixtures explicitly say Synthetic |
+| Equipment row | BE committed assessment | `equipment[]`, `slotId`, `slotLabel`, status/reason | Current/Target stay distinct; unknown slot is not empty |
+| Current item | Capture/equipment projector | `currentItem.{itemId,displayName,observedAt,source}` or null plus `currentPresence` | Never copied from Target; null is interpreted through presence/evidence |
+| Target item | Activated canonical Target + BE display metadata | `targetItem.{itemId,displayName}` | Sample base item name is display context, not matching identity |
+| Affix/effect identity | BE assessment service | comparison `kind`, source group/occurrence, `entityId`, `label`, `displayText` | FE never fuzzy-matches or resolves IDs |
+| Parameter comparison | BE assessment service | typed `expected`/`actual`, comparator, label, index, unit, evidence/status/reason | Multi-parameter criterion shown without multiplying criterion weight/issues |
+| Criterion status | BE assessment service | `PASS/WARN/FAIL/UNKNOWN` + reason code | Text/icon, not color only; UNKNOWN remains distinct |
+| Headline score | BE assessment service | status, full-precision value, passed/evaluable weight | NO_DATA shows score `—`; final display uses half-up, no intermediate rounding |
+| Issues | BE assessment service | `failIssueCount` | Distinct FAIL criteria only; WARN not counted |
+| Issues-only filter | FE filter over BE statuses | comparisons with FAIL or WARN | Filtering only; FE does not recalculate status |
+| Equipment x/y | BE assessment service | `itemsPassing/itemsTargeted` | Item passes only when every target criterion PASS |
+| Recommendation | BE assessment service | action, display text, reason/criterion IDs | Core FAIL → core WARN → non-core WARN → target order/ID |
+| Pin | Native FE shell | approved always-on-top toggle | No implied lock-position or persistence after restart |
+| Capture health | Capture pipeline | `health.capture` | Separate from score/Rule Kit health |
+| Score freshness | Binding coordinator | `health.scoreFreshness` | CURRENT only while runtime/character/current/target/policy binding matches |
+| Rule Kit health | RuleKit wrapper/client | `health.ruleKit` | `NOT_REQUIRED` may accompany a valid Equipment score |
+| Audit provenance | BE/capture | top-level producer/assessment version/capture revision/last observed | Enables freshness/review; not fabricated by FE |
 
-All visible data is from the committed HUD snapshot over WS. Local UI state may
-control expand/collapse, row selection and filtering only. It cannot calculate
-scores, read the Target folder/DB, or replace missing data with MagicPath mock
-values. Production screenshots cannot be promoted as design Goldens.
+`score.evaluationCounts` is internal score-audit/diagnostic metadata. It is
+transported for verification but is not a visible Coverage requirement.
+
+The FE may own expand/collapse, selected row, Issues-only filtering and the
+always-on-top command. It cannot calculate score/status, read Target/DB/catalog,
+or replace missing data with MagicPath mock values. Production screenshots
+cannot be promoted as independent MagicPath Goldens.

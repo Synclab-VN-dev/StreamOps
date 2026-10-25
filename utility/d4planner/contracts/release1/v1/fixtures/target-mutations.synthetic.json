@@ -4,11 +4,17 @@
   "cases": [
     { "id": "unknown-schema-version", "operation": "replace", "path": "/schemaVersion", "value": "d4planner-target/v2", "expected": "SCHEMA_INVALID" },
     { "id": "policy-wrong-scope", "operation": "replace", "path": "/assessmentPolicy/scope", "value": "FULL_BUILD", "expected": "SCHEMA_INVALID" },
-    { "id": "core-weight-not-higher", "operation": "replace", "path": "/assessmentPolicy/weightProfile/coreWeight", "value": 1, "expected": "POLICY_INVALID" },
-    { "id": "duplicate-criterion", "operation": "append-copy", "path": "/assessmentPolicy/criteria", "from": "/assessmentPolicy/criteria/0", "expected": "DUPLICATE_CRITERION_ID" },
-    { "id": "duplicate-link-different-id", "operation": "append-copy-with-id", "path": "/assessmentPolicy/criteria", "from": "/assessmentPolicy/criteria/0", "value": "gloves.attack-speed-copy", "expected": "POLICY_INVALID" },
+    { "id": "approved-core-weight-changed", "operation": "replace", "path": "/assessmentPolicy/weightProfile/coreWeight", "value": 2, "expected": "SCHEMA_INVALID" },
+    { "id": "duplicate-criterion-id", "operation": "append-copy", "path": "/assessmentPolicy/criteria", "from": "/assessmentPolicy/criteria/0", "expected": "DUPLICATE_CRITERION_ID" },
+    { "id": "duplicate-source-binding", "operation": "append-copy-with-id", "path": "/assessmentPolicy/criteria", "from": "/assessmentPolicy/criteria/0", "value": "gloves.attack-speed-copy", "expected": "POLICY_INVALID" },
     { "id": "criterion-not-linked-to-target", "operation": "replace", "path": "/assessmentPolicy/criteria/0/entityId", "value": "not-in-target-equipment", "expected": "POLICY_INVALID" },
     { "id": "core-weight-class-mismatch", "operation": "replace", "path": "/assessmentPolicy/criteria/0/weightClass", "value": "NON_CORE", "expected": "SCHEMA_INVALID" },
-    { "id": "between-missing-maximum", "operation": "replace", "path": "/assessmentPolicy/criteria/0/comparator", "value": "BETWEEN", "expected": "SCHEMA_INVALID" }
+    { "id": "numeric-string", "operation": "replace", "path": "/assessmentPolicy/criteria/0/parameters/0/expected/value", "value": "8", "expected": "SCHEMA_INVALID" },
+    { "id": "numeric-boolean", "operation": "replace", "path": "/assessmentPolicy/criteria/0/parameters/0/expected/value", "value": true, "expected": "SCHEMA_INVALID" },
+    { "id": "numeric-wrong-unit", "operation": "replace", "path": "/assessmentPolicy/criteria/0/parameters/0/unit", "value": "NONE", "expected": "SCHEMA_INVALID" },
+    { "id": "malformed-range", "operation": "replace", "path": "/assessmentPolicy/criteria/0/parameters/0", "value": { "parameterId": "roll", "index": 0, "comparator": "BETWEEN", "unit": "PERCENT", "expected": { "type": "NUMBER_RANGE", "minimum": 10, "maximum": 2 } }, "expected": "POLICY_INVALID" },
+    { "id": "missing-canonical-parameter", "operation": "replace", "path": "/assessmentPolicy/criteria/2/parameters/1/index", "value": 9, "expected": "POLICY_INVALID" },
+    { "id": "duplicate-parameter-index", "operation": "append-parameter-copy", "path": "/assessmentPolicy/criteria/2/parameters", "from": "/assessmentPolicy/criteria/2/parameters/0", "value": "damage-copy", "expected": "POLICY_INVALID" },
+    { "id": "distinct-occurrence-valid", "operation": "append-distinct-occurrence", "expected": "VALID" }
   ]
 }
