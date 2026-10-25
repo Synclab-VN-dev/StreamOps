@@ -99,24 +99,36 @@ def test_upgrade_preserves_targets_and_state(tmp_path):
     assert (data / "state/database.sqlite").read_bytes() == b"database"
 
 
-def test_runner_distinguishes_linux_dependency_manual_subset_and_resume(tmp_path):
+def test_runner_distinguishes_platform_dependency_manual_subset_and_resume(tmp_path):
     package = tmp_path / "package.zip"
     delivery.build_package(PLAN, stage(tmp_path), package)
-    report = delivery.run_acceptance(ACCEPTANCE, package, set(), None)
+    report = delivery.run_acceptance(ACCEPTANCE, package, set(), None, platform="linux")
     by_id = {case["id"]: case for case in report["cases"]}
     assert by_id["S7-PKG-01"]["status"] == "PASS"
     assert by_id["S7-PRE-01"]["status"] == "BLOCKED"
     assert by_id["S7-E2E-01"] == {"id": "S7-E2E-01", "status": "BLOCKED", "classification": "PENDING_DEPENDENCY"}
     assert by_id["MAN-01"]["status"] == "NOT_RUN"
     prior = tmp_path / "prior.json"; prior.write_text(json.dumps(report))
-    resumed = delivery.run_acceptance(ACCEPTANCE, package, {"S7-PKG-01"}, prior)
+    resumed = delivery.run_acceptance(
+        ACCEPTANCE, package, {"S7-PKG-01"}, prior, platform="linux"
+    )
     resumed_by_id = {case["id"]: case for case in resumed["cases"]}
     assert resumed_by_id["S7-PKG-01"]["resumed"] is True
     assert resumed_by_id["S7-PRE-01"]["classification"] == "NOT_SELECTED"
     report["packageSha256"] = "0" * 64
     prior.write_text(json.dumps(report))
     with pytest.raises(delivery.DeliveryError, match="RESUME_CONTEXT_MISMATCH"):
-        delivery.run_acceptance(ACCEPTANCE, package, {"S7-PKG-01"}, prior)
+        delivery.run_acceptance(
+            ACCEPTANCE, package, {"S7-PKG-01"}, prior, platform="linux"
+        )
+
+    windows = delivery.run_acceptance(
+        ACCEPTANCE, package, {"S7-PRE-01"}, None, platform="win32"
+    )
+    windows_by_id = {case["id"]: case for case in windows["cases"]}
+    assert windows_by_id["S7-PRE-01"] == {
+        "id": "S7-PRE-01", "status": "PASS", "classification": "AUTOMATED"
+    }
 
 
 def test_runner_invalid_package_is_product_failure_and_missing_is_blocked(tmp_path):
