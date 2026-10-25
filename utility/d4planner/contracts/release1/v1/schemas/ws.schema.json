@@ -75,17 +75,39 @@
       "properties": { "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "const": "target.select.result" }, "correlationId": { "$ref": "#/$defs/id" }, "backendGeneration": { "type": "integer", "minimum": 1 }, "status": { "const": "ACTIVATED" }, "targetId": { "$ref": "#/$defs/targetId" }, "contentSha256": { "$ref": "#/$defs/sha256" }, "selectionRevision": { "type": "integer", "minimum": 1 }, "hudRevision": { "type": "integer", "minimum": 0 } }
     },
     "snapshotRequestContext": {
+      "oneOf": [{ "$ref": "#/$defs/discoveryRequestContext" }, { "$ref": "#/$defs/resyncRequestContext" }]
+    },
+    "discoveryRequestContext": {
       "type": "object", "additionalProperties": false,
-      "required": ["runtimeInstanceId", "minimumHudRevision", "expectedCharacterId", "expectedTargetId", "expectedSelectionRevision"],
+      "required": ["mode", "runtimeInstanceId", "minimumHudRevision"],
       "properties": {
-        "runtimeInstanceId": { "$ref": "#/$defs/id" }, "minimumHudRevision": { "type": "integer", "minimum": 0 },
-        "expectedCharacterId": { "type": ["string", "null"], "minLength": 1 },
-        "expectedTargetId": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/targetId" }] },
-        "expectedSelectionRevision": { "type": ["integer", "null"], "minimum": 1 }
+        "mode": { "const": "DISCOVER_ACTIVE_CONTEXT" }, "runtimeInstanceId": { "$ref": "#/$defs/id" },
+        "minimumHudRevision": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "resyncRequestContext": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mode", "runtimeInstanceId", "minimumHudRevision", "expectedContext"],
+      "properties": {
+        "mode": { "const": "RESYNC_KNOWN_CONTEXT" }, "runtimeInstanceId": { "$ref": "#/$defs/id" },
+        "minimumHudRevision": { "type": "integer", "minimum": 0 }, "expectedContext": { "$ref": "#/$defs/expectedKnownContext" }
+      }
+    },
+    "expectedKnownContext": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state", "characterId", "targetId", "selectionRevision"],
+      "properties": {
+        "state": { "enum": ["STARTUP", "TARGET_ONLY", "CHARACTER_ONLY", "BOUND", "TARGET_UNAVAILABLE"] },
+        "characterId": { "type": ["string", "null"], "minLength": 1 },
+        "targetId": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/targetId" }] },
+        "selectionRevision": { "type": ["integer", "null"], "minimum": 1 }
       },
       "allOf": [
-        { "if": { "properties": { "expectedTargetId": { "type": "null" } }, "required": ["expectedTargetId"] }, "then": { "properties": { "expectedSelectionRevision": { "type": "null" } } } },
-        { "if": { "properties": { "expectedTargetId": { "type": "string" } }, "required": ["expectedTargetId"] }, "then": { "properties": { "expectedSelectionRevision": { "type": "integer", "minimum": 1 } } } }
+        { "if": { "properties": { "state": { "const": "STARTUP" } }, "required": ["state"] }, "then": { "properties": { "characterId": { "type": "null" }, "targetId": { "type": "null" }, "selectionRevision": { "type": "null" } } } },
+        { "if": { "properties": { "state": { "const": "TARGET_ONLY" } }, "required": ["state"] }, "then": { "properties": { "characterId": { "type": "null" }, "targetId": { "$ref": "#/$defs/targetId" }, "selectionRevision": { "type": "integer", "minimum": 1 } } } },
+        { "if": { "properties": { "state": { "const": "CHARACTER_ONLY" } }, "required": ["state"] }, "then": { "properties": { "characterId": { "type": "string", "minLength": 1 }, "targetId": { "type": "null" }, "selectionRevision": { "type": "null" } } } },
+        { "if": { "properties": { "state": { "const": "BOUND" } }, "required": ["state"] }, "then": { "properties": { "characterId": { "type": "string", "minLength": 1 }, "targetId": { "$ref": "#/$defs/targetId" }, "selectionRevision": { "type": "integer", "minimum": 1 } } } },
+        { "if": { "properties": { "state": { "const": "TARGET_UNAVAILABLE" } }, "required": ["state"] }, "then": { "properties": { "targetId": { "type": "null" }, "selectionRevision": { "type": "null" } } } }
       ]
     },
     "snapshot": {

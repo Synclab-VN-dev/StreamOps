@@ -23,16 +23,32 @@
     },
     {
       "protocolVersion": "d4planner-ws/v1",
+      "messageId": "m-discovery-request-1",
+      "type": "hud.snapshot.request",
+      "correlationId": null,
+      "backendGeneration": 3,
+      "requestContext": {
+        "mode": "DISCOVER_ACTIVE_CONTEXT",
+        "runtimeInstanceId": "backend-synthetic-a",
+        "minimumHudRevision": 0
+      }
+    },
+    {
+      "protocolVersion": "d4planner-ws/v1",
       "messageId": "m-snapshot-request-1",
       "type": "hud.snapshot.request",
       "correlationId": null,
       "backendGeneration": 3,
       "requestContext": {
+        "mode": "RESYNC_KNOWN_CONTEXT",
         "runtimeInstanceId": "backend-synthetic-a",
         "minimumHudRevision": 10,
-        "expectedCharacterId": "character-synthetic-a",
-        "expectedTargetId": "synthetic-charge-bolt",
-        "expectedSelectionRevision": 7
+        "expectedContext": {
+          "state": "BOUND",
+          "characterId": "character-synthetic-a",
+          "targetId": "synthetic-charge-bolt",
+          "selectionRevision": 7
+        }
       }
     },
     {

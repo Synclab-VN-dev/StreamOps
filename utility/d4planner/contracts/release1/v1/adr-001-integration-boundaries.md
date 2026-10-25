@@ -1,7 +1,7 @@
 # ADR-001: Release 1 integration boundaries and lifecycle
 
-- Status: `CANDIDATE`, technical review corrections complete; remaining Owner decisions are recorded in `decisions-and-dependencies.md`
-- Contract: `d4planner-r1-contract/1.0.0-candidate.2`
+- Status: `CANDIDATE`, technical review corrections complete; downstream evidence is recorded in `decisions-and-dependencies.md`
+- Contract: `d4planner-r1-contract/1.0.0-candidate.3`
 - Scope baseline: `R1-EQUIPMENT-20261025`
 - References: Epic #137, S1 #138
 
@@ -182,6 +182,12 @@ to select another Target may be reported beside the unchanged active Target;
 the old label/binding remain paired with the old score. If the active Target is
 deleted/invalidated, the binding and result are cleared atomically.
 
+Release 1 has exactly one active playing-character context. This is a current
+context stream, not multi-character/profile management. A committed contiguous
+update may transition STARTUP/TARGET_ONLY to BOUND when that character is first
+identified, or replace the active character with a new BOUND/NO_DATA context;
+the previous character's score/equipment is cleared in that same revision.
+
 ## WebSocket protocol and revision boundary
 
 The server binds loopback only, rejects unapproved `Origin`, requires the private
@@ -199,7 +205,7 @@ sequenceDiagram
   WS-->>FE: hello.accepted(generation, limits)
   FE->>WS: target.list.request
   WS-->>FE: target.list.result(valid + safe invalid entries)
-  FE->>WS: hud.snapshot.request(request ID, minimum revision, expected context)
+  FE->>WS: hud.snapshot.request(DISCOVER_ACTIVE_CONTEXT or RESYNC_KNOWN_CONTEXT)
   WS->>DB: begin consistent read / establish subscription boundary
   DB-->>WS: latest committed snapshot R
   WS-->>FE: authoritative hud.snapshot(R, correlation, subscription)
@@ -211,17 +217,29 @@ sequenceDiagram
 Snapshot and subscription share one durable revision boundary: take the latest
 committed R and register delivery for commits `>R` without a gap. Push occurs
 only after commit. Incremental updates require matching runtime instance,
-generation, subscription, binding, and `previousHudRevision == current`; a gap
-starts a correlated snapshot request.
+generation, subscription and `previousHudRevision == current`; a gap starts a
+correlated snapshot request. A contiguous committed update may carry a valid
+single-active-context transition. The HUD binding inside that update must remain
+self-consistent, and character/Target changes invalidate prior assessment data.
 
-An authoritative full snapshot follows different rules: it may replace local
-state within the same runtime instance/generation after a gap or reconnect when
-its correlation is still pending, revision is at least the request minimum and
-current local revision, and its selected-target/character context matches the
-request. Equal revision confirms/resubscribes idempotently. Older, late after the
-request was consumed, wrong-generation, wrong-instance or wrong-context
-snapshots cannot roll state back. A newly accepted BE generation resets local
-transport state before its first authoritative snapshot.
+An authoritative full snapshot follows one of two explicit request modes:
+
+- `DISCOVER_ACTIVE_CONTEXT` is used after a fresh hello/new generation when FE
+  does not know the current character/Target. It contains no expected IDs and
+  accepts the BE's authoritative STARTUP/TARGET_ONLY/CHARACTER_ONLY/BOUND or
+  TARGET_UNAVAILABLE context for the single active character.
+- `RESYNC_KNOWN_CONTEXT` carries a discriminated expected state and exact known
+  character/Target/selection binding. Its nulls assert known absence; they are
+  not wildcards.
+
+Both modes require the pending correlation, matching runtime instance and
+generation, and a revision at least the request minimum and current local
+revision. Equal known-context resync confirms/resubscribes idempotently. Older,
+late after the request was consumed, wrong-generation, wrong-instance or
+wrong-known-context snapshots cannot roll state back. The closed HUD schema and
+semantic validation ensure a discovery snapshot's internal selected Target,
+character and assessment binding agree. A newly accepted BE generation resets
+local transport state before its first discovery snapshot.
 
 Target selection carries listed hash/revision. The activation commit increments
 selection and HUD revision atomically; any computation for the prior binding is
@@ -235,13 +253,23 @@ only and is not a data polling loop.
 
 ## Performance and operational evidence
 
-Measure capture → confirmed evidence → assessment commit → WS receipt → render
-as separate timestamps. Rule Kit operation latency is measured separately when
-called. No three-second or other product threshold is approved in S1. S7 must
-record configured budgets and actual percentiles after Owner chooses D3.
+Latency policy is `ASAP`: once evidence is sufficient, assess, commit, push and
+render as soon as correctness permits. No deliberate delay, periodic polling or
+batch timer is introduced. Bounded queues, coalescing and backpressure remain;
+coalescing may discard superseded HUD revisions, never commands/activation
+results. Record capture → confirmed evidence → assessment → commit → WS receipt
+→ render timestamps and report P50/P95 when runtime exists. Rule Kit latency is
+measured separately when called. S1 defines no fixed millisecond SLA and needs
+no further Owner threshold decision.
+
+The HUD is a normal native window and reuses StreamOps' existing
+`window_capture` scene-profile capability (`streamops/server/scene_profiles.py`)
+and existing OBS input create/update path
+(`streamops/server/obs/profile_scene.py`). S1 adds no capture subsystem and no
+OBS/Steam Link adapter. Verifying selection/capture of the actual HUD window is
+S6/S7 runtime evidence, not an S1 PASS claim.
 
 Pin is approved as always-on-top only; it does not imply position locking or
-persistence after restart. This ADR does not choose ports, DataDir, tasks,
-latency acceptance thresholds, or OBS/Steam Link acceptance scope. Those open
-values must be decided before their UAT gates; ports must not be derived by
-concatenating `187` with a three-digit PR number.
+persistence after restart. This ADR does not choose ports, DataDir or tasks;
+those deployment values remain downstream configuration. Ports must not be
+derived by concatenating `187` with a three-digit PR number.

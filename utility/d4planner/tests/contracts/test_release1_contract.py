@@ -133,6 +133,9 @@ def parameter_passes(parameter: dict[str, Any]) -> bool | None:
     if actual is None or expected["unit"] != actual["unit"]:
         return None
     comparator = parameter["comparator"]
+    if comparator == "EQUAL" and actual["type"] != expected["type"]:
+        # Python considers True == 1; contract equality never crosses value types.
+        return None
     if comparator == "AT_LEAST":
         return actual["value"] >= expected["value"]
     if comparator == "AT_MOST":
@@ -140,7 +143,7 @@ def parameter_passes(parameter: dict[str, Any]) -> bool | None:
     if comparator == "BETWEEN":
         return expected["minimum"] <= actual["value"] <= expected["maximum"]
     if comparator == "EQUAL":
-        return actual["type"] == expected["type"] and actual["value"] == expected["value"]
+        return actual["value"] == expected["value"]
     raise AssertionError(comparator)
 
 
@@ -235,7 +238,9 @@ def test_selection_rechecks_exact_bytes_hash_and_validity() -> None:
     "hud.target-unavailable.synthetic.json", "hud.partial.synthetic.json",
 ])
 def test_discriminated_hud_states_validate_without_fake_ids(fixture_name: str) -> None:
-    validate_hud_semantics(load(FIXTURES / fixture_name))
+    hud = load(FIXTURES / fixture_name)
+    validate_hud_semantics(hud)
+    assert hud["provenance"]["assessmentVersion"] == "d4planner-r1-contract/1.0.0-candidate.3"
 
 
 def test_no_data_is_not_zero_and_backend_can_be_ready_before_context() -> None:
@@ -321,6 +326,25 @@ def test_raw_truth_vectors_score_once_per_criterion_and_item_requires_all_pass()
         assert {key: result[key] for key in case["expected"]} == case["expected"], case["id"]
 
 
+@pytest.mark.parametrize("case_id,expected_status,expected_score", [
+    ("equal-number-vs-boolean-is-unknown", "UNKNOWN", None),
+    ("equal-number-vs-text-is-unknown", "UNKNOWN", None),
+    ("equal-unit-mismatch-is-unknown", "UNKNOWN", None),
+    ("equal-same-type-unit-different-value-is-warn", "WARN", 0),
+    ("equal-same-type-unit-value-is-pass", "PASS", 100),
+])
+def test_equal_type_and_unit_semantics(case_id: str, expected_status: str, expected_score: float | None) -> None:
+    fixture = load(FIXTURES / "assessment-truth.synthetic.json")
+    case = next(item for item in fixture["cases"] if item["id"] == case_id)
+    result = assess_truth(case["criteria"], fixture["policy"])
+    assert result["statuses"] == [expected_status]
+    assert result["score"] == expected_score
+    if expected_status == "UNKNOWN":
+        assert (result["scoreStatus"], result["evaluableWeight"], result["warnings"], result["failIssues"]) == (
+            "NO_DATA", 0, 0, 0,
+        )
+
+
 def test_half_up_is_display_only_and_recommendation_order_is_stable() -> None:
     transport_score = 100 * 2 / 3
     assert transport_score != 67
@@ -401,33 +425,87 @@ def test_all_sample_ws_messages_and_startup_snapshot_validate() -> None:
         }
         validator(WS_SCHEMA).validate(snapshot)
 
+    ambiguous_old_request = copy.deepcopy(request)
+    ambiguous_old_request["requestContext"] = {
+        "runtimeInstanceId": "backend-synthetic-a", "minimumHudRevision": 0,
+        "expectedCharacterId": None, "expectedTargetId": None, "expectedSelectionRevision": None,
+    }
+    with pytest.raises(ValidationError):
+        validator(WS_SCHEMA).validate(ambiguous_old_request)
+
+
+def test_schema_request_to_reducer_initial_context_discovery() -> None:
+    messages = load(FIXTURES / "ws-messages.synthetic.json")["messages"]
+    hello = next(message for message in messages if message["type"] == "hello.accepted")
+    request = next(
+        message for message in messages
+        if message["type"] == "hud.snapshot.request"
+        and message["requestContext"]["mode"] == "DISCOVER_ACTIVE_CONTEXT"
+    )
+    hud = load(FIXTURES / "hud.partial.synthetic.json")
+    snapshot = {
+        "protocolVersion": "d4planner-ws/v1", "messageId": "snapshot-discovery-bound", "type": "hud.snapshot",
+        "correlationId": request["messageId"], "backendGeneration": hello["backendGeneration"], "authoritative": True,
+        "subscriptionId": "sub-discovered", "subscriptionAfterRevision": hud["hudRevision"],
+        "requestContext": request["requestContext"], "hud": hud,
+    }
+    validator(WS_SCHEMA).validate(request)
+    validator(WS_SCHEMA).validate(snapshot)
+    state = {
+        "runtimeInstanceId": hello["runtimeInstanceId"], "generation": hello["backendGeneration"],
+        "hudRevision": -1, "contextState": None, "selectionRevision": None, "targetId": None,
+        "characterId": None, "subscriptionId": None, "pendingRequestId": None,
+    }
+    assert apply_ws_event(state, {
+        "kind": "REQUEST", "mode": request["requestContext"]["mode"], "requestId": request["messageId"],
+        "minimumRevision": request["requestContext"]["minimumHudRevision"],
+    }) == "REQUEST_RECORDED"
+    context = hud["context"]
+    assert apply_ws_event(state, {
+        "kind": "SNAPSHOT", "requestId": snapshot["correlationId"], "runtimeInstanceId": hud["backend"]["runtimeInstanceId"],
+        "generation": snapshot["backendGeneration"], "subscriptionId": snapshot["subscriptionId"], "revision": hud["hudRevision"],
+        "contextState": context["state"], "selectionRevision": context["target"]["selectionRevision"],
+        "targetId": context["target"]["targetId"], "characterId": context["character"]["characterId"],
+    }) == "APPLY_DISCOVERY_SNAPSHOT"
+    assert (state["characterId"], state["targetId"], state["hudRevision"]) == (
+        "character-synthetic-a", "synthetic-charge-bolt", 12,
+    )
+
 
 def apply_ws_event(state: dict[str, Any], event: dict[str, Any]) -> str:
     kind = event["kind"]
     if kind == "HELLO_ACCEPTED":
         state.update(runtimeInstanceId=event["runtimeInstanceId"], generation=event["generation"], hudRevision=-1,
-                     subscriptionId=None, pendingRequestId=None, targetId=None, characterId=None, selectionRevision=None)
+                     subscriptionId=None, pendingRequestId=None, pendingMode=None, contextState=None,
+                     targetId=None, characterId=None, selectionRevision=None)
         return "RESET_GENERATION"
     if kind == "REQUEST":
-        state.update(pendingRequestId=event["requestId"], minimumRevision=event["minimumRevision"],
-                     expectedTargetId=event["expectedTargetId"], expectedCharacterId=event["expectedCharacterId"],
-                     expectedSelectionRevision=event["expectedSelectionRevision"])
+        state.update(pendingRequestId=event["requestId"], pendingMode=event["mode"],
+                     minimumRevision=event["minimumRevision"], expectedContext=event.get("expectedContext"))
         return "REQUEST_RECORDED"
-    if event["runtimeInstanceId"] != state["runtimeInstanceId"] or event["generation"] != state["generation"]:
+    if event["runtimeInstanceId"] != state["runtimeInstanceId"]:
+        return "REJECT_RUNTIME_INSTANCE"
+    if event["generation"] != state["generation"]:
         return "REJECT_GENERATION"
     if kind == "SNAPSHOT":
         if event["requestId"] != state["pendingRequestId"]:
             return "REJECT_UNEXPECTED_SNAPSHOT"
-        if (event["targetId"], event["characterId"], event["selectionRevision"]) != (
-            state["expectedTargetId"], state["expectedCharacterId"], state["expectedSelectionRevision"]
-        ):
+        actual_context = {
+            "state": event["contextState"], "targetId": event["targetId"],
+            "characterId": event["characterId"], "selectionRevision": event["selectionRevision"],
+        }
+        if state["pendingMode"] == "RESYNC_KNOWN_CONTEXT" and actual_context != state["expectedContext"]:
             return "REJECT_CONTEXT"
         if event["revision"] < state["hudRevision"] or event["revision"] < state["minimumRevision"]:
             return "IGNORE_STALE_SNAPSHOT"
-        outcome = "CONFIRM_EQUAL_SNAPSHOT" if event["revision"] == state["hudRevision"] else "APPLY_SNAPSHOT"
+        if state["pendingMode"] == "DISCOVER_ACTIVE_CONTEXT":
+            outcome = "APPLY_DISCOVERY_SNAPSHOT"
+        else:
+            outcome = "CONFIRM_EQUAL_SNAPSHOT" if event["revision"] == state["hudRevision"] else "APPLY_SNAPSHOT"
         state.update(hudRevision=event["revision"], subscriptionId=event["subscriptionId"],
-                     targetId=event["targetId"], characterId=event["characterId"], selectionRevision=event["selectionRevision"],
-                     pendingRequestId=None)
+                     contextState=event["contextState"], targetId=event["targetId"],
+                     characterId=event["characterId"], selectionRevision=event["selectionRevision"],
+                     pendingRequestId=None, pendingMode=None, expectedContext=None)
         return outcome
     if event["subscriptionId"] != state["subscriptionId"]:
         return "REJECT_SUBSCRIPTION"
@@ -435,12 +513,12 @@ def apply_ws_event(state: dict[str, Any], event: dict[str, Any]) -> str:
         return "IGNORE_OLD_UPDATE"
     if event["previous"] != state["hudRevision"]:
         return "RESYNC_GAP"
-    if (event["targetId"], event["characterId"], event["selectionRevision"]) != (
-        state["targetId"], state["characterId"], state["selectionRevision"]
-    ):
-        return "REJECT_CONTEXT"
-    state["hudRevision"] = event["revision"]
-    return "APPLY_UPDATE"
+    context_changed = (event["contextState"], event["targetId"], event["characterId"], event["selectionRevision"]) != (
+        state["contextState"], state["targetId"], state["characterId"], state["selectionRevision"]
+    )
+    state.update(hudRevision=event["revision"], contextState=event["contextState"], targetId=event["targetId"],
+                 characterId=event["characterId"], selectionRevision=event["selectionRevision"])
+    return "APPLY_CONTEXT_UPDATE" if context_changed else "APPLY_UPDATE"
 
 
 def test_ws_authoritative_snapshot_resync_reconnect_and_anti_rollback_vectors() -> None:

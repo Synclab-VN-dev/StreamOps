@@ -59,6 +59,31 @@
       "id": "unit-mismatch-is-unknown",
       "criteria": [{ "criterionId": "c1", "core": true, "identity": "MATCH", "evidence": "COMPLETE", "parameters": [{ "parameterId": "roll", "index": 0, "comparator": "AT_LEAST", "expected": { "type": "NUMBER", "value": 8, "unit": "PERCENT" }, "actual": { "type": "NUMBER", "value": 9, "unit": "FLAT" } }], "expectedStatus": "UNKNOWN" }],
       "expected": { "scoreStatus": "NO_DATA", "score": null, "passedWeight": 0, "evaluableWeight": 0, "evaluatedCriteria": 0, "totalCriteria": 1, "failIssues": 0, "warnings": 0, "itemPass": false }
+    },
+    {
+      "id": "equal-number-vs-boolean-is-unknown",
+      "criteria": [{ "criterionId": "c1", "core": true, "identity": "MATCH", "evidence": "COMPLETE", "parameters": [{ "parameterId": "value", "index": 0, "comparator": "EQUAL", "expected": { "type": "NUMBER", "value": 1, "unit": "NONE" }, "actual": { "type": "BOOLEAN", "value": true, "unit": "NONE" } }], "expectedStatus": "UNKNOWN" }],
+      "expected": { "scoreStatus": "NO_DATA", "score": null, "passedWeight": 0, "evaluableWeight": 0, "evaluatedCriteria": 0, "totalCriteria": 1, "failIssues": 0, "warnings": 0, "itemPass": false }
+    },
+    {
+      "id": "equal-number-vs-text-is-unknown",
+      "criteria": [{ "criterionId": "c1", "core": true, "identity": "MATCH", "evidence": "COMPLETE", "parameters": [{ "parameterId": "value", "index": 0, "comparator": "EQUAL", "expected": { "type": "NUMBER", "value": 8, "unit": "NONE" }, "actual": { "type": "TEXT", "value": "8", "unit": "NONE" } }], "expectedStatus": "UNKNOWN" }],
+      "expected": { "scoreStatus": "NO_DATA", "score": null, "passedWeight": 0, "evaluableWeight": 0, "evaluatedCriteria": 0, "totalCriteria": 1, "failIssues": 0, "warnings": 0, "itemPass": false }
+    },
+    {
+      "id": "equal-unit-mismatch-is-unknown",
+      "criteria": [{ "criterionId": "c1", "core": true, "identity": "MATCH", "evidence": "COMPLETE", "parameters": [{ "parameterId": "value", "index": 0, "comparator": "EQUAL", "expected": { "type": "NUMBER", "value": 8, "unit": "PERCENT" }, "actual": { "type": "NUMBER", "value": 8, "unit": "FLAT" } }], "expectedStatus": "UNKNOWN" }],
+      "expected": { "scoreStatus": "NO_DATA", "score": null, "passedWeight": 0, "evaluableWeight": 0, "evaluatedCriteria": 0, "totalCriteria": 1, "failIssues": 0, "warnings": 0, "itemPass": false }
+    },
+    {
+      "id": "equal-same-type-unit-different-value-is-warn",
+      "criteria": [{ "criterionId": "c1", "core": true, "identity": "MATCH", "evidence": "COMPLETE", "parameters": [{ "parameterId": "value", "index": 0, "comparator": "EQUAL", "expected": { "type": "NUMBER", "value": 8, "unit": "PERCENT" }, "actual": { "type": "NUMBER", "value": 7, "unit": "PERCENT" } }], "expectedStatus": "WARN" }],
+      "expected": { "scoreStatus": "SCORED", "score": 0, "passedWeight": 0, "evaluableWeight": 3, "evaluatedCriteria": 1, "totalCriteria": 1, "failIssues": 0, "warnings": 1, "itemPass": false }
+    },
+    {
+      "id": "equal-same-type-unit-value-is-pass",
+      "criteria": [{ "criterionId": "c1", "core": true, "identity": "MATCH", "evidence": "COMPLETE", "parameters": [{ "parameterId": "value", "index": 0, "comparator": "EQUAL", "expected": { "type": "NUMBER", "value": 8, "unit": "PERCENT" }, "actual": { "type": "NUMBER", "value": 8, "unit": "PERCENT" } }], "expectedStatus": "PASS" }],
+      "expected": { "scoreStatus": "SCORED", "score": 100, "passedWeight": 3, "evaluableWeight": 3, "evaluatedCriteria": 1, "totalCriteria": 1, "failIssues": 0, "warnings": 0, "itemPass": true }
     }
   ]
 }

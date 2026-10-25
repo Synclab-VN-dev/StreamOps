@@ -1,5 +1,20 @@
 # Contract changelog
 
+## 1.0.0-candidate.3 — 2026-10-25
+
+- Split snapshot requests into `DISCOVER_ACTIVE_CONTEXT` for a newly connected
+  FE and `RESYNC_KNOWN_CONTEXT` for exact-context recovery. Discovery accepts
+  the BE's one active character/Target context while retaining correlation,
+  instance, generation, revision and internal binding validation.
+- Allowed contiguous committed updates to transition STARTUP/TARGET_ONLY to the
+  one active character and to invalidate a reidentified character's old result;
+  no character selector/profile management was added.
+- Made incompatible `EQUAL` type/unit pairs UNKNOWN and non-evaluable before
+  value comparison, including Python's `True == 1` edge case.
+- Applied D3: latency is ASAP with no deliberate delay/polling or invented SLA;
+  retain stage timestamps/P50/P95. HUD capture reuses StreamOps
+  `window_capture`; real-window verification remains S6/S7.
+
 ## 1.0.0-candidate.2 — 2026-10-25
 
 - Applied Owner-approved D1/D2, Pin always-on-top semantics and MagicPath
