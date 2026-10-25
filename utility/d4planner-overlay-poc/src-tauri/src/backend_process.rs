@@ -1,0 +1,614 @@
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::BTreeMap,
+    io::{BufRead, BufReader, Write},
+    path::PathBuf,
+    process::{Child, ChildStdin, Command, Stdio},
+    sync::{mpsc, Arc, Mutex},
+    thread,
+    time::Duration,
+};
+use wait_timeout::ChildExt;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ProcessState {
+    Stopped,
+    Starting,
+    Ready,
+    Stopping,
+    Exited,
+    Failed,
+}
+
+#[derive(Clone, Debug)]
+pub struct LaunchSpecification {
+    pub executable: PathBuf,
+    pub args: Vec<String>,
+    pub working_directory: PathBuf,
+    pub environment: BTreeMap<String, String>,
+    pub owner_instance_id: String,
+    pub child_instance_id: String,
+    pub generation: u64,
+    pub readiness_timeout: Duration,
+    pub graceful_stop_timeout: Duration,
+    pub kill_timeout: Duration,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadyInfo {
+    pub pid: u32,
+    pub child_instance_id: String,
+    pub generation: u64,
+    pub ws_endpoint: WsEndpoint,
+    pub health: BackendHealth,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct WsEndpoint {
+    pub host: String,
+    pub port: u16,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackendHealth {
+    pub durable_state: String,
+    pub target_repository: String,
+    pub target_json_count: u64,
+    pub ws_transport: String,
+    pub rule_kit_worker: String,
+}
+
+pub trait ProcessDriver: Send + Sync + 'static {
+    type Child: Clone + Send + Sync + 'static;
+    fn spawn(&self, specification: &LaunchSpecification) -> Result<Self::Child, String>;
+    fn await_ready(
+        &self,
+        child: &Self::Child,
+        specification: &LaunchSpecification,
+    ) -> Result<ReadyInfo, String>;
+    fn request_graceful_stop(
+        &self,
+        child: &Self::Child,
+        specification: &LaunchSpecification,
+    ) -> Result<(), String>;
+    fn wait_for_exit(&self, child: &Self::Child, timeout: Duration) -> Result<bool, String>;
+    fn terminate_owned_child(&self, child: &Self::Child) -> Result<(), String>;
+}
+
+#[derive(Clone)]
+pub struct StdChild {
+    process: Arc<Mutex<Child>>,
+    stdin: Arc<Mutex<ChildStdin>>,
+    ready: Arc<Mutex<mpsc::Receiver<Result<ReadyEnvelope, String>>>>,
+}
+
+#[derive(Clone, Default)]
+pub struct StdProcessDriver;
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReadyEnvelope {
+    event: String,
+    protocol: String,
+    contract_version: String,
+    owner_instance_id: String,
+    child_instance_id: String,
+    generation: u64,
+    pid: u32,
+    ws_endpoint: WsEndpoint,
+    health: BackendHealth,
+}
+
+impl ProcessDriver for StdProcessDriver {
+    type Child = StdChild;
+
+    fn spawn(&self, specification: &LaunchSpecification) -> Result<Self::Child, String> {
+        let mut command = Command::new(&specification.executable);
+        command
+            .args(&specification.args)
+            .current_dir(&specification.working_directory)
+            .env_clear()
+            .envs(&specification.environment)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit());
+        let mut process = command
+            .spawn()
+            .map_err(|error| format!("spawn failed: {error}"))?;
+        let stdin = process
+            .stdin
+            .take()
+            .ok_or("managed child stdin unavailable")?;
+        let stdout = process
+            .stdout
+            .take()
+            .ok_or("managed child stdout unavailable")?;
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let mut lines = BufReader::new(stdout).lines();
+            let line = lines.next();
+            let result = match line {
+                Some(Ok(line)) => serde_json::from_str::<ReadyEnvelope>(&line)
+                    .map_err(|error| format!("invalid READY handshake: {error}")),
+                Some(Err(error)) => Err(format!("READY channel failed: {error}")),
+                None => Err("child exited before READY".into()),
+            };
+            let _ = tx.send(result);
+            // Keep the pipe open and drained through EXIT; lifecycle output is
+            // never treated as an application data transport.
+            for line in lines {
+                if line.is_err() {
+                    break;
+                }
+            }
+        });
+        Ok(StdChild {
+            process: Arc::new(Mutex::new(process)),
+            stdin: Arc::new(Mutex::new(stdin)),
+            ready: Arc::new(Mutex::new(rx)),
+        })
+    }
+
+    fn await_ready(
+        &self,
+        child: &Self::Child,
+        specification: &LaunchSpecification,
+    ) -> Result<ReadyInfo, String> {
+        let envelope = child
+            .ready
+            .lock()
+            .map_err(|_| "READY receiver lock poisoned")?
+            .recv_timeout(specification.readiness_timeout)
+            .map_err(|error| format!("READY timeout/channel failure: {error}"))??;
+        if envelope.event != "READY"
+            || envelope.protocol != "d4planner-managed/v1"
+            || envelope.contract_version != "d4planner-r1-contract/1.0.0-candidate.5"
+            || envelope.owner_instance_id != specification.owner_instance_id
+            || envelope.child_instance_id != specification.child_instance_id
+            || envelope.generation != specification.generation
+        {
+            return Err("READY ownership/protocol/version mismatch".into());
+        }
+        let actual_pid = child
+            .process
+            .lock()
+            .map_err(|_| "child lock poisoned")?
+            .id();
+        if envelope.pid != actual_pid {
+            return Err("READY PID does not match owned child".into());
+        }
+        if !matches!(envelope.ws_endpoint.host.as_str(), "127.0.0.1" | "::1") {
+            return Err("READY endpoint is not loopback".into());
+        }
+        Ok(ReadyInfo {
+            pid: envelope.pid,
+            child_instance_id: envelope.child_instance_id,
+            generation: envelope.generation,
+            ws_endpoint: envelope.ws_endpoint,
+            health: envelope.health,
+        })
+    }
+
+    fn request_graceful_stop(
+        &self,
+        child: &Self::Child,
+        specification: &LaunchSpecification,
+    ) -> Result<(), String> {
+        let message = serde_json::json!({
+            "type": "shutdown",
+            "ownerInstanceId": specification.owner_instance_id,
+            "childInstanceId": specification.child_instance_id,
+            "generation": specification.generation,
+        });
+        let mut stdin = child
+            .stdin
+            .lock()
+            .map_err(|_| "child stdin lock poisoned")?;
+        writeln!(stdin, "{message}").map_err(|error| format!("shutdown write failed: {error}"))?;
+        stdin
+            .flush()
+            .map_err(|error| format!("shutdown flush failed: {error}"))
+    }
+
+    fn wait_for_exit(&self, child: &Self::Child, timeout: Duration) -> Result<bool, String> {
+        let mut process = child.process.lock().map_err(|_| "child lock poisoned")?;
+        process
+            .wait_timeout(timeout)
+            .map(|status| status.is_some())
+            .map_err(|error| format!("wait failed: {error}"))
+    }
+
+    fn terminate_owned_child(&self, child: &Self::Child) -> Result<(), String> {
+        child
+            .process
+            .lock()
+            .map_err(|_| "child lock poisoned")?
+            .kill()
+            .map_err(|error| format!("owned-child termination failed: {error}"))
+    }
+}
+
+struct Inner<C> {
+    state: ProcessState,
+    child: Option<C>,
+    ready: Option<ReadyInfo>,
+}
+
+pub struct BackendProcessWrapper<D: ProcessDriver> {
+    driver: Arc<D>,
+    operation: Mutex<()>,
+    specification: Mutex<LaunchSpecification>,
+    inner: Mutex<Inner<D::Child>>,
+}
+
+impl<D: ProcessDriver> BackendProcessWrapper<D> {
+    pub fn new(driver: Arc<D>, specification: LaunchSpecification) -> Self {
+        Self {
+            driver,
+            operation: Mutex::new(()),
+            specification: Mutex::new(specification),
+            inner: Mutex::new(Inner {
+                state: ProcessState::Stopped,
+                child: None,
+                ready: None,
+            }),
+        }
+    }
+
+    pub fn state(&self) -> ProcessState {
+        self.inner
+            .lock()
+            .map(|inner| inner.state)
+            .unwrap_or(ProcessState::Failed)
+    }
+
+    pub fn ready_info(&self) -> Option<ReadyInfo> {
+        self.inner.lock().ok().and_then(|inner| inner.ready.clone())
+    }
+
+    /// Serialized Template Method: preflight/specification is constructed by the
+    /// composition root; this method owns spawn -> READY -> cleanup on failure.
+    pub fn start(&self) -> Result<ReadyInfo, String> {
+        let _operation = self
+            .operation
+            .lock()
+            .map_err(|_| "operation lock poisoned")?;
+        self.start_operation()
+    }
+
+    fn start_operation(&self) -> Result<ReadyInfo, String> {
+        let specification = self
+            .specification
+            .lock()
+            .map_err(|_| "specification lock poisoned")?
+            .clone();
+        let mut inner = self.inner.lock().map_err(|_| "lifecycle lock poisoned")?;
+        if inner.state == ProcessState::Ready {
+            return inner
+                .ready
+                .clone()
+                .ok_or("READY state missing receipt".into());
+        }
+        if !matches!(
+            inner.state,
+            ProcessState::Stopped | ProcessState::Exited | ProcessState::Failed
+        ) {
+            return Err(format!("cannot start from {:?}", inner.state));
+        }
+        inner.state = ProcessState::Starting;
+        let child = match self.driver.spawn(&specification) {
+            Ok(child) => child,
+            Err(error) => {
+                inner.state = ProcessState::Failed;
+                return Err(error);
+            }
+        };
+        inner.child = Some(child.clone());
+        match self.driver.await_ready(&child, &specification) {
+            Ok(ready) => {
+                inner.ready = Some(ready.clone());
+                inner.state = ProcessState::Ready;
+                Ok(ready)
+            }
+            Err(error) => {
+                let _ = self.driver.request_graceful_stop(&child, &specification);
+                let exited = self
+                    .driver
+                    .wait_for_exit(&child, specification.graceful_stop_timeout)
+                    .unwrap_or(false);
+                if !exited {
+                    let _ = self.driver.terminate_owned_child(&child);
+                    let _ = self
+                        .driver
+                        .wait_for_exit(&child, specification.kill_timeout);
+                }
+                inner.child = None;
+                inner.ready = None;
+                inner.state = ProcessState::Failed;
+                Err(error)
+            }
+        }
+    }
+
+    pub fn stop(&self) -> Result<(), String> {
+        let _operation = self
+            .operation
+            .lock()
+            .map_err(|_| "operation lock poisoned")?;
+        self.stop_operation()
+    }
+
+    fn stop_operation(&self) -> Result<(), String> {
+        let specification = self
+            .specification
+            .lock()
+            .map_err(|_| "specification lock poisoned")?
+            .clone();
+        let mut inner = self.inner.lock().map_err(|_| "lifecycle lock poisoned")?;
+        if matches!(inner.state, ProcessState::Stopped | ProcessState::Exited) {
+            return Ok(());
+        }
+        let child = match inner.child.clone() {
+            Some(child) => child,
+            None => {
+                inner.state = ProcessState::Stopped;
+                return Ok(());
+            }
+        };
+        inner.state = ProcessState::Stopping;
+        let graceful_error = self
+            .driver
+            .request_graceful_stop(&child, &specification)
+            .err();
+        let exited = self
+            .driver
+            .wait_for_exit(&child, specification.graceful_stop_timeout)?;
+        if !exited {
+            self.driver.terminate_owned_child(&child)?;
+            if !self
+                .driver
+                .wait_for_exit(&child, specification.kill_timeout)?
+            {
+                inner.state = ProcessState::Failed;
+                return Err("owned child did not exit after termination".into());
+            }
+        }
+        inner.child = None;
+        inner.ready = None;
+        inner.state = ProcessState::Exited;
+        if let Some(error) = graceful_error {
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    pub fn restart_with(&self, next: LaunchSpecification) -> Result<ReadyInfo, String> {
+        let _operation = self
+            .operation
+            .lock()
+            .map_err(|_| "operation lock poisoned")?;
+        {
+            let current = self
+                .specification
+                .lock()
+                .map_err(|_| "specification lock poisoned")?;
+            if next.owner_instance_id != current.owner_instance_id
+                || next.child_instance_id == current.child_instance_id
+                || next.generation <= current.generation
+            {
+                return Err("restart requires same owner, new child and higher generation".into());
+            }
+        }
+        self.stop_operation()?;
+        {
+            let mut current = self
+                .specification
+                .lock()
+                .map_err(|_| "specification lock poisoned")?;
+            *current = next;
+        }
+        self.start_operation()
+    }
+
+    /// Presentation state is deliberately outside process lifecycle.
+    pub fn presentation_hidden(&self) -> ProcessState {
+        self.state()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+    #[derive(Clone)]
+    struct FakeChild;
+
+    struct FakeDriver {
+        spawns: AtomicUsize,
+        stops: AtomicUsize,
+        terminates: AtomicUsize,
+        terminated: AtomicBool,
+        ready: Mutex<Result<ReadyInfo, String>>,
+        spawn_error: Mutex<Option<String>>,
+        graceful_exit: bool,
+    }
+
+    impl FakeDriver {
+        fn healthy() -> Self {
+            Self {
+                spawns: AtomicUsize::new(0),
+                stops: AtomicUsize::new(0),
+                terminates: AtomicUsize::new(0),
+                terminated: AtomicBool::new(false),
+                ready: Mutex::new(Ok(ReadyInfo {
+                    pid: 42,
+                    child_instance_id: "child".into(),
+                    generation: 1,
+                    ws_endpoint: WsEndpoint {
+                        host: "127.0.0.1".into(),
+                        port: 0,
+                    },
+                    health: BackendHealth {
+                        durable_state: "READY".into(),
+                        target_repository: "READY".into(),
+                        target_json_count: 0,
+                        ws_transport: "PENDING_S5".into(),
+                        rule_kit_worker: "PENDING_S3".into(),
+                    },
+                })),
+                spawn_error: Mutex::new(None),
+                graceful_exit: true,
+            }
+        }
+    }
+
+    impl ProcessDriver for FakeDriver {
+        type Child = FakeChild;
+        fn spawn(&self, _: &LaunchSpecification) -> Result<Self::Child, String> {
+            self.spawns.fetch_add(1, Ordering::SeqCst);
+            if let Some(error) = self.spawn_error.lock().unwrap().clone() {
+                return Err(error);
+            }
+            Ok(FakeChild)
+        }
+        fn await_ready(
+            &self,
+            _: &Self::Child,
+            _: &LaunchSpecification,
+        ) -> Result<ReadyInfo, String> {
+            self.ready.lock().unwrap().clone()
+        }
+        fn request_graceful_stop(
+            &self,
+            _: &Self::Child,
+            _: &LaunchSpecification,
+        ) -> Result<(), String> {
+            self.stops.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+        fn wait_for_exit(&self, _: &Self::Child, _: Duration) -> Result<bool, String> {
+            Ok(self.graceful_exit || self.terminated.load(Ordering::SeqCst))
+        }
+        fn terminate_owned_child(&self, _: &Self::Child) -> Result<(), String> {
+            self.terminates.fetch_add(1, Ordering::SeqCst);
+            self.terminated.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    fn specification() -> LaunchSpecification {
+        LaunchSpecification {
+            executable: "python".into(),
+            args: vec![],
+            working_directory: ".".into(),
+            environment: BTreeMap::new(),
+            owner_instance_id: "owner".into(),
+            child_instance_id: "child".into(),
+            generation: 1,
+            readiness_timeout: Duration::from_millis(10),
+            graceful_stop_timeout: Duration::from_millis(10),
+            kill_timeout: Duration::from_millis(10),
+        }
+    }
+
+    #[test]
+    fn double_start_and_hide_keep_one_owned_child() {
+        let driver = Arc::new(FakeDriver::healthy());
+        let wrapper = BackendProcessWrapper::new(driver.clone(), specification());
+        assert_eq!(wrapper.start().unwrap(), wrapper.start().unwrap());
+        assert_eq!(driver.spawns.load(Ordering::SeqCst), 1);
+        assert_eq!(wrapper.presentation_hidden(), ProcessState::Ready);
+        wrapper.stop().unwrap();
+        wrapper.stop().unwrap();
+        assert_eq!(driver.stops.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn concurrent_start_calls_spawn_exactly_one_child() {
+        let driver = Arc::new(FakeDriver::healthy());
+        let wrapper = Arc::new(BackendProcessWrapper::new(driver.clone(), specification()));
+        let gate = Arc::new(std::sync::Barrier::new(9));
+        let callers: Vec<_> = (0..8)
+            .map(|_| {
+                let wrapper = wrapper.clone();
+                let gate = gate.clone();
+                std::thread::spawn(move || {
+                    gate.wait();
+                    wrapper.start()
+                })
+            })
+            .collect();
+        gate.wait();
+        for caller in callers {
+            assert_eq!(caller.join().unwrap().unwrap().pid, 42);
+        }
+        assert_eq!(driver.spawns.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn spawn_failure_is_fail_closed_and_does_not_claim_ready() {
+        let driver = Arc::new(FakeDriver::healthy());
+        *driver.spawn_error.lock().unwrap() = Some("missing executable".into());
+        let wrapper = BackendProcessWrapper::new(driver.clone(), specification());
+        assert_eq!(wrapper.start().unwrap_err(), "missing executable");
+        assert_eq!(wrapper.state(), ProcessState::Failed);
+        assert_eq!(driver.stops.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn readiness_failure_cleans_up_child() {
+        let driver = Arc::new(FakeDriver::healthy());
+        *driver.ready.lock().unwrap() = Err("version mismatch".into());
+        let wrapper = BackendProcessWrapper::new(driver.clone(), specification());
+        assert_eq!(wrapper.start().unwrap_err(), "version mismatch");
+        assert_eq!(wrapper.state(), ProcessState::Failed);
+        assert_eq!(driver.stops.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn bounded_stop_terminates_only_owned_handle_after_timeout() {
+        let driver = Arc::new(FakeDriver {
+            graceful_exit: false,
+            ..FakeDriver::healthy()
+        });
+        let wrapper = BackendProcessWrapper::new(driver.clone(), specification());
+        wrapper.start().unwrap();
+        wrapper.stop().unwrap();
+        assert_eq!(driver.terminates.load(Ordering::SeqCst), 1);
+        assert_eq!(wrapper.state(), ProcessState::Exited);
+    }
+
+    #[test]
+    fn restart_requires_new_child_and_monotonic_generation() {
+        let driver = Arc::new(FakeDriver::healthy());
+        let wrapper = BackendProcessWrapper::new(driver.clone(), specification());
+        wrapper.start().unwrap();
+        assert!(wrapper.restart_with(specification()).is_err());
+
+        let mut next = specification();
+        next.child_instance_id = "child-2".into();
+        next.generation = 2;
+        *driver.ready.lock().unwrap() = Ok(ReadyInfo {
+            pid: 43,
+            child_instance_id: "child-2".into(),
+            generation: 2,
+            ws_endpoint: WsEndpoint {
+                host: "127.0.0.1".into(),
+                port: 0,
+            },
+            health: BackendHealth {
+                durable_state: "READY".into(),
+                target_repository: "READY".into(),
+                target_json_count: 0,
+                ws_transport: "PENDING_S5".into(),
+                rule_kit_worker: "PENDING_S3".into(),
+            },
+        });
+        assert_eq!(wrapper.restart_with(next).unwrap().generation, 2);
+        assert_eq!(driver.spawns.load(Ordering::SeqCst), 2);
+    }
+}

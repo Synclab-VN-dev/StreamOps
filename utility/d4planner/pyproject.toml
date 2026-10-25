@@ -14,6 +14,7 @@ dev = ["pytest>=9.1.1", "jsonschema>=4.23,<5"]
 
 [project.scripts]
 d4planner = "d4planner.cli:main"
+d4planner-managed-backend = "d4planner.managed_backend:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
