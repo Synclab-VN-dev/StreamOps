@@ -44,6 +44,19 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   }, [snapshot, selectedSlot]);
 
   useEffect(() => {
+    invoke("report_webview_diagnostic", {
+      phase: "HUD_STATE",
+      detail: JSON.stringify({
+        connection: hud.connection,
+        error: hud.error,
+        hudRevision: snapshot?.hudRevision ?? null,
+        contextState: snapshot?.context.state ?? null,
+        scoreStatus: snapshot?.score.status ?? null,
+      }),
+    }).catch(() => undefined);
+  }, [hud.connection, hud.error, snapshot]);
+
+  useEffect(() => {
     if (hud.connection !== "CONNECTED" || snapshot?.context.state !== "BOUND"
       || snapshot.health.scoreFreshness !== "CURRENT" || snapshot.score.status !== "SCORED") return;
     const modelUpdatedAt = new Date().toISOString();
