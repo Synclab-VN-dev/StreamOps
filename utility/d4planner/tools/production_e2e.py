@@ -10,6 +10,7 @@ from pathlib import Path
 import secrets
 import shutil
 import sqlite3
+import statistics
 import subprocess
 import sys
 import time
@@ -295,10 +296,15 @@ def run_owner(args: argparse.Namespace) -> dict:
             )
         value = json.loads(native_report.read_text(encoding="utf-8"))
         ready = value.get("ready", {})
+        restarted = value.get("restartedReady", {})
         if (value.get("ok") is not True or ready.get("pid") is None
             or ready.get("wsEndpoint", {}).get("port", 0) == 0
+            or restarted.get("pid") is None
+            or restarted.get("pid") == ready.get("pid")
+            or restarted.get("generation") != ready.get("generation", 0) + 1
+            or restarted.get("wsEndpoint", {}).get("port", 0) == 0
             or value.get("finalState") != "EXITED"):
-            raise E2EFailure("native owner report did not prove READY and cleanup")
+            raise E2EFailure("native owner report did not prove READY, restart, and cleanup")
         value.update({"classification":"NATIVE_FE_OWNS_REAL_BACKEND",
                       "nativeExitCode":completed.returncode,
                       "durationSeconds":round(time.perf_counter()-started, 3)})
@@ -379,9 +385,83 @@ def run_rulekit(args: argparse.Namespace) -> dict:
     return asyncio.run(scenario())
 
 
+def run_crash_recovery(args: argparse.Namespace) -> dict:
+    install = args.install_root.resolve(); data = args.data_root.resolve()
+    _, evidence, _ = _prepare(install, data)
+    bootstrap = data / "crash-bootstrap.json"
+    bootstrap.write_text("{}", encoding="utf-8")
+    previous = dict(os.environ)
+    os.environ.update(_runtime_env(install, bootstrap, evidence))
+    async def scenario() -> dict:
+        service = RuleKitRuntimeService.from_environment()
+        started = time.perf_counter()
+        first_pid = second_pid = None
+        try:
+            first = await service.start()
+            child = service.wrapper._child
+            if child is None:
+                raise E2EFailure("owned Rule Kit child is unavailable")
+            first_pid = child.pid
+            child.process.kill()
+            await asyncio.wait_for(child.process.wait(), 5)
+            for _ in range(50):
+                failed = await service.wrapper.inspect_health()
+                if not failed["ready"]:
+                    break
+                await asyncio.sleep(.02)
+            else:
+                raise E2EFailure("crashed worker remained READY")
+            service.client = await service.wrapper.restart()
+            providers = await service.client.list_providers()
+            recovered = await service.wrapper.inspect_health()
+            active = service.wrapper._child
+            second_pid = active.pid if active is not None else None
+            if (not recovered["ready"] or recovered["workerGeneration"] != first["workerGeneration"] + 1
+                    or second_pid in (None, first_pid) or not providers):
+                raise E2EFailure("bounded worker restart did not establish a new healthy generation")
+            return {"schemaVersion":"d4planner-crash-recovery-e2e/v1", "ok":True,
+                    "classification":"REAL_WORKER_CRASH_RECOVERY", "firstPid":first_pid,
+                    "restartedPid":second_pid, "firstGeneration":first["workerGeneration"],
+                    "restartedGeneration":recovered["workerGeneration"],
+                    "restartBudget":service.wrapper.specification.max_restarts,
+                    "durationSeconds":round(time.perf_counter()-started, 3)}
+        finally:
+            await service.stop()
+            await asyncio.sleep(.25)
+            remaining = []
+            for pid in (first_pid, second_pid):
+                if pid is not None:
+                    remaining.extend(_windows_descendants(pid))
+            if remaining:
+                raise E2EFailure("owned worker descendants remained after crash cleanup")
+    try:
+        return asyncio.run(scenario())
+    finally:
+        os.environ.clear(); os.environ.update(previous)
+        bootstrap.unlink(missing_ok=True)
+
+
+def run_performance(args: argparse.Namespace) -> dict:
+    samples = []
+    for index in range(5):
+        sample_args = argparse.Namespace(
+            install_root=args.install_root,
+            data_root=args.data_root / f"sample-{index + 1}",
+            output=args.output,
+        )
+        samples.append(run_backend(sample_args)["durationSeconds"])
+    ordered = sorted(samples)
+    return {"schemaVersion":"d4planner-latency-evidence/v1", "ok":True,
+            "classification":"REAL_PROCESS_END_TO_END_LATENCY",
+            "sampleCount":len(samples), "samplesSeconds":samples,
+            "p50Seconds":statistics.median(samples),
+            "p95Seconds":statistics.quantiles(ordered, n=100, method="inclusive")[94],
+            "sla":"NOT_DEFINED_AS_APPROVED"}
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(); sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("backend", "native", "owner", "rulekit"):
+    for name in ("backend", "native", "owner", "rulekit", "crash-recovery", "performance"):
         command = sub.add_parser(name)
         command.add_argument("--install-root", type=Path, required=True)
         command.add_argument("--data-root", type=Path, required=True)
@@ -395,6 +475,8 @@ def main(argv=None) -> int:
         result = (run_backend(args) if args.command == "backend" else
                   run_native(args) if args.command == "native" else
                   run_owner(args) if args.command == "owner" else
+                  run_crash_recovery(args) if args.command == "crash-recovery" else
+                  run_performance(args) if args.command == "performance" else
                   run_rulekit(args) if args.command == "rulekit" else run_package_cycle(args))
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
