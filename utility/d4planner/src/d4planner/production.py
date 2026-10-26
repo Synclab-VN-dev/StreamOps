@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+from time import perf_counter_ns
 from typing import Any
 
 from .character.repository import EquipmentRepository
@@ -231,6 +232,10 @@ class ProductionBackendRuntime:
         self.server: D4PlannerWebSocketServer | None = None
         self.capture_source: RepositoryEquipmentEventSource | None = None
         self._ingest_lock = asyncio.Lock()
+        trace = os.environ.get("D4PLANNER_LATENCY_TRACE")
+        self.latency_trace = Path(trace) if trace else None
+        if self.latency_trace is not None and not self.latency_trace.is_absolute():
+            raise ValueError("latency trace path must be absolute")
 
     async def start(self) -> dict[str, Any]:
         if self.rulekit is None:
@@ -307,11 +312,29 @@ class ProductionBackendRuntime:
         if self.rulekit is not None:
             await self.rulekit.stop()
 
-    async def _publish_committed(self, hud: dict[str, Any]) -> None:
+    async def _publish_committed(self, hud: dict[str, Any]) -> int:
         if self.hub is None:
             raise RuntimeError("HUD hub is not started")
         await self.hub.publish_after_commit(hud)
         self.store.mark_published(hud["hudRevision"])
+        return perf_counter_ns()
+
+    def _record_latency(self, hud: dict[str, Any], timing: dict[str, int], published_ns: int) -> None:
+        if self.latency_trace is None:
+            return
+        capture_ns = timing["captureReceivedNs"]
+        record = {
+            "schemaVersion": "d4planner-stage-latency/v1",
+            "hudRevision": hud["hudRevision"],
+            "captureToAssessmentNs": timing["assessmentCompletedNs"] - capture_ns,
+            "assessmentToCommitNs": timing["commitCompletedNs"] - timing["assessmentCompletedNs"],
+            "commitToWsDeliveryNs": published_ns - timing["commitCompletedNs"],
+            "captureReceivedAt": timing["captureReceivedAt"],
+            "wsPublishedAt": _now(),
+        }
+        self.latency_trace.parent.mkdir(parents=True, exist_ok=True)
+        with self.latency_trace.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(record, separators=(",", ":")) + "\n")
 
     async def activate(self, target: ActivatedTarget) -> dict[str, Any]:
         if self.current is None:
@@ -334,6 +357,8 @@ class ProductionBackendRuntime:
         return await self.ingest_snapshot(current)
 
     async def ingest_snapshot(self, current: EquipmentSnapshot) -> dict[str, Any]:
+        capture_received_ns = perf_counter_ns()
+        capture_received_at = _now()
         async with self._ingest_lock:
             if self.current is not None and current.current_revision <= self.current.current_revision:
                 raise ValueError("STALE_CURRENT_REVISION")
@@ -347,11 +372,15 @@ class ProductionBackendRuntime:
                 )
             else:
                 self.store.set_binding(_binding(self.runtime_instance_id, current, target))
-                hud = self.coordinator.assess_commit(
+                hud, timing = self.coordinator.assess_commit_timed(
                     runtime_instance_id=self.runtime_instance_id, current=current,
                     target=target, produced_at=current.captured_at,
                 )
-            await self._publish_committed(hud)
+                timing.update({"captureReceivedNs": capture_received_ns,
+                               "captureReceivedAt": capture_received_at})
+            published_ns = await self._publish_committed(hud)
+            if target is not None:
+                self._record_latency(hud, timing, published_ns)
             return hud
 
     async def handle_control(self, command: dict[str, Any]) -> dict[str, Any] | None:
