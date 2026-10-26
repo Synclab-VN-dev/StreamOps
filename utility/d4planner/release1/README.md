@@ -41,10 +41,16 @@ python tools/release1_delivery.py rollback --app-dir <install>/D4Planner \
 
 Run the acceptance matrix in one shot, or choose a targeted subset. A resume
 report reuses only prior PASS cases; it never upgrades BLOCKED/FAIL/NOT_RUN.
+Automated runtime/visual/performance cases execute only commands declared in a
+reviewed `d4planner-e2e-executors/v1` manifest. Each command runs without a
+shell, inside the isolated staging tree, with a bounded timeout and a private
+per-case log. A missing executor remains `PENDING_DEPENDENCY`; a nonzero exit
+is `PRODUCT_FAILURE`, and a timeout is `HARNESS_FAILURE`.
 
 ```text
 pwsh -NoProfile -File utility/d4planner/release1/d4planner-r1-uat.ps1 \
-  -Package <private-package> -Output <private-evidence>/report.json
+  -Package <private-package> -Output <private-evidence>/report.json \
+  -ExecutorManifest <reviewed-staging>/executors.json
 
 # targeted resume is not a full pass
 pwsh -NoProfile -File utility/d4planner/release1/d4planner-r1-uat.ps1 \
