@@ -66,7 +66,9 @@ def _evidence(revision: int = 1) -> dict:
     }
 
 
-def test_production_runtime_real_worker_target_capture_sqlite_and_authenticated_ws(tmp_path):
+def test_production_runtime_real_worker_target_capture_sqlite_and_authenticated_ws(tmp_path, monkeypatch):
+    trace = tmp_path / "latency.ndjson"
+    monkeypatch.setenv("D4PLANNER_LATENCY_TRACE", str(trace.resolve()))
     async def scenario():
         targets = tmp_path / "targets"; targets.mkdir()
         shutil.copy2(TARGET, targets / "target.json")
@@ -117,6 +119,11 @@ def test_production_runtime_real_worker_target_capture_sqlite_and_authenticated_
                 }
                 assert runtime.store.latest_authoritative()["context"]["binding"]["targetId"] == target["targetId"]
                 assert (tmp_path / "data/hud.sqlite3").is_file()
+                latency = json.loads(trace.read_text().splitlines()[-1])
+                assert latency["hudRevision"] == committed["hudRevision"]
+                assert latency["captureToAssessmentNs"] >= 0
+                assert latency["assessmentToCommitNs"] >= 0
+                assert latency["commitToWsDeliveryNs"] >= 0
                 try:
                     await runtime.ingest(_evidence())
                 except ValueError as exc:
