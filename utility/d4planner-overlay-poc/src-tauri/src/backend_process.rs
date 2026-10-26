@@ -75,6 +75,10 @@ pub trait ProcessDriver: Send + Sync + 'static {
         specification: &LaunchSpecification,
     ) -> Result<(), String>;
     fn wait_for_exit(&self, child: &Self::Child, timeout: Duration) -> Result<bool, String>;
+    /// Wait for an exit notification without claiming or terminating the child.
+    /// Implementations must return after `timeout` so lifecycle invalidation can
+    /// notice an explicit stop/restart and retire the watcher.
+    fn observe_exit(&self, child: &Self::Child, timeout: Duration) -> Result<bool, String>;
     fn terminate_owned_child(&self, child: &Self::Child) -> Result<(), String>;
 }
 
@@ -221,6 +225,10 @@ impl ProcessDriver for StdProcessDriver {
             .map_err(|error| format!("wait failed: {error}"))
     }
 
+    fn observe_exit(&self, child: &Self::Child, timeout: Duration) -> Result<bool, String> {
+        self.wait_for_exit(child, timeout)
+    }
+
     fn terminate_owned_child(&self, child: &Self::Child) -> Result<(), String> {
         child
             .process
@@ -241,7 +249,7 @@ pub struct BackendProcessWrapper<D: ProcessDriver> {
     driver: Arc<D>,
     operation: Mutex<()>,
     specification: Mutex<LaunchSpecification>,
-    inner: Mutex<Inner<D::Child>>,
+    inner: Arc<Mutex<Inner<D::Child>>>,
 }
 
 impl<D: ProcessDriver> BackendProcessWrapper<D> {
@@ -250,11 +258,11 @@ impl<D: ProcessDriver> BackendProcessWrapper<D> {
             driver,
             operation: Mutex::new(()),
             specification: Mutex::new(specification),
-            inner: Mutex::new(Inner {
+            inner: Arc::new(Mutex::new(Inner {
                 state: ProcessState::Stopped,
                 child: None,
                 ready: None,
-            }),
+            })),
         }
     }
 
@@ -311,6 +319,8 @@ impl<D: ProcessDriver> BackendProcessWrapper<D> {
             Ok(ready) => {
                 inner.ready = Some(ready.clone());
                 inner.state = ProcessState::Ready;
+                drop(inner);
+                self.spawn_exit_watcher(child, ready.generation);
                 Ok(ready)
             }
             Err(error) => {
@@ -331,6 +341,36 @@ impl<D: ProcessDriver> BackendProcessWrapper<D> {
                 Err(error)
             }
         }
+    }
+
+    fn spawn_exit_watcher(&self, child: D::Child, generation: u64) {
+        let driver = self.driver.clone();
+        let inner = self.inner.clone();
+        thread::spawn(move || loop {
+            let observed = driver.observe_exit(&child, Duration::from_millis(50));
+            let mut lifecycle = match inner.lock() {
+                Ok(lifecycle) => lifecycle,
+                Err(_) => return,
+            };
+            let still_owned_ready = lifecycle.state == ProcessState::Ready
+                && lifecycle
+                    .ready
+                    .as_ref()
+                    .map(|ready| ready.generation == generation)
+                    .unwrap_or(false);
+            if !still_owned_ready {
+                return;
+            }
+            match observed {
+                Ok(false) => continue,
+                Ok(true) | Err(_) => {
+                    lifecycle.child = None;
+                    lifecycle.ready = None;
+                    lifecycle.state = ProcessState::Failed;
+                    return;
+                }
+            }
+        });
     }
 
     pub fn stop(&self) -> Result<(), String> {
@@ -432,6 +472,7 @@ mod tests {
         stops: AtomicUsize,
         terminates: AtomicUsize,
         terminated: AtomicBool,
+        unexpected_exit: AtomicBool,
         ready: Mutex<Result<ReadyInfo, String>>,
         spawn_error: Mutex<Option<String>>,
         graceful_exit: bool,
@@ -444,6 +485,7 @@ mod tests {
                 stops: AtomicUsize::new(0),
                 terminates: AtomicUsize::new(0),
                 terminated: AtomicBool::new(false),
+                unexpected_exit: AtomicBool::new(false),
                 ready: Mutex::new(Ok(ReadyInfo {
                     pid: 42,
                     child_instance_id: "child".into(),
@@ -492,6 +534,14 @@ mod tests {
         }
         fn wait_for_exit(&self, _: &Self::Child, _: Duration) -> Result<bool, String> {
             Ok(self.graceful_exit || self.terminated.load(Ordering::SeqCst))
+        }
+        fn observe_exit(&self, _: &Self::Child, _: Duration) -> Result<bool, String> {
+            if self.unexpected_exit.load(Ordering::SeqCst) {
+                Ok(true)
+            } else {
+                std::thread::sleep(Duration::from_millis(1));
+                Ok(false)
+            }
         }
         fn terminate_owned_child(&self, _: &Self::Child) -> Result<(), String> {
             self.terminates.fetch_add(1, Ordering::SeqCst);
@@ -610,5 +660,43 @@ mod tests {
         });
         assert_eq!(wrapper.restart_with(next).unwrap().generation, 2);
         assert_eq!(driver.spawns.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn unexpected_exit_invalidates_ready_and_restart_recovers_new_generation() {
+        let driver = Arc::new(FakeDriver::healthy());
+        let wrapper = BackendProcessWrapper::new(driver.clone(), specification());
+        wrapper.start().unwrap();
+        assert_eq!(wrapper.state(), ProcessState::Ready);
+
+        driver.unexpected_exit.store(true, Ordering::SeqCst);
+        for _ in 0..100 {
+            if wrapper.state() == ProcessState::Failed {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(wrapper.state(), ProcessState::Failed);
+        assert!(wrapper.ready_info().is_none());
+
+        driver.unexpected_exit.store(false, Ordering::SeqCst);
+        let mut next = specification();
+        next.child_instance_id = "child-2".into();
+        next.generation = 2;
+        *driver.ready.lock().unwrap() = Ok(ReadyInfo {
+            pid: 43,
+            child_instance_id: "child-2".into(),
+            generation: 2,
+            ws_endpoint: WsEndpoint { host: "127.0.0.1".into(), port: 0 },
+            health: BackendHealth {
+                durable_state: "READY".into(),
+                target_repository: "READY".into(),
+                target_json_count: 0,
+                ws_transport: "PENDING_S5".into(),
+                rule_kit_worker: "PENDING_S3".into(),
+            },
+        });
+        assert_eq!(wrapper.restart_with(next).unwrap().generation, 2);
+        assert_eq!(wrapper.state(), ProcessState::Ready);
     }
 }
