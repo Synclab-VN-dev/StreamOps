@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
+import sys
 import zipfile
 
 import pytest
@@ -80,6 +82,37 @@ def test_hash_tamper_and_undeclared_archive_member_are_rejected(tmp_path):
         delivery.verify_package(tampered)
 
 
+@pytest.mark.parametrize("member", [
+    r"..\escape.exe",
+    r"app\..\escape.exe",
+    r"C:\escape.exe",
+    "C:/escape.exe",
+    r"\\server\share\escape.exe",
+    "//server/share/escape.exe",
+    "app/file.exe:stream",
+    "app//file.exe",
+])
+def test_windows_semantic_archive_paths_fail_closed(tmp_path, member):
+    package = tmp_path / "unsafe.zip"
+    with zipfile.ZipFile(package, "w") as archive:
+        archive.writestr("release-manifest.json", json.dumps({
+            "schemaVersion": delivery.MANIFEST_VERSION,
+            "files": [{"path": member, "sha256": "0" * 64, "bytes": 0}],
+        }))
+        archive.writestr(member, b"")
+    with pytest.raises(delivery.DeliveryError, match="UNSAFE_PATH"):
+        delivery.verify_package(package)
+
+
+@pytest.mark.parametrize("path", [r"..\escape.exe", r"C:\escape.exe", "C:/escape.exe", r"\\server\share\x"])
+def test_windows_semantic_plan_paths_fail_closed(tmp_path, path):
+    bad = json.loads(PLAN.read_text())
+    bad["artifacts"][0]["path"] = path
+    bad_plan = tmp_path / "bad.json"; bad_plan.write_text(json.dumps(bad))
+    with pytest.raises(delivery.DeliveryError, match="UNSAFE_PATH"):
+        delivery.build_package(bad_plan, stage(tmp_path), tmp_path / "bad.zip")
+
+
 def test_upgrade_preserves_targets_and_state(tmp_path):
     package = tmp_path / "package.zip"
     delivery.build_package(PLAN, stage(tmp_path), package)
@@ -123,12 +156,13 @@ def test_runner_distinguishes_platform_dependency_manual_subset_and_resume(tmp_p
         )
 
     windows = delivery.run_acceptance(
-        ACCEPTANCE, package, {"S7-PRE-01"}, None, platform="win32"
+        ACCEPTANCE, package, {"S7-PRE-01"}, None, platform="win32",
+        staging_root=tmp_path.resolve(), evidence_dir=tmp_path.resolve(),
+        expected_package_sha256=delivery.sha256_file(package),
     )
     windows_by_id = {case["id"]: case for case in windows["cases"]}
-    assert windows_by_id["S7-PRE-01"] == {
-        "id": "S7-PRE-01", "status": "PASS", "classification": "AUTOMATED"
-    }
+    assert windows_by_id["S7-PRE-01"]["status"] == "PASS"
+    assert windows_by_id["S7-PRE-01"]["classification"] == "AUTOMATED"
 
 
 def test_runner_invalid_package_is_product_failure_and_missing_is_blocked(tmp_path):
@@ -137,3 +171,43 @@ def test_runner_invalid_package_is_product_failure_and_missing_is_blocked(tmp_pa
     assert failed["cases"][0]["status"] == "FAIL"
     blocked = delivery.run_acceptance(ACCEPTANCE, None, {"S7-PKG-01"}, None)
     assert blocked["cases"][0]["status"] == "BLOCKED"
+
+
+def test_windows_preflight_requires_real_isolated_inputs_and_exact_package_hash(tmp_path):
+    package = tmp_path / "package.zip"
+    delivery.build_package(PLAN, stage(tmp_path), package)
+    blocked = delivery.run_acceptance(
+        ACCEPTANCE, package, {"S7-PRE-01"}, None, platform="win32"
+    )
+    case = {item["id"]: item for item in blocked["cases"]}["S7-PRE-01"]
+    assert case["status"] == "BLOCKED"
+    assert set(case["actual"]) >= {
+        "EXPECTED_PACKAGE_SHA256_REQUIRED", "ISOLATED_STAGING_ROOT_REQUIRED",
+        "EVIDENCE_DIRECTORY_REQUIRED",
+    }
+    mismatch = delivery.run_acceptance(
+        ACCEPTANCE, package, {"S7-PRE-01"}, None, platform="win32",
+        staging_root=tmp_path.resolve(), evidence_dir=tmp_path.resolve(),
+        expected_package_sha256="0" * 64,
+    )
+    assert "PACKAGE_SHA256_MISMATCH" in {item["id"]: item for item in mismatch["cases"]}["S7-PRE-01"]["actual"]
+
+
+def test_cli_writes_report_but_returns_nonzero_for_fail_or_blocked(tmp_path):
+    package = tmp_path / "package.zip"
+    delivery.build_package(PLAN, stage(tmp_path), package)
+    output = tmp_path / "blocked.json"
+    completed = subprocess.run([
+        sys.executable, str(TOOL), "run", "--mode", "Preflight",
+        "--plan", str(ACCEPTANCE), "--package", str(package), "--output", str(output),
+    ], check=False, capture_output=True, text=True)
+    assert completed.returncode == 3
+    assert output.is_file()
+    assert json.loads(output.read_text())["outcome"] == "BLOCKED"
+
+    failed = tmp_path / "failed.json"
+    failed.write_text(json.dumps({"cases": [{"id": "x", "status": "FAIL"}]}))
+    report = subprocess.run([
+        sys.executable, str(TOOL), "report", "--input", str(failed),
+    ], check=False, capture_output=True, text=True)
+    assert report.returncode == 1
