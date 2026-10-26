@@ -149,10 +149,10 @@ def test_runner_distinguishes_platform_dependency_manual_subset_and_resume(tmp_p
     by_id = {case["id"]: case for case in report["cases"]}
     assert by_id["S7-PKG-01"]["status"] == "PASS"
     assert by_id["S7-PRE-01"]["status"] == "BLOCKED"
-    assert by_id["S7-E2E-01"]["status"] == "BLOCKED"
-    assert by_id["S7-E2E-01"]["classification"] == "PENDING_DEPENDENCY"
-    assert by_id["S7-E2E-01"]["exitCode"] == 3
-    assert by_id["S7-E2E-01"]["expected"]
+    assert by_id["E2E-01"]["status"] == "BLOCKED"
+    assert by_id["E2E-01"]["classification"] == "PENDING_DEPENDENCY"
+    assert by_id["E2E-01"]["exitCode"] == 3
+    assert by_id["E2E-01"]["expected"]
     assert by_id["MAN-01"]["status"] == "NOT_RUN"
     prior = tmp_path / "prior.json"; prior.write_text(json.dumps(report))
     resumed = delivery.run_acceptance(
@@ -242,3 +242,33 @@ def test_runner_rejects_missing_or_unpinned_component_shas(tmp_path):
     invalid.write_text(json.dumps(value))
     with pytest.raises(delivery.DeliveryError, match="INVALID_COMPONENT_SHA:S5"):
         delivery.run_acceptance(ACCEPTANCE, package, set(), None, component_manifest=invalid)
+
+
+def test_reviewed_executor_runs_selected_case_and_records_failure_evidence(tmp_path):
+    package = tmp_path / "package.zip"
+    delivery.build_package(PLAN, stage(tmp_path), package)
+    staging = tmp_path / "staging"; staging.mkdir()
+    evidence = tmp_path / "evidence"; evidence.mkdir()
+    passing = staging / "pass.py"; passing.write_text("print('real executor reached')\n")
+    failing = staging / "fail.py"; failing.write_text("raise SystemExit(7)\n")
+    executors = tmp_path / "executors.json"
+    executors.write_text(json.dumps({
+        "schemaVersion": delivery.EXECUTOR_MANIFEST_VERSION,
+        "cases": {
+            "E2E-01": {"command": [sys.executable, "pass.py"], "workingDirectory": ".", "timeoutSeconds": 10},
+            "E2E-02": {"command": [sys.executable, "fail.py"], "workingDirectory": ".", "timeoutSeconds": 10},
+        },
+    }))
+    report = delivery.run_acceptance(
+        ACCEPTANCE, package, {"E2E-01", "E2E-02"}, None,
+        staging_root=staging.resolve(), evidence_dir=evidence.resolve(),
+        component_manifest=component_manifest(tmp_path), executor_manifest=executors,
+    )
+    by_id = {case["id"]: case for case in report["cases"]}
+    assert by_id["E2E-01"]["status"] == "PASS"
+    assert by_id["E2E-01"]["processExitCode"] == 0
+    assert Path(by_id["E2E-01"]["evidence"]).read_text() == "real executor reached\n"
+    assert by_id["E2E-02"]["status"] == "FAIL"
+    assert by_id["E2E-02"]["classification"] == "PRODUCT_FAILURE"
+    assert by_id["E2E-02"]["processExitCode"] == 7
+    assert delivery.acceptance_exit_code(report) == 1
