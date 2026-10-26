@@ -30,7 +30,11 @@ from d4planner.release1.target_repository import (
     TargetValidator,
 )
 from d4planner.character.equipment.projector import EquipmentProjector
-from d4planner.character.repository import EquipmentRepository
+from d4planner.character.repository import (
+    EquipmentRepository, EquipmentRepositoryIncompatible,
+    EquipmentRepositoryTransient, EquipmentRepositoryUnavailable,
+    ReadOnlyEquipmentRepository,
+)
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -535,3 +539,112 @@ def test_projection_revision_changes_only_for_equipment_materialization(tmp_path
         observation=None, remove_item_fingerprint="owned-ring",
     )
     assert repository.projection_revision() == (2, "session-b", 1, "2026-10-26T03:00:03Z")
+
+
+def test_read_only_projection_reads_without_schema_or_database_mutation(tmp_path):
+    path = tmp_path / "producer.db"
+    writer = EquipmentRepository(path)
+    writer.commit_event(
+        session_id="session-a", event_seq=1, updated_at="2026-10-26T03:00:01Z",
+        observation=None, empty_slot_family="helm",
+    )
+    before_bytes = path.read_bytes()
+    with sqlite3.connect(path) as db:
+        before_schema = tuple(db.execute(
+            "SELECT type,name,sql FROM sqlite_master ORDER BY type,name"
+        ))
+
+    reader = ReadOnlyEquipmentRepository(path)
+    view = reader.projection_snapshot()
+    assert view.revision == (1, "session-a", 1, "2026-10-26T03:00:01Z")
+    assert view.rows == ()
+    with reader._connect() as db:
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            db.execute("INSERT INTO equipment_projection_revision VALUES(2,2,'x',2,'x')")
+
+    assert path.read_bytes() == before_bytes
+    with sqlite3.connect(path) as db:
+        assert tuple(db.execute(
+            "SELECT type,name,sql FROM sqlite_master ORDER BY type,name"
+        )) == before_schema
+
+
+def test_read_only_projection_is_consistent_during_concurrent_writer_commit(tmp_path):
+    path = tmp_path / "producer.db"
+    writer = EquipmentRepository(path)
+    writer.commit_event(
+        session_id="session-a", event_seq=1, updated_at="2026-10-26T03:00:01Z",
+        observation=None, empty_slot_family="helm",
+    )
+    reader = ReadOnlyEquipmentRepository(path)
+    write_connection = sqlite3.connect(path)
+    try:
+        write_connection.execute("BEGIN IMMEDIATE")
+        write_connection.execute(
+            "UPDATE equipment_projection_revision SET revision=2,event_seq=2 WHERE singleton=1"
+        )
+        # An uncommitted producer revision is never paired with rows from that revision.
+        assert reader.projection_snapshot().revision[0] == 1
+        write_connection.commit()
+        assert reader.projection_snapshot().revision[0] == 2
+    finally:
+        write_connection.close()
+
+
+def test_read_only_projection_fails_closed_for_missing_invalid_and_locked_db(tmp_path):
+    missing = tmp_path / "missing.db"
+    with pytest.raises(EquipmentRepositoryUnavailable, match="MISSING"):
+        ReadOnlyEquipmentRepository(missing)
+    assert not missing.exists()
+
+    invalid = tmp_path / "invalid.db"
+    sqlite3.connect(invalid).close()
+    with pytest.raises(EquipmentRepositoryIncompatible, match="SCHEMA_INCOMPATIBLE"):
+        ReadOnlyEquipmentRepository(invalid).projection_snapshot()
+
+    locked = tmp_path / "locked.db"
+    writer = EquipmentRepository(locked)
+    with sqlite3.connect(locked) as lock:
+        lock.execute("PRAGMA journal_mode=DELETE")
+        lock.execute("BEGIN EXCLUSIVE")
+        with pytest.raises(EquipmentRepositoryTransient, match="BUSY"):
+            ReadOnlyEquipmentRepository(locked, timeout_seconds=0.01).projection_snapshot()
+
+
+def test_repository_ring_identity_requires_verified_physical_slot(tmp_path):
+    path = tmp_path / "rings.db"
+    writer = EquipmentRepository(path)
+    item = json.dumps({"rarity": "RARE", "affixes": [], "effects_raw": []})
+    with writer._connect() as db:
+        for index, fingerprint, observed in (
+            (1, "ring-left", "2026-10-26T03:00:02Z"),
+            (2, "ring-right", "2026-10-26T03:00:01Z"),
+        ):
+            db.execute(
+                "INSERT INTO equipment_current(slot_family,slot_index,item_name,item_type,item_power,item_json,observed_at,source_session_id,source_event_seq_start,source_event_seq_end,confidence,item_fingerprint) VALUES('ring',?,?,?,?,?,?,?,?,?,?,?)",
+                (index, fingerprint, "Ring", 800, item, observed, "s", 1, 1, "HIGH", fingerprint),
+            )
+    adapter = RepositoryEquipmentCaptureAdapter(writer)
+    first = adapter.snapshot(
+        character_id="c", character_display_name="C", current_revision=1,
+    )
+    assert {item.item_id: item.slot_id for item in first.items} == {
+        "ring-left": "ring-1", "ring-right": "ring-2",
+    }
+
+    with writer._connect() as db:
+        db.execute("UPDATE equipment_current SET observed_at='2026-10-26T04:00:00Z' WHERE item_fingerprint='ring-right'")
+    reordered = adapter.snapshot(
+        character_id="c", character_display_name="C", current_revision=2,
+    )
+    assert {item.item_id: item.slot_id for item in reordered.items} == {
+        "ring-left": "ring-1", "ring-right": "ring-2",
+    }
+
+    with writer._connect() as db:
+        db.execute("UPDATE equipment_current SET slot_index=NULL")
+    unknown = adapter.snapshot(
+        character_id="c", character_display_name="C", current_revision=3,
+    )
+    assert all(item.slot_id.startswith("unresolved-ring:") for item in unknown.items)
+    assert not ({"ring-1", "ring-2"} & set(unknown.slot_evidence))
