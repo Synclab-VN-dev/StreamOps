@@ -1,6 +1,9 @@
 {
   "schemaVersion": "d4planner-package-plan/v1",
   "release": "R1-EQUIPMENT-20261025",
+  "applicationId": "vn.synclab.d4planner",
+  "version": "1.0.0",
+  "hudSchemaCompatibility": {"minimum": 2, "maximum": 2},
   "contractRevision": "d4planner-r1-contract/1.0.0-candidate.5",
   "magicPathRevision": "464988421014827008",
   "ruleKit": {
@@ -9,6 +12,7 @@
     "snapshotManifestSha256": "638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54"
   },
   "artifacts": [
+    {"id": "root-launcher", "path": "D4Planner.exe", "owner": "S7"},
     {"id": "native-fe", "path": "app/d4planner-fe.exe", "owner": "S6"},
     {"id": "managed-be", "path": "backend", "kind": "tree", "owner": "S2/S4/S5"},
     {"id": "embedded-python", "path": "runtime/python", "kind": "tree", "owner": "S7"},
@@ -30,6 +34,7 @@
     {"id": "production-launcher", "path": "app/start-d4planner.ps1", "source": "utility/d4planner/release1/start-d4planner.ps1"},
     {"id": "production-stop", "path": "app/stop-d4planner.ps1", "source": "utility/d4planner/release1/stop-d4planner.ps1"},
     {"id": "delivery-tool", "path": "tools/release1_delivery.py", "source": "utility/d4planner/tools/release1_delivery.py"},
+    {"id": "windows-install-engine", "path": "tools/windows_install.py", "source": "utility/d4planner/tools/windows_install.py"},
     {"id": "production-e2e-tool", "path": "tools/production_e2e.py", "source": "utility/d4planner/tools/production_e2e.py"},
     {"id": "target-schema", "path": "contracts/target.schema.json", "source": "utility/d4planner/contracts/release1/v1/schemas/target.schema.json"},
     {"id": "hud-schema", "path": "contracts/hud.schema.json", "source": "utility/d4planner/contracts/release1/v1/schemas/hud.schema.json"},
