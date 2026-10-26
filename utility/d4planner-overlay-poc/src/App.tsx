@@ -46,7 +46,13 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   useEffect(() => {
     if (hud.connection !== "CONNECTED" || snapshot?.context.state !== "BOUND"
       || snapshot.health.scoreFreshness !== "CURRENT" || snapshot.score.status !== "SCORED") return;
-    invoke("report_hud_pipeline", { snapshot }).catch(() => undefined);
+    const frame = requestAnimationFrame(() => {
+      invoke("report_hud_pipeline", {
+        snapshot,
+        visibleRenderedAt: new Date().toISOString(),
+      }).catch(() => undefined);
+    });
+    return () => cancelAnimationFrame(frame);
   }, [hud.connection, snapshot]);
 
   function resetComparison() {

@@ -278,7 +278,11 @@ fn set_overlay_pin(window: WebviewWindow, pinned: bool) -> Result<(), String> {
 /// E2E-only observation sink. It cannot inject data or relax validation: the
 /// webview must first receive a valid production WS snapshot and render model.
 #[tauri::command]
-fn report_hud_pipeline(app: tauri::AppHandle, snapshot: serde_json::Value) -> Result<(), String> {
+fn report_hud_pipeline(
+    app: tauri::AppHandle,
+    snapshot: serde_json::Value,
+    visible_rendered_at: String,
+) -> Result<(), String> {
     let path = env::var("D4_HUD_PIPELINE_REPORT")
         .map_err(|_| "HUD pipeline reporting is not enabled".to_string())?;
     let context = snapshot.pointer("/context/state").and_then(|value| value.as_str());
@@ -296,10 +300,21 @@ fn report_hud_pipeline(app: tauri::AppHandle, snapshot: serde_json::Value) -> Re
         "score": score, "hudRevision": revision,
         "equipmentRows": equipment.map_or(0, Vec::len),
         "targetId": snapshot.pointer("/context/target/targetId"),
+        "targetSha256": snapshot.pointer("/context/target/contentSha256"),
+        "selectionRevision": snapshot.pointer("/context/target/selectionRevision"),
         "characterId": snapshot.pointer("/context/character/characterId"),
+        "currentRevision": snapshot.pointer("/context/character/currentRevision"),
+        "scoreStatus": snapshot.pointer("/score/status"),
+        "failIssueCount": snapshot.pointer("/score/failIssueCount"),
+        "warnCount": snapshot.pointer("/score/warnCount"),
+        "itemsPassing": snapshot.pointer("/score/itemsPassing"),
+        "itemsTargeted": snapshot.pointer("/score/itemsTargeted"),
+        "visibleRenderedAt": visible_rendered_at,
     });
     fs::write(path, report.to_string()).map_err(|error| format!("cannot write HUD pipeline report: {error}"))?;
-    app.exit(0);
+    if env::var_os("D4_HUD_PIPELINE_CONTINUOUS").is_none() {
+        app.exit(0);
+    }
     Ok(())
 }
 
