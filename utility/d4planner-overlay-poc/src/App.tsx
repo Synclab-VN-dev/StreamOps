@@ -43,6 +43,12 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
     setSelectedSlot(null);
   }, [snapshot, selectedSlot]);
 
+  useEffect(() => {
+    if (hud.connection !== "CONNECTED" || snapshot?.context.state !== "BOUND"
+      || snapshot.health.scoreFreshness !== "CURRENT" || snapshot.score.status !== "SCORED") return;
+    invoke("report_hud_pipeline", { snapshot }).catch(() => undefined);
+  }, [hud.connection, snapshot]);
+
   function resetComparison() {
     setSelectedSlot(null); setAffixOpen(false); setEffectOpen(false); setShowAll(false);
   }
