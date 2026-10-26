@@ -1,4 +1,16 @@
+import Ajv2020 from 'ajv/dist/2020';
+import addFormats from 'ajv-formats';
+import hudSchema from '../../d4planner/contracts/release1/v1/schemas/hud.schema.json';
+
 export type SocketMessage = Record<string, unknown>;
+
+// The shared contract intentionally uses conditional numeric constraints that
+// JSON Schema 2020-12 permits without repeating a local `type`. Keep complete
+// validation enabled while allowing that portable schema form to compile.
+const ajv = new Ajv2020({ allErrors: true, strict: false });
+addFormats(ajv);
+const validateHudSchema = ajv.compile(hudSchema);
+const CONTRACT_REVISION = 'd4planner-r1-contract/1.0.0-candidate.5';
 
 export interface WebSocketLike {
   readyState: number;
@@ -307,6 +319,17 @@ export class HudWebSocketDataSource {
     const revision = message.hud?.hudRevision;
     const highWater = this.state.hud?.hudRevision ?? -1;
     if (!Number.isInteger(revision) || revision < highWater || revision < pending.minimumRevision) return;
+    if (!this.validHud(message.hud)) {
+      this.pendingSnapshot = null;
+      this.clearSnapshotTimer();
+      this.state = { ...this.state, freshness: 'STALE', subscriptionId: null, error: 'HUD_INVALID' };
+      const nextAttempt = pending.attempt > 0 ? pending.attempt + 1 : 1;
+      if (nextAttempt <= (this.config.maxDiscoveryAttempts ?? 3)) {
+        this.requestSnapshot(pending.minimumRevision, true, nextAttempt, 'TIMEOUT_RETRY');
+      }
+      this.emit();
+      return;
+    }
     if (pending.mode === 'RESYNC_KNOWN_CONTEXT'
         && !sameContext(contextKey(message.hud?.context), pending.expectedContext)) {
       this.pendingSnapshot = null;
@@ -336,6 +359,12 @@ export class HudWebSocketDataSource {
     const next = message.hud?.hudRevision;
     if (message.subscriptionId !== this.state.subscriptionId || !Number.isInteger(next)) return;
     if (current === undefined || next <= current) return;
+    if (!this.validHud(message.hud)) {
+      this.state = { ...this.state, freshness: 'STALE', subscriptionId: null, error: 'HUD_INVALID' };
+      this.requestSnapshot();
+      this.emit();
+      return;
+    }
     if (message.previousHudRevision !== current) {
       this.state = { ...this.state, freshness: 'STALE', subscriptionId: null };
       this.requestSnapshot();
@@ -344,6 +373,28 @@ export class HudWebSocketDataSource {
     }
     this.state = { ...this.state, hud: structuredClone(message.hud), freshness: 'CURRENT' };
     this.emit();
+  }
+
+  private validHud(hud: unknown): hud is Record<string, any> {
+    if (!validateHudSchema(hud) || !this.state.backend || !hud || typeof hud !== 'object') return false;
+    const value = hud as Record<string, any>;
+    if (value.backend.runtimeInstanceId !== this.state.backend.runtimeInstanceId
+        || value.backend.generation !== this.state.backend.generation
+        || value.provenance.assessmentVersion !== CONTRACT_REVISION) return false;
+    const context = value.context;
+    if (context.state === 'BOUND') {
+      const { binding, character, target } = context;
+      return binding.runtimeInstanceId === value.backend.runtimeInstanceId
+        && binding.characterId === character.characterId
+        && binding.currentRevision === character.currentRevision
+        && binding.targetId === target.targetId
+        && binding.targetSha256 === target.contentSha256
+        && binding.selectionRevision === target.selectionRevision
+        && binding.policyVersion === target.policyVersion;
+    }
+    return context.binding === null
+      && value.score.status === 'NO_DATA'
+      && value.equipment.length === 0;
   }
 
   private envelope(messageId: string, type: string): SocketMessage {
