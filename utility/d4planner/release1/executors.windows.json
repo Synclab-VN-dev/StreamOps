@@ -9,7 +9,8 @@
     "E2E-06": {"command":["{PYTHON}","{INSTALL_ROOT}/tools/production_e2e.py","backend","--install-root","{INSTALL_ROOT}","--data-root","{DATA_ROOT}/e2e-06","--output","{EVIDENCE_DIR}/E2E-06.json"],"workingDirectory":".","timeoutSeconds":180},
     "E2E-07": {"command":["{PYTHON}","{INSTALL_ROOT}/tools/production_e2e.py","native","--install-root","{INSTALL_ROOT}","--data-root","{DATA_ROOT}/e2e-07","--output","{EVIDENCE_DIR}/E2E-07.json"],"workingDirectory":".","timeoutSeconds":180},
     "E2E-08": {"command":["{PYTHON}","{INSTALL_ROOT}/tools/production_e2e.py","package-cycle","--package","{PACKAGE}","--staging-root","{STAGING_ROOT}","--output","{EVIDENCE_DIR}/E2E-08.json"],"workingDirectory":".","timeoutSeconds":180},
-    "E2E-09": {"command":["{PYTHON}","{INSTALL_ROOT}/tools/production_e2e.py","backend","--install-root","{INSTALL_ROOT}","--data-root","{DATA_ROOT}/e2e-09","--output","{EVIDENCE_DIR}/E2E-09.json"],"workingDirectory":".","timeoutSeconds":180},
-    "E2E-10": {"command":["{PYTHON}","{INSTALL_ROOT}/tools/production_e2e.py","native","--install-root","{INSTALL_ROOT}","--data-root","{DATA_ROOT}/e2e-10","--output","{EVIDENCE_DIR}/E2E-10.json"],"workingDirectory":".","timeoutSeconds":180}
+    "E2E-09": {"command":["{PYTHON}","{INSTALL_ROOT}/tools/production_e2e.py","crash-recovery","--install-root","{INSTALL_ROOT}","--data-root","{DATA_ROOT}/e2e-09","--output","{EVIDENCE_DIR}/E2E-09.json"],"workingDirectory":".","timeoutSeconds":180},
+    "E2E-10": {"command":["{PYTHON}","{INSTALL_ROOT}/tools/production_e2e.py","native","--install-root","{INSTALL_ROOT}","--data-root","{DATA_ROOT}/e2e-10","--output","{EVIDENCE_DIR}/E2E-10.json"],"workingDirectory":".","timeoutSeconds":180},
+    "S7-PERF-01": {"command":["{PYTHON}","{INSTALL_ROOT}/tools/production_e2e.py","performance","--install-root","{INSTALL_ROOT}","--data-root","{DATA_ROOT}/performance","--output","{EVIDENCE_DIR}/S7-PERF-01.json"],"workingDirectory":".","timeoutSeconds":300}
   }
 }
