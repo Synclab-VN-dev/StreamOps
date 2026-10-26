@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HudWebSocketDataSource, type WebSocketLike } from './hud-data-source';
+import { HudWebSocketDataSource, TauriHudDataSource, type WebSocketLike } from './hud-data-source';
+import type { invoke } from '@tauri-apps/api/core';
 import hudFixture from '../../d4planner/contracts/release1/v1/fixtures/hud.partial.synthetic.json';
 
 class FakeSocket implements WebSocketLike {
@@ -484,3 +485,65 @@ it.each(['TARGET_CHANGED', 'TARGET_INVALID', 'success', 'list'])(
     expect((source as any).pendingTargetList).toBeNull();
   },
 );
+describe('TauriHudDataSource backend rediscovery', () => {
+  it('drops the old transport and authenticates against a restarted Backend bootstrap', async () => {
+    const sockets: { endpoint: string; socket: FakeSocket }[] = [];
+    const calls: string[] = [];
+    let bootstrapReads = 0;
+    const nativeInvoke = (async (command: string) => {
+      calls.push(command);
+      if (command === 'get_hud_ws_bootstrap') {
+        bootstrapReads += 1;
+        return bootstrapReads === 1
+          ? { endpoint: 'ws://127.0.0.1:31001', credential: 'a'.repeat(64), origin: 'tauri://localhost' }
+          : { endpoint: 'ws://127.0.0.1:31002', credential: 'b'.repeat(64), origin: 'tauri://localhost' };
+      }
+      if (command === 'get_backend_status') return { state: 'FAILED' };
+      if (command === 'restart_backend') return { state: 'READY' };
+      throw new Error(`unexpected native command ${command}`);
+    }) as typeof invoke;
+    const events: Record<string, any>[] = [];
+    const source = new TauriHudDataSource(
+      nativeInvoke,
+      endpoint => {
+        const socket = new FakeSocket();
+        sockets.push({ endpoint, socket });
+        return socket;
+      },
+      [0],
+    );
+    const dispose = await source.connect(event => events.push(event));
+    const first = sockets[0].socket;
+    first.onopen?.();
+    accept(first);
+    let request = pendingSnapshot(first);
+    first.receive({
+      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
+      correlationId: request.messageId, backendGeneration: 3, subscriptionId: 'old-sub', hud: hud(20),
+    });
+    first.close();
+    await vi.waitFor(() => expect(sockets).toHaveLength(2));
+    expect(sockets.map(item => item.endpoint)).toEqual([
+      'ws://127.0.0.1:31001', 'ws://127.0.0.1:31002',
+    ]);
+    expect(calls).toContain('restart_backend');
+    const second = sockets[1].socket;
+    second.onopen?.();
+    expect(second.sent[0].credential).toBe('b'.repeat(64));
+    const restarted = { runtimeInstanceId: 'backend-b', generation: 4 };
+    accept(second, restarted);
+    request = pendingSnapshot(second);
+    const nextHud = hud(1);
+    nextHud.backend = restarted;
+    nextHud.context.binding.runtimeInstanceId = restarted.runtimeInstanceId;
+    second.receive({
+      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
+      correlationId: request.messageId, backendGeneration: 4, subscriptionId: 'new-sub', hud: nextHud,
+    });
+    expect(events.at(-1)).toMatchObject({
+      type: 'SNAPSHOT', snapshot: { backend: restarted, hudRevision: 1 },
+    });
+    expect(events.some(event => event.type === 'CONNECTION' && event.state === 'DISCONNECTED')).toBe(true);
+    dispose();
+  });
+});
