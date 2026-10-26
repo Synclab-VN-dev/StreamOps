@@ -8,6 +8,8 @@ import shutil
 import pytest
 from websockets.asyncio.client import connect
 
+from d4planner.character.equipment.projector import EquipmentProjector
+from d4planner.character.repository import EquipmentRepository
 from d4planner.production import ORIGIN, ProductionBackendRuntime, _resolve_repository_root
 from d4planner.rulekit import LaunchSpecification, RuleKitProcessWrapper, RuleKitRuntimeService
 
@@ -184,4 +186,59 @@ def test_packaged_contract_root_is_discovered_from_embedded_module(tmp_path):
     module.parent.mkdir(parents=True)
     module.touch()
     assert _resolve_repository_root(None, module) == install.resolve()
+
+
+def test_repository_capture_revision_commits_and_pushes_without_fuzzy_identity(tmp_path, monkeypatch):
+    async def scenario():
+        targets = tmp_path / "targets"; targets.mkdir()
+        data = tmp_path / "data"; data.mkdir()
+        repository_path = tmp_path / "capture" / "character.db"
+        repository = EquipmentRepository(repository_path)
+        projector = EquipmentProjector(repository)
+        monkeypatch.setenv("D4PLANNER_EQUIPMENT_REPOSITORY_DB", str(repository_path.resolve()))
+        monkeypatch.setenv("D4PLANNER_CHARACTER_ID", "character-repository")
+        monkeypatch.setenv("D4PLANNER_CHARACTER_DISPLAY_NAME", "Repository Character")
+        runtime = ProductionBackendRuntime({
+            "ownerInstanceId": "owner-repository", "childInstanceId": "backend-repository",
+            "generation": 9, "dataDir": str(data), "targetFolder": str(targets),
+            "wsEndpoint": {"host": "127.0.0.1", "port": 0}, "credential": CREDENTIAL,
+        }, rulekit=_rulekit())
+        ready = await runtime.start()
+        assert ready["health"]["equipmentCapture"] == "REPOSITORY_SUBSCRIBED"
+        uri = f"ws://127.0.0.1:{ready['wsEndpoint']['port']}"
+        try:
+            async with connect(uri, origin=ORIGIN, ping_interval=None) as ws:
+                await ws.send(json.dumps(_message(
+                    "hello-repository", "hello", 9, credential=CREDENTIAL, origin=ORIGIN,
+                    lastSeen={"hudRevision": None},
+                )))
+                await ws.recv()
+                await ws.send(json.dumps(_message(
+                    "snapshot-repository", "hud.snapshot.request", 9,
+                    requestContext={"mode": "DISCOVER_ACTIVE_CONTEXT", "reason": "INITIAL_CONNECTION",
+                                    "attempt": 1, "runtimeInstanceId": "backend-repository",
+                                    "minimumHudRevision": 0},
+                )))
+                initial = json.loads(await ws.recv())
+                initial_revision = initial["hud"]["hudRevision"]
+                for sequence, text in enumerate(
+                    ["Head", "EQUIPPED", "RECORDED HELM", "Rare Helm", "850 Item Power", "Unequip"], 1,
+                ):
+                    projector.consume({
+                        "eventSeq": sequence, "type": "speech.raw",
+                        "timestamp": f"2026-10-26T04:00:0{sequence}Z",
+                        "sessionId": "recorded-repository-session", "data": {"text": text},
+                    })
+                update = json.loads(await asyncio.wait_for(ws.recv(), 2))
+                assert update["type"] == "hud.update"
+                assert update["hud"]["hudRevision"] > initial_revision
+                assert update["hud"]["context"]["character"]["currentRevision"] == 1
+                assert update["hud"]["context"]["character"]["characterId"] == "character-repository"
+                assert update["hud"]["score"]["status"] == "NO_DATA"
+                assert update["hud"]["score"]["failIssueCount"] == 0
+                await asyncio.sleep(.25)
+                assert runtime.store.latest_authoritative()["hudRevision"] == update["hud"]["hudRevision"]
+        finally:
+            await runtime.stop()
+    asyncio.run(scenario())
 
