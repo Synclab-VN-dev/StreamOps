@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import time
@@ -16,6 +17,8 @@ ROOT = Path(__file__).resolve().parents[3]
 TOOL = ROOT / "utility/d4planner/tools/release1_delivery.py"
 PLAN = ROOT / "utility/d4planner/release1/package-plan.json"
 ACCEPTANCE = ROOT / "utility/d4planner/release1/acceptance-plan.json"
+LAUNCHER = ROOT / "utility/d4planner/release1/start-d4planner.ps1"
+STOPPER = ROOT / "utility/d4planner/release1/stop-d4planner.ps1"
 spec = importlib.util.spec_from_file_location("release1_delivery", TOOL)
 delivery = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
@@ -43,6 +46,50 @@ def component_manifest(tmp_path: Path) -> Path:
         "components": {f"S{number}": str(number) * 40 for number in range(2, 8)},
     }))
     return path
+
+
+@pytest.mark.skipif(shutil.which("pwsh") is None, reason="PowerShell unavailable")
+def test_production_launcher_validates_no_data_and_port_modes_without_starting(tmp_path):
+    install = tmp_path / "install"; data = tmp_path / "data"
+    (install / "app").mkdir(parents=True); (install / "runtime/python").mkdir(parents=True)
+    (install / "app/d4planner-fe.exe").write_bytes(b"test-only")
+    (install / "runtime/python/python.exe").write_bytes(b"test-only")
+    base = [
+        shutil.which("pwsh"), "-NoProfile", "-File", str(LAUNCHER),
+        "-InstallRoot", str(install), "-DataRoot", str(data), "-ValidateOnly",
+    ]
+    dynamic = subprocess.run(base, capture_output=True, text=True, check=False)
+    assert dynamic.returncode == 0, dynamic.stderr
+    configuration = json.loads(dynamic.stdout)
+    assert configuration["wsPortMode"] == "Dynamic"
+    assert configuration["approvedPort"] == 0
+    assert configuration["equipmentRepository"] is None
+
+    missing_approval = subprocess.run(
+        base + ["-WsPortMode", "FixedApprovedUat"], capture_output=True, text=True, check=False,
+    )
+    assert missing_approval.returncode != 0
+    assert "Owner-approved" in (missing_approval.stderr + missing_approval.stdout)
+    fixed = subprocess.run(
+        base + ["-WsPortMode", "FixedApprovedUat", "-ApprovedPort", "38150"],
+        capture_output=True, text=True, check=False,
+    )
+    assert fixed.returncode == 0, fixed.stderr
+    assert json.loads(fixed.stdout)["approvedPort"] == 38150
+
+    # The production launcher cannot silently attach to any real capture DB.
+    db = tmp_path / "equipment.sqlite"; db.write_bytes(b"isolated-test")
+    explicit = subprocess.run(
+        base + ["-EquipmentRepositoryDb", str(db)], capture_output=True, text=True, check=False,
+    )
+    assert explicit.returncode != 0
+    opted_in = subprocess.run(
+        base + ["-EquipmentRepositoryDb", str(db), "-EnableReadOnlyEquipmentRepository"],
+        capture_output=True, text=True, check=False,
+    )
+    assert opted_in.returncode == 0
+    assert json.loads(opted_in.stdout)["equipmentRepository"] == str(db.resolve())
+    assert "Stop-Process -Name" not in STOPPER.read_text(encoding="utf-8")
 
 
 def test_package_is_deterministic_pinned_and_verifiable(tmp_path):
