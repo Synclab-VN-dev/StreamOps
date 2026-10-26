@@ -88,6 +88,7 @@ def main():
     parser.add_argument("--package-sha",required=True)
     parser.add_argument("--output",type=Path,required=True)
     parser.add_argument("--fault-install",action="store_true")
+    parser.add_argument("--native-upgrade-only",action="store_true")
     args = parser.parse_args()
     sandbox = args.sandbox.resolve(); root = sandbox / "Ứng dụng D4Planner"; data = sandbox / "Dữ liệu D4Planner"
     if args.fault_install:
@@ -100,7 +101,11 @@ def main():
     sandbox.mkdir(parents=True,exist_ok=True)
     report = {"schemaVersion":"d4planner-setup-e2e/v1","startedAt":datetime.now(timezone.utc).isoformat(),
               "artifacts":{str(path.name):sha(path) for path in (args.setup_old,args.setup_new,args.package_new)},"cases":[]}
+    report["scope"] = "NATIVE_UPGRADE_SUBSET" if args.native_upgrade_only else "FULL"
     def case(identifier, expected, action):
+        if args.native_upgrade_only and identifier in {"PKG-04","PKG-05","NEG-LOCKED"}:
+            report.setdefault("notRun",[]).append(identifier)
+            return True
         started = time.monotonic()
         try:
             actual = action()
@@ -269,9 +274,9 @@ def main():
         return {"dataPreserved":True,"rootLauncherRemoved":True,"uninstallerRemoved":True}
     case("PKG-03","Real Uninstall.exe removes app and retains SQLite/Targets/Settings",uninstall)
     report["finishedAt"] = datetime.now(timezone.utc).isoformat()
-    report["outcome"] = "PASS" if all(item["status"]=="PASS" for item in report["cases"]) else "FAIL"
+    report["outcome"] = ("SUBSET_PASS" if args.native_upgrade_only else "AUTOMATED_CASES_PASS_OFFLINE_PENDING") if all(item["status"]=="PASS" for item in report["cases"]) else "FAIL"
     args.output.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
-    return 0 if report["outcome"]=="PASS" else 1
+    return 1 if report["outcome"]=="FAIL" else 0
 
 
 if __name__ == "__main__": raise SystemExit(main())
