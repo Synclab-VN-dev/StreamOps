@@ -154,6 +154,7 @@ class EquipmentRepository:
                         "sourceEventSeqStart": r["source_event_seq_start"],
                         "sourceEventSeqEnd": r["source_event_seq_end"],
                         "confidence": r["confidence"],
+                        "itemFingerprint": r["item_fingerprint"],
                     }
                 )
             return result

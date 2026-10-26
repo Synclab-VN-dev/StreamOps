@@ -16,6 +16,9 @@ from d4planner.release1.assessment import (
     ObservedValue,
     _parameter_passes,
 )
+from d4planner.release1.capture_adapter import (
+    EquipmentCaptureAdapter, EquipmentEvidenceError, RepositoryEquipmentCaptureAdapter,
+)
 from d4planner.release1.persistence import AssessmentBinding, DurableHudStore, StaleAssessment
 from d4planner.release1.service import EquipmentAssessmentCoordinator
 from d4planner.release1.target_repository import (
@@ -396,6 +399,20 @@ def test_store_refuses_newer_schema_without_wiping_data(tmp_path):
         assert reopened.execute("SELECT value FROM sentinel").fetchone()[0] == "keep-me"
 
 
+def test_store_commits_authoritative_unbound_context_for_restart_and_publish_recovery(tmp_path):
+    store = DurableHudStore(tmp_path / "hud.db")
+    payload = store.commit_context(
+        lambda revision: {"hudRevision": revision, "context": {"state": "TARGET_ONLY"}},
+        "2026-10-26T03:00:00Z",
+    )
+    assert payload["hudRevision"] == 0
+    assert store.latest_authoritative() == payload
+    assert store.pending_authoritative() == (payload,)
+    store.mark_published(0)
+    assert store.pending_authoritative() == ()
+    assert DurableHudStore(tmp_path / "hud.db").latest_authoritative() == payload
+
+
 def test_capture_session_change_cannot_complete_previous_sessions_partial_item(tmp_path):
     repository = EquipmentRepository(tmp_path / "character.db")
     projector = EquipmentProjector(repository)
@@ -411,3 +428,53 @@ def test_capture_session_change_cannot_complete_previous_sessions_partial_item(t
             "sessionId": "new-session", "data": {"text": value},
         })
     assert repository.list_equipment() == []
+
+
+def test_versioned_capture_adapter_preserves_typed_identity_and_partial_evidence():
+    event = {
+        "schemaVersion": "d4planner-equipment-evidence/v1",
+        "characterId": "character-a", "characterDisplayName": "Recorded Character",
+        "currentRevision": 42, "capturedAt": "2026-10-26T03:00:00Z",
+        "captureHealth": "HEALTHY",
+        "slots": [{
+            "slotId": "gloves", "presence": "OBSERVED", "evidence": ["PRESENT_VALUE"],
+            "item": {
+                "itemId": "captured-gloves", "displayName": "Recorded Gloves",
+                "observedAt": "2026-10-26T03:00:00Z", "source": "RECORDED_CAPTURE",
+                "entities": [{
+                    "kind": "AFFIX", "group": "AFFIXES", "entityId": "attack-speed",
+                    "occurrence": 0, "label": "Attack Speed", "values": [{
+                        "type": "NUMBER", "value": 9, "unit": "PERCENT", "evidence": "OBSERVED",
+                    }],
+                }],
+            },
+        }, {
+            "slotId": "ring-1", "presence": "UNKNOWN", "evidence": [], "item": None,
+        }],
+    }
+    snapshot = EquipmentCaptureAdapter().from_event(event)
+    assert snapshot.current_revision == 42
+    assert snapshot.items[0].entities[0].entity_id == "attack-speed"
+    assert snapshot.slot_evidence["gloves"] == frozenset({"PRESENT_VALUE"})
+    assert snapshot.slot_evidence["ring-1"] == frozenset()
+    broken = copy.deepcopy(event); broken["slots"][0]["item"]["entities"][0]["entityId"] = ""
+    with pytest.raises(EquipmentEvidenceError, match="stable entityId"):
+        EquipmentCaptureAdapter().from_event(broken)
+
+
+def test_legacy_capture_repository_never_fuzzy_maps_human_labels(tmp_path):
+    repository = EquipmentRepository(tmp_path / "character.db")
+    projector = EquipmentProjector(repository)
+    lines = ["Head", "EQUIPPED", "RECORDED HELM", "Rare Helm", "850 Item Power", "Unequip"]
+    for sequence, text in enumerate(lines, 1):
+        projector.consume({
+            "eventSeq": sequence, "type": "speech.raw", "timestamp": f"2026-10-26T03:00:0{sequence}Z",
+            "sessionId": "recorded-session", "data": {"text": text},
+        })
+    snapshot = RepositoryEquipmentCaptureAdapter(repository).snapshot(
+        character_id="character-a", character_display_name="Recorded Character", current_revision=1,
+    )
+    assert len(snapshot.items) == 1
+    assert snapshot.items[0].display_name == "RECORDED HELM"
+    assert snapshot.items[0].entities == ()
+    assert snapshot.slot_evidence["helm"] == frozenset({"PRESENT_VALUE"})
