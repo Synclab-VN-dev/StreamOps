@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import shutil
 
+import pytest
 from websockets.asyncio.client import connect
 
 from d4planner.production import ORIGIN, ProductionBackendRuntime
@@ -125,4 +126,47 @@ def test_production_runtime_real_worker_target_capture_sqlite_and_authenticated_
         assert runtime.rulekit.wrapper._child is None
 
     asyncio.run(scenario())
+
+
+def test_production_runtime_applies_explicit_recorded_evidence_before_ready(tmp_path, monkeypatch):
+    async def scenario():
+        targets = tmp_path / "targets"; targets.mkdir()
+        target_path = targets / "target.json"
+        shutil.copy2(TARGET, target_path)
+        document = json.loads(target_path.read_text())
+        digest = __import__("hashlib").sha256(target_path.read_bytes()).hexdigest()
+        data = tmp_path / "data"; data.mkdir()
+        (data / "selected-target.json").write_text(json.dumps({
+            "targetId": document["targetId"], "contentSha256": digest,
+            "selectionRevision": 1,
+            "policyVersion": document["assessmentPolicy"]["version"] + "+" +
+                document["assessmentPolicy"]["weightProfile"]["profileId"],
+        }))
+        evidence = tmp_path / "recorded-equipment.json"
+        evidence.write_text(json.dumps(_evidence()))
+        monkeypatch.setenv("D4PLANNER_EQUIPMENT_EVIDENCE_FILE", str(evidence.resolve()))
+        runtime = ProductionBackendRuntime({
+            "ownerInstanceId": "owner-recorded", "childInstanceId": "backend-recorded",
+            "generation": 4, "dataDir": str(data), "targetFolder": str(targets),
+            "wsEndpoint": {"host": "127.0.0.1", "port": 0}, "credential": CREDENTIAL,
+        }, rulekit=_rulekit())
+        try:
+            ready = await runtime.start()
+            assert ready["health"]["equipmentCapture"] == "RECORDED_EVIDENCE_APPLIED"
+            latest = runtime.store.latest_authoritative()
+            assert latest["score"]["value"] == 100.0
+            assert latest["context"]["binding"]["targetId"] == document["targetId"]
+        finally:
+            await runtime.stop()
+    asyncio.run(scenario())
+
+
+def test_packaged_contract_root_is_explicit_and_fail_closed(tmp_path, monkeypatch):
+    monkeypatch.setenv("D4PLANNER_REPOSITORY_ROOT", "relative")
+    with pytest.raises(ValueError, match="contract repository root"):
+        ProductionBackendRuntime({
+            "ownerInstanceId": "owner", "childInstanceId": "child", "generation": 1,
+            "dataDir": str(tmp_path / "data"), "targetFolder": str(tmp_path / "targets"),
+            "wsEndpoint": {"host": "127.0.0.1", "port": 0}, "credential": CREDENTIAL,
+        }, rulekit=_rulekit())
 
