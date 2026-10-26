@@ -61,6 +61,16 @@ fn backend_from_environment() -> Result<BackendProcessWrapper<StdProcessDriver>,
     for name in ["SYSTEMROOT", "WINDIR", "TEMP", "TMP", "PATH", "PYTHONPATH"] {
         if let Ok(value) = env::var(name) { environment.insert(name.into(), value); }
     }
+    for name in [
+        "D4PLANNER_RULEKIT_EXECUTABLE", "D4PLANNER_RULEKIT_WORKER",
+        "D4PLANNER_RULEKIT_WORKING_DIR", "D4_RULEKIT_PROFILE_JSON",
+        "D4_RULEKIT_SNAPSHOT_ROOT", "D4_RULEKIT_CHROMIUM_EXECUTABLE",
+        "D4_RULEKIT_MAX_CONTEXTS", "D4_RULEKIT_BROWSER_MAX_QUEUE",
+        "D4_RULEKIT_MAX_SESSIONS", "D4_RULEKIT_SESSION_TTL_MS",
+        "D4_RULEKIT_OPERATION_TIMEOUT_MS", "D4_RULEKIT_CLEANUP_TIMEOUT_MS",
+    ] {
+        if let Ok(value) = env::var(name) { environment.insert(name.into(), value); }
+    }
     Ok(BackendProcessWrapper::new(
         Arc::new(StdProcessDriver),
         LaunchSpecification {
@@ -82,29 +92,24 @@ fn backend_from_environment() -> Result<BackendProcessWrapper<StdProcessDriver>,
 /// webview. The descriptor remains owned by the native composition root and
 /// is never logged or exposed through a public HTTP endpoint.
 #[tauri::command]
-fn get_hud_ws_bootstrap() -> Result<HudWsBootstrap, String> {
+fn get_hud_ws_bootstrap(state: State<'_, BackendState>) -> Result<HudWsBootstrap, String> {
     let bootstrap_path = PathBuf::from(required_env("D4PLANNER_BOOTSTRAP_FILE")?);
     let bootstrap: serde_json::Value = serde_json::from_slice(
         &fs::read(&bootstrap_path)
             .map_err(|error| format!("cannot read bootstrap descriptor: {error}"))?,
     )
     .map_err(|error| format!("invalid bootstrap descriptor: {error}"))?;
-    let endpoint = bootstrap
-        .get("wsEndpoint")
-        .and_then(serde_json::Value::as_object)
-        .ok_or("bootstrap wsEndpoint is missing")?;
-    let host = endpoint
-        .get("host")
-        .and_then(serde_json::Value::as_str)
-        .ok_or("bootstrap wsEndpoint.host is missing")?;
+    let wrapper = state.0.lock().map_err(|_| "Backend state lock poisoned")?.clone()
+        .ok_or("managed Backend is not configured")?;
+    let ready = wrapper.ready_info().ok_or("managed Backend is not READY")?;
+    let host = ready.ws_endpoint.host.as_str();
     if !matches!(host, "127.0.0.1" | "::1" | "localhost") {
         return Err("bootstrap WebSocket endpoint must be loopback".into());
     }
-    let port = endpoint
-        .get("port")
-        .and_then(serde_json::Value::as_u64)
-        .filter(|port| *port <= u16::MAX as u64)
-        .ok_or("bootstrap wsEndpoint.port is invalid")?;
+    let port = ready.ws_endpoint.port;
+    if port == 0 {
+        return Err("managed Backend READY endpoint is not listening".into());
+    }
     let credential = bootstrap
         .get("credential")
         .and_then(serde_json::Value::as_str)
