@@ -484,6 +484,16 @@ pub fn run() {
     let app = tauri::Builder::default()
         .manage(ModeState(Mutex::new(true)))
         .manage(BackendState(Mutex::new(None)))
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // Explicitly use the same owned shutdown path as the exit
+                // hotkey. WebView/global-shortcut helper windows must not keep
+                // the native runtime alive after its visible HUD is closed.
+                api.prevent_close();
+                eprintln!("Owned HUD close requested");
+                window.app_handle().exit(0);
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             get_overlay_status,
             set_overlay_mode,
@@ -574,13 +584,18 @@ pub fn run() {
             handle.exit(if result.is_ok() && write_ok { 0 } else { 1 });
         }
         if matches!(&event, tauri::RunEvent::ExitRequested { .. }) {
+            eprintln!("Owned HUD exit requested");
             let state = handle.state::<BackendState>();
             // Clone the owned wrapper out of the slot before the guard is
             // dropped. This avoids extending the temporary guard to the end
             // of the event block and never holds BackendState while stop waits.
             let wrapper = state.0.lock().ok().and_then(|slot| slot.clone());
             if let Some(wrapper) = wrapper {
-                let _ = wrapper.stop();
+                if let Err(error) = wrapper.stop() {
+                    eprintln!("Owned Backend shutdown failed: {error}");
+                } else {
+                    eprintln!("Owned Backend shutdown complete");
+                }
             }
         }
     });
