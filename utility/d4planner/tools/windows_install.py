@@ -16,6 +16,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import uuid
 import zipfile
 
@@ -44,11 +45,13 @@ def check_owned_layout(root: Path) -> None:
 
 
 def atomic_json(path: Path, value: dict) -> None:
-    temporary = path.with_name(path.name + ".writing")
-    with temporary.open("w", encoding="utf-8") as stream:
-        json.dump(value, stream, ensure_ascii=False, sort_keys=True)
+    with tempfile.NamedTemporaryFile(mode="w",encoding="utf-8",dir=path.parent,
+                                     prefix=path.name+".",suffix=".writing",delete=False) as stream:
+        temporary = Path(stream.name)
+        json.dump(value,stream,ensure_ascii=False,sort_keys=True)
         stream.flush(); os.fsync(stream.fileno())
-    os.replace(temporary, path)
+    try: os.replace(temporary,path)
+    finally: temporary.unlink(missing_ok=True)
 
 
 def read_state(root: Path) -> dict | None:
@@ -153,6 +156,7 @@ def recover(root: Path) -> dict:
     else:
         (root / "active.json").unlink(missing_ok=True)
         (root / "D4Planner.exe").unlink(missing_ok=True)
+    (root / "D4Planner.next.exe").unlink(missing_ok=True)
     journal_path.unlink()
     return {"recovery": "RESTORED_PREVIOUS" if old else "FIRST_INSTALL_REVERTED"}
 
@@ -172,6 +176,8 @@ def install(package: Path, root: Path, data: Path, expected_sha: str,
     with install_lock(root):
         recover(root)
         previous = read_state(root)
+        if previous and Path(previous["dataDir"]).resolve() != data:
+            raise InstallError("UPGRADE_DATA_DIR_CHANGE_NOT_SUPPORTED")
         if previous and new_version < version(previous["version"]):
             raise InstallError("DOWNGRADE_REJECTED")
         if not previous and any(path.name not in {".setup.lock", "versions", "transactions"} for path in root.iterdir()):
