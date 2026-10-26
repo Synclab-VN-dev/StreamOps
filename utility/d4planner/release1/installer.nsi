@@ -34,19 +34,51 @@ Var Result
 
 Function .onInit
   SetShellVarContext current
+  SetRegView 64
   ${IfNot} ${RunningX64}
     MessageBox MB_ICONSTOP "D4Planner requires 64-bit Windows." /SD IDOK
     Abort
   ${EndIf}
   StrCpy $DataRoot "$LOCALAPPDATA\StreamOps\D4Planner"
+  ReadRegStr $0 HKCU "${APPKEY}" "InstallRoot"
+  ${If} $0 != ""
+    StrCpy $INSTDIR $0
+  ${EndIf}
   ReadRegStr $0 HKCU "${APPKEY}" "DataRoot"
   ${If} $0 != ""
     StrCpy $DataRoot $0
   ${EndIf}
   ${GetParameters} $0
+  ${GetOptions} $0 "/INSTALLROOT=" $1
+  ${If} $1 != ""
+    StrCpy $INSTDIR $1
+  ${EndIf}
+  ${GetOptions} $0 "/ISOLATED=" $2
   ${GetOptions} $0 "/DATADIR=" $1
   ${If} $1 != ""
     StrCpy $DataRoot $1
+  ${EndIf}
+  ${If} $2 == "1"
+    ${If} $1 == ""
+      SetErrorLevel 1
+      Abort
+    ${EndIf}
+    ${GetOptions} $0 "/INSTALLROOT=" $1
+    ${If} $1 == ""
+      SetErrorLevel 1
+      Abort
+    ${EndIf}
+  ${EndIf}
+  ; Stop the registered owned app before unpacking the large embedded payload.
+  ; A manual directory selection is not authority to execute an unrelated EXE.
+  ReadRegStr $1 HKCU "${APPKEY}" "InstallRoot"
+  ${If} $1 == $INSTDIR
+  ${AndIf} $1 != ""
+    ExecWait '"$INSTDIR\D4Planner.exe" --stop' $Result
+    ${If} $Result != 0
+      SetErrorLevel 1
+      Abort
+    ${EndIf}
   ${EndIf}
   ; Evergreen prerequisite is checked locally. Setup never downloads it or
   ; elevates to install prerequisites. Same registry probes as Tauri bundler.
