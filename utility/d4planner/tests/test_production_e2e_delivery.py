@@ -42,3 +42,8 @@ def test_performance_accepts_all_five_measured_stages(tmp_path):
     assert result["ok"] is True
     assert result["classification"] == "NATIVE_CAPTURE_TO_VISIBLE_STAGE_LATENCY"
     assert result["hudModelToVisibleRender"]["sampleCount"] == 2
+
+
+def test_native_evidence_timestamp_parser_is_timezone_aware():
+    value = production._parse_timestamp("2026-10-26T06:00:00Z")
+    assert value.utcoffset().total_seconds() == 0
