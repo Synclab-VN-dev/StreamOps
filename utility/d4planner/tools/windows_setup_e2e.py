@@ -122,13 +122,25 @@ def main():
         value = setup(args.setup_old)
         assert value["version"] == "1.0.0"
         assert (root / "D4Planner.exe").is_file() and (root / "Uninstall.exe").is_file()
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,r"Software\Microsoft\Windows\CurrentVersion\Uninstall\SynclabD4Planner",0,winreg.KEY_READ|winreg.KEY_WOW64_64KEY) as key:
+            assert winreg.QueryValueEx(key,"DisplayVersion")[0] == "1.0.0"
+            assert Path(winreg.QueryValueEx(key,"InstallLocation")[0]) == root
+        shortcut_paths = []
+        for folder_id, relative in ((0x10,"D4Planner.lnk"),(0x02,"D4Planner/D4Planner.lnk")):
+            buffer = ctypes.create_unicode_buffer(260)
+            assert ctypes.windll.shell32.SHGetFolderPathW(None,folder_id,None,0,buffer) == 0
+            shortcut = Path(buffer.value) / relative
+            assert shortcut.is_file() and shortcut.stat().st_size > 0
+            shortcut_paths.append(str(shortcut))
         run([root / "D4Planner.exe","--installation-health"])
         (data / "targets").mkdir(parents=True,exist_ok=True); (data / "state").mkdir(exist_ok=True)
         (data / "targets/user.json").write_text("user-owned-test-target",encoding="utf-8")
         (data / "settings.json").write_text('{"userSetting":"preserve"}',encoding="utf-8")
         with sqlite3.connect(data / "state/user-data.sqlite") as db:
             db.execute("create table user_data(value text)"); db.execute("insert into user_data values('preserve')")
-        return {"version":value["version"],"root":str(root),"data":str(data),"rootHealthExit":0}
+        return {"version":value["version"],"root":str(root),"data":str(data),"rootHealthExit":0,
+                "installedAppsRegistration":True,"shortcuts":shortcut_paths}
     if not case("PKG-02","Real NSIS fresh install; root executable and uninstaller present",initial): return 1
     original = {str(path.relative_to(data)):sha(path) for path in data.rglob("*") if path.is_file()}
     def preserved():
