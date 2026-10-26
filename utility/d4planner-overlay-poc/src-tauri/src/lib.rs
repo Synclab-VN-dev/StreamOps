@@ -73,6 +73,7 @@ fn backend_launch_from_environment() -> Result<LaunchSpecification, String> {
         "D4PLANNER_EQUIPMENT_REPOSITORY_DB", "D4PLANNER_CHARACTER_ID",
         "D4PLANNER_CHARACTER_DISPLAY_NAME",
         "D4PLANNER_REPOSITORY_ROOT",
+        "D4PLANNER_LATENCY_TRACE",
     ] {
         if let Ok(value) = env::var(name) { environment.insert(name.into(), value); }
     }
