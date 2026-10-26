@@ -46,9 +46,11 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   useEffect(() => {
     if (hud.connection !== "CONNECTED" || snapshot?.context.state !== "BOUND"
       || snapshot.health.scoreFreshness !== "CURRENT" || snapshot.score.status !== "SCORED") return;
+    const modelUpdatedAt = new Date().toISOString();
     const frame = requestAnimationFrame(() => {
       invoke("report_hud_pipeline", {
         snapshot,
+        modelUpdatedAt,
         visibleRenderedAt: new Date().toISOString(),
       }).catch(() => undefined);
     });

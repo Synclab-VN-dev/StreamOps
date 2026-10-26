@@ -281,6 +281,7 @@ fn set_overlay_pin(window: WebviewWindow, pinned: bool) -> Result<(), String> {
 fn report_hud_pipeline(
     app: tauri::AppHandle,
     snapshot: serde_json::Value,
+    model_updated_at: String,
     visible_rendered_at: String,
 ) -> Result<(), String> {
     let path = env::var("D4_HUD_PIPELINE_REPORT")
@@ -309,6 +310,7 @@ fn report_hud_pipeline(
         "warnCount": snapshot.pointer("/score/warnCount"),
         "itemsPassing": snapshot.pointer("/score/itemsPassing"),
         "itemsTargeted": snapshot.pointer("/score/itemsTargeted"),
+        "modelUpdatedAt": model_updated_at,
         "visibleRenderedAt": visible_rendered_at,
     });
     fs::write(path, report.to_string()).map_err(|error| format!("cannot write HUD pipeline report: {error}"))?;
