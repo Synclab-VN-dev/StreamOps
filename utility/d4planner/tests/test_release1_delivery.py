@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 import zipfile
 
 import pytest
@@ -254,19 +256,24 @@ def test_reviewed_executor_runs_selected_case_and_records_failure_evidence(tmp_p
     delivery.build_package(PLAN, stage(tmp_path), package)
     staging = tmp_path / "staging"; staging.mkdir()
     evidence = tmp_path / "evidence"; evidence.mkdir()
-    passing = staging / "pass.py"; passing.write_text("print('real executor reached')\n")
+    passing = staging / "pass.py"; passing.write_text(
+        "import json, pathlib\n"
+        f"pathlib.Path({str(evidence / 'E2E-01.json')!r}).write_text(json.dumps({{'ok': True, 'scenario': 'owner'}}))\n"
+        "print('real executor reached')\n"
+    )
     failing = staging / "fail.py"; failing.write_text("raise SystemExit(7)\n")
     executors = tmp_path / "executors.json"
     executors.write_text(json.dumps({
         "schemaVersion": delivery.EXECUTOR_MANIFEST_VERSION,
         "cases": {
-            "E2E-01": {"command": [sys.executable, "{STAGING_ROOT}/pass.py"], "workingDirectory": ".", "timeoutSeconds": 10},
+            "E2E-01": {"command": [sys.executable, "{STAGING_ROOT}/pass.py"], "workingDirectory": ".", "timeoutSeconds": 10, "requiredEvidence": {"scenario": "owner"}},
             "E2E-02": {"command": [sys.executable, "fail.py"], "workingDirectory": ".", "timeoutSeconds": 10},
         },
     }))
     report = delivery.run_acceptance(
         ACCEPTANCE, package, {"E2E-01", "E2E-02"}, None,
         staging_root=staging.resolve(), evidence_dir=evidence.resolve(),
+        expected_package_sha256=delivery.sha256_file(package), platform="win32",
         component_manifest=component_manifest(tmp_path), executor_manifest=executors,
     )
     by_id = {case["id"]: case for case in report["cases"]}
@@ -277,3 +284,59 @@ def test_reviewed_executor_runs_selected_case_and_records_failure_evidence(tmp_p
     assert by_id["E2E-02"]["classification"] == "PRODUCT_FAILURE"
     assert by_id["E2E-02"]["processExitCode"] == 7
     assert delivery.acceptance_exit_code(report) == 1
+
+
+def test_runner_rejects_unknown_case_and_distinguishes_subset_pass(tmp_path):
+    package = tmp_path / "package.zip"
+    delivery.build_package(PLAN, stage(tmp_path), package)
+    components = component_manifest(tmp_path)
+    with pytest.raises(delivery.DeliveryError, match="UNKNOWN_ACCEPTANCE_CASE:NOPE"):
+        delivery.run_acceptance(ACCEPTANCE, package, {"NOPE"}, None, component_manifest=components)
+    report = delivery.run_acceptance(
+        ACCEPTANCE, package, {"S7-PKG-01"}, None, component_manifest=components,
+    )
+    assert report["outcome"] == "SUBSET_PASS"
+    assert report["scope"] == "SUBSET"
+
+
+def test_executor_exit_zero_without_valid_evidence_is_harness_failure(tmp_path):
+    staging = tmp_path / "staging"; staging.mkdir()
+    evidence = tmp_path / "evidence"; evidence.mkdir()
+    script = staging / "empty.py"; script.write_text("print('no evidence')\n")
+    result = delivery._run_executor(
+        "E2E-01",
+        {"command": [sys.executable, str(script)], "workingDirectory": ".", "timeoutSeconds": 10, "evidenceFile": "E2E-01.json"},
+        staging, evidence, None,
+    )
+    assert result["status"] == "FAIL"
+    assert result["classification"] == "HARNESS_FAILURE"
+    assert result["actual"] == "EXECUTOR_EVIDENCE_MISSING"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process-group assertion")
+def test_executor_timeout_reaps_owned_descendant_tree(tmp_path):
+    staging = tmp_path / "staging"; staging.mkdir()
+    evidence = tmp_path / "evidence"; evidence.mkdir()
+    child_pid = tmp_path / "child.pid"
+    script = staging / "hang.py"
+    script.write_text(
+        "import pathlib, subprocess, sys, time\n"
+        "child=subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+        f"pathlib.Path({str(child_pid)!r}).write_text(str(child.pid))\n"
+        "time.sleep(60)\n"
+    )
+    result = delivery._run_executor(
+        "E2E-09",
+        {"command": [sys.executable, str(script)], "workingDirectory": ".", "timeoutSeconds": 0.3, "evidenceFile": "E2E-09.json"},
+        staging, evidence, None,
+    )
+    assert result["actual"] == "EXECUTOR_TIMEOUT"
+    pid = int(child_pid.read_text())
+    for _ in range(50):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.02)
+    else:
+        pytest.fail(f"owned descendant {pid} survived executor timeout")

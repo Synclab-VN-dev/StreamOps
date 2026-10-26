@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import ctypes
+from ctypes import wintypes
 import hashlib
 import json
 import os
@@ -32,6 +34,171 @@ class E2EFailure(RuntimeError):
 
 def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _wait_for(predicate, timeout: float, description: str):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        value = predicate()
+        if value:
+            return value
+        time.sleep(.1)
+    raise E2EFailure(f"timed out waiting for {description}")
+
+
+def _native_window(pid: int) -> dict | None:
+    if sys.platform != "win32":
+        raise E2EFailure("native HUD evidence requires Windows")
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    found: list[int] = []
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def visit(hwnd, _):
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value == pid and user32.IsWindowVisible(hwnd):
+            found.append(int(hwnd))
+        return True
+    callback = callback_type(visit)
+    user32.EnumWindows(callback, 0)
+    if not found:
+        return None
+    hwnd = found[0]
+    rectangle = wintypes.RECT()
+    if not user32.GetWindowRect(hwnd, ctypes.byref(rectangle)):
+        raise E2EFailure("GetWindowRect failed for owned HUD window")
+    length = user32.GetWindowTextLengthW(hwnd)
+    title = ctypes.create_unicode_buffer(length + 1)
+    user32.GetWindowTextW(hwnd, title, len(title))
+    session = wintypes.DWORD()
+    ctypes.WinDLL("kernel32", use_last_error=True).ProcessIdToSessionId(pid, ctypes.byref(session))
+    return {
+        "hwnd": hwnd, "pid": pid, "sessionId": int(session.value), "title": title.value,
+        "visible": True,
+        "bounds": {"left": rectangle.left, "top": rectangle.top,
+                   "width": rectangle.right - rectangle.left,
+                   "height": rectangle.bottom - rectangle.top},
+    }
+
+
+def _capture_window(window: dict, destination: Path) -> None:
+    bounds = window["bounds"]
+    if bounds["width"] <= 0 or bounds["height"] <= 0:
+        raise E2EFailure("native HUD has empty visible bounds")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    escaped = str(destination).replace("'", "''")
+    script = (
+        "Add-Type -AssemblyName System.Drawing;"
+        f"$b=New-Object Drawing.Bitmap({bounds['width']},{bounds['height']});"
+        "$g=[Drawing.Graphics]::FromImage($b);try{"
+        f"$g.CopyFromScreen({bounds['left']},{bounds['top']},0,0,$b.Size);"
+        f"$b.Save('{escaped}',[Drawing.Imaging.ImageFormat]::Png)"
+        "}finally{$g.Dispose();$b.Dispose()}"
+    )
+    completed = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+        capture_output=True, text=True, timeout=30, check=False,
+    )
+    if completed.returncode != 0 or not destination.is_file() or destination.stat().st_size < 100:
+        raise E2EFailure(f"native screenshot capture failed: {completed.stderr[-500:]}")
+
+
+def _visual_diff(before: Path, after: Path, destination: Path) -> int:
+    paths = [str(item).replace("'", "''") for item in (before, after, destination)]
+    script = (
+        "Add-Type -AssemblyName System.Drawing;"
+        f"$a=[Drawing.Bitmap]::FromFile('{paths[0]}');$b=[Drawing.Bitmap]::FromFile('{paths[1]}');"
+        "if($a.Width-ne$b.Width-or$a.Height-ne$b.Height){throw 'image dimensions differ'};"
+        "$d=New-Object Drawing.Bitmap($a.Width,$a.Height);$n=0;try{"
+        "for($y=0;$y-lt$a.Height;$y++){for($x=0;$x-lt$a.Width;$x++){"
+        "$ca=$a.GetPixel($x,$y);$cb=$b.GetPixel($x,$y);"
+        "if($ca.ToArgb()-ne$cb.ToArgb()){$d.SetPixel($x,$y,[Drawing.Color]::Magenta);$n++}"
+        "else{$d.SetPixel($x,$y,[Drawing.Color]::FromArgb(40,$ca))}}};"
+        f"$d.Save('{paths[2]}',[Drawing.Imaging.ImageFormat]::Png);Write-Output $n"
+        "}finally{$a.Dispose();$b.Dispose();$d.Dispose()}"
+    )
+    completed = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+        capture_output=True, text=True, timeout=90, check=False,
+    )
+    if completed.returncode != 0 or not destination.is_file():
+        raise E2EFailure(f"native visual comparison failed: {completed.stderr[-500:]}")
+    try:
+        return int(completed.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError) as exc:
+        raise E2EFailure("native visual comparison returned no changed-pixel count") from exc
+
+
+def _sqlite_evidence(database: Path, private_copy: Path, state_json: Path) -> dict:
+    if not database.is_file():
+        raise E2EFailure("HUD SQLite database is missing")
+    private_copy.parent.mkdir(parents=True, exist_ok=True)
+    source_uri = f"file:{database.as_posix()}?mode=ro"
+    with sqlite3.connect(source_uri, uri=True) as source, sqlite3.connect(private_copy) as target:
+        source.backup(target)
+    with sqlite3.connect(f"file:{private_copy.as_posix()}?mode=ro", uri=True) as db:
+        row = db.execute("SELECT hud_revision,payload_json FROM hud_current WHERE singleton=1").fetchone()
+        if row is None:
+            raise E2EFailure("HUD SQLite current state is empty")
+        payload = json.loads(row[1])
+        committed = db.execute(
+            "SELECT committed_at,published FROM hud_snapshot WHERE hud_revision=?", (row[0],)
+        ).fetchone()
+    value = {"hudRevision": row[0], "payload": payload,
+             "committedAt": committed[0], "published": bool(committed[1]),
+             "backupSha256": _sha(private_copy)}
+    state_json.parent.mkdir(parents=True, exist_ok=True)
+    state_json.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+    return value
+
+
+def _assert_ui_matches_db(ui: dict, db: dict) -> None:
+    payload = db["payload"]
+    expected = {
+        "hudRevision": payload["hudRevision"],
+        "characterId": payload["context"]["character"]["characterId"],
+        "currentRevision": payload["context"]["character"]["currentRevision"],
+        "targetId": payload["context"]["target"]["targetId"],
+        "targetSha256": payload["context"]["target"]["contentSha256"],
+        "selectionRevision": payload["context"]["target"]["selectionRevision"],
+        "scoreStatus": payload["score"]["status"], "score": payload["score"]["value"],
+        "failIssueCount": payload["score"]["failIssueCount"],
+        "warnCount": payload["score"]["warnCount"],
+        "itemsPassing": payload["score"]["itemsPassing"],
+        "itemsTargeted": payload["score"]["itemsTargeted"],
+    }
+    actual = {key: ui.get(key) for key in expected}
+    if actual != expected:
+        raise E2EFailure(f"visible HUD render does not match durable DB: expected={expected!r} actual={actual!r}")
+
+
+async def _select_target(endpoint: dict, credential: str, instance: str, generation: int,
+                         target_id: str) -> dict:
+    uri = f"ws://{endpoint['host']}:{endpoint['port']}"
+    async with connect(uri, origin=ORIGIN, ping_interval=None) as ws:
+        await ws.send(json.dumps(_msg("hud-e2e-hello", "hello", generation,
+                                      credential=credential, origin=ORIGIN,
+                                      lastSeen={"hudRevision": None})))
+        accepted = json.loads(await ws.recv())
+        if accepted.get("type") != "hello.accepted" or accepted.get("runtimeInstanceId") != instance:
+            raise E2EFailure("HUD evidence socket authentication failed")
+        await ws.send(json.dumps(_msg("hud-e2e-list", "target.list.request", generation)))
+        listing = await _recv_type(ws, "target.list.result")
+        target = next((item for item in listing["targets"] if item["targetId"] == target_id), None)
+        if target is None or target.get("validation") != "VALID":
+            raise E2EFailure("HUD evidence Target B is not valid")
+        await ws.send(json.dumps(_msg("hud-e2e-select", "target.select.request", generation,
+            targetId=target_id, expectedSha256=target["contentSha256"],
+            expectedListRevision=listing["listRevision"])))
+        update = None
+        selected = None
+        for _ in range(6):
+            message = json.loads(await asyncio.wait_for(ws.recv(), 5))
+            if message.get("type") == "target.select.result": selected = message
+            if message.get("type") == "hud.update": update = message
+            if selected and update: break
+        if selected is None or selected.get("status") != "ACTIVATED" or update is None:
+            raise E2EFailure("HUD evidence Target B activation/update was incomplete")
+        return update["hud"]
 
 
 def _prepare(install: Path, data: Path) -> tuple[Path, Path, str]:
@@ -269,6 +436,140 @@ def run_native(args: argparse.Namespace) -> dict:
     return value
 
 
+def run_native_hud(args: argparse.Namespace) -> dict:
+    """Collect private HUD-01/HUD-02 evidence from an interactive Windows desktop."""
+    if sys.platform != "win32":
+        raise E2EFailure("native HUD acceptance requires Windows")
+    if not 1 <= args.approved_port <= 65535:
+        raise E2EFailure("an Owner-approved static UAT port is required")
+    install = args.install_root.resolve(); data = args.data_root.resolve()
+    targets, evidence, _ = _prepare(install, data)
+    target_b_document = json.loads((targets / "target-a.json").read_text(encoding="utf-8"))
+    target_b_document["targetId"] = "synthetic-target-b"
+    target_b_document["displayName"] = "Synthetic Target B Visible Change"
+    (targets / "target-b.json").write_text(
+        json.dumps(target_b_document, separators=(",", ":")), encoding="utf-8"
+    )
+    run_id = str(uuid.uuid4())
+    root = args.output.resolve().parent / args.scenario
+    root.mkdir(parents=True, exist_ok=True)
+    bootstrap = data / "private" / f"bootstrap-{run_id}.json"
+    bootstrap.parent.mkdir(parents=True, exist_ok=True)
+    owner = str(uuid.uuid4()); child = str(uuid.uuid4()); generation = 1
+    credential = secrets.token_hex(32)
+    descriptor = {
+        "protocol":"d4planner-managed/v1", "contractVersion":"d4planner-r1-contract/1.0.0-candidate.5",
+        "ownerInstanceId":owner, "childInstanceId":child, "generation":generation,
+        "dataDir":str(data / "state"), "targetFolder":str(targets),
+        "wsEndpoint":{"host":"127.0.0.1","port":args.approved_port}, "credential":credential,
+    }
+    bootstrap.write_text(json.dumps(descriptor, separators=(",", ":")), encoding="utf-8")
+    render_report = root / "render-state.json"
+    env = _runtime_env(install, bootstrap, evidence)
+    env.update({
+        "D4PLANNER_BACKEND_PYTHON": str(install / "runtime/python/python.exe"),
+        "D4_HUD_PIPELINE_REPORT": str(render_report),
+        "D4_HUD_PIPELINE_CONTINUOUS": "1",
+    })
+    executable = install / "app/d4planner-fe.exe"
+    started = datetime.now(timezone.utc).isoformat()
+    process = subprocess.Popen([str(executable)], cwd=install, env=env,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    window = None
+    before_state = None
+    try:
+        window = _wait_for(lambda: _native_window(process.pid), 45, "visible native HUD window")
+        before_ui = _wait_for(
+            lambda: json.loads(render_report.read_text(encoding="utf-8"))
+                if render_report.is_file() else None,
+            90, "HUD render acknowledgment",
+        )
+        before_root = root / "before" if args.scenario == "HUD-02" else root
+        before_image = before_root / ("native-hud.png" if args.scenario == "HUD-02" else "screenshot-native.png")
+        _capture_window(window, before_image)
+        database = data / "state/hud.sqlite3"
+        before_db = _sqlite_evidence(
+            database, before_root / "sqlite-snapshot.db",
+            before_root / ("sqlite-state.json" if args.scenario == "HUD-02" else "sqlite-snapshot.json"),
+        )
+        _assert_ui_matches_db(before_ui, before_db)
+        before_state = {"ui": before_ui, "db": before_db, "screenshot": before_image}
+        (before_root / ("native-window.json" if args.scenario == "HUD-02" else "window-info.json")).write_text(
+            json.dumps(window, indent=2) + "\n", encoding="utf-8"
+        )
+        if args.scenario == "HUD-02":
+            (before_root / "ws-state.json").write_text(json.dumps(before_ui, indent=2) + "\n", encoding="utf-8")
+            previous_revision = int(before_ui["hudRevision"])
+            ws_after = asyncio.run(_select_target(
+                descriptor["wsEndpoint"], credential, child, generation, "synthetic-target-b"
+            ))
+            def changed_render():
+                if not render_report.is_file(): return None
+                value = json.loads(render_report.read_text(encoding="utf-8"))
+                return value if value.get("hudRevision", -1) > previous_revision and value.get("targetId") == "synthetic-target-b" else None
+            after_ui = _wait_for(changed_render, 30, "Target B visible HUD render")
+            after_root = root / "after"; after_root.mkdir(exist_ok=True)
+            after_image = after_root / "native-hud.png"
+            _capture_window(window, after_image)
+            after_db = _sqlite_evidence(
+                database, after_root / "sqlite-snapshot.db", after_root / "sqlite-state.json"
+            )
+            _assert_ui_matches_db(after_ui, after_db)
+            if ws_after["hudRevision"] != after_ui["hudRevision"]:
+                raise E2EFailure("WS update and visible render revisions differ")
+            (after_root / "ws-state.json").write_text(json.dumps(ws_after, indent=2) + "\n", encoding="utf-8")
+            (after_root / "native-window.json").write_text(json.dumps(window, indent=2) + "\n", encoding="utf-8")
+            compare = root / "compare"; compare.mkdir(exist_ok=True)
+            changed_pixels = _visual_diff(before_image, after_image, compare / "visual-change.png")
+            if changed_pixels == 0:
+                raise E2EFailure("Target A to B produced no visible pixel change")
+            delta = {
+                "beforeRevision": before_ui["hudRevision"], "afterRevision": after_ui["hudRevision"],
+                "beforeTargetId": before_ui["targetId"], "afterTargetId": after_ui["targetId"],
+                "changedPixels": changed_pixels,
+            }
+            (compare / "actual-ui-delta.json").write_text(json.dumps(delta, indent=2) + "\n", encoding="utf-8")
+            (compare / "expected-db-delta.json").write_text(json.dumps({
+                "beforeRevision": before_db["hudRevision"], "afterRevision": after_db["hudRevision"],
+                "beforeTargetId": before_db["payload"]["context"]["target"]["targetId"],
+                "afterTargetId": after_db["payload"]["context"]["target"]["targetId"],
+            }, indent=2) + "\n", encoding="utf-8")
+            (compare / "assertion-report.json").write_text(json.dumps({"ok":True, **delta}, indent=2) + "\n", encoding="utf-8")
+        owned_before_close = [{"ProcessId":process.pid,"Name":executable.name}, *_windows_descendants(process.pid)]
+        (root / "process-tree-before.json").write_text(json.dumps(owned_before_close, indent=2) + "\n", encoding="utf-8")
+        ctypes.WinDLL("user32", use_last_error=True).PostMessageW(window["hwnd"], 0x0010, 0, 0)
+        process.wait(timeout=20)
+        time.sleep(.5)
+        remaining = _windows_descendants(process.pid)
+        if process.returncode != 0 or remaining:
+            raise E2EFailure(f"native HUD cleanup failed exit={process.returncode} remaining={remaining!r}")
+        stdout, stderr = process.communicate(timeout=1)
+        (root / "execution.log").write_text(
+            (stdout or "") + (stderr or ""), encoding="utf-8", errors="replace"
+        )
+        (root / "process-tree-after.json").write_text(json.dumps(remaining, indent=2) + "\n", encoding="utf-8")
+        manifest = {
+            "schemaVersion":"d4planner-native-hud-evidence/v1", "ok":True,
+            "scenario":args.scenario, "runId":run_id, "sourceHead":args.source_head,
+            "packageSha256":_sha(args.package.resolve()), "startedAt":started,
+            "screenshotSha256":_sha(before_state["screenshot"]),
+            "screenshotTimestamp":datetime.fromtimestamp(before_state["screenshot"].stat().st_mtime, timezone.utc).isoformat(),
+            "viewport":window["bounds"], "hwnd":window["hwnd"], "pid":window["pid"],
+            "sessionId":window["sessionId"], "databaseSnapshotSha256":before_db["backupSha256"],
+            "databaseSnapshotTimestamp":datetime.now(timezone.utc).isoformat(),
+            "hudRevision":before_ui["hudRevision"], "contextState":before_ui["contextState"],
+            "scoreStatus":before_ui["scoreStatus"], "backendInstance":child,
+            "backendGeneration":generation, "expected":"native window and durable state match",
+            "actual":"verified", "classification":"NATIVE_UI_REAL_PROCESS_WITH_SYNTHETIC_INPUT",
+        }
+        (root / "evidence-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        return manifest
+    finally:
+        if process.poll() is None:
+            process.kill(); process.wait(timeout=10)
+        bootstrap.unlink(missing_ok=True)
+
+
 def run_owner(args: argparse.Namespace) -> dict:
     install = args.install_root.resolve(); data = args.data_root.resolve()
     targets, evidence, _ = _prepare(install, data)
@@ -470,6 +771,14 @@ def main(argv=None) -> int:
     package.add_argument("--package", type=Path, required=True)
     package.add_argument("--staging-root", type=Path, required=True)
     package.add_argument("--output", type=Path, required=True)
+    native_hud = sub.add_parser("native-hud")
+    native_hud.add_argument("--install-root", type=Path, required=True)
+    native_hud.add_argument("--data-root", type=Path, required=True)
+    native_hud.add_argument("--output", type=Path, required=True)
+    native_hud.add_argument("--package", type=Path, required=True)
+    native_hud.add_argument("--source-head", required=True)
+    native_hud.add_argument("--approved-port", type=int, required=True)
+    native_hud.add_argument("--scenario", choices=("HUD-01", "HUD-02"), required=True)
     args = parser.parse_args(argv)
     try:
         result = (run_backend(args) if args.command == "backend" else
@@ -477,6 +786,7 @@ def main(argv=None) -> int:
                   run_owner(args) if args.command == "owner" else
                   run_crash_recovery(args) if args.command == "crash-recovery" else
                   run_performance(args) if args.command == "performance" else
+                  run_native_hud(args) if args.command == "native-hud" else
                   run_rulekit(args) if args.command == "rulekit" else run_package_cycle(args))
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")

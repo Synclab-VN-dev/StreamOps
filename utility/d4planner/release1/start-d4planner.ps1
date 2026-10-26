@@ -2,6 +2,7 @@
 param(
     [string]$InstallRoot = (Split-Path -Parent $PSScriptRoot),
     [string]$DataRoot = (Join-Path $env:LOCALAPPDATA 'StreamOps\D4Planner'),
+    [ValidateRange(0, 65535)][int]$ApprovedPort = 0,
     [switch]$SelfTest
 )
 
@@ -26,7 +27,7 @@ $descriptor = [ordered]@{
     generation = 1
     dataDir = $stateRoot
     targetFolder = $targetRoot
-    wsEndpoint = @{ host = '127.0.0.1'; port = 0 }
+    wsEndpoint = @{ host = '127.0.0.1'; port = $ApprovedPort }
     credential = $credential
 }
 [IO.File]::WriteAllText($bootstrap, ($descriptor | ConvertTo-Json -Depth 4 -Compress), [Text.UTF8Encoding]::new($false))
