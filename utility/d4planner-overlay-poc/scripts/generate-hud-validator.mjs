@@ -13,9 +13,11 @@ const schema = JSON.parse(fs.readFileSync(schemaPath, "utf8"));
 const ajv = new Ajv2020({ allErrors: true, strict: false, code: { source: true, esm: true } });
 addFormats(ajv);
 const validate = ajv.compile(schema);
-const generated = standaloneCode(ajv, validate);
+const generated = standaloneCode(ajv, validate)
+  .replace('require("ajv/dist/runtime/ucs2length").default', 'ucs2length')
+  .replace('require("ajv-formats/dist/formats").fullFormats["date-time"]', 'fullFormats["date-time"]');
 fs.writeFileSync(
   outputPath,
-  `// @ts-nocheck\n// Generated from hud.schema.json; do not edit by hand.\n${generated}`,
+  `// @ts-nocheck\n// Generated from hud.schema.json; do not edit by hand.\nimport ucs2length from "ajv/dist/runtime/ucs2length.js";\nimport formats from "ajv-formats/dist/formats.js";\nconst fullFormats = formats.fullFormats ?? formats;\n${generated}`,
   "utf8",
 );
