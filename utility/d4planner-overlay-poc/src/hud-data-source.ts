@@ -130,7 +130,7 @@ export class HudWebSocketDataSource {
       this.pendingTarget.clear();
       this.pendingTargetList = null;
       this.pendingHello = null;
-      this.state = { ...this.state, freshness: 'STALE', subscriptionId: null };
+      this.state = { ...this.state, freshness: 'STALE', subscriptionId: null, error: 'SOCKET_CLOSED' };
       this.pendingSnapshot = null;
       this.emit();
       this.scheduleReconnect();
@@ -527,20 +527,47 @@ declare global {
 }
 
 type NativeHudBootstrap = { endpoint: string; credential: string; origin: string };
+type NativeBackendStatus = { state: 'STOPPED' | 'STARTING' | 'READY' | 'STOPPING' | 'EXITED' | 'FAILED' };
 
-class TauriHudDataSource implements IHudDataSource {
+export class TauriHudDataSource implements IHudDataSource {
   private source: HudWebSocketDataSource | null = null;
   private unsubscribe: (() => void) | null = null;
+  private listener: ((event: HudDataEvent) => void) | null = null;
+  private recoveryEpoch = 0;
+  private recovering: Promise<void> | null = null;
+
+  constructor(
+    private readonly nativeInvoke: typeof invoke = invoke,
+    private readonly socketFactory: (endpoint: string) => WebSocketLike =
+      endpoint => new WebSocket(endpoint) as unknown as WebSocketLike,
+    private readonly recoveryDelaysMs: readonly number[] = [0, 100, 250, 500, 1_000],
+  ) {}
 
   async connect(listener: (event: HudDataEvent) => void): Promise<() => void> {
     if (this.source) throw new Error('HUD data source is already connected.');
-    const bootstrap = await invoke<NativeHudBootstrap>('get_hud_ws_bootstrap');
+    this.listener = listener;
+    this.recoveryEpoch += 1;
+    await this.connectFromNativeBootstrap(this.recoveryEpoch);
+    return () => {
+      this.recoveryEpoch += 1;
+      this.listener = null;
+      this.unsubscribe?.();
+      this.unsubscribe = null;
+      this.source?.disconnect();
+      this.source = null;
+      this.recovering = null;
+    };
+  }
+
+  private async connectFromNativeBootstrap(epoch: number): Promise<void> {
+    const bootstrap = await this.nativeInvoke<NativeHudBootstrap>('get_hud_ws_bootstrap');
+    if (epoch !== this.recoveryEpoch || this.listener === null) return;
     if (!bootstrap.endpoint.startsWith('ws://') || bootstrap.credential.length < 32) {
       throw new Error('Native Backend returned an invalid WebSocket bootstrap.');
     }
     const source = new HudWebSocketDataSource({
       ...bootstrap,
-      socketFactory: endpoint => new WebSocket(endpoint) as unknown as WebSocketLike,
+      socketFactory: this.socketFactory,
     });
     this.source = source;
     let lastRevision: number | null = null;
@@ -550,30 +577,50 @@ class TauriHudDataSource implements IHudDataSource {
       const isConnected = state.backend !== null && state.error === null;
       if (isConnected !== connected) {
         connected = isConnected;
-        listener(isConnected
+        this.listener?.(isConnected
           ? { type: 'CONNECTION', state: 'CONNECTED' }
           : { type: 'CONNECTION', state: 'DISCONNECTED', reason: state.error ?? 'Backend handshake pending' });
       }
       if (state.listRevision !== null && state.listRevision !== lastListRevision) {
         lastListRevision = state.listRevision;
-        listener({ type: 'TARGETS', targets: structuredClone(state.targets) as TargetListEntry[] });
+        this.listener?.({ type: 'TARGETS', targets: structuredClone(state.targets) as TargetListEntry[] });
       }
       if (state.freshness === 'CURRENT' && state.hud && state.hud.hudRevision !== lastRevision) {
         lastRevision = state.hud.hudRevision;
-        listener({ type: 'SNAPSHOT', snapshot: structuredClone(state.hud) as HudSnapshot });
+        this.listener?.({ type: 'SNAPSHOT', snapshot: structuredClone(state.hud) as HudSnapshot });
       }
       if (state.freshness === 'STALE' && connected) {
         connected = false;
-        listener({ type: 'CONNECTION', state: 'DISCONNECTED', reason: state.error ?? 'Resynchronizing Backend state' });
+        this.listener?.({ type: 'CONNECTION', state: 'DISCONNECTED', reason: state.error ?? 'Resynchronizing Backend state' });
+      }
+      if ((state.error === 'SOCKET_CLOSED' || state.error === 'RECONNECT_EXHAUSTED') && !this.recovering) {
+        this.recovering = this.rediscoverBackend(epoch).finally(() => { this.recovering = null; });
       }
     });
     source.connect();
-    return () => {
-      this.unsubscribe?.();
-      this.unsubscribe = null;
-      source.disconnect();
-      if (this.source === source) this.source = null;
-    };
+  }
+
+  private async rediscoverBackend(epoch: number): Promise<void> {
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+    this.source?.disconnect();
+    this.source = null;
+    for (const delay of this.recoveryDelaysMs) {
+      if (delay > 0) await new Promise(resolve => setTimeout(resolve, delay));
+      if (epoch !== this.recoveryEpoch || this.listener === null) return;
+      try {
+        const status = await this.nativeInvoke<NativeBackendStatus>('get_backend_status');
+        if (status.state === 'FAILED' || status.state === 'EXITED' || status.state === 'STOPPED') {
+          await this.nativeInvoke<NativeBackendStatus>('restart_backend');
+        }
+        await this.connectFromNativeBootstrap(epoch);
+        return;
+      } catch {
+        // Backend restart and READY are bounded by the native wrapper. Retry
+        // bootstrap discovery, never the HUD data itself.
+      }
+    }
+    this.listener?.({ type: 'CONNECTION', state: 'DISCONNECTED', reason: 'BACKEND_REDISCOVERY_EXHAUSTED' });
   }
 
   async refreshTargets(): Promise<void> {
