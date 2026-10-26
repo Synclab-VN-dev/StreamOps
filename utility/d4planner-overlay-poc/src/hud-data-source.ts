@@ -1,17 +1,9 @@
-import Ajv2020 from 'ajv/dist/2020';
-import addFormats from 'ajv-formats';
 import { invoke } from '@tauri-apps/api/core';
-import hudSchema from '../../d4planner/contracts/release1/v1/schemas/hud.schema.json';
+import validateHudSchema from './hud-validator.generated';
 import type { HudSnapshot, SelectionResult, TargetListEntry } from './hud-model';
 
 export type SocketMessage = Record<string, unknown>;
 
-// The shared contract intentionally uses conditional numeric constraints that
-// JSON Schema 2020-12 permits without repeating a local `type`. Keep complete
-// validation enabled while allowing that portable schema form to compile.
-const ajv = new Ajv2020({ allErrors: true, strict: false });
-addFormats(ajv);
-const validateHudSchema = ajv.compile(hudSchema);
 const CONTRACT_REVISION = 'd4planner-r1-contract/1.0.0-candidate.5';
 
 export interface WebSocketLike {
