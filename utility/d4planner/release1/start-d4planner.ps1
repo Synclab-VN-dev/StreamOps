@@ -7,6 +7,8 @@ param(
     [ValidateRange(0, 65535)][int]$ApprovedPort = 0,
     [string]$EquipmentRepositoryDb = '',
     [switch]$EnableReadOnlyEquipmentRepository,
+    [string]$CharacterId = '',
+    [string]$CharacterDisplayName = '',
     [switch]$ValidateOnly,
     [switch]$SelfTest
 )
@@ -31,8 +33,16 @@ if ($EnableReadOnlyEquipmentRepository) {
     if (-not (Test-Path -LiteralPath $EquipmentRepositoryDb -PathType Leaf)) {
         throw "Read-only Equipment database does not exist: $EquipmentRepositoryDb"
     }
+    if ([string]::IsNullOrWhiteSpace($CharacterId) -or [string]::IsNullOrWhiteSpace($CharacterDisplayName)) {
+        throw '-CharacterId and -CharacterDisplayName are required when read-only capture is enabled'
+    }
+    if ($CharacterId.Length -gt 160 -or $CharacterDisplayName.Length -gt 160) {
+        throw 'Character identity fields must be 160 characters or fewer'
+    }
 } elseif ($EquipmentRepositoryDb) {
     throw '-EquipmentRepositoryDb requires -EnableReadOnlyEquipmentRepository'
+} elseif ($CharacterId -or $CharacterDisplayName) {
+    throw 'Character identity is valid only with -EnableReadOnlyEquipmentRepository'
 }
 
 $frontend = Join-Path $InstallRoot 'app\d4planner-fe.exe'
@@ -45,6 +55,8 @@ if ($ValidateOnly) {
         ok = $true; installRoot = $InstallRoot; dataRoot = $DataRoot; targetFolder = $targetRoot
         wsPortMode = $WsPortMode; approvedPort = $ApprovedPort
         equipmentRepository = if ($EnableReadOnlyEquipmentRepository) { $EquipmentRepositoryDb } else { $null }
+        characterId = if ($EnableReadOnlyEquipmentRepository) { $CharacterId } else { $null }
+        characterDisplayName = if ($EnableReadOnlyEquipmentRepository) { $CharacterDisplayName } else { $null }
     } | ConvertTo-Json -Compress
     exit 0
 }
@@ -85,8 +97,12 @@ if ($WsPortMode -eq 'FixedApprovedUat') {
 }
 if ($EnableReadOnlyEquipmentRepository) {
     $env:D4PLANNER_EQUIPMENT_REPOSITORY_DB = $EquipmentRepositoryDb
+    $env:D4PLANNER_CHARACTER_ID = $CharacterId
+    $env:D4PLANNER_CHARACTER_DISPLAY_NAME = $CharacterDisplayName
 } else {
     Remove-Item Env:D4PLANNER_EQUIPMENT_REPOSITORY_DB -ErrorAction SilentlyContinue
+    Remove-Item Env:D4PLANNER_CHARACTER_ID -ErrorAction SilentlyContinue
+    Remove-Item Env:D4PLANNER_CHARACTER_DISPLAY_NAME -ErrorAction SilentlyContinue
 }
 Remove-Item Env:D4PLANNER_EQUIPMENT_EVIDENCE_FILE -ErrorAction SilentlyContinue
 
