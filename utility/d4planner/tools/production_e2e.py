@@ -497,6 +497,12 @@ def run_native_hud(args: argparse.Namespace) -> dict:
     before_state = None
     try:
         window = _wait_for(lambda: _native_window(process.pid), 45, "visible native HUD window")
+        # Preserve fail-path native evidence before waiting for application data.
+        # This is a real desktop capture from the owned HWND, never a Golden.
+        _capture_window(window, root / "startup-native.png")
+        (root / "startup-window.json").write_text(
+            json.dumps(window, indent=2) + "\n", encoding="utf-8"
+        )
         before_ui = _wait_for(
             lambda: json.loads(render_report.read_text(encoding="utf-8"))
                 if render_report.is_file() else None,
@@ -594,10 +600,6 @@ def run_native_hud(args: argparse.Namespace) -> dict:
         remaining = _windows_descendants(process.pid)
         if process.returncode != 0 or remaining:
             raise E2EFailure(f"native HUD cleanup failed exit={process.returncode} remaining={remaining!r}")
-        stdout, stderr = process.communicate(timeout=1)
-        (root / "execution.log").write_text(
-            (stdout or "") + (stderr or ""), encoding="utf-8", errors="replace"
-        )
         (root / "process-tree-after.json").write_text(json.dumps(remaining, indent=2) + "\n", encoding="utf-8")
         manifest = {
             "schemaVersion":"d4planner-native-hud-evidence/v1", "ok":True,
@@ -618,6 +620,10 @@ def run_native_hud(args: argparse.Namespace) -> dict:
     finally:
         if process.poll() is None:
             process.kill(); process.wait(timeout=10)
+        stdout, stderr = process.communicate(timeout=1)
+        (root / "execution.log").write_text(
+            (stdout or "") + (stderr or ""), encoding="utf-8", errors="replace"
+        )
         bootstrap.unlink(missing_ok=True)
 
 
