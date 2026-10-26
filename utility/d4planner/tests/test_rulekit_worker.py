@@ -176,6 +176,51 @@ def test_operation_timeout_cancels_without_changing_session_lease_contract():
     run(scenario())
 
 
+def test_operation_deadline_bounds_hung_request_drain_cancel_and_pending_cleanup():
+    class HungDrainWriter:
+        def __init__(self):
+            self.transport = self
+            self.payloads = []
+            self.closed = False
+
+        def write(self, payload):
+            self.payloads.append(payload)
+
+        async def drain(self):
+            await asyncio.Event().wait()
+
+        def is_closing(self):
+            return self.closed
+
+        def close(self):
+            self.closed = True
+
+        async def wait_closed(self):
+            return None
+
+        def abort(self):
+            self.closed = True
+
+    async def scenario():
+        writer = HungDrainWriter()
+        client = RuleKitClient(
+            reader=asyncio.StreamReader(), writer=writer,
+            worker_instance_id="hung-send", worker_generation=1,
+            operation_timeout=0.05,
+        )
+        started = asyncio.get_running_loop().time()
+        with pytest.raises(RuleKitRemoteError) as timeout:
+            await client.call("listProviders", timeout=0.05)
+        elapsed = asyncio.get_running_loop().time() - started
+        assert timeout.value.code == "TIMEOUT"
+        assert elapsed < 0.15
+        assert client.pending_count == 0
+        assert len(writer.payloads) >= 1
+        await client.close()
+
+    run(scenario())
+
+
 def test_sessions_are_isolated_and_idle_expiry_is_typed_over_ipc():
     async def scenario():
         wrapper = RuleKitProcessWrapper(specification(D4_RULEKIT_SESSION_TTL_MS="40"))
