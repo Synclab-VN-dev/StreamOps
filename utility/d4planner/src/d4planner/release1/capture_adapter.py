@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from d4planner.character.repository import EquipmentRepository
+from d4planner.character.repository import EquipmentRepository, EquipmentProjectionView
 
 from .assessment import EquipmentSnapshot, ObservedEntity, ObservedItem, ObservedValue
 
@@ -107,17 +107,22 @@ class RepositoryEquipmentCaptureAdapter:
     def __init__(self, repository: EquipmentRepository):
         self.repository = repository
 
-    def snapshot(self, *, character_id: str, character_display_name: str, current_revision: int) -> EquipmentSnapshot:
-        rows = self.repository.list_equipment()
-        ring_index = 0
+    def snapshot(
+        self, *, character_id: str, character_display_name: str,
+        current_revision: int, projection: EquipmentProjectionView | None = None,
+    ) -> EquipmentSnapshot:
+        rows = list(projection.rows) if projection is not None else self.repository.list_equipment()
         items: list[ObservedItem] = []
         evidence: dict[str, frozenset[str]] = {}
         latest = datetime.now(timezone.utc).isoformat()
         for row in rows:
             family = row["slotFamily"]
             if family == "ring":
-                ring_index += 1
-                slot_id = f"ring-{ring_index}"
+                physical_index = row.get("slotIndex")
+                slot_id = (
+                    f"ring-{physical_index}" if physical_index in {1, 2}
+                    else f"unresolved-ring:{row['itemFingerprint']}"
+                )
             else:
                 slot_id = SLOT_IDS.get(family)
             if slot_id is None:
@@ -140,7 +145,10 @@ class RepositoryEquipmentCaptureAdapter:
                 slot_id, str(row["itemFingerprint"]), str(row["name"]),
                 str(row["observedAt"]), "CAPTURE_REPOSITORY", tuple(entities),
             ))
-            evidence[slot_id] = frozenset({"PRESENT_VALUE"})
+            evidence[slot_id] = (
+                frozenset({"PRESENT_VALUE"}) if not slot_id.startswith("unresolved-ring:")
+                else frozenset()
+            )
         return EquipmentSnapshot(
             character_id, character_display_name, current_revision, latest,
             tuple(items), evidence, "HEALTHY",
