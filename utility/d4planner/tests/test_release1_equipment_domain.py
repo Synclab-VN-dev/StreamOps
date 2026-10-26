@@ -478,3 +478,25 @@ def test_legacy_capture_repository_never_fuzzy_maps_human_labels(tmp_path):
     assert snapshot.items[0].display_name == "RECORDED HELM"
     assert snapshot.items[0].entities == ()
     assert snapshot.slot_evidence["helm"] == frozenset({"PRESENT_VALUE"})
+    assert repository.projection_revision() == (
+        1, "recorded-session", 6, "2026-10-26T03:00:06Z",
+    )
+
+
+def test_projection_revision_changes_only_for_equipment_materialization(tmp_path):
+    repository = EquipmentRepository(tmp_path / "character.db")
+    repository.commit_event(
+        session_id="session-a", event_seq=1, updated_at="2026-10-26T03:00:01Z",
+        observation=None,
+    )
+    assert repository.projection_revision() is None
+    repository.commit_event(
+        session_id="session-a", event_seq=2, updated_at="2026-10-26T03:00:02Z",
+        observation=None, empty_slot_family="helm",
+    )
+    assert repository.projection_revision() == (1, "session-a", 2, "2026-10-26T03:00:02Z")
+    repository.commit_event(
+        session_id="session-b", event_seq=1, updated_at="2026-10-26T03:00:03Z",
+        observation=None, remove_item_fingerprint="owned-ring",
+    )
+    assert repository.projection_revision() == (2, "session-b", 1, "2026-10-26T03:00:03Z")
