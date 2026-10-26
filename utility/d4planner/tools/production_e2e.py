@@ -191,6 +191,7 @@ def run_backend(args: argparse.Namespace) -> dict:
         "protocol":"d4planner-managed/v1", "contractVersion":"d4planner-r1-contract/1.0.0-candidate.5",
         "ownerInstanceId":owner, "childInstanceId":child, "generation":generation,
         "dataDir":str(data / "state"), "targetFolder":str(targets),
+        "repositoryRoot":str(install),
         "wsEndpoint":{"host":"127.0.0.1","port":0}, "credential":credential,
     }), encoding="utf-8")
     python = install / "runtime/python/python.exe"
@@ -276,6 +277,7 @@ def run_owner(args: argparse.Namespace) -> dict:
         "protocol":"d4planner-managed/v1", "contractVersion":"d4planner-r1-contract/1.0.0-candidate.5",
         "ownerInstanceId":str(uuid.uuid4()), "childInstanceId":str(uuid.uuid4()), "generation":1,
         "dataDir":str(data / "state"), "targetFolder":str(targets),
+        "repositoryRoot":str(install),
         "wsEndpoint":{"host":"127.0.0.1","port":0}, "credential":secrets.token_hex(32),
     }
     bootstrap.write_text(json.dumps(descriptor), encoding="utf-8")
