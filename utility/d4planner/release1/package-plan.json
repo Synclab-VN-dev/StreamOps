@@ -28,6 +28,7 @@
     {"id": "windows-executors", "path": "tools/executors.windows.json", "source": "utility/d4planner/release1/executors.windows.json"},
     {"id": "acceptance-wrapper", "path": "tools/d4planner-r1-uat.ps1", "source": "utility/d4planner/release1/d4planner-r1-uat.ps1"},
     {"id": "production-launcher", "path": "app/start-d4planner.ps1", "source": "utility/d4planner/release1/start-d4planner.ps1"},
+    {"id": "production-stop", "path": "app/stop-d4planner.ps1", "source": "utility/d4planner/release1/stop-d4planner.ps1"},
     {"id": "delivery-tool", "path": "tools/release1_delivery.py", "source": "utility/d4planner/tools/release1_delivery.py"},
     {"id": "production-e2e-tool", "path": "tools/production_e2e.py", "source": "utility/d4planner/tools/production_e2e.py"},
     {"id": "target-schema", "path": "contracts/target.schema.json", "source": "utility/d4planner/contracts/release1/v1/schemas/target.schema.json"},
