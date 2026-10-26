@@ -102,6 +102,29 @@ fn backend_from_environment() -> Result<BackendProcessWrapper<StdProcessDriver>,
     ))
 }
 
+fn restart_ws_port(
+    descriptor: &serde_json::Value, mode: Option<&str>, approved_port: Option<&str>,
+) -> Result<u16, String> {
+    match mode.unwrap_or("DYNAMIC") {
+        "DYNAMIC" => Ok(0),
+        "FIXED_APPROVED_UAT" => {
+            let current = descriptor.pointer("/wsEndpoint/port")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|value| u16::try_from(value).ok())
+                .filter(|value| *value != 0)
+                .ok_or("fixed UAT restart requires a non-zero bootstrap port")?;
+            let approved = approved_port
+                .ok_or("D4PLANNER_APPROVED_UAT_PORT is required for fixed UAT restart")?
+                .parse::<u16>().map_err(|_| "approved UAT port is invalid")?;
+            if approved == 0 || approved != current {
+                return Err("approved UAT port does not match bootstrap mapping".into());
+            }
+            Ok(current)
+        }
+        _ => Err("D4PLANNER_WS_PORT_MODE must be DYNAMIC or FIXED_APPROVED_UAT".into()),
+    }
+}
+
 fn rotate_backend_bootstrap() -> Result<LaunchSpecification, String> {
     let path = PathBuf::from(required_env("D4PLANNER_BOOTSTRAP_FILE")?);
     let mut descriptor: serde_json::Value = serde_json::from_slice(
@@ -115,7 +138,12 @@ fn rotate_backend_bootstrap() -> Result<LaunchSpecification, String> {
     descriptor["credential"] = serde_json::Value::String(
         credential.iter().map(|byte| format!("{byte:02x}")).collect()
     );
-    descriptor["wsEndpoint"] = serde_json::json!({"host":"127.0.0.1","port":0});
+    let restart_port = restart_ws_port(
+        &descriptor,
+        env::var("D4PLANNER_WS_PORT_MODE").ok().as_deref(),
+        env::var("D4PLANNER_APPROVED_UAT_PORT").ok().as_deref(),
+    )?;
+    descriptor["wsEndpoint"] = serde_json::json!({"host":"127.0.0.1","port":restart_port});
     fs::write(&path, serde_json::to_vec(&descriptor).map_err(|error| error.to_string())?)
         .map_err(|error| format!("cannot rotate bootstrap descriptor: {error}"))?;
     backend_launch_from_environment()
@@ -392,6 +420,37 @@ fn runtime_smoke(handle: &tauri::AppHandle) -> Result<Vec<String>, String> {
     apply_mode(&window, &state, true)?;
     checks.push("interactive-recovered".into());
     Ok(checks)
+}
+
+#[cfg(test)]
+mod restart_port_tests {
+    use super::restart_ws_port;
+
+    fn descriptor(port: u16) -> serde_json::Value {
+        serde_json::json!({"wsEndpoint":{"host":"127.0.0.1","port":port}})
+    }
+
+    #[test]
+    fn dynamic_restart_requests_a_fresh_ephemeral_port() {
+        assert_eq!(restart_ws_port(&descriptor(38150), None, None).unwrap(), 0);
+        assert_eq!(restart_ws_port(&descriptor(38150), Some("DYNAMIC"), None).unwrap(), 0);
+    }
+
+    #[test]
+    fn fixed_uat_restart_preserves_only_the_approved_mapping() {
+        assert_eq!(
+            restart_ws_port(&descriptor(38150), Some("FIXED_APPROVED_UAT"), Some("38150")).unwrap(),
+            38150
+        );
+        assert!(restart_ws_port(&descriptor(38150), Some("FIXED_APPROVED_UAT"), None).is_err());
+        assert!(restart_ws_port(&descriptor(38150), Some("FIXED_APPROVED_UAT"), Some("38151")).is_err());
+        assert!(restart_ws_port(&descriptor(0), Some("FIXED_APPROVED_UAT"), Some("38150")).is_err());
+    }
+
+    #[test]
+    fn unknown_restart_port_mode_fails_closed() {
+        assert!(restart_ws_port(&descriptor(38150), Some("STATIC"), Some("38150")).is_err());
+    }
 }
 
 pub fn run() {
