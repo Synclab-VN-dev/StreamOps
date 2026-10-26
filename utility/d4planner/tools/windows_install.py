@@ -36,6 +36,13 @@ def version(value: str) -> tuple[int, int, int]:
     return tuple(map(int, value.split(".")))
 
 
+def check_owned_layout(root: Path) -> None:
+    for name in ("versions", "transactions", ".setup.lock", "active.json", "upgrade-journal.json", "D4Planner.exe"):
+        path = root / name
+        if path.is_symlink() or (hasattr(path, "is_junction") and path.is_junction()):
+            raise InstallError("REPARSE_POINT_IN_APPLICATION_LAYOUT:" + name)
+
+
 def atomic_json(path: Path, value: dict) -> None:
     temporary = path.with_name(path.name + ".writing")
     with temporary.open("w", encoding="utf-8") as stream:
@@ -79,6 +86,7 @@ def verify_directory(root: Path) -> dict:
 @contextmanager
 def install_lock(root: Path):
     root.mkdir(parents=True, exist_ok=True)
+    check_owned_layout(root)
     path = root / ".setup.lock"
     with path.open("a+b") as stream:
         stream.seek(0); stream.write(b"0"); stream.flush(); stream.seek(0)
@@ -134,7 +142,8 @@ def recover(root: Path) -> dict:
         raise InstallError("INVALID_TRANSACTION_PATH")
     if old:
         previous_payload = owned_payload(root, old)
-        verify_directory(previous_payload)
+        manifest = verify_directory(previous_payload)
+        schema_compatible(Path(old["dataDir"]), manifest)
         backup = transaction / "D4Planner.previous.exe"
         if backup.is_file() and (not (root / "D4Planner.exe").is_file()
                 or delivery.sha256_file(backup) != delivery.sha256_file(root / "D4Planner.exe")):

@@ -112,3 +112,15 @@ def test_rollback_refuses_new_database_schema(tmp_path, monkeypatch):
     with pytest.raises(engine.InstallError, match="DB_SCHEMA_INCOMPATIBLE"):
         engine.rollback(root)
     assert engine.read_state(root)["version"] == "1.0.1"
+
+
+def test_install_refuses_redirected_application_subtree(tmp_path, monkeypatch):
+    root,data = prepare(tmp_path,monkeypatch)
+    root.mkdir()
+    outside = tmp_path / "user-owned"; outside.mkdir()
+    (outside / "preserve.txt").write_text("preserve")
+    (root / "versions").symlink_to(outside,target_is_directory=True)
+    artifact,digest = package(tmp_path)
+    with pytest.raises(engine.InstallError,match="REPARSE_POINT"):
+        engine.install(artifact,root,data,digest,health_check=lambda root: None)
+    assert (outside / "preserve.txt").read_text() == "preserve"

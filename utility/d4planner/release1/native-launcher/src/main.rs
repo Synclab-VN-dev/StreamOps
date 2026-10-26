@@ -83,7 +83,10 @@ fn run() -> Result<(), String> {
     if root.join("upgrade-journal.json").exists() && !env::args().any(|a| a == "--installation-health") {
         return Err("An interrupted upgrade needs Setup recovery before launch".into());
     }
-    let payload = payload(&root)?;
+    // Windows canonicalize returns a verbatim \\?\ path. Keep canonical paths
+    // for containment checks, but give Node/CommonJS ordinary Win32 paths.
+    // Node's relative module resolver does not support verbatim module roots.
+    let payload = dunce::simplified(&payload(&root)?).to_path_buf();
     verify(&payload)?;
     if env::args().any(|a| a == "--installation-health") { return Ok(()); }
     #[cfg(windows)] { windows::launch(&root, &payload) }
@@ -221,5 +224,10 @@ mod tests {
         for name in ["../outside", "C:/outside", "app\\..\\outside", "/absolute"] {
             assert!(relative(Path::new("."), name).is_err());
         }
+    }
+    #[cfg(windows)]
+    #[test] fn runtime_paths_do_not_use_verbatim_node_module_roots() {
+        assert_eq!(dunce::simplified(Path::new(r"\\?\C:\Cài đặt D4Planner\versions\1.0.0")),
+                   Path::new(r"C:\Cài đặt D4Planner\versions\1.0.0"));
     }
 }
