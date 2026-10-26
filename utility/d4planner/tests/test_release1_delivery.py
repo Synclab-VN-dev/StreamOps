@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import sqlite3
 import subprocess
 import sys
 import time
@@ -78,7 +79,9 @@ def test_production_launcher_validates_no_data_and_port_modes_without_starting(t
     assert json.loads(fixed.stdout)["approvedPort"] == 38150
 
     # The production launcher cannot silently attach to any real capture DB.
-    db = tmp_path / "equipment.sqlite"; db.write_bytes(b"isolated-test")
+    db = tmp_path / "equipment.sqlite"
+    with sqlite3.connect(db) as connection:
+        connection.execute("create table isolated_fixture(value integer)")
     explicit = subprocess.run(
         base + ["-EquipmentRepositoryDb", str(db)], capture_output=True, text=True, check=False,
     )
@@ -87,8 +90,17 @@ def test_production_launcher_validates_no_data_and_port_modes_without_starting(t
         base + ["-EquipmentRepositoryDb", str(db), "-EnableReadOnlyEquipmentRepository"],
         capture_output=True, text=True, check=False,
     )
-    assert opted_in.returncode == 0
-    assert json.loads(opted_in.stdout)["equipmentRepository"] == str(db.resolve())
+    assert opted_in.returncode != 0
+    assert "CharacterId" in (opted_in.stdout + opted_in.stderr)
+    configured = subprocess.run(
+        base + ["-EquipmentRepositoryDb", str(db), "-EnableReadOnlyEquipmentRepository",
+                "-CharacterId", "character-isolated", "-CharacterDisplayName", "Isolated Character"],
+        capture_output=True, text=True, check=False,
+    )
+    assert configured.returncode == 0, configured.stderr
+    configured_value = json.loads(configured.stdout)
+    assert configured_value["equipmentRepository"] == str(db.resolve())
+    assert configured_value["characterId"] == "character-isolated"
     assert "Stop-Process -Name" not in STOPPER.read_text(encoding="utf-8")
 
 
