@@ -97,10 +97,12 @@ fn run() -> Result<(), String> {
 mod windows {
     use super::*;
     use std::{os::windows::process::CommandExt, process::{Command, Stdio}, time::{Duration, Instant}};
-    use windows_sys::Win32::{Foundation::*, System::{JobObjects::*, Threading::*}, UI::WindowsAndMessaging::*};
+    use windows_sys::Win32::{Foundation::*, System::{Console::*, JobObjects::*, Threading::*}, UI::WindowsAndMessaging::*};
 
     struct Handle(HANDLE);
     impl Drop for Handle { fn drop(&mut self) { unsafe { if !self.0.is_null() { CloseHandle(self.0); } } } }
+    struct OwnedConsole(bool);
+    impl Drop for OwnedConsole { fn drop(&mut self) { unsafe { if self.0 { FreeConsole(); } } } }
     fn wide(value: &str) -> Vec<u16> { value.encode_utf16().chain(Some(0)).collect() }
     fn name(root: &Path, suffix: &str) -> Vec<u16> {
         wide(&format!("Local\\D4Planner-{:x}-{suffix}", Sha256::digest(root.to_string_lossy().to_lowercase().as_bytes())))
@@ -127,7 +129,11 @@ mod windows {
     unsafe extern "system" fn close_window(hwnd: HWND, parameter: isize) -> i32 {
         let mut pid = 0;
         GetWindowThreadProcessId(hwnd, &mut pid);
-        if pid == parameter as u32 { PostMessageW(hwnd, WM_CLOSE, 0, 0); }
+        // Tao/WebView2 also own hidden event-dispatch windows. Closing those
+        // can strand the event loop before Tauri receives main-window close.
+        if pid == parameter as u32 && IsWindowVisible(hwnd) != 0 {
+            PostMessageW(hwnd, WM_CLOSE, 0, 0);
+        }
         1
     }
 
@@ -135,6 +141,10 @@ mod windows {
         let mutex = Handle(CreateMutexW(std::ptr::null(), 1, name(root, "instance").as_ptr()));
         if mutex.0.is_null() { return Err("Cannot create instance mutex".into()); }
         if GetLastError() == ERROR_ALREADY_EXISTS { return Ok(()); }
+        // Child console runtimes inherit this hidden, application-owned console.
+        // Never hide a console inherited from the operator's terminal.
+        let console = OwnedConsole(GetConsoleWindow().is_null() && AllocConsole() != 0);
+        if console.0 { ShowWindow(GetConsoleWindow(), SW_HIDE); }
         let stop_event = Handle(CreateEventW(std::ptr::null(), 1, 0, name(root, "stop").as_ptr()));
         if stop_event.0.is_null() { return Err("Cannot create owned stop event".into()); }
         let installed_data = fs::read(root.join("active.json")).ok()
