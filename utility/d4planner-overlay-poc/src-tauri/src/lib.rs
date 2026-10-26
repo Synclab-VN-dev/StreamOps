@@ -68,6 +68,8 @@ fn backend_from_environment() -> Result<BackendProcessWrapper<StdProcessDriver>,
         "D4_RULEKIT_MAX_CONTEXTS", "D4_RULEKIT_BROWSER_MAX_QUEUE",
         "D4_RULEKIT_MAX_SESSIONS", "D4_RULEKIT_SESSION_TTL_MS",
         "D4_RULEKIT_OPERATION_TIMEOUT_MS", "D4_RULEKIT_CLEANUP_TIMEOUT_MS",
+        "D4PLANNER_EQUIPMENT_EVIDENCE_FILE",
+        "D4PLANNER_REPOSITORY_ROOT",
     ] {
         if let Ok(value) = env::var(name) { environment.insert(name.into(), value); }
     }
@@ -235,6 +237,34 @@ fn set_overlay_pin(window: WebviewWindow, pinned: bool) -> Result<(), String> {
     window.set_always_on_top(true).map_err(|error| error.to_string())
 }
 
+/// E2E-only observation sink. It cannot inject data or relax validation: the
+/// webview must first receive a valid production WS snapshot and render model.
+#[tauri::command]
+fn report_hud_pipeline(app: tauri::AppHandle, snapshot: serde_json::Value) -> Result<(), String> {
+    let path = env::var("D4_HUD_PIPELINE_REPORT")
+        .map_err(|_| "HUD pipeline reporting is not enabled".to_string())?;
+    let context = snapshot.pointer("/context/state").and_then(|value| value.as_str());
+    let freshness = snapshot.pointer("/health/scoreFreshness").and_then(|value| value.as_str());
+    let score = snapshot.pointer("/score/value").and_then(|value| value.as_f64());
+    let revision = snapshot.get("hudRevision").and_then(|value| value.as_u64());
+    let equipment = snapshot.get("equipment").and_then(|value| value.as_array());
+    if context != Some("BOUND") || freshness != Some("CURRENT") || score.is_none()
+        || revision.is_none() || equipment.is_none_or(|rows| rows.is_empty())
+    {
+        return Err("HUD pipeline snapshot is not render-ready".into());
+    }
+    let report = serde_json::json!({
+        "ok": true, "contextState": context, "scoreFreshness": freshness,
+        "score": score, "hudRevision": revision,
+        "equipmentRows": equipment.map_or(0, Vec::len),
+        "targetId": snapshot.pointer("/context/target/targetId"),
+        "characterId": snapshot.pointer("/context/character/characterId"),
+    });
+    fs::write(path, report.to_string()).map_err(|error| format!("cannot write HUD pipeline report: {error}"))?;
+    app.exit(0);
+    Ok(())
+}
+
 /// Actual Tauri + native-window smoke. Requires a Windows desktop session.
 /// It exercises OS APIs rather than just validating the executable's PE header.
 fn runtime_smoke(handle: &tauri::AppHandle) -> Result<Vec<String>, String> {
@@ -287,6 +317,27 @@ fn runtime_smoke(handle: &tauri::AppHandle) -> Result<Vec<String>, String> {
 }
 
 pub fn run() {
+    if env::args().any(|arg| arg == "--backend-self-test") {
+        let result = (|| -> Result<serde_json::Value, String> {
+            let wrapper = backend_from_environment()?;
+            let ready = wrapper.start()?;
+            if ready.ws_endpoint.port == 0 || ready.health.ws_transport != "READY"
+                || ready.health.rule_kit_worker != "READY"
+            {
+                let _ = wrapper.stop();
+                return Err("managed Backend service readiness is incomplete".into());
+            }
+            wrapper.stop()?;
+            Ok(serde_json::json!({"ok":true,"ready":ready,"finalState":wrapper.state()}))
+        })();
+        let report = match &result {
+            Ok(value) => value.clone(),
+            Err(error) => serde_json::json!({"ok":false,"error":error}),
+        };
+        let wrote = env::var("D4_BACKEND_SMOKE_REPORT").ok()
+            .map(|path| fs::write(path, report.to_string()).is_ok()).unwrap_or(false);
+        std::process::exit(if result.is_ok() && wrote { 0 } else { 1 });
+    }
     let self_test = env::args().any(|arg| arg == "--self-test");
     let app = tauri::Builder::default()
         .manage(ModeState(Mutex::new(true)))
@@ -301,7 +352,8 @@ pub fn run() {
             backend_command,
             get_hud_ws_bootstrap,
             set_overlay_extent,
-            set_overlay_pin
+            set_overlay_pin,
+            report_hud_pipeline
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").expect("configured main window");
