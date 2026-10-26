@@ -7,6 +7,7 @@ param(
   [string]$EvidenceDirectory,
   [string]$ExpectedPackageSha256,
   [string]$ComponentManifest,
+  [string]$ExecutorManifest,
   [ValidateRange(1,65535)][int]$ApprovedTestPort,
   [string[]]$Case = @(),
   [string]$Resume,
@@ -37,6 +38,7 @@ $arguments = @(
   '--evidence-dir', $EvidenceDirectory, '--expected-package-sha256', $ExpectedPackageSha256,
   '--component-manifest', $ComponentManifest
 )
+if($ExecutorManifest) { $arguments += @('--executor-manifest', $ExecutorManifest) }
 if($ApprovedTestPort) { $arguments += @('--approved-port', [string]$ApprovedTestPort) }
 foreach($id in $Case) { $arguments += @('--case', $id) }
 if($Resume) { $arguments += @('--resume', $Resume) }

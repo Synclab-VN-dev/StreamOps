@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import shutil
+import subprocess
 import sys
 import time
 import zipfile
@@ -20,6 +21,7 @@ PLAN_VERSION = "d4planner-package-plan/v1"
 MANIFEST_VERSION = "d4planner-release-manifest/v1"
 REPORT_VERSION = "d4planner-acceptance-report/v1"
 COMPONENT_MANIFEST_VERSION = "d4planner-component-shas/v1"
+EXECUTOR_MANIFEST_VERSION = "d4planner-e2e-executors/v1"
 FORBIDDEN_NAMES = {".env", "id_rsa", "id_ed25519", "credentials.json", "secrets.json"}
 
 
@@ -278,6 +280,90 @@ def load_component_shas(path: Path | None) -> dict[str, str]:
     return dict(components)
 
 
+def load_executors(path: Path | None) -> dict[str, dict]:
+    if path is None:
+        return {}
+    value = load_json(path)
+    cases = value.get("cases")
+    if value.get("schemaVersion") != EXECUTOR_MANIFEST_VERSION or not isinstance(cases, dict):
+        raise DeliveryError("INVALID_EXECUTOR_MANIFEST")
+    result: dict[str, dict] = {}
+    for case_id, spec in cases.items():
+        if not isinstance(case_id, str) or not isinstance(spec, dict):
+            raise DeliveryError("INVALID_EXECUTOR_CASE")
+        command = spec.get("command")
+        timeout = spec.get("timeoutSeconds")
+        cwd = spec.get("workingDirectory", ".")
+        if (
+            not isinstance(command, list) or not command
+            or any(not isinstance(token, str) or not token or "\x00" in token for token in command)
+            or not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= 1800
+            or not isinstance(cwd, str)
+        ):
+            raise DeliveryError(f"INVALID_EXECUTOR_CASE:{case_id}")
+        if cwd != ".":
+            safe_relative(cwd)
+        result[case_id] = dict(spec)
+    return result
+
+
+def _run_executor(
+    case_id: str,
+    spec: dict,
+    staging_root: Path | None,
+    evidence_dir: Path | None,
+) -> dict:
+    if staging_root is None or evidence_dir is None:
+        return {
+            "id": case_id, "status": "BLOCKED", "classification": "ENVIRONMENT_FAILURE",
+            "actual": "ISOLATED_STAGING_AND_EVIDENCE_REQUIRED",
+        }
+    root = staging_root.resolve()
+    relative_cwd = str(spec.get("workingDirectory", "."))
+    cwd = root if relative_cwd == "." else _contained_destination(root, relative_cwd)
+    if not cwd.is_dir():
+        return {
+            "id": case_id, "status": "BLOCKED", "classification": "ENVIRONMENT_FAILURE",
+            "actual": "EXECUTOR_WORKING_DIRECTORY_MISSING",
+        }
+    evidence_root = evidence_dir.resolve()
+    evidence_root.mkdir(parents=True, exist_ok=True)
+    log_path = _contained_destination(evidence_root, f"{case_id}.log")
+    started = time.perf_counter()
+    try:
+        completed = subprocess.run(
+            spec["command"], cwd=cwd, check=False, capture_output=True, text=True,
+            timeout=float(spec["timeoutSeconds"]), shell=False,
+        )
+        output = (completed.stdout or "") + (completed.stderr or "")
+        log_path.write_text(output, encoding="utf-8", errors="replace")
+        status = "PASS" if completed.returncode == 0 else "FAIL"
+        return {
+            "id": case_id,
+            "status": status,
+            "classification": "AUTOMATED" if status == "PASS" else "PRODUCT_FAILURE",
+            "actual": "EXPECTED_EXIT_0" if status == "PASS" else f"UNEXPECTED_EXIT_{completed.returncode}",
+            "processExitCode": completed.returncode,
+            "evidence": str(log_path),
+            "executorDurationSeconds": round(time.perf_counter() - started, 6),
+        }
+    except FileNotFoundError as exc:
+        log_path.write_text(f"{type(exc).__name__}: executable unavailable\n", encoding="utf-8")
+        return {
+            "id": case_id, "status": "BLOCKED", "classification": "ENVIRONMENT_FAILURE",
+            "actual": "EXECUTOR_NOT_AVAILABLE", "evidence": str(log_path),
+        }
+    except subprocess.TimeoutExpired as exc:
+        output = (exc.stdout or "") + (exc.stderr or "")
+        if isinstance(output, bytes):
+            output = output.decode(errors="replace")
+        log_path.write_text(str(output), encoding="utf-8", errors="replace")
+        return {
+            "id": case_id, "status": "FAIL", "classification": "HARNESS_FAILURE",
+            "actual": "EXECUTOR_TIMEOUT", "evidence": str(log_path),
+        }
+
+
 def run_acceptance(
     plan_path: Path,
     package: Path | None,
@@ -289,6 +375,7 @@ def run_acceptance(
     evidence_dir: Path | None = None,
     expected_package_sha256: str | None = None,
     component_manifest: Path | None = None,
+    executor_manifest: Path | None = None,
 ) -> dict:
     plan = load_json(plan_path)
     if plan.get("schemaVersion") != "d4planner-acceptance-plan/v1":
@@ -296,6 +383,7 @@ def run_acceptance(
     plan_sha256 = sha256_file(plan_path)
     package_sha256 = sha256_file(package) if package and package.is_file() else None
     component_shas = load_component_shas(component_manifest)
+    executors = load_executors(executor_manifest)
     previous = load_json(prior) if prior else {}
     if prior and (
         previous.get("planSha256") != plan_sha256
@@ -338,8 +426,17 @@ def run_acceptance(
             )
         elif kind == "OWNER_MANUAL":
             result = {"id": case_id, "status": "NOT_RUN", "classification": "OWNER_MANUAL"}
+        elif kind in {"RUNTIME_E2E", "VISUAL_GOLDEN", "PERFORMANCE"}:
+            executor = executors.get(case_id)
+            if executor is None:
+                result = {
+                    "id": case_id, "status": "BLOCKED", "classification": "PENDING_DEPENDENCY",
+                    "actual": "NO_REVIEWED_EXECUTOR_FOR_CASE",
+                }
+            else:
+                result = _run_executor(case_id, executor, staging_root, evidence_dir)
         else:
-            result = {"id": case_id, "status": "BLOCKED", "classification": "PENDING_DEPENDENCY"}
+            result = {"id": case_id, "status": "FAIL", "classification": "HARNESS_FAILURE", "actual": "UNKNOWN_CASE_KIND"}
         result.setdefault("expected", case.get("expected", "Acceptance condition in plan"))
         result.setdefault("actual", result.get("error", result["classification"]))
         result["exitCode"] = 0 if result["status"] == "PASS" else (1 if result["status"] == "FAIL" else (3 if result["status"] == "BLOCKED" else None))
@@ -371,6 +468,7 @@ def main(argv=None) -> int:
     run.add_argument("--staging-root", type=Path); run.add_argument("--evidence-dir", type=Path)
     run.add_argument("--expected-package-sha256"); run.add_argument("--approved-port", type=int)
     run.add_argument("--component-manifest", type=Path)
+    run.add_argument("--executor-manifest", type=Path)
     report = sub.add_parser("report"); report.add_argument("--input", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
@@ -393,6 +491,7 @@ def main(argv=None) -> int:
                 staging_root=args.staging_root, evidence_dir=args.evidence_dir,
                 expected_package_sha256=args.expected_package_sha256,
                 component_manifest=args.component_manifest,
+                executor_manifest=args.executor_manifest,
             )
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
