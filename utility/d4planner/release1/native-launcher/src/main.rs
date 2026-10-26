@@ -60,6 +60,10 @@ fn verify(root: &Path) -> Result<Value, String> {
 
 fn main() {
     let result = run();
+    if let Ok(path) = env::var("D4PLANNER_LAUNCH_REPORT") {
+        let report = json!({"ok":result.is_ok(),"error":result.as_ref().err(),"pid":std::process::id()});
+        let _ = fs::write(path, report.to_string());
+    }
     if let Err(error) = result {
         #[cfg(windows)] unsafe {
             use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR};
@@ -164,7 +168,9 @@ mod windows {
                 return Err("Cannot configure owned process job".into());
             }
             let mut command = Command::new(payload.join("app/d4planner-fe.exe"));
-            command.current_dir(payload).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
+            let error_log = fs::OpenOptions::new().create(true).append(true)
+                .open(data.join("private/native-stderr.log")).map_err(|e| e.to_string())?;
+            command.current_dir(payload).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::from(error_log))
                 .creation_flags(CREATE_SUSPENDED | CREATE_NO_WINDOW)
                 .env("D4PLANNER_BOOTSTRAP_FILE", &bootstrap)
                 .env("D4PLANNER_BACKEND_PYTHON", payload.join("runtime/python/python.exe"))
