@@ -17,6 +17,37 @@ wipes a database or user Target to recover from an error. The included Target
 fixture under the S1 contract remains synthetic test data and is not selected
 as a production Target automatically.
 
+## Owner HUD-03 manual launch
+
+The production launcher defaults to an isolated DataDir, an empty Target
+folder, no Equipment capture database and a dynamically bound loopback port.
+It never injects the recorded synthetic fixture or selects a Target. With no
+Target/Equipment data the native HUD must show `SELECT TARGET`/`NO DATA`, never
+a fabricated score. It uses only runtimes bundled in the verified package.
+
+After installing the package, launch it from an interactive desktop:
+
+```powershell
+pwsh -NoProfile -File <install>\D4Planner\app\start-d4planner.ps1 `
+  -InstallRoot <install>\D4Planner -DataRoot <isolated-data> -WsPortMode Dynamic
+```
+
+Stop gracefully with the global `Ctrl+Shift+F11` shortcut, or from another
+terminal use the ownership-checked recovery command:
+
+```powershell
+pwsh -NoProfile -File <install>\D4Planner\app\stop-d4planner.ps1 `
+  -DataRoot <isolated-data>
+```
+
+`Ctrl+Shift+F10` toggles interactive/click-through mode. The window starts
+interactive, draggable and always-on-top. The stop script validates PID,
+executable path and process start time, requests a normal window close, and
+fails closed rather than killing by process name. For an Owner-approved UAT
+mapping, use `-WsPortMode FixedApprovedUat -ApprovedPort <approved-port>`; an
+unavailable fixed port fails startup. Attaching a capture database additionally
+requires both `-EnableReadOnlyEquipmentRepository` and its explicit path.
+
 ## Commands
 
 Build only after reviewed sibling artifacts are staged at the exact paths in
