@@ -1,7 +1,7 @@
 mod overlay_core;
 mod backend_process;
 
-use std::{collections::BTreeMap, env, fs, path::PathBuf, sync::{Arc, Mutex}, time::Duration};
+use std::{collections::BTreeMap, env, fs, path::PathBuf, sync::{Arc, Mutex}, time::{Duration, SystemTime, UNIX_EPOCH}};
 use tauri::{
     Emitter, LogicalSize, Manager, PhysicalPosition, Position, Size, State, WebviewWindow,
 };
@@ -43,7 +43,7 @@ fn required_env(name: &str) -> Result<String, String> {
 
 /// Native composition root. React cannot provide executable/path/credential
 /// values; packaging supplies them through an owner-controlled environment.
-fn backend_from_environment() -> Result<BackendProcessWrapper<StdProcessDriver>, String> {
+fn backend_launch_from_environment() -> Result<LaunchSpecification, String> {
     let executable = PathBuf::from(required_env("D4PLANNER_BACKEND_PYTHON")?);
     if !executable.is_absolute() || !executable.is_file() {
         return Err("D4PLANNER_BACKEND_PYTHON must be an absolute existing file".into());
@@ -79,9 +79,7 @@ fn backend_from_environment() -> Result<BackendProcessWrapper<StdProcessDriver>,
     // propagate the optional override into the native process environment.
     environment.entry("D4PLANNER_REPOSITORY_ROOT".into())
         .or_insert_with(|| working_directory.to_string_lossy().into_owned());
-    Ok(BackendProcessWrapper::new(
-        Arc::new(StdProcessDriver),
-        LaunchSpecification {
+    Ok(LaunchSpecification {
             executable,
             args: vec!["-m".into(), "d4planner.managed_backend".into()],
             working_directory,
@@ -92,7 +90,12 @@ fn backend_from_environment() -> Result<BackendProcessWrapper<StdProcessDriver>,
             readiness_timeout: Duration::from_secs(15),
             graceful_stop_timeout: Duration::from_secs(5),
             kill_timeout: Duration::from_secs(3),
-        },
+        })
+}
+
+fn backend_from_environment() -> Result<BackendProcessWrapper<StdProcessDriver>, String> {
+    Ok(BackendProcessWrapper::new(
+        Arc::new(StdProcessDriver), backend_launch_from_environment()?,
     ))
 }
 
@@ -325,7 +328,8 @@ fn runtime_smoke(handle: &tauri::AppHandle) -> Result<Vec<String>, String> {
 pub fn run() {
     if env::args().any(|arg| arg == "--backend-self-test") {
         let result = (|| -> Result<serde_json::Value, String> {
-            let wrapper = backend_from_environment()?;
+            let specification = backend_launch_from_environment()?;
+            let wrapper = BackendProcessWrapper::new(Arc::new(StdProcessDriver), specification.clone());
             let ready = wrapper.start()?;
             if ready.ws_endpoint.port == 0 || ready.health.ws_transport != "READY"
                 || ready.health.rule_kit_worker != "READY"
@@ -333,8 +337,27 @@ pub fn run() {
                 let _ = wrapper.stop();
                 return Err("managed Backend service readiness is incomplete".into());
             }
+            let bootstrap_path = PathBuf::from(required_env("D4PLANNER_BOOTSTRAP_FILE")?);
+            let mut bootstrap: serde_json::Value = serde_json::from_slice(
+                &fs::read(&bootstrap_path).map_err(|error| error.to_string())?
+            ).map_err(|error| error.to_string())?;
+            let suffix = SystemTime::now().duration_since(UNIX_EPOCH)
+                .map_err(|error| error.to_string())?.as_nanos() & 0xffffffffffff;
+            let next_child = format!("00000000-0000-4000-8000-{suffix:012x}");
+            let next_generation = specification.generation + 1;
+            bootstrap["childInstanceId"] = serde_json::Value::String(next_child.clone());
+            bootstrap["generation"] = serde_json::Value::from(next_generation);
+            fs::write(&bootstrap_path, serde_json::to_vec(&bootstrap).map_err(|error| error.to_string())?)
+                .map_err(|error| error.to_string())?;
+            let mut next = specification;
+            next.child_instance_id = next_child;
+            next.generation = next_generation;
+            let restarted = wrapper.restart_with(next)?;
             wrapper.stop()?;
-            Ok(serde_json::json!({"ok":true,"ready":ready,"finalState":wrapper.state()}))
+            Ok(serde_json::json!({
+                "ok":true,"ready":ready,"restartedReady":restarted,
+                "finalState":wrapper.state()
+            }))
         })();
         let report = match &result {
             Ok(value) => value.clone(),
