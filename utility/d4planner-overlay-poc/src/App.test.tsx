@@ -121,6 +121,27 @@ describe("Release 1 Equipment HUD", () => {
     expect(screen.getByText(/assessment is not current/)).toBeTruthy();
   });
 
+  it("clears only stale connection errors after a validated authoritative reconnect snapshot", async () => {
+    const source = new FakeDataSource(targetBSnapshot(20));
+    render(<App dataSource={source} />);
+    await screen.findByText("SYNTHETIC FIREWALL");
+    act(() => source.emit({ type: "CONNECTION", state: "DISCONNECTED", reason: "socket closed" }));
+    expect(screen.getByRole("alert").textContent).toContain("socket closed");
+    act(() => source.emit({ type: "CONNECTION", state: "CONNECTED" }));
+    expect(screen.getByRole("alert").textContent).toContain("socket closed");
+
+    const restarted = {
+      ...targetBSnapshot(1),
+      backend: { runtimeInstanceId: "backend-new", generation: 4 },
+    };
+    act(() => source.emit({ type: "SNAPSHOT", snapshot: restarted }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+
+    // A late snapshot from the old generation cannot restore old UI state.
+    act(() => source.emit({ type: "SNAPSHOT", snapshot: targetBSnapshot(99) }));
+    expect(screen.getByText("SYNTHETIC FIREWALL")).toBeTruthy();
+  });
+
   it("renders NO_DATA distinctly from a valid zero or fabricated 100", async () => {
     render(<App dataSource={new FakeDataSource(noData)} />);
     await screen.findByText("NO DATA");
