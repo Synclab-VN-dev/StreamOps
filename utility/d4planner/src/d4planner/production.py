@@ -57,6 +57,9 @@ class RepositoryEquipmentEventSource:
         self._task: asyncio.Task[None] | None = None
         self.health_status = "STARTING"
         self.last_error: str | None = None
+        self.poll_count = 0
+        self.last_poll_duration_ns = 0
+        self.maximum_poll_duration_ns = 0
         self._stopping = False
 
     async def start(self) -> None:
@@ -81,7 +84,15 @@ class RepositoryEquipmentEventSource:
         self.health_status = "STOPPED"
 
     async def _consume_latest(self) -> bool:
-        projection = await asyncio.to_thread(self.repository.projection_snapshot)
+        started = perf_counter_ns()
+        try:
+            projection = await asyncio.to_thread(self.repository.projection_snapshot)
+        finally:
+            self.last_poll_duration_ns = perf_counter_ns() - started
+            self.maximum_poll_duration_ns = max(
+                self.maximum_poll_duration_ns, self.last_poll_duration_ns,
+            )
+            self.poll_count += 1
         cursor = projection.revision
         if cursor is None or cursor[0] <= self._last_revision:
             await self._set_health("HEALTHY", None)
