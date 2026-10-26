@@ -56,6 +56,7 @@ fn backend_from_environment() -> Result<BackendProcessWrapper<StdProcessDriver>,
         .map(str::to_owned).ok_or_else(|| format!("bootstrap {name} is missing"));
     let generation = bootstrap.get("generation").and_then(|value| value.as_u64())
         .ok_or("bootstrap generation is missing")?;
+    let working_directory = env::current_dir().map_err(|error| error.to_string())?;
     let mut environment = BTreeMap::new();
     environment.insert("D4PLANNER_BOOTSTRAP_FILE".into(), bootstrap_path.to_string_lossy().into_owned());
     for name in ["SYSTEMROOT", "WINDIR", "TEMP", "TMP", "PATH", "PYTHONPATH"] {
@@ -73,12 +74,17 @@ fn backend_from_environment() -> Result<BackendProcessWrapper<StdProcessDriver>,
     ] {
         if let Ok(value) = env::var(name) { environment.insert(name.into(), value); }
     }
+    // Packaged launches use the install root as their working directory. Keep
+    // contract discovery explicit even when a Windows launcher does not
+    // propagate the optional override into the native process environment.
+    environment.entry("D4PLANNER_REPOSITORY_ROOT".into())
+        .or_insert_with(|| working_directory.to_string_lossy().into_owned());
     Ok(BackendProcessWrapper::new(
         Arc::new(StdProcessDriver),
         LaunchSpecification {
             executable,
             args: vec!["-m".into(), "d4planner.managed_backend".into()],
-            working_directory: env::current_dir().map_err(|error| error.to_string())?,
+            working_directory,
             environment,
             owner_instance_id: string_field("ownerInstanceId")?,
             child_instance_id: string_field("childInstanceId")?,
