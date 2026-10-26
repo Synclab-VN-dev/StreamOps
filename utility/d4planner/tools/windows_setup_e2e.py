@@ -17,6 +17,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 
 
@@ -28,7 +29,8 @@ def sha(path):
 
 
 def run(command, **kwargs):
-    completed = subprocess.run(list(map(str, command)), capture_output=True, text=True, timeout=150, **kwargs)
+    actual_command = command if isinstance(command,str) else list(map(str, command))
+    completed = subprocess.run(actual_command, capture_output=True, text=True, timeout=180, **kwargs)
     if completed.returncode:
         raise RuntimeError(f"exit={completed.returncode} command={command[0]} stderr={completed.stderr[-1000:]}")
     return completed
@@ -112,7 +114,9 @@ def main():
         return result["status"] == "PASS"
     def state(): return json.loads((root / "active.json").read_text(encoding="utf-8"))
     def setup(path):
-        run([path,"/S",f"/DATADIR={data}",f"/D={root}"])
+        # NSIS GetOptions needs quotes around each value, not around the whole
+        # /OPTION=value token produced by Windows list2cmdline for spaced paths.
+        run(f'"{path}" /S /ISOLATED=1 /DATADIR="{data}" /INSTALLROOT="{root}"')
         return state()
     def initial():
         value = setup(args.setup_old)
@@ -135,34 +139,55 @@ def main():
         backup = node.with_name("node.exe.test-backup"); node.rename(backup)
         try: assert subprocess.run([str(root / "D4Planner.exe"),"--installation-health"],timeout=30).returncode != 0
         finally: backup.rename(node)
+        original_byte = None
+        with node.open("r+b") as stream:
+            original_byte = stream.read(1); stream.seek(0); stream.write(bytes([original_byte[0]^1]))
+        try: assert subprocess.run([str(root / "D4Planner.exe"),"--installation-health"],timeout=30).returncode != 0
+        finally:
+            with node.open("r+b") as stream: stream.write(original_byte)
         assert subprocess.run([str(root / "D4Planner.exe"),"--installation-health"],timeout=30).returncode == 0
-        return {"missingRuntimeRejected":True,"restoredRuntimeHealth":True}
+        return {"missingRuntimeRejected":True,"tamperedRuntimeRejected":True,"restoredRuntimeHealth":True}
     case("NEG-INTEGRITY","Missing runtime fails closed",negatives)
 
-    # FE executable is untouched; actual HWND helper is reused from production E2E.
+    # Probe the installed HUD in a short-lived process: importing the production
+    # WS extension into this driver would lock its .pyd during Uninstall.exe.
     current = engine.owned_payload(root,state())
-    sys.path.insert(0,str(current / "backend/site-packages")); sys.path.insert(0,str(current / "tools"))
-    import production_e2e
+    def native_probe(pid, screenshot=None):
+        script = (
+            "import sys,json; from pathlib import Path; "
+            f"sys.path[:0]=[{str(current / 'backend/site-packages')!r},{str(current / 'tools')!r}]; "
+            "import production_e2e; "
+            f"window=production_e2e._native_window({pid}); "
+        )
+        if screenshot:
+            script += f"production_e2e._capture_window(window,Path({str(screenshot)!r})) if window else None; "
+        script += "print(json.dumps(window))"
+        return json.loads(run([sys.executable,"-c",script]).stdout)
     environment = dict(os.environ)
     environment["PATH"] = os.pathsep.join([str(Path(os.environ["SYSTEMROOT"]) / "System32"),str(Path(os.environ["SYSTEMROOT"]) / "System32/WindowsPowerShell/v1.0")])
     environment.update({"D4PLANNER_WS_PORT_MODE":"FIXED_APPROVED_UAT","D4PLANNER_APPROVED_UAT_PORT":"38150"})
+    environment["D4PLANNER_LAUNCH_REPORT"] = str(args.output.parent / "native-launch-result.json")
     launcher = None; tree = []
     def launch():
         nonlocal launcher,tree
-        launcher = subprocess.Popen([str(root / "D4Planner.exe")],cwd=sandbox,env=environment)
+        launcher = subprocess.Popen([str(root / "D4Planner.exe"),"--launch"],cwd=sandbox,env=environment)
+        watchdog = threading.Timer(28, lambda: subprocess.run([str(root / "D4Planner.exe"),"--stop"],timeout=25))
+        watchdog.daemon = True
+        watchdog.start()
         deadline = time.monotonic()+22; window = None
         while time.monotonic()<deadline and launcher.poll() is None:
             tree = owned_tree(launcher.pid)
             for row in tree:
-                if row["name"].lower() == "d4planner-fe.exe": window = production_e2e._native_window(row["pid"])
-            if window and any(row["name"].lower()=="node.exe" for row in tree): break
+                if row["name"].lower() == "d4planner-fe.exe": window = native_probe(row["pid"])
+            if (window and any(row["name"].lower()=="node.exe" for row in tree)
+                    and any("chrome" in row["name"].lower() for row in tree)): break
             time.sleep(.15)
         assert window is not None,"Native HWND did not appear"
         assert any(row["name"].lower()=="node.exe" for row in tree),"Owned Node absent"
         assert any("chrome" in row["name"].lower() for row in tree),"Owned Chromium absent"
         run([root / "D4Planner.exe"],env=environment)
         assert len([row for row in owned_tree(launcher.pid) if row["name"].lower()=="d4planner-fe.exe"]) == 1
-        production_e2e._capture_window(window,args.output.parent / "root-launcher-native.png")
+        native_probe(window["pid"],args.output.parent / "root-launcher-native.png")
         return {"window":window,"ownedTree":tree,"duplicateBackendPrevented":True,"screenshotSha256":sha(args.output.parent / "root-launcher-native.png")}
     try:
         native_ok = case("PKG-01","Root EXE owns one visible native FE, BE, Node and Chromium",launch)
@@ -180,7 +205,7 @@ def main():
     def reinstall():
         assert setup(args.setup_new)["version"] == "1.0.1"; preserved()
         previous = state()
-        completed = subprocess.run([str(args.setup_old),"/S",f"/DATADIR={data}",f"/D={root}"],timeout=90)
+        completed = subprocess.run(f'"{args.setup_old}" /S /ISOLATED=1 /DATADIR="{data}" /INSTALLROOT="{root}"',timeout=180)
         assert completed.returncode != 0
         assert state() == previous
         return {"sameVersionReinstall":True,"downgradeRejected":True,"dataPreserved":True}
@@ -196,6 +221,25 @@ def main():
         run([root / "D4Planner.exe","--installation-health"]); preserved()
         return {"interruptedProcessExit":88,"journalRecovered":True,"dataPreserved":True}
     case("PKG-05","Interrupted real engine activation recovers verified previous payload",recovery)
+    def locked_files():
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL("kernel32",use_last_error=True)
+        kernel.CreateFileW.argtypes = [wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,ctypes.c_void_p,wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE]
+        kernel.CreateFileW.restype = wintypes.HANDLE
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel.CreateFileW(str(root / "D4Planner.exe"),0x80000000,1,None,3,0,None)
+        assert handle not in (None,ctypes.c_void_p(-1).value)
+        previous = state()
+        try:
+            try: engine.install(args.package_new,root,data,args.package_sha)
+            except PermissionError: pass
+            else: raise AssertionError("Locked root launcher unexpectedly replaced")
+            assert state() == previous
+        finally: kernel.CloseHandle(handle)
+        if (root / "upgrade-journal.json").exists(): engine.recover(root)
+        run([root / "D4Planner.exe","--installation-health"]); preserved()
+        return {"sharingViolationRejected":True,"previousVersionIntact":True,"dataPreserved":True}
+    case("NEG-LOCKED","Locked launcher leaves prior application and user data intact",locked_files)
     def clean():
         assert "node" not in environment["PATH"].lower() and "python" not in environment["PATH"].lower()
         run([root / "D4Planner.exe","--installation-health"],env=environment)
@@ -203,11 +247,14 @@ def main():
                 "networkDisabled":"NOT_ENFORCED"}
     case("PKG-07-PARTIAL","Private runtime verification with PATH excluding development toolchains",clean)
     def uninstall():
-        # NSIS uninstaller self-copies unless _?= is provided. Waiting with the
-        # exact path keeps completion observable; only the sandbox is owned.
-        run([root / "Uninstall.exe","/S",f"_?={root}"])
+        # NSIS self-copies to TEMP so Windows can remove Uninstall.exe itself.
+        # Wait for observable completion rather than the short-lived bootstrap.
+        run([root / "Uninstall.exe","/S"])
+        deadline = time.monotonic()+90
+        while time.monotonic()<deadline and (root / "Uninstall.exe").exists(): time.sleep(.1)
         assert not (root / "D4Planner.exe").exists(); preserved()
-        return {"dataPreserved":True,"rootLauncherRemoved":True}
+        assert not (root / "Uninstall.exe").exists(),"Uninstaller did not finish removing itself"
+        return {"dataPreserved":True,"rootLauncherRemoved":True,"uninstallerRemoved":True}
     case("PKG-03","Real Uninstall.exe removes app and retains SQLite/Targets/Settings",uninstall)
     report["finishedAt"] = datetime.now(timezone.utc).isoformat()
     report["outcome"] = "PASS" if all(item["status"]=="PASS" for item in report["cases"]) else "FAIL"
