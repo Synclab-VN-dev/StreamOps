@@ -198,6 +198,16 @@ async def _select_target(endpoint: dict, credential: str, instance: str, generat
         accepted = json.loads(await ws.recv())
         if accepted.get("type") != "hello.accepted" or accepted.get("runtimeInstanceId") != instance:
             raise E2EFailure("HUD evidence socket authentication failed")
+        await ws.send(json.dumps(_msg(
+            "hud-e2e-snapshot", "hud.snapshot.request", generation,
+            requestContext={
+                "mode":"DISCOVER_ACTIVE_CONTEXT", "reason":"INITIAL_CONNECTION",
+                "attempt":1, "runtimeInstanceId":instance, "minimumHudRevision":0,
+            },
+        )))
+        snapshot = await _recv_type(ws, "hud.snapshot")
+        if snapshot.get("authoritative") is not True or not snapshot.get("subscriptionId"):
+            raise E2EFailure("HUD evidence socket did not establish an authoritative subscription")
         await ws.send(json.dumps(_msg("hud-e2e-list", "target.list.request", generation)))
         listing = await _recv_type(ws, "target.list.result")
         target = next((item for item in listing["targets"] if item["targetId"] == target_id), None)
