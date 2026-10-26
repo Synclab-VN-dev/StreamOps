@@ -44,6 +44,9 @@ class EquipmentRepository:
             CREATE TABLE IF NOT EXISTS projector_checkpoint(
               consumer TEXT PRIMARY KEY, session_id TEXT NOT NULL, last_event_seq INTEGER NOT NULL,
               updated_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS equipment_projection_revision(
+              singleton INTEGER PRIMARY KEY CHECK(singleton=1), revision INTEGER NOT NULL,
+              session_id TEXT NOT NULL, event_seq INTEGER NOT NULL, updated_at TEXT NOT NULL);
             """)
 
     def checkpoint(self) -> tuple[str, int] | None:
@@ -53,6 +56,15 @@ class EquipmentRepository:
                 (self.CONSUMER,),
             ).fetchone()
             return (str(row[0]), int(row[1])) if row else None
+
+    def projection_revision(self) -> tuple[int, str, int, str] | None:
+        """Return the durable producer cursor for current Equipment state."""
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT revision,session_id,event_seq,updated_at "
+                "FROM equipment_projection_revision WHERE singleton=1"
+            ).fetchone()
+            return (int(row[0]), str(row[1]), int(row[2]), str(row[3])) if row else None
 
     def commit_event(
         self,
@@ -83,6 +95,8 @@ class EquipmentRepository:
                     "WHERE slot_family='ring' AND item_fingerprint=?",
                     (remove_item_fingerprint,),
                 )
+
+            equipment_changed = bool(observation or empty_slot_family or remove_item_fingerprint)
 
             if observation and observation.confidence == "HIGH":
                 item = observation.item
@@ -126,6 +140,14 @@ class EquipmentRepository:
               ON CONFLICT(consumer) DO UPDATE SET session_id=excluded.session_id,last_event_seq=excluded.last_event_seq,updated_at=excluded.updated_at""",
                 (self.CONSUMER, session_id, event_seq, updated_at),
             )
+            if equipment_changed:
+                db.execute(
+                    """INSERT INTO equipment_projection_revision(singleton,revision,session_id,event_seq,updated_at)
+                    VALUES(1,1,?,?,?) ON CONFLICT(singleton) DO UPDATE SET
+                    revision=equipment_projection_revision.revision+1,
+                    session_id=excluded.session_id,event_seq=excluded.event_seq,updated_at=excluded.updated_at""",
+                    (session_id, event_seq, updated_at),
+                )
 
     def list_equipment(self) -> list[dict[str, Any]]:
         order = "CASE slot_family WHEN 'helm' THEN 1 WHEN 'chest' THEN 2 WHEN 'gloves' THEN 3 WHEN 'pants' THEN 4 WHEN 'boots' THEN 5 WHEN 'main_hand' THEN 6 WHEN 'off_hand' THEN 7 WHEN 'ring' THEN 8 WHEN 'amulet' THEN 9 ELSE 99 END"
