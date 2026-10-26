@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
 from typing import Any
 
+from .character.repository import EquipmentRepository
 from .release1.assessment import EquipmentAssessmentService, EquipmentSnapshot
-from .release1.capture_adapter import EquipmentCaptureAdapter
+from .release1.capture_adapter import EquipmentCaptureAdapter, RepositoryEquipmentCaptureAdapter
 from .release1.persistence import AssessmentBinding, DurableHudStore
 from .release1.service import EquipmentAssessmentCoordinator
 from .release1.target_repository import (
@@ -23,6 +25,60 @@ from .transport import (
 
 CONTRACT_REVISION = "d4planner-r1-contract/1.0.0-candidate.5"
 ORIGIN = "tauri://localhost"
+
+
+class RepositoryEquipmentEventSource:
+    """Consume durable capture-producer revisions without interpreting labels."""
+
+    def __init__(
+        self, runtime: "ProductionBackendRuntime", repository: EquipmentRepository,
+        *, character_id: str, character_display_name: str, interval_seconds: float = 0.1,
+    ) -> None:
+        if interval_seconds <= 0:
+            raise ValueError("Equipment repository interval must be positive")
+        self.runtime = runtime
+        self.repository = repository
+        self.adapter = RepositoryEquipmentCaptureAdapter(repository)
+        self.character_id = character_id
+        self.character_display_name = character_display_name
+        self.interval_seconds = interval_seconds
+        self._last_revision = 0
+        self._task: asyncio.Task[None] | None = None
+
+    async def start(self) -> None:
+        if self._task is not None:
+            raise RuntimeError("Equipment repository source already started")
+        await self._consume_latest()
+        self._task = asyncio.create_task(self._run(), name="equipment-repository-source")
+
+    async def stop(self) -> None:
+        task, self._task = self._task, None
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    async def _consume_latest(self) -> bool:
+        cursor = await asyncio.to_thread(self.repository.projection_revision)
+        if cursor is None or cursor[0] <= self._last_revision:
+            return False
+        revision = cursor[0]
+        current = await asyncio.to_thread(
+            self.adapter.snapshot,
+            character_id=self.character_id,
+            character_display_name=self.character_display_name,
+            current_revision=revision,
+        )
+        await self.runtime.ingest_snapshot(current)
+        self._last_revision = revision
+        return True
+
+    async def _run(self) -> None:
+        while True:
+            await asyncio.sleep(self.interval_seconds)
+            await self._consume_latest()
 
 
 def _now() -> str:
@@ -173,6 +229,8 @@ class ProductionBackendRuntime:
         self.current: EquipmentSnapshot | None = None
         self.hub: HudHub | None = None
         self.server: D4PlannerWebSocketServer | None = None
+        self.capture_source: RepositoryEquipmentEventSource | None = None
+        self._ingest_lock = asyncio.Lock()
 
     async def start(self) -> dict[str, Any]:
         if self.rulekit is None:
@@ -211,6 +269,20 @@ class ProductionBackendRuntime:
                     raise ValueError("configured Equipment evidence is unreadable") from exc
                 await self.ingest(evidence)
                 capture_state = "RECORDED_EVIDENCE_APPLIED"
+            repository_path = os.environ.get("D4PLANNER_EQUIPMENT_REPOSITORY_DB")
+            if repository_path:
+                path = Path(repository_path)
+                character_id = os.environ.get("D4PLANNER_CHARACTER_ID", "")
+                character_name = os.environ.get("D4PLANNER_CHARACTER_DISPLAY_NAME", "")
+                if (not path.is_absolute() or not path.is_file() or path.is_symlink()
+                        or not character_id or not character_name):
+                    raise ValueError("configured Equipment repository source is invalid")
+                self.capture_source = RepositoryEquipmentEventSource(
+                    self, EquipmentRepository(path), character_id=character_id,
+                    character_display_name=character_name,
+                )
+                await self.capture_source.start()
+                capture_state = "REPOSITORY_SUBSCRIBED"
             return {
                 "wsEndpoint": {"host": endpoint["host"], "port": self.server.port},
                 "health": {
@@ -226,6 +298,9 @@ class ProductionBackendRuntime:
             raise
 
     async def stop(self) -> None:
+        if self.capture_source is not None:
+            await self.capture_source.stop()
+            self.capture_source = None
         if self.server is not None:
             await self.server.close()
             self.server = None
@@ -256,24 +331,28 @@ class ProductionBackendRuntime:
 
     async def ingest(self, event: dict[str, Any]) -> dict[str, Any]:
         current = self.capture.from_event(event)
-        if self.current is not None and current.current_revision <= self.current.current_revision:
-            raise ValueError("STALE_CURRENT_REVISION")
-        self.current = current
-        target = self.targets.get_active()
-        if target is None:
-            hud = self.store.commit_context(
-                lambda revision: _unbound_hud(
-                    revision, self.runtime_instance_id, self.generation, current=current,
-                ), current.captured_at,
-            )
-        else:
-            self.store.set_binding(_binding(self.runtime_instance_id, current, target))
-            hud = self.coordinator.assess_commit(
-                runtime_instance_id=self.runtime_instance_id, current=current,
-                target=target, produced_at=current.captured_at,
-            )
-        await self._publish_committed(hud)
-        return hud
+        return await self.ingest_snapshot(current)
+
+    async def ingest_snapshot(self, current: EquipmentSnapshot) -> dict[str, Any]:
+        async with self._ingest_lock:
+            if self.current is not None and current.current_revision <= self.current.current_revision:
+                raise ValueError("STALE_CURRENT_REVISION")
+            self.current = current
+            target = self.targets.get_active()
+            if target is None:
+                hud = self.store.commit_context(
+                    lambda revision: _unbound_hud(
+                        revision, self.runtime_instance_id, self.generation, current=current,
+                    ), current.captured_at,
+                )
+            else:
+                self.store.set_binding(_binding(self.runtime_instance_id, current, target))
+                hud = self.coordinator.assess_commit(
+                    runtime_instance_id=self.runtime_instance_id, current=current,
+                    target=target, produced_at=current.captured_at,
+                )
+            await self._publish_committed(hud)
+            return hud
 
     async def handle_control(self, command: dict[str, Any]) -> dict[str, Any] | None:
         if command.get("type") != "equipment.evidence":
