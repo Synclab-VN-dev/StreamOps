@@ -13,11 +13,13 @@ import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import shutil
 import sys
+import time
 import zipfile
 
 PLAN_VERSION = "d4planner-package-plan/v1"
 MANIFEST_VERSION = "d4planner-release-manifest/v1"
 REPORT_VERSION = "d4planner-acceptance-report/v1"
+COMPONENT_MANIFEST_VERSION = "d4planner-component-shas/v1"
 FORBIDDEN_NAMES = {".env", "id_rsa", "id_ed25519", "credentials.json", "secrets.json"}
 
 
@@ -260,6 +262,22 @@ def acceptance_exit_code(report: dict) -> int:
     return 0
 
 
+def load_component_shas(path: Path | None) -> dict[str, str]:
+    if path is None:
+        raise DeliveryError("COMPONENT_MANIFEST_REQUIRED")
+    value = load_json(path)
+    components = value.get("components")
+    if value.get("schemaVersion") != COMPONENT_MANIFEST_VERSION or not isinstance(components, dict):
+        raise DeliveryError("INVALID_COMPONENT_MANIFEST")
+    expected = {f"S{number}" for number in range(2, 8)}
+    if set(components) != expected:
+        raise DeliveryError("COMPONENT_MANIFEST_SCOPE_MISMATCH")
+    for name, sha in components.items():
+        if not isinstance(sha, str) or len(sha) != 40 or any(c not in "0123456789abcdef" for c in sha):
+            raise DeliveryError(f"INVALID_COMPONENT_SHA:{name}")
+    return dict(components)
+
+
 def run_acceptance(
     plan_path: Path,
     package: Path | None,
@@ -270,50 +288,69 @@ def run_acceptance(
     staging_root: Path | None = None,
     evidence_dir: Path | None = None,
     expected_package_sha256: str | None = None,
+    component_manifest: Path | None = None,
 ) -> dict:
     plan = load_json(plan_path)
     if plan.get("schemaVersion") != "d4planner-acceptance-plan/v1":
         raise DeliveryError("ACCEPTANCE_PLAN_VERSION_MISMATCH")
     plan_sha256 = sha256_file(plan_path)
     package_sha256 = sha256_file(package) if package and package.is_file() else None
+    component_shas = load_component_shas(component_manifest)
     previous = load_json(prior) if prior else {}
     if prior and (
         previous.get("planSha256") != plan_sha256
         or previous.get("packageSha256") != package_sha256
+        or previous.get("componentShas") != component_shas
     ):
         raise DeliveryError("RESUME_CONTEXT_MISMATCH")
     previous_cases = {case["id"]: case for case in previous.get("cases", []) if case.get("status") == "PASS"}
     runtime_platform = sys.platform if platform is None else platform
     results = []
     for case in plan["cases"]:
+        case_started = time.perf_counter()
         case_id = case["id"]
         if selected and case_id not in selected:
-            results.append({"id": case_id, "status": "NOT_RUN", "classification": "NOT_SELECTED"}); continue
+            result = {
+                "id": case_id, "status": "NOT_RUN", "classification": "NOT_SELECTED",
+                "expected": case.get("expected", "Acceptance condition in plan"),
+                "actual": "NOT_SELECTED", "exitCode": None,
+                "durationSeconds": round(time.perf_counter() - case_started, 6),
+            }
+            results.append(result)
+            continue
         if case_id in previous_cases:
-            results.append({**previous_cases[case_id], "resumed": True}); continue
+            result = {**previous_cases[case_id], "resumed": True}
+            results.append(result)
+            continue
         kind = case["kind"]
         if kind == "PACKAGE_INTEGRITY":
             if package is None:
-                results.append({"id": case_id, "status": "BLOCKED", "classification": "MISSING_PACKAGE"})
+                result = {"id": case_id, "status": "BLOCKED", "classification": "MISSING_PACKAGE"}
             else:
                 try:
                     verify_package(package)
-                    results.append({"id": case_id, "status": "PASS", "classification": "AUTOMATED"})
+                    result = {"id": case_id, "status": "PASS", "classification": "AUTOMATED"}
                 except DeliveryError as exc:
-                    results.append({"id": case_id, "status": "FAIL", "classification": "PRODUCT_FAILURE", "error": str(exc)})
+                    result = {"id": case_id, "status": "FAIL", "classification": "PRODUCT_FAILURE", "error": str(exc)}
         elif kind == "WINDOWS_PREFLIGHT":
-            results.append(_windows_preflight(
+            result = _windows_preflight(
                 package, expected_package_sha256, staging_root, evidence_dir, runtime_platform
-            ))
+            )
         elif kind == "OWNER_MANUAL":
-            results.append({"id": case_id, "status": "NOT_RUN", "classification": "OWNER_MANUAL"})
+            result = {"id": case_id, "status": "NOT_RUN", "classification": "OWNER_MANUAL"}
         else:
-            results.append({"id": case_id, "status": "BLOCKED", "classification": "PENDING_DEPENDENCY"})
+            result = {"id": case_id, "status": "BLOCKED", "classification": "PENDING_DEPENDENCY"}
+        result.setdefault("expected", case.get("expected", "Acceptance condition in plan"))
+        result.setdefault("actual", result.get("error", result["classification"]))
+        result["exitCode"] = 0 if result["status"] == "PASS" else (1 if result["status"] == "FAIL" else (3 if result["status"] == "BLOCKED" else None))
+        result["durationSeconds"] = round(time.perf_counter() - case_started, 6)
+        results.append(result)
     report = {
         "schemaVersion": REPORT_VERSION,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "planSha256": plan_sha256,
         "packageSha256": package_sha256,
+        "componentShas": component_shas,
         "scope": "FULL" if not selected else "SUBSET",
         "cases": results,
     }
@@ -333,6 +370,7 @@ def main(argv=None) -> int:
     run.add_argument("--mode", choices=("Preflight", "Automated", "Resume"), default="Automated")
     run.add_argument("--staging-root", type=Path); run.add_argument("--evidence-dir", type=Path)
     run.add_argument("--expected-package-sha256"); run.add_argument("--approved-port", type=int)
+    run.add_argument("--component-manifest", type=Path)
     report = sub.add_parser("report"); report.add_argument("--input", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
@@ -354,6 +392,7 @@ def main(argv=None) -> int:
                 args.plan, args.package, selected, args.resume,
                 staging_root=args.staging_root, evidence_dir=args.evidence_dir,
                 expected_package_sha256=args.expected_package_sha256,
+                component_manifest=args.component_manifest,
             )
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
