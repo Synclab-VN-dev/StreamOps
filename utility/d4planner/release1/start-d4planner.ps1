@@ -26,7 +26,6 @@ $descriptor = [ordered]@{
     generation = 1
     dataDir = $stateRoot
     targetFolder = $targetRoot
-    repositoryRoot = $InstallRoot
     wsEndpoint = @{ host = '127.0.0.1'; port = 0 }
     credential = $credential
 }
