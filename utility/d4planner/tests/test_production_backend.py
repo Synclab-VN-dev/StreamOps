@@ -8,7 +8,7 @@ import shutil
 import pytest
 from websockets.asyncio.client import connect
 
-from d4planner.production import ORIGIN, ProductionBackendRuntime
+from d4planner.production import ORIGIN, ProductionBackendRuntime, _resolve_repository_root
 from d4planner.rulekit import LaunchSpecification, RuleKitProcessWrapper, RuleKitRuntimeService
 
 
@@ -169,4 +169,19 @@ def test_packaged_contract_root_is_explicit_and_fail_closed(tmp_path, monkeypatc
             "dataDir": str(tmp_path / "data"), "targetFolder": str(tmp_path / "targets"),
             "wsEndpoint": {"host": "127.0.0.1", "port": 0}, "credential": CREDENTIAL,
         }, rulekit=_rulekit())
+
+
+def test_packaged_contract_root_is_discovered_from_embedded_module(tmp_path):
+    install = tmp_path / "install"
+    for relative in (
+        "utility/d4planner/contracts/release1/v1/schemas/target.schema.json",
+        "utility/d4-rulekit/providers/maxroll/d4-build-v1.schema.json",
+    ):
+        path = install / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+    module = install / "backend/site-packages/d4planner/production.py"
+    module.parent.mkdir(parents=True)
+    module.touch()
+    assert _resolve_repository_root(None, module) == install.resolve()
 
