@@ -132,7 +132,12 @@ mod windows {
         // Tao/WebView2 also own hidden event-dispatch windows. Closing those
         // can strand the event loop before Tauri receives main-window close.
         if pid == parameter as u32 && IsWindowVisible(hwnd) != 0 {
-            PostMessageW(hwnd, WM_CLOSE, 0, 0);
+            let mut title = [0u16; 256];
+            let length = GetWindowTextW(hwnd, title.as_mut_ptr(), title.len() as i32);
+            if String::from_utf16_lossy(&title[..length.max(0) as usize]) == "D4Planner Equipment HUD" {
+                PostMessageW(hwnd, WM_CLOSE, 0, 0);
+                return 0;
+            }
         }
         1
     }
