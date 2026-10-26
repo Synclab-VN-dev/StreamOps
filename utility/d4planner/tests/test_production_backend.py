@@ -323,6 +323,9 @@ def test_repository_watcher_retries_recovers_rejects_duplicates_and_stops():
         repository.invalid = False
         await wait_for(lambda: runtime.revisions == [1, 2, 3])
         assert source.health_status == "HEALTHY"
+        assert source.poll_count >= 4
+        assert source.last_poll_duration_ns > 0
+        assert source.maximum_poll_duration_ns >= source.last_poll_duration_ns
         await source.stop()
         assert source._task is None and source.health_status == "STOPPED"
 
