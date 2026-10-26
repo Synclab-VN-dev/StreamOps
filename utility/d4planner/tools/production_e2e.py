@@ -487,6 +487,7 @@ def run_native_hud(args: argparse.Namespace) -> dict:
         "D4PLANNER_BACKEND_PYTHON": str(install / "runtime/python/python.exe"),
         "D4_HUD_PIPELINE_REPORT": str(render_report),
         "D4_HUD_PIPELINE_CONTINUOUS": "1",
+        "D4_WEBVIEW_DIAGNOSTIC_REPORT": str(root / "webview-diagnostic.ndjson"),
         "D4PLANNER_LATENCY_TRACE": str(root / "backend-latency.ndjson"),
     })
     executable = install / "app/d4planner-fe.exe"
