@@ -53,7 +53,7 @@ class AssessmentBinding:
 class DurableHudStore:
     """SQLite commit boundary for binding + HUD snapshot + publish recovery."""
 
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     def __init__(self, path: Path, *, timeout_seconds: float = 5.0):
         self.path = path
@@ -82,6 +82,10 @@ class DurableHudStore:
               hud_revision INTEGER PRIMARY KEY, binding_key TEXT NOT NULL UNIQUE,
               payload_json TEXT NOT NULL, published INTEGER NOT NULL DEFAULT 0,
               committed_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS hud_current(
+              singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+              hud_revision INTEGER NOT NULL,
+              payload_json TEXT NOT NULL);
             """)
             row = db.execute(
                 "SELECT version FROM schema_meta WHERE component='release1-hud'"
@@ -142,8 +146,44 @@ class DurableHudStore:
                 "VALUES(?,?,?,?,?)",
                 (revision, binding.key(), json.dumps(payload, separators=(",", ":"), sort_keys=True), 0, committed_at),
             )
+            db.execute(
+                "INSERT INTO hud_current(singleton,hud_revision,payload_json) VALUES(1,?,?) "
+                "ON CONFLICT(singleton) DO UPDATE SET hud_revision=excluded.hud_revision,payload_json=excluded.payload_json",
+                (revision, json.dumps(payload, separators=(",", ":"), sort_keys=True)),
+            )
             db.commit()
             return payload
+
+    def commit_context(
+        self, payload_factory: Callable[[int], dict[str, Any]], committed_at: str,
+    ) -> dict[str, Any]:
+        """Commit an authoritative STARTUP/TARGET_ONLY/CHARACTER_ONLY state."""
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            revision = int(db.execute(
+                "SELECT COALESCE(MAX(hud_revision),-1)+1 FROM hud_snapshot"
+            ).fetchone()[0])
+            payload = payload_factory(revision)
+            encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+            db.execute(
+                "INSERT INTO hud_snapshot(hud_revision,binding_key,payload_json,published,committed_at) "
+                "VALUES(?,?,?,?,?)",
+                (revision, f"context:{revision}", encoded, 0, committed_at),
+            )
+            db.execute(
+                "INSERT INTO hud_current(singleton,hud_revision,payload_json) VALUES(1,?,?) "
+                "ON CONFLICT(singleton) DO UPDATE SET hud_revision=excluded.hud_revision,payload_json=excluded.payload_json",
+                (revision, encoded),
+            )
+            db.commit()
+            return payload
+
+    def latest_authoritative(self) -> dict[str, Any] | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT payload_json FROM hud_current WHERE singleton=1"
+            ).fetchone()
+            return json.loads(row[0]) if row else None
 
     def mark_published(self, hud_revision: int) -> None:
         with self._connect() as db, db:
@@ -187,5 +227,13 @@ class DurableHudStore:
                 "SELECT payload_json FROM hud_snapshot "
                 "WHERE published=0 AND binding_key=? ORDER BY hud_revision",
                 (binding_key,),
+            ).fetchall()
+            return tuple(json.loads(row[0]) for row in rows)
+
+    def pending_authoritative(self) -> tuple[dict[str, Any], ...]:
+        """All committed states not yet acknowledged by the in-process hub."""
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT payload_json FROM hud_snapshot WHERE published=0 ORDER BY hud_revision"
             ).fetchall()
             return tuple(json.loads(row[0]) for row in rows)

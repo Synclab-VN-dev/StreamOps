@@ -29,6 +29,25 @@ class EquipmentAssessmentCoordinator:
         target: ActivatedTarget,
         produced_at: str,
     ) -> dict[str, Any]:
+        committed = self.assess_commit(
+            runtime_instance_id=runtime_instance_id, current=current,
+            target=target, produced_at=produced_at,
+        )
+        # Commit is authoritative even if publish fails. S5 resync reads latest/pending.
+        if self.store.is_pending(committed["hudRevision"]):
+            self.publisher(committed)
+            self.store.mark_published(committed["hudRevision"])
+        return committed
+
+    def assess_commit(
+        self,
+        *,
+        runtime_instance_id: str,
+        current: EquipmentSnapshot,
+        target: ActivatedTarget,
+        produced_at: str,
+    ) -> dict[str, Any]:
+        """Commit without publishing so an async transport can acknowledge later."""
         policy_version = (
             target.document["assessmentPolicy"]["version"] + "+" +
             target.document["assessmentPolicy"]["weightProfile"]["profileId"]
@@ -81,9 +100,4 @@ class EquipmentAssessmentCoordinator:
                 },
             }
 
-        committed = self.store.commit_if_current(binding, payload, produced_at)
-        # Commit is authoritative even if publish fails. S5 resync reads latest/pending.
-        if self.store.is_pending(committed["hudRevision"]):
-            self.publisher(committed)
-            self.store.mark_published(committed["hudRevision"])
-        return committed
+        return self.store.commit_if_current(binding, payload, produced_at)
