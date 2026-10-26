@@ -13,6 +13,7 @@ from d4planner.rulekit import (
     RuleKitClient,
     RuleKitProcessWrapper,
     RuleKitRemoteError,
+    RuleKitRuntimeService,
 )
 
 
@@ -158,6 +159,24 @@ def test_incomplete_build_rejected_and_capacity_is_bounded():
             await wrapper.stop()
 
     run(scenario())
+
+
+def test_production_runtime_service_requires_pinned_absolute_resources(tmp_path):
+    with pytest.raises(ValueError, match="executable"):
+        RuleKitRuntimeService.from_environment({})
+    node = tmp_path / "node"; node.write_text("")
+    worker = tmp_path / "worker.js"; worker.write_text("")
+    profile = tmp_path / "profile.json"; profile.write_text("{}")
+    snapshot = tmp_path / "snapshot"; snapshot.mkdir()
+    service = RuleKitRuntimeService.from_environment({
+        "D4PLANNER_RULEKIT_EXECUTABLE": str(node.resolve()),
+        "D4PLANNER_RULEKIT_WORKER": str(worker.resolve()),
+        "D4PLANNER_RULEKIT_WORKING_DIR": str(tmp_path.resolve()),
+        "D4_RULEKIT_PROFILE_JSON": str(profile.resolve()),
+        "D4_RULEKIT_SNAPSHOT_ROOT": str(snapshot.resolve()),
+    })
+    assert service.wrapper.specification.executable == str(node.resolve())
+    assert "D4_RULEKIT_COMPOSITION_MODULE" not in service.wrapper.specification.environment_allow_list
 
 
 def test_operation_timeout_cancels_without_changing_session_lease_contract():
