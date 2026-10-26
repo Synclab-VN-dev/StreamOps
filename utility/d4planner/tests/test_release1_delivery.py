@@ -260,7 +260,7 @@ def test_reviewed_executor_runs_selected_case_and_records_failure_evidence(tmp_p
     executors.write_text(json.dumps({
         "schemaVersion": delivery.EXECUTOR_MANIFEST_VERSION,
         "cases": {
-            "E2E-01": {"command": [sys.executable, "pass.py"], "workingDirectory": ".", "timeoutSeconds": 10},
+            "E2E-01": {"command": [sys.executable, "{STAGING_ROOT}/pass.py"], "workingDirectory": ".", "timeoutSeconds": 10},
             "E2E-02": {"command": [sys.executable, "fail.py"], "workingDirectory": ".", "timeoutSeconds": 10},
         },
     }))

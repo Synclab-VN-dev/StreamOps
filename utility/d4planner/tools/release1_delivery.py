@@ -357,7 +357,12 @@ def _run_executor(
         "{PACKAGE}": str(package.resolve()) if package else "",
         "{PYTHON}": str(root / "app/runtime/python/python.exe"),
     }
-    command = [replacements.get(token, token) for token in spec["command"]]
+    command = []
+    for token in spec["command"]:
+        expanded = token
+        for placeholder, value in replacements.items():
+            expanded = expanded.replace(placeholder, value)
+        command.append(expanded)
     try:
         completed = subprocess.run(
             command, cwd=cwd, check=False, capture_output=True, text=True,
@@ -425,6 +430,8 @@ def run_acceptance(
         installed = load_json(installed_manifest) if installed_manifest.is_file() else None
         if installed != expected_manifest:
             install_package(package, app_dir, staging_root.resolve() / "data")
+    if evidence_dir is not None:
+        evidence_dir.resolve().mkdir(parents=True, exist_ok=True)
     previous = load_json(prior) if prior else {}
     if prior and (
         previous.get("planSha256") != plan_sha256
