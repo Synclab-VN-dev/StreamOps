@@ -209,6 +209,40 @@ def test_real_socket_initial_list_snapshot_push_and_duplicate_command() -> None:
     asyncio.run(scenario())
 
 
+def test_webview2_mapped_origin_is_explicitly_allowed_without_weakening_protocol_origin() -> None:
+    async def scenario() -> None:
+        hud = load(FIXTURES / "hud.partial.synthetic.json")
+        server = D4PlannerWebSocketServer(
+            WebSocketServerConfig(
+                credential=CREDENTIAL,
+                runtime_instance_id="backend-synthetic-a",
+                backend_generation=3,
+                origin=ORIGIN,
+                browser_origins=("http://tauri.localhost",),
+            ),
+            SyntheticDomain(hud),
+            HudHub(hud, backend_generation=3),
+        )
+        await server.start()
+        try:
+            async with connect(
+                f"ws://127.0.0.1:{server.port}",
+                origin="http://tauri.localhost",
+                ping_interval=None,
+            ) as ws:
+                await ws.send(json.dumps(hello()))
+                assert json.loads(await ws.recv())["type"] == "hello.accepted"
+            with pytest.raises(InvalidStatus):
+                await connect(
+                    f"ws://127.0.0.1:{server.port}",
+                    origin="https://attacker.invalid",
+                )
+        finally:
+            await server.close()
+
+    asyncio.run(scenario())
+
+
 def test_target_selection_validates_safe_id_hash_and_domain_result() -> None:
     async def scenario() -> None:
         server, domain, _hub = await start_server()
@@ -405,6 +439,14 @@ def test_loopback_and_private_credential_configuration_are_enforced() -> None:
             runtime_instance_id="backend-a",
             backend_generation=1,
             origin=ORIGIN,
+        )
+    with pytest.raises(ValueError, match="explicit"):
+        WebSocketServerConfig(
+            credential=CREDENTIAL,
+            runtime_instance_id="backend-a",
+            backend_generation=1,
+            origin=ORIGIN,
+            browser_origins=("*",),
         )
 
 
