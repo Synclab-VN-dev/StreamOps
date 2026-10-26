@@ -30,6 +30,7 @@ class WebSocketServerConfig:
     runtime_instance_id: str
     backend_generation: int
     origin: str
+    browser_origins: tuple[str, ...] = ()
     host: str = "127.0.0.1"
     port: int = 0
     max_message_bytes: int = 262_144
@@ -47,6 +48,8 @@ class WebSocketServerConfig:
             raise ValueError("max_connections must be positive")
         if self.handshake_timeout_seconds <= 0 or self.send_timeout_seconds <= 0:
             raise ValueError("transport timeouts must be positive")
+        if any(not value or "*" in value for value in self.browser_origins):
+            raise ValueError("browser origins must be explicit")
 
 
 class D4PlannerWebSocketServer:
@@ -70,7 +73,10 @@ class D4PlannerWebSocketServer:
             self._handle,
             self.config.host,
             self.config.port,
-            origins=[self.config.origin],
+            # The signed protocol hello keeps the canonical Tauri origin while
+            # WebView2 sends its mapped HTTP origin in the opening handshake.
+            # Keep both checks exact; never admit a wildcard browser origin.
+            origins=[self.config.origin, *self.config.browser_origins],
             max_size=self.config.max_message_bytes,
             max_queue=self.config.max_pending_messages,
             ping_interval=None,

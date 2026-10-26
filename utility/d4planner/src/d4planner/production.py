@@ -26,6 +26,7 @@ from .transport import (
 
 CONTRACT_REVISION = "d4planner-r1-contract/1.0.0-candidate.5"
 ORIGIN = "tauri://localhost"
+TAURI_BROWSER_ORIGINS = ("http://tauri.localhost", "https://tauri.localhost")
 
 
 class RepositoryEquipmentEventSource:
@@ -258,6 +259,7 @@ class ProductionBackendRuntime:
                     credential=self.bootstrap["credential"],
                     runtime_instance_id=self.runtime_instance_id,
                     backend_generation=self.generation, origin=ORIGIN,
+                    browser_origins=TAURI_BROWSER_ORIGINS,
                     host=endpoint["host"], port=endpoint["port"],
                 ), domain, self.hub,
             )
