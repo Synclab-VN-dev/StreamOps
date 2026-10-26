@@ -424,6 +424,11 @@ def run_backend(args: argparse.Namespace) -> dict:
                 "socket":socket, "sqliteAssessmentRows":rows,
                 "durationSeconds":round(time.perf_counter()-started, 3)}
     finally:
+        if window is not None and process.poll() is None:
+            try:
+                _capture_window(window, root / "failure-native.png")
+            except Exception:
+                pass
         if process.poll() is None:
             process.kill(); process.wait(timeout=5)
         bootstrap.unlink(missing_ok=True)
