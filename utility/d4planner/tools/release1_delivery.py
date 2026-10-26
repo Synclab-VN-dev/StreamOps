@@ -6,12 +6,15 @@ explicit evidence produced by the integrated Windows package; absence is BLOCKED
 from __future__ import annotations
 
 import argparse
+import ctypes
 from datetime import datetime, timezone
 import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import shutil
+import signal
+import socket
 import subprocess
 import sys
 import time
@@ -22,6 +25,7 @@ MANIFEST_VERSION = "d4planner-release-manifest/v1"
 REPORT_VERSION = "d4planner-acceptance-report/v1"
 COMPONENT_MANIFEST_VERSION = "d4planner-component-shas/v1"
 EXECUTOR_MANIFEST_VERSION = "d4planner-e2e-executors/v1"
+EXECUTOR_EVIDENCE_VERSION = "d4planner-executor-evidence/v1"
 FORBIDDEN_NAMES = {".env", "id_rsa", "id_ed25519", "credentials.json", "secrets.json"}
 
 
@@ -243,6 +247,7 @@ def _windows_preflight(
     staging_root: Path | None,
     evidence_dir: Path | None,
     runtime_platform: str,
+    approved_port: int | None = None,
 ) -> dict:
     failures: list[str] = []
     if runtime_platform != "win32":
@@ -259,6 +264,17 @@ def _windows_preflight(
         failures.append("EVIDENCE_DIRECTORY_REQUIRED")
     if sys.version_info < (3, 11):
         failures.append("PYTHON_3_11_REQUIRED")
+    if approved_port is not None:
+        if isinstance(approved_port, bool) or not 1 <= approved_port <= 65535:
+            failures.append("INVALID_APPROVED_PORT")
+        else:
+            probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                probe.bind(("127.0.0.1", approved_port))
+            except OSError:
+                failures.append("APPROVED_PORT_NOT_AVAILABLE")
+            finally:
+                probe.close()
     if failures:
         return {
             "id": "S7-PRE-01", "status": "BLOCKED",
@@ -271,6 +287,7 @@ def _windows_preflight(
             "python": ".".join(map(str, sys.version_info[:3])),
             "packageSha256": expected_package_sha256.lower(),
             "stagingRoot": str(staging_root), "evidenceDir": str(evidence_dir),
+            "approvedPort": approved_port,
         },
     }
 
@@ -314,17 +331,139 @@ def load_executors(path: Path | None) -> dict[str, dict]:
         command = spec.get("command")
         timeout = spec.get("timeoutSeconds")
         cwd = spec.get("workingDirectory", ".")
+        evidence_file = spec.get("evidenceFile", f"{case_id}.json")
         if (
             not isinstance(command, list) or not command
             or any(not isinstance(token, str) or not token or "\x00" in token for token in command)
             or not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= 1800
             or not isinstance(cwd, str)
+            or not isinstance(evidence_file, str) or not evidence_file
         ):
             raise DeliveryError(f"INVALID_EXECUTOR_CASE:{case_id}")
         if cwd != ".":
             safe_relative(cwd)
-        result[case_id] = dict(spec)
+        safe_relative(evidence_file.replace("{CASE_ID}", case_id))
+        if not isinstance(spec.get("requiredEvidence", {}), dict):
+            raise DeliveryError(f"INVALID_EXECUTOR_CASE:{case_id}")
+        result[case_id] = {**spec, "evidenceFile": evidence_file}
     return result
+
+
+def _owned_process_tree(root_pid: int) -> list[int]:
+    """Read the descendant PID tree without using process-name matching."""
+    if sys.platform == "win32":
+        script = (
+            "$p=Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId;"
+            f"$todo=@({root_pid});$seen=@();while($todo.Count){{$n=$todo[0];"
+            "$todo=@($todo|Select-Object -Skip 1);$seen+=$n;"
+            "$todo+=@($p|Where-Object ParentProcessId -eq $n|ForEach-Object ProcessId)}};"
+            "$seen|ConvertTo-Json -Compress"
+        )
+        try:
+            value = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+                capture_output=True, text=True, timeout=10, check=False,
+            )
+            parsed = json.loads(value.stdout or "[]")
+            return sorted({int(item) for item in (parsed if isinstance(parsed, list) else [parsed])})
+        except (OSError, subprocess.SubprocessError, ValueError, TypeError, json.JSONDecodeError):
+            return [root_pid]
+    parents: dict[int, int] = {}
+    proc = Path("/proc")
+    if proc.is_dir():
+        for entry in proc.iterdir():
+            if not entry.name.isdigit():
+                continue
+            try:
+                fields = (entry / "stat").read_text().split()
+                parents[int(entry.name)] = int(fields[3])
+            except (OSError, ValueError, IndexError):
+                continue
+    found = {root_pid}
+    changed = True
+    while changed:
+        changed = False
+        for pid, parent in parents.items():
+            if parent in found and pid not in found:
+                found.add(pid); changed = True
+    return sorted(found)
+
+
+class _OwnedProcess:
+    """One executor and its descendants, killed as an ownership unit."""
+    def __init__(self, command: list[str], cwd: Path):
+        flags = 0
+        kwargs: dict = {}
+        self.job = None
+        if sys.platform == "win32":
+            flags = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            kwargs["start_new_session"] = True
+        self.process = subprocess.Popen(
+            command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, shell=False, creationflags=flags, **kwargs,
+        )
+        if sys.platform == "win32":
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.CreateJobObjectW.restype = ctypes.c_void_p
+            kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p]
+            kernel32.SetInformationJobObject.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
+            kernel32.AssignProcessToJobObject.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+            kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+            job = kernel32.CreateJobObjectW(None, None)
+            if not job:
+                self.process.kill()
+                raise OSError(ctypes.get_last_error(), "CreateJobObjectW")
+            # JOBOBJECT_EXTENDED_LIMIT_INFORMATION is 144 bytes on 64-bit and
+            # 112 bytes on 32-bit. LimitFlags is the first DWORD after two
+            # LARGE_INTEGER values (offset 16); zero-filled remainder is valid.
+            size = 144 if ctypes.sizeof(ctypes.c_void_p) == 8 else 112
+            info = ctypes.create_string_buffer(size)
+            ctypes.c_uint32.from_buffer(info, 16).value = 0x00002000  # KILL_ON_JOB_CLOSE
+            if not kernel32.SetInformationJobObject(job, 9, info, size):
+                kernel32.CloseHandle(job); self.process.kill()
+                raise OSError(ctypes.get_last_error(), "SetInformationJobObject")
+            if not kernel32.AssignProcessToJobObject(job, ctypes.c_void_p(int(self.process._handle))):
+                kernel32.CloseHandle(job); self.process.kill()
+                raise OSError(ctypes.get_last_error(), "AssignProcessToJobObject")
+            self.job = job
+
+    def terminate_tree(self) -> None:
+        if self.job is not None:
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.TerminateJobObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+            kernel32.TerminateJobObject(self.job, 124)
+        elif self.process.poll() is None:
+            os.killpg(self.process.pid, signal.SIGKILL)
+
+    def close(self) -> None:
+        if self.job is not None:
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+            kernel32.CloseHandle(self.job)
+            self.job = None
+
+
+def _validate_executor_evidence(case_id: str, spec: dict, evidence_root: Path) -> tuple[bool, str, Path]:
+    relative = str(spec["evidenceFile"]).replace("{CASE_ID}", case_id)
+    path = _contained_destination(evidence_root, relative)
+    if not path.is_file():
+        return False, "EXECUTOR_EVIDENCE_MISSING", path
+    try:
+        value = load_json(path)
+    except DeliveryError:
+        return False, "EXECUTOR_EVIDENCE_INVALID_JSON", path
+    if value.get("ok") is not True:
+        return False, "EXECUTOR_EVIDENCE_NOT_OK", path
+    for key, expected in spec.get("requiredEvidence", {}).items():
+        actual = value
+        for part in key.split("."):
+            if not isinstance(actual, dict) or part not in actual:
+                return False, f"EXECUTOR_EVIDENCE_MISSING_FIELD:{key}", path
+            actual = actual[part]
+        if actual != expected:
+            return False, f"EXECUTOR_EVIDENCE_MISMATCH:{key}", path
+    return True, "EXECUTOR_EVIDENCE_VERIFIED", path
 
 
 def _run_executor(
@@ -333,6 +472,8 @@ def _run_executor(
     staging_root: Path | None,
     evidence_dir: Path | None,
     package: Path | None,
+    approved_port: int | None = None,
+    component_shas: dict[str, str] | None = None,
 ) -> dict:
     if staging_root is None or evidence_dir is None:
         return {
@@ -356,6 +497,8 @@ def _run_executor(
         "{DATA_ROOT}": str(root / "data"), "{EVIDENCE_DIR}": str(evidence_root),
         "{PACKAGE}": str(package.resolve()) if package else "",
         "{PYTHON}": str(root / "app/runtime/python/python.exe"),
+        "{APPROVED_PORT}": str(approved_port) if approved_port is not None else "",
+        **{f"{{{name}_SHA}}": sha for name, sha in (component_shas or {}).items()},
     }
     command = []
     for token in spec["command"]:
@@ -363,21 +506,30 @@ def _run_executor(
         for placeholder, value in replacements.items():
             expanded = expanded.replace(placeholder, value)
         command.append(expanded)
+    if spec.get("requiresApprovedPort") is True and approved_port is None:
+        return {"id": case_id, "status": "BLOCKED", "classification": "OWNER_APPROVAL_REQUIRED", "actual": "APPROVED_PORT_REQUIRED"}
+    owned = None
+    before: list[int] = []
     try:
-        completed = subprocess.run(
-            command, cwd=cwd, check=False, capture_output=True, text=True,
-            timeout=float(spec["timeoutSeconds"]), shell=False,
-        )
-        output = (completed.stdout or "") + (completed.stderr or "")
+        owned = _OwnedProcess(command, cwd)
+        before = _owned_process_tree(owned.process.pid)
+        stdout, stderr = owned.process.communicate(timeout=float(spec["timeoutSeconds"]))
+        output = (stdout or "") + (stderr or "")
         log_path.write_text(output, encoding="utf-8", errors="replace")
-        status = "PASS" if completed.returncode == 0 else "FAIL"
+        owned.close()
+        after = _owned_process_tree(owned.process.pid)
+        evidence_ok, evidence_actual, evidence_path = _validate_executor_evidence(case_id, spec, evidence_root)
+        status = "PASS" if owned.process.returncode == 0 and evidence_ok else "FAIL"
+        classification = "AUTOMATED" if status == "PASS" else ("PRODUCT_FAILURE" if owned.process.returncode else "HARNESS_FAILURE")
         return {
             "id": case_id,
             "status": status,
-            "classification": "AUTOMATED" if status == "PASS" else "PRODUCT_FAILURE",
-            "actual": "EXPECTED_EXIT_0" if status == "PASS" else f"UNEXPECTED_EXIT_{completed.returncode}",
-            "processExitCode": completed.returncode,
+            "classification": classification,
+            "actual": evidence_actual if owned.process.returncode == 0 else f"UNEXPECTED_EXIT_{owned.process.returncode}",
+            "processExitCode": owned.process.returncode,
             "evidence": str(log_path),
+            "scenarioEvidence": str(evidence_path),
+            "ownedProcessTreeBefore": before, "ownedProcessTreeAfter": after,
             "executorDurationSeconds": round(time.perf_counter() - started, 6),
         }
     except FileNotFoundError as exc:
@@ -387,14 +539,24 @@ def _run_executor(
             "actual": "EXECUTOR_NOT_AVAILABLE", "evidence": str(log_path),
         }
     except subprocess.TimeoutExpired as exc:
-        output = (exc.stdout or "") + (exc.stderr or "")
+        if owned is not None:
+            owned.terminate_tree()
+            stdout, stderr = owned.process.communicate(timeout=10)
+        else:
+            stdout, stderr = exc.stdout, exc.stderr
+        output = (stdout or "") + (stderr or "")
         if isinstance(output, bytes):
             output = output.decode(errors="replace")
         log_path.write_text(str(output), encoding="utf-8", errors="replace")
         return {
             "id": case_id, "status": "FAIL", "classification": "HARNESS_FAILURE",
             "actual": "EXECUTOR_TIMEOUT", "evidence": str(log_path),
+            "ownedProcessTreeBefore": before,
+            "ownedProcessTreeAfter": _owned_process_tree(owned.process.pid) if owned else [],
         }
+    finally:
+        if owned is not None:
+            owned.close()
 
 
 def run_acceptance(
@@ -409,6 +571,7 @@ def run_acceptance(
     expected_package_sha256: str | None = None,
     component_manifest: Path | None = None,
     executor_manifest: Path | None = None,
+    approved_port: int | None = None,
 ) -> dict:
     plan = load_json(plan_path)
     if plan.get("schemaVersion") != "d4planner-acceptance-plan/v1":
@@ -417,21 +580,28 @@ def run_acceptance(
     package_sha256 = sha256_file(package) if package and package.is_file() else None
     component_shas = load_component_shas(component_manifest)
     executors = load_executors(executor_manifest)
+    known_ids = {str(case.get("id", "")) for case in plan.get("cases", [])}
+    invalid_selected = sorted(case_id for case_id in selected if not case_id or case_id not in known_ids)
+    if invalid_selected:
+        raise DeliveryError(f"UNKNOWN_ACCEPTANCE_CASE:{','.join(invalid_selected)}")
     runtime_selected = any(
         (not selected or case["id"] in selected)
         and case["kind"] in {"RUNTIME_E2E", "VISUAL_GOLDEN", "PERFORMANCE"}
         and case["id"] in executors
         for case in plan["cases"]
     )
-    if runtime_selected and package and staging_root:
-        app_dir = staging_root.resolve() / "app"
-        installed_manifest = app_dir / "release-manifest.json"
-        expected_manifest = verify_package(package)
-        installed = load_json(installed_manifest) if installed_manifest.is_file() else None
-        if installed != expected_manifest:
-            install_package(package, app_dir, staging_root.resolve() / "data")
     if evidence_dir is not None:
         evidence_dir.resolve().mkdir(parents=True, exist_ok=True)
+    runtime_platform = sys.platform if platform is None else platform
+    if runtime_selected:
+        preflight = _windows_preflight(package, expected_package_sha256, staging_root, evidence_dir, runtime_platform, approved_port)
+        if preflight["status"] == "PASS" and package and staging_root:
+            app_dir = staging_root.resolve() / "app"
+            installed_manifest = app_dir / "release-manifest.json"
+            expected_manifest = verify_package(package)
+            installed = load_json(installed_manifest) if installed_manifest.is_file() else None
+            if installed != expected_manifest:
+                install_package(package, app_dir, staging_root.resolve() / "data")
     previous = load_json(prior) if prior else {}
     if prior and (
         previous.get("planSha256") != plan_sha256
@@ -440,7 +610,6 @@ def run_acceptance(
     ):
         raise DeliveryError("RESUME_CONTEXT_MISMATCH")
     previous_cases = {case["id"]: case for case in previous.get("cases", []) if case.get("status") == "PASS"}
-    runtime_platform = sys.platform if platform is None else platform
     results = []
     for case in plan["cases"]:
         case_started = time.perf_counter()
@@ -470,7 +639,7 @@ def run_acceptance(
                     result = {"id": case_id, "status": "FAIL", "classification": "PRODUCT_FAILURE", "error": str(exc)}
         elif kind == "WINDOWS_PREFLIGHT":
             result = _windows_preflight(
-                package, expected_package_sha256, staging_root, evidence_dir, runtime_platform
+                package, expected_package_sha256, staging_root, evidence_dir, runtime_platform, approved_port
             )
         elif kind == "OWNER_MANUAL":
             result = {"id": case_id, "status": "NOT_RUN", "classification": "OWNER_MANUAL"}
@@ -482,7 +651,11 @@ def run_acceptance(
                     "actual": "NO_REVIEWED_EXECUTOR_FOR_CASE",
                 }
             else:
-                result = _run_executor(case_id, executor, staging_root, evidence_dir, package)
+                preflight = _windows_preflight(package, expected_package_sha256, staging_root, evidence_dir, runtime_platform, approved_port)
+                result = preflight if preflight["status"] != "PASS" else _run_executor(
+                    case_id, executor, staging_root, evidence_dir, package,
+                    approved_port, component_shas,
+                )
         else:
             result = {"id": case_id, "status": "FAIL", "classification": "HARNESS_FAILURE", "actual": "UNKNOWN_CASE_KIND"}
         result.setdefault("expected", case.get("expected", "Acceptance condition in plan"))
@@ -500,7 +673,9 @@ def run_acceptance(
         "cases": results,
     }
     report["outcome"] = "FAIL" if any(case["status"] == "FAIL" for case in results) else (
-        "BLOCKED" if any(case["status"] == "BLOCKED" for case in results) else "PASS"
+        "BLOCKED" if any(case["status"] == "BLOCKED" for case in results) else (
+            "SUBSET_PASS" if selected else "FULL_AUTOMATED_PASS_MAN_PENDING"
+        )
     )
     return report
 
@@ -540,6 +715,7 @@ def main(argv=None) -> int:
                 expected_package_sha256=args.expected_package_sha256,
                 component_manifest=args.component_manifest,
                 executor_manifest=args.executor_manifest,
+                approved_port=args.approved_port,
             )
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
