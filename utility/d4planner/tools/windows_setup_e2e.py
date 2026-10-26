@@ -89,6 +89,7 @@ def main():
     parser.add_argument("--output",type=Path,required=True)
     parser.add_argument("--fault-install",action="store_true")
     parser.add_argument("--native-upgrade-only",action="store_true")
+    parser.add_argument("--engine-recovery-only",action="store_true")
     args = parser.parse_args()
     sandbox = args.sandbox.resolve(); root = sandbox / "Ứng dụng D4Planner"; data = sandbox / "Dữ liệu D4Planner"
     if args.fault_install:
@@ -151,6 +152,36 @@ def main():
     def preserved():
         for relative,digest in original.items(): assert sha(data / relative) == digest,relative
     engine = load_engine(root)
+    if args.engine_recovery_only:
+        report["scope"] = "OLD_TO_NEW_RECOVERY_SUBSET"
+        def interrupted_upgrade():
+            previous = state()
+            assert previous["version"] == "1.0.0"
+            command = [sys.executable,__file__,"--sandbox",str(sandbox),"--setup-old",str(args.setup_old),
+                "--setup-new",str(args.setup_new),"--package-new",str(args.package_new),"--package-sha",args.package_sha,
+                "--output",str(args.output),"--fault-install"]
+            completed = subprocess.run(command,timeout=150)
+            assert completed.returncode == 88
+            assert state()["version"] == "1.0.1"
+            assert (root / "upgrade-journal.json").is_file()
+            recovered = engine.recover(root)
+            assert state() == previous
+            run([root / "D4Planner.exe","--installation-health"]); preserved()
+            return {"attemptedVersion":"1.0.1","restoredVersion":"1.0.0","exitCode":88,
+                    "recovery":recovered,"dataPreserved":True}
+        case("PKG-05","Kill activation of 1.0.1 and recover verified 1.0.0 without restoring DB",interrupted_upgrade)
+        def remove_recovery_install():
+            run([root / "Uninstall.exe","/S"])
+            deadline = time.monotonic()+90
+            while time.monotonic()<deadline and (root / "Uninstall.exe").exists(): time.sleep(.1)
+            assert not (root / "D4Planner.exe").exists()
+            assert not (root / "Uninstall.exe").exists()
+            preserved()
+            return {"applicationRemoved":True,"dataPreserved":True}
+        case("PKG-03","Recovery sandbox uninstalls and retains user state",remove_recovery_install)
+        report["outcome"] = "SUBSET_PASS" if all(item["status"]=="PASS" for item in report["cases"]) else "FAIL"
+        args.output.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
+        return 0 if report["outcome"]=="SUBSET_PASS" else 1
     def negatives():
         current = engine.owned_payload(root,state()); node = current / "runtime/node/node.exe"
         backup = node.with_name("node.exe.test-backup"); node.rename(backup)
