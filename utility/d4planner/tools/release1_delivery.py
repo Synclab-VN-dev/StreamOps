@@ -111,8 +111,13 @@ def _check_source(path: Path, relative: str) -> None:
         raise DeliveryError(f"FORBIDDEN_SECRET_FILE:{relative}")
 
 
-def build_package(plan_path: Path, source: Path, output: Path) -> dict:
+def build_package(plan_path: Path, source: Path, output: Path, *, release_version: str | None = None) -> dict:
     plan = load_json(plan_path); validate_plan(plan)
+    if release_version is not None:
+        import re
+        if not re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", release_version):
+            raise DeliveryError("INVALID_RELEASE_VERSION")
+        plan["version"] = release_version
     files = []
     for artifact in plan["artifacts"]:
         relative = str(artifact["path"]); path = source / safe_relative(relative)
@@ -154,6 +159,9 @@ def build_package(plan_path: Path, source: Path, output: Path) -> dict:
         "magicPathRevision": plan["magicPathRevision"], "ruleKit": plan["ruleKit"],
         "persistentPaths": plan["persistentPaths"], "files": files,
     }
+    for key in ("applicationId", "version", "hudSchemaCompatibility"):
+        if key in plan:
+            manifest[key] = plan[key]
     output.parent.mkdir(parents=True, exist_ok=True)
     encoded = json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as package:
@@ -683,6 +691,7 @@ def run_acceptance(
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(); sub = parser.add_subparsers(dest="command", required=True)
     build = sub.add_parser("build"); build.add_argument("--plan", type=Path, required=True); build.add_argument("--source", type=Path, required=True); build.add_argument("--output", type=Path, required=True)
+    build.add_argument("--version")
     verify = sub.add_parser("verify"); verify.add_argument("--package", type=Path, required=True)
     install = sub.add_parser("install"); install.add_argument("--package", type=Path, required=True); install.add_argument("--app-dir", type=Path, required=True); install.add_argument("--data-dir", type=Path, required=True)
     rollback = sub.add_parser("rollback"); rollback.add_argument("--app-dir", type=Path, required=True); rollback.add_argument("--data-dir", type=Path, required=True)
@@ -695,7 +704,7 @@ def main(argv=None) -> int:
     report = sub.add_parser("report"); report.add_argument("--input", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
-        if args.command == "build": result = build_package(args.plan, args.source, args.output)
+        if args.command == "build": result = build_package(args.plan, args.source, args.output, release_version=args.version)
         elif args.command == "verify": result = verify_package(args.package)
         elif args.command == "install": result = install_package(args.package, args.app_dir, args.data_dir)
         elif args.command == "rollback": result = rollback_install(args.app_dir, args.data_dir)

@@ -53,6 +53,8 @@ def assemble(args: argparse.Namespace) -> dict:
     if root.exists():
         raise StageError("OUTPUT_ALREADY_EXISTS")
     root.mkdir(parents=True)
+    if getattr(args, "launcher_exe", None):
+        copy_file(args.launcher_exe.resolve(), root / "D4Planner.exe")
     copy_file(args.frontend_exe.resolve(), root / "app/d4planner-fe.exe")
     copy_tree(args.python_root.resolve(), root / "runtime/python")
     copy_tree(args.python_site_packages.resolve(), root / "backend/site-packages")
@@ -101,6 +103,7 @@ def assemble(args: argparse.Namespace) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--launcher-exe", type=Path, required=True)
     for name in ("frontend-exe", "python-root", "python-site-packages", "node-root",
                  "chromium-root", "snapshot-root", "profile", "output"):
         parser.add_argument("--" + name, type=Path, required=True)
