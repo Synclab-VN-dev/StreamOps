@@ -6,6 +6,7 @@ param(
   [string]$StagingRoot,
   [string]$EvidenceDirectory,
   [string]$ExpectedPackageSha256,
+  [string]$ComponentManifest,
   [ValidateRange(1,65535)][int]$ApprovedTestPort,
   [string[]]$Case = @(),
   [string]$Resume,
@@ -27,13 +28,14 @@ if($Mode -eq 'Report') {
   exit $LASTEXITCODE
 }
 if(!$Package -or !(Test-Path -LiteralPath $Package -PathType Leaf)) { throw 'Package does not exist' }
-if(!$StagingRoot -or !$EvidenceDirectory -or !$ExpectedPackageSha256) {
-  throw 'StagingRoot, EvidenceDirectory and ExpectedPackageSha256 are required'
+if(!$StagingRoot -or !$EvidenceDirectory -or !$ExpectedPackageSha256 -or !$ComponentManifest) {
+  throw 'StagingRoot, EvidenceDirectory, ExpectedPackageSha256 and ComponentManifest are required'
 }
 $arguments = @(
   $tool, 'run', '--mode', $Mode, '--plan', $plan, '--package', $Package,
   '--output', $Output, '--staging-root', $StagingRoot,
-  '--evidence-dir', $EvidenceDirectory, '--expected-package-sha256', $ExpectedPackageSha256
+  '--evidence-dir', $EvidenceDirectory, '--expected-package-sha256', $ExpectedPackageSha256,
+  '--component-manifest', $ComponentManifest
 )
 if($ApprovedTestPort) { $arguments += @('--approved-port', [string]$ApprovedTestPort) }
 foreach($id in $Case) { $arguments += @('--case', $id) }
