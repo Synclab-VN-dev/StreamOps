@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -141,7 +143,10 @@ class ProductionBackendRuntime:
         self.generation = int(bootstrap["generation"])
         self.data_dir = Path(bootstrap["dataDir"]).resolve()
         self.target_folder = Path(bootstrap["targetFolder"]).resolve()
-        repository_root = Path(__file__).resolve().parents[4]
+        configured_root = os.environ.get("D4PLANNER_REPOSITORY_ROOT")
+        repository_root = Path(configured_root).resolve() if configured_root else Path(__file__).resolve().parents[4]
+        if configured_root and (not Path(configured_root).is_absolute() or not repository_root.is_dir()):
+            raise ValueError("configured contract repository root is invalid")
         self.rulekit = rulekit
         self.targets = TargetRepository(
             self.target_folder, self.data_dir / "selected-target.json",
@@ -180,6 +185,18 @@ class ProductionBackendRuntime:
                 ), domain, self.hub,
             )
             await self.server.start()
+            evidence_path = os.environ.get("D4PLANNER_EQUIPMENT_EVIDENCE_FILE")
+            capture_state = "READY"
+            if evidence_path:
+                path = Path(evidence_path)
+                if not path.is_absolute() or not path.is_file() or path.is_symlink():
+                    raise ValueError("configured Equipment evidence file is invalid")
+                try:
+                    evidence = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                    raise ValueError("configured Equipment evidence is unreadable") from exc
+                await self.ingest(evidence)
+                capture_state = "RECORDED_EVIDENCE_APPLIED"
             return {
                 "wsEndpoint": {"host": endpoint["host"], "port": self.server.port},
                 "health": {
@@ -187,6 +204,7 @@ class ProductionBackendRuntime:
                     "targetJsonCount": len(self.targets.list().entries),
                     "wsTransport": "READY", "ruleKitWorker": "READY",
                     "ruleKitGeneration": rulekit_health["workerGeneration"],
+                    "equipmentCapture": capture_state,
                 },
             }
         except Exception:
