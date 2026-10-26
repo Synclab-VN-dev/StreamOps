@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HudWebSocketDataSource, type WebSocketLike } from './hud-data-source';
+import hudFixture from '../../d4planner/contracts/release1/v1/fixtures/hud.partial.synthetic.json';
 
 class FakeSocket implements WebSocketLike {
   readyState = 1;
@@ -16,15 +17,26 @@ const credential = 'test-only-private-credential-000000000000';
 const backend = { runtimeInstanceId: 'backend-a', generation: 3 };
 
 function hud(revision: number, targetId = 'target-a', characterId = 'character-a') {
-  return {
-    hudRevision: revision,
-    context: {
-      state: 'BOUND',
-      character: { characterId },
-      target: { targetId, selectionRevision: targetId === 'target-a' ? 7 : 8 },
-    },
-    score: { status: 'SCORED', value: targetId === 'target-a' ? 50 : 75 },
+  const value = structuredClone(hudFixture) as Record<string, any>;
+  const selectionRevision = targetId === 'target-a' ? 7 : 8;
+  const contentSha256 = (targetId === 'target-a' ? 'a' : 'b').repeat(64);
+  value.hudRevision = revision;
+  value.backend = { runtimeInstanceId: backend.runtimeInstanceId, generation: backend.generation };
+  value.context.character.characterId = characterId;
+  value.context.target.targetId = targetId;
+  value.context.target.contentSha256 = contentSha256;
+  value.context.target.selectionRevision = selectionRevision;
+  value.context.binding = {
+    runtimeInstanceId: backend.runtimeInstanceId,
+    characterId,
+    currentRevision: value.context.character.currentRevision,
+    targetId,
+    targetSha256: contentSha256,
+    selectionRevision,
+    policyVersion: value.context.target.policyVersion,
   };
+  value.score.value = targetId === 'target-a' ? 50 : 75;
+  return value;
 }
 
 function setup(
@@ -290,5 +302,54 @@ describe('HudWebSocketDataSource', () => {
       subscriptionId: 'late', hud: hud(99),
     });
     expect(source.snapshot().hud).toBeNull();
+  });
+
+  it('rejects a HUD payload that does not satisfy the versioned schema', () => {
+    const { source, socket } = setup();
+    accept(socket);
+    const request = pendingSnapshot(socket);
+    const invalid = hud(12);
+    delete invalid.provenance;
+    socket.receive({
+      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
+      correlationId: request.messageId, backendGeneration: 3,
+      subscriptionId: 'sub-invalid', hud: invalid,
+    });
+    expect(source.snapshot()).toMatchObject({ hud: null, freshness: 'STALE', error: 'HUD_INVALID' });
+    expect(pendingSnapshot(socket).messageId).not.toBe(request.messageId);
+  });
+
+  it.each([
+    ['runtime instance', (value: Record<string, any>) => { value.context.binding.runtimeInstanceId = 'other'; }],
+    ['character revision', (value: Record<string, any>) => { value.context.binding.currentRevision += 1; }],
+    ['target hash', (value: Record<string, any>) => { value.context.binding.targetSha256 = 'c'.repeat(64); }],
+    ['policy version', (value: Record<string, any>) => { value.context.binding.policyVersion = 'other-policy'; }],
+  ])('rejects inconsistent %s binding without applying the assessment', (_label, mutate) => {
+    const { source, socket } = setup();
+    accept(socket);
+    const request = pendingSnapshot(socket);
+    const invalid = hud(12);
+    mutate(invalid);
+    socket.receive({
+      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
+      correlationId: request.messageId, backendGeneration: 3,
+      subscriptionId: 'sub-invalid', hud: invalid,
+    });
+    expect(source.snapshot()).toMatchObject({ hud: null, freshness: 'STALE', error: 'HUD_INVALID' });
+  });
+
+  it('rejects a HUD identity that disagrees with the accepted backend generation', () => {
+    const { source, socket } = setup();
+    accept(socket);
+    const request = pendingSnapshot(socket);
+    const invalid = hud(12);
+    invalid.backend.generation = 2;
+    invalid.context.binding.runtimeInstanceId = invalid.backend.runtimeInstanceId;
+    socket.receive({
+      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
+      correlationId: request.messageId, backendGeneration: 3,
+      subscriptionId: 'sub-invalid', hud: invalid,
+    });
+    expect(source.snapshot()).toMatchObject({ hud: null, freshness: 'STALE', error: 'HUD_INVALID' });
   });
 });
