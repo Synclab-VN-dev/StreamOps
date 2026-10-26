@@ -10,7 +10,11 @@ from pathlib import Path
 from time import perf_counter_ns
 from typing import Any
 
-from .character.repository import EquipmentRepository
+from .character.repository import (
+    EquipmentRepositoryIncompatible, EquipmentRepositoryReadError,
+    EquipmentRepositoryTransient, EquipmentRepositoryUnavailable,
+    ReadOnlyEquipmentRepository,
+)
 from .release1.assessment import EquipmentAssessmentService, EquipmentSnapshot
 from .release1.capture_adapter import EquipmentCaptureAdapter, RepositoryEquipmentCaptureAdapter
 from .release1.persistence import AssessmentBinding, DurableHudStore
@@ -30,11 +34,15 @@ TAURI_BROWSER_ORIGINS = ("http://tauri.localhost", "https://tauri.localhost")
 
 
 class RepositoryEquipmentEventSource:
-    """Consume durable capture-producer revisions without interpreting labels."""
+    """Bounded DB polling for a producer that exposes no notification contract.
+
+    Only this Backend adapter polls. The FE remains WebSocket push-only.
+    """
 
     def __init__(
-        self, runtime: "ProductionBackendRuntime", repository: EquipmentRepository,
+        self, runtime: "ProductionBackendRuntime", repository: ReadOnlyEquipmentRepository,
         *, character_id: str, character_display_name: str, interval_seconds: float = 0.1,
+        maximum_backoff_seconds: float = 2.0,
     ) -> None:
         if interval_seconds <= 0:
             raise ValueError("Equipment repository interval must be positive")
@@ -44,16 +52,25 @@ class RepositoryEquipmentEventSource:
         self.character_id = character_id
         self.character_display_name = character_display_name
         self.interval_seconds = interval_seconds
+        self.maximum_backoff_seconds = max(interval_seconds, maximum_backoff_seconds)
         self._last_revision = 0
         self._task: asyncio.Task[None] | None = None
+        self.health_status = "STARTING"
+        self.last_error: str | None = None
+        self._stopping = False
 
     async def start(self) -> None:
         if self._task is not None:
             raise RuntimeError("Equipment repository source already started")
-        await self._consume_latest()
+        self._stopping = False
+        try:
+            await self._consume_latest()
+        except EquipmentRepositoryTransient as error:
+            await self._set_health("DEGRADED", str(error))
         self._task = asyncio.create_task(self._run(), name="equipment-repository-source")
 
     async def stop(self) -> None:
+        self._stopping = True
         task, self._task = self._task, None
         if task is not None:
             task.cancel()
@@ -61,10 +78,13 @@ class RepositoryEquipmentEventSource:
                 await task
             except asyncio.CancelledError:
                 pass
+        self.health_status = "STOPPED"
 
     async def _consume_latest(self) -> bool:
-        cursor = await asyncio.to_thread(self.repository.projection_revision)
+        projection = await asyncio.to_thread(self.repository.projection_snapshot)
+        cursor = projection.revision
         if cursor is None or cursor[0] <= self._last_revision:
+            await self._set_health("HEALTHY", None)
             return False
         revision = cursor[0]
         current = await asyncio.to_thread(
@@ -72,15 +92,42 @@ class RepositoryEquipmentEventSource:
             character_id=self.character_id,
             character_display_name=self.character_display_name,
             current_revision=revision,
+            projection=projection,
         )
         await self.runtime.ingest_snapshot(current)
         self._last_revision = revision
+        await self._set_health("HEALTHY", None)
         return True
 
+    async def _set_health(self, status: str, error: str | None) -> None:
+        if self.health_status == status and self.last_error == error:
+            return
+        previous = self.health_status
+        self.health_status, self.last_error = status, error
+        if previous != "STARTING" or status != "HEALTHY":
+            await self.runtime.capture_health_changed(status)
+
     async def _run(self) -> None:
+        delay = self.interval_seconds
         while True:
-            await asyncio.sleep(self.interval_seconds)
-            await self._consume_latest()
+            await asyncio.sleep(delay)
+            try:
+                await self._consume_latest()
+                delay = self.interval_seconds
+            except asyncio.CancelledError:
+                raise
+            except EquipmentRepositoryTransient as error:
+                await self._set_health("DEGRADED", str(error))
+                delay = min(self.maximum_backoff_seconds, max(delay * 2, self.interval_seconds))
+            except (EquipmentRepositoryUnavailable, EquipmentRepositoryIncompatible) as error:
+                await self._set_health("ERROR", str(error))
+                delay = self.maximum_backoff_seconds
+            except (EquipmentRepositoryReadError, ValueError, TypeError) as error:
+                await self._set_health("ERROR", f"CAPTURE_PRODUCT_FAILURE:{type(error).__name__}")
+                delay = self.maximum_backoff_seconds
+            except Exception as error:  # background tasks must fail visibly, never silently
+                await self._set_health("ERROR", f"CAPTURE_UNEXPECTED_FAILURE:{type(error).__name__}")
+                delay = self.maximum_backoff_seconds
 
 
 def _now() -> str:
@@ -178,12 +225,13 @@ class ProductionDomain:
         self, target_id: str, expected_sha256: str, expected_list_revision: int,
     ) -> dict[str, Any]:
         try:
-            target = self.runtime.targets.activate(target_id, expected_sha256, expected_list_revision)
+            target, hud = await self.runtime.activate_target(
+                target_id, expected_sha256, expected_list_revision,
+            )
         except TargetChanged as exc:
             raise TargetActivationError("TARGET_CHANGED", str(exc), retryable=True) from None
         except TargetError as exc:
             raise TargetActivationError(exc.code, str(exc)) from None
-        hud = await self.runtime.activate(target)
         return {
             "status": "ACTIVATED", "targetId": target.target_id,
             "contentSha256": target.content_sha256,
@@ -285,11 +333,11 @@ class ProductionBackendRuntime:
                         or not character_id or not character_name):
                     raise ValueError("configured Equipment repository source is invalid")
                 self.capture_source = RepositoryEquipmentEventSource(
-                    self, EquipmentRepository(path), character_id=character_id,
+                    self, ReadOnlyEquipmentRepository(path), character_id=character_id,
                     character_display_name=character_name,
                 )
                 await self.capture_source.start()
-                capture_state = "REPOSITORY_SUBSCRIBED"
+                capture_state = "REPOSITORY_" + self.capture_source.health_status
             return {
                 "wsEndpoint": {"host": endpoint["host"], "port": self.server.port},
                 "health": {
@@ -322,6 +370,29 @@ class ProductionBackendRuntime:
         self.store.mark_published(hud["hudRevision"])
         return perf_counter_ns(), publish_started_at
 
+    async def capture_health_changed(self, status: str) -> None:
+        """Publish watcher degradation/recovery without relabelling stale score CURRENT."""
+        capture = "HEALTHY" if status == "HEALTHY" else ("STALE" if status == "DEGRADED" else "ERROR")
+        async with self._ingest_lock:
+            latest = self.store.latest_authoritative()
+            if latest is None or (
+                latest["health"]["capture"] == capture
+                and (status == "HEALTHY" or latest["health"]["scoreFreshness"] == "STALE")
+            ):
+                return
+            def build(revision: int) -> dict[str, Any]:
+                payload = json.loads(json.dumps(latest))
+                payload["hudRevision"] = revision
+                payload["producedAt"] = _now()
+                payload["health"]["capture"] = capture
+                payload["health"]["scoreFreshness"] = (
+                    "STALE" if status != "HEALTHY" else
+                    ("NO_DATA" if payload["score"]["status"] == "NO_DATA" else "CURRENT")
+                )
+                return payload
+            hud = self.store.commit_context(build, _now())
+            await self._publish_committed(hud)
+
     def _record_latency(
         self, hud: dict[str, Any], timing: dict[str, int],
         published_ns: int, publish_started_at: str,
@@ -342,7 +413,18 @@ class ProductionBackendRuntime:
         with self.latency_trace.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(record, separators=(",", ":")) + "\n")
 
+    async def activate_target(
+        self, target_id: str, expected_sha256: str, expected_list_revision: int,
+    ) -> tuple[ActivatedTarget, dict[str, Any]]:
+        async with self._ingest_lock:
+            target = self.targets.activate(target_id, expected_sha256, expected_list_revision)
+            return target, await self._activate_locked(target)
+
     async def activate(self, target: ActivatedTarget) -> dict[str, Any]:
+        async with self._ingest_lock:
+            return await self._activate_locked(target)
+
+    async def _activate_locked(self, target: ActivatedTarget) -> dict[str, Any]:
         if self.current is None:
             hud = self.store.commit_context(
                 lambda revision: _unbound_hud(
