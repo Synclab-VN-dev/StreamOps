@@ -165,6 +165,21 @@ def test_target_selection_persists_but_changed_or_missing_target_does_not_reacti
     assert restarted.get_active() is None
 
 
+def test_get_active_revalidation_does_not_invalidate_list_selection_revision(tmp_path, validator):
+    folder = tmp_path / "targets"
+    folder.mkdir()
+    write_target(folder)
+    repo = TargetRepository(folder, tmp_path / "state/selection.json", validator)
+    listing = repo.list()
+    valid = listing.entries[0]
+    first = repo.activate(valid.target_id, valid.content_sha256, listing.revision)
+
+    assert repo.get_active() == first
+    # Interleaved health/HUD reads must not manufacture TARGET_LIST_CHANGED.
+    second = repo.activate(valid.target_id, valid.content_sha256, listing.revision)
+    assert second.selection_revision == first.selection_revision + 1
+
+
 def test_target_semantics_reject_duplicate_criterion_and_bad_parameter_link(validator):
     duplicate = load_json(TARGET_FIXTURE)
     duplicate["assessmentPolicy"]["criteria"].append(

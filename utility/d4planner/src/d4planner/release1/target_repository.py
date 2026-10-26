@@ -203,7 +203,8 @@ class TargetRepository:
                 None,
             )
 
-    def list(self) -> TargetListing:
+    def _refresh_candidates(self) -> tuple[TargetListEntry, ...]:
+        """Refresh filesystem state without changing the FE list generation."""
         candidates: list[_Candidate] = []
         paths = [
             path for path in sorted(self.configured_root.iterdir(), key=lambda p: p.name.casefold())
@@ -237,9 +238,13 @@ class TargetRepository:
                     "INVALID", ("DUPLICATE_TARGET_ID",),
                 )
                 candidate.document = None
-        self._list_revision += 1
         self._candidates = {candidate.entry.target_id: candidate for candidate in candidates}
-        return TargetListing(self._list_revision, tuple(c.entry for c in candidates))
+        return tuple(candidate.entry for candidate in candidates)
+
+    def list(self) -> TargetListing:
+        entries = self._refresh_candidates()
+        self._list_revision += 1
+        return TargetListing(self._list_revision, entries)
 
     def _load_selection(self) -> dict[str, Any] | None:
         try:
@@ -309,7 +314,9 @@ class TargetRepository:
         state = self._load_selection()
         if not state:
             return None
-        listing = self.list()
+        # Active-state revalidation is an internal read. It must not invalidate
+        # a Target list revision already handed to FE.
+        self._refresh_candidates()
         candidate = self._candidates.get(str(state.get("targetId", "")))
         if candidate is None or candidate.entry.validation != "VALID":
             return None
