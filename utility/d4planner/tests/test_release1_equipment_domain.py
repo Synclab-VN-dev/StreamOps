@@ -361,6 +361,26 @@ def test_committed_hud_validates_closed_schema(tmp_path, validator):
     Draft202012Validator(schema, format_checker=FormatChecker()).validate(hud)
 
 
+def test_assessment_coordinator_reports_ordered_measurement_boundaries(tmp_path, validator):
+    folder = tmp_path / "targets"; folder.mkdir(); write_target(folder)
+    target = activate(folder, validator); current = current_snapshot()
+    store = DurableHudStore(tmp_path / "timed.db")
+    store.set_binding(AssessmentBinding(
+        "runtime-a", current.character_id, current.current_revision,
+        target.target_id, target.content_sha256, target.selection_revision,
+        target.document["assessmentPolicy"]["version"] + "+" +
+        target.document["assessmentPolicy"]["weightProfile"]["profileId"],
+    ))
+    hud, timing = EquipmentAssessmentCoordinator(
+        EquipmentAssessmentService(), store, lambda _payload: None,
+    ).assess_commit_timed(
+        runtime_instance_id="runtime-a", current=current, target=target,
+        produced_at="2026-10-25T10:00:01Z",
+    )
+    assert hud["hudRevision"] == 0
+    assert timing["assessmentStartedNs"] <= timing["assessmentCompletedNs"] <= timing["commitCompletedNs"]
+
+
 def test_store_lock_fails_closed_and_restart_preserves_latest(tmp_path):
     path = tmp_path / "hud.db"
     store = DurableHudStore(path, timeout_seconds=0.01)
