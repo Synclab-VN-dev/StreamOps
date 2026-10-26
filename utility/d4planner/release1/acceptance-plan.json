@@ -1,13 +1,13 @@
 {
   "schemaVersion": "d4planner-acceptance-plan/v1",
   "cases": [
-    {"id": "S7-PKG-01", "kind": "PACKAGE_INTEGRITY", "automated": true},
-    {"id": "S7-PRE-01", "kind": "WINDOWS_PREFLIGHT", "automated": true},
-    {"id": "S7-E2E-01", "kind": "RUNTIME_E2E", "automated": true},
-    {"id": "S7-VIS-01", "kind": "VISUAL_GOLDEN", "automated": true},
-    {"id": "S7-PERF-01", "kind": "PERFORMANCE", "automated": true},
-    {"id": "MAN-01", "kind": "OWNER_MANUAL", "automated": false},
-    {"id": "MAN-02", "kind": "OWNER_MANUAL", "automated": false},
-    {"id": "MAN-03", "kind": "OWNER_MANUAL", "automated": false}
+    {"id": "S7-PKG-01", "kind": "PACKAGE_INTEGRITY", "automated": true, "expected": "Package manifest, paths, sizes and SHA-256 all verify"},
+    {"id": "S7-PRE-01", "kind": "WINDOWS_PREFLIGHT", "automated": true, "expected": "Windows, pinned package, isolated staging and evidence directories are verified"},
+    {"id": "S7-E2E-01", "kind": "RUNTIME_E2E", "automated": true, "expected": "Integrated production components complete the selected real-process scenario"},
+    {"id": "S7-VIS-01", "kind": "VISUAL_GOLDEN", "automated": true, "expected": "Independent MagicPath Goldens match all required states"},
+    {"id": "S7-PERF-01", "kind": "PERFORMANCE", "automated": true, "expected": "Runtime latency evidence reports measured P50/P95 without a fabricated SLA"},
+    {"id": "MAN-01", "kind": "OWNER_MANUAL", "automated": false, "expected": "Owner performs MAN-01 checkpoint"},
+    {"id": "MAN-02", "kind": "OWNER_MANUAL", "automated": false, "expected": "Owner performs MAN-02 checkpoint"},
+    {"id": "MAN-03", "kind": "OWNER_MANUAL", "automated": false, "expected": "Owner performs MAN-03 checkpoint"}
   ]
 }

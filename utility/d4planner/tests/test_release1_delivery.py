@@ -30,6 +30,15 @@ def stage(tmp_path: Path) -> Path:
     return root
 
 
+def component_manifest(tmp_path: Path) -> Path:
+    path = tmp_path / "component-shas.json"
+    path.write_text(json.dumps({
+        "schemaVersion": delivery.COMPONENT_MANIFEST_VERSION,
+        "components": {f"S{number}": str(number) * 40 for number in range(2, 8)},
+    }))
+    return path
+
+
 def test_package_is_deterministic_pinned_and_verifiable(tmp_path):
     source = stage(tmp_path)
     first = tmp_path / "first.zip"; second = tmp_path / "second.zip"
@@ -135,15 +144,19 @@ def test_upgrade_preserves_targets_and_state(tmp_path):
 def test_runner_distinguishes_platform_dependency_manual_subset_and_resume(tmp_path):
     package = tmp_path / "package.zip"
     delivery.build_package(PLAN, stage(tmp_path), package)
-    report = delivery.run_acceptance(ACCEPTANCE, package, set(), None, platform="linux")
+    components = component_manifest(tmp_path)
+    report = delivery.run_acceptance(ACCEPTANCE, package, set(), None, platform="linux", component_manifest=components)
     by_id = {case["id"]: case for case in report["cases"]}
     assert by_id["S7-PKG-01"]["status"] == "PASS"
     assert by_id["S7-PRE-01"]["status"] == "BLOCKED"
-    assert by_id["S7-E2E-01"] == {"id": "S7-E2E-01", "status": "BLOCKED", "classification": "PENDING_DEPENDENCY"}
+    assert by_id["S7-E2E-01"]["status"] == "BLOCKED"
+    assert by_id["S7-E2E-01"]["classification"] == "PENDING_DEPENDENCY"
+    assert by_id["S7-E2E-01"]["exitCode"] == 3
+    assert by_id["S7-E2E-01"]["expected"]
     assert by_id["MAN-01"]["status"] == "NOT_RUN"
     prior = tmp_path / "prior.json"; prior.write_text(json.dumps(report))
     resumed = delivery.run_acceptance(
-        ACCEPTANCE, package, {"S7-PKG-01"}, prior, platform="linux"
+        ACCEPTANCE, package, {"S7-PKG-01"}, prior, platform="linux", component_manifest=components
     )
     resumed_by_id = {case["id"]: case for case in resumed["cases"]}
     assert resumed_by_id["S7-PKG-01"]["resumed"] is True
@@ -152,13 +165,14 @@ def test_runner_distinguishes_platform_dependency_manual_subset_and_resume(tmp_p
     prior.write_text(json.dumps(report))
     with pytest.raises(delivery.DeliveryError, match="RESUME_CONTEXT_MISMATCH"):
         delivery.run_acceptance(
-            ACCEPTANCE, package, {"S7-PKG-01"}, prior, platform="linux"
+            ACCEPTANCE, package, {"S7-PKG-01"}, prior, platform="linux", component_manifest=components
         )
 
     windows = delivery.run_acceptance(
         ACCEPTANCE, package, {"S7-PRE-01"}, None, platform="win32",
         staging_root=tmp_path.resolve(), evidence_dir=tmp_path.resolve(),
         expected_package_sha256=delivery.sha256_file(package),
+        component_manifest=components,
     )
     windows_by_id = {case["id"]: case for case in windows["cases"]}
     assert windows_by_id["S7-PRE-01"]["status"] == "PASS"
@@ -167,9 +181,10 @@ def test_runner_distinguishes_platform_dependency_manual_subset_and_resume(tmp_p
 
 def test_runner_invalid_package_is_product_failure_and_missing_is_blocked(tmp_path):
     invalid = tmp_path / "invalid.zip"; invalid.write_bytes(b"not zip")
-    failed = delivery.run_acceptance(ACCEPTANCE, invalid, {"S7-PKG-01"}, None)
+    components = component_manifest(tmp_path)
+    failed = delivery.run_acceptance(ACCEPTANCE, invalid, {"S7-PKG-01"}, None, component_manifest=components)
     assert failed["cases"][0]["status"] == "FAIL"
-    blocked = delivery.run_acceptance(ACCEPTANCE, None, {"S7-PKG-01"}, None)
+    blocked = delivery.run_acceptance(ACCEPTANCE, None, {"S7-PKG-01"}, None, component_manifest=components)
     assert blocked["cases"][0]["status"] == "BLOCKED"
 
 
@@ -177,7 +192,8 @@ def test_windows_preflight_requires_real_isolated_inputs_and_exact_package_hash(
     package = tmp_path / "package.zip"
     delivery.build_package(PLAN, stage(tmp_path), package)
     blocked = delivery.run_acceptance(
-        ACCEPTANCE, package, {"S7-PRE-01"}, None, platform="win32"
+        ACCEPTANCE, package, {"S7-PRE-01"}, None, platform="win32",
+        component_manifest=component_manifest(tmp_path),
     )
     case = {item["id"]: item for item in blocked["cases"]}["S7-PRE-01"]
     assert case["status"] == "BLOCKED"
@@ -189,6 +205,7 @@ def test_windows_preflight_requires_real_isolated_inputs_and_exact_package_hash(
         ACCEPTANCE, package, {"S7-PRE-01"}, None, platform="win32",
         staging_root=tmp_path.resolve(), evidence_dir=tmp_path.resolve(),
         expected_package_sha256="0" * 64,
+        component_manifest=component_manifest(tmp_path),
     )
     assert "PACKAGE_SHA256_MISMATCH" in {item["id"]: item for item in mismatch["cases"]}["S7-PRE-01"]["actual"]
 
@@ -200,6 +217,7 @@ def test_cli_writes_report_but_returns_nonzero_for_fail_or_blocked(tmp_path):
     completed = subprocess.run([
         sys.executable, str(TOOL), "run", "--mode", "Preflight",
         "--plan", str(ACCEPTANCE), "--package", str(package), "--output", str(output),
+        "--component-manifest", str(component_manifest(tmp_path)),
     ], check=False, capture_output=True, text=True)
     assert completed.returncode == 3
     assert output.is_file()
@@ -211,3 +229,16 @@ def test_cli_writes_report_but_returns_nonzero_for_fail_or_blocked(tmp_path):
         sys.executable, str(TOOL), "report", "--input", str(failed),
     ], check=False, capture_output=True, text=True)
     assert report.returncode == 1
+
+
+def test_runner_rejects_missing_or_unpinned_component_shas(tmp_path):
+    package = tmp_path / "package.zip"
+    delivery.build_package(PLAN, stage(tmp_path), package)
+    with pytest.raises(delivery.DeliveryError, match="COMPONENT_MANIFEST_REQUIRED"):
+        delivery.run_acceptance(ACCEPTANCE, package, set(), None)
+    invalid = component_manifest(tmp_path)
+    value = json.loads(invalid.read_text())
+    value["components"]["S5"] = "not-a-sha"
+    invalid.write_text(json.dumps(value))
+    with pytest.raises(delivery.DeliveryError, match="INVALID_COMPONENT_SHA:S5"):
+        delivery.run_acceptance(ACCEPTANCE, package, set(), None, component_manifest=invalid)
