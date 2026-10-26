@@ -793,30 +793,36 @@ def run_crash_recovery(args: argparse.Namespace) -> dict:
 
 
 def run_performance(args: argparse.Namespace) -> dict:
-    samples = []
-    for index in range(5):
-        sample_args = argparse.Namespace(
-            install_root=args.install_root,
-            data_root=args.data_root / f"sample-{index + 1}",
-            output=args.output,
-        )
-        samples.append(run_backend(sample_args)["durationSeconds"])
-    ordered = sorted(samples)
-    return {"schemaVersion":"d4planner-latency-evidence/v1", "ok":True,
-            "classification":"REAL_PROCESS_END_TO_END_LATENCY",
-            "sampleCount":len(samples), "samplesSeconds":samples,
-            "p50Seconds":statistics.median(samples),
-            "p95Seconds":statistics.quantiles(ordered, n=100, method="inclusive")[94],
-            "sla":"NOT_DEFINED_AS_APPROVED"}
+    source = args.native_latency.resolve()
+    if not source.is_file():
+        raise E2EFailure("native capture-to-visible latency evidence is missing")
+    value = json.loads(source.read_text(encoding="utf-8"))
+    stages = (
+        "captureToAssessment", "assessmentToSqliteCommit", "commitToWsDelivery",
+        "wsToHudModel", "hudModelToVisibleRender",
+    )
+    if value.get("schemaVersion") != "d4planner-latency-evidence/v1" or value.get("ok") is not True:
+        raise E2EFailure("native latency evidence is invalid")
+    if any(not isinstance(value.get(stage), dict) or value[stage].get("sampleCount", 0) < 1
+           or not isinstance(value[stage].get("p50Milliseconds"), (int, float))
+           or not isinstance(value[stage].get("p95Milliseconds"), (int, float)) for stage in stages):
+        raise E2EFailure("native latency evidence does not cover every approved stage")
+    return {**value, "classification":"NATIVE_CAPTURE_TO_VISIBLE_STAGE_LATENCY",
+            "sourceEvidence":str(source)}
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(); sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("backend", "native", "owner", "rulekit", "crash-recovery", "performance"):
+    for name in ("backend", "native", "owner", "rulekit", "crash-recovery"):
         command = sub.add_parser(name)
         command.add_argument("--install-root", type=Path, required=True)
         command.add_argument("--data-root", type=Path, required=True)
         command.add_argument("--output", type=Path, required=True)
+    performance = sub.add_parser("performance")
+    performance.add_argument("--install-root", type=Path, required=True)
+    performance.add_argument("--data-root", type=Path, required=True)
+    performance.add_argument("--output", type=Path, required=True)
+    performance.add_argument("--native-latency", type=Path, required=True)
     package = sub.add_parser("package-cycle")
     package.add_argument("--package", type=Path, required=True)
     package.add_argument("--staging-root", type=Path, required=True)
