@@ -350,13 +350,18 @@ async def _socket_flow(endpoint: dict, credential: str, instance: str, generatio
         hud_b = update["hud"]
         if selected.get("status") != "ACTIVATED" or hud_b["context"]["target"]["targetId"] != "synthetic-target-b":
             raise E2EFailure("Target A to B activation did not update authoritative binding")
+        if (selected.get("contentSha256") != target_b["contentSha256"]
+                or hud_b["context"]["target"]["contentSha256"] != target_b["contentSha256"]
+                or hud_b["context"]["binding"]["targetSha256"] != target_b["contentSha256"]):
+            raise E2EFailure("Target A to B activation lost the exact content binding")
         if hud_b["context"]["binding"]["targetId"] != "synthetic-target-b":
             raise E2EFailure("old Target assessment was relabelled")
         revision = hud_b["hudRevision"]
     finally:
         await ws.close()
 
-    ws = await open_socket(revision)
+    gap_from_revision = max(0, revision - 1)
+    ws = await open_socket(gap_from_revision)
     try:
         await ws.send(json.dumps(_msg("resync", "hud.snapshot.request", generation,
             requestContext={"mode":"RESYNC_KNOWN_CONTEXT","runtimeInstanceId":instance,
@@ -373,7 +378,9 @@ async def _socket_flow(endpoint: dict, credential: str, instance: str, generatio
         await ws.close()
     return {"initialRevision": hud_a["hudRevision"], "finalRevision": revision,
             "score": hud_a["score"], "targetCountBeforeSwitch": len(listing["targets"]),
-            "finalTargetId": "synthetic-target-b"}
+            "finalTargetId": "synthetic-target-b", "finalTargetSha256": target_b["contentSha256"],
+            "authenticatedSubscriber": True, "gapFromRevision": gap_from_revision,
+            "resyncRevision": resync["hud"]["hudRevision"], "rollbackPrevented": True}
 
 
 def run_backend(args: argparse.Namespace) -> dict:
@@ -416,8 +423,22 @@ def run_backend(args: argparse.Namespace) -> dict:
         database = data / "state/hud.sqlite3"
         with sqlite3.connect(database) as connection:
             rows = connection.execute("select count(*) from hud_snapshot").fetchone()[0]
+            current_row = connection.execute(
+                "select hud_revision,payload_json from hud_current where singleton=1"
+            ).fetchone()
         if rows < 2:
             raise E2EFailure("durable assessment commits were not persisted")
+        if current_row is None:
+            raise E2EFailure("durable HUD current state is missing")
+        durable_hud = json.loads(current_row[1])
+        if (durable_hud["hudRevision"] != current_row[0]
+                or durable_hud["context"]["state"] != "BOUND"
+                or durable_hud["score"]["status"] != "SCORED"
+                or durable_hud["score"]["value"] != 100.0
+                or not durable_hud["equipment"]):
+            raise E2EFailure("Equipment evidence did not produce the independently expected durable assessment")
+        if socket["resyncRevision"] != durable_hud["hudRevision"]:
+            raise E2EFailure("authenticated WebSocket state does not match the durable SQLite revision")
         process.stdin.write(json.dumps({"type":"shutdown","ownerInstanceId":owner,
             "childInstanceId":child,"generation":generation}) + "\n")
         process.stdin.flush()
@@ -432,15 +453,23 @@ def run_backend(args: argparse.Namespace) -> dict:
                 "classification":"REAL_PROCESS_E2E_WITH_SYNTHETIC_INPUT",
                 "backendPid":process.pid, "ready":ready, "ownedProcesses":descendants,
                 "socket":socket, "sqliteAssessmentRows":rows,
+                "sqlite":{"hudRevision":durable_hud["hudRevision"],
+                          "scoreStatus":durable_hud["score"]["status"],
+                          "score":durable_hud["score"]["value"],
+                          "equipmentRows":len(durable_hud["equipment"])},
+                "acceptance":{"e2e03":True,"e2e04":True,"e2e05":True,"e2e06":True},
                 "durationSeconds":round(time.perf_counter()-started, 3)}
     finally:
-        if window is not None and process.poll() is None:
-            try:
-                _capture_window(window, root / "failure-native.png")
-            except Exception:
-                pass
         if process.poll() is None:
-            process.kill(); process.wait(timeout=5)
+            try:
+                process.stdin.write(json.dumps({"type":"shutdown","ownerInstanceId":owner,
+                    "childInstanceId":child,"generation":generation}) + "\n")
+                process.stdin.flush()
+                process.wait(timeout=5)
+            except (BrokenPipeError, OSError, subprocess.TimeoutExpired):
+                if process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=5)
         bootstrap.unlink(missing_ok=True)
 
 

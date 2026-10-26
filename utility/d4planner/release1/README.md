@@ -46,7 +46,9 @@ executable path and process start time, requests a normal window close, and
 fails closed rather than killing by process name. For an Owner-approved UAT
 mapping, use `-WsPortMode FixedApprovedUat -ApprovedPort <approved-port>`; an
 unavailable fixed port fails startup. Attaching a capture database additionally
-requires both `-EnableReadOnlyEquipmentRepository` and its explicit path.
+requires `-EnableReadOnlyEquipmentRepository`, its explicit path, and explicit
+`-CharacterId` / `-CharacterDisplayName` values. Omitting either identity fails
+before the native process starts; HUD-03 without a DB requires none of them.
 
 ## Commands
 
