@@ -312,14 +312,18 @@ class ProductionBackendRuntime:
         if self.rulekit is not None:
             await self.rulekit.stop()
 
-    async def _publish_committed(self, hud: dict[str, Any]) -> int:
+    async def _publish_committed(self, hud: dict[str, Any]) -> tuple[int, str]:
         if self.hub is None:
             raise RuntimeError("HUD hub is not started")
+        publish_started_at = _now()
         await self.hub.publish_after_commit(hud)
         self.store.mark_published(hud["hudRevision"])
-        return perf_counter_ns()
+        return perf_counter_ns(), publish_started_at
 
-    def _record_latency(self, hud: dict[str, Any], timing: dict[str, int], published_ns: int) -> None:
+    def _record_latency(
+        self, hud: dict[str, Any], timing: dict[str, int],
+        published_ns: int, publish_started_at: str,
+    ) -> None:
         if self.latency_trace is None:
             return
         capture_ns = timing["captureReceivedNs"]
@@ -330,7 +334,7 @@ class ProductionBackendRuntime:
             "assessmentToCommitNs": timing["commitCompletedNs"] - timing["assessmentCompletedNs"],
             "commitToWsDeliveryNs": published_ns - timing["commitCompletedNs"],
             "captureReceivedAt": timing["captureReceivedAt"],
-            "wsPublishedAt": _now(),
+            "wsPublishedAt": publish_started_at,
         }
         self.latency_trace.parent.mkdir(parents=True, exist_ok=True)
         with self.latency_trace.open("a", encoding="utf-8") as stream:
@@ -378,9 +382,11 @@ class ProductionBackendRuntime:
                 )
                 timing.update({"captureReceivedNs": capture_received_ns,
                                "captureReceivedAt": capture_received_at})
-            published_ns = await self._publish_committed(hud)
+            published_ns, publish_started_at = await self._publish_committed(hud)
             if target is not None:
-                self._record_latency(hud, timing, published_ns)
+                self._record_latency(
+                    hud, timing, published_ns, publish_started_at,
+                )
             return hud
 
     async def handle_control(self, command: dict[str, Any]) -> dict[str, Any] | None:
