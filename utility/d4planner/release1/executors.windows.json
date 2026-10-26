@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "d4planner-e2e-executors/v1",
+  "cases": {
+    "E2E-01": {"command":["{PYTHON}","{INSTALL_ROOT}/tools/production_e2e.py","owner","--install-root","{INSTALL_ROOT}","--data-root","{DATA_ROOT}/e2e-01","--output","{EVIDENCE_DIR}/E2E-01.json"],"workingDirectory":".","timeoutSeconds":180},
+    "E2E-02": {"command":["{PYTHON}","{INSTALL_ROOT}/tools/production_e2e.py","rulekit","--install-root","{INSTALL_ROOT}","--data-root","{DATA_ROOT}/e2e-02","--output","{EVIDENCE_DIR}/E2E-02.json"],"workingDirectory":".","timeoutSeconds":180},
+    "E2E-03": {"command":["{PYTHON}","{INSTALL_ROOT}/tools/production_e2e.py","backend","--install-root","{INSTALL_ROOT}","--data-root","{DATA_ROOT}/e2e-03","--output","{EVIDENCE_DIR}/E2E-03.json"],"workingDirectory":".","timeoutSeconds":180},
+    "E2E-04": {"command":["{PYTHON}","{INSTALL_ROOT}/tools/production_e2e.py","backend","--install-root","{INSTALL_ROOT}","--data-root","{DATA_ROOT}/e2e-04","--output","{EVIDENCE_DIR}/E2E-04.json"],"workingDirectory":".","timeoutSeconds":180},
+    "E2E-05": {"command":["{PYTHON}","{INSTALL_ROOT}/tools/production_e2e.py","backend","--install-root","{INSTALL_ROOT}","--data-root","{DATA_ROOT}/e2e-05","--output","{EVIDENCE_DIR}/E2E-05.json"],"workingDirectory":".","timeoutSeconds":180},
+    "E2E-06": {"command":["{PYTHON}","{INSTALL_ROOT}/tools/production_e2e.py","backend","--install-root","{INSTALL_ROOT}","--data-root","{DATA_ROOT}/e2e-06","--output","{EVIDENCE_DIR}/E2E-06.json"],"workingDirectory":".","timeoutSeconds":180},
+    "E2E-07": {"command":["{PYTHON}","{INSTALL_ROOT}/tools/production_e2e.py","native","--install-root","{INSTALL_ROOT}","--data-root","{DATA_ROOT}/e2e-07","--output","{EVIDENCE_DIR}/E2E-07.json"],"workingDirectory":".","timeoutSeconds":180},
+    "E2E-08": {"command":["{PYTHON}","{INSTALL_ROOT}/tools/production_e2e.py","package-cycle","--package","{PACKAGE}","--staging-root","{STAGING_ROOT}","--output","{EVIDENCE_DIR}/E2E-08.json"],"workingDirectory":".","timeoutSeconds":180},
+    "E2E-09": {"command":["{PYTHON}","{INSTALL_ROOT}/tools/production_e2e.py","backend","--install-root","{INSTALL_ROOT}","--data-root","{DATA_ROOT}/e2e-09","--output","{EVIDENCE_DIR}/E2E-09.json"],"workingDirectory":".","timeoutSeconds":180},
+    "E2E-10": {"command":["{PYTHON}","{INSTALL_ROOT}/tools/production_e2e.py","native","--install-root","{INSTALL_ROOT}","--data-root","{DATA_ROOT}/e2e-10","--output","{EVIDENCE_DIR}/E2E-10.json"],"workingDirectory":".","timeoutSeconds":180}
+  }
+}
