@@ -23,6 +23,7 @@ PROTOCOL = "d4planner-managed/v1"
 CONTRACT = "d4planner-r1-contract/1.0.0-candidate.6"
 BOOTSTRAP_ENV = "D4PLANNER_BOOTSTRAP_FILE"
 RUNTIME_FACTORY_ENV = "D4PLANNER_RUNTIME_FACTORY"
+DEFAULT_RUNTIME_FACTORY = "d4planner.production:create_runtime"
 
 
 class BootstrapError(ValueError):
@@ -66,7 +67,7 @@ class BaseRuntime:
 
 
 def create_runtime(bootstrap: dict[str, Any]) -> ManagedRuntime:
-    factory_name = os.environ.get(RUNTIME_FACTORY_ENV)
+    factory_name = os.environ.get(RUNTIME_FACTORY_ENV, DEFAULT_RUNTIME_FACTORY)
     if not factory_name:
         return BaseRuntime(bootstrap)
     module_name, separator, attribute = factory_name.partition(":")
