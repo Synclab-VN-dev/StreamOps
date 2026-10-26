@@ -9,8 +9,13 @@ import pytest
 from websockets.asyncio.client import connect
 
 from d4planner.character.equipment.projector import EquipmentProjector
-from d4planner.character.repository import EquipmentRepository
-from d4planner.production import ORIGIN, ProductionBackendRuntime, _resolve_repository_root
+from d4planner.character.repository import (
+    EquipmentProjectionView, EquipmentRepository, EquipmentRepositoryTransient,
+)
+from d4planner.production import (
+    ORIGIN, ProductionBackendRuntime, RepositoryEquipmentEventSource,
+    _resolve_repository_root,
+)
 from d4planner.rulekit import LaunchSpecification, RuleKitProcessWrapper, RuleKitRuntimeService
 
 
@@ -211,7 +216,7 @@ def test_repository_capture_revision_commits_and_pushes_without_fuzzy_identity(t
             "wsEndpoint": {"host": "127.0.0.1", "port": 0}, "credential": CREDENTIAL,
         }, rulekit=_rulekit())
         ready = await runtime.start()
-        assert ready["health"]["equipmentCapture"] == "REPOSITORY_SUBSCRIBED"
+        assert ready["health"]["equipmentCapture"] == "REPOSITORY_HEALTHY"
         uri = f"ws://127.0.0.1:{ready['wsEndpoint']['port']}"
         try:
             async with connect(uri, origin=ORIGIN, ping_interval=None) as ws:
@@ -245,7 +250,81 @@ def test_repository_capture_revision_commits_and_pushes_without_fuzzy_identity(t
                 assert update["hud"]["score"]["failIssueCount"] == 0
                 await asyncio.sleep(.25)
                 assert runtime.store.latest_authoritative()["hudRevision"] == update["hud"]["hudRevision"]
+                await runtime.capture_health_changed("DEGRADED")
+                stale = runtime.store.latest_authoritative()
+                assert stale["health"]["capture"] == "STALE"
+                assert stale["health"]["scoreFreshness"] == "STALE"
+                await runtime.capture_health_changed("HEALTHY")
+                recovered = runtime.store.latest_authoritative()
+                assert recovered["health"]["capture"] == "HEALTHY"
+                assert recovered["health"]["scoreFreshness"] == "NO_DATA"
         finally:
             await runtime.stop()
+    asyncio.run(scenario())
+
+
+def test_repository_watcher_retries_recovers_rejects_duplicates_and_stops():
+    row = {
+        "slotFamily": "helm", "slotIndex": None, "name": "Recorded Helm",
+        "itemFingerprint": "helm-stable", "observedAt": "2026-10-26T03:00:00Z",
+        "affixes": [], "effectsRaw": [],
+    }
+
+    class Repository:
+        def __init__(self):
+            self.revision = 1
+            self.failure = None
+            self.invalid = False
+
+        def projection_snapshot(self):
+            if self.failure:
+                raise self.failure
+            rows = ({"slotFamily": "helm"},) if self.invalid else (row,)
+            return EquipmentProjectionView(
+                (self.revision, "session", self.revision, "2026-10-26T03:00:00Z"), rows,
+            )
+
+    class Runtime:
+        def __init__(self):
+            self.revisions = []
+            self.health = []
+
+        async def ingest_snapshot(self, snapshot):
+            self.revisions.append(snapshot.current_revision)
+
+        async def capture_health_changed(self, status):
+            self.health.append(status)
+
+    async def wait_for(predicate, timeout=.5):
+        deadline = asyncio.get_running_loop().time() + timeout
+        while not predicate():
+            if asyncio.get_running_loop().time() >= deadline:
+                raise AssertionError("watcher condition timed out")
+            await asyncio.sleep(.005)
+
+    async def scenario():
+        repository = Repository(); runtime = Runtime()
+        source = RepositoryEquipmentEventSource(
+            runtime, repository, character_id="c", character_display_name="C",
+            interval_seconds=.005, maximum_backoff_seconds=.02,
+        )
+        await source.start()
+        assert runtime.revisions == [1]
+        repository.failure = EquipmentRepositoryTransient("EQUIPMENT_DB_BUSY")
+        await wait_for(lambda: source.health_status == "DEGRADED")
+        repository.failure = None; repository.revision = 2
+        await wait_for(lambda: runtime.revisions == [1, 2])
+        assert source.health_status == "HEALTHY"
+        await asyncio.sleep(.03)
+        assert runtime.revisions == [1, 2]
+        repository.invalid = True; repository.revision = 3
+        await wait_for(lambda: source.health_status == "ERROR")
+        assert runtime.revisions == [1, 2]
+        repository.invalid = False
+        await wait_for(lambda: runtime.revisions == [1, 2, 3])
+        assert source.health_status == "HEALTHY"
+        await source.stop()
+        assert source._task is None and source.health_status == "STOPPED"
+
     asyncio.run(scenario())
 
