@@ -239,7 +239,10 @@ class EquipmentAssessmentService:
                 },
                 "currentItem": None if item is None else {
                     "itemId": item.item_id, "displayName": item.display_name,
-                    "observedAt": item.observed_at, "source": item.source,
+                    "observedAt": item.observed_at,
+                    "source": (
+                        "CAPTURE" if item.source == "CAPTURE" else "MATERIALIZED_CAPTURE"
+                    ),
                 },
                 "currentPresence": (
                     "OBSERVED" if item is not None else

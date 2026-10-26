@@ -212,7 +212,22 @@ def test_score_all_pass_over_target_and_item_names_are_not_identity(tmp_path, va
         "SCORED", 100, 8, 8,
     )
     assert (result.items_passing, result.items_targeted, result.fail_issues, result.warnings) == (2, 2, 0, 0)
+    assert {row["currentItem"]["source"] for row in result.rows} == {"CAPTURE"}
     assert result.recommendation is None
+
+    current = current_snapshot(attack=99)
+    first = current.items[0]
+    recorded = EquipmentSnapshot(
+        current.character_id, current.character_display_name, current.current_revision,
+        current.captured_at,
+        (ObservedItem(
+            first.slot_id, first.item_id, first.display_name, first.observed_at,
+            "RECORDED_SYNTHETIC_E2E_INPUT", first.entities,
+        ), *current.items[1:]),
+        current.slot_evidence, current.capture_health,
+    )
+    recorded_result = EquipmentAssessmentService().assess(recorded, target)
+    assert recorded_result.rows[0]["currentItem"]["source"] == "MATERIALIZED_CAPTURE"
 
 
 def test_partial_no_data_all_fail_low_roll_and_non_core_warn(tmp_path, validator):
