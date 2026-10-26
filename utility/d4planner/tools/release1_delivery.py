@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import shutil
 import sys
 import zipfile
@@ -44,10 +44,29 @@ def sha256_file(path: Path) -> str:
 
 
 def safe_relative(value: str) -> Path:
+    if not value or "\x00" in value or "\\" in value or ":" in value:
+        raise DeliveryError(f"UNSAFE_PATH:{value}")
     posix = PurePosixPath(value)
-    if posix.is_absolute() or ".." in posix.parts or not posix.parts:
+    windows = PureWindowsPath(value)
+    if (
+        posix.is_absolute()
+        or windows.is_absolute()
+        or bool(windows.drive)
+        or ".." in posix.parts
+        or not posix.parts
+        or any(part in {"", "."} for part in value.split("/"))
+        or posix.as_posix() != value
+    ):
         raise DeliveryError(f"UNSAFE_PATH:{value}")
     return Path(*posix.parts)
+
+
+def _contained_destination(root: Path, relative: str) -> Path:
+    resolved_root = root.resolve()
+    destination = (resolved_root / safe_relative(relative)).resolve()
+    if destination == resolved_root or resolved_root not in destination.parents:
+        raise DeliveryError(f"UNSAFE_PATH:{relative}")
+    return destination
 
 
 def validate_plan(plan: dict) -> None:
@@ -128,6 +147,8 @@ def verify_package(package_path: Path) -> dict:
     try:
         with zipfile.ZipFile(package_path) as package:
             names = package.namelist()
+            for name in names:
+                safe_relative(name)
             if len(names) != len(set(names)) or "release-manifest.json" not in names:
                 raise DeliveryError("INVALID_ARCHIVE_INDEX")
             manifest = json.loads(package.read("release-manifest.json"))
@@ -165,7 +186,7 @@ def install_package(package_path: Path, app_dir: Path, data_dir: Path) -> dict:
     try:
         with zipfile.ZipFile(package_path) as package:
             for entry in manifest["files"]:
-                destination = staging / safe_relative(entry["path"])
+                destination = _contained_destination(staging, entry["path"])
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 destination.write_bytes(package.read(entry["path"]))
         if app_dir.exists():
@@ -192,6 +213,53 @@ def rollback_install(app_dir: Path, data_dir: Path) -> dict:
     return {"appDir": str(app_dir), "dataDir": str(data_dir), "rollback": "APPLIED"}
 
 
+def _windows_preflight(
+    package: Path | None,
+    expected_package_sha256: str | None,
+    staging_root: Path | None,
+    evidence_dir: Path | None,
+    runtime_platform: str,
+) -> dict:
+    failures: list[str] = []
+    if runtime_platform != "win32":
+        failures.append("WINDOWS_REQUIRED")
+    if package is None or not package.is_file():
+        failures.append("PACKAGE_REQUIRED")
+    elif not expected_package_sha256:
+        failures.append("EXPECTED_PACKAGE_SHA256_REQUIRED")
+    elif sha256_file(package) != expected_package_sha256.lower():
+        failures.append("PACKAGE_SHA256_MISMATCH")
+    if staging_root is None or not staging_root.is_absolute() or not staging_root.is_dir():
+        failures.append("ISOLATED_STAGING_ROOT_REQUIRED")
+    if evidence_dir is None or not evidence_dir.is_absolute() or not evidence_dir.is_dir():
+        failures.append("EVIDENCE_DIRECTORY_REQUIRED")
+    if sys.version_info < (3, 11):
+        failures.append("PYTHON_3_11_REQUIRED")
+    if failures:
+        return {
+            "id": "S7-PRE-01", "status": "BLOCKED",
+            "classification": "ENVIRONMENT_FAILURE", "actual": failures,
+        }
+    return {
+        "id": "S7-PRE-01", "status": "PASS", "classification": "AUTOMATED",
+        "actual": {
+            "platform": runtime_platform,
+            "python": ".".join(map(str, sys.version_info[:3])),
+            "packageSha256": expected_package_sha256.lower(),
+            "stagingRoot": str(staging_root), "evidenceDir": str(evidence_dir),
+        },
+    }
+
+
+def acceptance_exit_code(report: dict) -> int:
+    statuses = {case.get("status") for case in report.get("cases", [])}
+    if "FAIL" in statuses:
+        return 1
+    if "BLOCKED" in statuses:
+        return 3
+    return 0
+
+
 def run_acceptance(
     plan_path: Path,
     package: Path | None,
@@ -199,6 +267,9 @@ def run_acceptance(
     prior: Path | None,
     *,
     platform: str | None = None,
+    staging_root: Path | None = None,
+    evidence_dir: Path | None = None,
+    expected_package_sha256: str | None = None,
 ) -> dict:
     plan = load_json(plan_path)
     if plan.get("schemaVersion") != "d4planner-acceptance-plan/v1":
@@ -231,13 +302,14 @@ def run_acceptance(
                 except DeliveryError as exc:
                     results.append({"id": case_id, "status": "FAIL", "classification": "PRODUCT_FAILURE", "error": str(exc)})
         elif kind == "WINDOWS_PREFLIGHT":
-            status = "PASS" if runtime_platform == "win32" else "BLOCKED"
-            results.append({"id": case_id, "status": status, "classification": "AUTOMATED" if status == "PASS" else "ENVIRONMENT_FAILURE"})
+            results.append(_windows_preflight(
+                package, expected_package_sha256, staging_root, evidence_dir, runtime_platform
+            ))
         elif kind == "OWNER_MANUAL":
             results.append({"id": case_id, "status": "NOT_RUN", "classification": "OWNER_MANUAL"})
         else:
             results.append({"id": case_id, "status": "BLOCKED", "classification": "PENDING_DEPENDENCY"})
-    return {
+    report = {
         "schemaVersion": REPORT_VERSION,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "planSha256": plan_sha256,
@@ -245,6 +317,10 @@ def run_acceptance(
         "scope": "FULL" if not selected else "SUBSET",
         "cases": results,
     }
+    report["outcome"] = "FAIL" if any(case["status"] == "FAIL" for case in results) else (
+        "BLOCKED" if any(case["status"] == "BLOCKED" for case in results) else "PASS"
+    )
+    return report
 
 
 def main(argv=None) -> int:
@@ -254,18 +330,35 @@ def main(argv=None) -> int:
     install = sub.add_parser("install"); install.add_argument("--package", type=Path, required=True); install.add_argument("--app-dir", type=Path, required=True); install.add_argument("--data-dir", type=Path, required=True)
     rollback = sub.add_parser("rollback"); rollback.add_argument("--app-dir", type=Path, required=True); rollback.add_argument("--data-dir", type=Path, required=True)
     run = sub.add_parser("run"); run.add_argument("--plan", type=Path, required=True); run.add_argument("--package", type=Path); run.add_argument("--case", action="append", default=[]); run.add_argument("--resume", type=Path); run.add_argument("--output", type=Path, required=True)
+    run.add_argument("--mode", choices=("Preflight", "Automated", "Resume"), default="Automated")
+    run.add_argument("--staging-root", type=Path); run.add_argument("--evidence-dir", type=Path)
+    run.add_argument("--expected-package-sha256"); run.add_argument("--approved-port", type=int)
+    report = sub.add_parser("report"); report.add_argument("--input", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "build": result = build_package(args.plan, args.source, args.output)
         elif args.command == "verify": result = verify_package(args.package)
         elif args.command == "install": result = install_package(args.package, args.app_dir, args.data_dir)
         elif args.command == "rollback": result = rollback_install(args.app_dir, args.data_dir)
+        elif args.command == "report":
+            result = load_json(args.input)
+            print(json.dumps(result, sort_keys=True))
+            return acceptance_exit_code(result)
         else:
-            result = run_acceptance(args.plan, args.package, set(args.case), args.resume)
+            if args.mode == "Resume" and args.resume is None:
+                raise DeliveryError("RESUME_REPORT_REQUIRED")
+            selected = set(args.case)
+            if args.mode == "Preflight":
+                selected = {"S7-PRE-01"}
+            result = run_acceptance(
+                args.plan, args.package, selected, args.resume,
+                staging_root=args.staging_root, evidence_dir=args.evidence_dir,
+                expected_package_sha256=args.expected_package_sha256,
+            )
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
         print(json.dumps(result, sort_keys=True))
-        return 0
+        return acceptance_exit_code(result) if args.command == "run" else 0
     except DeliveryError as exc:
         print(str(exc), file=sys.stderr); return 2
 

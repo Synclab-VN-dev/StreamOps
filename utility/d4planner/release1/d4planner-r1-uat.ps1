@@ -1,7 +1,12 @@
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory=$true)][string]$Package,
+  [ValidateSet('Preflight','Automated','Resume','Report')][string]$Mode = 'Automated',
+  [string]$Package,
   [Parameter(Mandatory=$true)][string]$Output,
+  [string]$StagingRoot,
+  [string]$EvidenceDirectory,
+  [string]$ExpectedPackageSha256,
+  [ValidateRange(1,65535)][int]$ApprovedTestPort,
   [string[]]$Case = @(),
   [string]$Resume,
   [switch]$SelfTest
@@ -16,8 +21,21 @@ if($SelfTest) {
   Write-Host 'SELF_TEST_PASS'
   exit 0
 }
-if(!(Test-Path -LiteralPath $Package -PathType Leaf)) { throw 'Package does not exist' }
-$arguments = @($tool, 'run', '--plan', $plan, '--package', $Package, '--output', $Output)
+if($Mode -eq 'Report') {
+  if(!(Test-Path -LiteralPath $Output -PathType Leaf)) { throw 'Report does not exist' }
+  & python $tool report --input $Output
+  exit $LASTEXITCODE
+}
+if(!$Package -or !(Test-Path -LiteralPath $Package -PathType Leaf)) { throw 'Package does not exist' }
+if(!$StagingRoot -or !$EvidenceDirectory -or !$ExpectedPackageSha256) {
+  throw 'StagingRoot, EvidenceDirectory and ExpectedPackageSha256 are required'
+}
+$arguments = @(
+  $tool, 'run', '--mode', $Mode, '--plan', $plan, '--package', $Package,
+  '--output', $Output, '--staging-root', $StagingRoot,
+  '--evidence-dir', $EvidenceDirectory, '--expected-package-sha256', $ExpectedPackageSha256
+)
+if($ApprovedTestPort) { $arguments += @('--approved-port', [string]$ApprovedTestPort) }
 foreach($id in $Case) { $arguments += @('--case', $id) }
 if($Resume) { $arguments += @('--resume', $Resume) }
 & python @arguments
