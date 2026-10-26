@@ -7,6 +7,7 @@ from .process import (
     ProcessState,
     RuleKitProcessWrapper,
 )
+from .runtime import RuleKitRuntimeService
 
 __all__ = [
     "AsyncioProcessDriver",
@@ -16,4 +17,5 @@ __all__ = [
     "RuleKitProcessWrapper",
     "RuleKitRemoteError",
     "RuleKitSessionRef",
+    "RuleKitRuntimeService",
 ]
