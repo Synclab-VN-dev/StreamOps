@@ -134,6 +134,22 @@ class ProductionDomain:
         }
 
 
+def _resolve_repository_root(configured: str | None, module_file: Path = Path(__file__)) -> Path:
+    if configured is not None:
+        root = Path(configured).resolve()
+        if not Path(configured).is_absolute() or not root.is_dir():
+            raise ValueError("configured contract repository root is invalid")
+        return root
+    required = (
+        Path("utility/d4planner/contracts/release1/v1/schemas/target.schema.json"),
+        Path("utility/d4-rulekit/providers/maxroll/d4-build-v1.schema.json"),
+    )
+    for root in (module_file.resolve().parents[3], module_file.resolve().parents[4]):
+        if all((root / relative).is_file() for relative in required):
+            return root
+    raise ValueError("packaged contract repository root cannot be discovered")
+
+
 class ProductionBackendRuntime:
     """Own dependencies in start order and close them in reverse order."""
 
@@ -144,9 +160,7 @@ class ProductionBackendRuntime:
         self.data_dir = Path(bootstrap["dataDir"]).resolve()
         self.target_folder = Path(bootstrap["targetFolder"]).resolve()
         configured_root = os.environ.get("D4PLANNER_REPOSITORY_ROOT")
-        repository_root = Path(configured_root).resolve() if configured_root else Path(__file__).resolve().parents[4]
-        if configured_root and (not Path(configured_root).is_absolute() or not repository_root.is_dir()):
-            raise ValueError("configured contract repository root is invalid")
+        repository_root = _resolve_repository_root(configured_root)
         self.rulekit = rulekit
         self.targets = TargetRepository(
             self.target_folder, self.data_dir / "selected-target.json",
