@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from time import perf_counter_ns
 from typing import Any
 
 from .assessment import EquipmentAssessmentService, EquipmentSnapshot
@@ -48,6 +49,21 @@ class EquipmentAssessmentCoordinator:
         produced_at: str,
     ) -> dict[str, Any]:
         """Commit without publishing so an async transport can acknowledge later."""
+        committed, _ = self.assess_commit_timed(
+            runtime_instance_id=runtime_instance_id, current=current,
+            target=target, produced_at=produced_at,
+        )
+        return committed
+
+    def assess_commit_timed(
+        self,
+        *,
+        runtime_instance_id: str,
+        current: EquipmentSnapshot,
+        target: ActivatedTarget,
+        produced_at: str,
+    ) -> tuple[dict[str, Any], dict[str, int]]:
+        """Return measured assessment/commit boundaries without changing payload semantics."""
         policy_version = (
             target.document["assessmentPolicy"]["version"] + "+" +
             target.document["assessmentPolicy"]["weightProfile"]["profileId"]
@@ -57,7 +73,9 @@ class EquipmentAssessmentCoordinator:
             target.target_id, target.content_sha256, target.selection_revision,
             policy_version,
         )
+        assessment_started = perf_counter_ns()
         result = self.scorer.assess(current, target)
+        assessment_completed = perf_counter_ns()
 
         def payload(revision: int) -> dict[str, Any]:
             target_context = {
@@ -100,4 +118,10 @@ class EquipmentAssessmentCoordinator:
                 },
             }
 
-        return self.store.commit_if_current(binding, payload, produced_at)
+        committed = self.store.commit_if_current(binding, payload, produced_at)
+        commit_completed = perf_counter_ns()
+        return committed, {
+            "assessmentStartedNs": assessment_started,
+            "assessmentCompletedNs": assessment_completed,
+            "commitCompletedNs": commit_completed,
+        }
