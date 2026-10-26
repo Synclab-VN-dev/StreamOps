@@ -85,6 +85,8 @@ def validate_plan(plan: dict) -> None:
         if not artifact_id or artifact_id in ids or path in paths:
             raise DeliveryError("DUPLICATE_OR_EMPTY_ARTIFACT")
         ids.add(artifact_id); paths.add(path)
+        if artifact.get("kind", "file") not in {"file", "tree"}:
+            raise DeliveryError("INVALID_ARTIFACT_KIND")
     for resource in plan.get("resources", []):
         resource_id = str(resource.get("id", "")); path = str(resource.get("path", ""))
         safe_relative(path); safe_relative(str(resource.get("source", "")))
@@ -110,11 +112,28 @@ def build_package(plan_path: Path, source: Path, output: Path) -> dict:
     files = []
     for artifact in plan["artifacts"]:
         relative = str(artifact["path"]); path = source / safe_relative(relative)
-        _check_source(path, relative)
-        files.append({
-            "id": artifact["id"], "path": relative, "owner": artifact["owner"],
-            "sha256": sha256_file(path), "bytes": path.stat().st_size,
-        })
+        if artifact.get("kind", "file") == "tree":
+            if path.is_symlink() or not path.is_dir():
+                raise DeliveryError(f"MISSING_OR_UNSAFE_ARTIFACT:{relative}")
+            members = sorted(member for member in path.rglob("*") if member.is_file())
+            if not members:
+                raise DeliveryError(f"EMPTY_ARTIFACT_TREE:{relative}")
+            for member in members:
+                if member.is_symlink():
+                    raise DeliveryError(f"MISSING_OR_UNSAFE_ARTIFACT:{relative}")
+                member_relative = member.relative_to(source).as_posix()
+                _check_source(member, member_relative)
+                files.append({
+                    "id": artifact["id"], "path": member_relative,
+                    "owner": artifact["owner"], "sha256": sha256_file(member),
+                    "bytes": member.stat().st_size,
+                })
+        else:
+            _check_source(path, relative)
+            files.append({
+                "id": artifact["id"], "path": relative, "owner": artifact["owner"],
+                "sha256": sha256_file(path), "bytes": path.stat().st_size,
+            })
     repository_root = plan_path.resolve().parents[3]
     for resource in plan.get("resources", []):
         relative = str(resource["path"])
@@ -189,6 +208,7 @@ def install_package(package_path: Path, app_dir: Path, data_dir: Path) -> dict:
     staging.mkdir(parents=True)
     try:
         with zipfile.ZipFile(package_path) as package:
+            (staging / "release-manifest.json").write_bytes(package.read("release-manifest.json"))
             for entry in manifest["files"]:
                 destination = _contained_destination(staging, entry["path"])
                 destination.parent.mkdir(parents=True, exist_ok=True)
@@ -312,6 +332,7 @@ def _run_executor(
     spec: dict,
     staging_root: Path | None,
     evidence_dir: Path | None,
+    package: Path | None,
 ) -> dict:
     if staging_root is None or evidence_dir is None:
         return {
@@ -330,9 +351,16 @@ def _run_executor(
     evidence_root.mkdir(parents=True, exist_ok=True)
     log_path = _contained_destination(evidence_root, f"{case_id}.log")
     started = time.perf_counter()
+    replacements = {
+        "{STAGING_ROOT}": str(root), "{INSTALL_ROOT}": str(root / "app"),
+        "{DATA_ROOT}": str(root / "data"), "{EVIDENCE_DIR}": str(evidence_root),
+        "{PACKAGE}": str(package.resolve()) if package else "",
+        "{PYTHON}": str(root / "app/runtime/python/python.exe"),
+    }
+    command = [replacements.get(token, token) for token in spec["command"]]
     try:
         completed = subprocess.run(
-            spec["command"], cwd=cwd, check=False, capture_output=True, text=True,
+            command, cwd=cwd, check=False, capture_output=True, text=True,
             timeout=float(spec["timeoutSeconds"]), shell=False,
         )
         output = (completed.stdout or "") + (completed.stderr or "")
@@ -384,6 +412,19 @@ def run_acceptance(
     package_sha256 = sha256_file(package) if package and package.is_file() else None
     component_shas = load_component_shas(component_manifest)
     executors = load_executors(executor_manifest)
+    runtime_selected = any(
+        (not selected or case["id"] in selected)
+        and case["kind"] in {"RUNTIME_E2E", "VISUAL_GOLDEN", "PERFORMANCE"}
+        and case["id"] in executors
+        for case in plan["cases"]
+    )
+    if runtime_selected and package and staging_root:
+        app_dir = staging_root.resolve() / "app"
+        installed_manifest = app_dir / "release-manifest.json"
+        expected_manifest = verify_package(package)
+        installed = load_json(installed_manifest) if installed_manifest.is_file() else None
+        if installed != expected_manifest:
+            install_package(package, app_dir, staging_root.resolve() / "data")
     previous = load_json(prior) if prior else {}
     if prior and (
         previous.get("planSha256") != plan_sha256
@@ -434,7 +475,7 @@ def run_acceptance(
                     "actual": "NO_REVIEWED_EXECUTOR_FOR_CASE",
                 }
             else:
-                result = _run_executor(case_id, executor, staging_root, evidence_dir)
+                result = _run_executor(case_id, executor, staging_root, evidence_dir, package)
         else:
             result = {"id": case_id, "status": "FAIL", "classification": "HARNESS_FAILURE", "actual": "UNKNOWN_CASE_KIND"}
         result.setdefault("expected", case.get("expected", "Acceptance condition in plan"))

@@ -25,8 +25,12 @@ def stage(tmp_path: Path) -> Path:
     plan = json.loads(PLAN.read_text(encoding="utf-8"))
     for index, artifact in enumerate(plan["artifacts"]):
         path = root / artifact["path"]
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(f"synthetic-test-artifact-{index}".encode())
+        if artifact.get("kind") == "tree":
+            path.mkdir(parents=True, exist_ok=True)
+            (path / "synthetic.txt").write_bytes(f"synthetic-test-artifact-{index}".encode())
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(f"synthetic-test-artifact-{index}".encode())
     return root
 
 
@@ -50,7 +54,7 @@ def test_package_is_deterministic_pinned_and_verifiable(tmp_path):
     assert manifest["contractRevision"] == "d4planner-r1-contract/1.0.0-candidate.5"
     assert manifest["magicPathRevision"] == "464988421014827008"
     assert manifest["ruleKit"]["playwrightCore"] == "1.64.1"
-    assert len(manifest["files"]) == 13
+    assert len(manifest["files"]) == len(json.loads(PLAN.read_text())["artifacts"]) + len(json.loads(PLAN.read_text())["resources"])
 
 
 def test_package_plan_pins_match_repository_sources():
@@ -130,6 +134,7 @@ def test_upgrade_preserves_targets_and_state(tmp_path):
     (data / "targets/user target.json").write_text("user-owned")
     (data / "state/database.sqlite").write_bytes(b"database")
     delivery.install_package(package, app, data)
+    assert (app / "release-manifest.json").is_file()
     (app / "old.txt").write_text("old")
     delivery.install_package(package, app, data)
     assert (data / "targets/user target.json").read_text() == "user-owned"
