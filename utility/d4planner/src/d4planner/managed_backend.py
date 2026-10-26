@@ -9,21 +9,76 @@ death and therefore stops the child.
 from __future__ import annotations
 
 import argparse
+import asyncio
+import importlib
 import json
 import os
 from pathlib import Path
 import signal
 import sys
-from typing import Any
+from typing import Any, Protocol
 
 
 PROTOCOL = "d4planner-managed/v1"
 CONTRACT = "d4planner-r1-contract/1.0.0-candidate.5"
 BOOTSTRAP_ENV = "D4PLANNER_BOOTSTRAP_FILE"
+RUNTIME_FACTORY_ENV = "D4PLANNER_RUNTIME_FACTORY"
 
 
 class BootstrapError(ValueError):
     pass
+
+
+class ManagedRuntime(Protocol):
+    async def start(self) -> dict[str, Any]: ...
+    async def stop(self) -> None: ...
+    async def handle_control(self, command: dict[str, Any]) -> dict[str, Any] | None: ...
+
+
+class BaseRuntime:
+    """S2-only runtime used before a higher stack layer registers services."""
+
+    def __init__(self, bootstrap: dict[str, Any]):
+        self.bootstrap = bootstrap
+
+    async def start(self) -> dict[str, Any]:
+        target_folder = Path(self.bootstrap["targetFolder"])
+        return {
+            "wsEndpoint": self.bootstrap["wsEndpoint"],
+            "health": {
+                "durableState": "READY",
+                "targetRepository": "READY",
+                "targetJsonCount": sum(
+                    1 for entry in target_folder.iterdir()
+                    if entry.is_file() and entry.suffix.lower() == ".json"
+                ),
+                "services": "BASE_RUNTIME",
+            },
+        }
+
+    async def stop(self) -> None:
+        return None
+
+    async def handle_control(self, command: dict[str, Any]) -> dict[str, Any] | None:
+        del command
+        return None
+
+
+def create_runtime(bootstrap: dict[str, Any]) -> ManagedRuntime:
+    factory_name = os.environ.get(RUNTIME_FACTORY_ENV)
+    if not factory_name:
+        return BaseRuntime(bootstrap)
+    module_name, separator, attribute = factory_name.partition(":")
+    if not separator or not module_name or not attribute:
+        raise BootstrapError("runtime factory must use module:attribute syntax")
+    try:
+        factory = getattr(importlib.import_module(module_name), attribute)
+        runtime = factory(bootstrap)
+    except (ImportError, AttributeError, TypeError, ValueError) as exc:
+        raise BootstrapError(f"runtime factory unavailable: {type(exc).__name__}") from exc
+    if any(not callable(getattr(runtime, method, None)) for method in ("start", "stop", "handle_control")):
+        raise BootstrapError("runtime factory returned an invalid service lifecycle")
+    return runtime
 
 
 def _string(value: Any, field: str) -> str:
@@ -71,7 +126,7 @@ def _emit(event: dict[str, Any]) -> None:
     print(json.dumps(event, separators=(",", ":")), flush=True)
 
 
-def run_managed(bootstrap: dict[str, Any]) -> int:
+async def _run_managed(bootstrap: dict[str, Any], runtime: ManagedRuntime) -> int:
     data_dir = Path(_string(bootstrap["dataDir"], "dataDir")).resolve()
     target_folder = Path(_string(bootstrap["targetFolder"], "targetFolder")).resolve()
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -88,7 +143,18 @@ def run_managed(bootstrap: dict[str, Any]) -> int:
     signal.signal(signal.SIGTERM, stop_requested)
     signal.signal(signal.SIGINT, stop_requested)
 
-    target_json_count = sum(1 for entry in target_folder.iterdir() if entry.is_file() and entry.suffix.lower() == ".json")
+    try:
+        readiness = await runtime.start()
+    except Exception as exc:
+        await runtime.stop()
+        _emit({"event": "STARTUP_FAILED", "code": type(exc).__name__})
+        return 70
+    endpoint = readiness.get("wsEndpoint")
+    health = readiness.get("health")
+    if not isinstance(endpoint, dict) or not isinstance(health, dict):
+        await runtime.stop()
+        _emit({"event": "STARTUP_FAILED", "code": "INVALID_SERVICE_READINESS"})
+        return 70
     _emit({
         "event": "READY",
         "protocol": PROTOCOL,
@@ -97,18 +163,12 @@ def run_managed(bootstrap: dict[str, Any]) -> int:
         "childInstanceId": bootstrap["childInstanceId"],
         "generation": bootstrap["generation"],
         "pid": os.getpid(),
-        "wsEndpoint": bootstrap["wsEndpoint"],
-        "health": {
-            "durableState": "READY",
-            "targetRepository": "READY",
-            "targetJsonCount": target_json_count,
-            "wsTransport": "PENDING_S5",
-            "ruleKitWorker": "PENDING_S3",
-        },
+        "wsEndpoint": endpoint,
+        "health": health,
     })
 
     while not stopping:
-        line = sys.stdin.readline()
+        line = await asyncio.to_thread(sys.stdin.readline)
         if line == "":  # inherited pipe closed: parent died/exited
             break
         try:
@@ -125,8 +185,23 @@ def run_managed(bootstrap: dict[str, Any]) -> int:
         ):
             exit_reason = "OWNER_STOP"
             break
+        if (
+            isinstance(command, dict)
+            and command.get("ownerInstanceId") == bootstrap["ownerInstanceId"]
+            and command.get("childInstanceId") == bootstrap["childInstanceId"]
+            and command.get("generation") == bootstrap["generation"]
+        ):
+            response = await runtime.handle_control(command)
+            if response is not None:
+                _emit({"event": "CONTROL_RESULT", **response})
+                continue
         _emit({"event": "ERROR", "code": "OWNERSHIP_MISMATCH"})
 
+    try:
+        await runtime.stop()
+    except Exception as exc:
+        _emit({"event": "ERROR", "code": "SERVICE_STOP_FAILED", "detail": type(exc).__name__})
+        return 71
     _emit({
         "event": "EXIT",
         "ownerInstanceId": bootstrap["ownerInstanceId"],
@@ -135,6 +210,10 @@ def run_managed(bootstrap: dict[str, Any]) -> int:
         "reason": exit_reason,
     })
     return 0
+
+
+def run_managed(bootstrap: dict[str, Any]) -> int:
+    return asyncio.run(_run_managed(bootstrap, create_runtime(bootstrap)))
 
 
 def main(argv: list[str] | None = None) -> int:
