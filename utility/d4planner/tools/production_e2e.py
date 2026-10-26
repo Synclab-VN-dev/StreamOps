@@ -171,6 +171,22 @@ def _assert_ui_matches_db(ui: dict, db: dict) -> None:
         raise E2EFailure(f"visible HUD render does not match durable DB: expected={expected!r} actual={actual!r}")
 
 
+def _parse_timestamp(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _percentiles(values: list[float]) -> dict:
+    if not values:
+        raise E2EFailure("latency stage has no samples")
+    ordered = sorted(values)
+    return {
+        "sampleCount": len(values), "samplesMilliseconds": values,
+        "p50Milliseconds": statistics.median(values),
+        "p95Milliseconds": statistics.quantiles(ordered, n=100, method="inclusive")[94]
+            if len(values) > 1 else ordered[0],
+    }
+
+
 async def _select_target(endpoint: dict, credential: str, instance: str, generation: int,
                          target_id: str) -> dict:
     uri = f"ws://{endpoint['host']}:{endpoint['port']}"
@@ -470,6 +486,7 @@ def run_native_hud(args: argparse.Namespace) -> dict:
         "D4PLANNER_BACKEND_PYTHON": str(install / "runtime/python/python.exe"),
         "D4_HUD_PIPELINE_REPORT": str(render_report),
         "D4_HUD_PIPELINE_CONTINUOUS": "1",
+        "D4PLANNER_LATENCY_TRACE": str(root / "backend-latency.ndjson"),
     })
     executable = install / "app/d4planner-fe.exe"
     started = datetime.now(timezone.utc).isoformat()
@@ -535,6 +552,39 @@ def run_native_hud(args: argparse.Namespace) -> dict:
                 "afterTargetId": after_db["payload"]["context"]["target"]["targetId"],
             }, indent=2) + "\n", encoding="utf-8")
             (compare / "assertion-report.json").write_text(json.dumps({"ok":True, **delta}, indent=2) + "\n", encoding="utf-8")
+            backend_records = [
+                json.loads(line) for line in (root / "backend-latency.ndjson").read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            ui_records = [before_ui, after_ui]
+            paired = []
+            for ui_record in ui_records:
+                backend_record = next(
+                    (item for item in backend_records if item["hudRevision"] == ui_record["hudRevision"]), None
+                )
+                if backend_record is not None:
+                    paired.append((backend_record, ui_record))
+            if not paired:
+                raise E2EFailure("no capture-driven visible HUD revision has matching latency evidence")
+            latency = {
+                "schemaVersion":"d4planner-latency-evidence/v1", "ok":True,
+                "captureToAssessment": _percentiles([pair[0]["captureToAssessmentNs"] / 1_000_000 for pair in paired]),
+                "assessmentToSqliteCommit": _percentiles([pair[0]["assessmentToCommitNs"] / 1_000_000 for pair in paired]),
+                "commitToWsDelivery": _percentiles([pair[0]["commitToWsDeliveryNs"] / 1_000_000 for pair in paired]),
+                "wsToHudModel": _percentiles([
+                    (_parse_timestamp(pair[1]["modelUpdatedAt"]) - _parse_timestamp(pair[0]["wsPublishedAt"])).total_seconds() * 1000
+                    for pair in paired
+                ]),
+                "hudModelToVisibleRender": _percentiles([
+                    (_parse_timestamp(pair[1]["visibleRenderedAt"]) - _parse_timestamp(pair[1]["modelUpdatedAt"])).total_seconds() * 1000
+                    for pair in paired
+                ]),
+                "sla":"NOT_DEFINED_AS_APPROVED",
+            }
+            if any(value < 0 for stage in latency.values() if isinstance(stage, dict)
+                   for value in stage.get("samplesMilliseconds", [])):
+                raise E2EFailure("latency clocks produced a negative stage duration")
+            (compare / "latency-report.json").write_text(json.dumps(latency, indent=2) + "\n", encoding="utf-8")
         owned_before_close = [{"ProcessId":process.pid,"Name":executable.name}, *_windows_descendants(process.pid)]
         (root / "process-tree-before.json").write_text(json.dumps(owned_before_close, indent=2) + "\n", encoding="utf-8")
         ctypes.WinDLL("user32", use_last_error=True).PostMessageW(window["hwnd"], 0x0010, 0, 0)
