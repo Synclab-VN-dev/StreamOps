@@ -1,7 +1,7 @@
 mod overlay_core;
 mod backend_process;
 
-use std::{collections::BTreeMap, env, fs, path::PathBuf, sync::{Arc, Mutex}, time::{Duration, SystemTime, UNIX_EPOCH}};
+use std::{collections::BTreeMap, env, fs, path::PathBuf, sync::{Arc, Mutex}, time::Duration};
 use tauri::{
     Emitter, LogicalSize, Manager, PhysicalPosition, Position, Size, State, WebviewWindow,
 };
@@ -70,6 +70,8 @@ fn backend_launch_from_environment() -> Result<LaunchSpecification, String> {
         "D4_RULEKIT_MAX_SESSIONS", "D4_RULEKIT_SESSION_TTL_MS",
         "D4_RULEKIT_OPERATION_TIMEOUT_MS", "D4_RULEKIT_CLEANUP_TIMEOUT_MS",
         "D4PLANNER_EQUIPMENT_EVIDENCE_FILE",
+        "D4PLANNER_EQUIPMENT_REPOSITORY_DB", "D4PLANNER_CHARACTER_ID",
+        "D4PLANNER_CHARACTER_DISPLAY_NAME",
         "D4PLANNER_REPOSITORY_ROOT",
     ] {
         if let Ok(value) = env::var(name) { environment.insert(name.into(), value); }
@@ -97,6 +99,25 @@ fn backend_from_environment() -> Result<BackendProcessWrapper<StdProcessDriver>,
     Ok(BackendProcessWrapper::new(
         Arc::new(StdProcessDriver), backend_launch_from_environment()?,
     ))
+}
+
+fn rotate_backend_bootstrap() -> Result<LaunchSpecification, String> {
+    let path = PathBuf::from(required_env("D4PLANNER_BOOTSTRAP_FILE")?);
+    let mut descriptor: serde_json::Value = serde_json::from_slice(
+        &fs::read(&path).map_err(|error| format!("cannot read bootstrap descriptor: {error}"))?
+    ).map_err(|error| format!("invalid bootstrap descriptor: {error}"))?;
+    let generation = descriptor.get("generation").and_then(|value| value.as_u64())
+        .ok_or("bootstrap generation is missing")? + 1;
+    let credential: [u8; 32] = rand::random();
+    descriptor["childInstanceId"] = serde_json::Value::String(uuid::Uuid::new_v4().to_string());
+    descriptor["generation"] = serde_json::Value::from(generation);
+    descriptor["credential"] = serde_json::Value::String(
+        credential.iter().map(|byte| format!("{byte:02x}")).collect()
+    );
+    descriptor["wsEndpoint"] = serde_json::json!({"host":"127.0.0.1","port":0});
+    fs::write(&path, serde_json::to_vec(&descriptor).map_err(|error| error.to_string())?)
+        .map_err(|error| format!("cannot rotate bootstrap descriptor: {error}"))?;
+    backend_launch_from_environment()
 }
 
 /// Return the private loopback transport bootstrap only to this application
@@ -154,6 +175,14 @@ fn stop_backend(state: State<'_, BackendState>) -> Result<BackendStatus, String>
         return Ok(BackendStatus { state: wrapper.state(), ready: None });
     }
     Ok(BackendStatus { state: ProcessState::Stopped, ready: None })
+}
+
+#[tauri::command]
+fn restart_backend(state: State<'_, BackendState>) -> Result<BackendStatus, String> {
+    let wrapper = state.0.lock().map_err(|_| "Backend state lock poisoned")?.clone()
+        .ok_or("managed Backend is not configured")?;
+    let ready = wrapper.restart_with(rotate_backend_bootstrap()?)?;
+    Ok(BackendStatus { state: wrapper.state(), ready: Some(ready) })
 }
 
 #[tauri::command]
@@ -330,22 +359,7 @@ pub fn run() {
                 let _ = wrapper.stop();
                 return Err("managed Backend service readiness is incomplete".into());
             }
-            let bootstrap_path = PathBuf::from(required_env("D4PLANNER_BOOTSTRAP_FILE")?);
-            let mut bootstrap: serde_json::Value = serde_json::from_slice(
-                &fs::read(&bootstrap_path).map_err(|error| error.to_string())?
-            ).map_err(|error| error.to_string())?;
-            let suffix = SystemTime::now().duration_since(UNIX_EPOCH)
-                .map_err(|error| error.to_string())?.as_nanos() & 0xffffffffffff;
-            let next_child = format!("00000000-0000-4000-8000-{suffix:012x}");
-            let next_generation = specification.generation + 1;
-            bootstrap["childInstanceId"] = serde_json::Value::String(next_child.clone());
-            bootstrap["generation"] = serde_json::Value::from(next_generation);
-            fs::write(&bootstrap_path, serde_json::to_vec(&bootstrap).map_err(|error| error.to_string())?)
-                .map_err(|error| error.to_string())?;
-            let mut next = specification;
-            next.child_instance_id = next_child;
-            next.generation = next_generation;
-            let restarted = wrapper.restart_with(next)?;
+            let restarted = wrapper.restart_with(rotate_backend_bootstrap()?)?;
             wrapper.stop()?;
             Ok(serde_json::json!({
                 "ok":true,"ready":ready,"restartedReady":restarted,
@@ -370,6 +384,7 @@ pub fn run() {
             drag_overlay,
             start_backend,
             stop_backend,
+            restart_backend,
             get_backend_status,
             get_hud_ws_bootstrap,
             set_overlay_extent,
