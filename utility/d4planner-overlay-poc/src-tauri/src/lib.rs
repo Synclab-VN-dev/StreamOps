@@ -313,6 +313,28 @@ fn report_hud_pipeline(
     Ok(())
 }
 
+/// Private diagnostics for failures before React can mount. The path is only
+/// enabled by the isolated acceptance environment and no credential or HUD
+/// payload is accepted by this command.
+#[tauri::command]
+fn report_webview_diagnostic(phase: String, detail: Option<String>) -> Result<(), String> {
+    use std::io::Write;
+    let path = env::var("D4_WEBVIEW_DIAGNOSTIC_REPORT")
+        .map_err(|_| "WebView diagnostics are not enabled".to_string())?;
+    let record = serde_json::json!({
+        "timestamp": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_millis(),
+        "phase": phase,
+        "detail": detail,
+    });
+    let mut file = fs::OpenOptions::new().create(true).append(true).open(path)
+        .map_err(|error| format!("cannot open WebView diagnostic report: {error}"))?;
+    writeln!(file, "{record}")
+        .map_err(|error| format!("cannot write WebView diagnostic report: {error}"))
+}
+
 /// Actual Tauri + native-window smoke. Requires a Windows desktop session.
 /// It exercises OS APIs rather than just validating the executable's PE header.
 fn runtime_smoke(handle: &tauri::AppHandle) -> Result<Vec<String>, String> {
@@ -406,7 +428,8 @@ pub fn run() {
             get_hud_ws_bootstrap,
             set_overlay_extent,
             set_overlay_pin,
-            report_hud_pipeline
+            report_hud_pipeline,
+            report_webview_diagnostic
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").expect("configured main window");
