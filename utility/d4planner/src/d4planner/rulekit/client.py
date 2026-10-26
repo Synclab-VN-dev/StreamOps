@@ -71,25 +71,37 @@ class RuleKitClient:
         loop = asyncio.get_running_loop()
         future: asyncio.Future[Any] = loop.create_future()
         self._pending[request_id] = future
-        await self._send(
-            {
-                "type": "request",
-                "protocolVersion": PROTOCOL_VERSION,
-                "id": request_id,
-                "method": method,
-                "params": params or {},
-            }
-        )
+        budget = timeout or self._operation_timeout
+        deadline = loop.time() + budget
+        # Reserve a bounded slice for best-effort cancellation. Request write,
+        # drain, response wait, cancel and local pending cleanup therefore
+        # cannot each consume a fresh unbounded timeout.
+        cancel_budget = min(max(budget * 0.2, 0.01), 0.25)
+        response_deadline = max(loop.time(), deadline - cancel_budget)
         try:
-            return await asyncio.wait_for(future, timeout or self._operation_timeout)
+            await self._send(
+                {
+                    "type": "request",
+                    "protocolVersion": PROTOCOL_VERSION,
+                    "id": request_id,
+                    "method": method,
+                    "params": params or {},
+                },
+                deadline=response_deadline,
+            )
+            remaining = response_deadline - loop.time()
+            if remaining <= 0:
+                raise TimeoutError
+            return await asyncio.wait_for(future, remaining)
         except TimeoutError:
-            with contextlib.suppress(BrokenPipeError, ConnectionError, ProtocolError):
+            with contextlib.suppress(BrokenPipeError, ConnectionError, ProtocolError, TimeoutError):
                 await self._send(
                     {
                         "type": "cancel",
                         "protocolVersion": PROTOCOL_VERSION,
                         "correlationId": request_id,
-                    }
+                    },
+                    deadline=deadline,
                 )
             raise RuleKitRemoteError("TIMEOUT", f"Rule Kit operation timed out: {method}") from None
         finally:
@@ -203,11 +215,17 @@ class RuleKitClient:
             finally:
                 self._writer_cleanup_complete = True
 
-    async def _send(self, message: dict) -> None:
+    async def _send(self, message: dict, *, deadline: float | None = None) -> None:
         payload = json.dumps(message, separators=(",", ":"), allow_nan=False).encode() + b"\n"
-        async with self._write_lock:
-            self._writer.write(payload)
-            await self._writer.drain()
+        loop = asyncio.get_running_loop()
+        send_deadline = deadline if deadline is not None else loop.time() + self._operation_timeout
+        remaining = send_deadline - loop.time()
+        if remaining <= 0:
+            raise TimeoutError
+        async with asyncio.timeout(remaining):
+            async with self._write_lock:
+                self._writer.write(payload)
+                await self._writer.drain()
 
     async def _read_loop(self) -> None:
         try:
