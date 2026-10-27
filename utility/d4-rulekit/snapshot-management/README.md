@@ -26,6 +26,7 @@ and package manifests have separate real JSON Schema validation.
 | activate / switchSnapshot | `entryId` | Pending selection + `restartRequired` |
 | getActive | `{}` | Active binding, worker generation, selection revision or UNAVAILABLE |
 | rollback | `{}` | Explicit verified previous selection + `restartRequired` |
+| compareSnapshots | baseline/candidate snapshot refs + scope/coverage | Offline content version/diff; no compatibility/activation |
 
 Directory packages contain `snapshot-package.json`, `profile.json`, and
 `snapshot/<id>/{manifest.json,manifest.sha256,blobs/...}`. Outer manifest inventories
@@ -106,3 +107,5 @@ PYTHONPATH=utility/d4planner/src python -m pytest -q utility/d4planner/tests/tes
 These tests do not certify real multiple-snapshot provider compatibility. Native
 Windows/real provider tests are separately reported, never inferred from synthetic
 fixtures. No Actions dispatch/query is performed.
+
+Content-version contract và SVER-01…05: [CONTENT-VERSION.md](CONTENT-VERSION.md).
