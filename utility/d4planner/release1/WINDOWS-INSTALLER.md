@@ -118,3 +118,18 @@ Windows runner `windows_installer_review_e2e.py` chỉ chạy trong sandbox/task
 đã duyệt; verify artifact SHAs, scrub PATH cho cả Setup lẫn launcher, kiểm tra
 registration/shortcuts giả lập bản chính và rollback runtime-failure với manifest
 đã rehash. Không đụng DB/game/OBS thật. Network-off negative vẫn DEFERRED_OWNER.
+
+### Giới hạn staging Windows
+
+Không đổi `LongPathsEnabled` của Windows. UAT dùng staging root ngắn vì một số
+resource Playwright có path sâu; trên Windows chưa bật long paths, chọn root
+đủ ngắn (mặc định per-user hoặc sandbox ngắn). Một lượt resume với root dài đã
+fail extract trước activation, được giữ nguyên evidence; không có runtime hay
+registration được commit trong lượt đó. Không lấy failure đó làm PASS.
+
+Targeted resume: wrapper nhận `-CaseIds` và `-ResumeReport`; chỉ retry IDs đã FAIL
+trong report trước, cộng fresh-install prerequisite và uninstall/cleanup. Report
+là `SCOPED_SUBSET_PASS`, không đổi kết quả FAIL lịch sử thành full PASS. Bản UAT
+production sentinel chỉ được tạo khi chưa có registration/shortcut thật.
+
+Release CI và checkpoint public distribution xem [RELEASE-CI.md](RELEASE-CI.md).

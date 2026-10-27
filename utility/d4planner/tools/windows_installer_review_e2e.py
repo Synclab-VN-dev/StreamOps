@@ -41,7 +41,16 @@ def main():
     for name in ('sandbox', 'setup-old', 'setup-new', 'package-new', 'output'):
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--manifest', type=Path, required=True)
+    parser.add_argument('--case-ids')
+    parser.add_argument('--resume-report',type=Path)
     args = parser.parse_args()
+    applicable={'PKG-01','PKG-02','PKG-04/06','PKG-05/FIX-03','PKG-07','FIX-02','FIX-02-NEGATIVE','PKG-03/FIX-01'}
+    selected=set(args.case_ids.split(',')) if args.case_ids is not None else applicable
+    if not selected or not selected <= applicable: raise ValueError('UNKNOWN_OR_EMPTY_CASE_SELECTION')
+    if args.resume_report:
+        previous=json.loads(args.resume_report.read_text(encoding='utf-8'))
+        failed={row['id'] for row in previous['cases'] if row['status']=='FAIL'}
+        if not selected <= failed: raise ValueError('RESUME_CASE_NOT_PREVIOUSLY_FAILED')
     if sys.platform != 'win32': raise RuntimeError('WINDOWS_REQUIRED')
     import winreg
     root = args.sandbox / 'Ứng dụng D4Planner'
@@ -55,7 +64,7 @@ def main():
     env['PATH'] = os.pathsep.join([os.environ['SYSTEMROOT'] + r'\System32', os.environ['SYSTEMROOT'] + r'\System32\WindowsPowerShell\v1.0'])
     env.update(D4PLANNER_WS_PORT_MODE='FIXED_APPROVED_UAT', D4PLANNER_APPROVED_UAT_PORT='38150')
     report = {'sourceHead':expected['sourceHead'], 'artifacts':expected, 'cases':[], 'portApproval':'OWNER_APPROVED_38150',
-              'classification':'WINDOWS_NATIVE_REAL_PRODUCTION_ARTIFACTS_WITH_SYNTHETIC_INPUT', 'offlineNegative':'DEFERRED_OWNER'}
+              'classification':'WINDOWS_NATIVE_REAL_PRODUCTION_ARTIFACTS_WITH_SYNTHETIC_INPUT', 'offlineNegative':'DEFERRED_OWNER','selection':sorted(selected),'resumeReport':str(args.resume_report) if args.resume_report else None}
     def save(): (args.output / 'acceptance.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     def call(command, check=True, timeout=170):
         result = subprocess.run(command if isinstance(command,str) else list(map(str,command)),env=env,
@@ -65,6 +74,8 @@ def main():
         if check: assert result.returncode == 0, f'exit={result.returncode} {result.stderr[-500:]}'
         return result
     def case(identifier, expected, function):
+        if identifier not in selected and identifier not in {'PKG-02','PKG-03/FIX-01'}:
+            report.setdefault('notRun',[]).append(identifier); return True
         started=time.monotonic()
         try:
             actual=function(); result={'id':identifier,'expected':expected,'actual':actual,'status':'PASS'}
@@ -110,7 +121,9 @@ def main():
         if launch is not None:
             call([root/'D4Planner.exe','--stop'],timeout=30)
             assert launch.wait(timeout=25)==0
-            assert not any(alive(row['pid']) for row in tree),'OWNED_ORPHAN'
+            deadline=time.monotonic()+5
+            while any(alive(row['pid']) for row in tree) and time.monotonic()<deadline: time.sleep(.05)
+            assert not any(alive(row['pid']) for row in tree), {'ownedOrphans':[row for row in tree if alive(row['pid'])]}
             launch=None
     def native(config=None):
         nonlocal launch,tree,watchdog
@@ -241,8 +254,8 @@ def main():
                 try: fixture_shortcuts[1].parent.rmdir()
                 except OSError: pass
                 for key in fixture_keys: winreg.DeleteKeyEx(winreg.HKEY_CURRENT_USER,key,winreg.KEY_WOW64_64KEY)
-            report['outcome']='SCOPED_AUTOMATED_PASS' if report['cases'] and all(row['status']=='PASS' for row in report['cases']) else 'FAIL'
+            report['outcome']=('SCOPED_AUTOMATED_PASS' if selected==applicable else 'SCOPED_SUBSET_PASS') if report['cases'] and all(row['status']=='PASS' for row in report['cases']) else 'FAIL'
             save()
-    return 0 if report['outcome']=='SCOPED_AUTOMATED_PASS' else 1
+    return 0 if report['outcome'] in {'SCOPED_AUTOMATED_PASS','SCOPED_SUBSET_PASS'} else 1
 
 if __name__=='__main__': raise SystemExit(main())

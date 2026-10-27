@@ -4,7 +4,10 @@ param(
   [string]$EvidenceName = 'evidence',
   [switch]$NativeUpgradeOnly,
   [switch]$ReviewFixes,
+  [string]$CaseIds = '',
+  [string]$ResumeReport = '',
   [string]$ApprovalRecord = '',
+  [ValidatePattern('^[A-Za-z0-9-]+$')][string]$ArtifactsName = 'review-artifacts',
   [string]$BaselineVersion = '1.0.2',
   [string]$CandidateVersion = '1.0.3',
   [switch]$RegisterAndRun,
@@ -24,7 +27,11 @@ if ($RegisterAndRun) {
   $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
   $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -Sandbox "{1}" -EvidenceName "{2}" -Run' -f $PSCommandPath,$Sandbox,$EvidenceName)
   if ($NativeUpgradeOnly) { $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ($action.Arguments + ' -NativeUpgradeOnly') }
-  if ($ReviewFixes) { $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ($action.Arguments + (' -ReviewFixes -ApprovalRecord "{0}" -BaselineVersion {1} -CandidateVersion {2}' -f $ApprovalRecord,$BaselineVersion,$CandidateVersion)) }
+  if ($ReviewFixes) { $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ($action.Arguments + (' -ReviewFixes -ApprovalRecord "{0}" -BaselineVersion {1} -CandidateVersion {2} -ArtifactsName {3}' -f $ApprovalRecord,$BaselineVersion,$CandidateVersion,$ArtifactsName)) }
+  if ($CaseIds) {
+    if ($CaseIds -notmatch '^[A-Z0-9,/-]+$') { throw 'Invalid case selection' }
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ($action.Arguments + (' -CaseIds "{0}" -ResumeReport "{1}"' -f $CaseIds,$ResumeReport))
+  }
   $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 15) -MultipleInstances IgnoreNew
   Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings | Out-Null
   Start-ScheduledTask -TaskName $taskName
@@ -42,8 +49,9 @@ try {
   $protectedBefore | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $evidence 'protected-before.json') -Encoding UTF8
   $python = Join-Path $Sandbox 'harness\python\python.exe'
   if ($ReviewFixes) {
-    $artifacts = Join-Path $Sandbox 'review-artifacts'
+    $artifacts = Join-Path $Sandbox $ArtifactsName
     $driverArgs = @('-X','utf8',(Join-Path $artifacts 'windows_installer_review_e2e.py'),'--sandbox',(Join-Path $Sandbox ($EvidenceName + '-run')),'--setup-old',(Join-Path $artifacts "D4Planner-Setup-$BaselineVersion.exe"),'--setup-new',(Join-Path $artifacts "D4Planner-Setup-$CandidateVersion.exe"),'--package-new',(Join-Path $artifacts "D4Planner-$CandidateVersion.zip"),'--manifest',(Join-Path $artifacts 'expected-shas.json'),'--output',(Join-Path $evidence 'results'))
+    if ($CaseIds) { $driverArgs += @('--case-ids',$CaseIds,'--resume-report',$ResumeReport) }
     $quotedArgs = @($driverArgs | ForEach-Object { '"' + $_ + '"' }) -join ' '
     $driverProcess = Start-Process -FilePath $python -ArgumentList $quotedArgs -NoNewWindow -Wait -PassThru -RedirectStandardOutput (Join-Path $evidence 'driver.log') -RedirectStandardError (Join-Path $evidence 'driver.stderr.log')
     $global:LASTEXITCODE = $driverProcess.ExitCode
