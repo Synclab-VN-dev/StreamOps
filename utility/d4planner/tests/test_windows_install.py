@@ -158,3 +158,12 @@ def test_runtime_startup_failure_restores_previous_pointer_and_db(tmp_path, monk
     assert engine.read_state(root) == previous
     assert not (root / 'upgrade-journal.json').exists()
     assert (data / 'state/hud.sqlite3').read_bytes() == db_before
+
+
+def test_exit_zero_without_runtime_readiness_evidence_is_not_health(tmp_path, monkeypatch):
+    def probe(command, **kwargs):
+        Path(command[command.index('--health-report') + 1]).write_text(json.dumps({'ok':True}))
+        return type('Completed', (), {'returncode':0})()
+    monkeypatch.setattr(engine.subprocess, 'run', probe)
+    with pytest.raises(engine.InstallError, match='RUNTIME_HEALTH_EVIDENCE_INVALID'):
+        engine.runtime_health(tmp_path)
