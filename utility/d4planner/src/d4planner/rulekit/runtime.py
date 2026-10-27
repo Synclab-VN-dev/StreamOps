@@ -7,10 +7,13 @@ from pathlib import Path
 from typing import Mapping
 
 from .client import RuleKitClient
+import asyncio
 from .process import LaunchSpecification, RuleKitProcessWrapper
 
 
 PRODUCTION_ENVIRONMENT = (
+    "D4_RULEKIT_DATA_ROOT",
+    "D4_RULEKIT_INSTALLATION_ROOT",
     "D4_RULEKIT_PROFILE_JSON",
     "D4_RULEKIT_SNAPSHOT_ROOT",
     "D4_RULEKIT_CHROMIUM_EXECUTABLE",
@@ -29,6 +32,7 @@ class RuleKitRuntimeService:
     def __init__(self, wrapper: RuleKitProcessWrapper):
         self.wrapper = wrapper
         self.client: RuleKitClient | None = None
+        self._management_lock = asyncio.Lock()
 
     @classmethod
     def from_environment(cls, environment: Mapping[str, str] | None = None) -> "RuleKitRuntimeService":
@@ -48,7 +52,10 @@ class RuleKitRuntimeService:
             name: values[name] for name in PRODUCTION_ENVIRONMENT if values.get(name)
         }
         required = {"D4_RULEKIT_PROFILE_JSON", "D4_RULEKIT_SNAPSHOT_ROOT"}
-        if not required.issubset(forwarded):
+        managed = forwarded.get("D4_RULEKIT_DATA_ROOT")
+        if managed and (not Path(managed).is_absolute() or not Path(forwarded.get("D4_RULEKIT_INSTALLATION_ROOT", "")).is_absolute()):
+            raise ValueError("Rule Kit data and installation roots must be absolute")
+        if not managed and not required.issubset(forwarded):
             raise ValueError("production Rule Kit profile and snapshot root are required")
         specification = LaunchSpecification(
             executable=str(executable),
@@ -71,7 +78,28 @@ class RuleKitRuntimeService:
         if not health["ready"] or not providers:
             await self.stop()
             raise RuntimeError("production Rule Kit has no ready provider")
-        return {**health, "providers": providers}
+        result = {**health, "providers": providers}
+        if self.wrapper.specification.environment_allow_list.get("D4_RULEKIT_DATA_ROOT"):
+            result["snapshotCapabilities"] = await self.client.snapshot_call("getCapabilities")
+            result["calculationAvailability"] = result["snapshotCapabilities"]["calculationAvailability"]
+            result["calculationReason"] = result["snapshotCapabilities"]["reason"]
+        else:
+            result["calculationAvailability"] = "READY"
+        return result
+
+    async def snapshot_api(self, method: str, request: dict | None = None) -> dict | list:
+        """Transport/lifecycle adapter only. Decisions belong to the Node Rule Kit."""
+        async with self._management_lock:
+            if self.client is None:
+                raise RuntimeError("Rule Kit worker is not running")
+            result = await self.client.snapshot_call(method, request)
+            if isinstance(result, dict) and result.get("restartRequired"):
+                self.client = await self.wrapper.reconfigure()
+                # A fresh client invalidates all old session refs. The Rule Kit
+                # persisted the selection and owns its validation at startup.
+                active = await self.client.snapshot_call("getActive")
+                return {**result, "afterRestart": active}
+            return result
 
     async def stop(self) -> None:
         await self.wrapper.stop()
