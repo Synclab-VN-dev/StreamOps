@@ -331,3 +331,29 @@ def test_repository_watcher_retries_recovers_rejects_duplicates_and_stops():
 
     asyncio.run(scenario())
 
+
+
+def test_uninjected_composition_resolves_and_forwards_rulekit_configuration(tmp_path, monkeypatch):
+    """Exercise the production factory branch; IPC input remains explicitly synthetic."""
+    forwarded = []
+    def factory(environment):
+        forwarded.append(environment)
+        return _rulekit()
+    monkeypatch.setattr(RuleKitRuntimeService, 'from_environment', factory)
+    monkeypatch.setenv('D4PLANNER_REPOSITORY_ROOT', str(ROOT))
+    monkeypatch.delenv('D4_RULEKIT_DATA_ROOT', raising=False)
+    monkeypatch.delenv('D4_RULEKIT_INSTALLATION_ROOT', raising=False)
+    async def scenario():
+        runtime = ProductionBackendRuntime({
+            'ownerInstanceId':'synthetic-owner', 'childInstanceId':'synthetic-backend',
+            'generation':1, 'dataDir':str(tmp_path / 'data'), 'targetFolder':str(tmp_path / 'targets'),
+            'wsEndpoint':{'host':'127.0.0.1','port':0}, 'credential':CREDENTIAL,
+        })
+        try:
+            ready = await runtime.start()
+            assert ready['health']['wsTransport'] == 'READY'
+            assert forwarded[0]['D4_RULEKIT_INSTALLATION_ROOT'] == str(ROOT)
+            assert forwarded[0]['D4_RULEKIT_DATA_ROOT'] == str(tmp_path / 'data/rulekit')
+        finally:
+            await runtime.stop()
+    asyncio.run(scenario())
