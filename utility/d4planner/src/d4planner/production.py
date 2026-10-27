@@ -304,6 +304,7 @@ class ProductionBackendRuntime:
         self.target_folder = Path(bootstrap["targetFolder"]).resolve()
         configured_root = os.environ.get("D4PLANNER_REPOSITORY_ROOT")
         repository_root = _resolve_repository_root(configured_root)
+        self.repository_root = repository_root
         self.rulekit = rulekit
         self.targets = TargetRepository(
             self.target_folder, self.data_dir / "selected-target.json",
@@ -330,7 +331,7 @@ class ProductionBackendRuntime:
         if self.rulekit is None:
             environment = dict(os.environ)
             environment.setdefault("D4_RULEKIT_DATA_ROOT", str(self.data_dir / "rulekit"))
-            environment.setdefault("D4_RULEKIT_INSTALLATION_ROOT", str(_resolve_repository_root()))
+            environment.setdefault("D4_RULEKIT_INSTALLATION_ROOT", str(self.repository_root))
             self.rulekit = RuleKitRuntimeService.from_environment(environment)
         rulekit_health = await self.rulekit.start()
         availability = rulekit_health.get("calculationAvailability", "READY")
