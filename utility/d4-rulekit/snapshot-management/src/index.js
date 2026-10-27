@@ -24,11 +24,13 @@ async function upgradePreflight({dataRoot,installationRoot,previousInstallationR
     }
   }
   const selected=await manager.selection();
-  if(!selected)return {compatible:true,calculationAvailability:'UNAVAILABLE',reason:'SNAPSHOT_NOT_SELECTED',ruleKitVersion:RULEKIT_VERSION};
+  const registryExists=await manager.exists(path.join(dataRoot,'registry.json'));
+  if(!selected && !registryExists)return {compatible:true,calculationAvailability:'UNAVAILABLE',reason:'SNAPSHOT_NOT_SELECTED',ruleKitVersion:RULEKIT_VERSION};
   fail(manager.registry,'TRUST_POLICY_NOT_CONFIGURED');
   const envelope=JSON.parse(await fs.readFile(path.join(dataRoot,'registry.json'),'utf8'));
   const high=JSON.parse(await fs.readFile(path.join(dataRoot,'registry-high-water.json'),'utf8'));
   const checked=manager.registry.verify(envelope,high.revision);fail(checked.hash===high.sha256,'REGISTRY_STATE_INCONSISTENT');manager.registry.accept(envelope,high.revision);
+  if(!selected)return {compatible:true,calculationAvailability:'UNAVAILABLE',reason:'SNAPSHOT_NOT_SELECTED',ruleKitVersion:RULEKIT_VERSION};
   const bound=await manager.checkCompatibility({entryId:selected.entryId});
   const after=await manager.selection();fail(JSON.stringify(after)===JSON.stringify(selected),'SNAPSHOT_SELECTION_CHANGED_DURING_PREFLIGHT');
   return {compatible:true,...bound};
