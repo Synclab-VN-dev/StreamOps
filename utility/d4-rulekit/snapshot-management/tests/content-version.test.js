@@ -17,7 +17,7 @@ const scope={schemaVersion:'d4-rulekit-snapshot-scope/v1',policyId:'SYNTHETIC_OF
 const resource=(name,body=name,type='script')=>({url:'https://synthetic.invalid/'+name,body,resourceType:type});
 const baseResources=()=>[resource('planner','SYNTHETIC DOCUMENT','document'),resource('d4.planner-BqhpPQJN.js','SYNTHETIC PLANNER'),resource('export-D12aM6KT.js','SYNTHETIC ENGINE'),resource('data.min.json?v=1','SYNTHETIC CATALOG','fetch')];
 async function fixture(t){
- const root=await fs.mkdtemp(path.join(os.tmpdir(),'rulekit-sver-')); 
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'rulekit-sver-'));
  const manager=new SnapshotManager({dataRoot:root});await manager.start();t.after(async()=>{await manager.close();await fs.rm(root,{recursive:true,force:true});});
  const store=new FileSystemSnapshotStore({rootDir:manager.storeRoot});
  async function save(id,resources=baseResources(),metadata={}){
@@ -187,4 +187,19 @@ test('SVER-04: partial captures expose observations, never claim confirmed addit
  assert.equal(result.observations.baselineOnly[0].url,'https://synthetic.invalid/d4.planner-BqhpPQJN.js');
  assert.equal(result.observations.candidateOnly[0].url,'https://synthetic.invalid/d4.planner-BGP2Ak1s.js');
  assert(!('change' in result.observations.baselineOnly[0]));
+});
+
+test('SVER-01: pending failures outside URL/type scope do not contaminate completeness',async t=>{
+ const {save,compare}=await fixture(t);const rows=[...baseResources(),resource('video.mp4','MEDIA','media')];
+ const a=await save('A',rows),b=await save('B',rows);
+ b.coverage.failedRequests.push({method:'GET',url:'https://synthetic.invalid/video.mp4'},{method:'GET',url:'https://synthetic.invalid/telemetry/excluded'});
+ assert.equal((await compare(a,b)).status,'UNCHANGED');
+});
+
+test('SVER-01/02: scope sets dedupe, origin paths cannot silently narrow/change scope',async t=>{
+ const {save,compare}=await fixture(t),a=await save('A'),b=await save('B');
+ b.scope.origins.push(...b.scope.origins);b.scope.methods.push('GET');b.scope.excludedResourceTypes.push('media');b.scope.include.push({...b.scope.include[0]});
+ assert.equal((await compare(a,b)).status,'UNCHANGED');
+ b.scope.origins=['https://synthetic.invalid/different-scope'];
+ await assert.rejects(compare(a,b),{code:'CONTENT_SCOPE_ORIGIN_INVALID'});
 });
