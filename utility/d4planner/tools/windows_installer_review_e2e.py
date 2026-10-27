@@ -15,9 +15,25 @@ import sqlite3
 import subprocess
 import sys
 import time
+import threading
 import zipfile
 
-from windows_setup_e2e import sha, owned_tree, alive
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from windows_setup_e2e import sha, owned_tree
+
+
+def alive(pid):
+    from ctypes import wintypes
+    kernel=ctypes.WinDLL("kernel32",use_last_error=True)
+    kernel.OpenProcess.restype=wintypes.HANDLE
+    kernel.GetExitCodeProcess.argtypes=[wintypes.HANDLE,ctypes.POINTER(wintypes.DWORD)]
+    kernel.CloseHandle.argtypes=[wintypes.HANDLE]
+    handle=kernel.OpenProcess(0x1000,False,pid)
+    if not handle: return False
+    try:
+        code=wintypes.DWORD()
+        return bool(kernel.GetExitCodeProcess(handle,ctypes.byref(code))) and code.value==259
+    finally: kernel.CloseHandle(handle)
 
 
 def main():
@@ -59,7 +75,7 @@ def main():
         result['durationSeconds']=round(time.monotonic()-started,3); report['cases'].append(result); save()
         print(json.dumps(result,ensure_ascii=False),flush=True)
         return result['status']=='PASS'
-    def state(): return json.loads((root / 'active.json').read_text())
+    def state(): return json.loads((root / 'active.json').read_text(encoding="utf-8"))
     def payload(): return root / state()['payload']
     def setup(path):
         result=call(f'"{path}" /S /ISOLATED=1 /DATADIR="{data}" /INSTALLROOT="{root}"')
@@ -84,25 +100,28 @@ def main():
         except FileNotFoundError: pass
         else: raise RuntimeError('REAL_PRODUCTION_REGISTRATION_PRESENT_NO_FIXTURE_MUTATION')
     for path in fixture_shortcuts: assert not path.exists(),'REAL_PRODUCTION_SHORTCUT_PRESENT'
-    launch=None; tree=[]; fixtures=False
+    launch=None; tree=[]; fixtures=False; watchdog=None
     def fixture_intact():
         for key in fixture_keys: assert reg_read(key)=={'FixtureOwner':('PR150-FIX01-SYNTHETIC',winreg.REG_SZ)}
         for path in fixture_shortcuts: assert path.read_bytes()==b'PR150-FIX01-SYNTHETIC-SHORTCUT'
     def owned_stop():
-        nonlocal launch
+        nonlocal launch, watchdog
+        if watchdog is not None: watchdog.cancel(); watchdog=None
         if launch is not None:
             call([root/'D4Planner.exe','--stop'],timeout=30)
             assert launch.wait(timeout=25)==0
             assert not any(alive(row['pid']) for row in tree),'OWNED_ORPHAN'
             launch=None
     def native(config=None):
-        nonlocal launch,tree
+        nonlocal launch,tree,watchdog
         settings=data/'launcher.json'
         if config: settings.write_text(json.dumps(config,ensure_ascii=False),encoding='utf-8')
         else: settings.unlink(missing_ok=True)
         result_path=args.output / f'launch-{len(report["cases"])}.json'
         native_env=dict(env,D4PLANNER_LAUNCH_REPORT=str(result_path))
         launch=subprocess.Popen([str(root/'D4Planner.exe'),'--launch'],env=native_env,cwd=args.sandbox)
+        watchdog=threading.Timer(28,lambda:subprocess.run([str(root/'D4Planner.exe'),'--stop'],env=env,timeout=30))
+        watchdog.daemon=True; watchdog.start()
         started=time.monotonic(); window=None
         while time.monotonic()-started<20 and launch.poll() is None:
             tree=owned_tree(launch.pid)
@@ -118,7 +137,7 @@ def main():
             # Read-only independent durable state; no fixture SQL writes.
             tables=[row[0] for row in db.execute("select name from sqlite_master where type='table'")]
         value={'window':window,'ownedTree':tree,'sqliteTables':tables}
-        owned_stop(); assert json.loads(result_path.read_text())['ok'] is True
+        owned_stop(); assert json.loads(result_path.read_text(encoding="utf-8"))['ok'] is True
         return value
     try:
         for key in fixture_keys:
@@ -194,8 +213,8 @@ def main():
             check_data()
             health=args.output/'runtime-health.json'
             call([root/'D4Planner.exe','--runtime-health','--health-report',health],timeout=75)
-            assert json.loads(health.read_text())['runtimeReady'] is True
-            return {'failureExitCode':result.returncode,'previousVersion':state()['version'],'runtimeGate':json.loads(health.read_text()),'dataPreserved':True}
+            assert json.loads(health.read_text(encoding="utf-8"))['runtimeReady'] is True
+            return {'failureExitCode':result.returncode,'previousVersion':state()['version'],'runtimeGate':json.loads(health.read_text(encoding="utf-8")),'dataPreserved':True}
         case('PKG-05/FIX-03','Valid manifest/hash + broken Backend fails health and restores previous version',failure_rollback)
         def clean_machine():
             check_data(); fixture_intact()
