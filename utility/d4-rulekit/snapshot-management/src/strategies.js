@@ -1,44 +1,54 @@
 'use strict';
-const {fail}=require('./trust');
-// Existing D12 codec guards remain intact. A registry cannot turn an unknown
-// codec/runtime into an implementation. Strategies are Rule Kit code, not JS
-// constructors supplied by profile JSON or the Backend.
+const {fail,canonical}=require('./trust');
+const {loadCatalog}=require('../compatibility/loader');
+const catalog=loadCatalog(); // Verify all execution bytes before requiring shared factories.
 const {MaxrollPatchProfile}=require('../../providers/maxroll/src/patch-profile');
-const {REAL_MAXROLL_COMPONENT_FACTORY}=require('../../providers/maxroll/src/real-profile');
-const {D12_COMPATIBILITY,CODEC_VERSION,MaxrollD12CanonicalCodec,loadMaxrollEntityCatalog}=require('../../providers/maxroll/src/canonical-codec');
+const {createCodecFamily}=require('../../providers/maxroll/src/canonical-codec-core');
+const {createProfileFamily,REAL_MAXROLL_COMPONENT_FACTORY}=require('../../providers/maxroll/src/real-profile-core');
 const {UniversalMaxrollComponentFactory}=require('../../providers/maxroll/src/universal-component-factory');
 function validateCapabilities(profile,entry){
  const caps=new MaxrollPatchProfile(profile).capability();
  for(const field of ['metricIds','changeTypes'])fail(JSON.stringify([...caps[field]].sort())===JSON.stringify([...entry.capabilities[field]].sort()),'CAPABILITIES_BINDING_MISMATCH:'+field);
  fail(caps.stateModel===entry.capabilities.stateModel,'CAPABILITIES_BINDING_MISMATCH:stateModel');
 }
-const STRATEGIES=Object.freeze({
-  'maxroll-ui-cdp-D12-v1':Object.freeze({
-    evidenceClass:'REAL_PROVIDER',
-    codecVersions:[CODEC_VERSION],canonicalSchemas:['maxroll-build/rogue-l50-v1'],
-    providerVersions:['maxroll-provider/3.2.1.73552-D12aM6KT-candidate-v1'],
+function createStrategies(catalog){
+ const strategies={};
+ for(const definition of catalog.definitions){
+  const codec=createCodecFamily(definition),profiles=createProfileFamily(definition);
+  for(const binding of definition.bindings){
+   const native=binding.family==='native-state/v1';
+   strategies[binding.id]=Object.freeze({
+    executionVersion:catalog.ruleKitVersion,evidenceClass:definition.evidenceClass,
+    codecVersions:[definition.codecVersion],canonicalSchemas:[binding.schema],providerVersions:[binding.providerVersion],
     validateProfile(profile,entry){
-      validateCapabilities(profile,entry);
-      fail(profile.runtimeKind==='maxroll-ui-cdp-v1','PROFILE_RUNTIME_KIND_INCOMPATIBLE');
-      fail(entry.gamePatch===D12_COMPATIBILITY.gamePatch && entry.engineAsset.sha256===D12_COMPATIBILITY.engineAssetSha256 && entry.catalog.sha256===D12_COMPATIBILITY.catalogResourceSha256,'D12_RUNTIME_GUARD_MISMATCH');
-      // Original canonical codec guards are not widened. A separate evidence-
-      // bound entry can reuse this UI strategy; it does not authorize a newer
-      // canonical codec or universal-build capability automatically.
+     validateCapabilities(profile,entry);
+     const expected=definition.identity;
+     fail(entry.ruleKitVersion===catalog.ruleKitVersion,'IMPLEMENTATION_APPROVAL_MISMATCH');
+     fail(profile.runtimeKind==='maxroll-ui-cdp-v1','PROFILE_RUNTIME_KIND_INCOMPATIBLE');
+     fail(entry.gamePatch===expected.gamePatch&&entry.engineAsset.sha256===expected.engineAssetSha256&&entry.catalog.sha256===expected.catalogResourceSha256,binding.guardCode??'RUNTIME_BINDING_MISMATCH');
+     fail(entry.snapshotId===expected.snapshotId&&entry.snapshotManifestSha256===expected.snapshotManifestSha256,'SNAPSHOT_DEFINITION_MISMATCH');
+     fail(entry.engineAsset.url===`https://maxroll.gg${definition.reference.applicationAssetPath}`,'ENGINE_URL_BINDING_MISMATCH');
+     if(native)fail(typeof profile.nativeRuntime?.plannerId==='string'&&profile.nativeRuntime.profileUrl===`https://planners.maxroll.gg/profiles/load/d4/${profile.nativeRuntime.plannerId}`,'NATIVE_PROFILE_IDENTITY_INVALID');
+     // A signed JSON profile does not override execution-bearing bundled code.
+     const expectedProfile=(native?profiles.createUniversalProfile:profiles.createCandidateProfile)({...profile,realRuntime:undefined});
+     for(const [key,value] of Object.entries(expectedProfile.realRuntime)){
+      // Catalog-derived option enumeration is verified against actual bytes in createFactory.
+      if(key==='optionReadbackDefinitions')continue;
+      fail(canonical(profile.realRuntime?.[key])===canonical(value),'EXECUTION_PROFILE_MISMATCH:'+key);
+     }
     },
-    factory:REAL_MAXROLL_COMPONENT_FACTORY,
-  }),
-  'maxroll-native-D12-v1':Object.freeze({
-    evidenceClass:'REAL_PROVIDER',codecVersions:[CODEC_VERSION],canonicalSchemas:['d4-build/v1'],
-    providerVersions:['maxroll-provider/3.2.1.73552-D12aM6KT-universal-v1'],
-    validateProfile(profile,entry){
-      validateCapabilities(profile,entry);
-      fail(entry.snapshotId===D12_COMPATIBILITY.snapshotId && entry.snapshotManifestSha256===D12_COMPATIBILITY.snapshotManifestSha256 && entry.engineAsset.sha256===D12_COMPATIBILITY.engineAssetSha256 && entry.catalog.sha256===D12_COMPATIBILITY.catalogResourceSha256,'D12_CANONICAL_GUARD_MISMATCH');
-      fail(profile.runtimeKind==='maxroll-ui-cdp-v1' && typeof profile.nativeRuntime?.plannerId==='string' && profile.nativeRuntime.profileUrl===`https://planners.maxroll.gg/profiles/load/d4/${profile.nativeRuntime.plannerId}`,'NATIVE_PROFILE_IDENTITY_INVALID');
-    },
+    factory:native?undefined:REAL_MAXROLL_COMPONENT_FACTORY,
     async createFactory({profile,entry,storeRoot}){
-      const catalog=await loadMaxrollEntityCatalog({snapshotRoot:storeRoot,snapshotId:entry.snapshotId,expectedManifestSha256:entry.snapshotManifestSha256});
-      return new UniversalMaxrollComponentFactory({codec:new MaxrollD12CanonicalCodec({catalog}),plannerId:profile.nativeRuntime.plannerId,profileUrl:profile.nativeRuntime.profileUrl});
+     this.validateProfile(profile,entry);
+     if(!native)return REAL_MAXROLL_COMPONENT_FACTORY;
+     const entityCatalog=await codec.loadMaxrollEntityCatalog({snapshotRoot:storeRoot,snapshotId:entry.snapshotId,expectedManifestSha256:entry.snapshotManifestSha256});
+     const expectedProfile=profiles.createUniversalProfile({...profile,catalog:entityCatalog,realRuntime:undefined});
+     fail(canonical(profile.realRuntime.optionReadbackDefinitions)===canonical(expectedProfile.realRuntime.optionReadbackDefinitions),'EXECUTION_OPTIONS_MISMATCH');
+     return new UniversalMaxrollComponentFactory({codec:new codec.BoundCanonicalCodec({catalog:entityCatalog}),plannerId:profile.nativeRuntime.plannerId,profileUrl:profile.nativeRuntime.profileUrl});
     },
-  }),
-});
-module.exports={STRATEGIES,RULEKIT_VERSION:'rulekit-snapshot-management/1.0.0'};
+   });
+  }
+ }
+ return Object.freeze(strategies);
+}
+module.exports={createStrategies,STRATEGIES:createStrategies(catalog),RULEKIT_VERSION:catalog.ruleKitVersion};
