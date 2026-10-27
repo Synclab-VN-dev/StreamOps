@@ -161,8 +161,11 @@ Section "D4Planner" SEC_MAIN
   File /oname=windows_install.py "${ENGINE}"
   File /oname=release1_delivery.py "${DELIVERY}"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
-  WriteINIStr "$INSTDIR\installer-identity.ini" "Installation" "Mode" "$InstallMode"
-  WriteINIStr "$INSTDIR\installer-identity.ini" "Installation" "InstallRoot" "$INSTDIR"
+  ; Windows INI APIs use ANSI for a new file unless it has a Unicode BOM.
+  ; Persist the exact Unicode root, including Vietnamese paths, as UTF-16LE.
+  FileOpen $0 "$INSTDIR\installer-identity.ini" w
+  FileWriteUTF16LE /BOM $0 "[Installation]$\r$\nMode=$InstallMode$\r$\nInstallRoot=$INSTDIR$\r$\n"
+  FileClose $0
   CreateDirectory "$SMPROGRAMS\$ShortcutName"
   CreateShortcut "$SMPROGRAMS\$ShortcutName\D4Planner.lnk" "$INSTDIR\D4Planner.exe"
   CreateShortcut "$SMPROGRAMS\$ShortcutName\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
