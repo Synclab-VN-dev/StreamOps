@@ -43,3 +43,6 @@ def validate_ready(message: object, *, instance_id: str, generation: int) -> dic
     if not isinstance(health, dict) or health.get("ready") is not True:
         raise ProtocolError("worker reported unhealthy READY")
     return message
+
+SNAPSHOT_PROTOCOL_VERSION: Final = "d4-rulekit-snapshots/v1"
+SNAPSHOT_METHODS: Final = frozenset({"listInstalled", "checkCompatibility", "getCapabilities", "importPackage", "activate", "getActive", "switchSnapshot", "rollback"})

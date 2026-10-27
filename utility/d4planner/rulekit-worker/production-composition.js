@@ -23,6 +23,7 @@ function positive(env, name, fallback) {
 }
 
 async function createComposition(env) {
+  if (env.D4_RULEKIT_DATA_ROOT) return require('./managed-snapshot-composition').createManagedComposition(env);
   const profilePath = path.resolve(required(env, 'D4_RULEKIT_PROFILE_JSON'));
   const snapshotRoot = path.resolve(required(env, 'D4_RULEKIT_SNAPSHOT_ROOT'));
   const profile = new MaxrollPatchProfile(JSON.parse(fs.readFileSync(profilePath, 'utf8')));
