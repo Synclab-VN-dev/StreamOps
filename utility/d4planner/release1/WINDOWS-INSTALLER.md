@@ -77,3 +77,44 @@ Installed Apps, mở/đóng HUD bằng shortcut/hotkeys; thử nâng cấp và x
 cũ còn nguyên. HUD cùng Diablo IV/focus/controller/window_capture vẫn là HUD-03
 Owner MAN riêng. Golden MagicPath vẫn cần independent reference; screenshot
 Setup/HUD actual không được chuyển thành Golden.
+
+## Review FIX-01/02/03 (27/10/2026)
+
+`/ISOLATED=1` dùng riêng HKCU `Software\Synclab\D4Planner-UAT`, uninstall
+identity `SynclabD4PlannerUAT`, Desktop `D4Planner UAT.lnk` và Start Menu
+`D4Planner UAT`. Marker `installer-identity.ini` + registered root phải khớp
+trước stop/upgrade/uninstall. Một UAT root khác không được chiếm registration.
+Production namespace không được đọc/ghi/xóa trong nhánh UAT.
+
+Root launcher mặc định không đọc Equipment DB và xóa các biến capture kế thừa.
+Để opt-in khi double-click, tạo `launcher.json` trong DataRoot (ngoài installation):
+
+```json
+{
+  "schemaVersion": "d4planner-launcher/v1",
+  "equipmentRepository": {
+    "enabled": true,
+    "path": "C:\\absolute\\existing-equipment.sqlite",
+    "characterId": "authoritative-character-id",
+    "characterDisplayName": "Character display name"
+  }
+}
+```
+
+Path phải tuyệt đối, file hiện có; identity không rỗng, không control characters,
+tối đa 160 ký tự. Backend dùng `ReadOnlyEquipmentRepository` đã có; launcher không
+initialize/migrate DB. Bỏ file hoặc dùng `{"enabled":false}` trong
+`equipmentRepository` để tắt. Không tự lấy Target điền Current.
+
+Static gate `--installation-health` vẫn kiểm tra toàn bộ resource/hash. Sau atomic
+activation, engine gọi `--runtime-health --health-report <private-json>`: chính FE
+executable chạy managed Backend → real Rule Kit/Chromium → WS READY, restart và
+stop. Probe có DataDir/Targets rỗng riêng, không đọc config/DB của user; owned Job
+Object, deadline 55 giây và bounded cleanup. Chỉ commit journal khi runtime report
+xác nhận READY + cleanup. Failure phục hồi application pointer/launcher trước,
+không restore DB. Runtime probe không chứng minh native WebView render (gate riêng).
+
+Windows runner `windows_installer_review_e2e.py` chỉ chạy trong sandbox/task/port
+đã duyệt; verify artifact SHAs, scrub PATH cho cả Setup lẫn launcher, kiểm tra
+registration/shortcuts giả lập bản chính và rollback runtime-failure với manifest
+đã rehash. Không đụng DB/game/OBS thật. Network-off negative vẫn DEFERRED_OWNER.

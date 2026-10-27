@@ -161,6 +161,24 @@ def recover(root: Path) -> dict:
     return {"recovery": "RESTORED_PREVIOUS" if old else "FIRST_INSTALL_REVERTED"}
 
 
+def static_health(root: Path) -> None:
+    subprocess.run([str(root / "D4Planner.exe"), "--installation-health"],
+                   cwd=root, check=True, timeout=30)
+
+
+def runtime_health(root: Path) -> dict:
+    # The root launcher owns a kill-on-close Job and a 55s inner deadline.
+    # Its probe uses a disposable DataDir, never the installed user's database.
+    with tempfile.TemporaryDirectory(prefix="D4Planner-health-report-") as temporary:
+        report = Path(temporary) / "health.json"
+        subprocess.run([str(root / "D4Planner.exe"), "--runtime-health", "--health-report", str(report)],
+                       cwd=root, check=True, timeout=75)
+        evidence = delivery.load_json(report)
+        if not all(evidence.get(key) is True for key in ("ok", "runtimeReady", "ownedCleanup")):
+            raise InstallError("RUNTIME_HEALTH_EVIDENCE_INVALID")
+        return evidence
+
+
 def install(package: Path, root: Path, data: Path, expected_sha: str,
             *, health_check=None, checkpoint=None) -> dict:
     root = root.resolve(); data = data.resolve()
@@ -195,12 +213,7 @@ def install(package: Path, root: Path, data: Path, expected_sha: str,
                 with archive.open(relative) as source, target.open("wb") as output:
                     shutil.copyfileobj(source, output)
         verify_directory(destination)
-        if health_check is None:
-            health_check = lambda path: subprocess.run(
-                [str(path / "D4Planner.exe"), "--installation-health"], cwd=path,
-                check=True, timeout=90,
-            )
-        health_check(destination)
+        (health_check or static_health)(destination)
         transaction = root / "transactions" / identifier
         transaction.mkdir(parents=True)
         if previous:
@@ -218,13 +231,13 @@ def install(package: Path, root: Path, data: Path, expected_sha: str,
                      "packageSha256":expected_sha, "dataDir":str(data), "previous":previous}
             atomic_json(root / "active.json", state)
             if checkpoint: checkpoint("ACTIVATED")
-            health_check(root)
+            health = health_check(root) if health_check else runtime_health(root)
             (root / "upgrade-journal.json").unlink()
         except Exception:
             recover(root)
             raise
         return {"ok":True, "version":manifest["version"], "installRoot":str(root),
-                "dataDir":str(data), "packageSha256":expected_sha, "previousVersion":previous["version"] if previous else None}
+                "dataDir":str(data), "packageSha256":expected_sha, "previousVersion":previous["version"] if previous else None, "runtimeHealth":health}
 
 
 def rollback(root: Path) -> dict:
