@@ -6,6 +6,7 @@ const readline = require('node:readline');
 
 const PROTOCOL_VERSION = 'd4-rulekit-ipc/v1';
 const APPLICATION_CONTRACT_VERSION = 'd4-rulekit-application/v1';
+const {PROTOCOL:SNAPSHOT_PROTOCOL,METHODS:SNAPSHOT_METHODS}=require('../../d4-rulekit/snapshot-management/src/manager');
 const APIS = Object.freeze([
   'closeSession', 'commitChanges', 'createSession', 'evaluate',
   'getSession', 'listProviders', 'previewChanges', 'resetSession',
@@ -51,10 +52,26 @@ async function main() {
   const sessions = new Set();
   const queue = [];
   let running = 0;
+  let runningApplication = 0;
+  let snapshotMutation = false;
   let shuttingDown = false;
 
   async function invoke(message, controller) {
     const params = message.params ?? {};
+    if(message.protocolVersion===SNAPSHOT_PROTOCOL){
+      if(!composition.snapshotManagement)throw Object.assign(new Error('snapshot management unavailable'),{code:'SNAPSHOT_MANAGEMENT_UNAVAILABLE'});
+      const mutation=['activate','switchSnapshot','rollback'].includes(message.method) || message.method==='importPackage' && params.kind==='REGISTRY';
+      if(mutation && (runningApplication>0 || snapshotMutation))throw Object.assign(new Error('Application requests are active'),{code:'SNAPSHOT_BUSY'});
+      if(mutation)snapshotMutation=true;
+      try{
+        const result=await composition.snapshotManagement.invoke(message.method,params);
+        if(result.restartRequired){
+          await Promise.all([...sessions].map(id=>app.closeSession(id)));sessions.clear();
+        }
+        return result;
+      }finally{if(mutation)snapshotMutation=false;}
+    }
+    if(snapshotMutation || composition.snapshotManagement?.quiescing)throw Object.assign(new Error('snapshot binding requires worker restart'),{code:'WORKER_RESTART_REQUIRED'});
     switch (message.method) {
       case 'listProviders': return app.listProviders();
       case 'createSession': {
@@ -85,12 +102,15 @@ async function main() {
     running += 1;
     const controller = new AbortController();
     active.set(message.id, controller);
+    const management=message.protocolVersion===SNAPSHOT_PROTOCOL;
+    if(!management)runningApplication++;
     Promise.resolve().then(() => invoke(message, controller)).then(
-      result => write({ type: 'result', correlationId: message.id, result }),
-      error => write({ type: 'error', correlationId: message.id, error: publicError(error) }),
+      result => write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'result',correlationId:message.id,result}),
+      error => write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'error',correlationId:message.id,error:publicError(error)}),
     ).finally(() => {
       active.delete(message.id);
       running -= 1;
+      if(!management)runningApplication--;
       drain();
     });
   }
@@ -102,7 +122,7 @@ async function main() {
       () => process.exit(1), positiveEnv('D4_RULEKIT_WORKER_CLEANUP_TIMEOUT_MS', 10_000),
     );
     for (const request of queue.splice(0)) {
-      write({ type: 'error', correlationId: request.id,
+      write({protocolVersion:request.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'error',correlationId:request.id,
         error: { code: 'CANCELLED', message: 'worker is shutting down' } });
     }
     for (const controller of active.values()) controller.abort();
@@ -122,7 +142,7 @@ async function main() {
         error: { code: 'INVALID_MESSAGE', message: 'message must be JSON' } });
       return;
     }
-    if (message?.protocolVersion !== PROTOCOL_VERSION) return;
+    if (![PROTOCOL_VERSION,SNAPSHOT_PROTOCOL].includes(message?.protocolVersion)) return;
     if (message.type === 'cancel') {
       active.get(message.correlationId)?.abort();
       const index = queue.findIndex(request => request.id === message.correlationId);
@@ -134,13 +154,16 @@ async function main() {
       void shutdown();
       return;
     }
-    if (message.type !== 'request' || typeof message.id !== 'string' || !APIS.includes(message.method)) {
-      write({ type: 'error', correlationId: message?.id ?? null,
+    if (message.type !== 'request' || typeof message.id !== 'string' || !(message.protocolVersion===SNAPSHOT_PROTOCOL?SNAPSHOT_METHODS:APIS).includes(message.method)) {
+      write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'error',correlationId:message?.id??null,
         error: { code: 'INVALID_MESSAGE', message: 'invalid request envelope' } });
       return;
     }
+    if(active.has(message.id)||queue.some(row=>row.id===message.id)){
+      write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'error',correlationId:message.id,error:{code:'DUPLICATE_REQUEST',message:'request ID is already pending'}});return;
+    }
     if (shuttingDown || queue.length >= maxQueue) {
-      write({ type: 'error', correlationId: message.id,
+      write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'error',correlationId:message.id,
         error: { code: 'QUEUE_FULL', message: 'worker request queue is full' } });
       return;
     }
@@ -153,7 +176,8 @@ async function main() {
   write({
     type: 'READY', applicationContractVersion: APPLICATION_CONTRACT_VERSION,
     workerInstanceId: instanceId, workerGeneration: generation,
-    apis: APIS, health: { ready: true }, pid: process.pid,
+    apis: APIS, snapshotManagementContractVersion:SNAPSHOT_PROTOCOL,
+    health: { ready: true, calculationAvailability:composition.calculationAvailability??'READY',calculationReason:composition.calculationReason??null }, pid: process.pid,
   });
 }
 

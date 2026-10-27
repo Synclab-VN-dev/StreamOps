@@ -9,7 +9,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from .protocol import APPROVED_METHODS, PROTOCOL_VERSION, ProtocolError
+from .protocol import APPROVED_METHODS, PROTOCOL_VERSION, SNAPSHOT_PROTOCOL_VERSION, SNAPSHOT_METHODS, ProtocolError
 
 
 @dataclass(frozen=True)
@@ -49,6 +49,7 @@ class RuleKitClient:
         self._operation_timeout = operation_timeout
         self._max_pending = max_pending
         self._pending: dict[str, asyncio.Future[Any]] = {}
+        self._pending_protocol: dict[str, str] = {}
         self._sessions: set[str] = set()
         self._write_lock = asyncio.Lock()
         self._writer_close_lock = asyncio.Lock()
@@ -63,6 +64,14 @@ class RuleKitClient:
     async def call(self, method: str, params: dict | None = None, *, timeout: float | None = None) -> Any:
         if method not in APPROVED_METHODS:
             raise ValueError(f"unsupported Rule Kit method: {method}")
+        return await self._call(method, params, timeout=timeout, protocol=PROTOCOL_VERSION)
+
+    async def snapshot_call(self, method: str, params: dict | None = None, *, timeout: float | None = None) -> Any:
+        if method not in SNAPSHOT_METHODS:
+            raise ValueError(f"unsupported snapshot method: {method}")
+        return await self._call(method, params, timeout=timeout, protocol=SNAPSHOT_PROTOCOL_VERSION)
+
+    async def _call(self, method: str, params: dict | None, *, timeout: float | None, protocol: str) -> Any:
         if self._closed:
             raise ProtocolError("Rule Kit client is closed")
         if len(self._pending) >= self._max_pending:
@@ -71,6 +80,7 @@ class RuleKitClient:
         loop = asyncio.get_running_loop()
         future: asyncio.Future[Any] = loop.create_future()
         self._pending[request_id] = future
+        self._pending_protocol[request_id] = protocol
         budget = timeout or self._operation_timeout
         deadline = loop.time() + budget
         # Reserve a bounded slice for best-effort cancellation. Request write,
@@ -82,7 +92,7 @@ class RuleKitClient:
             await self._send(
                 {
                     "type": "request",
-                    "protocolVersion": PROTOCOL_VERSION,
+                    "protocolVersion": protocol,
                     "id": request_id,
                     "method": method,
                     "params": params or {},
@@ -98,7 +108,7 @@ class RuleKitClient:
                 await self._send(
                     {
                         "type": "cancel",
-                        "protocolVersion": PROTOCOL_VERSION,
+                        "protocolVersion": protocol,
                         "correlationId": request_id,
                     },
                     deadline=deadline,
@@ -106,6 +116,7 @@ class RuleKitClient:
             raise RuleKitRemoteError("TIMEOUT", f"Rule Kit operation timed out: {method}") from None
         finally:
             self._pending.pop(request_id, None)
+            self._pending_protocol.pop(request_id, None)
 
     async def list_providers(self) -> list[dict]:
         return await self.call("listProviders")
@@ -177,6 +188,7 @@ class RuleKitClient:
             if not future.done():
                 future.set_exception(error)
         self._pending.clear()
+        self._pending_protocol.clear()
         await self._close_writer()
 
     async def _close_writer(self) -> None:
@@ -234,10 +246,14 @@ class RuleKitClient:
                     message = json.loads(line)
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     raise ProtocolError("worker emitted malformed JSON") from None
-                if not isinstance(message, dict) or message.get("protocolVersion") != PROTOCOL_VERSION:
+                if not isinstance(message, dict) or message.get("protocolVersion") not in {PROTOCOL_VERSION, SNAPSHOT_PROTOCOL_VERSION}:
                     raise ProtocolError("worker response protocol mismatch")
                 correlation_id = message.get("correlationId")
                 future = self._pending.get(correlation_id)
+                if future is not None and message.get("protocolVersion") != self._pending_protocol.get(correlation_id):
+                    raise ProtocolError("worker response namespace mismatch")
+                if message.get("protocolVersion") == SNAPSHOT_PROTOCOL_VERSION and (message.get("workerInstanceId") != self.worker_instance_id or message.get("workerGeneration") != self.worker_generation):
+                    raise ProtocolError("snapshot response worker identity mismatch")
                 if future is None or future.done():
                     continue
                 if message.get("type") == "result":

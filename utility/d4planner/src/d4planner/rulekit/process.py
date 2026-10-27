@@ -210,6 +210,15 @@ class RuleKitProcessWrapper:
         await self.stop("RESTART")
         return await self.start()
 
+    async def reconfigure(self) -> RuleKitClient:
+        """One explicit Rule Kit-requested binding transition, not crash recovery.
+
+        Stop/start retain normal deadlines and ownership. User selections do
+        not consume the separate automatic recovery restart budget.
+        """
+        await self.stop("SNAPSHOT_REBIND")
+        return await self.start()
+
     async def inspect_health(self) -> dict:
         child = self._child
         return {

@@ -1,0 +1,5 @@
+{
+  "schemaVersion": "d4-rulekit-production-trust/v1",
+  "policyStatus": "OWNER_TRUST_ANCHOR_PENDING",
+  "keys": {}
+}
