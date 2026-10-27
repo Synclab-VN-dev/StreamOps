@@ -95,14 +95,14 @@ async function buildScopedInventory(store,reference) {
     domain:'d4-rulekit-snapshot-content/v1',scopeFingerprint:scopeHash,
     resources:records.map(({method,url,sha256}) => ({method,url,sha256})),
   })));
-  const coverage = verifyCoverage(reference.coverage,reference,scope,scopeHash,all,resources,manifest.sourceUrl);
+  const coverage = verifyCoverage(reference.coverage,reference,scope,scopeHash,all,resources,manifest.sourceUrl,manifest.allowedOrigins);
   return freeze({schemaVersion:'d4-rulekit-scoped-inventory/v1',snapshotId:reference.snapshotId,
     manifestSha256:verified.manifestSha256,scope,scopeFingerprint:scopeHash,contentFingerprint,
     fingerprintKind:coverage.state === 'COMPLETE' ? 'COMPLETE_SCOPED_CONTENT' : 'OBSERVED_SCOPED_CONTENT',
     resources:records.map(({method,url,key,sha256}) => ({method,url,identity:key,sha256})),coverage});
 }
 
-function verifyCoverage(evidence,reference,scope,scopeHash,all,resources,sourceUrl) {
+function verifyCoverage(evidence,reference,scope,scopeHash,all,resources,sourceUrl,captureOrigins) {
   const reasons = new Set();
   const missing = new Set();
   const unreachable = new Set();
@@ -110,6 +110,7 @@ function verifyCoverage(evidence,reference,scope,scopeHash,all,resources,sourceU
     reasons:sorted(reasons),missing:sorted(missing),unreachable:sorted(unreachable),
     scopedResourceCount:resources.size,manifestResourceCount:all.size,
     evidenceId:evidence?.evidenceId ?? null});
+  if(canonical(normalizeOrigins(captureOrigins)) !== canonical(scope.origins)) reasons.add('MANIFEST_CAPTURE_ORIGINS_MISMATCH');
   if(!evidence) {reasons.add('COVERAGE_EVIDENCE_MISSING');return finish();}
   if(evidence.manifestSha256 !== reference.manifestSha256) reasons.add('COVERAGE_MANIFEST_BINDING_MISMATCH');
   if(evidence.scopeFingerprint !== scopeHash) reasons.add('COVERAGE_SCOPE_BINDING_MISMATCH');
