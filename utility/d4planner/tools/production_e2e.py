@@ -259,12 +259,14 @@ def _runtime_env(install: Path, bootstrap: Path, evidence: Path) -> dict[str, st
         "D4PLANNER_RULEKIT_EXECUTABLE": str(install / "runtime/node/node.exe"),
         "D4PLANNER_RULEKIT_WORKER": str(install / "utility/d4planner/rulekit-worker/worker.js"),
         "D4PLANNER_RULEKIT_WORKING_DIR": str(install / "utility/d4planner/rulekit-worker"),
-        "D4_RULEKIT_PROFILE_JSON": str(install / "config/maxroll-profile.json"),
-        "D4_RULEKIT_SNAPSHOT_ROOT": str(install / "runtime/snapshots"),
+        "D4_RULEKIT_DATA_ROOT": str(bootstrap.parent / "rulekit"),
+        "D4_RULEKIT_INSTALLATION_ROOT": str(install),
         "D4_RULEKIT_CHROMIUM_EXECUTABLE": str(install / "runtime/chromium/chrome-win64/chrome.exe"),
         "D4PLANNER_EQUIPMENT_EVIDENCE_FILE": str(evidence),
         "D4PLANNER_REPOSITORY_ROOT": str(install),
     })
+    for legacy in ("D4_RULEKIT_PROFILE_JSON", "D4_RULEKIT_SNAPSHOT_ROOT"):
+        env.pop(legacy, None)
     return env
 
 
@@ -409,9 +411,11 @@ def run_backend(args: argparse.Namespace) -> dict:
         if ready.get("event") != "READY" or ready.get("pid") != process.pid:
             raise E2EFailure("managed READY ownership mismatch")
         health = ready.get("health", {})
-        for name in ("ruleKitWorker", "targetRepository", "durableState", "wsTransport"):
+        for name in ("targetRepository", "durableState", "wsTransport"):
             if health.get(name) != "READY":
                 raise E2EFailure(f"required service is not READY: {name}")
+        if health.get("ruleKitWorker") != "UNAVAILABLE":
+            raise E2EFailure("fresh public application must report calculation UNAVAILABLE without a snapshot")
         descendants = _windows_descendants(process.pid)
         names = {str(item.get("Name", "")).lower() for item in descendants}
         if sys.platform == "win32" and not any(name == "node.exe" for name in names):
@@ -745,7 +749,7 @@ def run_package_cycle(args: argparse.Namespace) -> dict:
 
 def run_rulekit(args: argparse.Namespace) -> dict:
     install = args.install_root.resolve()
-    environment = _runtime_env(install, install / "unused-bootstrap.json",
+    environment = _runtime_env(install, args.data_root.resolve() / "unused-bootstrap.json",
                                install / "examples/equipment.recorded.synthetic.json")
     async def scenario():
         service = RuleKitRuntimeService.from_environment(environment)
@@ -754,17 +758,24 @@ def run_rulekit(args: argparse.Namespace) -> dict:
             health = await service.start()
             client = service.client
             assert client is not None
+            active = await client.snapshot_call("getActive")
+            if active.get("calculationAvailability") != "READY" or not active.get("active"):
+                return {"schemaVersion":"d4planner-rulekit-e2e/v1", "ok":False,
+                        "status":"BLOCKED", "classification":"OWNER_APPROVAL_REQUIRED",
+                        "reason":active.get("reason"), "workerHealth":health,
+                        "required":"Official production trust anchor and approved compatible snapshot"}
+            fixture = getattr(args, "application_request", None)
+            if fixture is None:
+                return {"schemaVersion":"d4planner-rulekit-e2e/v1", "ok":False,
+                        "status":"BLOCKED", "classification":"PENDING_DEPENDENCY",
+                        "required":"Approved offline Application request fixture for the active binding"}
+            request = json.loads(fixture.read_text(encoding="utf-8"))
+            binding = active["active"]
+            if (request.get("snapshotId") != binding["snapshotId"] or
+                    request.get("snapshotManifestSha256") != binding["manifestSha256"]):
+                raise E2EFailure("Application fixture does not match Rule Kit authoritative snapshot binding")
             providers = await client.list_providers()
-            provider = next(item for item in providers if item["id"] == "maxroll")
-            request = {
-                "contractVersion":"d4-rulekit-application/v1", "providerId":"maxroll",
-                "providerVersion":provider["version"], "expectedGamePatch":"3.2.1.73552",
-                "snapshotId":"maxroll-20261023T034150Z",
-                "snapshotManifestSha256":"638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54",
-                "buildSchemaVersion":"maxroll-build/rogue-l50-v1",
-                "build":{"class":"Rogue","level":50,"difficulty":"Torment I",
-                         "equipment":{"Helm":{"itemId":"runic-skullcap","modifiers":[]}}},
-            }
+            provider = next(item for item in providers if item["id"] == request["providerId"])
             session = await client.create_session(request)
             baseline = await client.evaluate(session)
             changes = [{"type":"effect.set","effectId":"of-dampening","active":True}]
@@ -870,6 +881,8 @@ def main(argv=None) -> int:
         command.add_argument("--install-root", type=Path, required=True)
         command.add_argument("--data-root", type=Path, required=True)
         command.add_argument("--output", type=Path, required=True)
+        if name == "rulekit":
+            command.add_argument("--application-request", type=Path)
     performance = sub.add_parser("performance")
     performance.add_argument("--install-root", type=Path, required=True)
     performance.add_argument("--data-root", type=Path, required=True)
@@ -898,7 +911,8 @@ def main(argv=None) -> int:
                   run_rulekit(args) if args.command == "rulekit" else run_package_cycle(args))
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
-        print(json.dumps(result, sort_keys=True)); return 0
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result.get("ok") is True else 2
     except (E2EFailure, OSError, ValueError, subprocess.SubprocessError) as exc:
         traceback.print_exc()
         print(f"{type(exc).__name__}:{exc}", file=sys.stderr); return 1

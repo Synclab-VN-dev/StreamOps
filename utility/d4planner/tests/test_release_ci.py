@@ -14,13 +14,13 @@ HEAD='a'*40
 def distribution():
     return {'sourceHead':HEAD,'version':'1.0.3','approvedBy':'TrdHuy','approvalRef':'owner-approval-test',
             'publicDistributionApproved':True,'licensesVerified':True,
-            'snapshotManifestSha256':ci.delivery.load_json(ci.LOCK)['files']['snapshots/maxroll-20261023T034150Z/manifest.json']}
+            'artifactClass':'D4PLANNER_APPLICATION_NO_SNAPSHOT'}
 
 
-def test_distribution_requires_explicit_exact_source_and_snapshot_permission():
+def test_distribution_requires_explicit_application_permission_for_exact_source():
     ci.distribution_approved(distribution(),HEAD,'1.0.3')
     for patch in ({'sourceHead':'b'*40},{'version':'1.0.1'},{'approvedBy':'synclab-automation-system'},
-                  {'publicDistributionApproved':False},{'licensesVerified':False},{'snapshotManifestSha256':'0'*64}):
+                  {'publicDistributionApproved':False},{'licensesVerified':False},{'artifactClass':'PRIVATE_SNAPSHOT_BUNDLE'}):
         with pytest.raises(ValueError): ci.distribution_approved({**distribution(),**patch},HEAD,'1.0.3')
     with pytest.raises(ValueError): ci.distribution_approved({},HEAD,'1.0.3')
 
@@ -50,21 +50,25 @@ def test_versions_fail_before_build_or_publish(release_version):
     with pytest.raises(ci.InstallError,match='INVALID_RELEASE_VERSION'): ci.version(release_version)
 
 
-def test_private_inputs_are_pinned_and_fail_on_tampering(tmp_path,monkeypatch):
+def test_public_inputs_are_pinned_and_fail_on_tampering(tmp_path,monkeypatch):
     lock={'versions':{'test':'pinned'},'files':{}}
-    required=('nsis/makensis.exe','config/maxroll-profile.json','python/python312._pth','python/python312.zip')
+    required=('nsis/makensis.exe','python/python312._pth','python/python312.zip')
     entries=[]
     for name in required:
         file=tmp_path/name;file.parent.mkdir(parents=True,exist_ok=True);file.write_bytes(b'unit-input-not-windows-acceptance')
         entries.append({'path':name,'sha256':ci.delivery.sha256_file(file)})
-    manifest={'schemaVersion':'d4planner-private-build-inputs/v1','versions':lock['versions'],'files':entries}
+    manifest={'schemaVersion':'d4planner-public-build-inputs/v1','snapshotIncluded':False,'versions':lock['versions'],'files':entries}
     (tmp_path/'inputs-manifest.json').write_text(json.dumps(manifest))
+    lock['publicInputsManifestSha256']=__import__('hashlib').sha256(json.dumps(manifest).encode()).hexdigest()
     lock_path=tmp_path/'lock.json';lock_path.write_text(json.dumps(lock));monkeypatch.setattr(ci,'LOCK',lock_path)
     # Keep test lock outside the archive root, as production does.
     root=tmp_path/'input';root.mkdir()
     for name in required:
         dest=root/name;dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes((tmp_path/name).read_bytes())
     (root/'inputs-manifest.json').write_text(json.dumps(manifest))
+    # Isolate this test's file-integrity boundary; real runtime tree pin checks
+    # run independently against the prepared production public inputs.
+    monkeypatch.setattr(ci.public,'validate_tree',lambda *args,**kwargs:None)
     ci.validate_inputs(root)
     (root/'python/python312.zip').write_bytes(b'tampered')
     with pytest.raises(ValueError,match='PRIVATE_INPUT_INTEGRITY'):ci.validate_inputs(root)
@@ -83,7 +87,7 @@ def test_workflow_is_single_dispatch_build_without_unconditional_publish():
 
 def test_exact_artifact_verification_rejects_changes_and_wrong_source(tmp_path):
     artifact=tmp_path/'D4Planner-Setup-1.0.3.exe';artifact.write_bytes(b'unit-checksum-test-not-a-native-setup')
-    metadata={'schemaVersion':'d4planner-setup-build/v1','artifact':artifact.name,'version':'1.0.3',
+    metadata={'schemaVersion':'d4planner-setup-build/v1','artifactClass':'D4PLANNER_APPLICATION_NO_SNAPSHOT','snapshotIncluded':False,'artifact':artifact.name,'version':'1.0.3',
               'sourceHead':HEAD,'bytes':artifact.stat().st_size,'sha256':ci.delivery.sha256_file(artifact)}
     (tmp_path/'release-metadata.json').write_text(json.dumps(metadata))
     ci.verify_built_artifact(tmp_path,HEAD,'1.0.3',metadata['sha256'])

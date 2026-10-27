@@ -143,6 +143,8 @@ Section "D4Planner" SEC_MAIN
   SetOutPath "$PLUGINSDIR"
   File /oname=windows_install.py "${ENGINE}"
   File /oname=release1_delivery.py "${DELIVERY}"
+  File /oname=public_package.py "${PUBLIC_HELPER}"
+  File /oname=public-content-policy.json "${PUBLIC_POLICY}"
   SetCompress off
   File /oname=payload.zip "${PACKAGE}"
   SetCompress auto
@@ -160,6 +162,8 @@ Section "D4Planner" SEC_MAIN
   SetOutPath "$INSTDIR\maintenance"
   File /oname=windows_install.py "${ENGINE}"
   File /oname=release1_delivery.py "${DELIVERY}"
+  File /oname=public_package.py "${PUBLIC_HELPER}"
+  File /oname=public-content-policy.json "${PUBLIC_POLICY}"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   ; Windows INI APIs use ANSI for a new file unless it has a Unicode BOM.
   ; Persist the exact Unicode root, including Vietnamese paths, as UTF-16LE.
