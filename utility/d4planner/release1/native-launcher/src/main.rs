@@ -52,7 +52,7 @@ fn verify(root: &Path) -> Result<Value, String> {
         }
     }
     for name in ["app/d4planner-fe.exe", "runtime/python/python.exe", "runtime/node/node.exe",
-        "runtime/chromium/chrome-win64/chrome.exe", "utility/d4planner/rulekit-worker/worker.js"] {
+        "runtime/chromium/chrome-win64/chrome.exe", "utility/d4planner/rulekit-worker/worker.js", "utility/d4-rulekit/snapshot-management/manage.js"] {
         if !seen.contains(name) { return Err(format!("Required resource absent: {name}")); }
     }
     Ok(manifest)
@@ -118,7 +118,10 @@ fn run() -> Result<(), String> {
     let payload = dunce::simplified(&payload(&root)?).to_path_buf();
     verify(&payload)?;
     if env::args().any(|a| a == "--installation-health") { return Ok(()); }
-    #[cfg(windows)] { windows::launch(&root, &payload, env::args().any(|a| a == "--runtime-health")) }
+    #[cfg(windows)] {
+        if env::args().any(|a| a == "--snapshot-command") { return windows::provision(&root, &payload); }
+        windows::launch(&root, &payload, env::args().any(|a| a == "--runtime-health"))
+    }
     #[cfg(not(windows))] { Err("D4Planner native launch requires Windows".into()) }
 }
 
@@ -187,6 +190,50 @@ mod windows {
         1
     }
 
+    fn data_root(root: &Path) -> Result<PathBuf, String> {
+        let installed = fs::read(root.join("active.json")).ok()
+            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+            .and_then(|state| state["dataDir"].as_str().map(PathBuf::from));
+        let data = env::var_os("D4PLANNER_DATA_ROOT").map(PathBuf::from).or(installed).unwrap_or_else(||
+            PathBuf::from(env::var_os("LOCALAPPDATA").unwrap_or_default()).join("StreamOps/D4Planner"));
+        if !data.is_absolute() || data.starts_with(root) { return Err("DataDir must be absolute and outside installation".into()); }
+        Ok(data)
+    }
+
+    pub fn provision(root: &Path, payload: &Path) -> Result<(), String> { unsafe {
+        let args: Vec<String> = env::args().collect();
+        let required = |name: &str| -> Result<String, String> {
+            let index = args.iter().position(|value| value == name).ok_or_else(|| format!("{name} is required"))?;
+            args.get(index+1).cloned().ok_or_else(|| format!("{name} value is required"))
+        };
+        let mut command = Command::new(payload.join("runtime/node/node.exe"));
+        command.arg(payload.join("utility/d4-rulekit/snapshot-management/manage.js"))
+            .args(["--operation", &required("--snapshot-command")?])
+            .arg("--data-root").arg(data_root(root)?.join("rulekit"))
+            .arg("--installation-root").arg(payload)
+            .args(["--report", &required("--report")?])
+            .creation_flags(CREATE_SUSPENDED | CREATE_NO_WINDOW)
+            .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        if let Some(index) = args.iter().position(|value| value == "--request-file") {
+            command.arg("--request-file").arg(args.get(index+1).ok_or("request file path required")?);
+        }
+        let job = OwnedJob(CreateJobObjectW(std::ptr::null(), std::ptr::null()));
+        let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        if job.0.is_null() || SetInformationJobObject(job.0, JobObjectExtendedLimitInformation, &limits as *const _ as *const _, std::mem::size_of_val(&limits) as u32)==0 { return Err("Cannot own provisioning process".into()); }
+        let mut child = command.spawn().map_err(|e|e.to_string())?;
+        use std::os::windows::io::AsRawHandle;
+        if AssignProcessToJobObject(job.0, child.as_raw_handle() as HANDLE)==0 {let _=child.kill();let _=child.wait();return Err("Cannot assign provisioning ownership".into());}
+        #[link(name="ntdll")] extern "system" {fn NtResumeProcess(process: HANDLE)->i32;}
+        if NtResumeProcess(child.as_raw_handle() as HANDLE)<0 {return Err("Cannot resume provisioning process".into());}
+        let started=Instant::now();
+        loop {
+            if let Some(status)=child.try_wait().map_err(|e|e.to_string())? {return if status.success(){Ok(())}else{Err(format!("Rule Kit provisioning failed: {status}"))};}
+            if started.elapsed()>Duration::from_secs(120){TerminateJobObject(job.0,124);let _=child.wait();return Err("Provisioning deadline exceeded; owned job reclaimed".into());}
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    } }
+
     pub fn launch(root: &Path, payload: &Path, probe: bool) -> Result<(), String> { unsafe {
         let mutex = Handle(CreateMutexW(std::ptr::null(), 1, name(root, "instance").as_ptr()));
         if mutex.0.is_null() { return Err("Cannot create instance mutex".into()); }
@@ -197,12 +244,8 @@ mod windows {
         if console.0 { ShowWindow(GetConsoleWindow(), SW_HIDE); }
         let stop_event = Handle(CreateEventW(std::ptr::null(), 1, 0, name(root, "stop").as_ptr()));
         if stop_event.0.is_null() { return Err("Cannot create owned stop event".into()); }
-        let installed_data = fs::read(root.join("active.json")).ok()
-            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
-            .and_then(|state| state["dataDir"].as_str().map(PathBuf::from));
         let probe_data = env::temp_dir().join(format!("D4Planner-runtime-health-{}", uuid::Uuid::new_v4()));
-        let data = if probe { probe_data.clone() } else { env::var_os("D4PLANNER_DATA_ROOT").map(PathBuf::from).or(installed_data).unwrap_or_else(||
-            PathBuf::from(env::var_os("LOCALAPPDATA").unwrap_or_default()).join("StreamOps/D4Planner")) };
+        let data = if probe { probe_data.clone() } else { data_root(root)? };
         let capture = if probe { None } else { equipment_config(&data)? };
         if !data.is_absolute() || data.starts_with(root) { return Err("DataDir must be absolute and outside installation".into()); }
         for directory in ["targets", "state", "private"] { fs::create_dir_all(data.join(directory)).map_err(|e| e.to_string())?; }
@@ -244,8 +287,9 @@ mod windows {
                 .env("D4PLANNER_RULEKIT_EXECUTABLE", payload.join("runtime/node/node.exe"))
                 .env("D4PLANNER_RULEKIT_WORKER", payload.join("utility/d4planner/rulekit-worker/worker.js"))
                 .env("D4PLANNER_RULEKIT_WORKING_DIR", payload.join("utility/d4planner/rulekit-worker"))
-                .env("D4_RULEKIT_PROFILE_JSON", payload.join("config/maxroll-profile.json"))
-                .env("D4_RULEKIT_SNAPSHOT_ROOT", payload.join("runtime/snapshots"))
+                .env("D4_RULEKIT_DATA_ROOT", data.join("rulekit"))
+                .env("D4_RULEKIT_INSTALLATION_ROOT", payload)
+                .env_remove("D4_RULEKIT_PROFILE_JSON").env_remove("D4_RULEKIT_SNAPSHOT_ROOT")
                 .env("D4_RULEKIT_CHROMIUM_EXECUTABLE", payload.join("runtime/chromium/chrome-win64/chrome.exe"))
                 .env("D4PLANNER_WS_PORT_MODE", if port == 0 { "DYNAMIC" } else { "FIXED_APPROVED_UAT" })
                 .env_remove("D4PLANNER_EQUIPMENT_EVIDENCE_FILE")
@@ -281,7 +325,7 @@ mod windows {
                             .map_err(|e| e.to_string())?;
                         for phase in ["ready", "restartedReady"] {
                             let ready = &report[phase];
-                            if ready["health"]["ruleKitWorker"] != "READY" || ready["health"]["wsTransport"] != "READY"
+                            if !["READY", "UNAVAILABLE"].contains(&ready["health"]["ruleKitWorker"].as_str().unwrap_or("")) || ready["health"]["wsTransport"] != "READY"
                                 || ready["health"]["durableState"] != "READY" || ready["health"]["targetRepository"] != "READY"
                                 || ready["wsEndpoint"]["port"].as_u64().unwrap_or(0) == 0 {
                                 return Err("Runtime health did not prove mandatory service readiness".into());
@@ -306,7 +350,7 @@ mod windows {
                         let index = args.iter().position(|arg| arg == "--health-report").ok_or("Health report path required")?;
                         let output = args.get(index + 1).ok_or("Health report path required")?;
                         fs::write(output, json!({"ok":true,"runtimeReady":true,"ownedCleanup":true,
-                            "probe":"FE_BACKEND_RULEKIT_CHROMIUM_READY_RESTART_STOP","details":report}).to_string())
+                            "probe":"FE_BACKEND_RULEKIT_PROCESS_CHROMIUM_RESTART_STOP","calculationAvailability":report["ready"]["health"]["ruleKitWorker"],"details":report}).to_string())
                             .map_err(|e| e.to_string())?;
                     }
                     return Ok(());

@@ -29,8 +29,8 @@ jobs:
       D4_BUILD_ONLY: ${{ inputs.build_only }}
       GH_TOKEN: ${{ github.token }}
       D4_DISTRIBUTION_APPROVAL: ${{ secrets.D4PLANNER_DISTRIBUTION_APPROVAL_JSON }}
-      D4_PRIVATE_INPUT_URL: ${{ secrets.D4PLANNER_RELEASE_INPUTS_URL }}
-      D4_PRIVATE_INPUT_SHA256: ${{ secrets.D4PLANNER_RELEASE_INPUTS_SHA256 }}
+      D4_PUBLIC_RUNTIME_INPUT_URL: ${{ secrets.D4PLANNER_PUBLIC_RUNTIME_INPUTS_URL }}
+      D4_PUBLIC_RUNTIME_INPUT_SHA256: ${{ secrets.D4PLANNER_PUBLIC_RUNTIME_INPUTS_SHA256 }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

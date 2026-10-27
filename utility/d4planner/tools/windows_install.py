@@ -179,6 +179,23 @@ def runtime_health(root: Path) -> dict:
         return evidence
 
 
+def rulekit_upgrade_preflight(payload: Path, data: Path, previous_payload: Path | None) -> dict:
+    """Invoke Rule Kit's decision; packaging never parses a registry/profile."""
+    with tempfile.TemporaryDirectory(prefix="D4Planner-rulekit-preflight-") as temporary:
+        report = Path(temporary) / "preflight.json"
+        command = [str(payload / "runtime/node/node.exe"),
+                   str(payload / "utility/d4-rulekit/snapshot-management/manage.js"),
+                   "--operation", "upgradePreflight", "--data-root", str(data / "rulekit"),
+                   "--installation-root", str(payload), "--report", str(report)]
+        if previous_payload is not None:
+            command.extend(["--previous-installation-root", str(previous_payload)])
+        completed = subprocess.run(command, cwd=payload, check=False, timeout=30)
+        evidence = delivery.load_json(report)
+        if completed.returncode or evidence.get("ok") is not True or evidence.get("result", {}).get("compatible") is not True:
+            raise InstallError("RULEKIT_UPGRADE_PREFLIGHT_REJECTED:" + str(evidence.get("error", {}).get("code", "INVALID_RESULT")))
+        return evidence["result"]
+
+
 def install(package: Path, root: Path, data: Path, expected_sha: str,
             *, health_check=None, checkpoint=None) -> dict:
     root = root.resolve(); data = data.resolve()
@@ -214,6 +231,8 @@ def install(package: Path, root: Path, data: Path, expected_sha: str,
                     shutil.copyfileobj(source, output)
         verify_directory(destination)
         (health_check or static_health)(destination)
+        if health_check is None and (manifest.get("ruleKit") or {}).get("snapshotManagementContract") == "d4-rulekit-snapshots/v1":
+            rulekit_upgrade_preflight(destination, data, owned_payload(root, previous) if previous else None)
         transaction = root / "transactions" / identifier
         transaction.mkdir(parents=True)
         if previous:
