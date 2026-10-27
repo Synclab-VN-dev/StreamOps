@@ -267,6 +267,32 @@ def _resolve_repository_root(configured: str | None, module_file: Path = Path(__
     raise ValueError("packaged contract repository root cannot be discovered")
 
 
+class RuntimeHudStore(DurableHudStore):
+    """Decorate transport/runtime metadata before the durable commit boundary.
+
+    Equipment scoring remains owned by S4. This adapter only attaches the
+    Rule Kit-owned health result and the enclosing Backend generation.
+    """
+    def __init__(self, path, *, runtime_health, backend_generation):
+        self.runtime_health = runtime_health
+        self.backend_generation = backend_generation
+        super().__init__(path)
+
+    def _factory(self, factory):
+        def build(revision):
+            payload = factory(revision)
+            payload["health"]["ruleKit"] = self.runtime_health()
+            payload["backend"]["generation"] = self.backend_generation()
+            return payload
+        return build
+
+    def commit_if_current(self, binding, payload_factory, committed_at):
+        return super().commit_if_current(binding, self._factory(payload_factory), committed_at)
+
+    def commit_context(self, payload_factory, committed_at):
+        return super().commit_context(self._factory(payload_factory), committed_at)
+
+
 class ProductionBackendRuntime:
     """Own dependencies in start order and close them in reverse order."""
 
@@ -283,7 +309,10 @@ class ProductionBackendRuntime:
             self.target_folder, self.data_dir / "selected-target.json",
             TargetValidator.from_contract_tree(repository_root),
         )
-        self.store = DurableHudStore(self.data_dir / "hud.sqlite3")
+        self.rulekit_state = "UNAVAILABLE"
+        self.rulekit_diagnostics = {"calculationAvailability": "UNAVAILABLE", "reason": "STARTING"}
+        self.store = RuntimeHudStore(self.data_dir / "hud.sqlite3",
+            runtime_health=lambda: self.rulekit_state, backend_generation=lambda: self.generation)
         self.capture = EquipmentCaptureAdapter()
         self.scorer = EquipmentAssessmentService()
         self.coordinator = EquipmentAssessmentCoordinator(self.scorer, self.store, lambda _: None)
@@ -299,14 +328,20 @@ class ProductionBackendRuntime:
 
     async def start(self) -> dict[str, Any]:
         if self.rulekit is None:
-            self.rulekit = RuleKitRuntimeService.from_environment()
+            environment = dict(os.environ)
+            environment.setdefault("D4_RULEKIT_DATA_ROOT", str(self.data_dir / "rulekit"))
+            environment.setdefault("D4_RULEKIT_INSTALLATION_ROOT", str(_resolve_repository_root()))
+            self.rulekit = RuleKitRuntimeService.from_environment(environment)
         rulekit_health = await self.rulekit.start()
+        availability = rulekit_health.get("calculationAvailability", "READY")
+        self.rulekit_state = "READY" if availability == "READY" else "UNAVAILABLE"
+        self.rulekit_diagnostics = rulekit_health.get("snapshotCapabilities", {"calculationAvailability": availability})
         try:
             target = self.targets.get_active()
             initial = self.store.commit_context(
                 lambda revision: _unbound_hud(
                     revision, self.runtime_instance_id, self.generation,
-                    target=target, rulekit_state="READY",
+                    target=target, rulekit_state=self.rulekit_state,
                 ), _now(),
             )
             self.hub = HudHub(initial, backend_generation=self.generation)
@@ -354,7 +389,8 @@ class ProductionBackendRuntime:
                 "health": {
                     "durableState": "READY", "targetRepository": "READY",
                     "targetJsonCount": len(self.targets.list().entries),
-                    "wsTransport": "READY", "ruleKitWorker": "READY",
+                    "wsTransport": "READY", "ruleKitWorker": self.rulekit_state,
+                    "ruleKitProcess": "READY",
                     "ruleKitGeneration": rulekit_health["workerGeneration"],
                     "equipmentCapture": capture_state,
                 },
@@ -380,6 +416,30 @@ class ProductionBackendRuntime:
         await self.hub.publish_after_commit(hud)
         self.store.mark_published(hud["hudRevision"])
         return perf_counter_ns(), publish_started_at
+
+    async def _forward_rulekit_health(self, result: dict[str, Any]) -> None:
+        """Normalize Rule Kit's answer; no registry/profile policy in the BE."""
+        state = "READY" if result.get("calculationAvailability") == "READY" else "UNAVAILABLE"
+        self.rulekit_diagnostics = result
+        async with self._ingest_lock:
+            if state == self.rulekit_state:
+                return
+            self.rulekit_state = state
+            latest = self.store.latest_authoritative()
+            if latest is None:
+                return
+            def build(revision):
+                payload = json.loads(json.dumps(latest))
+                payload["hudRevision"] = revision
+                payload["producedAt"] = _now()
+                return payload
+            hud = self.store.commit_context(build, _now())
+            await self._publish_committed(hud)
+
+    async def snapshot_management(self, method: str, request: dict | None = None):
+        if self.rulekit is None:
+            raise RuntimeError("Rule Kit service is not started")
+        return await self.rulekit.snapshot_api(method, request, on_health=self._forward_rulekit_health)
 
     async def capture_health_changed(self, status: str) -> None:
         """Publish watcher degradation/recovery without relabelling stale score CURRENT."""
@@ -485,6 +545,9 @@ class ProductionBackendRuntime:
             return hud
 
     async def handle_control(self, command: dict[str, Any]) -> dict[str, Any] | None:
+        if command.get("type") == "rulekit.snapshot":
+            result = await self.snapshot_management(command.get("method", ""), command.get("params"))
+            return {"correlationId": command.get("correlationId"), "result": result}
         if command.get("type") != "equipment.evidence":
             return None
         hud = await self.ingest(command.get("evidence"))
