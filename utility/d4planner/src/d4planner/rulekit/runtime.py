@@ -87,18 +87,24 @@ class RuleKitRuntimeService:
             result["calculationAvailability"] = "READY"
         return result
 
-    async def snapshot_api(self, method: str, request: dict | None = None) -> dict | list:
+    async def snapshot_api(self, method: str, request: dict | None = None, *, on_health=None) -> dict | list:
         """Transport/lifecycle adapter only. Decisions belong to the Node Rule Kit."""
         async with self._management_lock:
             if self.client is None:
                 raise RuntimeError("Rule Kit worker is not running")
             result = await self.client.snapshot_call(method, request)
             if isinstance(result, dict) and result.get("restartRequired"):
+                if on_health is not None:
+                    await on_health(await self.client.snapshot_call("getCapabilities"))
                 self.client = await self.wrapper.reconfigure()
                 # A fresh client invalidates all old session refs. The Rule Kit
                 # persisted the selection and owns its validation at startup.
                 active = await self.client.snapshot_call("getActive")
+                if on_health is not None:
+                    await on_health(await self.client.snapshot_call("getCapabilities"))
                 return {**result, "afterRestart": active}
+            if on_health is not None:
+                await on_health(await self.client.snapshot_call("getCapabilities"))
             return result
 
     async def stop(self) -> None:
