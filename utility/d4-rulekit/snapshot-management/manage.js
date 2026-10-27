@@ -17,6 +17,7 @@ async function main(){
    manager=createProductionManager({dataRoot:values['data-root'],installationRoot:values['installation-root'],workerGeneration:1});await manager.start();
    let params={};if(values['request-file'])params=JSON.parse(await fs.readFile(values['request-file'],'utf8'));
    result=await manager.invoke(values.operation,params);
+   if(['getActive','getCapabilities'].includes(values.operation))result={...result,configurationAvailability:result.active?'VERIFIED_BINDING':'UNAVAILABLE',calculationAvailability:'UNAVAILABLE',reason:'RUNTIME_NOT_RUNNING'};
   }
   const report={ok:true,protocolVersion:'d4-rulekit-snapshots/v1',result};
   if(values.report)await fs.writeFile(values.report,JSON.stringify(report));else process.stdout.write(JSON.stringify(report)+'\n');
