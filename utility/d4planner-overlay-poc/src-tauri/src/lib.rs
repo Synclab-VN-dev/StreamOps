@@ -63,6 +63,7 @@ fn backend_launch_from_environment() -> Result<LaunchSpecification, String> {
         if let Ok(value) = env::var(name) { environment.insert(name.into(), value); }
     }
     for name in [
+        "D4_RULEKIT_DATA_ROOT", "D4_RULEKIT_INSTALLATION_ROOT",
         "D4PLANNER_RULEKIT_EXECUTABLE", "D4PLANNER_RULEKIT_WORKER",
         "D4PLANNER_RULEKIT_WORKING_DIR", "D4_RULEKIT_PROFILE_JSON",
         "D4_RULEKIT_SNAPSHOT_ROOT", "D4_RULEKIT_CHROMIUM_EXECUTABLE",
@@ -460,7 +461,7 @@ pub fn run() {
             let wrapper = BackendProcessWrapper::new(Arc::new(StdProcessDriver), specification.clone());
             let ready = wrapper.start()?;
             if ready.ws_endpoint.port == 0 || ready.health.ws_transport != "READY"
-                || ready.health.rule_kit_worker != "READY"
+                || !["READY", "UNAVAILABLE"].contains(&ready.health.rule_kit_worker.as_str())
             {
                 let _ = wrapper.stop();
                 return Err("managed Backend service readiness is incomplete".into());
