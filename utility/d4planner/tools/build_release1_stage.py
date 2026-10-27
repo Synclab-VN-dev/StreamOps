@@ -10,6 +10,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import public_package as public
 
 
 class StageError(RuntimeError):
@@ -41,6 +42,17 @@ def copy_tree(source: Path, destination: Path) -> None:
             shutil.copyfile(member, target)
 
 
+def copy_public_tree(source: Path, destination: Path) -> None:
+    for member in sorted(source.rglob("*")):
+        relative = member.relative_to(source)
+        if not public.included(relative):
+            continue
+        if member.is_symlink():
+            raise StageError("SYMLINK_NOT_ALLOWED")
+        if member.is_file():
+            copy_file(member, destination / relative)
+
+
 def copy_file(source: Path, destination: Path) -> None:
     if not source.is_file() or source.is_symlink():
         raise StageError(f"INVALID_FILE:{source}")
@@ -56,12 +68,13 @@ def assemble(args: argparse.Namespace) -> dict:
     if getattr(args, "launcher_exe", None):
         copy_file(args.launcher_exe.resolve(), root / "D4Planner.exe")
     copy_file(args.frontend_exe.resolve(), root / "app/d4planner-fe.exe")
-    copy_tree(args.python_root.resolve(), root / "runtime/python")
+    public.validate_tree(args.python_root.resolve(), "runtime/python")
+    copy_public_tree(args.python_root.resolve(), root / "runtime/python")
     copy_tree(args.python_site_packages.resolve(), root / "backend/site-packages")
-    copy_tree(args.node_root.resolve(), root / "runtime/node")
-    copy_tree(args.chromium_root.resolve(), root / "runtime/chromium")
-    copy_tree(args.snapshot_root.resolve(), root / "runtime/snapshots/maxroll-20261023T034150Z")
-    copy_file(args.profile.resolve(), root / "config/maxroll-profile.json")
+    public.validate_tree(args.node_root.resolve(), "runtime/node")
+    copy_public_tree(args.node_root.resolve(), root / "runtime/node")
+    public.validate_tree(args.chromium_root.resolve(), "runtime/chromium")
+    copy_public_tree(args.chromium_root.resolve(), root / "runtime/chromium")
 
     repository = Path(__file__).resolve().parents[3]
     # Dependency cache may contain an older editable/project wheel. Always
@@ -71,16 +84,32 @@ def assemble(args: argparse.Namespace) -> dict:
               root / "utility/d4planner/rulekit-worker")
     copy_tree(repository / "utility/d4planner/contracts",
               root / "utility/d4planner/contracts")
-    for module in ("application", "browser-infra", "providers/maxroll"):
-        source = repository / "utility/d4-rulekit" / module
-        destination = root / "utility/d4-rulekit" / module
-        copy_tree(source, destination)
+    # Exact reviewed source allowlist; never copy a developer provider tree,
+    # captured fixtures, encrypted packages or arbitrary untracked files.
+    for relative in public.policy()["sourceAllowlist"]:
+        copy_file(repository / relative, root / relative)
+    for module in ("browser-infra", "providers/maxroll", "snapshot-management"):
+        source = repository / "utility/d4-rulekit" / module / "node_modules"
+        public.validate_tree(source, "dependencies/" + module, dependencies=True)
+        for member in sorted(source.rglob("*")):
+            relative = member.relative_to(source)
+            if not public.included(relative) or relative.parts[:2] == ("@streamops", "browser-infrastructure"):
+                continue
+            if member.is_file():
+                copy_file(member, root / "utility/d4-rulekit" / module / "node_modules" / relative)
+        # Local package dependency comes from the same reviewed public source,
+        # rather than an npm file-dependency cache containing development files.
+        if (source / "@streamops/browser-infrastructure").exists():
+            for relative in public.policy()["sourceAllowlist"]:
+                prefix = "utility/d4-rulekit/browser-infra/"
+                if relative.startswith(prefix):
+                    copy_file(repository / relative, root / "utility/d4-rulekit" / module / "node_modules/@streamops/browser-infrastructure" / relative[len(prefix):])
 
     required = [
         root / "app/d4planner-fe.exe", root / "runtime/python/python.exe",
         root / "runtime/node/node.exe",
         root / "runtime/chromium/chrome-win64/chrome.exe",
-        root / "runtime/snapshots/maxroll-20261023T034150Z/manifest.json",
+        root / "utility/d4-rulekit/snapshot-management/manage.js",
         root / "backend/site-packages/d4planner/managed_backend.py",
         root / "utility/d4planner/rulekit-worker/worker.js",
         root / "utility/d4-rulekit/providers/maxroll/node_modules/playwright-core/package.json",
@@ -96,10 +125,10 @@ def assemble(args: argparse.Namespace) -> dict:
             "pythonVersion": (root / "runtime/python/python312._pth").read_text(errors="replace").splitlines()[0],
             "nodeSha256": sha256(root / "runtime/node/node.exe"),
             "chromiumSha256": sha256(root / "runtime/chromium/chrome-win64/chrome.exe"),
-            "snapshotManifestSha256": sha256(root / "runtime/snapshots/maxroll-20261023T034150Z/manifest.json"),
-            "profileSha256": sha256(root / "config/maxroll-profile.json"),
+            "snapshotIncluded": False,
         },
     }
+    report["publicInspection"] = public.inspect_directory(root)
     (root / "build-stage.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return report
 
@@ -108,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--launcher-exe", type=Path, required=True)
     for name in ("frontend-exe", "python-root", "python-site-packages", "node-root",
-                 "chromium-root", "snapshot-root", "profile", "output"):
+                 "chromium-root", "output"):
         parser.add_argument("--" + name, type=Path, required=True)
     args = parser.parse_args(argv)
     try:

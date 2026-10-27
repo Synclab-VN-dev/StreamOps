@@ -86,8 +86,10 @@ $env:D4PLANNER_REPOSITORY_ROOT = $InstallRoot
 $env:D4PLANNER_RULEKIT_EXECUTABLE = Join-Path $InstallRoot 'runtime\node\node.exe'
 $env:D4PLANNER_RULEKIT_WORKER = Join-Path $InstallRoot 'utility\d4planner\rulekit-worker\worker.js'
 $env:D4PLANNER_RULEKIT_WORKING_DIR = Join-Path $InstallRoot 'utility\d4planner\rulekit-worker'
-$env:D4_RULEKIT_PROFILE_JSON = Join-Path $InstallRoot 'config\maxroll-profile.json'
-$env:D4_RULEKIT_SNAPSHOT_ROOT = Join-Path $InstallRoot 'runtime\snapshots'
+$env:D4_RULEKIT_DATA_ROOT = Join-Path $DataRoot 'rulekit'
+$env:D4_RULEKIT_INSTALLATION_ROOT = $InstallRoot
+Remove-Item Env:D4_RULEKIT_PROFILE_JSON -ErrorAction SilentlyContinue
+Remove-Item Env:D4_RULEKIT_SNAPSHOT_ROOT -ErrorAction SilentlyContinue
 $env:D4_RULEKIT_CHROMIUM_EXECUTABLE = Join-Path $InstallRoot 'runtime\chromium\chrome-win64\chrome.exe'
 $env:D4PLANNER_WS_PORT_MODE = $(if ($WsPortMode -eq 'Dynamic') { 'DYNAMIC' } else { 'FIXED_APPROVED_UAT' })
 if ($WsPortMode -eq 'FixedApprovedUat') {

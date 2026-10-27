@@ -133,3 +133,33 @@ là `SCOPED_SUBSET_PASS`, không đổi kết quả FAIL lịch sử thành full
 production sentinel chỉ được tạo khi chưa có registration/shortcut thật.
 
 Release CI và checkpoint public distribution xem [RELEASE-CI.md](RELEASE-CI.md).
+
+## Tách Application / Snapshot (Owner APPROVED 27/10/2026)
+
+Setup 1.1.x không chứa snapshot/profile; Rule Kit source/runtime vẫn được đóng
+đầy đủ. `D4Planner.exe` chỉ truyền installation root và DataRoot/rulekit, không
+resolve registry/profile. Không có snapshot: Equipment/HUD/WS vẫn hoạt động,
+calculation **UNAVAILABLE**; process/Chromium readiness được kiểm tra độc lập.
+
+Provisioning local qua `D4Planner.exe --snapshot-command <method>` với
+`--request-file <private-json> --report <private-report>`. Phải đóng application
+trước offline provisioning; live management do BE gọi riêng Rule Kit API.
+Phương thức: listInstalled, checkCompatibility, getCapabilities, importPackage,
+activate, getActive, switchSnapshot, rollback. Đây là contract riêng
+`d4-rulekit-snapshots/v1`, giữ nguyên tám Application APIs. Registry import dùng
+importPackage với kind REGISTRY; snapshot import dùng packagePath. CLI chỉ kiểm
+tra configuration, không báo calculation READY khi worker không chạy.
+
+Rule Kit xác thực Ed25519, exact compatibility evidence/profile/codec/strategy,
+revision chống rollback và revocation. Không auto-fallback. Một active binding
+mỗi worker generation; switch/rollback yêu cầu worker mới và invalidate session.
+Production public key/key ID chưa có: **production trust activation BLOCKED**.
+Không đưa test key vào cấu hình production hoặc dùng synthetic compatibility
+PASS làm production evidence. Store immutable theo ID/hash, ngoài install root.
+
+Upgrade gọi Rule Kit `upgradePreflight` trước activation. Selected binding không
+tương thích/untrusted/corrupt hoặc legacy bundled snapshot chưa migrate được
+thì giữ app/data cũ. Không tự chuyển profile/snapshot, không restore DB. Fresh
+no-snapshot install/upgrade không yêu cầu key. Uninstall giữ snapshot store,
+DB, Targets, Settings. Chưa có hai snapshot thật được duyệt: real multi-snapshot
+E2E NOT_RUN; tests isolated dùng synthetic packages và ephemeral test signing key.

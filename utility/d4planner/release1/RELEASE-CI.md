@@ -1,70 +1,68 @@
-# Release CI D4Planner
+# Release CI D4Planner Application
 
 Chỉ một workflow `.github/workflows/d4planner-release.yml`, tên **D4Planner Release**,
-trigger `workflow_dispatch`, inputs `version` X.Y.Z và `build_only` boolean mặc định
-true. Checkout đúng `github.sha`, action SHAs cố định; Python 3.12.10, Node 22.22.1,
-Rust 1.90.0, NSIS 3.09, Chromium 156.0.8078.4, Playwright Core 1.64.1.
-Npm/Cargo dùng lockfiles; dependencies BE dùng `requirements-release.txt`.
-Không chạy workflow trong đợt sửa này. File ở feature branch chưa đồng nghĩa có
-thể dispatch: GitHub yêu cầu workflow hiện diện trên default branch.
+trigger `workflow_dispatch`, inputs `version` X.Y.Z và `build_only` mặc định true.
+Checkout đúng `github.sha`; actions và runtime được pin. Workflow chưa được chạy
+trong đợt này. File trên feature branch chưa đồng nghĩa dispatch được: cần có
+workflow trên default branch. Không tự merge hoặc kích hoạt Actions.
 
-## Input private, không tải latest
+## Application và snapshot là hai kênh riêng
 
-Owner cấu hình secrets (F không thay repository settings):
+Setup chứa HUD, Backend, Rule Kit, Python, Node và Chromium; **không chứa Maxroll
+Snapshot hoặc profile private**, kể cả dạng encrypted. Snapshot store nằm ở
+DataRoot/rulekit, ngoài application root, chỉ Rule Kit quản lý. Không có snapshot:
+FE/BE/Equipment hoạt động, calculation UNAVAILABLE. Production trust activation
+BLOCKED tới khi Owner chỉ định public key/key ID chính thức. Test key không được
+production tin cậy. Quyền phân phối snapshot công khai chưa được cấp.
 
-- `D4PLANNER_RELEASE_INPUTS_URL`: HTTPS URL private/signed tới ZIP inputs đã review.
-- `D4PLANNER_RELEASE_INPUTS_SHA256`: SHA-256 chính xác của ZIP trên.
-- `D4PLANNER_DISTRIBUTION_APPROVAL_JSON`: attestation theo exact source/version,
-  snapshot pin và quyền phân phối công khai. Repository hiện public, Setup chứa
-  snapshot private; thiếu quyền thì workflow dừng **trước build/upload**. Không
-  ngầm xem quyền build như quyền upload công khai.
+## Build input công khai đã review
 
-ZIP inputs có thư mục `python`, `node`, `chromium`, `snapshots`, `config` và `nsis`.
-`inputs-manifest.json` chứa `schemaVersion: d4planner-private-build-inputs/v1`,
-`versions` giống `release-runtime-lock.json`, và `files` với path/sha256 cho **mọi**
-file khác trong ZIP. Runtime binary và snapshot manifest phải khớp hash đã pin
-trong source; mọi file còn lại khớp trusted archive+manifest, không symlink hay
-path escape. Không chứa credentials/DB. NSIS Windows portable lấy bản 3.09 tại
-https://sourceforge.net/projects/nsis/files/NSIS%203/3.09/ (ZIP SHA-256
-`f5dc52eef1f3884230520199bac6f36b82d643d86b003ce51bd24b05c6ba7c91`).
+Owner cấu hình các secrets sau khi review; F không thay repository settings:
 
-Attestation distribution (các giá trị binding do Owner cung cấp cho source cụ thể):
-`sourceHead`, `version`, `snapshotManifestSha256`, `approvedBy: TrdHuy`,
-`approvalRef`, `publicDistributionApproved: true`, `licensesVerified: true`.
-Không đặt secret hoặc URL private vào source/report công khai.
+- `D4PLANNER_PUBLIC_RUNTIME_INPUTS_URL`: HTTPS URL tới archive chỉ có Python, Node,
+  Chromium và NSIS. Không đưa snapshot/profile vào archive rồi lọc bỏ sau download.
+- `D4PLANNER_PUBLIC_RUNTIME_INPUTS_SHA256`: phải khớp digest đã pin trong
+  `release-runtime-lock.json`; archive private cũ bị từ chối trước download.
+- `D4PLANNER_DISTRIBUTION_APPROVAL_JSON`: approval theo source/version chính xác,
+  `artifactClass: D4PLANNER_APPLICATION_NO_SNAPSHOT`, `approvedBy: TrdHuy`,
+  `approvalRef`, `publicDistributionApproved: true`, `licensesVerified: true`.
+  Đây là quyền phân phối application/dependencies; không phải quyền snapshot.
+
+`inputs-manifest.json` có schema `d4planner-public-build-inputs/v1`,
+`snapshotIncluded: false`, runtime versions và inventory SHA của mọi file.
+Archive/manifest/runtime trees phải khớp pin trong source; chỉ chấp nhận roots
+python/node/chromium/nsis. Source Rule Kit dùng allowlist; npm dependencies dùng
+lockfiles và reviewed tree digest. Content inspection chặn private manifest,
+profile, known snapshot payload đổi tên, encrypted/unreviewed archive và DB.
+Không download/mount snapshot private trong public build, cache, log hay artifact.
+
+Versions: Python 3.12.10, Node 22.22.1, Rust 1.90.0, NSIS 3.09,
+Chromium 156.0.8078.4, Playwright Core 1.64.1. Cargo/npm dùng lockfiles;
+BE dùng requirements-release.txt. Không tải latest hoặc dependency lúc launch.
 
 ## Build-only
 
-`release_ci.py` verify inputs → build FE/root bằng Cargo locked → build BE wheel
-và site-packages pinned → install Rule Kit JS dependencies qua npm lock → gọi
-`build_release1_stage.py`, `release1_delivery.py`, `build_windows_installer.py`.
-Có unit/contract/package tests, static manifest/SHA validation và actual native
-FE self-test khởi động/restart/stop BE/Rule Kit/Chromium trong owned Job.
-Probe không thay native visual acceptance.
+`release_ci.py` verify public inputs → build FE/root → BE wheel/site-packages →
+Rule Kit dependencies → assemble stage → package → NSIS Setup. Scripts hiện có
+được tái sử dụng. Verify manifest/SHA/public content và chạy real runtime probe
+FE → Backend → Node/Chromium → WS, xác nhận calculation UNAVAILABLE khi không
+có snapshot, owned cleanup. Probe không thay native visual acceptance.
 
-Artifact chỉ gồm **Setup EXE + release-metadata.json + SHA256SUMS**; không upload
-ZIP input, raw snapshot/DB/log/credentials. Setup tự chứa private resources, nên
-cả upload Setup cũng cần distribution approval. Không tạo GitHub Release khi
-`build_only=true`.
+Artifact chỉ gồm Setup EXE + release-metadata.json + SHA256SUMS, không upload
+inputs/cache/raw DB/private snapshots/log/credentials. `build_only=true` không
+tạo GitHub Release. Build/upload vẫn cần application license/distribution approval.
 
 ## Publish opt-in
 
-`build_only=false` vẫn chạy toàn bộ build trên. Trước đó verify environment
-`d4planner-release` đã tồn tại, required reviewer duy nhất **TrdHuy**, prevent
-self-review bật. Thiếu gate/API quyền đọc thì dừng; không tạo environment tự động.
-Job publish chờ protected environment approval; F không tự cấu hình/approve.
+`build_only=false` giữ đúng artifact đã build/test, không rebuild; chờ protected
+`d4planner-release` environment có reviewer TrdHuy, prevent self-review. Thiếu
+quyền/gate/environment thì dừng an toàn; không tự tạo hoặc cấu hình environment.
 
-Environment secret `D4PLANNER_RELEASE_GATES_JSON` phải bind `sourceHead`, `version`,
-`sha256` của đúng Setup, `approvedBy: TrdHuy`, `approvalRef`; `gates` yêu cầu
-PKG-01…08, HUD-03 và VISUAL_GOLDEN đều PASS. Hiện các MAN/Golden chưa PASS nên chưa
-release-ready. Offline negative vẫn DEFERRED_OWNER trong acceptance hiện tại.
+`D4PLANNER_RELEASE_GATES_JSON` bind exact sourceHead/version/Setup SHA, Owner và
+approvalRef. PKG-01…08, HUD-03, VISUAL_GOLDEN, SNAP-01…07 phải PASS. Hiện production
+trust, real multiple-snapshot evidence, MAN/Golden chưa đầy đủ nên **không
+release-ready**. Network-off negative vẫn DEFERRED_OWNER.
 
-Download đúng immutable artifact ID từ job build, đối chiếu Setup SHA với output
-job và metadata, verify lại distribution/Owner/gates; từ chối release/tag đã tồn
-tại hoặc không xác minh được. Create tag bằng API không force; publish chính Setup
-đã build/test, không rebuild. Nếu publish lỗi sau tạo tag, giữ fail và để Owner
-xử lý checkpoint tag; không ghi đè/xóa tag tự động.
-
-Tài liệu GitHub:
-[Environment protection](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments),
-[workflow_dispatch](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch).
+Download đúng immutable artifact ID, verify checksum/metadata/gates/approval,
+từ chối tag/release tồn tại. Không publish trong đợt này. Không đưa snapshot vào
+application attestation hoặc dùng approval application để vượt quyền snapshot.

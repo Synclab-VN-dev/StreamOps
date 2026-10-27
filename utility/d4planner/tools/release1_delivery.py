@@ -19,6 +19,8 @@ import subprocess
 import sys
 import time
 import zipfile
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import public_package as public
 
 PLAN_VERSION = "d4planner-package-plan/v1"
 MANIFEST_VERSION = "d4planner-release-manifest/v1"
@@ -99,9 +101,9 @@ def validate_plan(plan: dict) -> None:
         ids.add(resource_id); paths.add(path)
     if not ids:
         raise DeliveryError("NO_ARTIFACTS")
-    digest = str((plan.get("ruleKit") or {}).get("snapshotManifestSha256", ""))
-    if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
-        raise DeliveryError("INVALID_SNAPSHOT_PIN")
+    rulekit = plan.get("ruleKit") or {}
+    if rulekit.get("snapshotIncluded") is not False or rulekit.get("snapshotManagementContract") != "d4-rulekit-snapshots/v1":
+        raise DeliveryError("PUBLIC_SNAPSHOT_SEPARATION_REQUIRED")
 
 
 def _check_source(path: Path, relative: str) -> None:
@@ -173,12 +175,14 @@ def build_package(plan_path: Path, source: Path, output: Path, *, release_versio
                 repository_root / safe_relative(entry["source"])
                 if "source" in entry else source / safe_relative(entry["path"])
             )
-            package.writestr(info, source_path.read_bytes())
+            data = source_path.read_bytes()
+            public.inspect_bytes(entry["path"], data)
+            package.writestr(info, data)
     verify_package(output)
     return {"manifest": manifest, "artifactSha256": sha256_file(output)}
 
 
-def verify_package(package_path: Path) -> dict:
+def verify_package(package_path: Path, *, public_only: bool = False) -> dict:
     try:
         with zipfile.ZipFile(package_path) as package:
             names = package.namelist()
@@ -189,12 +193,17 @@ def verify_package(package_path: Path) -> dict:
             manifest = json.loads(package.read("release-manifest.json"))
             if manifest.get("schemaVersion") != MANIFEST_VERSION:
                 raise DeliveryError("MANIFEST_VERSION_MISMATCH")
+            snapshot_free = (manifest.get("ruleKit") or {}).get("snapshotIncluded") is False
+            if public_only and not snapshot_free:
+                raise DeliveryError("PUBLIC_SNAPSHOT_SEPARATION_REQUIRED")
             declared = {entry["path"]: entry for entry in manifest.get("files", [])}
             if set(names) != {"release-manifest.json", *declared}:
                 raise DeliveryError("UNDECLARED_OR_MISSING_FILE")
             for relative, entry in declared.items():
                 safe_relative(relative)
                 data = package.read(relative)
+                if snapshot_free:
+                    public.inspect_bytes(relative, data)
                 if hashlib.sha256(data).hexdigest() != entry.get("sha256") or len(data) != entry.get("bytes"):
                     raise DeliveryError(f"ARTIFACT_HASH_MISMATCH:{relative}")
             return manifest
@@ -348,6 +357,11 @@ def load_executors(path: Path | None) -> dict[str, dict]:
             or not isinstance(evidence_file, str) or not evidence_file
         ):
             raise DeliveryError(f"INVALID_EXECUTOR_CASE:{case_id}")
+        blockers = spec.get("allowedBlockers", [])
+        if (not isinstance(blockers, list) or any(item not in {
+                "OWNER_APPROVAL_REQUIRED", "PENDING_DEPENDENCY", "ENVIRONMENT_FAILURE"
+        } for item in blockers)):
+            raise DeliveryError(f"INVALID_EXECUTOR_BLOCKERS:{case_id}")
         if cwd != ".":
             safe_relative(cwd)
         safe_relative(evidence_file.replace("{CASE_ID}", case_id))
@@ -529,11 +543,19 @@ def _run_executor(
         evidence_ok, evidence_actual, evidence_path = _validate_executor_evidence(case_id, spec, evidence_root)
         status = "PASS" if owned.process.returncode == 0 and evidence_ok else "FAIL"
         classification = "AUTOMATED" if status == "PASS" else ("PRODUCT_FAILURE" if owned.process.returncode else "HARNESS_FAILURE")
+        blocker = None
+        if owned.process.returncode == 2 and evidence_path.is_file():
+            candidate = load_json(evidence_path)
+            if (candidate.get("ok") is False and candidate.get("status") == "BLOCKED"
+                    and candidate.get("classification") in spec.get("allowedBlockers", [])):
+                blocker = candidate
+                status = "BLOCKED"
+                classification = candidate["classification"]
         return {
             "id": case_id,
             "status": status,
             "classification": classification,
-            "actual": evidence_actual if owned.process.returncode == 0 else f"UNEXPECTED_EXIT_{owned.process.returncode}",
+            "actual": (blocker.get("reason") or blocker.get("required") or "EXTERNAL_PREREQUISITE_REQUIRED") if blocker else (evidence_actual if owned.process.returncode == 0 else f"UNEXPECTED_EXIT_{owned.process.returncode}"),
             "processExitCode": owned.process.returncode,
             "evidence": str(log_path),
             "scenarioEvidence": str(evidence_path),

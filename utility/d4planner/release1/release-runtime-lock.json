@@ -12,7 +12,9 @@
     "python/python.exe": "4d6f5f81a4bca11191c4c7c6b43632694d0a4ce74e068619d8fdc161d469859a",
     "node/node.exe": "923a41f268ab49ede2e3363fbdd9e790609e385c6f3ca880b4ee9a56a8133e5a",
     "chromium/chrome-win64/chrome.exe": "7f08161bbeb2853ffe1780a9ded4985087f52efb9725d7d8207aabdd42f7cfb9",
-    "snapshots/maxroll-20261023T034150Z/manifest.json": "638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54",
     "nsis/makensis.exe": "f142bb94774975da5f6099f55de19616b2412499811496698b10c3abc7655e00"
-  }
+  },
+  "snapshotIncluded": false,
+  "publicInputsArchiveSha256": "2208c0417aee695518eef6d211c99c2027fff649466c83e47232c02f67b248df",
+  "publicInputsManifestSha256": "9201d5aa352808f4cea5e0edb5bd975b37079f163ff039dcff39afb9c444efda"
 }

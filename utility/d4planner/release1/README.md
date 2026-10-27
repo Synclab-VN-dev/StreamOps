@@ -5,7 +5,7 @@ for `R1-EQUIPMENT-20261025`. It does not include sibling implementation
 artifacts and cannot certify Windows/runtime/visual/manual acceptance on Linux.
 
 `package-plan.json` pins the S1 contract, approved MagicPath revision, Rule Kit
-snapshot manifest, Playwright version, artifact owners and persistent paths.
+external Rule Kit Snapshot Management contract, Playwright version, artifact owners and persistent paths.
 The builder requires all sibling-produced artifacts, rejects missing files,
 symlinks and unsafe paths, then writes a deterministic ZIP whose generated
 manifest hashes every file. It never downloads `latest`, captures Maxroll, or
@@ -16,6 +16,16 @@ the application directory while preserving `targets/` and `state/`; it never
 wipes a database or user Target to recover from an error. The included Target
 fixture under the S1 contract remains synthetic test data and is not selected
 as a production Target automatically.
+
+## Application / Snapshot split
+
+Application Setup does not contain a Maxroll snapshot/profile, plaintext or
+encrypted. Rule Kit owns the external `DataRoot/rulekit` store and signed registry,
+compatibility, import/activation/switch/rollback. BE only forwards its API/status.
+Without a snapshot the app/Equipment remain available; calculation is UNAVAILABLE.
+Production trust activation awaits the Owner-pinned public key/key ID. No automatic
+fallback or acceptance of a newly signed but unverified binding. See
+[Windows installer](WINDOWS-INSTALLER.md) and [Release CI](RELEASE-CI.md).
 
 ## Owner HUD-03 manual launch
 
