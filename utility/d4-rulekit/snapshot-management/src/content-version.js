@@ -25,12 +25,18 @@ function normalizeUrl(value) {
 function normalizeScope(input) {
   fail(validateScope(input),'CONTENT_SCOPE_SCHEMA_INVALID');
   const scope = structuredClone(input);
+  for(const value of scope.origins) {
+    const url = new URL(normalizeUrl(value));
+    fail(url.pathname === '/' && !url.search && !new URL(value).hash,'CONTENT_SCOPE_ORIGIN_INVALID');
+  }
   scope.origins = [...normalizeOrigins(scope.origins)];
-  scope.methods = sorted(scope.methods);
-  scope.excludedResourceTypes = sorted(scope.excludedResourceTypes);
+  scope.methods = sorted(new Set(scope.methods));
+  scope.excludedResourceTypes = sorted(new Set(scope.excludedResourceTypes));
   for (const field of ['include','exclude']) {
     scope[field] = uniqueObjects(scope[field].map(rule => {
-      const origin = new URL(normalizeUrl(rule.origin)).origin;
+      const originUrl = new URL(normalizeUrl(rule.origin));
+      fail(originUrl.pathname === '/' && !originUrl.search && !new URL(rule.origin).hash,'CONTENT_SCOPE_ORIGIN_INVALID');
+      const origin = originUrl.origin;
       fail(scope.origins.includes(origin),'CONTENT_RULE_ORIGIN_OUTSIDE_SCOPE');
       fail(rule.path.startsWith('/') && !/[?#\\]/.test(rule.path),'CONTENT_SCOPE_PATH_INVALID');
       const url = new URL(rule.path,origin);
@@ -127,7 +133,8 @@ function verifyCoverage(evidence,reference,scope,scopeHash,all,resources,sourceU
     if(resource.method !== 'GET' || resource.status < 200 || resource.status >= 300) reasons.add('CONTENT_BODY_UNCONFIRMED');
   }
   for (const failed of evidence.failedRequests) {
-    if(inScope(identity(failed),scope)) reasons.add('IN_SCOPE_REQUEST_FAILED');
+    const normalized = identity(failed),node = nodes.get(normalized.key);
+    if(inScope(normalized,scope) && (!node || !scope.excludedResourceTypes.includes(node.resourceType))) reasons.add('IN_SCOPE_REQUEST_FAILED');
   }
   const roots = evidence.roots.map(root => identity(root).key);
   for(const key of roots) if(!all.has(key)) missing.add(key);
