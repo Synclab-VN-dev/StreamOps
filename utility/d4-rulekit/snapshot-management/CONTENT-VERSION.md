@@ -48,7 +48,7 @@ hoặc resource-type conflict là typed error. Store hiện tại đã reject du
 
 Coverage offline có manifest SHA + scope fingerprint, evidence ID, roots, observed
 nodes (method/URL/resourceType), dependency edges, navigation/interaction/discovery
-completion, pending count và failed requests. Rule Kit kiểm tra binding, source
+completion, pending count và failed requests. Rule Kit kiểm tra binding, manifest allowedOrigins phải khớp scope origins, source
 root, graph endpoints/reachability, discovered-vs-stored coverage và body status.
 Thiếu graph/node/blob, pending/failed in-scope request hoặc HEAD/304/error response
 không chứng minh được entity body: UNVERIFIED hoặc typed store integrity error.

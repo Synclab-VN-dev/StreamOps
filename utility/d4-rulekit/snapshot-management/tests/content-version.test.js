@@ -203,3 +203,10 @@ test('SVER-01/02: scope sets dedupe, origin paths cannot silently narrow/change 
  b.scope.origins=['https://synthetic.invalid/different-scope'];
  await assert.rejects(compare(a,b),{code:'CONTENT_SCOPE_ORIGIN_INVALID'});
 });
+
+test('SVER-01: actual manifest capture origins must match the claimed scope policy',async t=>{
+ const {save,compare}=await fixture(t),a=await save('A'),b=await save('B',baseResources(),{allowedOrigins:['https://synthetic.invalid','https://different-scope.invalid']});
+ const result=await compare(a,b);
+ assert.equal(result.status,'UNVERIFIED');assert.equal(result.diff,null);
+ assert(result.coverage.candidate.reasons.includes('MANIFEST_CAPTURE_ORIGINS_MISMATCH'));
+});
