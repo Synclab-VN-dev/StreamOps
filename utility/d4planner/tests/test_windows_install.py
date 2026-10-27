@@ -124,3 +124,37 @@ def test_install_refuses_redirected_application_subtree(tmp_path, monkeypatch):
     with pytest.raises(engine.InstallError,match="REPARSE_POINT"):
         engine.install(artifact,root,data,digest,health_check=lambda root: None)
     assert (outside / "preserve.txt").read_text() == "preserve"
+
+
+def test_default_install_runs_runtime_health_before_commit(tmp_path, monkeypatch):
+    root, data = prepare(tmp_path, monkeypatch)
+    artifact, digest = package(tmp_path)
+    calls = []
+    def probe(command, **kwargs):
+        calls.append(command)
+        if '--runtime-health' in command:
+            report = Path(command[command.index('--health-report') + 1])
+            report.write_text(json.dumps({'ok': True, 'runtimeReady': True, 'ownedCleanup': True}))
+        return type('Completed', (), {'returncode': 0})()
+    monkeypatch.setattr(engine.subprocess, 'run', probe)
+    engine.install(artifact, root, data, digest)
+    assert any('--runtime-health' in command for command in calls)
+
+
+def test_runtime_startup_failure_restores_previous_pointer_and_db(tmp_path, monkeypatch):
+    root, data = prepare(tmp_path, monkeypatch)
+    artifact, digest = package(tmp_path)
+    engine.install(artifact, root, data, digest, health_check=lambda path: None)
+    previous = engine.read_state(root)
+    db_before = (data / 'state/hud.sqlite3').read_bytes()
+    artifact, digest = package(tmp_path, '1.0.2')
+    def probe(command, **kwargs):
+        if '--runtime-health' in command:
+            raise engine.subprocess.CalledProcessError(1, command)
+        return type('Completed', (), {'returncode': 0})()
+    monkeypatch.setattr(engine.subprocess, 'run', probe)
+    with pytest.raises(engine.subprocess.CalledProcessError):
+        engine.install(artifact, root, data, digest)
+    assert engine.read_state(root) == previous
+    assert not (root / 'upgrade-journal.json').exists()
+    assert (data / 'state/hud.sqlite3').read_bytes() == db_before

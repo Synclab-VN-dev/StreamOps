@@ -58,6 +58,35 @@ fn verify(root: &Path) -> Result<Value, String> {
     Ok(manifest)
 }
 
+#[derive(Debug, PartialEq)]
+struct EquipmentConfig { path: PathBuf, character_id: String, display_name: String }
+
+fn equipment_config(data: &Path) -> Result<Option<EquipmentConfig>, String> {
+    let path = data.join("launcher.json");
+    if !path.exists() { return Ok(None); }
+    let value: Value = serde_json::from_slice(&fs::read(path).map_err(|e| e.to_string())?)
+        .map_err(|_| "Invalid launcher.json")?;
+    if value["schemaVersion"] != "d4planner-launcher/v1" { return Err("Invalid launcher configuration version".into()); }
+    let repository = &value["equipmentRepository"];
+    match repository["enabled"].as_bool() {
+        Some(false) if repository.as_object().is_some_and(|v| v.len() == 1) => return Ok(None),
+        Some(true) => (),
+        _ => return Err("Equipment repository requires explicit enabled=true and complete configuration".into()),
+    }
+    let string = |key: &str| -> Result<String, String> {
+        let text = repository[key].as_str().ok_or_else(|| format!("Equipment {key} is required"))?;
+        if text.trim().is_empty() || text.chars().any(char::is_control) || text.chars().count() > 160 && key != "path" {
+            return Err(format!("Invalid Equipment {key}"));
+        }
+        Ok(text.to_owned())
+    };
+    let db = PathBuf::from(string("path")?);
+    if !db.is_absolute() || !db.is_file() || fs::symlink_metadata(&db).map_err(|e| e.to_string())?.file_type().is_symlink() {
+        return Err("Equipment DB must be an absolute existing regular file".into());
+    }
+    Ok(Some(EquipmentConfig { path:db, character_id:string("characterId")?, display_name:string("characterDisplayName")? }))
+}
+
 fn main() {
     let result = run();
     if let Ok(path) = env::var("D4PLANNER_LAUNCH_REPORT") {
@@ -80,7 +109,7 @@ fn run() -> Result<(), String> {
     let root = env::current_exe().map_err(|e| e.to_string())?.parent().ok_or("No installation root")?.to_owned();
     #[cfg(windows)]
     if env::args().any(|a| a == "--stop") { return windows::stop(&root); }
-    if root.join("upgrade-journal.json").exists() && !env::args().any(|a| a == "--installation-health") {
+    if root.join("upgrade-journal.json").exists() && !env::args().any(|a| a == "--installation-health" || a == "--runtime-health") {
         return Err("An interrupted upgrade needs Setup recovery before launch".into());
     }
     // Windows canonicalize returns a verbatim \\?\ path. Keep canonical paths
@@ -89,7 +118,7 @@ fn run() -> Result<(), String> {
     let payload = dunce::simplified(&payload(&root)?).to_path_buf();
     verify(&payload)?;
     if env::args().any(|a| a == "--installation-health") { return Ok(()); }
-    #[cfg(windows)] { windows::launch(&root, &payload) }
+    #[cfg(windows)] { windows::launch(&root, &payload, env::args().any(|a| a == "--runtime-health")) }
     #[cfg(not(windows))] { Err("D4Planner native launch requires Windows".into()) }
 }
 
@@ -101,6 +130,22 @@ mod windows {
 
     struct Handle(HANDLE);
     impl Drop for Handle { fn drop(&mut self) { unsafe { if !self.0.is_null() { CloseHandle(self.0); } } } }
+    struct OwnedJob(HANDLE);
+    impl Drop for OwnedJob {
+        fn drop(&mut self) { unsafe {
+            if self.0.is_null() { return; }
+            TerminateJobObject(self.0, 0);
+            let started = Instant::now();
+            let mut accounting: JOBOBJECT_BASIC_ACCOUNTING_INFORMATION = std::mem::zeroed();
+            while started.elapsed() < Duration::from_secs(5) {
+                if QueryInformationJobObject(self.0, JobObjectBasicAccountingInformation,
+                    &mut accounting as *mut _ as *mut _, std::mem::size_of_val(&accounting) as u32,
+                    std::ptr::null_mut()) == 0 || accounting.ActiveProcesses == 0 { break; }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            CloseHandle(self.0);
+        } }
+    }
     struct OwnedConsole(bool);
     impl Drop for OwnedConsole { fn drop(&mut self) { unsafe { if self.0 { FreeConsole(); } } } }
     fn wide(value: &str) -> Vec<u16> { value.encode_utf16().chain(Some(0)).collect() }
@@ -142,7 +187,7 @@ mod windows {
         1
     }
 
-    pub fn launch(root: &Path, payload: &Path) -> Result<(), String> { unsafe {
+    pub fn launch(root: &Path, payload: &Path, probe: bool) -> Result<(), String> { unsafe {
         let mutex = Handle(CreateMutexW(std::ptr::null(), 1, name(root, "instance").as_ptr()));
         if mutex.0.is_null() { return Err("Cannot create instance mutex".into()); }
         if GetLastError() == ERROR_ALREADY_EXISTS { return Ok(()); }
@@ -155,8 +200,10 @@ mod windows {
         let installed_data = fs::read(root.join("active.json")).ok()
             .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
             .and_then(|state| state["dataDir"].as_str().map(PathBuf::from));
-        let data = env::var_os("D4PLANNER_DATA_ROOT").map(PathBuf::from).or(installed_data).unwrap_or_else(||
-            PathBuf::from(env::var_os("LOCALAPPDATA").unwrap_or_default()).join("StreamOps/D4Planner"));
+        let probe_data = env::temp_dir().join(format!("D4Planner-runtime-health-{}", uuid::Uuid::new_v4()));
+        let data = if probe { probe_data.clone() } else { env::var_os("D4PLANNER_DATA_ROOT").map(PathBuf::from).or(installed_data).unwrap_or_else(||
+            PathBuf::from(env::var_os("LOCALAPPDATA").unwrap_or_default()).join("StreamOps/D4Planner")) };
+        let capture = if probe { None } else { equipment_config(&data)? };
         if !data.is_absolute() || data.starts_with(root) { return Err("DataDir must be absolute and outside installation".into()); }
         for directory in ["targets", "state", "private"] { fs::create_dir_all(data.join(directory)).map_err(|e| e.to_string())?; }
         let bootstrap = data.join("private").join(format!("bootstrap-{}.json", uuid::Uuid::new_v4()));
@@ -178,7 +225,7 @@ mod windows {
         });
         fs::write(&bootstrap, serde_json::to_vec(&descriptor).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
         let result = (|| -> Result<(), String> {
-            let job = Handle(CreateJobObjectW(std::ptr::null(), std::ptr::null()));
+            let job = OwnedJob(CreateJobObjectW(std::ptr::null(), std::ptr::null()));
             let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
             limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
             if job.0.is_null() || SetInformationJobObject(job.0, JobObjectExtendedLimitInformation,
@@ -204,6 +251,13 @@ mod windows {
                 .env_remove("D4PLANNER_EQUIPMENT_EVIDENCE_FILE")
                 .env_remove("D4PLANNER_EQUIPMENT_REPOSITORY_DB")
                 .env_remove("D4PLANNER_CHARACTER_ID").env_remove("D4PLANNER_CHARACTER_DISPLAY_NAME");
+            if let Some(config) = &capture {
+                command.env("D4PLANNER_EQUIPMENT_REPOSITORY_DB", &config.path)
+                    .env("D4PLANNER_CHARACTER_ID", &config.character_id)
+                    .env("D4PLANNER_CHARACTER_DISPLAY_NAME", &config.display_name);
+            }
+            let probe_report = data.join("private/runtime-health.json");
+            if probe { command.arg("--backend-self-test").env("D4_BACKEND_SMOKE_REPORT", &probe_report); }
             let mut child = command.spawn().map_err(|e| e.to_string())?;
             use std::os::windows::io::AsRawHandle;
             if AssignProcessToJobObject(job.0, child.as_raw_handle() as HANDLE) == 0 {
@@ -214,9 +268,48 @@ mod windows {
             extern "system" { fn NtResumeProcess(process: HANDLE) -> i32; }
             if NtResumeProcess(child.as_raw_handle() as HANDLE) < 0 { return Err("Cannot resume owned FE".into()); }
             let mut closing = None;
+            let started = Instant::now();
             loop {
+                if probe && started.elapsed() > Duration::from_secs(55) {
+                    TerminateJobObject(job.0, 124); let _ = child.wait();
+                    return Err("Runtime health deadline exceeded; owned job reclaimed".into());
+                }
                 if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
-                    return if status.success() { Ok(()) } else { Err(format!("Native HUD exited: {status}")) };
+                    if !status.success() { return Err(format!("Native HUD exited: {status}")); }
+                    if probe {
+                        let report: Value = serde_json::from_slice(&fs::read(&probe_report).map_err(|e| e.to_string())?)
+                            .map_err(|e| e.to_string())?;
+                        for phase in ["ready", "restartedReady"] {
+                            let ready = &report[phase];
+                            if ready["health"]["ruleKitWorker"] != "READY" || ready["health"]["wsTransport"] != "READY"
+                                || ready["health"]["durableState"] != "READY" || ready["health"]["targetRepository"] != "READY"
+                                || ready["wsEndpoint"]["port"].as_u64().unwrap_or(0) == 0 {
+                                return Err("Runtime health did not prove mandatory service readiness".into());
+                            }
+                        }
+                        if report["ok"] != true || report["finalState"] != "EXITED"
+                            || report["restartedReady"]["generation"].as_u64() <= report["ready"]["generation"].as_u64() {
+                            return Err("Runtime health did not prove restart and shutdown".into());
+                        }
+                        TerminateJobObject(job.0, 0);
+                        let mut accounting: JOBOBJECT_BASIC_ACCOUNTING_INFORMATION = std::mem::zeroed();
+                        let cleanup = Instant::now();
+                        loop {
+                            if QueryInformationJobObject(job.0, JobObjectBasicAccountingInformation,
+                                &mut accounting as *mut _ as *mut _, std::mem::size_of_val(&accounting) as u32,
+                                std::ptr::null_mut()) == 0 { return Err("Cannot verify probe process cleanup".into()); }
+                            if accounting.ActiveProcesses == 0 { break; }
+                            if cleanup.elapsed() > Duration::from_secs(5) { return Err("Probe cleanup deadline exceeded".into()); }
+                            std::thread::sleep(Duration::from_millis(50));
+                        }
+                        let args: Vec<String> = env::args().collect();
+                        let index = args.iter().position(|arg| arg == "--health-report").ok_or("Health report path required")?;
+                        let output = args.get(index + 1).ok_or("Health report path required")?;
+                        fs::write(output, json!({"ok":true,"runtimeReady":true,"ownedCleanup":true,
+                            "probe":"FE_BACKEND_RULEKIT_CHROMIUM_READY_RESTART_STOP","details":report}).to_string())
+                            .map_err(|e| e.to_string())?;
+                    }
+                    return Ok(());
                 }
                 if WaitForSingleObject(stop_event.0, 100) == WAIT_OBJECT_0 {
                     if closing.is_none() { EnumWindows(Some(close_window), child.id() as isize); closing = Some(Instant::now()); }
@@ -228,6 +321,7 @@ mod windows {
             }
         })();
         let _ = fs::remove_file(bootstrap);
+        if probe { let _ = fs::remove_dir_all(probe_data); }
         result
     } }
 }
@@ -244,5 +338,30 @@ mod tests {
     #[test] fn runtime_paths_do_not_use_verbatim_node_module_roots() {
         assert_eq!(dunce::simplified(Path::new(r"\\?\C:\Cài đặt D4Planner\versions\1.0.0")),
                    Path::new(r"C:\Cài đặt D4Planner\versions\1.0.0"));
+    }
+}
+
+#[cfg(test)]
+mod equipment_tests {
+    use super::*;
+    #[test] fn opt_in_configuration_is_explicit_validated_and_preserves_unicode() {
+        let data = env::temp_dir().join(format!("launcher-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&data).unwrap();
+        assert_eq!(equipment_config(&data).unwrap(), None);
+        let db = data.join("Trang bị.sqlite"); fs::write(&db, b"fixture").unwrap();
+        let mut config = json!({"schemaVersion":"d4planner-launcher/v1","equipmentRepository":{
+            "enabled":true,"path":db,"characterId":"test-character","characterDisplayName":"Nhân vật synthetic"}});
+        let write = |value: &Value| fs::write(data.join("launcher.json"), value.to_string()).unwrap();
+        write(&config);
+        assert_eq!(equipment_config(&data).unwrap().unwrap().character_id, "test-character");
+        for field in ["characterId", "characterDisplayName", "path"] {
+            let mut bad = config.clone(); bad["equipmentRepository"][field] = json!(""); write(&bad);
+            assert!(equipment_config(&data).is_err());
+        }
+        config["equipmentRepository"]["enabled"] = json!(false); write(&config);
+        assert!(equipment_config(&data).is_err()); // disabling cannot leave ambiguous source fields
+        write(&json!({"schemaVersion":"d4planner-launcher/v1","equipmentRepository":{"enabled":false}}));
+        assert_eq!(equipment_config(&data).unwrap(), None);
+        fs::remove_dir_all(data).unwrap();
     }
 }
