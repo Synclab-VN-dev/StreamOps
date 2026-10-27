@@ -123,8 +123,14 @@ def test_package_plan_pins_match_repository_sources():
     maxroll_package = json.loads((ROOT / "utility/d4-rulekit/providers/maxroll/package.json").read_text())
     coverage = json.loads((ROOT / "utility/d4-rulekit/providers/maxroll/UNIVERSAL-IMPORT-COVERAGE.json").read_text())
     assert maxroll_package["dependencies"]["playwright-core"] == plan["ruleKit"]["playwrightCore"]
-    assert coverage["snapshotId"] == plan["ruleKit"]["snapshotId"]
-    assert coverage["snapshotManifestSha256"] == plan["ruleKit"]["snapshotManifestSha256"]
+    assert plan["ruleKit"]["snapshotIncluded"] is False
+    assert plan["ruleKit"]["snapshotManagementContract"] == "d4-rulekit-snapshots/v1"
+    # Existing Rule Kit codec pins remain; the public application package no
+    # longer bundles or selects the pinned private snapshot.
+    codec = (ROOT / "utility/d4-rulekit/providers/maxroll/src/canonical-codec.js").read_text()
+    import re
+    assert re.search(r"snapshotId: '([^']+)'", codec).group(1) == coverage["snapshotId"]
+    assert re.search(r"snapshotManifestSha256: '([^']+)'", codec).group(1) == coverage["snapshotManifestSha256"]
 
 
 def test_missing_symlink_secret_and_unsafe_plan_fail_closed(tmp_path):
@@ -399,3 +405,22 @@ def test_executor_timeout_reaps_owned_descendant_tree(tmp_path):
         time.sleep(0.02)
     else:
         pytest.fail(f"owned descendant {pid} survived executor timeout")
+
+
+@pytest.mark.parametrize('allowed,status', [(True,'BLOCKED'), (False,'FAIL')])
+def test_nonzero_external_blocker_requires_explicit_reviewed_classification(tmp_path, allowed, status):
+    staging = tmp_path / 'staging'; staging.mkdir()
+    evidence = tmp_path / 'evidence'; evidence.mkdir()
+    output = evidence / 'E2E-02.json'
+    script = staging / 'blocked.py'
+    script.write_text("import json,pathlib,sys\n" +
+        f"pathlib.Path({str(output)!r}).write_text(json.dumps(" +
+        "{'ok':False,'status':'BLOCKED','classification':'OWNER_APPROVAL_REQUIRED','reason':'TRUST_POLICY_NOT_CONFIGURED'}))\n" +
+        "sys.exit(2)\n")
+    spec = {'command':[sys.executable,str(script)],'workingDirectory':'.',
+            'timeoutSeconds':10,'evidenceFile':'E2E-02.json',
+            'allowedBlockers':['OWNER_APPROVAL_REQUIRED'] if allowed else []}
+    result = delivery._run_executor('E2E-02', spec, staging, evidence, None)
+    assert result['status'] == status
+    assert result['processExitCode'] == 2
+    assert result['status'] != 'PASS'

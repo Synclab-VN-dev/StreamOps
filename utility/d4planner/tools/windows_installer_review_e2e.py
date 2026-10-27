@@ -171,7 +171,10 @@ def main():
         (data/'targets/user-owned.json').write_text('synthetic-user-owned-target')
         (data/'settings.json').write_text('{"preserve":true}')
         with sqlite3.connect(data/'user-owned.sqlite') as db: db.execute('create table user_data(value text)')
-        preserved={str(path.relative_to(data)):sha(path) for path in (data/'settings.json',data/'user-owned.sqlite',data/'targets/user-owned.json')}
+        external_store=data/'rulekit/store/SYNTHETIC-UNACTIVATED/preserve.bin'
+        external_store.parent.mkdir(parents=True,exist_ok=True)
+        external_store.write_bytes(b'SYNTHETIC-UNACTIVATED-STORE-PRESERVATION-ONLY')
+        preserved={str(path.relative_to(data)):sha(path) for path in (data/'settings.json',data/'user-owned.sqlite',data/'targets/user-owned.json',external_store)}
         def check_data():
             for name,digest in preserved.items(): assert sha(data/name)==digest
         case('PKG-01','Root native HUD + private BE/Node/Chromium; no DB default',lambda:native())
@@ -204,13 +207,13 @@ def main():
             assert launch.wait(timeout=25)==0
             assert not any(alive(row['pid']) for row in tree)
             launch=None; check_data(); fixture_intact()
-            return {**value,'gracefulOwnedShutdown':True,'dataPreserved':True}
+            return {**value,'gracefulOwnedShutdown':True,'dataPreserved':True,'externalSnapshotStorePreserved':True}
         case('PKG-04/06','Upgrade while native application runs; graceful cleanup and preserved data',upgrading)
         def failure_rollback():
             before=state()
             broken=args.sandbox/'startup-failure.zip'
             with zipfile.ZipFile(args.package_new) as archive:
-                manifest=json.loads(archive.read('release-manifest.json')); manifest['version']='1.0.4'
+                manifest=json.loads(archive.read('release-manifest.json')); manifest['version']='.'.join(map(str,(*map(int, manifest['version'].split('.')[:2]),int(manifest['version'].split('.')[2])+1)))
                 replacement=b"raise RuntimeError('EXPECTED_UAT_RUNTIME_STARTUP_FAILURE')\n"
                 name='backend/site-packages/d4planner/managed_backend.py'
                 import hashlib
@@ -227,7 +230,7 @@ def main():
             health=args.output/'runtime-health.json'
             call([root/'D4Planner.exe','--runtime-health','--health-report',health],timeout=75)
             assert json.loads(health.read_text(encoding="utf-8"))['runtimeReady'] is True
-            return {'failureExitCode':result.returncode,'previousVersion':state()['version'],'runtimeGate':json.loads(health.read_text(encoding="utf-8")),'dataPreserved':True}
+            return {'failureExitCode':result.returncode,'previousVersion':state()['version'],'runtimeGate':json.loads(health.read_text(encoding="utf-8")),'dataPreserved':True,'externalSnapshotStorePreserved':True}
         case('PKG-05/FIX-03','Valid manifest/hash + broken Backend fails health and restores previous version',failure_rollback)
         def clean_machine():
             check_data(); fixture_intact()
@@ -243,7 +246,7 @@ def main():
             except FileNotFoundError: pass
             else: raise AssertionError('UAT_REGISTRATION_NOT_REMOVED')
             assert not (shortcut_roots[0]/'D4Planner UAT.lnk').exists()
-            return {'userDataPreserved':True,'productionFixtureUnchanged':True,'uatRegistrationRemoved':True}
+            return {'userDataPreserved':True,'externalSnapshotStorePreserved':True,'productionFixtureUnchanged':True,'uatRegistrationRemoved':True}
         case('PKG-03/FIX-01','Uninstall removes only UAT identity and retains user data/production fixtures',remove)
     finally:
         try: owned_stop()

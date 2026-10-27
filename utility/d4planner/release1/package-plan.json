@@ -2,44 +2,158 @@
   "schemaVersion": "d4planner-package-plan/v1",
   "release": "R1-EQUIPMENT-20261025",
   "applicationId": "vn.synclab.d4planner",
-  "version": "1.0.0",
-  "hudSchemaCompatibility": {"minimum": 2, "maximum": 2},
+  "version": "1.1.0",
+  "hudSchemaCompatibility": {
+    "minimum": 2,
+    "maximum": 2
+  },
   "contractRevision": "d4planner-r1-contract/1.0.0-candidate.5",
   "magicPathRevision": "464988421014827008",
   "ruleKit": {
     "playwrightCore": "1.64.1",
-    "snapshotId": "maxroll-20261023T034150Z",
-    "snapshotManifestSha256": "638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54"
+    "snapshotManagementContract": "d4-rulekit-snapshots/v1",
+    "snapshotIncluded": false,
+    "snapshotProvisioning": "EXTERNAL_RULEKIT_MANAGED"
   },
   "artifacts": [
-    {"id": "root-launcher", "path": "D4Planner.exe", "owner": "S7"},
-    {"id": "native-fe", "path": "app/d4planner-fe.exe", "owner": "S6"},
-    {"id": "managed-be", "path": "backend", "kind": "tree", "owner": "S2/S4/S5"},
-    {"id": "embedded-python", "path": "runtime/python", "kind": "tree", "owner": "S7"},
-    {"id": "rulekit-worker", "path": "utility/d4planner/rulekit-worker", "kind": "tree", "owner": "S3"},
-    {"id": "d4planner-contracts", "path": "utility/d4planner/contracts", "kind": "tree", "owner": "S1/S4"},
-    {"id": "rulekit-modules", "path": "utility/d4-rulekit", "kind": "tree", "owner": "S3"},
-    {"id": "portable-node", "path": "runtime/node", "kind": "tree", "owner": "S7"},
-    {"id": "pinned-chromium", "path": "runtime/chromium", "kind": "tree", "owner": "S3/S7"},
-    {"id": "offline-snapshot", "path": "runtime/snapshots", "kind": "tree", "owner": "S3"},
-    {"id": "runtime-config", "path": "config", "kind": "tree", "owner": "S7"}
+    {
+      "id": "root-launcher",
+      "path": "D4Planner.exe",
+      "owner": "S7"
+    },
+    {
+      "id": "native-fe",
+      "path": "app/d4planner-fe.exe",
+      "owner": "S6"
+    },
+    {
+      "id": "managed-be",
+      "path": "backend",
+      "kind": "tree",
+      "owner": "S2/S4/S5"
+    },
+    {
+      "id": "embedded-python",
+      "path": "runtime/python",
+      "kind": "tree",
+      "owner": "S7"
+    },
+    {
+      "id": "rulekit-worker",
+      "path": "utility/d4planner/rulekit-worker",
+      "kind": "tree",
+      "owner": "S3"
+    },
+    {
+      "id": "d4planner-contracts",
+      "path": "utility/d4planner/contracts",
+      "kind": "tree",
+      "owner": "S1/S4"
+    },
+    {
+      "id": "rulekit-modules",
+      "path": "utility/d4-rulekit",
+      "kind": "tree",
+      "owner": "S3"
+    },
+    {
+      "id": "portable-node",
+      "path": "runtime/node",
+      "kind": "tree",
+      "owner": "S7"
+    },
+    {
+      "id": "pinned-chromium",
+      "path": "runtime/chromium",
+      "kind": "tree",
+      "owner": "S3/S7"
+    }
   ],
-  "persistentPaths": ["state", "targets"],
+  "persistentPaths": [
+    "state",
+    "targets"
+  ],
   "syntheticTarget": "examples/target.synthetic.json",
   "resources": [
-    {"id": "delivery-readme", "path": "docs/README.md", "source": "utility/d4planner/release1/README.md"},
-    {"id": "acceptance-plan", "path": "tools/acceptance-plan.json", "source": "utility/d4planner/release1/acceptance-plan.json"},
-    {"id": "windows-executors", "path": "tools/executors.windows.json", "source": "utility/d4planner/release1/executors.windows.json"},
-    {"id": "acceptance-wrapper", "path": "tools/d4planner-r1-uat.ps1", "source": "utility/d4planner/release1/d4planner-r1-uat.ps1"},
-    {"id": "production-launcher", "path": "app/start-d4planner.ps1", "source": "utility/d4planner/release1/start-d4planner.ps1"},
-    {"id": "production-stop", "path": "app/stop-d4planner.ps1", "source": "utility/d4planner/release1/stop-d4planner.ps1"},
-    {"id": "delivery-tool", "path": "tools/release1_delivery.py", "source": "utility/d4planner/tools/release1_delivery.py"},
-    {"id": "windows-install-engine", "path": "tools/windows_install.py", "source": "utility/d4planner/tools/windows_install.py"},
-    {"id": "production-e2e-tool", "path": "tools/production_e2e.py", "source": "utility/d4planner/tools/production_e2e.py"},
-    {"id": "target-schema", "path": "contracts/target.schema.json", "source": "utility/d4planner/contracts/release1/v1/schemas/target.schema.json"},
-    {"id": "hud-schema", "path": "contracts/hud.schema.json", "source": "utility/d4planner/contracts/release1/v1/schemas/hud.schema.json"},
-    {"id": "ws-schema", "path": "contracts/ws.schema.json", "source": "utility/d4planner/contracts/release1/v1/schemas/ws.schema.json"},
-    {"id": "synthetic-target-example", "path": "examples/target.synthetic.json", "source": "utility/d4planner/contracts/release1/v1/fixtures/target.valid.synthetic.json"},
-    {"id": "synthetic-recorded-equipment", "path": "examples/equipment.recorded.synthetic.json", "source": "utility/d4planner/release1/equipment.recorded.synthetic.json"}
+    {
+      "id": "delivery-readme",
+      "path": "docs/README.md",
+      "source": "utility/d4planner/release1/README.md"
+    },
+    {
+      "id": "acceptance-plan",
+      "path": "tools/acceptance-plan.json",
+      "source": "utility/d4planner/release1/acceptance-plan.json"
+    },
+    {
+      "id": "windows-executors",
+      "path": "tools/executors.windows.json",
+      "source": "utility/d4planner/release1/executors.windows.json"
+    },
+    {
+      "id": "acceptance-wrapper",
+      "path": "tools/d4planner-r1-uat.ps1",
+      "source": "utility/d4planner/release1/d4planner-r1-uat.ps1"
+    },
+    {
+      "id": "production-launcher",
+      "path": "app/start-d4planner.ps1",
+      "source": "utility/d4planner/release1/start-d4planner.ps1"
+    },
+    {
+      "id": "production-stop",
+      "path": "app/stop-d4planner.ps1",
+      "source": "utility/d4planner/release1/stop-d4planner.ps1"
+    },
+    {
+      "id": "delivery-tool",
+      "path": "tools/release1_delivery.py",
+      "source": "utility/d4planner/tools/release1_delivery.py"
+    },
+    {
+      "id": "windows-install-engine",
+      "path": "tools/windows_install.py",
+      "source": "utility/d4planner/tools/windows_install.py"
+    },
+    {
+      "id": "production-e2e-tool",
+      "path": "tools/production_e2e.py",
+      "source": "utility/d4planner/tools/production_e2e.py"
+    },
+    {
+      "id": "target-schema",
+      "path": "contracts/target.schema.json",
+      "source": "utility/d4planner/contracts/release1/v1/schemas/target.schema.json"
+    },
+    {
+      "id": "hud-schema",
+      "path": "contracts/hud.schema.json",
+      "source": "utility/d4planner/contracts/release1/v1/schemas/hud.schema.json"
+    },
+    {
+      "id": "ws-schema",
+      "path": "contracts/ws.schema.json",
+      "source": "utility/d4planner/contracts/release1/v1/schemas/ws.schema.json"
+    },
+    {
+      "id": "synthetic-target-example",
+      "path": "examples/target.synthetic.json",
+      "source": "utility/d4planner/contracts/release1/v1/fixtures/target.valid.synthetic.json"
+    },
+    {
+      "id": "synthetic-recorded-equipment",
+      "path": "examples/equipment.recorded.synthetic.json",
+      "source": "utility/d4planner/release1/equipment.recorded.synthetic.json"
+    },
+    {
+      "id": "public-content-validator",
+      "path": "tools/public_package.py",
+      "source": "utility/d4planner/tools/public_package.py"
+    },
+    {
+      "id": "public-content-policy",
+      "path": "utility/d4planner/release1/public-content-policy.json",
+      "source": "utility/d4planner/release1/public-content-policy.json"
+    }
   ]
 }

@@ -90,7 +90,7 @@ def test_backend_command_writes_case_specific_evidence_and_cleans_up(monkeypatch
             self.stdin = Input(); self.stderr = io.StringIO(); self.returncode = None; self.killed = False
             self.stdout = io.StringIO(json.dumps({
                 "event":"READY", "pid":self.pid,
-                "health":{"ruleKitWorker":"READY","targetRepository":"READY",
+                "health":{"ruleKitWorker":"UNAVAILABLE","targetRepository":"READY",
                           "durableState":"READY","wsTransport":"READY"},
                 "wsEndpoint":{"host":"127.0.0.1","port":38150},
             }) + "\n")
@@ -142,3 +142,34 @@ def test_backend_early_failure_cleans_owned_process_without_name_error(monkeypat
     assert process.killed is True
     assert not output.exists()
     assert not (data / "private-bootstrap.json").exists()
+
+
+def test_public_runtime_environment_never_inherits_bundled_snapshot(monkeypatch, tmp_path):
+    monkeypatch.setenv('D4_RULEKIT_PROFILE_JSON', '/private/profile.json')
+    monkeypatch.setenv('D4_RULEKIT_SNAPSHOT_ROOT', '/private/snapshots')
+    env = production._runtime_env(tmp_path / 'app', tmp_path / 'data/bootstrap.json', tmp_path / 'evidence.json')
+    assert env['D4_RULEKIT_DATA_ROOT'] == str(tmp_path / 'data/rulekit')
+    assert 'D4_RULEKIT_PROFILE_JSON' not in env
+    assert 'D4_RULEKIT_SNAPSHOT_ROOT' not in env
+
+
+def test_unavailable_rulekit_writes_blocker_evidence_with_nonzero_exit(monkeypatch, tmp_path):
+    stopped = []
+    class Client:
+        async def snapshot_call(self, method):
+            assert method == 'getActive'
+            return {'active':None, 'calculationAvailability':'UNAVAILABLE', 'reason':'SNAPSHOT_NOT_SELECTED'}
+    class Runtime:
+        client = Client()
+        async def start(self): return {'ready':True, 'calculationAvailability':'UNAVAILABLE'}
+        async def stop(self): stopped.append(True)
+    monkeypatch.setattr(production.RuleKitRuntimeService, 'from_environment', lambda values: Runtime())
+    output = tmp_path / 'blocked.json'
+    code = production.main(['rulekit', '--install-root', str(tmp_path / 'app'),
+                            '--data-root', str(tmp_path / 'data'), '--output', str(output)])
+    assert code == 2
+    result = json.loads(output.read_text())
+    assert result['ok'] is False
+    assert result['status'] == 'BLOCKED'
+    assert result['reason'] == 'SNAPSHOT_NOT_SELECTED'
+    assert stopped == [True]

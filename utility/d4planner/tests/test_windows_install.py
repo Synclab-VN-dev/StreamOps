@@ -167,3 +167,39 @@ def test_exit_zero_without_runtime_readiness_evidence_is_not_health(tmp_path, mo
     monkeypatch.setattr(engine.subprocess, 'run', probe)
     with pytest.raises(engine.InstallError, match='RUNTIME_HEALTH_EVIDENCE_INVALID'):
         engine.runtime_health(tmp_path)
+
+
+def test_rulekit_preflight_rejection_preserves_old_application_and_user_snapshot_store(tmp_path, monkeypatch):
+    root, data = prepare(tmp_path, monkeypatch)
+    old_package, old_sha = package(tmp_path)
+    engine.install(old_package, root, data, old_sha, health_check=lambda path: None)
+    previous = engine.read_state(root)
+    sentinel = data / 'rulekit/store/synthetic-unactivated/preserve.bin'
+    sentinel.parent.mkdir(parents=True)
+    sentinel.write_bytes(b'isolated-user-snapshot-store')
+    before_db = (data / 'state/hud.sqlite3').read_bytes()
+    candidate, _ = package(tmp_path, '1.1.0')
+    with zipfile.ZipFile(candidate) as archive:
+        manifest = json.loads(archive.read('release-manifest.json'))
+        executable = archive.read('D4Planner.exe')
+    manifest['ruleKit'] = {'snapshotManagementContract':'d4-rulekit-snapshots/v1'}
+    with zipfile.ZipFile(candidate, 'w') as archive:
+        archive.writestr('release-manifest.json', json.dumps(manifest))
+        archive.writestr('D4Planner.exe', executable)
+    calls = []
+    def probe(command, **kwargs):
+        calls.append(command)
+        if '--operation' in command:
+            assert command[command.index('--operation') + 1] == 'upgradePreflight'
+            Path(command[command.index('--report') + 1]).write_text(json.dumps({
+                'ok':False, 'error':{'code':'TRUST_POLICY_NOT_CONFIGURED'},
+            }))
+            return type('Completed', (), {'returncode':1})()
+        return type('Completed', (), {'returncode':0})()
+    monkeypatch.setattr(engine.subprocess, 'run', probe)
+    with pytest.raises(engine.InstallError, match='RULEKIT_UPGRADE_PREFLIGHT_REJECTED:TRUST_POLICY_NOT_CONFIGURED'):
+        engine.install(candidate, root, data, engine.delivery.sha256_file(candidate))
+    assert engine.read_state(root) == previous
+    assert sentinel.read_bytes() == b'isolated-user-snapshot-store'
+    assert (data / 'state/hud.sqlite3').read_bytes() == before_db
+    assert not any('--runtime-health' in command for command in calls)

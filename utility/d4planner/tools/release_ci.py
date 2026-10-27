@@ -1,8 +1,8 @@
 """Single Release workflow support. No Actions dispatch/query or implicit release.
 
-Private build inputs are checksum-addressed, supplied by an authorized secret
-URL. A public repository cannot upload the private-containing Setup without an
-explicit exact-source redistribution attestation. Publishing additionally needs
+Public runtime build inputs are checksum-addressed and content-allowlisted.
+The runner never downloads/mounts Maxroll snapshots. Application dependency
+redistribution approval is independent from snapshot rights. Publishing additionally needs
 the protected environment and exact-artifact acceptance attestation.
 """
 from __future__ import annotations
@@ -19,11 +19,12 @@ import urllib.request
 import zipfile
 
 import release1_delivery as delivery
+import public_package as public
 from windows_install import version, InstallError
 
 ROOT = Path(__file__).resolve().parents[3]
 LOCK = ROOT / 'utility/d4planner/release1/release-runtime-lock.json'
-GATES = tuple(f'PKG-{n:02}' for n in range(1,9)) + ('HUD-03', 'VISUAL_GOLDEN')
+GATES = tuple(f'PKG-{n:02}' for n in range(1,9)) + ('HUD-03', 'VISUAL_GOLDEN') + tuple(f'SNAP-{n:02}' for n in range(1,8))
 
 
 def require(condition, error):
@@ -38,7 +39,7 @@ def distribution_approved(document, head, release_version):
     require(document.get('approvedBy') == 'TrdHuy' and document.get('approvalRef'), 'OWNER_DISTRIBUTION_APPROVAL_REQUIRED')
     require(document.get('sourceHead') == head and document.get('version') == release_version, 'DISTRIBUTION_APPROVAL_BINDING')
     require(document.get('publicDistributionApproved') is True and document.get('licensesVerified') is True, 'PRIVATE_RESOURCE_DISTRIBUTION_NOT_APPROVED')
-    require(document.get('snapshotManifestSha256') == delivery.load_json(LOCK)['files']['snapshots/maxroll-20261023T034150Z/manifest.json'], 'DISTRIBUTION_SNAPSHOT_MISMATCH')
+    require(document.get('artifactClass') == 'D4PLANNER_APPLICATION_NO_SNAPSHOT', 'APPLICATION_DISTRIBUTION_APPROVAL_REQUIRED')
 
 
 def release_approved(document, metadata):
@@ -61,6 +62,7 @@ def protected_environment(document):
 def download_inputs(url, expected_sha, destination):
     require(urllib.parse.urlparse(url).scheme == 'https', 'HTTPS_PRIVATE_INPUT_REQUIRED')
     require(bool(re.fullmatch('[0-9a-f]{64}', expected_sha)), 'PINNED_INPUT_SHA256_REQUIRED')
+    require(expected_sha == delivery.load_json(LOCK).get('publicInputsArchiveSha256'), 'PUBLIC_RUNTIME_ARCHIVE_PIN_REQUIRED')
     archive_path = destination.with_suffix('.zip')
     try:
         with urllib.request.urlopen(url, timeout=120) as source, archive_path.open('wb') as output:
@@ -85,8 +87,9 @@ def download_inputs(url, expected_sha, destination):
 
 def validate_inputs(root):
     lock=delivery.load_json(LOCK)
+    require(delivery.sha256_file(root/'inputs-manifest.json') == lock.get('publicInputsManifestSha256'), 'PUBLIC_INPUT_MANIFEST_PIN_MISMATCH')
     manifest=delivery.load_json(root/'inputs-manifest.json')
-    require(manifest.get('schemaVersion')=='d4planner-private-build-inputs/v1', 'PRIVATE_INPUT_MANIFEST_VERSION')
+    require(manifest.get('schemaVersion')=='d4planner-public-build-inputs/v1', 'PRIVATE_INPUT_MANIFEST_VERSION')
     require(manifest.get('versions')==lock['versions'],'PRIVATE_INPUT_VERSION_MISMATCH')
     require(manifest.get('files'), 'EMPTY_PRIVATE_INPUT_MANIFEST')
     listed={entry['path']:entry['sha256'] for entry in manifest['files']}
@@ -96,7 +99,12 @@ def validate_inputs(root):
     for name,digest in listed.items():
         require(delivery.sha256_file(delivery._contained_destination(root,name))==digest,'PRIVATE_INPUT_INTEGRITY:'+name)
     for name,digest in lock['files'].items(): require(listed.get(name)==digest,'RUNTIME_PIN_MISMATCH:'+name)
-    for name in ('nsis/makensis.exe','config/maxroll-profile.json','python/python312._pth','python/python312.zip'):
+    require(manifest.get('snapshotIncluded') is False, 'PUBLIC_INPUT_SNAPSHOT_SEPARATION_REQUIRED')
+    require(all(Path(name).parts[0] in {'python','node','chromium','nsis'} for name in listed), 'PRIVATE_OR_UNREVIEWED_INPUT_ROOT')
+    for key in ('python','node','chromium'):
+        public.validate_tree(root/key,'runtime/'+key)
+    public.validate_tree(root/'nsis','build-tools/nsis')
+    for name in ('nsis/makensis.exe','python/python312._pth','python/python312.zip'):
         require(name in listed,'REQUIRED_BUILD_INPUT:'+name)
     return manifest
 
@@ -118,7 +126,7 @@ def build(inputs, output, head, release_version):
     output.mkdir(parents=True,exist_ok=False)
     frontend=ROOT/'utility/d4planner-overlay-poc'
     npm='npm.cmd'
-    for module in ('browser-infra','providers/maxroll'):
+    for module in ('browser-infra','providers/maxroll','snapshot-management'):
         run([npm,'ci','--omit=dev','--ignore-scripts'],cwd=ROOT/'utility/d4-rulekit'/module)
     require(delivery.load_json(ROOT/'utility/d4-rulekit/providers/maxroll/node_modules/playwright-core/package.json')['version']=='1.64.1','PLAYWRIGHT_PIN')
     run([npm,'ci','--ignore-scripts'],cwd=frontend)
@@ -143,13 +151,13 @@ def build(inputs, output, head, release_version):
     run([sys.executable,tools/'build_release1_stage.py','--launcher-exe',launcher/'target/release/D4Planner.exe',
          '--frontend-exe',frontend/'src-tauri/target/release/d4planner-overlay-poc.exe',
          '--python-root',inputs/'python','--python-site-packages',site,'--node-root',inputs/'node',
-         '--chromium-root',inputs/'chromium','--snapshot-root',inputs/'snapshots/maxroll-20261023T034150Z',
-         '--profile',inputs/'config/maxroll-profile.json','--output',stage])
+         '--chromium-root',inputs/'chromium','--output',stage])
     package=output/f'D4Planner-{release_version}.zip'
     run([sys.executable,tools/'release1_delivery.py','build','--plan',ROOT/'utility/d4planner/release1/package-plan.json',
          '--source',stage,'--version',release_version,'--output',package],stdout=subprocess.DEVNULL)
     run([sys.executable,tools/'build_windows_installer.py','--package',package,'--python-root',inputs/'python',
          '--output',output/'setup','--makensis',inputs/'nsis/makensis.exe'])
+    delivery.verify_package(package,public_only=True)
     metadata=delivery.load_json(output/'setup/setup-build.json')
     require(metadata['sourceHead']==head and metadata['version']==release_version,'BUILD_METADATA_BINDING')
     setup=Path(metadata['artifact'])
@@ -159,6 +167,8 @@ def build(inputs, output, head, release_version):
     health=output/'runtime-health.json'
     run([stage/'D4Planner.exe','--runtime-health','--health-report',health])
     require(delivery.load_json(health).get('runtimeReady') is True,'BUILD_RUNTIME_HEALTH_NOT_READY')
+    require(delivery.load_json(health).get('calculationAvailability')=='UNAVAILABLE','NO_SNAPSHOT_CALCULATION_NOT_UNAVAILABLE')
+    require(metadata.get('snapshotIncluded') is False and metadata.get('artifactClass')=='D4PLANNER_APPLICATION_NO_SNAPSHOT','PUBLIC_ARTIFACT_CLASS_MISMATCH')
     metadata['artifact']=setup.name
     metadata['backendWheelSha256']={path.name:delivery.sha256_file(path) for path in wheel.glob('*.whl')}
     metadata['runtimeHealth']='PASS'
@@ -171,6 +181,7 @@ def build(inputs, output, head, release_version):
 def verify_built_artifact(directory, head, release_version, expected_sha):
     metadata=delivery.load_json(directory/'release-metadata.json')
     require(metadata.get('schemaVersion')=='d4planner-setup-build/v1','SETUP_METADATA_VERSION')
+    require(metadata.get('snapshotIncluded') is False and metadata.get('artifactClass')=='D4PLANNER_APPLICATION_NO_SNAPSHOT','PUBLIC_ARTIFACT_CLASS_MISMATCH')
     require(metadata.get('sourceHead')==head and metadata.get('version')==release_version,'PUBLISH_SOURCE_VERSION_MISMATCH')
     require(metadata.get('sha256')==expected_sha,'BUILD_ARTIFACT_BINDING')
     artifact=directory/f'D4Planner-Setup-{release_version}.exe'
@@ -193,8 +204,8 @@ def main():
             environment=json.loads(subprocess.check_output(['gh','api',f"repos/{os.environ['GITHUB_REPOSITORY']}/environments/d4planner-release"],text=True))
             protected_environment(environment)
     elif args.command=='build':
-        inputs=args.directory/'private-inputs'; inputs.parent.mkdir(parents=True,exist_ok=True)
-        download_inputs(os.environ.get('D4_PRIVATE_INPUT_URL',''),os.environ.get('D4_PRIVATE_INPUT_SHA256',''),inputs)
+        inputs=args.directory/'public-runtime-inputs'; inputs.parent.mkdir(parents=True,exist_ok=True)
+        download_inputs(os.environ.get('D4_PUBLIC_RUNTIME_INPUT_URL',''),os.environ.get('D4_PUBLIC_RUNTIME_INPUT_SHA256',''),inputs)
         metadata=build(inputs,args.directory/'build',args.source,args.version)
         with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as output:
             output.write(f"setup_sha256={metadata['sha256']}\n")
