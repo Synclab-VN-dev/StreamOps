@@ -64,6 +64,9 @@ def assemble(args: argparse.Namespace) -> dict:
     copy_file(args.profile.resolve(), root / "config/maxroll-profile.json")
 
     repository = Path(__file__).resolve().parents[3]
+    # Dependency cache may contain an older editable/project wheel. Always
+    # overlay production Backend sources from the exact checked-out revision.
+    copy_tree(repository / "utility/d4planner/src/d4planner", root / "backend/site-packages/d4planner")
     copy_tree(repository / "utility/d4planner/rulekit-worker",
               root / "utility/d4planner/rulekit-worker")
     copy_tree(repository / "utility/d4planner/contracts",
