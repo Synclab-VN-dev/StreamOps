@@ -389,13 +389,18 @@ def run_backend(args: argparse.Namespace) -> dict:
     install = args.install_root.resolve(); data = args.data_root.resolve()
     targets, evidence, target_hash = _prepare(install, data)
     owner, child, generation = str(uuid.uuid4()), str(uuid.uuid4()), 1
+    approved_port = getattr(args, "approved_port", None)
+    if sys.platform == "win32" and not approved_port:
+        raise E2EFailure("Windows UAT Backend requires an explicitly approved test port")
+    if approved_port is not None and not 1 <= approved_port <= 65535:
+        raise E2EFailure("Invalid approved test port")
     credential = secrets.token_hex(32)
     bootstrap = data / "private-bootstrap.json"
     bootstrap.write_text(json.dumps({
         "protocol":"d4planner-managed/v1", "contractVersion":"d4planner-r1-contract/1.0.0-candidate.5",
         "ownerInstanceId":owner, "childInstanceId":child, "generation":generation,
         "dataDir":str(data / "state"), "targetFolder":str(targets),
-        "wsEndpoint":{"host":"127.0.0.1","port":0}, "credential":credential,
+        "wsEndpoint":{"host":"127.0.0.1","port":approved_port or 0}, "credential":credential,
     }), encoding="utf-8")
     python = install / "runtime/python/python.exe"
     started = time.perf_counter()
@@ -881,6 +886,8 @@ def main(argv=None) -> int:
         command.add_argument("--install-root", type=Path, required=True)
         command.add_argument("--data-root", type=Path, required=True)
         command.add_argument("--output", type=Path, required=True)
+        if name == "backend":
+            command.add_argument("--approved-port", type=int)
         if name == "rulekit":
             command.add_argument("--application-request", type=Path)
     performance = sub.add_parser("performance")
