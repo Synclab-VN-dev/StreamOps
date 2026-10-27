@@ -204,6 +204,22 @@
           ]
         }
       }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "params"
+      ],
+      "properties": {
+        "method": {
+          "const": "compareSnapshots"
+        },
+        "params": {
+          "$ref": "content-version.schema.json#/definitions/compareParams"
+        }
+      }
     }
   ]
 }

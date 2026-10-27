@@ -8,7 +8,7 @@ const { CompatibilityResolver }=require('./resolver');
 const { SnapshotError,fail,digest,canonical }=require('./trust');
 const validatePackage=new Ajv({strict:true}).compile(require('../schemas/snapshot-package.schema.json'));
 const PROTOCOL='d4-rulekit-snapshots/v1';
-const METHODS=Object.freeze(['listInstalled','checkCompatibility','getCapabilities','importPackage','activate','getActive','switchSnapshot','rollback']);
+const METHODS=Object.freeze(['listInstalled','checkCompatibility','getCapabilities','importPackage','activate','getActive','switchSnapshot','rollback','compareSnapshots']);
 function safeRelative(value) {
   fail(typeof value==='string' && value.length>0 && !value.includes('\\') && !value.includes(':') && !value.includes('\0') && !value.startsWith('/') && value.split('/').every(p=>p && p!=='.' && p!=='..'),'UNSAFE_SNAPSHOT_PATH');
   return value;
@@ -237,6 +237,9 @@ class SnapshotManager {
   async rollback() {
     const current=await this.selection();fail(current?.previous,'SNAPSHOT_ROLLBACK_NOT_AVAILABLE');
     return this.prepareSelection({entryId:current.previous.entryId},'ROLLBACK');
+  }
+  async compareSnapshots(params) {
+    return this.serial(() => require('./content-version').compareSnapshots(this.storeRoot,params));
   }
   async invoke(method,params={}) {
     fail(METHODS.includes(method),'SNAPSHOT_METHOD_UNKNOWN');
