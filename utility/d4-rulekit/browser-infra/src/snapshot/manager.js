@@ -126,8 +126,53 @@ class WebSnapshotManager {
     let excludedResponseCount = 0;
     let redactedResponseCount = 0;
     let strippedSensitiveRequestCount = 0;
+    const activeRequests = new Set();
+    const discovered = new Map();
+    const failedRequests = new Map();
+    let lastActivity = Date.now();
+    let wakeCompletion = null;
+    const activity = () => { lastActivity = Date.now(); wakeCompletion?.(); };
+    const finishRequest = (request, failed = false) => {
+      if (!activeRequests.delete(request)) return;
+      const method = request.method().toUpperCase();
+      const url = validateSafeUrl(request.url(), options.allowedOrigins, options.sensitiveQueryParameters);
+      if (failed) failedRequests.set(`${method} ${url}`, {method, url});
+      activity();
+    };
+    const requestFinished = request => finishRequest(request);
+    const requestFailed = request => finishRequest(request, true);
+    const waitActivity = milliseconds => new Promise((resolve, reject) => {
+      let timer;
+      const cleanup = () => { clearTimeout(timer); signal.removeEventListener('abort', aborted); wakeCompletion = null; };
+      const done = () => { cleanup(); resolve(); };
+      const aborted = () => { cleanup(); reject(snapshotError(SNAPSHOT_ERROR_CODES.CAPTURE_CANCELLED, 'capture completion aborted')); };
+      wakeCompletion = done;
+      signal.addEventListener('abort', aborted, {once:true});
+      if (signal.aborted) aborted();
+      else if (milliseconds !== null) timer = setTimeout(done, milliseconds);
+    });
+    const awaitCompletion = async () => {
+      const minimumUntil = Date.now() + options.completion.minimumObservationMs;
+      while (true) {
+        if (fatalError) throw fatalError;
+        if (signal.aborted) throw snapshotError(SNAPSHOT_ERROR_CODES.CAPTURE_CANCELLED, 'capture completion aborted');
+        if (activeRequests.size === 0 && pending.size === 0) {
+          const remaining = Math.max(minimumUntil, lastActivity + options.completion.quietWindowMs) - Date.now();
+          if (remaining <= 0) break;
+          await waitActivity(remaining);
+        } else await waitActivity(null);
+      }
+      const missing = [...discovered.keys()].filter(key => !resources.has(key));
+      if (missing.length) throw snapshotError(SNAPSHOT_ERROR_CODES.RESOURCE_MISSING, 'capture ended with missing in-scope request bodies');
+      for (const resource of resources.values()) {
+        if (resource.method !== 'GET' || resource.status < 200 || resource.status >= 300) {
+          throw snapshotError(SNAPSHOT_ERROR_CODES.RESOURCE_MISSING, 'capture cannot confirm an in-scope entity body');
+        }
+      }
+    };
     const fail = error => {
       if (!fatalError) fatalError = error;
+      activity();
       void lease.page.close().catch(() => {});
     };
     const routeHandler = async route => {
@@ -159,6 +204,12 @@ class WebSnapshotManager {
           await route.abort('blockedbyclient').catch(() => {});
           return;
         }
+        if (options.completion) {
+          activeRequests.add(request);
+          const key = `${method} ${safeUrl}`;
+          if (!discovered.has(key)) discovered.set(key, {method, url:safeUrl, resourceType:request.resourceType()});
+          activity();
+        }
         if (stripSensitiveHeaders) {
           strippedSensitiveRequestCount += 1;
           await route.continue({ headers: stripSensitiveRequestHeaders(requestHeaders) });
@@ -178,7 +229,7 @@ class WebSnapshotManager {
         if (event === 'redacted') redactedResponseCount += 1;
       }).catch(fail);
       pending.add(task);
-      void task.finally(() => pending.delete(task));
+      void task.finally(() => { pending.delete(task); if (options.completion) activity(); });
     };
     const abortPromise = new Promise((_, reject) => {
       if (signal.aborted) {
@@ -219,6 +270,10 @@ class WebSnapshotManager {
     }
     await lease.context.route('**/*', routeHandler);
     lease.page.on('response', responseHandler);
+    if (options.completion) {
+      lease.page.on('requestfinished', requestFinished);
+      lease.page.on('requestfailed', requestFailed);
+    }
     try {
       const work = (async () => {
         await lease.page.goto(options.url, {
@@ -230,6 +285,7 @@ class WebSnapshotManager {
           await lease.page.waitForLoadState(options.settleWaitUntil,
             { timeout: options.timeoutMs });
         }
+        if (options.completion) await awaitCompletion();
         await Promise.all([...pending]);
         if (fatalError) throw fatalError;
       })();
@@ -262,6 +318,18 @@ class WebSnapshotManager {
           strippedSensitiveRequestCount,
           blockedRequests: Object.freeze(blocked),
           serviceWorkerPolicy: 'block',
+          ...(options.completion ? {completion: Object.freeze({
+            policy: 'bounded-quiescence/v1',
+            minimumObservationMs: options.completion.minimumObservationMs,
+            quietWindowMs: options.completion.quietWindowMs,
+            pendingRequests: activeRequests.size + pending.size,
+            failedRequests: Object.freeze([...failedRequests.entries()].filter(([key]) => !resources.has(key)).map(([,value]) => value)),
+            nodes: Object.freeze([...discovered.values()]),
+            roots: Object.freeze([{method:'GET',url:options.url}]),
+            // Actual routed requests attributed to this navigation, not nodes
+            // fabricated later from the saved manifest resource list.
+            edges: Object.freeze([...discovered.values()].filter(node => node.url !== options.url || node.method !== 'GET').map(node => ({from:{method:'GET',url:options.url},to:{method:node.method,url:node.url}}))),
+          })} : {}),
         }),
       });
       this.#log('captured', {
@@ -272,6 +340,8 @@ class WebSnapshotManager {
       return draft;
     } finally {
       lease.page.off('response', responseHandler);
+      lease.page.off('requestfinished', requestFinished);
+      lease.page.off('requestfailed', requestFailed);
       await lease.context.unroute('**/*', routeHandler).catch(() => {});
       await Promise.allSettled([...pending]);
     }
@@ -422,6 +492,7 @@ class WebSnapshotManager {
       requestHeaderPolicy: options.capturePolicy?.requestHeaderPolicy ?? 'block-sensitive',
       navigationWaitUntil: options.capturePolicy?.navigationWaitUntil ?? 'networkidle',
       settleWaitUntil: options.capturePolicy?.settleWaitUntil ?? 'networkidle',
+      completion: options.capturePolicy?.completion ?? null,
       sensitiveJsonFields,
       sensitiveResponseNames,
     };
@@ -431,6 +502,17 @@ class WebSnapshotManager {
         throw snapshotError(SNAPSHOT_ERROR_CODES.INVALID_OPTIONS,
           `${name} must be a positive integer`);
       }
+    }
+    if (normalized.completion !== null) {
+      const completion = normalized.completion;
+      if (!completion || typeof completion !== 'object' || Array.isArray(completion) ||
+          Object.keys(completion).some(key => !['minimumObservationMs','quietWindowMs'].includes(key)) ||
+          !Number.isInteger(completion.minimumObservationMs) || completion.minimumObservationMs < 1 ||
+          !Number.isInteger(completion.quietWindowMs) || completion.quietWindowMs < 1 ||
+          completion.minimumObservationMs >= normalized.timeoutMs || completion.quietWindowMs >= normalized.timeoutMs) {
+        throw snapshotError(SNAPSHOT_ERROR_CODES.INVALID_OPTIONS, 'capture completion windows must be positive and bounded by operation timeout');
+      }
+      normalized.completion = Object.freeze({...completion});
     }
     if (normalized.interact !== undefined && typeof normalized.interact !== 'function') {
       throw snapshotError(SNAPSHOT_ERROR_CODES.INVALID_OPTIONS, 'interact must be a function');
