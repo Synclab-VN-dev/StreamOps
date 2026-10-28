@@ -172,33 +172,22 @@ jobs:
           npm ci --prefix ../../snapshot-management
           npm ci --prefix ../../browser-infra
 
-      - name: Discover preinstalled browser and runtime versions
+      - name: Install Chromium pinned by Playwright lockfile
+        run: npx --no-install playwright-core install --with-deps chromium
+
+      - name: Resolve pinned browser and runtime versions
         shell: bash
         run: |
           set -euo pipefail
-          echo "runner_os=${{ runner.os }}"
-          echo "image_os=${ImageOS:-unknown}"
-          echo "image_version=${ImageVersion:-unknown}"
-          uname -a
-          browser_path=""
-          for browser_command in chromium chromium-browser google-chrome google-chrome-stable; do
-            candidate=$(command -v "$browser_command" || true)
-            echo "probe_${browser_command}=${candidate:-NOT_FOUND}"
-            if [[ -z "$browser_path" && -n "$candidate" && -x "$candidate" ]]; then
-              browser_path="$candidate"
-            fi
-          done
-          if [[ -z "$browser_path" ]]; then
-            echo "::error::No preinstalled Chromium/Chrome executable was found on the runner"
-            exit 1
-          fi
+          browser_path=$(node -e "process.stdout.write(require('playwright-core').chromium.executablePath())")
+          test -x "$browser_path"
           echo "browser_path=$browser_path"
           "$browser_path" --version
           node --version
           node -e "console.log('playwright-core ' + require('playwright-core/package.json').version)"
           echo "BROWSER_INFRA_CHROMIUM_PATH=$browser_path" >> "$GITHUB_ENV"
 
-      - name: Verify preinstalled browser compatibility and cleanup
+      - name: Verify pinned browser compatibility and cleanup
         run: npm run smoke:browser
 
       - name: Type declarations, unit, contract and offline synthetic E2E
