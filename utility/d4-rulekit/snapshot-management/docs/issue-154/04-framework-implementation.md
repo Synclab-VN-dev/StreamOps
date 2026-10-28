@@ -1,6 +1,6 @@
 # PR #155 — Framework-only implementation, chờ independent review
 
-Owner approval: [hai PR độc lập](https://github.com/Synclab-VN-dev/StreamOps/pull/155#issuecomment-6446603922). #155 base #146; **không có Dfjs version module**. Issue #156/child PR chỉ bắt đầu sau framework review. Tài liệu 01–03 là audit/design Phase 1 lịch sử, không phải trạng thái approval hiện tại.
+Owner approval: [hai PR độc lập](https://github.com/Synclab-VN-dev/StreamOps/pull/155#issuecomment-6446603922). #155 base #146; **không có Dfjs version module**. Owner cập nhật ngày 28/10: hoàn thiện cả hai PR, review chung cuối lượt; không chờ review trung gian. Tài liệu 01–03 là audit/design Phase 1 lịch sử, không phải trạng thái approval hiện tại.
 
 ## Before → After
 
@@ -70,4 +70,8 @@ Fail-first framework test trước implementation: module missing → FAIL. Refa
 
 S7 adapter phải bundle **toàn execution inventory** và generated index, verify public-content policy/negative inspection; không chỉ copy version file. `build-index.js` là interface cho owning #150, không có implementation packaging ở #155. Không tuyên bố Setup đã hỗ trợ one-file modules. Không tự rebase #147→#150.
 
-Giữ #155 Draft: `PR155_REFACTOR_READY_FOR_REVIEW / CI_NOT_CHECKED`. Không mở child #156 trước reviewer xác nhận. SNAP-05 riêng, không sửa/fix claim. No capture/release/Windows A/production activation.
+Giữ #155 Draft: `PR155_REFACTOR_READY_FOR_REVIEW / CI_NOT_CHECKED`. Child cho Issue #156 được tạo sau local framework acceptance, review chung theo checkpoint mới. SNAP-05 riêng, không sửa/fix claim. No capture/release/Windows A/production activation.
+
+## COMP-07 closure — 28/10/2026
+
+Managed worker test nay thực sự gọi đủ tám APIs; compare set methods đã gọi với READY.apis. Preview giữ revision 0 và metrics baseline sau bypass-cache evaluate; commit revision 1 khớp independent Endgame metrics; stale revision bị reject; reset revision 2 khớp baseline fingerprint/Midgame metrics; closed session bị reject và worker exit 0 sau Chromium cleanup. D12 private offline 2/2 PASS (70.999s), framework 55/55 PASS. Đây là test xuyên worker, không ghép evidence direct Application thay IPC. Test harness chọn definition từ trusted catalog bằng test-only env để child tái dùng, không thay production selection.

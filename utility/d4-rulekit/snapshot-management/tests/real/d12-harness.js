@@ -9,7 +9,9 @@ const {CompatibilityResolver}=require('../../src/resolver');
 const {STRATEGIES,RULEKIT_VERSION}=require('../../src/strategies');
 const {createCodecFamily}=require('../../../providers/maxroll/src/canonical-codec-core');
 const {createProfileFamily}=require('../../../providers/maxroll/src/real-profile-core');
-const definition=require('../../compatibility/versions/maxroll-20261023');
+const {loadCatalog}=require('../../compatibility/loader');
+const definition=loadCatalog().definitions.find(d=>d.definitionId===(process.env.COMPATIBILITY_TEST_DEFINITION??'maxroll-20261023'));
+assert.ok(definition,'trusted test definition must be installed');
 const {MaxrollProvider}=require('../../../providers/maxroll/src/provider');
 const {METRIC_CATALOG}=require('../../../providers/maxroll/src/metric-catalog');
 const {BrowserInfrastructure,WebSnapshotManager,FileSystemSnapshotStore}=require('../../../browser-infra/src');
@@ -36,7 +38,10 @@ async function createHarness(){
  const factory=await strategy.createFactory({entry,profile,storeRoot:snapshotRoot});
  const browser=new BrowserInfrastructure({executablePath:process.env.BROWSER_INFRA_CHROMIUM_PATH,headless:true,maxContexts:1,maxQueue:1,contextOptions:{serviceWorkers:'block'}});
  const provider=new MaxrollProvider({browser,snapshots:new WebSnapshotManager({browser,store}),profile,componentFactory:factory,sessionTimeoutMs:60000});
- return {browser,provider,build,expected,identity};
+ const alternate=JSON.parse(await fs.readFile(path.join(fixtureRoot,'rogue-endgame.json')));
+ const alternateExpected=JSON.parse(await fs.readFile(path.join(fixtureRoot,'rogue-endgame.stats.json')));
+ const alternateBuild=new family.BoundCanonicalCodec({catalog}).nativeToCanonical(alternate);
+ return {browser,provider,build,expected,identity,alternateBuild,alternateExpected};
 }
 async function createComposition(){
  const h=await createHarness();await h.browser.start();
