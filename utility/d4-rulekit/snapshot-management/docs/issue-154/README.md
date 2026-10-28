@@ -1,4 +1,4 @@
-> Cập nhật sau Owner approval: #155 triển khai **framework-only**, Dfjs tách sang Issue #156 sau independent framework review. Xem [implementation và trust binding](04-framework-implementation.md). Nội dung Phase 1 bên dưới giữ làm lịch sử.
+> Cập nhật sau Owner approval: #155 triển khai **framework-only**, Dfjs tách sang Issue #156; Owner ngày 28/10 cho phép hoàn thiện cả hai PR rồi review chung, không chờ giữa chừng. Xem [implementation và trust binding](04-framework-implementation.md). Nội dung Phase 1 bên dưới giữ làm lịch sử.
 
 # Issue #154 — Snapshot Compatibility Framework / Dfjs design
 
