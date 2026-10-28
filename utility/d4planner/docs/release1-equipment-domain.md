@@ -14,6 +14,14 @@ target ID, hash, policy version, and a monotonic selection revision. Missing,
 changed, duplicate, invalid, oversized, excessive, or symlinked files fail
 closed and never silently select another Target.
 
+Readable nonempty malformed JSON is listed as INVALID with the digest/length of
+its actual bytes. Empty, unreadable, oversized or unsafe candidates fail the
+list operation with `TargetInvalid` (`TARGET_INVALID`); no partial success or
+fabricated content descriptor is returned. A failed refresh preserves the last
+successful list revision/candidates and durable selection. Activation still
+re-reads the selected file. Reads are bounded and the actual size is checked
+again after stat to handle files changing during listing.
+
 `EquipmentAssessmentService` consumes a confirmed, typed
 `EquipmentSnapshot`. Its producer must use the existing Equipment projector and
 an authoritative stable-ID mapper. Raw tooltip labels are not accepted as
@@ -22,6 +30,14 @@ existing equip/replace/unequip ownership semantics while preventing a display
 name from becoming scoring identity. Until the authority mapper has identified
 an entity and completeness, the producer emits incomplete evidence and the
 scorer returns `UNKNOWN`.
+
+`PRESENT` tests the observed entity's exact slot/kind/group/stable ID/occurrence
+binding, not the existence of a numeric roll at index zero. A matching observed
+entity with no scalar values satisfies presence. Numeric/text/boolean/range
+comparisons still require their typed values; missing parameters remain UNKNOWN
+even when the entity enumeration is complete. `PRESENT_VALUE` alone never proves
+that another entity is absent. Confirmed absence requires the requested category
+completeness or complete-slot evidence and remains core FAIL / non-core WARN.
 
 Each criterion is scored once even when it has multiple parameters. Core and
 non-core weights are the approved 3 and 1 from the selected policy. `UNKNOWN`
