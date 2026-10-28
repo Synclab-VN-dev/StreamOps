@@ -1,6 +1,6 @@
 'use strict';
 // Test-only independent oracle: original recorded response → source runtime.
-// Never calls canonical mapper/codec or Provider and never opens online capture.
+// Never instantiates a canonical codec or calls Provider and never opens online capture.
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const assert=require('node:assert/strict');

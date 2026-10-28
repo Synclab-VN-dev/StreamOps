@@ -137,7 +137,7 @@ const candidateStrategy={
     discardChangesConfirmButton: 'Yes',
     inputStateBreakpoint: Object.freeze({ lineNumber: 662, columnNumber: 42067 }),
     inputStateReadbackExpression:
-      '({profile:JSON.parse(JSON.stringify(T)),options:JSON.parse(JSON.stringify(D||{}))})',
+      '({profile:JSON.parse(JSON.stringify(T)),options:JSON.parse(JSON.stringify(D||{})),items:JSON.parse(JSON.stringify(F)),resolvedItems:JSON.parse(JSON.stringify(q.items))})',
     inputStateEpochExpression: 'K.context',
     attestationReadbackExpression:
       '({profile:JSON.parse(JSON.stringify(l.profile)),items:JSON.parse(JSON.stringify(l.items)),'
@@ -209,6 +209,7 @@ module.exports=deepFreeze({
  definitionId:"maxroll-20261027", contractVersion:"compatibility-definition/v1",
  identity:DFJS_COMPATIBILITY, codecVersion:CODEC_VERSION,
  reference:MAXROLL_32173552_DFJSIMPL_REFERENCE,
+ itemProjection:{kind:'runtime-input-projection/v1',omittableSlots:['21','22','23','24','25','26'],authority:'sha256:f2ec59038e226775dd7d28ec6d4197bae65eb0d9871086016828edb6f00ad3d6:itemData:HoradricSeal-charmSlots'},
  candidateStrategy, runtimeDefaults, sharedOptions:DFJS_SHARED_OPTION_DEFINITIONS, optionRules:DFJS_OPTION_READBACK_RULES,
  bindings:[
  {id:"maxroll-native-DFJS-v1",family:"native-state/v1",schema:"d4-build/v1",providerVersion:"maxroll-provider/3.2.1.73552-DfjsImpl-universal-v1",guardCode:"DFJS_CANONICAL_GUARD_MISMATCH"}
