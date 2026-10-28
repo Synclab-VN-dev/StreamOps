@@ -30,11 +30,15 @@ Kit evaluation. Skills, Paragon, Charms, Torment, DPS, inventory/stash search,
 and Workspace are not scoring inputs. This does not remove the S3 lifecycle and
 compatibility boundary.
 
-The approved S6 review baseline is MagicPath project `458763473602621440`,
-component `458765764401446912`, revision `464988421014827008`: Target menu
-replaces LIVE, Charms is hidden, Equipment/Compare/Affixes/Effects/score/issues
-and Pin remain, and Coverage is not a HUD element. Exported sources, hashes and
-visual Goldens are separate S6 evidence and are not claimed by S1.
+BE owns capture, durable state, Equipment assessment and preparation of Build
+JSON. Rule Kit owns snapshot compatibility, registry, provider/profile resolution
+and Character Stats formula execution. BE calls Rule Kit APIs and forwards their
+results; FE receives BE data only and never reads SQLite or calls Rule Kit directly.
+This ownership clarification adds no Application API or canonical schema fields.
+
+The approved design reference and UI field mapping are maintained in
+[ui-data-dictionary.md](ui-data-dictionary.md); decision authority and downstream
+acceptance ownership are in [decisions-and-dependencies.md](decisions-and-dependencies.md).
 
 ## Lifecycle state machine
 
@@ -121,7 +125,13 @@ Only BE accesses one configured folder. It canonicalizes and resolves entries
 beneath that root, ignores non-JSON files and symlinks escaping the root, caps
 file count/size, and exposes opaque `targetId`s—not paths. Each listing records
 byte length, validation status and SHA-256 of exact bytes. Invalid files can be
-shown with safe error codes but cannot be selected.
+shown with safe error codes but cannot be selected. This does not waive the
+`targetEntry` schema: `byteLength >= 1` and `contentSha256` always describes bytes
+actually read. A filename hash may identify an entry internally, but is never
+content evidence. Empty/unreadable files cannot be represented as such a descriptor;
+producers must not fabricate values. Failure reporting uses the existing error
+contract; a richer invalid-entry union would require a separately approved wire
+change. Readable nonempty invalid JSON can have a real digest and INVALID status.
 
 Activation repeats path containment, reads the bytes again, recomputes SHA-256,
 validates the target and referenced canonical build schemas plus semantic rules
