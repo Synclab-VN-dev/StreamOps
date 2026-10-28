@@ -25,7 +25,7 @@ let lease = null;
 
 async function run() {
   if (!executablePath || !fs.existsSync(executablePath)) {
-    throw new Error('BROWSER_INFRA_CHROMIUM_PATH must point to a preinstalled executable');
+    throw new Error('BROWSER_INFRA_CHROMIUM_PATH must point to a configured executable');
   }
   report.playwrightVersion = require('playwright-core/package.json').version;
   const { BrowserInfrastructure } = require('@streamops/browser-infrastructure');
@@ -51,7 +51,7 @@ async function run() {
     ready: document.querySelector('#ready')?.textContent ?? null,
   }));
   if (response !== null || observed.title !== 'streamops-browser-smoke' || observed.ready !== 'ready') {
-    throw new Error('preinstalled browser navigation smoke returned unexpected state');
+    throw new Error('configured browser navigation smoke returned unexpected state');
   }
   report.navigation = 'PASS';
   await lease.release();
