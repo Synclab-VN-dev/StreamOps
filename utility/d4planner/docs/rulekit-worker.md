@@ -127,3 +127,19 @@ python -m compileall -q utility/d4planner
 Production managed-snapshot mode may start without a selected snapshot and
 reports calculation UNAVAILABLE; the legacy profile/snapshot-required mode
 above remains distinct. No production trust activation is implied.
+
+### CI prerequisites and startup diagnostics
+
+Windows runtime tests launch real Node workers; installing Python `[dev]` alone
+is insufficient. `tests.yml` pins Node 22.23.4 and runs locked `npm ci` for
+snapshot-management, browser-infra, providers/maxroll and application, then
+requires the management/test-composition modules before pytest. Each native
+command exit code is checked explicitly in PowerShell. No Chromium download or
+private snapshot is required for these synthetic IPC tests.
+
+The process wrapper drains stderr immediately after spawn in fixed-size chunks.
+This prevents a full pipe or oversized diagnostic line from blocking READY or
+fatal exit. Content is discarded, never forwarded over IPC or retained in logs.
+Startup failure cancels its drain task after bounded owned-child cleanup. Tests
+exercise a real Node process with large stderr before successful READY and
+before fatal exit; these are Linux subprocess checks, not Windows-native proof.
