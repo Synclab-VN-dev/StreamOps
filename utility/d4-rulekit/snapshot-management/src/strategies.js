@@ -31,6 +31,7 @@ function createStrategies(catalog){
      if(native)fail(typeof profile.nativeRuntime?.plannerId==='string'&&profile.nativeRuntime.profileUrl===`https://planners.maxroll.gg/profiles/load/d4/${profile.nativeRuntime.plannerId}`,'NATIVE_PROFILE_IDENTITY_INVALID');
      // A signed JSON profile does not override execution-bearing bundled code.
      const expectedProfile=(native?profiles.createUniversalProfile:profiles.createCandidateProfile)({...profile,realRuntime:undefined});
+     for(const key of Object.keys(profile.realRuntime??{}))fail(Object.hasOwn(expectedProfile.realRuntime,key),'EXECUTION_PROFILE_FIELD_UNKNOWN:'+key);
      for(const [key,value] of Object.entries(expectedProfile.realRuntime)){
       // Catalog-derived option enumeration is verified against actual bytes in createFactory.
       if(key==='optionReadbackDefinitions')continue;

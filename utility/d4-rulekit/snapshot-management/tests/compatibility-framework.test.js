@@ -66,6 +66,7 @@ test('B then third C: each addition is exactly one tracked module, shared source
   const resolver=new CompatibilityResolver({registry,strategies});
   assert.equal(resolver.resolve(entry.entryId,profile,manifest).strategy.factory.runtimeKind,'maxroll-ui-cdp-v1');
   assert.throws(()=>resolver.resolve(entry.entryId,{...profile,realRuntime:{...profile.realRuntime,captureExpression:'evil()'}},manifest),{code:'EXECUTION_PROFILE_MISMATCH:captureExpression'});
+  assert.throws(()=>resolver.resolve(entry.entryId,{...profile,realRuntime:{...profile.realRuntime,discoverMetricCatalog:true}},manifest),{code:'EXECUTION_PROFILE_FIELD_UNKNOWN:discoverMetricCatalog'});
   assert.throws(()=>resolver.resolve(entry.entryId,profile,{...manifest,resources:[]}),{code:'SNAPSHOT_ASSET_BINDING_MISMATCH'});
   for(const row of baseline.files)assert.equal(index.files.find(r=>r.path===row.path).sha256,row.sha256);
   const additions=index.files.filter(row=>!untracked.files.some(old=>old.path===row.path));assert.deepEqual(additions.map(row=>row.path),[file]);
