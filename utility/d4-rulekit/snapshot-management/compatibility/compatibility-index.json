@@ -258,6 +258,10 @@
       "sha256": "13cc08b31e2717f6041b6eddd5a0d422d3766650069f1c9bf4fb6412c4a72bfa"
     },
     {
+      "path": "snapshot-management/compatibility/versions/maxroll-20261027.js",
+      "sha256": "ed6fee5674a21431f44cd24c5946f38fd42e00fc3cff8a3c8f1820032a592ac7"
+    },
+    {
       "path": "snapshot-management/package-lock.json",
       "sha256": "c1167744c794c7c747de380e8070e3b93c4287c5feb9eb0e53989059988c22ea"
     },
@@ -319,8 +323,9 @@
     }
   ],
   "modules": [
-    "snapshot-management/compatibility/versions/maxroll-20261023.js"
+    "snapshot-management/compatibility/versions/maxroll-20261023.js",
+    "snapshot-management/compatibility/versions/maxroll-20261027.js"
   ],
-  "executionSha256": "4656fdc7e86070362095b1336c4c47e672e857eb29e3ee0c6fafce6755bad034",
-  "ruleKitVersion": "rulekit-execution/sha256:4656fdc7e86070362095b1336c4c47e672e857eb29e3ee0c6fafce6755bad034"
+  "executionSha256": "8a1c9519cb1c11098f51a4ef6d1496cca3d38b6154bb244aeb64b19b8422813d",
+  "ruleKitVersion": "rulekit-execution/sha256:8a1c9519cb1c11098f51a4ef6d1496cca3d38b6154bb244aeb64b19b8422813d"
 }
