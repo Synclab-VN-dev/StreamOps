@@ -37,7 +37,11 @@ const REAL_MAXROLL_COMPONENT_FACTORY = new MaxrollComponentFactory({
 });
 
 function createProfileFamily(definition) {
-function createCandidateProfile(config) { return createRealProfile(config,definition.reference,definition.candidateStrategy,definition.runtimeDefaults); }
+function createCandidateProfile(config) {
+  const defaults=(strategy,reference)=>({...definition.runtimeDefaults(strategy,reference),
+    ...(definition.itemProjection ? {itemProjection:definition.itemProjection} : {})});
+  return createRealProfile(config,definition.reference,definition.candidateStrategy,defaults);
+}
 function createUniversalProfile(config) {
   const metricCatalog = config?.metricCatalog ?? config?.catalog?.metricCatalog?.();
   const optionReadbackDefinitions = config?.realRuntime?.optionReadbackDefinitions

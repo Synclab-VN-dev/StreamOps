@@ -9,7 +9,7 @@ const {loadCatalog}=require('../compatibility/loader');
 const root=path.resolve(__dirname,'../..');
 test('tracked discovery resolves D12; exact implementation identity is not legacy approval',()=>{
  const index=buildIndex({root});const catalog=loadCatalog({root,index});
- assert.equal(catalog.definitions.length,1);
+ assert.equal(catalog.definitions.length,index.modules.length);
  assert.equal(catalog.definitions[0].identity.snapshotId,'maxroll-20261023T034150Z');
  assert.match(catalog.ruleKitVersion,/^rulekit-execution\/sha256:[a-f0-9]{64}$/);
  assert.notEqual(catalog.ruleKitVersion,'rulekit-snapshot-management/1.0.0');
@@ -70,7 +70,7 @@ test('B then third C: each addition is exactly one tracked module, shared source
   for(const row of baseline.files)assert.equal(index.files.find(r=>r.path===row.path).sha256,row.sha256);
   const additions=index.files.filter(row=>!untracked.files.some(old=>old.path===row.path));assert.deepEqual(additions.map(row=>row.path),[file]);
  }
- assert.equal(loadCatalog({root:directory,index:buildIndex({root:directory})}).definitions.length,3);
+ assert.equal(loadCatalog({root:directory,index:buildIndex({root:directory})}).definitions.length,baseline.modules.length+2);
 });
 test('duplicate registration rejected; no manual registry edit',t=>{
  const directory=sandbox(t),file='snapshot-management/compatibility/versions/duplicate.js';
