@@ -1,6 +1,7 @@
 # S2 managed Backend lifecycle
 
-Source base: `459cd0e1fb41f8421cf93f5009272bfab20b5a2c`  
+Source base: `1d160d744e91e8d35d51bfcc00ba731a5b5d86e7`
+Reviewed S2 baseline: `68fda9a5badae9a218dea135c860443ef85ad49e`  
 Contract: `d4planner-r1-contract/1.0.0-candidate.5`
 
 The native Tauri shell owns exactly one foreground
@@ -21,7 +22,11 @@ STOPPED/EXITED/FAILED
 ```
 
 Concurrent/double `start` calls serialize on lifecycle state and return the
-same READY receipt; hide/collapse only reads state. Startup failure requests
+same READY receipt; hide/collapse only reads state. FAILED permits another start
+only after the owned child exit is confirmed. Cleanup/observation errors retain
+the handle and invalidate READY; stop may retry bounded cleanup. No new child
+or generation replaces an unconfirmed old child. A confirmed exit resolves
+cleanup even if sending shutdown/termination raced with process exit. Startup failure requests
 graceful cleanup and then uses the owned handle, never a process name. Tauri
 exit invokes stop. The wrapper uses an event/pipe READY channel and OS child
 wait primitive; it does not poll a PID or state file.
@@ -70,8 +75,11 @@ typed control error and cannot stop another process.
 ## Evidence boundary
 
 Linux real-process tests verify PID identity, READY, empty folder, owned stop,
-parent EOF, credential redaction and cleanup. Rust driver tests cover
-idempotency, startup cleanup and bounded force termination with fake handles.
+parent EOF, credential redaction and cleanup. The Rust StdProcessDriver also launches the actual Python module, deserializes
+its emitted READY, checks PID and stops the owned child. Negative tests mutate
+the actual Python READY emission to verify required fields/types and all
+protocol/identity guards. Fault injection covers six cleanup failure scenarios
+and watcher observation failure; these use fake handles.
 They are not Windows Job Object or packaged Tauri evidence. Windows process
 group/job containment and physical exit behavior remain `NOT_RUN` until a
 matching Windows test environment is approved.
@@ -84,11 +92,33 @@ matching Windows test environment is approved.
 | S2-02 | PASS | Rust tests cover simultaneous/double start, spawn failure, READY failure cleanup and one owned child. Python rejects protocol, permissions and non-loopback bootstrap errors. |
 | S2-03 | PASS | Real-process tests validate READY/EXIT/STOP, PID/instance/generation, empty and syntactically invalid Target folder startup, and partial sibling health without claiming S3/S5 ready. |
 | S2-04 | PASS (contract/Linux) | Graceful and forced deadlines, owner matching, parent-pipe EOF and hide semantics are automated. Packaged Windows process-group behavior is separately NOT_RUN. |
-| S2-05 | PASS | The new foreground module is a separate entry point and never invokes Task Scheduler or the existing standalone CLI. Targeted CLI regression recorded separately. |
+| S2-05 | PASS (source) / BASELINE_FAILURE (CLI Linux) | The new foreground module is a separate entry point and never invokes Task Scheduler or the existing standalone CLI. CLI suite: 42 PASS, 1 platform failure: PATH restore expects 4 but Linux returns 2 (`PATH management requires Windows`). Same assertion reproduced at reviewed baseline; no CLI change. |
 | S2-06 | PASS (Linux) / NOT_RUN (Windows) | Linux tests launch a real Python process and assert its actual PID, identity and cleanup. Windows Job Object and packaged binary evidence cannot be inferred and remains a S7 runtime gate. |
 
-The Tauri library source reaches `generate_context!` under a Linux container
+Historical native-build limitation (not rerun for this lifecycle-only fix): the Tauri library source reaches `generate_context!` under a Linux container
 with GTK/WebKit/DBus development packages; the existing checkout has no
 `src-tauri/icons/icon.png`, so the macro's application-resource check prevents
 a full native build. This is pre-existing packaging input, not converted to a
 PASS. The isolated lifecycle module compiles and all of its Rust tests run.
+
+## Reproduce local S2 review regression
+
+Run from repository root with Rust and Python 3 available (Python needs the
+project dev dependencies for pytest; the Rust real-subprocess test needs stdlib
+only). `S2_TEST_PYTHON` can select the direct Python interpreter.
+
+```sh
+cargo test --locked --manifest-path utility/d4planner-overlay-poc/lifecycle-tests/Cargo.toml -- --nocapture
+cargo check --locked --manifest-path utility/d4planner-overlay-poc/lifecycle-tests/Cargo.toml
+PYTHONPATH=utility/d4planner/src python3 -m pytest -q utility/d4planner/tests/test_managed_backend.py utility/d4planner/tests/contracts/test_release1_contract.py
+PYTHONPATH=utility/d4planner/src python3 -m pytest -q utility/d4planner/tests/test_cli_runtime.py
+git diff --check
+```
+
+The small Cargo harness imports the production lifecycle source directly; it is
+not a second implementation or a native Tauri GUI build. At review baseline,
+seven existing Rust tests passed and four new tests failed (missing real Python
+health fields, lost ownership, incorrect failure state). After the fix all 11
+Rust tests pass, including ten real Python subprocess scenarios (one valid,
+nine negative). Python managed + S1 contract tests: 56 PASS. No Windows-native,
+Owner MAN or S3–S7 integration rerun is claimed. CI_NOT_CHECKED.

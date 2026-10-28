@@ -306,6 +306,9 @@ impl<D: ProcessDriver> BackendProcessWrapper<D> {
         ) {
             return Err(format!("cannot start from {:?}", inner.state));
         }
+        if inner.child.is_some() {
+            return Err("owned child cleanup pending; stop must confirm exit before start".into());
+        }
         inner.state = ProcessState::Starting;
         let child = match self.driver.spawn(&specification) {
             Ok(child) => child,
@@ -324,21 +327,15 @@ impl<D: ProcessDriver> BackendProcessWrapper<D> {
                 Ok(ready)
             }
             Err(error) => {
-                let _ = self.driver.request_graceful_stop(&child, &specification);
-                let exited = self
-                    .driver
-                    .wait_for_exit(&child, specification.graceful_stop_timeout)
-                    .unwrap_or(false);
-                if !exited {
-                    let _ = self.driver.terminate_owned_child(&child);
-                    let _ = self
-                        .driver
-                        .wait_for_exit(&child, specification.kill_timeout);
-                }
-                inner.child = None;
                 inner.ready = None;
                 inner.state = ProcessState::Failed;
-                Err(error)
+                match self.cleanup_owned_child(&child, &specification) {
+                    Ok(()) => {
+                        inner.child = None;
+                        Err(error)
+                    }
+                    Err(cleanup) => Err(format!("{error}; cleanup pending: {cleanup}")),
+                }
             }
         }
     }
@@ -363,8 +360,14 @@ impl<D: ProcessDriver> BackendProcessWrapper<D> {
             }
             match observed {
                 Ok(false) => continue,
-                Ok(true) | Err(_) => {
+                Ok(true) => {
                     lifecycle.child = None;
+                    lifecycle.ready = None;
+                    lifecycle.state = ProcessState::Failed;
+                    return;
+                }
+                Err(_) => {
+                    // Observation failure is not evidence of process exit.
                     lifecycle.ready = None;
                     lifecycle.state = ProcessState::Failed;
                     return;
@@ -399,30 +402,51 @@ impl<D: ProcessDriver> BackendProcessWrapper<D> {
             }
         };
         inner.state = ProcessState::Stopping;
-        let graceful_error = self
-            .driver
-            .request_graceful_stop(&child, &specification)
-            .err();
-        let exited = self
-            .driver
-            .wait_for_exit(&child, specification.graceful_stop_timeout)?;
-        if !exited {
-            self.driver.terminate_owned_child(&child)?;
-            if !self
-                .driver
-                .wait_for_exit(&child, specification.kill_timeout)?
-            {
+        inner.ready = None;
+        match self.cleanup_owned_child(&child, &specification) {
+            Ok(()) => {
+                inner.child = None;
+                inner.state = ProcessState::Exited;
+                Ok(())
+            }
+            Err(error) => {
                 inner.state = ProcessState::Failed;
-                return Err("owned child did not exit after termination".into());
+                Err(error)
             }
         }
-        inner.child = None;
-        inner.ready = None;
-        inner.state = ProcessState::Exited;
-        if let Some(error) = graceful_error {
-            return Err(error);
+    }
+
+    /// Only a confirmed exit releases ownership, even if shutdown/kill fails.
+    /// Both waits are bounded by the driver contract. Retrying stop is safe.
+    fn cleanup_owned_child(
+        &self,
+        child: &D::Child,
+        spec: &LaunchSpecification,
+    ) -> Result<(), String> {
+        let mut errors = Vec::new();
+        if let Err(error) = self.driver.request_graceful_stop(child, spec) {
+            errors.push(error);
         }
-        Ok(())
+        match self.driver.wait_for_exit(child, spec.graceful_stop_timeout) {
+            Ok(true) => return Ok(()),
+            Err(error) => errors.push(error),
+            Ok(false) => {}
+        }
+        if let Err(error) = self.driver.terminate_owned_child(child) {
+            errors.push(error);
+        }
+        match self.driver.wait_for_exit(child, spec.kill_timeout) {
+            Ok(true) => Ok(()),
+            result => {
+                if let Err(error) = result {
+                    errors.push(error);
+                }
+                Err(format!(
+                    "owned child exit unconfirmed; {}",
+                    errors.join("; ")
+                ))
+            }
+        }
     }
 
     pub fn restart_with(&self, next: LaunchSpecification) -> Result<ReadyInfo, String> {
@@ -687,7 +711,10 @@ mod tests {
             pid: 43,
             child_instance_id: "child-2".into(),
             generation: 2,
-            ws_endpoint: WsEndpoint { host: "127.0.0.1".into(), port: 0 },
+            ws_endpoint: WsEndpoint {
+                host: "127.0.0.1".into(),
+                port: 0,
+            },
             health: BackendHealth {
                 durable_state: "READY".into(),
                 target_repository: "READY".into(),
@@ -700,3 +727,7 @@ mod tests {
         assert_eq!(wrapper.state(), ProcessState::Ready);
     }
 }
+
+#[cfg(test)]
+#[path = "backend_process_review_tests.rs"]
+mod review_tests;
