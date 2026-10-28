@@ -122,3 +122,27 @@ health fields, lost ownership, incorrect failure state). After the fix all 11
 Rust tests pass, including ten real Python subprocess scenarios (one valid,
 nine negative). Python managed + S1 contract tests: 56 PASS. No Windows-native,
 Owner MAN or S3–S7 integration rerun is claimed. CI_NOT_CHECKED.
+
+## S2-F03 — one generation per spawned lifetime
+
+A successful spawn consumes the specification's generation, including when
+READY later fails. `start()` is idempotent only while that child is READY.
+After confirmed stop/crash/failed READY cleanup, another `start()` rejects with
+`backend generation already used; provision a fresh bootstrap and call restart_with`.
+A spawn failure that never produced an owned handle does not consume it.
+
+This is deliberately fail-closed: S2's native `start_backend` retains the wrapper
+and reads its descriptor only when constructing it. It does not provision new
+credentials or identities. Merely changing the descriptor file cannot update
+the stored launch specification. The native composition owner must provision a
+matching private descriptor and call `restart_with` with the same owner, a new
+child identity and strictly higher generation. The existing cleanup guard runs
+first: rotating a specification cannot abandon an unconfirmed old child.
+This change does not introduce automatic restart or a React credential API.
+
+Review regression adds three tests to the previous 11 (14 total): actual
+Rust/Python stop→start rejection, actual owned process crash→watcher→start
+rejection (both then exercise generation 2 with a matching descriptor and
+clean shutdown), and failed READY→successful cleanup→stop→start rejection.
+Existing concurrent/double-start, ownership, READY guards and cleanup-failure
+coverage remains unchanged. Windows-native/MAN is NOT_RUN for this change.

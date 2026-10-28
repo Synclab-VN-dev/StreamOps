@@ -297,3 +297,82 @@ fn actual_python_ready_rejects_missing_malformed_and_foreign_identity() {
         assert!(d.wait_for_exit(&c, Duration::from_secs(2)).unwrap());
     }
 }
+
+#[test]
+fn real_stop_start_rejects_used_generation() {
+    assert_new_lifetime(false);
+}
+
+#[test]
+fn real_crash_start_rejects_used_generation() {
+    assert_new_lifetime(true);
+}
+
+fn assert_new_lifetime(crash: bool) {
+    {
+        let sandbox = Sandbox::new();
+        let spec = sandbox.launch("");
+        let wrapper = BackendProcessWrapper::new(Arc::new(StdProcessDriver), spec.clone());
+        let first = wrapper.start().unwrap();
+        let child = wrapper.inner.lock().unwrap().child.clone().unwrap();
+        let _reap = Reap(child.clone());
+        if crash {
+            StdProcessDriver.terminate_owned_child(&child).unwrap();
+            let deadline = std::time::Instant::now() + Duration::from_secs(3);
+            while wrapper.state() == ProcessState::Ready && std::time::Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(10));
+            }
+            assert_eq!(wrapper.state(), ProcessState::Failed);
+        } else {
+            wrapper.stop().unwrap();
+            assert_eq!(wrapper.state(), ProcessState::Exited);
+        }
+        assert!(child.process.lock().unwrap().try_wait().unwrap().is_some());
+        assert!(wrapper.inner.lock().unwrap().child.is_none());
+        let repeated = wrapper.start();
+        // Reap a wrongly spawned child even when this fail-first assertion fails.
+        let _unexpected = wrapper.inner.lock().unwrap().child.clone().map(Reap);
+        assert!(
+            repeated.is_err(),
+            "reused lifetime after crash={crash}: {repeated:?}"
+        );
+        assert!(repeated.unwrap_err().contains("generation already used"));
+        assert!(wrapper.ready_info().is_none());
+
+        // Native composition must provision a matching new descriptor/spec.
+        let descriptor = sandbox.0.join("bootstrap.json");
+        let mut json: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&descriptor).unwrap()).unwrap();
+        json["generation"] = 2.into();
+        json["childInstanceId"] = "child-2".into();
+        std::fs::write(&descriptor, serde_json::to_vec(&json).unwrap()).unwrap();
+        let mut next = spec;
+        next.generation = 2;
+        next.child_instance_id = "child-2".into();
+        let second = wrapper.restart_with(next).unwrap();
+        let _second_reap = Reap(wrapper.inner.lock().unwrap().child.clone().unwrap());
+        assert_eq!(second.generation, first.generation + 1);
+        assert_ne!(second.child_instance_id, first.child_instance_id);
+        assert_eq!(wrapper.start().unwrap(), second);
+        wrapper.stop().unwrap();
+        assert!(wrapper.inner.lock().unwrap().child.is_none());
+        println!(
+            "F03 real crash={crash}: old_pid={} new_pid={} generations=1->2 cleanup=EXITED",
+            first.pid, second.pid
+        );
+    }
+}
+
+#[test]
+fn failed_ready_consumes_generation_even_after_successful_cleanup() {
+    let d = Arc::new(FaultDriver::new());
+    d.ready_fails.store(true, Ordering::SeqCst);
+    d.exited.store(true, Ordering::SeqCst);
+    let w = BackendProcessWrapper::new(d.clone(), spec());
+    assert!(w.start().is_err());
+    assert!(w.inner.lock().unwrap().child.is_none());
+    w.stop().unwrap(); // FAILED -> STOPPED must not erase lifetime history.
+    d.ready_fails.store(false, Ordering::SeqCst);
+    assert!(w.start().is_err());
+    assert_eq!(d.spawns.load(Ordering::SeqCst), 1);
+}

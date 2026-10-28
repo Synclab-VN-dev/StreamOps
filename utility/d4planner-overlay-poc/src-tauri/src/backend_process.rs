@@ -240,6 +240,8 @@ impl ProcessDriver for StdProcessDriver {
 }
 
 struct Inner<C> {
+    // A spawned lifetime consumes its generation even if READY fails.
+    last_spawned_generation: Option<u64>,
     state: ProcessState,
     child: Option<C>,
     ready: Option<ReadyInfo>,
@@ -259,6 +261,7 @@ impl<D: ProcessDriver> BackendProcessWrapper<D> {
             operation: Mutex::new(()),
             specification: Mutex::new(specification),
             inner: Arc::new(Mutex::new(Inner {
+                last_spawned_generation: None,
                 state: ProcessState::Stopped,
                 child: None,
                 ready: None,
@@ -309,6 +312,12 @@ impl<D: ProcessDriver> BackendProcessWrapper<D> {
         if inner.child.is_some() {
             return Err("owned child cleanup pending; stop must confirm exit before start".into());
         }
+        if inner
+            .last_spawned_generation
+            .is_some_and(|used| specification.generation <= used)
+        {
+            return Err("backend generation already used; provision a fresh bootstrap and call restart_with".into());
+        }
         inner.state = ProcessState::Starting;
         let child = match self.driver.spawn(&specification) {
             Ok(child) => child,
@@ -317,6 +326,7 @@ impl<D: ProcessDriver> BackendProcessWrapper<D> {
                 return Err(error);
             }
         };
+        inner.last_spawned_generation = Some(specification.generation);
         inner.child = Some(child.clone());
         match self.driver.await_ready(&child, &specification) {
             Ok(ready) => {
