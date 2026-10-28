@@ -100,7 +100,8 @@ def _typed_expected(parameter: dict[str, Any]) -> dict[str, Any]:
 def _parameter_passes(parameter: dict[str, Any], actual: ObservedValue | None) -> bool | None:
     comparator = parameter["comparator"]
     if comparator == "PRESENT":
-        return actual is not None
+        # Caller supplies observed entity presence, not an optional scalar roll.
+        return None if actual is None else actual.value is True
     if actual is None or actual.unit != parameter["unit"]:
         return None
     expected = parameter["expected"]
@@ -144,7 +145,10 @@ class EquipmentAssessmentService:
             item = item_by_slot.get(criterion["slotId"])
             evidence = current.slot_evidence.get(criterion["slotId"], frozenset())
             required = criterion["evidenceRequirement"]
-            complete = required in evidence or "COMPLETE_SLOT" in evidence
+            # Observing a value cannot establish absence of another entity.
+            complete = "COMPLETE_SLOT" in evidence or (
+                required == "COMPLETE_CATEGORY" and "COMPLETE_CATEGORY" in evidence
+            )
             entity = None
             if item is not None:
                 entity = next((
@@ -158,7 +162,9 @@ class EquipmentAssessmentService:
             parameter_values: list[bool | None] = []
             for parameter in criterion["parameters"]:
                 actual = None
-                if entity is not None and parameter["index"] < len(entity.values):
+                if parameter["comparator"] == "PRESENT" and entity is not None:
+                    actual = ObservedValue("BOOLEAN", True)
+                elif entity is not None and parameter["index"] < len(entity.values):
                     actual = entity.values[parameter["index"]]
                 passed = _parameter_passes(parameter, actual)
                 parameter_values.append(passed)
@@ -172,7 +178,9 @@ class EquipmentAssessmentService:
                     status, reason, observed = "UNKNOWN", "TYPE_MISMATCH", "UNAVAILABLE"
                 else:
                     status, reason = "UNKNOWN", "PARAMETER_NOT_OBSERVED"
-                    observed = "INCOMPLETE" if not complete else "CONFIRMED_ABSENT"
+                    # Completeness of entity enumeration does not prove a
+                    # missing scalar roll; it remains unknown under S1 ALL.
+                    observed = "CONFIRMED_ABSENT" if entity is None and complete else "INCOMPLETE"
                 parameter_rows.append({
                     "parameterId": parameter["parameterId"],
                     "label": parameter["parameterId"],

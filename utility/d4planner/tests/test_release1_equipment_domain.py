@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from hashlib import sha256
 import json
 from pathlib import Path
 import sqlite3
@@ -146,8 +147,8 @@ def test_target_repository_rejects_symlink_and_bounded_file_count(tmp_path, vali
     outside = write_target(tmp_path, "outside.json")
     (folder / "linked.json").symlink_to(outside)
     repo = TargetRepository(folder, tmp_path / "selection.json", validator, max_files=1)
-    listing = repo.list()
-    assert listing.entries[0].validation == "INVALID"
+    with pytest.raises(TargetInvalid, match="UNSAFE_TARGET_PATH"):
+        repo.list()
     write_target(folder, "real.json", mutate=lambda document: document.update(targetId="target-two"))
     with pytest.raises(TargetInvalid, match="TARGET_FILE_LIMIT_EXCEEDED"):
         repo.list()
@@ -296,8 +297,8 @@ def test_typed_mismatch_is_unknown_and_non_equipment_does_not_change_score(tmp_p
     ("BETWEEN", {"type": "NUMBER_RANGE", "minimum": 2, "maximum": 4}, number(5, "PERCENT"), False),
     ("EQUAL", {"type": "TEXT", "value": "enabled"}, ObservedValue("TEXT", "enabled"), True),
     ("EQUAL", {"type": "NUMBER", "value": 1}, ObservedValue("NUMBER", True), None),
-    ("PRESENT", {"type": "PRESENCE", "value": True}, number(1, "PERCENT"), True),
-    ("PRESENT", {"type": "PRESENCE", "value": True}, None, False),
+    ("PRESENT", {"type": "PRESENCE", "value": True}, ObservedValue("BOOLEAN", True), True),
+    ("PRESENT", {"type": "PRESENCE", "value": True}, None, None),
 ])
 def test_raw_parameter_comparators(comparator, expected, actual, outcome):
     parameter = {"comparator": comparator, "expected": expected, "unit": "PERCENT"}
@@ -648,3 +649,155 @@ def test_repository_ring_identity_requires_verified_physical_slot(tmp_path):
     )
     assert all(item.slot_id.startswith("unresolved-ring:") for item in unknown.items)
     assert not ({"ring-1", "ring-2"} & set(unknown.slot_evidence))
+
+
+@pytest.mark.parametrize("fault", ["empty", "unreadable", "oversized", "deleted", "symlink", "shrunk", "grew"])
+def test_list_content_failure_is_operation_error_preserves_selection(tmp_path, validator, monkeypatch, fault):
+    folder = tmp_path / "targets"
+    folder.mkdir()
+    good = write_target(folder)
+    repo = TargetRepository(folder, tmp_path / "selection.json", validator)
+    listing = repo.list()
+    entry = listing.entries[0]
+    repo.activate(entry.target_id, entry.content_sha256, listing.revision)
+    saved = repo.selection_state.read_bytes()
+    bad = folder / "bad.json"
+    bad.write_bytes(b"{}")
+    if fault == "empty":
+        bad.write_bytes(b"")
+    elif fault == "oversized":
+        bad.write_bytes(b"x" * (repo.max_file_bytes + 1))
+    elif fault == "symlink":
+        bad.unlink()
+        bad.symlink_to(good)
+    else:
+        original = repo._read_candidate
+        def read(path):
+            if path == bad:
+                if fault == "deleted":
+                    bad.unlink()
+                elif fault == "unreadable":
+                    raise PermissionError("private path must not leak")
+                else:
+                    # File changed after stat, before actual content read.
+                    original_open = Path.open
+                    def changed_open(path, *args, **kwargs):
+                        if path == bad:
+                            with original_open(path, "wb") as stream:
+                                stream.write(b"" if fault == "shrunk" else b"x" * (repo.max_file_bytes + 1))
+                        return original_open(path, *args, **kwargs)
+                    monkeypatch.setattr(Path, "open", changed_open)
+            return original(path)
+        monkeypatch.setattr(repo, "_read_candidate", read)
+    with pytest.raises(TargetInvalid) as error:
+        repo.list()
+    assert error.value.code == "TARGET_INVALID"
+    assert "private path" not in str(error.value)
+    assert repo.selection_state.read_bytes() == saved
+    assert repo._list_revision == listing.revision
+    # A failed refresh does not replace the last successful candidate set.
+    assert repo.activate(entry.target_id, entry.content_sha256, listing.revision).target_id == entry.target_id
+
+
+def test_real_listing_wire_schema_and_content_hashes(tmp_path, validator):
+    good = write_target(tmp_path)
+    bad = tmp_path / "bad.json"
+    bad.write_bytes(b"{")
+    repo = TargetRepository(tmp_path, tmp_path / "state/selection.json", validator)
+    listing = repo.list()
+    wire = {"protocolVersion": "d4planner-ws/v1", "messageId": "list-1",
+            "type": "target.list.result", "correlationId": "request-1",
+            "backendGeneration": 1, "listRevision": listing.revision,
+            "targets": [{"targetId": e.target_id, "displayName": e.display_name,
+                         "contentSha256": e.content_sha256, "byteLength": e.byte_length,
+                         "validation": e.validation, "errorCodes": list(e.error_codes)}
+                        for e in listing.entries]}
+    Draft202012Validator(load_json(CONTRACT / "schemas/ws.schema.json")).validate(wire)
+    for entry in listing.entries:
+        data = (good if entry.validation == "VALID" else bad).read_bytes()
+        assert (entry.content_sha256, entry.byte_length) == (sha256(data).hexdigest(), len(data))
+        if entry.validation == "INVALID":
+            with pytest.raises(TargetInvalid):
+                repo.activate(entry.target_id, entry.content_sha256, listing.revision)
+
+
+# Independent truth table: entity presence is not numeric parameter presence.
+@pytest.mark.parametrize("mode,tokens,values,core,expected", [
+    ("presence", (), (number(9, "PERCENT"),), True, "PASS"),
+    ("presence", (), (), True, "PASS"),
+    ("wrong-identity", (), (), True, "UNKNOWN"),
+    ("wrong-identity", ("COMPLETE_CATEGORY",), (), True, "FAIL"),
+    ("presence", (), None, True, "UNKNOWN"),
+    ("presence", ("PRESENT_VALUE",), None, True, "UNKNOWN"),
+    ("presence", ("COMPLETE_CATEGORY",), None, True, "FAIL"),
+    ("presence", ("COMPLETE_SLOT",), None, False, "WARN"),
+    ("numeric", (), (), True, "UNKNOWN"),
+    ("numeric", ("COMPLETE_SLOT",), (), True, "UNKNOWN"),
+    ("numeric", (), (number(7, "PERCENT"),), True, "WARN"),
+    ("numeric", (), (number(7, "PERCENT"),), False, "WARN"),
+    ("numeric", (), (number(9, "FLAT"),), True, "UNKNOWN"),
+    ("equality", (), (ObservedValue("BOOLEAN", True),), True, "UNKNOWN"),
+    ("multi", (), (number(10, "PERCENT"),), True, "UNKNOWN"),
+    ("multi", ("COMPLETE_SLOT",), (number(10, "PERCENT"),), True, "UNKNOWN"),
+    ("multi", (), (number(10, "PERCENT"), number(2, "FLAT")), True, "PASS"),
+])
+def test_criterion_presence_completeness_truth_and_hud_schema(tmp_path, validator, mode, tokens, values, core, expected):
+    document = load_json(TARGET_FIXTURE)
+    criterion = copy.deepcopy(document["assessmentPolicy"]["criteria"][2 if mode == "multi" else 0])
+    criterion.update(core=core, weightClass="CORE" if core else "NON_CORE",
+                     evidenceRequirement="COMPLETE_CATEGORY")
+    if mode in {"presence", "wrong-identity"}:
+        criterion["parameters"] = [{"parameterId": "presence", "index": 0,
+            "comparator": "PRESENT", "unit": "NONE", "expected": {"type": "PRESENCE", "value": True}}]
+    if mode == "equality":
+        criterion["parameters"][0].update(comparator="EQUAL", unit="NONE")
+    document["assessmentPolicy"]["criteria"] = [criterion]
+    validator.validate(document)
+    target = ActivatedTarget(document["targetId"], document["displayName"], "a" * 64, 1, document)
+    entities = [] if values is None else [{"kind": criterion["kind"], "group": criterion["source"]["group"],
+        "entityId": "unrelated-entity" if mode == "wrong-identity" else criterion["entityId"], "occurrence": 0, "label": "Synthetic observed entity",
+        "values": [{**v.as_dict(), "evidence": "OBSERVED"} for v in values]}]
+    current = EquipmentCaptureAdapter().from_event({
+        "schemaVersion": "d4planner-equipment-evidence/v1", "characterId": "synthetic-character",
+        "characterDisplayName": "Synthetic Character", "currentRevision": 1,
+        "capturedAt": "2026-10-25T10:00:00Z", "captureHealth": "HEALTHY",
+        "slots": [{"slotId": "gloves", "presence": "OBSERVED", "evidence": list(tokens),
+                   "item": {"itemId": "observed-gloves", "displayName": "Synthetic Gloves",
+                            "observedAt": "2026-10-25T10:00:00Z", "entities": entities}}]})
+    result = EquipmentAssessmentService().assess(current, target)
+    comparison = result.rows[0]["comparisons"][0]
+    assert comparison["status"] == expected
+    if mode == "presence" and expected == "PASS":
+        assert comparison["parameters"][0]["actual"] == {"type": "BOOLEAN", "value": True, "unit": "NONE"}
+    if mode == "multi" and expected == "UNKNOWN":
+        assert comparison["parameters"][1]["evidence"] == "INCOMPLETE"
+    weight = 3 if core else 1
+    assert result.score == (None if expected == "UNKNOWN" else 100 if expected == "PASS" else 0)
+    assert result.score_status == ("NO_DATA" if expected == "UNKNOWN" else "SCORED")
+    assert result.evaluable_weight == (0 if expected == "UNKNOWN" else weight)
+    assert result.passed_weight == (weight if expected == "PASS" else 0)
+    assert (result.fail_issues, result.warnings) == (int(expected == "FAIL"), int(expected == "WARN"))
+    assert (result.items_passing, result.items_targeted) == (int(expected == "PASS"), 1)
+    assert result.total_criteria == 1
+    assert (result.recommendation is None) == (expected in {"PASS", "UNKNOWN"})
+    if result.recommendation:
+        assert result.recommendation["criterionIds"] == [criterion["criterionId"]]
+        assert result.recommendation["action"] == ("REPLACE" if expected == "FAIL" else "IMPROVE_ROLL")
+    store = DurableHudStore(tmp_path / "hud.db")
+    policy = document["assessmentPolicy"]
+    store.set_binding(AssessmentBinding("runtime-a", current.character_id, 1, target.target_id,
+        target.content_sha256, 1, policy["version"] + "+" + policy["weightProfile"]["profileId"]))
+    hud = EquipmentAssessmentCoordinator(EquipmentAssessmentService(), store, lambda _: None).assess_commit_publish(
+        runtime_instance_id="runtime-a", current=current, target=target, produced_at="2026-10-25T10:00:01Z")
+    Draft202012Validator(load_json(CONTRACT / "schemas/hud.schema.json"), format_checker=FormatChecker()).validate(hud)
+
+
+def test_present_value_does_not_prove_absence(tmp_path, validator):
+    document = load_json(TARGET_FIXTURE)
+    criterion = document["assessmentPolicy"]["criteria"][0]
+    criterion["evidenceRequirement"] = "PRESENT_VALUE"
+    document["assessmentPolicy"]["criteria"] = [criterion]
+    target = ActivatedTarget(document["targetId"], document["displayName"], "a" * 64, 1, validator.validate(document))
+    current = current_snapshot(attack=None, complete=False)
+    result = EquipmentAssessmentService().assess(current, target)
+    assert (result.score_status, result.evaluable_weight, result.fail_issues, result.warnings) == ("NO_DATA", 0, 0, 0)

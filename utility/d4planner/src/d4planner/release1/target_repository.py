@@ -180,7 +180,11 @@ class TargetRepository:
         size = path.stat().st_size
         if size <= 0 or size > self.max_file_bytes:
             raise TargetInvalid("TARGET_SIZE_INVALID")
-        data = path.read_bytes()
+        # Bound the read and validate actual bytes too: size may change after stat.
+        with path.open("rb") as stream:
+            data = stream.read(self.max_file_bytes + 1)
+        if not data or len(data) > self.max_file_bytes:
+            raise TargetInvalid("TARGET_SIZE_INVALID")
         digest = sha256(data).hexdigest()
         try:
             parsed = json.loads(data.decode("utf-8"))
@@ -215,16 +219,10 @@ class TargetRepository:
         for path in paths:
             try:
                 candidates.append(self._read_candidate(path))
-            except (OSError, TargetInvalid) as exc:
-                raw = path.name.encode("utf-8")
-                candidates.append(_Candidate(
-                    path,
-                    TargetListEntry(
-                        self._invalid_id(path, raw), path.name, sha256(raw).hexdigest(), 0,
-                        "INVALID", (str(exc).split(":", 1)[0],),
-                    ),
-                    None,
-                ))
+            except OSError:
+                # No content evidence exists. Fail the operation through the
+                # existing TARGET_INVALID error, never fabricate a descriptor.
+                raise TargetInvalid("TARGET_READ_FAILED") from None
         by_id: dict[str, list[_Candidate]] = {}
         for candidate in candidates:
             by_id.setdefault(candidate.entry.target_id, []).append(candidate)
