@@ -159,10 +159,18 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: utility/d4-rulekit/providers/maxroll/package-lock.json
+          cache-dependency-path: |
+            utility/d4-rulekit/providers/maxroll/package-lock.json
+            utility/d4-rulekit/snapshot-management/package-lock.json
+            utility/d4-rulekit/browser-infra/package-lock.json
 
-      - name: Install pinned local infrastructure dependency
-        run: npm ci
+      - name: Install pinned provider and source dependency packages
+        # Capture tests import snapshot-management and browser-infra source. Node
+        # resolves dependencies there, not in the provider's sibling node_modules.
+        run: |
+          npm ci
+          npm ci --prefix ../../snapshot-management
+          npm ci --prefix ../../browser-infra
 
       - name: Discover preinstalled browser and runtime versions
         shell: bash
