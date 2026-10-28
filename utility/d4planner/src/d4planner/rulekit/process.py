@@ -148,6 +148,11 @@ class RuleKitProcessWrapper:
                 self.specification, instance_id=instance_id, generation=self.generation
             )
             self._child = child
+            # Drain from spawn, not after READY: a full stderr pipe can block
+            # Node startup or fatal-exit flushing before stdout/EOF arrives.
+            stderr = getattr(child.process, "stderr", None)
+            if stderr is not None:
+                self._stderr_task = asyncio.create_task(self._drain_stderr(stderr))
             assert child.process.stdout is not None and child.process.stdin is not None
             line = await asyncio.wait_for(
                 child.process.stdout.readline(), self.specification.readiness_timeout
@@ -169,15 +174,16 @@ class RuleKitProcessWrapper:
             )
             self.state = ProcessState.READY
             self._exit_task = asyncio.create_task(self._watch_exit(child))
-            if child.process.stderr is not None:
-                self._stderr_task = asyncio.create_task(self._drain_stderr(child.process.stderr))
             return self.client
         except BaseException:
             self.state = ProcessState.FAILED
             self.client = None
-            if child is not None:
-                await self._bounded_terminate(child)
-                self._child = None
+            try:
+                if child is not None:
+                    await self._bounded_terminate(child)
+                    self._child = None
+            finally:
+                await self._cancel_background_tasks()
             raise
 
     async def stop(self, reason: str = "OWNER_EXIT") -> None:
@@ -290,5 +296,7 @@ class RuleKitProcessWrapper:
     async def _drain_stderr(reader: asyncio.StreamReader) -> None:
         # Logs are intentionally discarded here: production integration supplies
         # a sanitized logger, never forwards private worker stderr over IPC.
-        while await reader.readline():
+        # Fixed-size reads also drain oversized/no-newline diagnostics without
+        # StreamReader readline limits or retaining private log content.
+        while await reader.read(16384):
             pass
