@@ -2,14 +2,20 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {createHarness}=require('./d12-harness');
+const {assertProjectionOracle}=require('./projection-oracle');
+function projection(result,source,required,state){
+ const evidence=assertProjectionOracle(result,source,required,state);
+ if(evidence)console.log('PROJECTION_ORACLE '+JSON.stringify(evidence));
+}
 test(`${process.env.COMPATIBILITY_TEST_DEFINITION??'maxroll-20261023'} signed isolated binding → generic factory → real offline Provider`, {timeout:180000},async()=>{
- const {browser,provider,build,expected,identity}=await createHarness();
+ const {browser,provider,build,expected,identity,projectionRequired}=await createHarness();
  let session;
  try{
   await browser.start();
   session=await provider.createSession({build,buildSchemaVersion:'d4-build/v1',snapshotId:identity.snapshotId,snapshotManifestSha256:identity.snapshotManifestSha256,timeoutMs:60000});
   const result=await session.evaluate({build,changes:[],buildSchemaVersion:'d4-build/v1',timeoutMs:60000});
   assert.equal(result.metrics.length,50);assert.equal(result.provenance.networkReplay.transportOffline,true);
+  projection(result,expected,projectionRequired,'direct-baseline');
   const expectedRows=expected.rawMetrics??expected.metrics;
   assert.ok(Array.isArray(expectedRows),'independent fixture metrics required');
   const byId=new Map(expectedRows.map(row=>[row.metricId??row.id,row.rawValue??row.raw]));
@@ -40,6 +46,7 @@ test(`${process.env.COMPATIBILITY_TEST_DEFINITION??'maxroll-20261023'} eight API
   const expected=new Map(h.expected.rawMetrics.map(row=>[row.metricId,row.rawValue]));assert.equal(result.metrics.length,50);
   for(const row of result.metrics){assert.ok(expected.has(row.id));assert.equal(row.rawValue,expected.get(row.id));}
   assert.equal(result.provenance.provider.runtimeAttestation.profileReadback.calculationOptions.status,'EXACT');
+  projection(result,h.expected,h.projectionRequired,'worker-baseline');
   const sessionId=created.sessionId;
   const vector=(rows,expected)=>{assert.equal(rows.length,expected.length);assert.deepEqual(rows.map(r=>[r.id,r.rawValue]).sort(),expected.map(r=>[r.metricId,r.rawValue]).sort());};
   assert.equal((await invoke('getSession',{sessionId})).revision,0);
@@ -49,12 +56,15 @@ test(`${process.env.COMPATIBILITY_TEST_DEFINITION??'maxroll-20261023'} eight API
   assert.notEqual(preview.baseBuildFingerprint,preview.candidateBuildFingerprint);
   for(const delta of preview.delta)assert.equal(delta.delta,delta.after-delta.before);
   assert.equal((await invoke('getSession',{sessionId})).revision,0);
-  vector((await invoke('evaluate',{sessionId,options:{bypassCache:true,timeoutMs:60000}})).metrics,h.expected.rawMetrics);
+  const afterPreview=await invoke('evaluate',{sessionId,options:{bypassCache:true,timeoutMs:60000}});
+  vector(afterPreview.metrics,h.expected.rawMetrics);projection(afterPreview,h.expected,h.projectionRequired,'after-preview');
   const committed=await invoke('commitChanges',{sessionId,request:{expectedRevision:0,changes,previewToken:preview.previewToken,timeoutMs:60000}});
   assert.equal(committed.session.revision,1);vector(committed.result.metrics,h.alternateExpected.rawMetrics);
+  projection(committed.result,h.alternateExpected,h.projectionRequired,'committed');
   await assert.rejects(invoke('commitChanges',{sessionId,request:{expectedRevision:0,changes,timeoutMs:60000}}));
   const reset=await invoke('resetSession',{sessionId,options:{expectedRevision:1,timeoutMs:60000}});assert.equal(reset.revision,2);
   const restored=await invoke('evaluate',{sessionId,options:{bypassCache:true,timeoutMs:60000}});vector(restored.metrics,h.expected.rawMetrics);assert.equal(restored.inputFingerprint,result.inputFingerprint);
+  projection(restored,h.expected,h.projectionRequired,'reset');
   await invoke('closeSession',{sessionId});await assert.rejects(invoke('getSession',{sessionId}));
   assert.deepEqual([...called].sort(),[...status.apis].sort());
  }finally{

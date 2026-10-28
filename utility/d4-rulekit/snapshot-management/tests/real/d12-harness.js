@@ -41,7 +41,7 @@ async function createHarness(){
  const alternate=JSON.parse(await fs.readFile(path.join(fixtureRoot,'rogue-endgame.json')));
  const alternateExpected=JSON.parse(await fs.readFile(path.join(fixtureRoot,'rogue-endgame.stats.json')));
  const alternateBuild=new family.BoundCanonicalCodec({catalog}).nativeToCanonical(alternate);
- return {browser,provider,build,expected,identity,alternateBuild,alternateExpected};
+ return {browser,provider,build,expected,identity,alternateBuild,alternateExpected,projectionRequired:Boolean(profile.realRuntime.itemProjection)};
 }
 async function createComposition(){
  const h=await createHarness();await h.browser.start();
