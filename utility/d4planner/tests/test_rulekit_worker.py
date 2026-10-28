@@ -373,3 +373,26 @@ def test_public_protocol_surface_has_only_owner_approved_application_apis():
     sources = WORKER.read_text(encoding="utf-8") + (WORKER.parent / "production-composition.js").read_text(encoding="utf-8")
     assert "Torment" not in sources
     assert "D4_RULEKIT_COMPOSITION_MODULE" not in (WORKER.parent / "production-composition.js").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize('exit_before_ready', [False, True])
+def test_startup_stderr_backpressure_never_blocks_ready_or_exit(exit_before_ready):
+    """Real Node pipe test, including long lines; stderr is never forwarded."""
+    from dataclasses import replace
+    async def scenario():
+        continuation = 'process.exit(23)' if exit_before_ready else f'require({json.dumps(str(WORKER))})'
+        code = "process.stderr.write('SYNTHETIC_PRIVATE_DIAGNOSTIC'.repeat(100000),()=>{" + continuation + "});"
+        wrapper = RuleKitProcessWrapper(replace(specification(), args=('-e', code)))
+        try:
+            if exit_before_ready:
+                with pytest.raises(RuntimeError, match='exited before READY'):
+                    await wrapper.start()
+                assert wrapper._child is None
+                assert wrapper._stderr_task is None
+            else:
+                client = await wrapper.start()
+                assert (await client.list_providers())[0]['id'] == 'test.synthetic'
+        finally:
+            await wrapper.stop()
+        assert wrapper._child is None and wrapper._stderr_task is None
+    run(scenario())
