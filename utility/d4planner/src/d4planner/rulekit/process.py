@@ -136,6 +136,8 @@ class RuleKitProcessWrapper:
             return await self._start_locked()
 
     async def _start_locked(self) -> RuleKitClient:
+        if self._child is not None:
+            raise RuntimeError("owned worker cleanup pending; stop must confirm exit")
         self.state = ProcessState.STARTING
         self.generation += 1
         instance_id = str(uuid.uuid4())
@@ -170,38 +172,42 @@ class RuleKitProcessWrapper:
             if child.process.stderr is not None:
                 self._stderr_task = asyncio.create_task(self._drain_stderr(child.process.stderr))
             return self.client
-        except Exception:
+        except BaseException:
             self.state = ProcessState.FAILED
+            self.client = None
             if child is not None:
                 await self._bounded_terminate(child)
-            self._child = None
-            self.client = None
+                self._child = None
             raise
 
     async def stop(self, reason: str = "OWNER_EXIT") -> None:
         del reason
         async with self._lifecycle_lock:
-            if self.state in {ProcessState.STOPPED, ProcessState.EXITED}:
-                return
-            self.state = ProcessState.STOPPING
             child, client = self._child, self.client
+            self.client = None
             if child is None:
                 self.state = ProcessState.STOPPED
                 return
+            self.state = ProcessState.STOPPING
             try:
-                await self.driver.request_graceful_stop(child, client)
-                await asyncio.wait_for(
-                    child.process.wait(), self.specification.graceful_stop_timeout
-                )
-            except (TimeoutError, BrokenPipeError, ConnectionError):
-                await self._bounded_terminate(child)
+                async def graceful():
+                    await self.driver.request_graceful_stop(child, client)
+                    await child.process.wait()
+                try:
+                    await asyncio.wait_for(graceful(), self.specification.graceful_stop_timeout)
+                except Exception:
+                    await self._bounded_terminate(child)
             finally:
-                if client is not None:
-                    await client.close()
-                await self._cancel_background_tasks()
-                self._child = None
-                self.client = None
-                self.state = ProcessState.STOPPED
+                # An error/cancellation is never proof that the process exited.
+                exited = child.process.returncode is not None
+                if exited:
+                    self._child = None
+                self.state = ProcessState.STOPPED if exited else ProcessState.FAILED
+                try:
+                    if client is not None:
+                        await asyncio.wait_for(client.close(), self.specification.operation_timeout)
+                finally:
+                    await self._cancel_background_tasks()
 
     async def restart(self) -> RuleKitClient:
         if self._restart_count >= self.specification.max_restarts:
@@ -241,18 +247,33 @@ class RuleKitProcessWrapper:
         }
         if self._child is child and self.state not in {ProcessState.STOPPING, ProcessState.STOPPED}:
             self.state = ProcessState.FAILED
-            if self.client is not None:
-                await self.client.close()
-            self.client = None
+            self._child = None
+            client, self.client = self.client, None
+            if client is not None:
+                await client.close()
 
     async def _bounded_terminate(self, child: SpawnedProcess) -> None:
-        await self.driver.terminate_owned_child(child)
+        if child.process.returncode is not None:
+            return
+        try:
+            async def terminate():
+                await self.driver.terminate_owned_child(child)
+                await child.process.wait()
+            await asyncio.wait_for(terminate(), self.specification.kill_timeout)
+            return
+        except Exception:
+            pass
+        if child.process.returncode is not None:
+            return
+        kill_error = None
+        try:
+            child.process.kill()
+        except Exception as error:
+            kill_error = error
         try:
             await asyncio.wait_for(child.process.wait(), self.specification.kill_timeout)
-        except TimeoutError:
-            if child.process.returncode is None:
-                child.process.kill()
-                await child.process.wait()
+        except Exception as error:
+            raise RuntimeError("owned worker cleanup pending: exit unconfirmed") from (kill_error or error)
 
     async def _cancel_background_tasks(self) -> None:
         current = asyncio.current_task()

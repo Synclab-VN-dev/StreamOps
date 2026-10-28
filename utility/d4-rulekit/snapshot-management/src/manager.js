@@ -39,7 +39,7 @@ class SnapshotManager {
     this.dataRoot=root;this.storeRoot=path.join(root,'store');this.registry=registry;
     this.resolver=registry?new CompatibilityResolver({registry,strategies}):null;
     this.workerGeneration=workerGeneration;this.maxQueue=maxQueue;this.queued=0;
-    this.owner=crypto.randomUUID();this.lock=null;this.tail=Promise.resolve();this.current=null;this.quiescing=false;this.registryError=null;
+    this.owner=crypto.randomUUID();this.lock=null;this.tail=Promise.resolve();this.current=null;this.quiescing=false;this.pendingTransition=null;this.registryError=null;
   }
   async start() {
     await fs.mkdir(this.dataRoot,{recursive:true,mode:0o700});
@@ -223,6 +223,7 @@ class SnapshotManager {
   }
   async prepareSelection({entryId},kind='ACTIVATE') {
     return this.serial(async()=>{
+      if(this.pendingTransition && this.pendingTransition.entryId===entryId && this.pendingTransition.operation===kind)return {...this.pendingTransition};
       fail(!this.quiescing,'WORKER_RESTART_REQUIRED');
       const checked=await this.checkCompatibility({entryId});
       const old=await this.selection();
@@ -231,10 +232,12 @@ class SnapshotManager {
         snapshotId:checked.snapshotId,manifestSha256:checked.manifestSha256,profileSha256:checked.profileSha256,
         registryRevision:checked.registryRevision,registrySha256:checked.registrySha256,previous:old};
       await atomic(path.join(this.dataRoot,'selection.json'),selection);this.quiescing=true;
-      return {operation:kind,restartRequired:true,nextWorkerGenerationRequired:true,selectionRevision:selection.selectionRevision,entryId};
+      this.pendingTransition={operation:kind,restartRequired:true,nextWorkerGenerationRequired:true,selectionRevision:selection.selectionRevision,entryId};
+      return {...this.pendingTransition};
     });
   }
   async rollback() {
+    if(this.pendingTransition?.operation==='ROLLBACK')return {...this.pendingTransition};
     const current=await this.selection();fail(current?.previous,'SNAPSHOT_ROLLBACK_NOT_AVAILABLE');
     return this.prepareSelection({entryId:current.previous.entryId},'ROLLBACK');
   }
