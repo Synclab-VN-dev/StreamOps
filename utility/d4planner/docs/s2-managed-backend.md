@@ -1,7 +1,7 @@
 # S2 managed Backend lifecycle
 
 Source base: `1d160d744e91e8d35d51bfcc00ba731a5b5d86e7`
-Reviewed S2 baseline: `68fda9a5badae9a218dea135c860443ef85ad49e`  
+Reviewed S2 baseline: `68fda9a5badae9a218dea135c860443ef85ad49e`
 Contract: `d4planner-r1-contract/1.0.0-candidate.5`
 
 The native Tauri shell owns exactly one foreground
