@@ -42,7 +42,7 @@ class NativeStateMaxrollRuntimeAdapter {
     this.#assertActive();
     const nativeState = this.#codec.canonicalToNative(desired);
     const identity = this.#codec.loaderIdentity(desired);
-    const loaderMetadata = createD12NativeLoaderMetadata({
+    const loaderMetadata = createNativeLoaderMetadata({
       plannerId: this.#plannerId,
       className: identity.className,
       season: identity.season,
@@ -125,7 +125,7 @@ class NativeStateMaxrollRuntimeAdapter {
   }
 }
 
-function createD12NativeLoaderMetadata({ plannerId, className, season }) {
+function createNativeLoaderMetadata({ plannerId, className, season }) {
   if (typeof plannerId !== 'string' || !plannerId || typeof className !== 'string' || !className
       || !Number.isInteger(season)) {
     throw new MaxrollProviderError(ERROR_CODES.INVALID_INPUT,
@@ -157,5 +157,6 @@ function createD12NativeLoaderMetadata({ plannerId, className, season }) {
 
 module.exports = {
   NativeStateMaxrollRuntimeAdapter,
-  createD12NativeLoaderMetadata,
+  createNativeLoaderMetadata,
+  createD12NativeLoaderMetadata: createNativeLoaderMetadata,
 };
