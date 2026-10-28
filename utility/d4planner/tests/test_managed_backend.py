@@ -89,6 +89,7 @@ def test_real_managed_process_ready_empty_folder_and_owned_shutdown(tmp_path: Pa
     assert ready["health"] == {
         "durableState": "READY", "targetRepository": "READY", "targetJsonCount": 0,
         "services": "BASE_RUNTIME",
+        "wsTransport": "PENDING_S5", "ruleKitWorker": "PENDING_S3",
     }
     assert expected["credential"] not in json.dumps(ready)
     process.stdin.write(json.dumps({

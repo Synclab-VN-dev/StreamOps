@@ -53,6 +53,7 @@ class BaseRuntime:
                     if entry.is_file() and entry.suffix.lower() == ".json"
                 ),
                 "services": "BASE_RUNTIME",
+                "wsTransport": "PENDING_S5", "ruleKitWorker": "PENDING_S3",
             },
         }
 
