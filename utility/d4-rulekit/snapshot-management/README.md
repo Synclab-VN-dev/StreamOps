@@ -109,3 +109,34 @@ Windows/real provider tests are separately reported, never inferred from synthet
 fixtures. No Actions dispatch/query is performed.
 
 Content-version contract và SVER-01…05: [CONTENT-VERSION.md](CONTENT-VERSION.md).
+
+### SNAP-05 recovery boundary
+
+`selection.json` is the atomically published **desired selection**, not proof
+that the new worker/provider is ready. The previous selection is retained in
+`previous`. A failed atomic publish leaves the old selection and active binding
+unchanged. After publish, the current worker quiesces (calculation UNAVAILABLE)
+and closes sessions; it cannot continue calculating under the old binding.
+Repeating the same pending switch/rollback in that worker returns the same intent
+and selection revision rather than applying another rollback.
+
+BE retains the acknowledged operation while orchestrating restart. Success is
+returned only when the new generation's `getActive` reports READY, the requested
+entry and selection revision, and matching capabilities. Full manifest/profile/
+trust validation remains Rule Kit's responsibility. Callback/reconfigure/start/
+verification failures close the client and stop the worker; failed cleanup keeps
+the owned handle. Explicit retry of the same operation rolls forward that intent
+without writing another selection or consuming an extra rollback. Another
+mutation is rejected while that operation remains pending. There is no automatic
+fallback or DB rollback.
+
+If the BE itself is lost, the durable desired selection survives; the next Rule
+Kit startup revalidates it. A client must inspect `getActive` before deciding on
+a new rollback after losing the BE response: this protocol does not promise
+exactly-once command replay across BE death. Invalid/revoked desired bindings
+remain UNAVAILABLE until explicit trusted repair; no alternate snapshot is chosen.
+The operation namespace, wire schema and signed registry schema are unchanged.
+
+Changing manager implementation changes the generated execution index/hash.
+Previously signed execution approvals are not reused for the new bytes; isolated
+tests sign only fresh TEST_ONLY registries. Production trust remains BLOCKED.

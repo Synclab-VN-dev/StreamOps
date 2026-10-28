@@ -102,3 +102,28 @@ python -m pytest -q utility/d4planner/tests/contracts/test_release1_contract.py
 python -m compileall -q utility/d4planner
 (cd utility/d4-rulekit/application && npm test)
 ```
+
+## S3-F01 / SNAP-05 final failure-path review
+
+Cleanup now bounds the graceful request+wait together, terminate+wait, and final
+kill wait. A failed kill/timeout retains the owned child in FAILED and invalidates
+the client. Start/reconfigure cannot overwrite a retained handle. Explicit stop
+retry can release it only after confirmed exit. Startup after spawn and runtime
+post-READY failures use the same ownership rule. These tests prove Linux owned
+Node processes and deterministic failure injection, not Windows job containment.
+
+Snapshot operations use the Rule Kit durable-intent semantics documented in
+`snapshot-management/README.md`. BE checks the acknowledged entry/revision and
+worker generation, not compatibility policy. Callback failures are operation
+failures; the same request can resume after cleanup. Unconfirmed binding never
+returns a successful switch. No application DB is restored or edited.
+
+```sh
+PYTHONPATH=utility/d4planner/src python -m pytest -q utility/d4planner/tests/test_rulekit_worker.py utility/d4planner/tests/test_snapshot_worker.py utility/d4planner/tests/test_rulekit_cleanup_failure.py
+npm test --prefix utility/d4-rulekit/snapshot-management
+python -m compileall -q utility/d4planner
+```
+
+Production managed-snapshot mode may start without a selected snapshot and
+reports calculation UNAVAILABLE; the legacy profile/snapshot-required mode
+above remains distinct. No production trust activation is implied.
