@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import copy
 from pathlib import Path
 from typing import Mapping
 
@@ -33,6 +34,7 @@ class RuleKitRuntimeService:
         self.wrapper = wrapper
         self.client: RuleKitClient | None = None
         self._management_lock = asyncio.Lock()
+        self._pending_transition = None
 
     @classmethod
     def from_environment(cls, environment: Mapping[str, str] | None = None) -> "RuleKitRuntimeService":
@@ -72,42 +74,77 @@ class RuleKitRuntimeService:
         return cls(RuleKitProcessWrapper(specification))
 
     async def start(self) -> dict:
-        self.client = await self.wrapper.start()
-        providers = await self.client.list_providers()
-        health = await self.wrapper.inspect_health()
-        if not health["ready"] or not providers:
+        try:
+            self.client = await self.wrapper.start()
+            providers = await self.client.list_providers()
+            health = await self.wrapper.inspect_health()
+            if not health["ready"] or not providers:
+                await self.stop()
+                raise RuntimeError("production Rule Kit has no ready provider")
+            result = {**health, "providers": providers}
+            if self.wrapper.specification.environment_allow_list.get("D4_RULEKIT_DATA_ROOT"):
+                result["snapshotCapabilities"] = await self.client.snapshot_call("getCapabilities")
+                result["calculationAvailability"] = result["snapshotCapabilities"]["calculationAvailability"]
+                result["calculationReason"] = result["snapshotCapabilities"]["reason"]
+            else:
+                result["calculationAvailability"] = "READY"
+            return result
+        except BaseException:
             await self.stop()
-            raise RuntimeError("production Rule Kit has no ready provider")
-        result = {**health, "providers": providers}
-        if self.wrapper.specification.environment_allow_list.get("D4_RULEKIT_DATA_ROOT"):
-            result["snapshotCapabilities"] = await self.client.snapshot_call("getCapabilities")
-            result["calculationAvailability"] = result["snapshotCapabilities"]["calculationAvailability"]
-            result["calculationReason"] = result["snapshotCapabilities"]["reason"]
-        else:
-            result["calculationAvailability"] = "READY"
-        return result
+            raise
 
     async def snapshot_api(self, method: str, request: dict | None = None, *, on_health=None) -> dict | list:
         """Transport/lifecycle adapter only. Decisions belong to the Node Rule Kit."""
         async with self._management_lock:
-            if self.client is None:
-                raise RuntimeError("Rule Kit worker is not running")
-            result = await self.client.snapshot_call(method, request)
-            if isinstance(result, dict) and result.get("restartRequired"):
-                if on_health is not None:
+            if self._pending_transition is not None:
+                pending_method, pending_request, result = self._pending_transition
+                if (method, request) != (pending_method, pending_request):
+                    raise RuntimeError("snapshot transition pending; retry the same operation before another mutation")
+            else:
+                if self.client is None:
+                    raise RuntimeError("Rule Kit worker is not running")
+                result = await self.client.snapshot_call(method, request)
+                if not isinstance(result, dict) or not result.get("restartRequired"):
+                    if on_health is not None:
+                        await on_health(await self.client.snapshot_call("getCapabilities"))
+                    return result
+                # This is a durable Rule Kit intent, not a successful activation.
+                # Retain it across callback/stop/start errors so rollback retry
+                # cannot accidentally become a second rollback operation.
+                self._pending_transition = (method, copy.deepcopy(request), result)
+            try:
+                if on_health is not None and self.client is not None:
                     await on_health(await self.client.snapshot_call("getCapabilities"))
                 self.client = await self.wrapper.reconfigure()
-                # A fresh client invalidates all old session refs. The Rule Kit
-                # persisted the selection and owns its validation at startup.
                 active = await self.client.snapshot_call("getActive")
+                if (active.get("workerGeneration") != self.wrapper.generation
+                    or active.get("restartRequired") is not False
+                    or active.get("calculationAvailability") not in {"READY", "UNAVAILABLE"}
+                    or (active.get("calculationAvailability") == "READY" and not isinstance(active.get("active"), dict))):
+                    raise RuntimeError("snapshot transition worker generation unverified")
+                if "selectionRevision" in result:
+                    binding = active.get("active")
+                    if (active.get("calculationAvailability") != "READY" or not isinstance(binding, dict)
+                        or binding.get("entryId") != result.get("entryId")
+                        or binding.get("selectionRevision") != result["selectionRevision"]):
+                        raise RuntimeError("snapshot transition active binding unverified")
+                # Full integrity/compatibility verification remains inside getActive
+                # in Rule Kit. BE only checks identity of the acknowledged intent.
+                capabilities = await self.client.snapshot_call("getCapabilities")
+                if any(capabilities.get(key) != active.get(key) for key in
+                       ("active", "workerGeneration", "calculationAvailability", "restartRequired")):
+                    raise RuntimeError("snapshot transition health binding inconsistent")
                 if on_health is not None:
-                    await on_health(await self.client.snapshot_call("getCapabilities"))
+                    await on_health(capabilities)
+                self._pending_transition = None
                 return {**result, "afterRestart": active}
-            if on_health is not None:
-                await on_health(await self.client.snapshot_call("getCapabilities"))
-            return result
+            except BaseException:
+                # Do not leave a callable old client or advertise success on
+                # partial failure. The same operation may explicitly roll forward.
+                await self.stop()
+                raise
 
     async def stop(self) -> None:
-        await self.wrapper.stop()
         self.client = None
+        await self.wrapper.stop()
 

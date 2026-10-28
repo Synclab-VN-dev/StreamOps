@@ -81,3 +81,24 @@ test('typed management input rejects internal path overrides and unknown methods
  await assert.rejects(manager.invoke('unknown'),{code:'SNAPSHOT_METHOD_UNKNOWN'});
  await assert.rejects(manager.invoke('getActive',{storeRoot:'/foreign'}),{code:'SNAPSHOT_CALL_SCHEMA_INVALID'});
 });
+test('pending switch/rollback retries preserve one durable intent and previous binding',async t=>{
+ const root=await sandbox(t);const a=await createPackage(root),b=await createPackage(root,'SYNTHETIC-B');const credentials=trust([a.entry,b.entry]);
+ let manager=await start(t,root,credentials);await manager.updateRegistry(credentials.envelope);
+ await manager.importPackage({packagePath:a.directory});await manager.importPackage({packagePath:b.directory});
+ await manager.invoke('activate',{entryId:a.entry.entryId});await manager.close();
+ manager=await start(t,root,trustRegistry(credentials),'owned-data',2);
+ const before=await fs.readFile(path.join(manager.dataRoot,'selection.json'));
+ const rename=fs.rename;
+ fs.rename=async(source,target)=>{if(target===path.join(manager.dataRoot,'selection.json'))throw Object.assign(new Error('injected disk failure'),{code:'EIO'});return rename(source,target);};
+ try {await assert.rejects(manager.invoke('switchSnapshot',{entryId:b.entry.entryId}),{code:'EIO'});} finally {fs.rename=rename;}
+ assert.deepEqual(await fs.readFile(path.join(manager.dataRoot,'selection.json')),before);
+ assert.equal((await manager.getActive()).active.entryId,a.entry.entryId);
+ const pending=await manager.invoke('switchSnapshot',{entryId:b.entry.entryId});
+ assert.deepEqual(await manager.invoke('switchSnapshot',{entryId:b.entry.entryId}),pending);
+ assert.equal((await manager.getActive()).calculationAvailability,'UNAVAILABLE');
+ await manager.close();manager=await start(t,root,trustRegistry(credentials),'owned-data',3);
+ const rollback=await manager.rollback();const bytes=await fs.readFile(path.join(manager.dataRoot,'selection.json'));
+ assert.deepEqual(await manager.rollback(),rollback);
+ assert.deepEqual(await fs.readFile(path.join(manager.dataRoot,'selection.json')),bytes);
+ assert.equal(JSON.parse(bytes).previous.entryId,b.entry.entryId);
+});
