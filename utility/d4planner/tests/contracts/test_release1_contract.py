@@ -723,3 +723,58 @@ def test_lifecycle_restart_invalidates_old_worker_sessions_before_new_ready() ->
     names = [event["event"] for event in crash]
     assert names.index("CRASHED") < names.index("SESSIONS_INVALIDATED") < names.index("RESTART_SCHEDULED")
     assert crash[-1]["generation"] > crash[0]["generation"] and crash[-1]["childInstanceId"] != crash[0]["childInstanceId"]
+
+
+@pytest.mark.parametrize("case", ["valid", "invalid-json", "empty", "unreadable"])
+def test_target_entry_requires_read_content_and_nonempty_bytes(case: str) -> None:
+    """Wire constraints, not an implementation of S4 filesystem/error handling."""
+    data = {
+        "valid": (FIXTURES / "target.valid.synthetic.json").read_bytes(),
+        "invalid-json": b"{broken",
+        "empty": b"",
+        "unreadable": None,
+    }[case]
+    entry = {
+        "targetId": "synthetic-entry", "displayName": "Synthetic Target",
+        "validation": "VALID" if case == "valid" else "INVALID",
+        "errorCodes": [] if case == "valid" else ["TARGET_INVALID"],
+    }
+    if data is not None:
+        entry.update(contentSha256=hashlib.sha256(data).hexdigest(), byteLength=len(data))
+    # No fake hash or size when the bytes cannot be read.
+    check = validator({"$ref": "#/$defs/targetEntry", "$defs": WS_SCHEMA["$defs"]})
+    if case in ("empty", "unreadable"):
+        with pytest.raises(ValidationError):
+            check.validate(entry)
+    else:
+        check.validate(entry)
+        assert entry["contentSha256"] != hashlib.sha256(b"synthetic-entry.json").hexdigest()
+
+
+@pytest.mark.parametrize("field", HUD_SCHEMA["required"])
+def test_hud_schema_required_fields_are_not_optional_port_sketches(field: str) -> None:
+    hud = load(FIXTURES / "hud.partial.synthetic.json")
+    validator(HUD_SCHEMA).validate(hud)
+    del hud[field]
+    with pytest.raises(ValidationError):
+        validator(HUD_SCHEMA).validate(hud)
+
+
+def test_hud_score_requires_internal_evaluation_counts() -> None:
+    hud = load(FIXTURES / "hud.partial.synthetic.json")
+    del hud["score"]["evaluationCounts"]
+    with pytest.raises(ValidationError):
+        validator(HUD_SCHEMA).validate(hud)
+
+
+def test_port_payload_references_resolve_to_normative_schemas() -> None:
+    import re
+
+    references = re.findall(r"SchemaPayload<'([^']+)'>", (CONTRACT / "interfaces.ts").read_text())
+    assert references, "ports must name their authoritative payload schemas"
+    for reference in references:
+        filename, fragment = reference.split("#", 1)
+        schema = load(SCHEMAS / filename)
+        for part in fragment.lstrip("/").split("/") if fragment else []:
+            schema = schema[part.replace("~1", "/").replace("~0", "~")]
+        assert isinstance(schema, dict), reference

@@ -1,5 +1,6 @@
 /** Normative port shapes for d4planner-r1-contract/1.0.0-candidate.5.
- * Implementations may use another language, but must preserve these boundaries.
+ * Language-neutral ports, not a runtime SDK. Implementations preserve boundaries;
+ * schemas/ is the sole source of serialized field definitions and required fields.
  */
 
 export type ProcessState =
@@ -63,63 +64,27 @@ export interface RuleKitClient {
   closeSession(sessionId: string): Promise<void>;
 }
 
-export interface TargetListEntry {
-  readonly targetId: string;
-  readonly displayName: string;
-  readonly contentSha256: string;
-  readonly byteLength: number;
-  readonly validation: 'VALID' | 'INVALID';
-  readonly errorCodes: readonly string[];
-}
-
-export interface ApprovedWeightProfile {
-  readonly profileId: 'r1-equipment-weights/1.0.0';
-  readonly coreWeight: 3;
-  readonly nonCoreWeight: 1;
-  readonly approval: Readonly<{
-    status: 'APPROVED';
-    decisionRef: 'https://github.com/Synclab-VN-dev/StreamOps/issues/138#issuecomment-6394334041';
-  }>;
-}
-
-export type HudContextState =
-  | 'STARTUP' | 'TARGET_ONLY' | 'CHARACTER_ONLY' | 'BOUND' | 'TARGET_UNAVAILABLE';
-
-export type TypedValue =
-  | Readonly<{ type: 'NUMBER'; value: number; unit: 'PERCENT' | 'FLAT' | 'RANK' | 'SECONDS' | 'NONE' }>
-  | Readonly<{ type: 'TEXT'; value: string; unit: 'NONE' }>
-  | Readonly<{ type: 'BOOLEAN'; value: boolean; unit: 'NONE' }>;
-
-export interface HudSnapshot {
-  readonly schemaVersion: 'd4planner-hud/v1';
-  readonly hudRevision: number;
-  readonly backend: Readonly<{ runtimeInstanceId: string; generation: number }>;
-  readonly context: Readonly<{
-    state: HudContextState;
-    character: Readonly<{ characterId: string; displayName: string; currentRevision: number }> | null;
-    target: Readonly<{ targetId: string; displayName: string; buildDisplayName: string;
-      contentSha256: string; selectionRevision: number; policyVersion: string }> | null;
-    binding: Readonly<{ runtimeInstanceId: string; characterId: string; currentRevision: number;
-      targetId: string; targetSha256: string; selectionRevision: number;
-      policyVersion: string }> | null;
-    selectionError: Readonly<{ code: 'TARGET_NOT_FOUND' | 'TARGET_CHANGED' | 'TARGET_INVALID';
-      attemptedTargetId: string; occurredAt: string }> | null;
-  }>;
-  readonly score: Readonly<{ status: 'SCORED' | 'NO_DATA'; value: number | null;
-    passedWeight: number; evaluableWeight: number; failIssueCount: number;
-    warnCount: number; itemsPassing: number; itemsTargeted: number }>;
-  readonly equipment: readonly unknown[];
-}
-
-export interface DiscoverActiveContextRequest {
-  readonly mode: 'DISCOVER_ACTIVE_CONTEXT';
-  readonly reason: 'INITIAL_CONNECTION' | 'BACKEND_GENERATION_CHANGED' |
-    'BACKEND_IDENTITY_CHANGED' | 'KNOWN_CONTEXT_CHANGED' | 'TIMEOUT_RETRY';
-  /** Starts at one; a timeout retry increments it and may not exceed policy. */
-  readonly attempt: number;
-  readonly runtimeInstanceId: string;
-  readonly minimumHudRevision: number;
-}
+/** Opaque port payloads, NOT a second serialized-payload definition.
+ * References below are relative to schemas/. JSON Schemas and ADR semantic
+ * invariants are normative. A boundary validator produces these values; adapters
+ * may generate their implementation-language types from the schemas.
+ * The unique-symbol brand is compile-time only and is never sent on the wire.
+ */
+declare const validatedSchema: unique symbol;
+export type SchemaPayload<Reference extends string> = {
+  readonly [validatedSchema]: Reference;
+};
+export type TargetListEntry = SchemaPayload<'ws.schema.json#/$defs/targetEntry'>;
+export type ApprovedWeightProfile = SchemaPayload<'target.schema.json#/$defs/weightProfile'>;
+export type HudContextState = SchemaPayload<'ws.schema.json#/$defs/expectedKnownContext/properties/state'>;
+export type TypedValue = SchemaPayload<'hud.schema.json#/$defs/typedValue'>;
+export type HudSnapshot = SchemaPayload<'hud.schema.json#'>;
+export type DiscoverActiveContextRequest = SchemaPayload<'ws.schema.json#/$defs/discoveryRequestContext'>;
+export type KnownHudContext = SchemaPayload<'ws.schema.json#/$defs/expectedKnownContext'>;
+export type ResyncKnownContextRequest = SchemaPayload<'ws.schema.json#/$defs/resyncRequestContext'>;
+export type SnapshotRequestContext = SchemaPayload<'ws.schema.json#/$defs/snapshotRequestContext'>;
+export type AuthoritativeHudSnapshot = SchemaPayload<'ws.schema.json#/$defs/snapshot'>;
+export type IncrementalHudUpdate = SchemaPayload<'ws.schema.json#/$defs/update'>;
 
 /** Operation timeout is distinct from WS session/lease lifetime. */
 export interface SnapshotRecoveryPolicy {
@@ -139,40 +104,6 @@ export interface HudReconnectCheckpoint {
 export type HelloAcceptedDisposition =
   | 'SAME_BACKEND_RECONNECT'
   | 'NEW_BACKEND_IDENTITY';
-
-export interface KnownHudContext {
-  readonly state: HudContextState;
-  readonly characterId: string | null;
-  readonly targetId: string | null;
-  readonly selectionRevision: number | null;
-}
-
-export interface ResyncKnownContextRequest {
-  readonly mode: 'RESYNC_KNOWN_CONTEXT';
-  readonly runtimeInstanceId: string;
-  readonly minimumHudRevision: number;
-  /** Nulls here assert known absence according to state; they never mean wildcard. */
-  readonly expectedContext: KnownHudContext;
-}
-
-export type SnapshotRequestContext = DiscoverActiveContextRequest | ResyncKnownContextRequest;
-
-export interface AuthoritativeHudSnapshot {
-  readonly authoritative: true;
-  readonly correlationId: string;
-  readonly backendGeneration: number;
-  readonly subscriptionId: string;
-  readonly subscriptionAfterRevision: number;
-  readonly requestContext: SnapshotRequestContext;
-  readonly hud: HudSnapshot;
-}
-
-export interface IncrementalHudUpdate {
-  readonly backendGeneration: number;
-  readonly subscriptionId: string;
-  readonly previousHudRevision: number;
-  readonly hud: HudSnapshot;
-}
 
 /** Paths never cross this boundary. IDs are resolved beneath configuredRoot. */
 export interface TargetRepository {
