@@ -15,7 +15,7 @@ test(`${process.env.COMPATIBILITY_TEST_DEFINITION??'maxroll-20261023'} signed is
   session=await provider.createSession({build,buildSchemaVersion:'d4-build/v1',snapshotId:identity.snapshotId,snapshotManifestSha256:identity.snapshotManifestSha256,timeoutMs:60000});
   const result=await session.evaluate({build,changes:[],buildSchemaVersion:'d4-build/v1',timeoutMs:60000});
   assert.equal(result.metrics.length,50);assert.equal(result.provenance.networkReplay.transportOffline,true);
-  projection(result,expected,projectionRequired,'direct-baseline');
+  projection({provenance:{provider:result.provenance}},expected,projectionRequired,'direct-baseline');
   const expectedRows=expected.rawMetrics??expected.metrics;
   assert.ok(Array.isArray(expectedRows),'independent fixture metrics required');
   const byId=new Map(expectedRows.map(row=>[row.metricId??row.id,row.rawValue??row.raw]));
