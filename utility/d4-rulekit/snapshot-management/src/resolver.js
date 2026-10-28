@@ -9,6 +9,7 @@ class CompatibilityResolver {
     const entry=this.registry.resolve(entryId);
     const strategy=this.strategies[entry.strategyId];
     fail(strategy, 'RUNTIME_STRATEGY_UNAVAILABLE');
+    fail(!strategy.executionVersion || entry.ruleKitVersion===strategy.executionVersion,'IMPLEMENTATION_APPROVAL_MISMATCH');
     fail(strategy.codecVersions.includes(entry.codecVersion) && strategy.canonicalSchemas.includes(entry.canonicalSchemaVersion), 'CODEC_STRATEGY_INCOMPATIBLE');
     fail(strategy.providerVersions.includes(entry.providerVersion), 'PROVIDER_STRATEGY_INCOMPATIBLE');
     fail(this.registry.scope!=='PRODUCTION' || strategy.evidenceClass==='REAL_PROVIDER','TEST_STRATEGY_NOT_PRODUCTION');

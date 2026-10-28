@@ -1,0 +1,331 @@
+{
+  "schemaVersion": "rulekit-execution-index/v1",
+  "files": [
+    {
+      "path": "application/package-lock.json",
+      "sha256": "6426b71c1d89a5cdff1757320bad20852287d5eb99831d7be462d3088426ac11"
+    },
+    {
+      "path": "application/package.json",
+      "sha256": "c010e0ba51d720c5ca0974ec08a324547c8ca633aa9d2cb38a27d8572907fc35"
+    },
+    {
+      "path": "application/src/application.js",
+      "sha256": "ec8c27aac180be5038c8cb4d306b138bf60d6eac9c4b02e97ceb0b84517bb9cc"
+    },
+    {
+      "path": "application/src/async.js",
+      "sha256": "522c600ebb322b5177866e295075067123c568c6eaf4ca17c31e9c7167f2831b"
+    },
+    {
+      "path": "application/src/build-state-manager.js",
+      "sha256": "e27883317e0fbd2d5ccfdc88ce5f782a9dc9b69360a0278c6b83f00a4b632f07"
+    },
+    {
+      "path": "application/src/cache.js",
+      "sha256": "9fdfbd97378185f10a1ec1b046a6d7b248e11c128148131597a3961eb70eb31b"
+    },
+    {
+      "path": "application/src/calculation-orchestrator.js",
+      "sha256": "091859a98151d372509c9a3f46ed9e85c1782a1a9874c68de83a8f99f4a97fd0"
+    },
+    {
+      "path": "application/src/errors.js",
+      "sha256": "ce163fea92f4f37c07229dab762c09877628286ad00b69f2b129d5877d105698"
+    },
+    {
+      "path": "application/src/index.js",
+      "sha256": "bbc043af7b722d9eadeeaddd6cfd419e262c441f0813c926d1021ae3b97b3835"
+    },
+    {
+      "path": "application/src/normalizer.js",
+      "sha256": "b89517fb5b505baa1089e304733e3ff48b619c12af7633d54905dc01c6e0e243"
+    },
+    {
+      "path": "application/src/provider-registry.js",
+      "sha256": "10feb310b8d6a5a604429053ddbb0d95d1abd532d1f4af94507636637ab617e3"
+    },
+    {
+      "path": "application/src/session-manager.js",
+      "sha256": "6b8ee4f4152b0ed6b72d2f7fbad28774a14e6229c8ea8871288decf7ce57d078"
+    },
+    {
+      "path": "application/src/value.js",
+      "sha256": "066449d7328793843348e1fa76927a25e4c671cf82fa8fafe4e89c271fd7e0f4"
+    },
+    {
+      "path": "browser-infra/package-lock.json",
+      "sha256": "0627f0ff4e0d8920c82eec379a06aac39b6558ca078441084c3fbac896c36ab5"
+    },
+    {
+      "path": "browser-infra/package.json",
+      "sha256": "d778b8df200b4878b7753691c1e8cce95f2f85c58db2de00627c981b723d5d57"
+    },
+    {
+      "path": "browser-infra/src/config.js",
+      "sha256": "3d4ad76a58a8594eeeb434e2cf8a99ea8628c1bfba77d5a731df9c9d4c0de4fa"
+    },
+    {
+      "path": "browser-infra/src/errors.js",
+      "sha256": "7935b035ac6174f7e4e0453cc063ffb1bcb92e9ae0f4e42177ef015bfbf1c15d"
+    },
+    {
+      "path": "browser-infra/src/index.js",
+      "sha256": "edf03a3355b848fd3c212b56452263d50388e4dca991348e36df0d78deaf7ea7"
+    },
+    {
+      "path": "browser-infra/src/infrastructure.js",
+      "sha256": "879d53ff12bf73e9bff0f2698512b7db15bc5a713091ba7e25ad8b739c85c22d"
+    },
+    {
+      "path": "browser-infra/src/lease.js",
+      "sha256": "7afb2dad5ea97919684b24e4f6e967e21b7e87e7e937699f0203d991518d1dd0"
+    },
+    {
+      "path": "browser-infra/src/snapshot/errors.js",
+      "sha256": "747fdf76ba87be537ba084fc17087b3ed3a90c3394387aa5849e3f4446eb2fee"
+    },
+    {
+      "path": "browser-infra/src/snapshot/interceptor.js",
+      "sha256": "9ed9aeeaad0a2c4b872057523f7e1f8ec49b31f5d19e6a8937fe5b7230798c4d"
+    },
+    {
+      "path": "browser-infra/src/snapshot/manager.js",
+      "sha256": "e8a93822278f68547da7e8bf8c2bbd10d5f8ed7b807770bb74888a8846c290e0"
+    },
+    {
+      "path": "browser-infra/src/snapshot/policy.js",
+      "sha256": "ef4b2a4792b9c01b173991971b86bdf224cef9059a15c1be656638681ea4e163"
+    },
+    {
+      "path": "browser-infra/src/snapshot/store.js",
+      "sha256": "b8eb9fa3404e2271841695129365e483f35584157862d7851a5d9af143be4020"
+    },
+    {
+      "path": "providers/maxroll/package-lock.json",
+      "sha256": "4b3cbe582bde9dff53b039c740bb271a143c5a3693f2c6f3f7ddc9eaa86f7a98"
+    },
+    {
+      "path": "providers/maxroll/package.json",
+      "sha256": "2b3061f166d7327ce3889ce039eacf0add3356bad7ff3c92c484851242951f48"
+    },
+    {
+      "path": "providers/maxroll/src/async.js",
+      "sha256": "740c540708d2a67df01a9835a68210b95cb7daf9813a0e4f27de01f245ac4976"
+    },
+    {
+      "path": "providers/maxroll/src/build-export.js",
+      "sha256": "ab027127b0f16cd3515e8dc86abac6a209579817c9f4d3903f89ddd96baffba5"
+    },
+    {
+      "path": "providers/maxroll/src/build-mapper.js",
+      "sha256": "70a55e7b51e3c0f8bc9ab500fb9d6a871c65f1ea76542e1b500675f92232475a"
+    },
+    {
+      "path": "providers/maxroll/src/canonical-codec-core.js",
+      "sha256": "77de6a428a51ad728348ad155b924304cf0aa5ba6e4061ae87031fb11c1420ba"
+    },
+    {
+      "path": "providers/maxroll/src/canonical-codec.js",
+      "sha256": "0891bcebb1dc7da99cee0a36b960273c5d574f3fd952a918179720e48cbafd3d"
+    },
+    {
+      "path": "providers/maxroll/src/canonical-schema-validator.js",
+      "sha256": "eb23f807b06a3d192c9dfb211c5d3d94476602232155be319b8b17ddad94a058"
+    },
+    {
+      "path": "providers/maxroll/src/class-fixture-capture.js",
+      "sha256": "fd2a5a2deb659093566098ab6f65b0babbd969ae159bd07ea3d6aef8873cc5a7"
+    },
+    {
+      "path": "providers/maxroll/src/component-factory.js",
+      "sha256": "8a7cb9085be8c44bcd35cf4e208b6f2bc3283aed652dcf7fa4cfb4a0187b77d7"
+    },
+    {
+      "path": "providers/maxroll/src/d12-option-readback.js",
+      "sha256": "5720a3cef0fa6d6c989954371151cd093726d9fff218b1a1ef4a81079594b6c9"
+    },
+    {
+      "path": "providers/maxroll/src/d12-shared-options.js",
+      "sha256": "0353ac4a4be4015582347ba3fa90a4179530689c74392ba2a7e8709e00702330"
+    },
+    {
+      "path": "providers/maxroll/src/encrypted-build-fixture.js",
+      "sha256": "fdb2ed8f12203b526eb3cd9b8fc9204d6ebdf7da93506ef5b28ab1d08f522082"
+    },
+    {
+      "path": "providers/maxroll/src/encrypted-fixture.js",
+      "sha256": "31788cd537fcfb7ee9650f884294eceffd92b3003899d8f8d2917d8a95cc0d29"
+    },
+    {
+      "path": "providers/maxroll/src/errors.js",
+      "sha256": "2c85d993e12494b817d60b5fb8f09def3060519a00353e637393fc5f435d3b0e"
+    },
+    {
+      "path": "providers/maxroll/src/fixture-attestation.js",
+      "sha256": "1805b6db9055ca52199e82c6006ff3c950be816f61a968987ec9425eecaa1928"
+    },
+    {
+      "path": "providers/maxroll/src/index.js",
+      "sha256": "4ae3511fd508aa7f438c824ffd6d5b8590dec1830aa9d26f166cef7212b7b69a"
+    },
+    {
+      "path": "providers/maxroll/src/live-capture-orchestrator.js",
+      "sha256": "2ca82fc5ce010442d50af52043d61cb14651a6611738b6e3663ec3d58ccc8d63"
+    },
+    {
+      "path": "providers/maxroll/src/metric-catalog.js",
+      "sha256": "73130e84d7de1d2d288fc0d45916c097c7b1c48f58d1ef9473bd0267a07e0cf6"
+    },
+    {
+      "path": "providers/maxroll/src/metrics-extractor.js",
+      "sha256": "08e1da671d32722bcde68358483c32bfe312ff75fa74d93beb945d6b6e0625a2"
+    },
+    {
+      "path": "providers/maxroll/src/native-state-runtime-adapter.js",
+      "sha256": "718cf8b5c85e59d0b458bd2d37f5b8dd45896d79ffef9a54115310c750852a9e"
+    },
+    {
+      "path": "providers/maxroll/src/offline-real-e2e.js",
+      "sha256": "b69d2a41a017f0b16f74e2fd10931378e69c0ab10d96ca3d377398b9e50ba3b5"
+    },
+    {
+      "path": "providers/maxroll/src/patch-profile.js",
+      "sha256": "8b7f25154f9f153c9f2a271c31350fe3fa9a64aacf5250db26517e2c0f60d20e"
+    },
+    {
+      "path": "providers/maxroll/src/provider.js",
+      "sha256": "2405e2217458566e69ee65f7c7ae694a7f1dab5cc57e535e1503fdc0d7d0874f"
+    },
+    {
+      "path": "providers/maxroll/src/real-metrics-extractor.js",
+      "sha256": "e515c7bd909eb5e384340a221af17d044d48f66bd195b2346aebe98551dc6af2"
+    },
+    {
+      "path": "providers/maxroll/src/real-profile-core.js",
+      "sha256": "8779c6f34ddba2729fc112d07af4c728fee168760e3023ab48f1283ff4e34fab"
+    },
+    {
+      "path": "providers/maxroll/src/real-profile.js",
+      "sha256": "864f291ce2ec0d12fce3381a80b9e5c1e81fe573ce00f2be2042350e9c442a2c"
+    },
+    {
+      "path": "providers/maxroll/src/real-runtime-adapter.js",
+      "sha256": "d52a221721f7f15581939d16a53c281454b6e4324a8fda1a6f8f67f25091be28"
+    },
+    {
+      "path": "providers/maxroll/src/runtime-adapter.js",
+      "sha256": "7c49ff4ed837f51774ab03a7119104ad2ad45a1ba4bb9b95a2ca04c1ed30ad28"
+    },
+    {
+      "path": "providers/maxroll/src/runtime-attestation.js",
+      "sha256": "6fd28f1b13d2e328cda5a6715a5d5df00031246bdb2ddef394fcd5b2a19ab981"
+    },
+    {
+      "path": "providers/maxroll/src/session.js",
+      "sha256": "5b9e3926b8d6ae2216dd57b13b444c7a2ee24809e4a03f378c35170d666dbfd0"
+    },
+    {
+      "path": "providers/maxroll/src/snapshot-capturer.js",
+      "sha256": "9a5a5828bc0f8368613a055443eb934f17713ba2b6be51f80acbe6f6483e6c10"
+    },
+    {
+      "path": "providers/maxroll/src/universal-build-mapper.js",
+      "sha256": "7ca82d111c1f69566e75d563b5174a3e9b864c92187730cf2013a676313bcf80"
+    },
+    {
+      "path": "providers/maxroll/src/universal-component-factory.js",
+      "sha256": "971a9d29bf898b02226dcb0758c41cf8abb59eb52a4ee24c63cb5e4073e23d1c"
+    },
+    {
+      "path": "providers/maxroll/src/value.js",
+      "sha256": "ae8d065c4fce717f19bcfb8d4efe5034e15ffc5744c53a78cb8bfe41d2a10b7d"
+    },
+    {
+      "path": "snapshot-management/compatibility/build-index.js",
+      "sha256": "c392b81817e52cef1ec6d316ea362ce822b20cbb71c441d59dbd85a42c049597"
+    },
+    {
+      "path": "snapshot-management/compatibility/contracts.js",
+      "sha256": "580d55c71ed3f31c04dda70246600eb59613f469ba5fe2a255366628a7eceff5"
+    },
+    {
+      "path": "snapshot-management/compatibility/loader.js",
+      "sha256": "e6db04da3181e962feb4dc64520328a288911fc369cbe663605edd4616df8620"
+    },
+    {
+      "path": "snapshot-management/compatibility/versions/maxroll-20261023.js",
+      "sha256": "13cc08b31e2717f6041b6eddd5a0d422d3766650069f1c9bf4fb6412c4a72bfa"
+    },
+    {
+      "path": "snapshot-management/compatibility/versions/maxroll-20261027.js",
+      "sha256": "c2c547092c2797914715b3664517285831c231e91e930f58f76a8ff9748d1c72"
+    },
+    {
+      "path": "snapshot-management/package-lock.json",
+      "sha256": "c1167744c794c7c747de380e8070e3b93c4287c5feb9eb0e53989059988c22ea"
+    },
+    {
+      "path": "snapshot-management/package.json",
+      "sha256": "2dd6ae5902be2ae0924bd385088abdfccf8d0a44df24d1ec2d25f0a6f49dc5f0"
+    },
+    {
+      "path": "snapshot-management/schemas/call.schema.json",
+      "sha256": "664d05643af154df3d8af712bdb05497fa0455094509f8c2a768ddb08bdeab01"
+    },
+    {
+      "path": "snapshot-management/schemas/content-version.schema.json",
+      "sha256": "7638aa50662b552b5a7f83009c09b0f71203128bec0f1f66c288f0ed08813aae"
+    },
+    {
+      "path": "snapshot-management/schemas/registry.schema.json",
+      "sha256": "c4e1a4b674c042b57c390fe3a1d162a2aa230eb80b4cb6aa6c3d3c76ad62dfc2"
+    },
+    {
+      "path": "snapshot-management/schemas/snapshot-package.schema.json",
+      "sha256": "2065b47f2f8cb9a19580b59635091a2b5950204f3aea132eea5dd768246861b1"
+    },
+    {
+      "path": "snapshot-management/src/content-version.js",
+      "sha256": "804645c912c48fc5ea6519205ba6fbc84b753c1e48da3444610e99388aced5c1"
+    },
+    {
+      "path": "snapshot-management/src/index.js",
+      "sha256": "ab5339b97f14c19afd42845d150b160f1a9b8d15d1c31a9c83771058b1d127a5"
+    },
+    {
+      "path": "snapshot-management/src/manager.js",
+      "sha256": "9a9d60a88eeaf378ac6263ed36d35ccb430117c9dbe4397ce452d2847338cc6b"
+    },
+    {
+      "path": "snapshot-management/src/production-trust-anchors.json",
+      "sha256": "728f5623c1e8fa2fab45397732e207f527bd0aed775ad91d27272176dc36439e"
+    },
+    {
+      "path": "snapshot-management/src/protocol.js",
+      "sha256": "ac685a5dc6962b3b8e0a1c623dec1216a0e35c35e9ef99ace97f58b533e0aa86"
+    },
+    {
+      "path": "snapshot-management/src/resolver.js",
+      "sha256": "785f32eed3d0356bdd1d95453cc781d04e950f6dd5e6917efe1104207cad6c13"
+    },
+    {
+      "path": "snapshot-management/src/strategies.js",
+      "sha256": "33579e18fdcb15d3e0568b09d87204a0a16fb826e8f18d2049a3b9dd727f023e"
+    },
+    {
+      "path": "snapshot-management/src/trust.js",
+      "sha256": "ad068b2cc84e5961ccfb891966e40d6995e7af1bdaa172e3ddcedf452eb2d120"
+    },
+    {
+      "path": "src/d4_rulekit/schemas/rule-v1.schema.json",
+      "sha256": "bafe4a4416a8049f4ec87832f218d216b8d3373384799d28f4d647474860f38b"
+    }
+  ],
+  "modules": [
+    "snapshot-management/compatibility/versions/maxroll-20261023.js",
+    "snapshot-management/compatibility/versions/maxroll-20261027.js"
+  ],
+  "executionSha256": "f61f72c93c165521e4c24517de4e01aacd1d9ba2f903ebeca3e29bb067f5d30f",
+  "ruleKitVersion": "rulekit-execution/sha256:f61f72c93c165521e4c24517de4e01aacd1d9ba2f903ebeca3e29bb067f5d30f"
+}
