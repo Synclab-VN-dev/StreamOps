@@ -563,6 +563,34 @@ def _invoke_hud_button(window: dict, prefix: str) -> None:
     time.sleep(.25)
 
 
+def _reload_owned_webview(window: dict) -> list[int]:
+    """Send F5 only to the owned WebView child, without global input or focus."""
+    if sys.platform != "win32":
+        raise E2EFailure("owned native refresh requires Windows")
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    allowed = {window["pid"], *(row["ProcessId"] for row in _windows_descendants(window["pid"]))}
+    handles = []
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def visit(hwnd, _):
+        owner = wintypes.DWORD(); user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        name = ctypes.create_unicode_buffer(256); user32.GetClassNameW(hwnd, name, len(name))
+        if owner.value in allowed and name.value == "Chrome_RenderWidgetHostHWND":
+            handles.append(int(hwnd))
+        return True
+    callback = callback_type(visit)
+    user32.EnumChildWindows.argtypes = [wintypes.HWND, callback_type, wintypes.LPARAM]
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.EnumChildWindows(window["hwnd"], callback, 0)
+    if len(handles) != 1:
+        raise E2EFailure("owned WebView keyboard destination is not unique")
+    if not user32.PostMessageW(handles[0], 0x0100, 0x74, 0x003F0001):
+        raise E2EFailure("owned WebView refresh message rejected")
+    user32.PostMessageW(handles[0], 0x0101, 0x74, 0xC03F0001)
+    return handles
+
+
 def _record_equipment_sample(repository, document: dict, sequence: int) -> int:
     """Write recorded producer observations, never the consumer/HUD database."""
     from d4planner.character.models import EquipmentObservation, ParsedItem
@@ -749,6 +777,34 @@ def run_native_hud(args: argparse.Namespace) -> dict:
                 sample_evidence.append({"ui":ui, "databaseSha256":db["backupSha256"]})
             if sampled_ui:
                 (root / "latency-samples.json").write_text(json.dumps(sample_evidence, indent=2) + "\n")
+            if getattr(args, "verify_refresh", False):
+                previous_render = sampled_ui[-1] if sampled_ui else after_ui
+                previous_renderer = previous_render.get("rendererInstanceId")
+                if not previous_renderer:
+                    raise E2EFailure("native refresh requires renderer identity evidence")
+                refresh_handles = _reload_owned_webview(window)
+                def refreshed_render():
+                    try:
+                        value = json.loads(render_report.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError):
+                        return None
+                    return value if (value.get("rendererInstanceId") not in {None, previous_renderer}
+                                     and value.get("targetId") == "synthetic-target-b") else None
+                recovered_ui = _wait_for(refreshed_render, 20, "new native WebView document and authoritative WS resync")
+                recovery = root / "refresh"; recovery.mkdir(exist_ok=True)
+                recovered_db = _sqlite_evidence(database, recovery / "snapshot.db", recovery / "sqlite-state.json")
+                _assert_ui_matches_db(recovered_ui, recovered_db)
+                if recovered_ui["hudRevision"] < previous_render["hudRevision"]:
+                    raise E2EFailure("native refresh rolled back the HUD revision")
+                live_window = _native_window(process.pid)
+                if live_window is None or live_window["hwnd"] != window["hwnd"]:
+                    raise E2EFailure("native refresh changed the owned window")
+                _capture_window(live_window, recovery / "native-hud.png")
+                (recovery / "assertions.json").write_text(json.dumps({
+                    "ok":True, "previousRenderer":previous_renderer, "render":recovered_ui,
+                    "window":live_window, "inputRecipients":refresh_handles,
+                    "classification":"OWNED_WEBVIEW_RELOAD_REAL_WS_REDISCOVERY",
+                }, indent=2) + "\n")
             backend_records = [
                 json.loads(line) for line in (root / "backend-latency.ndjson").read_text(encoding="utf-8").splitlines()
                 if line.strip()
@@ -1050,6 +1106,7 @@ def main(argv=None) -> int:
     native_hud.add_argument("--package", type=Path, required=True)
     native_hud.add_argument("--source-head", required=True)
     native_hud.add_argument("--approved-port", type=int, required=True)
+    native_hud.add_argument("--verify-refresh", action="store_true")
     native_hud.add_argument("--latency-samples", type=int, default=0)
     native_hud.add_argument("--scenario", choices=("HUD-01", "HUD-02"), required=True)
     args = parser.parse_args(argv)
