@@ -195,6 +195,11 @@ impl Sandbox {
             "D4PLANNER_BOOTSTRAP_FILE".into(),
             descriptor.display().to_string(),
         );
+        // S2 tests exercise the real managed entrypoint with BaseRuntime only.
+        // Production composition is the S5 default and has separate integration
+        // tests; do not let that default change this stdlib-only handshake scope.
+        s.environment
+            .insert("D4PLANNER_RUNTIME_FACTORY".into(), String::new());
         for key in ["PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP"] {
             if let Ok(v) = std::env::var(key) {
                 s.environment.insert(key.into(), v);
