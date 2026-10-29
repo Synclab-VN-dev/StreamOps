@@ -125,12 +125,16 @@ def test_package_plan_pins_match_repository_sources():
     assert maxroll_package["dependencies"]["playwright-core"] == plan["ruleKit"]["playwrightCore"]
     assert plan["ruleKit"]["snapshotIncluded"] is False
     assert plan["ruleKit"]["snapshotManagementContract"] == "d4-rulekit-snapshots/v1"
-    # Existing Rule Kit codec pins remain; the public application package no
-    # longer bundles or selects the pinned private snapshot.
-    codec = (ROOT / "utility/d4-rulekit/providers/maxroll/src/canonical-codec.js").read_text()
-    import re
-    assert re.search(r"snapshotId: '([^']+)'", codec).group(1) == coverage["snapshotId"]
-    assert re.search(r"snapshotManifestSha256: '([^']+)'", codec).group(1) == coverage["snapshotManifestSha256"]
+    # The compatibility framework moved version-specific pins out of shared
+    # codec source. Verify the actual legacy export, not its textual location.
+    result = subprocess.run(
+        ["node", "-e", "process.stdout.write(JSON.stringify(require('./utility/d4-rulekit/providers/maxroll/src/canonical-codec').D12_COMPATIBILITY))"],
+        cwd=ROOT, capture_output=True, text=True, timeout=15, check=True,
+    )
+    binding = json.loads(result.stdout)
+    assert binding["snapshotId"] == coverage["snapshotId"]
+    assert binding["snapshotManifestSha256"] == coverage["snapshotManifestSha256"]
+
 
 
 def test_missing_symlink_secret_and_unsafe_plan_fail_closed(tmp_path):
