@@ -74,3 +74,38 @@ git diff --check
 ```
 
 CI is intentionally not queried by this workstream.
+
+## Target operation failure boundaries (S5 review fixes)
+
+Startup verifies repository directory enumeration, durable state and authenticated
+listener readiness. Invalid Target *content* is not a repository service failure:
+`targetRepository=READY` means the service can safely validate/reject requests,
+not that every user file is valid. Private managed health reports `targetListing`
+(`READY` or the existing Target error code), while `targetJsonCount` is the number
+of candidate JSON files, not a fabricated valid-target count. Directory I/O/file
+count limit failures still abort startup and close owned services. Explicit list
+requests never return partial lists; invalid content produces correlated,
+sanitized `TARGET_INVALID`, retryable=false (repair files then request again).
+
+The production composition root coordinates S4's selected-target JSON and HUD
+SQLite using a private, flushed/atomically replaced `target-transition.json`
+intent before activation. It records previous selection/binding and the requested
+ID/hash/selection revision. A matching authoritative HUD commit is the commit
+point. Before that point, failure restores selection and binding; afterwards,
+publish failure must retain the committed selection/HUD for resync. Recovery is
+idempotent and runs before startup, activation and Equipment ingestion. Failed
+recovery retains the journal and refuses dependent operations; it never silently
+continues with a partially switched Target. This provides process-interruption
+recovery across the two stores, not a claim that two filesystem/SQLite writes
+constitute one OS transaction or that loss of durable storage can be repaired.
+S4 still owns validation, persistence primitives and scoring; no SQL enters WS
+transport or FE. A post-commit transport error can require authoritative resync;
+it is not permission to roll back a committed Target. Existing connection-level
+command dedup remains unchanged, with no exactly-once promise across reconnects.
+
+FE pending Target selection is capped at 32 outstanding commands; exceeding the
+cap rejects locally before sending (`TARGET_REQUEST_LIMIT`). Correlated success
+and error both consume the pending selection. Listing errors consume only their
+own pending request; unknown/duplicate correlated errors are ignored. Connection
+close/disconnect clears connection-owned requests; existing socket/generation
+guards reject late messages. No renderer changes or polling were added.
