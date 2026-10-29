@@ -348,9 +348,8 @@ export class HudWebSocketDataSource {
         && !sameContext(contextKey(message.hud?.context), pending.expectedContext)) {
       this.pendingSnapshot = null;
       this.clearSnapshotTimer();
-      this.pendingTarget.clear();
-      this.pendingTargetList = null;
-      this.pendingHello = null;
+      // Only the snapshot operation is superseded. Target commands on this
+      // authenticated connection still require their correlated terminal reply.
       this.state = { ...this.state, freshness: 'STALE', subscriptionId: null };
       // Do not apply the mismatched snapshot. Discover the authoritative active
       // context using its revision as the new anti-rollback floor.
