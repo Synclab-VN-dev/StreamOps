@@ -365,7 +365,7 @@ function targets(socket: FakeSocket) {
 it('consumes correlated errors without accumulating pending selection or accepting late errors', () => {
   const {source, socket} = setup(); accept(socket); targets(socket);
   for (let i = 0; i < 100; i++) {
-    source.selectTarget('target-a');
+    void source.selectTarget('target-a').catch(error => { expect(error.message).toMatch(/TARGET_CHANGED|TARGET_INVALID|Backend connection/); });
     const id = socket.sent.at(-1)!.messageId;
     socket.receive({protocolVersion: 'd4planner-ws/v1', type: 'error', backendGeneration: 3,
       correlationId: id, code: i % 2 ? 'TARGET_CHANGED' : 'TARGET_INVALID'});
@@ -380,7 +380,7 @@ it('consumes correlated errors without accumulating pending selection or accepti
 
 it('bounds outstanding selections and clears connection-owned requests', () => {
   const {source, socket} = setup(); accept(socket); targets(socket);
-  for (let i = 0; i < 32; i++) source.selectTarget('target-a');
+  for (let i = 0; i < 32; i++) void source.selectTarget('target-a').catch(error => { expect(error.message).toMatch(/TARGET_CHANGED|TARGET_INVALID|Backend connection/); });
   expect(() => source.selectTarget('target-a')).toThrow('TARGET_REQUEST_LIMIT');
   const first = socket.sent.find(m => m.type === 'target.select.request')!;
   socket.receive({protocolVersion: 'd4planner-ws/v1', type: 'target.select.result',
@@ -393,10 +393,10 @@ it('bounds outstanding selections and clears connection-owned requests', () => {
 it('old connection/generation errors do not complete a new selection', () => {
   vi.useFakeTimers();
   const {source, socket, sockets} = setup([1]); accept(socket); targets(socket);
-  source.selectTarget('target-a');
+  void source.selectTarget('target-a').catch(error => { expect(error.message).toMatch(/TARGET_CHANGED|TARGET_INVALID|Backend connection/); });
   socket.close(); vi.advanceTimersByTime(1);
   const next = sockets[1]; next.onopen?.(); accept(next); targets(next);
-  source.selectTarget('target-a');
+  void source.selectTarget('target-a').catch(error => { expect(error.message).toMatch(/TARGET_CHANGED|TARGET_INVALID|Backend connection/); });
   const id = next.sent.at(-1)!.messageId;
   const error = {protocolVersion: 'd4planner-ws/v1', type: 'error', backendGeneration: 3,
     correlationId: id, code: 'TARGET_INVALID'};
@@ -431,7 +431,7 @@ it.each(['TARGET_CHANGED', 'TARGET_INVALID', 'success', 'list'])(
       targets: [{targetId: 'target-b', validation: 'VALID', contentSha256: 'b'.repeat(64)}],
     };
     reconnected.receive(listReply);
-    source.selectTarget('target-b');
+    void source.selectTarget('target-b').catch(error => { expect(error.message).toMatch(/TARGET_CHANGED|TARGET_INVALID|Backend connection/); });
     const selectionId = reconnected.sent.at(-1)!.messageId;
     source.requestTargets();
     const listId = reconnected.sent.at(-1)!.messageId;
@@ -442,7 +442,7 @@ it.each(['TARGET_CHANGED', 'TARGET_INVALID', 'success', 'list'])(
     });
     const discovery = pendingSnapshot(reconnected);
     expect(discovery.requestContext).toMatchObject({mode: 'DISCOVER_ACTIVE_CONTEXT', minimumHudRevision: 21});
-    expect(source.snapshot()).toMatchObject({freshness: 'STALE', subscriptionId: null,
+    expect(source.snapshot()).toMatchObject({freshness: 'STALE', assessmentRenderable: false, subscriptionId: null,
       hud: {hudRevision: 20, context: {target: {targetId: 'target-a'}}}});
     const response = {
       protocolVersion: 'd4planner-ws/v1', backendGeneration: 3, correlationId: selectionId,
@@ -478,7 +478,7 @@ it.each(['TARGET_CHANGED', 'TARGET_INVALID', 'success', 'list'])(
     reconnected.receive({...discovered, hud: hud(21, 'target-b', 'character-b')});
     expect(source.snapshot()).toMatchObject({freshness: 'CURRENT', subscriptionId: 'discovered',
       hud: {hudRevision: 21, context: {target: {targetId: 'target-b'}}}});
-    for (let i = 0; i < 32; i++) source.selectTarget('target-b');
+    for (let i = 0; i < 32; i++) void source.selectTarget('target-b').catch(error => { expect(error.message).toMatch(/TARGET_CHANGED|TARGET_INVALID|Backend connection/); });
     expect(() => source.selectTarget('target-b')).toThrow('TARGET_REQUEST_LIMIT');
     source.disconnect();
     expect((source as any).pendingTarget.size).toBe(0);
@@ -521,6 +521,14 @@ describe('TauriHudDataSource backend rediscovery', () => {
       protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
       correlationId: request.messageId, backendGeneration: 3, subscriptionId: 'old-sub', hud: hud(20),
     });
+    targets(first);
+    const selection = source.selectTarget({targetId: 'target-a', expectedSha256: 'a'.repeat(64)});
+    const rejected = expect(selection).rejects.toThrow('TARGET_INVALID');
+    const eventCount = events.length;
+    first.receive({protocolVersion: 'd4planner-ws/v1', type: 'error', backendGeneration: 3,
+      correlationId: first.sent.at(-1)!.messageId, code: 'TARGET_INVALID', message: 'Invalid target'});
+    await rejected;
+    expect(events.slice(eventCount).some(event => event.type === 'CONNECTION' && event.state === 'DISCONNECTED')).toBe(false);
     first.close();
     await vi.waitFor(() => expect(sockets).toHaveLength(2));
     expect(sockets.map(item => item.endpoint)).toEqual([
@@ -546,4 +554,23 @@ describe('TauriHudDataSource backend rediscovery', () => {
     expect(events.some(event => event.type === 'CONNECTION' && event.state === 'DISCONNECTED')).toBe(true);
     dispose();
   });
+});
+
+it('settles a correlated terminal Target error immediately and cancels its timeout', async () => {
+  vi.useFakeTimers();
+  const {source, socket} = setup(); accept(socket); targets(socket);
+  const result = source.selectTarget('target-a');
+  const settled = vi.fn();
+  void result.then(settled, settled);
+  const id = socket.sent.at(-1)!.messageId;
+  socket.receive({protocolVersion: 'd4planner-ws/v1', type: 'error', backendGeneration: 3,
+    correlationId: id, code: 'TARGET_CHANGED', message: 'Target changed after listing'});
+  await Promise.resolve();
+  expect(settled).toHaveBeenCalledTimes(1);
+  expect(settled.mock.calls[0][0].message).toContain('TARGET_CHANGED');
+  socket.receive({protocolVersion: 'd4planner-ws/v1', type: 'error', backendGeneration: 3,
+    correlationId: id, code: 'INTERNAL'});
+  vi.advanceTimersByTime(2001);
+  expect(settled).toHaveBeenCalledTimes(1);
+  source.disconnect();
 });
