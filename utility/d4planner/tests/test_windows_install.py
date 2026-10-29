@@ -14,7 +14,7 @@ import windows_install as engine
 
 
 def package(tmp_path, version="1.0.0"):
-    executable = b"unit-test-payload-not-native-acceptance"
+    executable = b"unit-test-payload-not-native-acceptance-" + version.encode()
     path = tmp_path / f"package-{version}.zip"
     manifest = {
         "schemaVersion":engine.delivery.MANIFEST_VERSION, "applicationId":engine.APP_ID,
@@ -203,3 +203,76 @@ def test_rulekit_preflight_rejection_preserves_old_application_and_user_snapshot
     assert sentinel.read_bytes() == b'isolated-user-snapshot-store'
     assert (data / 'state/hud.sqlite3').read_bytes() == before_db
     assert not any('--runtime-health' in command for command in calls)
+
+
+def test_rollback_interruption_after_launcher_replace_recovers_previous_application(tmp_path, monkeypatch):
+    root,data=prepare(tmp_path,monkeypatch)
+    for ver in ('1.0.0','1.0.1'):
+        artifact,digest=package(tmp_path,ver)
+        engine.install(artifact,root,data,digest,health_check=lambda p:None)
+    before=engine.read_state(root); launcher=(root/'D4Planner.exe').read_bytes()
+    replace=engine.os.replace
+    def interrupt(source,target):
+        replace(source,target)
+        if Path(target)==root/'D4Planner.exe': raise SystemExit(137)
+    with monkeypatch.context() as m:
+        m.setattr(engine.os,'replace',interrupt)
+        with pytest.raises(SystemExit): engine.rollback(root)
+    engine.recover(root)
+    assert engine.read_state(root)==before
+    assert (root/'D4Planner.exe').read_bytes()==launcher
+
+
+@pytest.mark.parametrize('phase',['JOURNALED','LAUNCHER_REPLACED','ACTIVATED'])
+@pytest.mark.parametrize('termination',[False,True])
+def test_rollback_journal_fault_checkpoints_preserve_all_user_state(tmp_path,monkeypatch,phase,termination):
+    root,data=prepare(tmp_path,monkeypatch)
+    snapshot=data/'rulekit/store/user-snapshot.bin'; snapshot.parent.mkdir(parents=True); snapshot.write_bytes(b'private user state')
+    for ver in ('1.0.0','1.0.1'):
+        artifact,digest=package(tmp_path,ver)
+        engine.install(artifact,root,data,digest,health_check=lambda p:None)
+    before=engine.read_state(root); launcher=(root/'D4Planner.exe').read_bytes()
+    preserved={p.relative_to(data):p.read_bytes() for p in data.rglob('*') if p.is_file()}
+    # A current DB write must never be rolled back with application binaries.
+    def interrupt(stage):
+        if stage==phase:
+            raise SystemExit(137) if termination else OSError('injected rollback failure')
+    with pytest.raises(SystemExit if termination else OSError):
+        engine.rollback(root,checkpoint=interrupt)
+    if termination:
+        assert (root/'upgrade-journal.json').exists() # native launcher refuses normal start with this journal
+        assert engine.recover(root)['recovery']=='RESTORED_PREVIOUS'
+    assert engine.read_state(root)==before
+    assert (root/'D4Planner.exe').read_bytes()==launcher
+    assert not (root/'upgrade-journal.json').exists()
+    assert list((root/'transactions').iterdir())==[]
+    assert engine.recover(root)['recovery']=='NOT_NEEDED'
+    assert {p.relative_to(data):p.read_bytes() for p in data.rglob('*') if p.is_file()}==preserved
+    result=engine.rollback(root)
+    assert result['rollbackVersion']=='1.0.0' and result['dataRestored'] is False
+    state=engine.read_state(root)
+    assert (root/'D4Planner.exe').read_bytes()==(engine.owned_payload(root,state)/'D4Planner.exe').read_bytes()
+    assert state['version']=='1.0.0'
+    assert list((root/'transactions').iterdir())==[]
+    assert {p.relative_to(data):p.read_bytes() for p in data.rglob('*') if p.is_file()}==preserved
+
+
+def test_rollback_recovery_rejects_tampered_backup_without_losing_journal(tmp_path,monkeypatch):
+    root,data=prepare(tmp_path,monkeypatch)
+    for ver in ('1.0.0','1.0.1'):
+        artifact,digest=package(tmp_path,ver)
+        engine.install(artifact,root,data,digest,health_check=lambda p:None)
+    def terminate(stage):
+        if stage=='LAUNCHER_REPLACED': raise SystemExit(137)
+    with pytest.raises(SystemExit): engine.rollback(root,checkpoint=terminate)
+    journal=engine.delivery.load_json(root/'upgrade-journal.json')
+    backup=root/journal['transaction']/'D4Planner.previous.exe'
+    expected=backup.read_bytes(); backup.write_bytes(b'tampered')
+    with pytest.raises(engine.InstallError,match='RECOVERY_LAUNCHER_INTEGRITY'): engine.recover(root)
+    assert (root/'upgrade-journal.json').exists()
+    backup.write_bytes(expected)
+    sentinel=backup.parent/'user-owned.txt'; sentinel.write_text('keep')
+    engine.recover(root)
+    assert sentinel.read_text()=='keep'
+    assert not backup.exists()
+    assert engine.read_state(root)['version']=='1.0.1'
