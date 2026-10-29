@@ -173,3 +173,40 @@ def test_unavailable_rulekit_writes_blocker_evidence_with_nonzero_exit(monkeypat
     assert result['status'] == 'BLOCKED'
     assert result['reason'] == 'SNAPSHOT_NOT_SELECTED'
     assert stopped == [True]
+
+
+def test_native_target_delta_requires_independent_score_and_item_change():
+    original = json.loads((ROOT / 'utility/d4planner/contracts/release1/v1/fixtures/target.valid.synthetic.json').read_text())
+    changed = production._native_target_b(original)
+    assert original['assessmentPolicy']['criteria'][0]['parameters'][0]['expected']['value'] == 8
+    assert changed['canonicalBuild']['equipment']['slots'][0]['item']['affixes'][0]['values'] == [12]
+    assert changed['assessmentPolicy']['criteria'][0]['parameters'][0]['expected']['value'] == 12
+    def payload(score, warn, passing, glove_status):
+        return {'score': {'value':score,'passedWeight':8 if score == 100 else 5,
+                         'evaluableWeight':8,'failIssueCount':0,'warnCount':warn,
+                         'itemsPassing':passing,'itemsTargeted':2},
+                'equipment':[{'slotId':'gloves','status':glove_status}, {'slotId':'ring-1','status':'PASS'}]}
+    before = payload(100, 0, 2, 'PASS')
+    with pytest.raises(production.E2EFailure, match='HUD-02 independent'):
+        production._assert_native_delta(before, before)
+    production._assert_native_delta(before, payload(62.5, 1, 1, 'WARN'))
+
+
+def test_native_fixture_scores_through_production_adapter_and_domain(tmp_path):
+    from d4planner.release1.capture_adapter import EquipmentCaptureAdapter
+    from d4planner.release1.assessment import EquipmentAssessmentService
+    from d4planner.release1.target_repository import TargetRepository, TargetValidator
+    folder = tmp_path / 'targets'; folder.mkdir()
+    original = json.loads((ROOT / 'utility/d4planner/contracts/release1/v1/fixtures/target.valid.synthetic.json').read_text())
+    (folder / 'a.json').write_text(json.dumps(original))
+    (folder / 'b.json').write_text(json.dumps(production._native_target_b(original)))
+    repo = TargetRepository(folder, tmp_path / 'selection.json', TargetValidator.from_contract_tree(ROOT))
+    current = EquipmentCaptureAdapter().from_event(json.loads((ROOT / 'utility/d4planner/release1/equipment.recorded.synthetic.json').read_text()))
+    listing = repo.list()
+    results = []
+    for name in ('synthetic-charge-bolt', 'synthetic-target-b'):
+        entry = next(entry for entry in listing.entries if entry.target_id == name)
+        target = repo.activate(entry.target_id, entry.content_sha256, listing.revision)
+        result = EquipmentAssessmentService().assess(current, target)
+        results.append({'score':result.score_payload(), 'equipment':result.rows})
+    production._assert_native_delta(*results)
