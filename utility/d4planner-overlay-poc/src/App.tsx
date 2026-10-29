@@ -97,7 +97,12 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
           <button className="menu-button" aria-label="Open target menu" aria-expanded={menuOpen} onClick={() => { setMenuOpen(value => !value); if (!menuOpen) void hud.refreshTargets(); }}>⋮</button>
           {menuOpen && <div className="target-menu" role="menu">
             <strong>▣ Target Build</strong>
-            {hud.targets.length === 0 && <p className="empty-targets">No Target JSON files</p>}
+            {hud.targetListStatus === "LOADING" && <p role="status">Loading Targets…</p>}
+            {hud.targetListStatus === "ERROR" && <div>
+              <p role="alert">Target listing failed: {hud.targetListError}</p>
+              <button onClick={() => void hud.refreshTargets()}>Retry Target list</button>
+            </div>}
+            {hud.targetListStatus === "READY" && hud.targets.length === 0 && <p className="empty-targets">No Target JSON files</p>}
             {hud.targets.map(entry => <button key={entry.targetId} role="menuitem" disabled={entry.validation !== "VALID" || hud.pendingTargetId !== null}
               aria-current={snapshot?.context.target?.targetId === entry.targetId}
               onClick={() => { setMenuOpen(false); setEquipmentOpen(false); resetComparison(); void hud.selectTarget(entry); }}>
