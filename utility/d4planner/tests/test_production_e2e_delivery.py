@@ -228,3 +228,9 @@ def test_recorded_producer_uses_repository_boundary_and_stable_identity(tmp_path
     assert next(item for item in snapshot.items if item.slot_id == 'gloves').entities[0].entity_id == 'attack-speed'
     production._record_equipment_sample(repository, document, 2)
     assert ReadOnlyEquipmentRepository(repository.path).projection_snapshot().revision[0] == 4
+
+
+def test_capture_latency_includes_producer_to_backend_polling_delay():
+    backend = {"captureReceivedAt":"2026-10-29T00:00:01.200000Z", "captureToAssessmentNs":2_000_000}
+    assert production._capture_to_assessment_ms(backend, "2026-10-29T00:00:00Z") == 1202
+    assert production._capture_to_assessment_ms(backend) == 2
