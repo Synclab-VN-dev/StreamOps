@@ -18,6 +18,7 @@ export interface WebSocketLike {
 export interface HudDataState {
   backend: { runtimeInstanceId: string; generation: number } | null;
   hud: Record<string, any> | null;
+  hudReceivedAt?: string; // Local telemetry; never part of the WS payload.
   freshness: 'STARTUP' | 'STALE' | 'CURRENT';
   assessmentRenderable: boolean;
   subscriptionId: string | null;
@@ -45,6 +46,7 @@ type PendingTargetSelection = {
 export class HudWebSocketDataSource {
   private socket: WebSocketLike | null = null;
   private sequence = 0;
+  private receivedAt: string | undefined;
   private pendingHello: string | null = null;
   private pendingTargetList: string | null = null;
   private targetListTimer: ReturnType<typeof setTimeout> | null = null;
@@ -115,6 +117,7 @@ export class HudWebSocketDataSource {
     };
     socket.onmessage = event => {
       if (socket !== this.socket) return;
+      this.receivedAt = new Date().toISOString();
       try {
         const message: unknown = JSON.parse(event.data);
         if (message && typeof message === 'object') this.receive(message as Record<string, any>);
@@ -449,6 +452,7 @@ export class HudWebSocketDataSource {
     this.state = {
       ...this.state,
       hud: structuredClone(message.hud),
+      hudReceivedAt: this.receivedAt,
       freshness: 'CURRENT',
       assessmentRenderable: true,
       subscriptionId: message.subscriptionId,
@@ -474,7 +478,7 @@ export class HudWebSocketDataSource {
       this.emit();
       return;
     }
-    this.state = { ...this.state, hud: structuredClone(message.hud), freshness: 'CURRENT' };
+    this.state = { ...this.state, hud: structuredClone(message.hud), hudReceivedAt: this.receivedAt, freshness: 'CURRENT' };
     this.emit();
   }
 
@@ -546,7 +550,7 @@ function sameContext(actual: Record<string, unknown>, expected?: Record<string, 
 export type HudDataEvent =
   | { type: "CONNECTION"; state: "CONNECTED" | "DISCONNECTED"; reason?: string }
   | { type: "ASSESSMENT_INVALIDATED" }
-  | { type: "SNAPSHOT"; snapshot: HudSnapshot }
+  | { type: "SNAPSHOT"; snapshot: HudSnapshot; receivedAt?: string }
   | { type: "TARGETS"; targets: TargetListEntry[] }
   | { type: "TARGET_LIST_STATE"; status: HudDataState["targetListStatus"]; error: string | null };
 
@@ -634,7 +638,7 @@ export class TauriHudDataSource implements IHudDataSource {
       }
       if (state.freshness === 'CURRENT' && state.hud && (state.hud.hudRevision !== lastRevision || !wasConnected)) {
         lastRevision = state.hud.hudRevision;
-        this.listener?.({ type: 'SNAPSHOT', snapshot: structuredClone(state.hud) as HudSnapshot });
+        this.listener?.({ type: 'SNAPSHOT', snapshot: structuredClone(state.hud) as HudSnapshot, receivedAt: state.hudReceivedAt });
       }
       if (state.freshness === 'STALE' && connected) {
         connected = false;
