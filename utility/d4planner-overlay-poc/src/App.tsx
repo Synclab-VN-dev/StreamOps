@@ -22,6 +22,7 @@ function displayValue(value: TypedValue | CriterionComparison["parameters"][numb
 function halfUp(value: number) { return Math.floor(value + 0.5); }
 
 export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
+  const [rendererInstanceId] = useState(() => crypto.randomUUID());
   const source = useMemo(() => dataSource ?? productionHudDataSource(), [dataSource]);
   const hud = useHudController(source);
   const [expanded, setExpanded] = useState(true);
@@ -66,6 +67,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
       paintedFrame = requestAnimationFrame(() => {
         invoke("report_hud_pipeline", {
           snapshot,
+          rendererInstanceId,
           modelUpdatedAt: hud.timing!.modelUpdatedAt,
           wsReceivedAt: hud.timing!.wsReceivedAt ?? null,
           visibleRenderedAt: new Date().toISOString(),
@@ -73,7 +75,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
       });
     });
     return () => { cancelAnimationFrame(frame); cancelAnimationFrame(paintedFrame); };
-  }, [hud.connection, hud.authoritative, snapshot, hud.timing]);
+  }, [hud.connection, hud.authoritative, snapshot, hud.timing, rendererInstanceId]);
 
   function resetComparison() {
     setSelectedSlot(null); setAffixOpen(false); setEffectOpen(false); setShowAll(false);

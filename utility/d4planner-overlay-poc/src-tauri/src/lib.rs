@@ -313,6 +313,7 @@ fn report_hud_pipeline(
     snapshot: serde_json::Value,
     model_updated_at: String,
     ws_received_at: Option<String>,
+    renderer_instance_id: String,
     visible_rendered_at: String,
 ) -> Result<(), String> {
     let path = env::var("D4_HUD_PIPELINE_REPORT")
@@ -343,6 +344,7 @@ fn report_hud_pipeline(
         "itemsTargeted": snapshot.pointer("/score/itemsTargeted"),
         "modelUpdatedAt": model_updated_at,
         "wsReceivedAt": ws_received_at,
+        "rendererInstanceId": renderer_instance_id,
         "visibleRenderedAt": visible_rendered_at,
     });
     fs::write(path, report.to_string()).map_err(|error| format!("cannot write HUD pipeline report: {error}"))?;
