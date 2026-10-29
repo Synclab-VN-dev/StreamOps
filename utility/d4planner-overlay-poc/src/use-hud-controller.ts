@@ -11,6 +11,7 @@ function acceptsSnapshot(current: HudSnapshot | null, next: HudSnapshot): boolea
 }
 
 export function useHudController(source: IHudDataSource) {
+  const [timing, setTiming] = useState<{ wsReceivedAt?: string; modelUpdatedAt: string } | null>(null);
   const [snapshot, setSnapshot] = useState<HudSnapshot | null>(null);
   const [targetListStatus, setTargetListStatus] = useState<'IDLE' | 'LOADING' | 'READY' | 'ERROR'>('IDLE');
   const [targetListError, setTargetListError] = useState<string | null>(null);
@@ -48,6 +49,7 @@ export function useHudController(source: IHudDataSource) {
         if (!acceptsSnapshot(snapshotRef.current, event.snapshot)) return;
         snapshotRef.current = event.snapshot;
         setSnapshot(event.snapshot);
+        setTiming({ wsReceivedAt: event.receivedAt, modelUpdatedAt: new Date().toISOString() });
         setAuthoritative(true);
         setAssessmentRenderable(true);
         setConnectionError(null);
@@ -94,5 +96,5 @@ export function useHudController(source: IHudDataSource) {
     // ACTIVATED still waits for the authoritative snapshot with the matching binding.
   }
 
-  return { snapshot, targets, targetListStatus, targetListError, connection, authoritative, assessmentRenderable, error: operationError ?? connectionError, pendingTargetId: pendingTarget?.targetId ?? null, refreshTargets, selectTarget };
+  return { snapshot, timing, targets, targetListStatus, targetListError, connection, authoritative, assessmentRenderable, error: operationError ?? connectionError, pendingTargetId: pendingTarget?.targetId ?? null, refreshTargets, selectTarget };
 }
