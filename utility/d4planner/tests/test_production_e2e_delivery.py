@@ -210,3 +210,21 @@ def test_native_fixture_scores_through_production_adapter_and_domain(tmp_path):
         result = EquipmentAssessmentService().assess(current, target)
         results.append({'score':result.score_payload(), 'equipment':result.rows})
     production._assert_native_delta(*results)
+
+
+def test_recorded_producer_uses_repository_boundary_and_stable_identity(tmp_path):
+    from d4planner.character.repository import EquipmentRepository, ReadOnlyEquipmentRepository
+    from d4planner.release1.capture_adapter import RepositoryEquipmentCaptureAdapter
+    document = json.loads((ROOT / 'utility/d4planner/release1/equipment.recorded.synthetic.json').read_text())
+    repository = EquipmentRepository(tmp_path / 'producer.sqlite3')
+    production._record_equipment_sample(repository, document, 1)
+    view = ReadOnlyEquipmentRepository(repository.path).projection_snapshot()
+    snapshot = RepositoryEquipmentCaptureAdapter(repository).snapshot(
+        character_id=document['characterId'], character_display_name=document['characterDisplayName'],
+        current_revision=view.revision[0], projection=view,
+    )
+    assert {item.slot_id for item in snapshot.items} == {'gloves', 'ring-1'}
+    assert view.revision[0] == 2
+    assert next(item for item in snapshot.items if item.slot_id == 'gloves').entities[0].entity_id == 'attack-speed'
+    production._record_equipment_sample(repository, document, 2)
+    assert ReadOnlyEquipmentRepository(repository.path).projection_snapshot().revision[0] == 4

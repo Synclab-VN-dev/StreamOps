@@ -563,6 +563,34 @@ def _invoke_hud_button(window: dict, prefix: str) -> None:
     time.sleep(.25)
 
 
+def _record_equipment_sample(repository, document: dict, sequence: int) -> int:
+    """Write recorded producer observations, never the consumer/HUD database."""
+    from d4planner.character.models import EquipmentObservation, ParsedItem
+    stamp = datetime.now(timezone.utc).isoformat()
+    for index, slot in enumerate(document["slots"]):
+        if slot["presence"] != "OBSERVED":
+            raise E2EFailure("latency workload requires explicit observed slots")
+        item = slot["item"]
+        entities = item["entities"]
+        parsed = ParsedItem(
+            name=item["displayName"], item_type=slot["slotId"], item_power=1,
+            affixes=[entity for entity in entities if entity["kind"] == "AFFIX"],
+            effects_raw=[entity for entity in entities if entity["kind"] == "EFFECT"],
+        )
+        slot_id = slot["slotId"]
+        family = "ring" if slot_id in {"ring-1", "ring-2"} else slot_id.replace("-", "_")
+        physical = int(slot_id[-1]) if family == "ring" else None
+        event = sequence * len(document["slots"]) + index
+        repository.commit_event(
+            session_id="isolated-recorded-latency", event_seq=event, updated_at=stamp,
+            observation=EquipmentObservation(
+                family, physical, parsed, stamp, "isolated-recorded-latency",
+                event, event, "HIGH", item["itemId"],
+            ),
+        )
+    return repository.projection_revision()[0]
+
+
 def run_native_hud(args: argparse.Namespace) -> dict:
     """Collect private HUD-01/HUD-02 evidence from an interactive Windows desktop."""
     if sys.platform != "win32":
@@ -599,6 +627,18 @@ def run_native_hud(args: argparse.Namespace) -> dict:
         "D4_WEBVIEW_DIAGNOSTIC_REPORT": str(root / "webview-diagnostic.ndjson"),
         "D4PLANNER_LATENCY_TRACE": str(root / "backend-latency.ndjson"),
     })
+    sample_count = getattr(args, "latency_samples", 0)
+    if not 0 <= sample_count <= 100:
+        raise E2EFailure("latency samples must be between 0 and 100")
+    producer = None
+    if sample_count:
+        from d4planner.character.repository import EquipmentRepository
+        producer = EquipmentRepository(data / "recorded-producer.sqlite3")
+        recorded = json.loads(evidence.read_text(encoding="utf-8"))
+        initial_producer_revision = _record_equipment_sample(producer, recorded, 1)
+        env.update({"D4PLANNER_EQUIPMENT_REPOSITORY_DB": str(producer.path),
+                    "D4PLANNER_CHARACTER_ID": recorded["characterId"],
+                    "D4PLANNER_CHARACTER_DISPLAY_NAME": recorded["characterDisplayName"]})
     executable = install / "app/d4planner-fe.exe"
     started = datetime.now(timezone.utc).isoformat()
     process = subprocess.Popen([str(executable)], cwd=install, env=env,
@@ -618,6 +658,14 @@ def run_native_hud(args: argparse.Namespace) -> dict:
                 if render_report.is_file() else None,
             90, "HUD render acknowledgment",
         )
+        if producer is not None:
+            def initial_projection_render():
+                try:
+                    row = json.loads(render_report.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    return None
+                return row if row.get("currentRevision") == initial_producer_revision else None
+            before_ui = _wait_for(initial_projection_render, 15, "initial producer projection rendered")
         before_root = root / "before" if args.scenario == "HUD-02" else root
         before_image = before_root / ("native-hud.png" if args.scenario == "HUD-02" else "screenshot-native.png")
         if args.scenario == "HUD-02":
@@ -680,11 +728,32 @@ def run_native_hud(args: argparse.Namespace) -> dict:
                 "afterTargetId": after_db["payload"]["context"]["target"]["targetId"],
             }, indent=2) + "\n", encoding="utf-8")
             (compare / "assertion-report.json").write_text(json.dumps({"ok":True, **delta}, indent=2) + "\n", encoding="utf-8")
+            sampled_ui = []
+            sample_evidence = []
+            for index in range(sample_count):
+                # Each sample waits for its own committed revision and visible render.
+                # Fixed work count is diagnostic, not a newly invented latency SLA.
+                captured_revision = _record_equipment_sample(producer, recorded, index + 2)
+                def sample_render():
+                    try:
+                        value = json.loads(render_report.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError):
+                        return None
+                    return value if value.get("currentRevision") == captured_revision else None
+                ui = _wait_for(sample_render, 10, "recorded producer revision rendered")
+                sample_dir = root / "latency-samples" / str(index + 1)
+                sample_dir.mkdir(parents=True, exist_ok=True)
+                db = _sqlite_evidence(database, sample_dir / "snapshot.db", sample_dir / "state.json")
+                _assert_ui_matches_db(ui, db)
+                sampled_ui.append(ui)
+                sample_evidence.append({"ui":ui, "databaseSha256":db["backupSha256"]})
+            if sampled_ui:
+                (root / "latency-samples.json").write_text(json.dumps(sample_evidence, indent=2) + "\n")
             backend_records = [
                 json.loads(line) for line in (root / "backend-latency.ndjson").read_text(encoding="utf-8").splitlines()
                 if line.strip()
             ]
-            ui_records = [before_ui, after_ui]
+            ui_records = sampled_ui or [before_ui, after_ui]
             paired = []
             for ui_record in ui_records:
                 backend_record = next(
@@ -708,6 +777,9 @@ def run_native_hud(args: argparse.Namespace) -> dict:
                     for pair in paired
                 ]),
                 "sla":"NOT_DEFINED_AS_APPROVED",
+                "workload":{"classification":"RECORDED_PRODUCER_SQLITE", "requestedSamples":sample_count},
+                "measurementLimits":["Capture starts at Backend ingest, excludes producer polling delay",
+                                     "commitToWsDelivery measures server publish completion, not client receipt"],
             }
             if any(value < 0 for stage in latency.values() if isinstance(stage, dict)
                    for value in stage.get("samplesMilliseconds", [])):
@@ -973,6 +1045,7 @@ def main(argv=None) -> int:
     native_hud.add_argument("--package", type=Path, required=True)
     native_hud.add_argument("--source-head", required=True)
     native_hud.add_argument("--approved-port", type=int, required=True)
+    native_hud.add_argument("--latency-samples", type=int, default=0)
     native_hud.add_argument("--scenario", choices=("HUD-01", "HUD-02"), required=True)
     args = parser.parse_args(argv)
     try:
