@@ -700,11 +700,17 @@ class MaxrollRuntimeAttestationObserver {
     if (this.#capture) this.#capture.reject(new MaxrollProviderError(
       ERROR_CODES.SESSION_INVALIDATED, 'attestation observer closed during capture'));
     await this.#pauseChain.catch(error => failures.push(error));
+    // Lease expiry may already have destroyed this target and detached its CDP
+    // session. Confirm page closure; an invalid lease alone is not cleanup proof.
+    const targetClosed = () => this.#lease.page?.isClosed?.() === true;
+    if (targetClosed()) return;
     for (const command of ['Network.disable', 'Debugger.disable']) {
       try { await this.#cdp?.send(command); } catch (error) { failures.push(error); }
     }
     try { await this.#cdp?.detach(); } catch (error) { failures.push(error); }
-    if (failures.length) throw new AggregateError(failures, 'attestation observer cleanup failed');
+    if (failures.length && !targetClosed()) {
+      throw new AggregateError(failures, 'attestation observer cleanup failed');
+    }
   }
 
   #newCapture() {

@@ -219,7 +219,7 @@
     },
     {
       "path": "providers/maxroll/src/runtime-attestation.js",
-      "sha256": "6fd28f1b13d2e328cda5a6715a5d5df00031246bdb2ddef394fcd5b2a19ab981"
+      "sha256": "3efb678e0c6e14140624fdf82bd19faf30214bd5dc1412778d8ef976b92e2c6b"
     },
     {
       "path": "providers/maxroll/src/session.js",
@@ -326,6 +326,6 @@
     "snapshot-management/compatibility/versions/maxroll-20261023.js",
     "snapshot-management/compatibility/versions/maxroll-20261027.js"
   ],
-  "executionSha256": "ad6f98559976528730a92a8cdf239faa9066cf66e0b90668e800c4be0e0de5a8",
-  "ruleKitVersion": "rulekit-execution/sha256:ad6f98559976528730a92a8cdf239faa9066cf66e0b90668e800c4be0e0de5a8"
+  "executionSha256": "72c258c141f7f1fdca03fe42524c88236ed0c27784f76d68b89f1205f73fb093",
+  "ruleKitVersion": "rulekit-execution/sha256:72c258c141f7f1fdca03fe42524c88236ed0c27784f76d68b89f1205f73fb093"
 }
