@@ -271,7 +271,11 @@ def _runtime_env(install: Path, bootstrap: Path, evidence: Path) -> dict[str, st
         "D4PLANNER_EQUIPMENT_EVIDENCE_FILE": str(evidence),
         "D4PLANNER_REPOSITORY_ROOT": str(install),
     })
-    for legacy in ("D4_RULEKIT_PROFILE_JSON", "D4_RULEKIT_SNAPSHOT_ROOT"):
+    # A shell's capture opt-in or TEST_ONLY composition must never leak into
+    # the isolated production scenario. Native sampling opts in below explicitly.
+    for legacy in ("D4_RULEKIT_PROFILE_JSON", "D4_RULEKIT_SNAPSHOT_ROOT",
+                   "D4_RULEKIT_COMPOSITION_MODULE", "D4PLANNER_EQUIPMENT_REPOSITORY_DB",
+                   "D4PLANNER_CHARACTER_ID", "D4PLANNER_CHARACTER_DISPLAY_NAME"):
         env.pop(legacy, None)
     return env
 
