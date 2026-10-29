@@ -59,6 +59,7 @@ describe("Release 1 Equipment HUD", () => {
     await screen.findByText("SYNTHETIC CHARGE BOLT BUILD");
     expect(screen.getByText("50")).toBeTruthy();
     expect(screen.getByText("0/1")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Equipment/ }));
     expect(screen.getByText("Gloves")).toBeTruthy();
     expect(document.body.textContent).not.toContain("Coverage");
     expect(document.body.textContent).not.toContain("Charms");
@@ -93,6 +94,8 @@ describe("Release 1 Equipment HUD", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Open target menu" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: /Firewall/ }));
     await waitFor(() => expect(source.selections).toHaveLength(1));
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open target menu" }));
     const first = screen.getByRole("menuitem", { name: /Charge Bolt/ });
     expect((first as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(first);
@@ -151,7 +154,8 @@ describe("Release 1 Equipment HUD", () => {
 
   it("Issues-only includes WARN but excludes UNKNOWN until All is selected", async () => {
     render(<App dataSource={new FakeDataSource()} />);
-    fireEvent.click(await screen.findByRole("button", { name: /Gloves/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Equipment/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Gloves/ }));
     fireEvent.click(screen.getByRole("button", { name: /Affixes/ }));
     expect(screen.queryByText(/Core Skill Ranks ·/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "All" }));
@@ -163,4 +167,88 @@ describe("Release 1 Equipment HUD", () => {
     fireEvent.click(await screen.findByRole("button", { name: "⌖ Pinned" }));
     expect(mocks.invoke).toHaveBeenCalledWith("set_overlay_pin", { pinned: true });
   });
+});
+
+it('Equipment owns its section independently of Compare and Summary resets children', async () => {
+  render(<App dataSource={new FakeDataSource()} />);
+  const equipment = await screen.findByRole('button', {name: /Equipment/});
+  expect(screen.queryByRole('complementary', {name: 'Equipment list'})).toBeNull();
+  fireEvent.click(equipment);
+  expect(screen.getByRole('complementary', {name: 'Equipment list'})).toBeTruthy();
+  expect(screen.queryByRole('complementary', {name: 'Item comparison'})).toBeNull();
+  fireEvent.click(screen.getByRole('button', {name: /Gloves/}));
+  fireEvent.click(screen.getByRole('button', {name: 'Close item comparison'}));
+  expect(screen.getByRole('complementary', {name: 'Equipment list'})).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', {name: /Gloves/}));
+  fireEvent.click(screen.getByRole('button', {name: 'Close equipment'}));
+  expect(screen.queryByRole('complementary')).toBeNull();
+  fireEvent.click(equipment);
+  const summary = screen.getByRole('button', {name: /SYNTHETIC CHARGE BOLT BUILD/});
+  fireEvent.click(summary); fireEvent.click(summary);
+  expect(screen.queryByRole('complementary')).toBeNull();
+});
+
+it('never marks last-known data current on a reconnect before authoritative recovery', async () => {
+  const source = new FakeDataSource();
+  render(<App dataSource={source} />);
+  await screen.findByText('50');
+  act(() => source.emit({type: 'CONNECTION', state: 'DISCONNECTED', reason: 'Resynchronizing Backend state'}));
+  act(() => source.emit({type: 'CONNECTION', state: 'CONNECTED'}));
+  expect(screen.getByRole('status').textContent).toMatch(/last-known/i);
+  expect(document.querySelector('main')?.getAttribute('data-freshness')).toBe('STALE');
+  act(() => source.emit({type: 'SNAPSHOT', snapshot: targetBSnapshot()}));
+  expect(document.querySelector('main')?.getAttribute('data-freshness')).toBe('CURRENT');
+  expect(screen.queryByRole('status')).toBeNull();
+});
+
+it('hides known-mismatched score and Equipment until authoritative discovery', async () => {
+  const source = new FakeDataSource(); render(<App dataSource={source} />);
+  fireEvent.click(await screen.findByRole('button', {name: /Equipment/}));
+  expect(screen.getByText('50')).toBeTruthy();
+  expect(screen.getByText('Gloves')).toBeTruthy();
+  act(() => source.emit({type: 'ASSESSMENT_INVALIDATED'}));
+  expect(screen.queryByText('50')).toBeNull();
+  expect(screen.queryByText('Gloves')).toBeNull();
+  expect(screen.getByText('—')).toBeTruthy();
+  act(() => source.emit({type: 'SNAPSHOT', snapshot: targetBSnapshot()}));
+  expect(screen.getByText('50')).toBeTruthy();
+  expect(screen.getByText('SYNTHETIC FIREWALL')).toBeTruthy();
+});
+
+it('typed socket rejection reaches the controller immediately without disconnecting the HUD', async () => {
+  const {TauriHudDataSource} = await import('./hud-data-source');
+  const socket = {
+    readyState: 1, onopen: null as (() => void) | null,
+    onclose: null as (() => void) | null,
+    onmessage: null as ((event: {data: string}) => void) | null,
+    sent: [] as Record<string, any>[],
+    send(data: string) { this.sent.push(JSON.parse(data)); },
+    close() { this.onclose?.(); },
+    receive(message: Record<string, any>) { this.onmessage?.({data: JSON.stringify(message)}); },
+  };
+  mocks.invoke.mockImplementation(async (command: string) => command === 'get_hud_ws_bootstrap'
+    ? {endpoint: 'ws://127.0.0.1:30001', credential: 'x'.repeat(64), origin: 'tauri://localhost'} : undefined);
+  const source = new TauriHudDataSource(mocks.invoke, () => socket);
+  const view = render(<App dataSource={source} />);
+  await waitFor(() => expect(socket.onopen).not.toBeNull());
+  act(() => socket.onopen?.());
+  const envelope = {protocolVersion: 'd4planner-ws/v1', backendGeneration: partial.backend.generation};
+  act(() => socket.receive({...envelope, type: 'hello.accepted', correlationId: socket.sent[0].messageId,
+    runtimeInstanceId: partial.backend.runtimeInstanceId}));
+  const snapshotRequest = socket.sent.find(message => message.type === 'hud.snapshot.request')!;
+  act(() => socket.receive({...envelope, type: 'hud.snapshot', authoritative: true,
+    correlationId: snapshotRequest.messageId, subscriptionId: 'ui-sub', hud: partial}));
+  await screen.findByText('50');
+  fireEvent.click(screen.getByRole('button', {name: 'Open target menu'}));
+  act(() => socket.receive({...envelope, type: 'target.list.result',
+    correlationId: socket.sent.at(-1)!.messageId, listRevision: 1, targets}));
+  fireEvent.click(screen.getByRole('menuitem', {name: /Firewall/}));
+  await act(async () => socket.receive({...envelope, type: 'error',
+    correlationId: socket.sent.at(-1)!.messageId, code: 'TARGET_CHANGED', message: 'Target changed after listing'}));
+  expect(screen.getByRole('alert').textContent).toContain('TARGET_CHANGED');
+  expect(document.querySelector('main')?.getAttribute('data-connection')).toBe('CONNECTED');
+  expect(screen.getByText('50')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', {name: 'Open target menu'}));
+  expect((screen.getByRole('menuitem', {name: /Firewall/}) as HTMLButtonElement).disabled).toBe(false);
+  view.unmount();
 });

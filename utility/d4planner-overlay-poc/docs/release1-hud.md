@@ -50,3 +50,34 @@ baseline only. MagicPath did not expose independent rendered Goldens for the
 selector-open, partial, NO_DATA, invalid-target, or disconnected states. Those
 visual cases remain **BLOCKED**; product screenshots are not used as expected
 images, and no threshold or mask is introduced.
+
+## S6 review: parent integration and presentation lifecycle
+
+S6 is replayed on S5 `b408aa543b7337e379a85b91718bbd792fb38838`.
+The S5 Python production/transport/domain sources and tests are inherited
+unchanged, including durable selection recovery, typed listing diagnostics and
+commit-before-publish. S6 extends the datasource's bounded pending selections
+with Promise completion: terminal errors and disconnect reject once and cancel
+the operation timer. Same-connection context discovery preserves correlations.
+Target errors do not change an otherwise current connection into disconnected.
+
+An authenticated connection alone does not make the previous assessment current.
+The controller waits for a validated authoritative snapshot. Ordinary connection
+loss may retain explicitly labelled last-known data; a known-context mismatch
+invalidates rendering of score and Equipment until discovery succeeds, as required
+by S1 ADR. `assessmentRenderable` and `ASSESSMENT_INVALIDATED` are internal FE
+state/events, not changes to the WebSocket schema.
+
+Equipment section visibility is independent of the selected comparison item.
+Toggle/close Equipment resets Compare; closing Compare keeps Equipment open;
+collapsing Summary resets both. Target selection closes the menu and panels but
+never relabels the HUD before the authoritative snapshot. These interactions were
+checked against source retrieved directly from MagicPath project
+458763473602621440, component 458765764401446912, revision 464988421014827008.
+The source defines selector interaction but no disconnected/NO_DATA/invalid-target
+state model. Functional tests and the existing static preview are not a passing
+state-specific Visual Golden gate. Keep this PR Draft until that gate passes.
+
+Native HUD-01/02 require new package-bound Windows screenshots and SQLite/WS
+correlation; historical screenshots cannot certify this rebased source. HUD-03
+remains Owner MAN. No production fallback or direct FE database access is added.
