@@ -250,5 +250,26 @@ it('typed socket rejection reaches the controller immediately without disconnect
   expect(screen.getByText('50')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', {name: 'Open target menu'}));
   expect((screen.getByRole('menuitem', {name: /Firewall/}) as HTMLButtonElement).disabled).toBe(false);
+  // A gap forces known-context resync. A different authoritative context
+  // must hide A until the separate discovery reply has passed all guards.
+  const changed = targetBSnapshot(partial.hudRevision + 10);
+  act(() => socket.receive({...envelope, type: 'hud.update', subscriptionId: 'ui-sub',
+    previousHudRevision: partial.hudRevision + 8, hud: changed}));
+  const known = socket.sent.at(-1)!;
+  expect(known.requestContext.mode).toBe('RESYNC_KNOWN_CONTEXT');
+  act(() => socket.receive({...envelope, type: 'hud.snapshot', authoritative: true,
+    correlationId: known.messageId, subscriptionId: 'mismatch', hud: changed}));
+  const discovery = socket.sent.at(-1)!;
+  expect(discovery.requestContext.mode).toBe('DISCOVER_ACTIVE_CONTEXT');
+  expect(screen.queryByText('50')).toBeNull();
+  expect(screen.queryByRole('complementary', {name: 'Equipment list'})).toBeNull();
+  act(() => socket.receive({...envelope, type: 'hud.snapshot', authoritative: true,
+    correlationId: known.messageId, subscriptionId: 'late', hud: partial}));
+  expect(screen.queryByText('50')).toBeNull();
+  act(() => socket.receive({...envelope, type: 'hud.snapshot', authoritative: true,
+    correlationId: discovery.messageId, subscriptionId: 'discovered', hud: changed}));
+  expect(screen.getByText('SYNTHETIC FIREWALL')).toBeTruthy();
+  expect(screen.getByText('50')).toBeTruthy();
+  expect(document.querySelector('main')?.getAttribute('data-freshness')).toBe('CURRENT');
   view.unmount();
 });
