@@ -406,3 +406,81 @@ it('old connection/generation errors do not complete a new selection', () => {
   expect((source as any).pendingTarget.size).toBe(0);
   source.disconnect();
 });
+
+it.each(['TARGET_CHANGED', 'TARGET_INVALID', 'success', 'list'])(
+  'preserves Target correlations during same-connection context rediscovery: %s', outcome => {
+    const successful = outcome === 'success' || outcome === 'list';
+    vi.useFakeTimers();
+    const { source, socket, sockets } = setup([1]);
+    accept(socket);
+    socket.receive({
+      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
+      correlationId: pendingSnapshot(socket).messageId, backendGeneration: 3,
+      subscriptionId: 'initial', hud: hud(20),
+    });
+    socket.close(); vi.advanceTimersByTime(1);
+    const reconnected = sockets[1];
+    reconnected.onopen?.(); accept(reconnected);
+    const resync = pendingSnapshot(reconnected);
+    expect(resync.requestContext).toMatchObject({mode: 'RESYNC_KNOWN_CONTEXT', minimumHudRevision: 20});
+    const listReply = {
+      protocolVersion: 'd4planner-ws/v1', type: 'target.list.result', backendGeneration: 3,
+      correlationId: reconnected.sent.find(m => m.type === 'target.list.request')!.messageId,
+      listRevision: 1,
+      targets: [{targetId: 'target-b', validation: 'VALID', contentSha256: 'b'.repeat(64)}],
+    };
+    reconnected.receive(listReply);
+    source.selectTarget('target-b');
+    const selectionId = reconnected.sent.at(-1)!.messageId;
+    source.requestTargets();
+    const listId = reconnected.sent.at(-1)!.messageId;
+    reconnected.receive({
+      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
+      correlationId: resync.messageId, backendGeneration: 3,
+      subscriptionId: 'mismatched', hud: hud(21, 'target-b', 'character-b'),
+    });
+    const discovery = pendingSnapshot(reconnected);
+    expect(discovery.requestContext).toMatchObject({mode: 'DISCOVER_ACTIVE_CONTEXT', minimumHudRevision: 21});
+    expect(source.snapshot()).toMatchObject({freshness: 'STALE', subscriptionId: null,
+      hud: {hudRevision: 20, context: {target: {targetId: 'target-a'}}}});
+    const response = {
+      protocolVersion: 'd4planner-ws/v1', backendGeneration: 3, correlationId: selectionId,
+      ...(successful ? {type: 'target.select.result', status: 'ACTIVATED', targetId: 'target-b'}
+        : {type: 'error', code: outcome}),
+    };
+    socket.receive(response);
+    reconnected.receive({...response, backendGeneration: 2});
+    socket.receive({...listReply, correlationId: listId, listRevision: 99});
+    reconnected.receive({...listReply, correlationId: listId, backendGeneration: 2, listRevision: 99});
+    expect(source.snapshot().listRevision).toBe(1);
+    expect(source.snapshot().error).toBeNull();
+    if (outcome === 'list') {
+      reconnected.receive({...listReply, correlationId: listId, listRevision: 2});
+      expect(source.snapshot().listRevision).toBe(2);
+    }
+    if (successful) expect((source as any).pendingTarget.has(selectionId)).toBe(true);
+    reconnected.receive(response);
+    expect(source.snapshot().error).toBe(successful ? null : outcome);
+    expect((source as any).pendingTarget.size).toBe(0);
+    reconnected.receive({...listReply, correlationId: listId, listRevision: 2});
+    expect(source.snapshot().listRevision).toBe(2);
+    // Command response cannot relabel the old assessment as B.
+    expect(source.snapshot().hud?.context.target.targetId).toBe('target-a');
+    reconnected.receive({...response, type: 'error', code: 'INTERNAL'});
+    reconnected.receive({...listReply, correlationId: listId, listRevision: 99});
+    expect(source.snapshot().error).toBe(successful ? null : outcome);
+    expect(source.snapshot().listRevision).toBe(2);
+    const discovered = {protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
+      correlationId: discovery.messageId, backendGeneration: 3, subscriptionId: 'discovered'};
+    reconnected.receive({...discovered, hud: hud(20)});
+    expect(source.snapshot().freshness).toBe('STALE');
+    reconnected.receive({...discovered, hud: hud(21, 'target-b', 'character-b')});
+    expect(source.snapshot()).toMatchObject({freshness: 'CURRENT', subscriptionId: 'discovered',
+      hud: {hudRevision: 21, context: {target: {targetId: 'target-b'}}}});
+    for (let i = 0; i < 32; i++) source.selectTarget('target-b');
+    expect(() => source.selectTarget('target-b')).toThrow('TARGET_REQUEST_LIMIT');
+    source.disconnect();
+    expect((source as any).pendingTarget.size).toBe(0);
+    expect((source as any).pendingTargetList).toBeNull();
+  },
+);
