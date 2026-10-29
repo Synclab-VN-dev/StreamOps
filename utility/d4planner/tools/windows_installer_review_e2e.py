@@ -44,7 +44,7 @@ def main():
     parser.add_argument('--case-ids')
     parser.add_argument('--resume-report',type=Path)
     args = parser.parse_args()
-    applicable={'PKG-01','PKG-02','PKG-04/06','PKG-05/FIX-03','PKG-07','FIX-02','FIX-02-NEGATIVE','PKG-03/FIX-01'}
+    applicable={'PKG-01','PKG-02','PKG-04/06','PKG-05/FIX-03','PKG-05-ROLLBACK-INTERRUPTION','PKG-07','FIX-02','FIX-02-NEGATIVE','PKG-03/FIX-01'}
     selected=set(args.case_ids.split(',')) if args.case_ids is not None else applicable
     if not selected or not selected <= applicable: raise ValueError('UNKNOWN_OR_EMPTY_CASE_SELECTION')
     if args.resume_report:
@@ -209,6 +209,42 @@ def main():
             launch=None; check_data(); fixture_intact()
             return {**value,'gracefulOwnedShutdown':True,'dataPreserved':True,'externalSnapshotStorePreserved':True}
         case('PKG-04/06','Upgrade while native application runs; graceful cleanup and preserved data',upgrading)
+        def interrupted_rollback():
+            before = state()
+            assert before['version'] != before['previous']['version']
+            before_hash = sha(root/'D4Planner.exe')
+            old_launcher = root/before['previous']['payload']/'D4Planner.exe'
+            assert before_hash != sha(old_launcher), 'DISTINCT_REAL_LAUNCHERS_REQUIRED'
+            engine_dir = payload()/'tools'
+            results = []
+            for phase in ('JOURNALED','LAUNCHER_REPLACED','ACTIVATED'):
+                # A separate owned Python process exits without finally/recovery,
+                # emulating termination between the actual engine's disk writes.
+                script = (f"import os,sys;from pathlib import Path;sys.path.insert(0,{str(engine_dir)!r});"
+                          "import windows_install as engine;"
+                          f"engine.rollback(Path({str(root)!r}),checkpoint=lambda phase:os._exit(73) if phase=={phase!r} else None)")
+                aborted = call([sys.executable,'-c',script],check=False,timeout=60)
+                assert aborted.returncode == 73
+                assert (root/'upgrade-journal.json').is_file()
+                output = args.output/f'rollback-recovery-{phase}.json'
+                call([sys.executable,engine_dir/'windows_install.py','recover','--root',root,'--report',output])
+                assert state() == before and sha(root/'D4Planner.exe') == before_hash
+                assert not (root/'upgrade-journal.json').exists()
+                check_data(); fixture_intact()
+                results.append({'checkpoint':phase,'exitCode':73,'recovery':json.loads(output.read_text()),
+                                'launcherSha256':before_hash,'dataPreserved':True})
+            output=args.output/'rollback-success.json'
+            call([sys.executable,engine_dir/'windows_install.py','rollback','--root',root,'--report',output])
+            assert state()['version'] == before['previous']['version']
+            assert sha(root/'D4Planner.exe') == sha(old_launcher)
+            check_data()
+            setup(args.setup_new)
+            assert state()['version'] == before['version']
+            check_data(); fixture_intact()
+            return {'interruptions':results,'retryRollback':True,'upgradeAfterRollback':True}
+        case('PKG-05-ROLLBACK-INTERRUPTION',
+             'Real payload rollback interrupted at three checkpoints; recovery preserves launcher/state and user files',
+             interrupted_rollback)
         def failure_rollback():
             before=state()
             broken=args.sandbox/'startup-failure.zip'
