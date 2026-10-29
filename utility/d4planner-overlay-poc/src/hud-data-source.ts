@@ -23,7 +23,9 @@ export interface HudDataState {
   subscriptionId: string | null;
   targets: readonly Record<string, any>[];
   listRevision: number | null;
-  error: string | null;
+  error: string | null; // Transport/protocol/recovery errors only.
+  targetListStatus: 'IDLE' | 'LOADING' | 'READY' | 'ERROR';
+  targetListError: string | null;
 }
 
 type PendingSnapshot = {
@@ -45,6 +47,7 @@ export class HudWebSocketDataSource {
   private sequence = 0;
   private pendingHello: string | null = null;
   private pendingTargetList: string | null = null;
+  private targetListTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingSnapshot: PendingSnapshot | null = null;
   private pendingTarget = new Map<string, PendingTargetSelection>();
   private readonly listeners = new Set<(state: HudDataState) => void>();
@@ -61,6 +64,8 @@ export class HudWebSocketDataSource {
     targets: [],
     listRevision: null,
     error: null,
+    targetListStatus: 'IDLE',
+    targetListError: null,
   };
 
   constructor(
@@ -122,7 +127,8 @@ export class HudWebSocketDataSource {
       if (socket !== this.socket) return;
       this.clearSnapshotTimer();
       this.rejectPendingTargets('Backend connection closed before Target activation completed.');
-      this.pendingTargetList = null;
+      this.clearTargetList();
+      this.state = { ...this.state, targetListStatus: 'IDLE', targetListError: null };
       this.pendingHello = null;
       this.state = { ...this.state, freshness: 'STALE', subscriptionId: null, error: 'SOCKET_CLOSED' };
       this.pendingSnapshot = null;
@@ -133,7 +139,7 @@ export class HudWebSocketDataSource {
 
   disconnect(): void {
     this.stopped = true;
-    this.pendingTargetList = null;
+    this.clearTargetList();
     this.pendingHello = null;
     this.clearSnapshotTimer();
     this.rejectPendingTargets('Backend connection closed before Target activation completed.');
@@ -148,8 +154,30 @@ export class HudWebSocketDataSource {
   requestTargets(): void {
     this.requireBackend();
     const messageId = this.id('targets');
+    this.clearTargetList();
     this.pendingTargetList = messageId;
-    this.send(this.envelope(messageId, 'target.list.request'));
+    this.state = { ...this.state, targetListStatus: 'LOADING', targetListError: null };
+    this.emit();
+    this.targetListTimer = setTimeout(() => {
+      if (this.pendingTargetList === messageId) this.failTargetList('Target listing timed out.');
+    }, this.config.snapshotOperationTimeoutMs ?? 2_000);
+    try {
+      this.send(this.envelope(messageId, 'target.list.request'));
+    } catch (error) {
+      this.failTargetList(String(error));
+    }
+  }
+
+  private clearTargetList(): void {
+    if (this.targetListTimer !== null) clearTimeout(this.targetListTimer);
+    this.targetListTimer = null;
+    this.pendingTargetList = null;
+  }
+
+  private failTargetList(error: string): void {
+    this.clearTargetList();
+    this.state = { ...this.state, targets: [], listRevision: null, targetListStatus: 'ERROR', targetListError: error };
+    this.emit();
   }
 
   selectTarget(targetId: string): Promise<SelectionResult> {
@@ -199,11 +227,12 @@ export class HudWebSocketDataSource {
     if (!this.state.backend || message.backendGeneration !== this.state.backend.generation) return;
     if (message.type === 'target.list.result') {
       if (message.correlationId !== this.pendingTargetList) return;
-      this.pendingTargetList = null;
+      this.clearTargetList();
       this.state = {
         ...this.state,
         targets: structuredClone(message.targets),
         listRevision: message.listRevision,
+        targetListStatus: 'READY', targetListError: null,
       };
       this.emit();
       return;
@@ -254,9 +283,13 @@ export class HudWebSocketDataSource {
           this.pendingTarget.delete(correlation);
           clearTimeout(selection.timer);
           selection.reject(new Error(`${String(message.code ?? 'INTERNAL')}: ${String(message.message ?? 'Target selection rejected')}`));
+          return; // The command failed; the authenticated transport did not.
         }
         const listing = correlation === this.pendingTargetList;
-        if (listing) this.pendingTargetList = null;
+        if (listing) {
+          this.failTargetList(`${String(message.code ?? 'INTERNAL')}: ${String(message.message ?? 'Target listing failed')}`);
+          return;
+        }
         if (!selection && !listing && correlation !== this.pendingSnapshot?.requestId) return;
       }
       this.state = { ...this.state, error: String(message.code ?? 'INTERNAL') };
@@ -282,7 +315,8 @@ export class HudWebSocketDataSource {
       };
     }
     this.pendingSnapshot = null;
-    this.pendingTargetList = null;
+    this.clearTargetList();
+    this.state = { ...this.state, targetListStatus: 'IDLE', targetListError: null };
     this.rejectPendingTargets('Backend connection changed before Target activation completed.');
     this.emit();
   }
@@ -513,7 +547,8 @@ export type HudDataEvent =
   | { type: "CONNECTION"; state: "CONNECTED" | "DISCONNECTED"; reason?: string }
   | { type: "ASSESSMENT_INVALIDATED" }
   | { type: "SNAPSHOT"; snapshot: HudSnapshot }
-  | { type: "TARGETS"; targets: TargetListEntry[] };
+  | { type: "TARGETS"; targets: TargetListEntry[] }
+  | { type: "TARGET_LIST_STATE"; status: HudDataState["targetListStatus"]; error: string | null };
 
 export interface IHudDataSource {
   connect(listener: (event: HudDataEvent) => void): Promise<() => void>;
@@ -573,20 +608,27 @@ export class TauriHudDataSource implements IHudDataSource {
     this.source = source;
     let lastRevision: number | null = null;
     let lastListRevision: number | null = null;
+    let lastListState = '';
     let connected = false;
     this.unsubscribe = source.subscribe(state => {
       // Target operation errors do not invalidate the authenticated transport.
       const wasConnected = connected;
       if (!state.assessmentRenderable) this.listener?.({ type: 'ASSESSMENT_INVALIDATED' });
       const isConnected = state.backend !== null && state.freshness === 'CURRENT'
-        && (state.error === null || state.error.startsWith('TARGET_'));
+        && state.error === null;
       if (isConnected !== connected) {
         connected = isConnected;
         this.listener?.(isConnected
           ? { type: 'CONNECTION', state: 'CONNECTED' }
           : { type: 'CONNECTION', state: 'DISCONNECTED', reason: state.error ?? 'Backend handshake pending' });
       }
-      if (state.listRevision !== null && state.listRevision !== lastListRevision) {
+      const listState = JSON.stringify([state.targetListStatus, state.targetListError]);
+      if (listState !== lastListState) {
+        lastListState = listState;
+        this.listener?.({ type: 'TARGET_LIST_STATE', status: state.targetListStatus, error: state.targetListError });
+        if (state.targetListStatus !== 'READY') lastListRevision = null;
+      }
+      if (state.targetListStatus === 'READY' && state.listRevision !== null && state.listRevision !== lastListRevision) {
         lastListRevision = state.listRevision;
         this.listener?.({ type: 'TARGETS', targets: structuredClone(state.targets) as TargetListEntry[] });
       }

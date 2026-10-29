@@ -12,6 +12,8 @@ function acceptsSnapshot(current: HudSnapshot | null, next: HudSnapshot): boolea
 
 export function useHudController(source: IHudDataSource) {
   const [snapshot, setSnapshot] = useState<HudSnapshot | null>(null);
+  const [targetListStatus, setTargetListStatus] = useState<'IDLE' | 'LOADING' | 'READY' | 'ERROR'>('IDLE');
+  const [targetListError, setTargetListError] = useState<string | null>(null);
   const [targets, setTargets] = useState<TargetListEntry[]>([]);
   const [connection, setConnection] = useState<"CONNECTING" | "CONNECTED" | "DISCONNECTED">("CONNECTING");
   const [assessmentRenderable, setAssessmentRenderable] = useState(false);
@@ -34,7 +36,13 @@ export function useHudController(source: IHudDataSource) {
       } else if (event.type === "ASSESSMENT_INVALIDATED") {
         setAssessmentRenderable(false);
         setAuthoritative(false);
+      } else if (event.type === "TARGET_LIST_STATE") {
+        setTargetListStatus(event.status);
+        setTargetListError(event.error);
+        if (event.status !== 'READY') setTargets([]);
       } else if (event.type === "TARGETS") {
+        setTargetListStatus('READY');
+        setTargetListError(null);
         setTargets(event.targets);
       } else {
         if (!acceptsSnapshot(snapshotRef.current, event.snapshot)) return;
@@ -57,7 +65,10 @@ export function useHudController(source: IHudDataSource) {
   }, [source]);
 
   async function refreshTargets() {
-    try { await source.refreshTargets(); setOperationError(null); } catch (reason) { setOperationError(String(reason)); }
+    setTargetListStatus('LOADING'); setTargetListError(null); setTargets([]);
+    try { await source.refreshTargets(); } catch (reason) {
+      setTargetListStatus('ERROR'); setTargetListError(String(reason));
+    }
   }
 
   async function selectTarget(entry: TargetListEntry) {
@@ -83,5 +94,5 @@ export function useHudController(source: IHudDataSource) {
     // ACTIVATED still waits for the authoritative snapshot with the matching binding.
   }
 
-  return { snapshot, targets, connection, authoritative, assessmentRenderable, error: operationError ?? connectionError, pendingTargetId: pendingTarget?.targetId ?? null, refreshTargets, selectTarget };
+  return { snapshot, targets, targetListStatus, targetListError, connection, authoritative, assessmentRenderable, error: operationError ?? connectionError, pendingTargetId: pendingTarget?.targetId ?? null, refreshTargets, selectTarget };
 }
