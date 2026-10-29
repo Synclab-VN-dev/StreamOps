@@ -801,3 +801,98 @@ def test_present_value_does_not_prove_absence(tmp_path, validator):
     current = current_snapshot(attack=None, complete=False)
     result = EquipmentAssessmentService().assess(current, target)
     assert (result.score_status, result.evaluable_weight, result.fail_issues, result.warnings) == ("NO_DATA", 0, 0, 0)
+
+
+@pytest.mark.parametrize("fault", ["empty", "unreadable", "oversized", "symlink"])
+def test_active_restoration_independent_from_broken_neighbor(tmp_path, validator, monkeypatch, fault):
+    folder = tmp_path / "targets"
+    folder.mkdir()
+    write_target(folder, "a.json")
+    state = tmp_path / "selection.json"
+    repo = TargetRepository(folder, state, validator, max_file_bytes=16384)
+    listing = repo.list()
+    entry = listing.entries[0]
+    active = repo.activate(entry.target_id, entry.content_sha256, listing.revision)
+    persisted = state.read_bytes()
+    bad = folder / "b.json"
+    bad.write_bytes(b"{}")
+    if fault == "empty":
+        bad.write_bytes(b"")
+    elif fault == "oversized":
+        bad.write_bytes(b"x" * 16385)
+    elif fault == "symlink":
+        bad.unlink()
+        bad.symlink_to(folder / "a.json")
+    original_open = Path.open
+    def guarded_open(path, *args, **kwargs):
+        if fault == "unreadable" and path == bad:
+            raise PermissionError("synthetic read denied")
+        return original_open(path, *args, **kwargs)
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "open", guarded_open)
+        for reader in (repo, TargetRepository(folder, state, validator, max_file_bytes=16384)):
+            before_revision = reader._list_revision
+            before_candidates = dict(reader._candidates)
+            assert reader.get_active() == active
+            assert reader._list_revision == before_revision
+            assert reader._candidates == before_candidates
+            with pytest.raises(TargetInvalid):
+                reader.list()
+            assert reader.get_active() == active
+            assert reader._list_revision == before_revision
+            assert state.read_bytes() == persisted
+    bad.unlink()
+    write_target(folder, "b.json", mutate=lambda doc: doc.update(targetId="target-b"))
+    (folder / "malformed.json").write_bytes(b"{")
+    restarted = TargetRepository(folder, state, validator, max_file_bytes=16384)
+    assert restarted.get_active() == active
+    recovered = restarted.list()
+    assert sorted(e.validation for e in recovered.entries) == ["INVALID", "VALID", "VALID"]
+    b = next(e for e in recovered.entries if e.target_id == "target-b")
+    selected = restarted.activate(b.target_id, b.content_sha256, recovered.revision)
+    assert selected.selection_revision == active.selection_revision + 1
+    assert restarted.get_active() == selected
+
+
+@pytest.mark.parametrize("fault", ["changed", "deleted", "invalid", "empty", "unreadable", "oversized", "symlink", "duplicate", "duplicate-changed"])
+def test_active_restoration_revalidates_selected_target_without_fallback(tmp_path, validator, monkeypatch, fault):
+    folder = tmp_path / "targets"
+    folder.mkdir()
+    a = write_target(folder, "a.json")
+    write_target(folder, "other.json", mutate=lambda doc: doc.update(targetId="other-target"))
+    state = tmp_path / "selection.json"
+    repo = TargetRepository(folder, state, validator, max_file_bytes=16384)
+    listing = repo.list()
+    entry = next(e for e in listing.entries if e.target_id == "synthetic-charge-bolt")
+    repo.activate(entry.target_id, entry.content_sha256, listing.revision)
+    persisted = state.read_bytes()
+    if fault == "changed":
+        a.write_bytes(a.read_bytes() + b" ")
+    elif fault == "deleted":
+        a.unlink()
+    elif fault == "invalid":
+        a.write_bytes(b"{")
+    elif fault == "empty":
+        a.write_bytes(b"")
+    elif fault == "oversized":
+        a.write_bytes(b"x" * 16385)
+    elif fault == "symlink":
+        outside = tmp_path / "outside.json"
+        outside.write_bytes(a.read_bytes())
+        a.unlink()
+        a.symlink_to(outside)
+    elif fault.startswith("duplicate"):
+        write_target(folder, "duplicate.json", mutate=(
+            (lambda doc: doc.update(displayName="Different bytes same ID"))
+            if fault == "duplicate-changed" else None))
+    original_open = Path.open
+    def guarded_open(path, *args, **kwargs):
+        if fault == "unreadable" and path == a:
+            raise PermissionError("synthetic selected file read denied")
+        return original_open(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "open", guarded_open)
+    for reader in (repo, TargetRepository(folder, state, validator, max_file_bytes=16384)):
+        before_revision = reader._list_revision
+        assert reader.get_active() is None
+        assert reader._list_revision == before_revision
+        assert state.read_bytes() == persisted

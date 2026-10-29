@@ -22,6 +22,21 @@ successful list revision/candidates and durable selection. Activation still
 re-reads the selected file. Reads are bounded and the actual size is checked
 again after stat to handle files changing during listing.
 
+Selected-target restoration is a separate internal read, not a partial listing.
+`get_active()` revalidates safe candidates independently with the same file-count,
+size, containment, schema and policy checks. Only one valid candidate with the
+persisted ID and exact content hash can restore the selection. Duplicate valid
+IDs (even with different hashes) prevent restoration. Unverifiable files cannot
+supply a selected target; an unrelated such file does not block a verified match.
+If the selected file itself is missing/invalid/changed, restoration returns None;
+it never picks another ID or writes selection state. Active reads do not mutate
+list revision or the last successful listing's candidates.
+
+This does not make whole-folder listing succeed: explicit `list()` still raises
+for unverifiable content. S5 startup currently also calls `list()` for health/count;
+that separate startup availability dependency must be handled in S5, not by
+relaxing S4 listing or claiming full Backend readiness here.
+
 `EquipmentAssessmentService` consumes a confirmed, typed
 `EquipmentSnapshot`. Its producer must use the existing Equipment projector and
 an authoritative stable-ID mapper. Raw tooltip labels are not accepted as
