@@ -6,6 +6,7 @@ import asyncio
 from datetime import datetime, timezone
 import json
 import os
+import tempfile
 from pathlib import Path
 from time import perf_counter_ns
 from typing import Any
@@ -222,7 +223,10 @@ class ProductionDomain:
         self.runtime = runtime
 
     async def list_targets(self) -> dict[str, Any]:
-        listing = self.runtime.targets.list()
+        try:
+            listing = self.runtime.targets.list()
+        except TargetError as exc:
+            raise TargetActivationError(exc.code, "Target listing is unavailable.") from None
         return {
             "listRevision": listing.revision,
             "targets": [{
@@ -240,9 +244,9 @@ class ProductionDomain:
                 target_id, expected_sha256, expected_list_revision,
             )
         except TargetChanged as exc:
-            raise TargetActivationError("TARGET_CHANGED", str(exc), retryable=True) from None
+            raise TargetActivationError("TARGET_CHANGED", "Target changed; refresh the list.", retryable=True) from None
         except TargetError as exc:
-            raise TargetActivationError(exc.code, str(exc)) from None
+            raise TargetActivationError(exc.code, "Target selection was rejected.") from None
         return {
             "status": "ACTIVATED", "targetId": target.target_id,
             "contentSha256": target.content_sha256,
@@ -292,6 +296,15 @@ class RuntimeHudStore(DurableHudStore):
     def commit_context(self, payload_factory, committed_at):
         return super().commit_context(self._factory(payload_factory), committed_at)
 
+    def restore_binding(self, binding):
+        if binding == self.current_binding():
+            return
+        if binding is not None:
+            self.set_binding(AssessmentBinding.from_dict(binding))
+        else:
+            with self._connect() as db, db:
+                db.execute("DELETE FROM assessment_binding WHERE singleton=1")
+
 
 class ProductionBackendRuntime:
     """Own dependencies in start order and close them in reverse order."""
@@ -328,6 +341,7 @@ class ProductionBackendRuntime:
             raise ValueError("latency trace path must be absolute")
 
     async def start(self) -> dict[str, Any]:
+        self._recover_selection()
         if self.rulekit is None:
             environment = dict(os.environ)
             environment.setdefault("D4_RULEKIT_DATA_ROOT", str(self.data_dir / "rulekit"))
@@ -385,11 +399,19 @@ class ProductionBackendRuntime:
                 )
                 await self.capture_source.start()
                 capture_state = "REPOSITORY_" + self.capture_source.health_status
+            # Repository I/O is required; invalid user content is a listing
+            # operation error, not a failure of the authenticated transport.
+            paths = self.targets._candidate_paths()
+            listing_health = "READY"
+            try:
+                self.targets.list()
+            except TargetError as exc:
+                listing_health = exc.code
             return {
                 "wsEndpoint": {"host": endpoint["host"], "port": self.server.port},
                 "health": {
                     "durableState": "READY", "targetRepository": "READY",
-                    "targetJsonCount": len(self.targets.list().entries),
+                    "targetJsonCount": len(paths), "targetListing": listing_health,
                     "wsTransport": "READY", "ruleKitWorker": self.rulekit_state,
                     "ruleKitProcess": "READY",
                     "ruleKitGeneration": rulekit_health["workerGeneration"],
@@ -485,15 +507,65 @@ class ProductionBackendRuntime:
         with self.latency_trace.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(record, separators=(",", ":")) + "\n")
 
+    @property
+    def _selection_journal(self) -> Path:
+        return self.data_dir / "target-transition.json"
+
+    def _write_selection_journal(self, journal: dict[str, Any]) -> None:
+        # Durable intent before changing either store. S4 owns validation/scoring;
+        # S5 coordinates its file selection and SQLite authoritative HUD boundary.
+        fd, name = tempfile.mkstemp(dir=self.data_dir, prefix=".target-transition-")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                json.dump(journal, stream, sort_keys=True, separators=(",", ":"))
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(name, self._selection_journal)
+        finally:
+            Path(name).unlink(missing_ok=True)
+
+    def _recover_selection(self) -> None:
+        if not self._selection_journal.exists():
+            return
+        journal = json.loads(self._selection_journal.read_text(encoding="utf-8"))
+        latest = self.store.latest_authoritative()
+        committed = latest["context"]["target"] if latest else None
+        if not (committed and all(committed.get(k) == v for k, v in journal["expected"].items())):
+            previous = journal["previousSelection"]
+            if previous is None:
+                self.targets.selection_state.unlink(missing_ok=True)
+            else:
+                self.targets._persist_selection(previous)
+            # On failure keep the journal and refuse further operations/startup.
+            self.store.restore_binding(journal["previousBinding"])
+        # A matching durable HUD commit is authoritative even if publish failed.
+        self._selection_journal.unlink()
+
     async def activate_target(
         self, target_id: str, expected_sha256: str, expected_list_revision: int,
     ) -> tuple[ActivatedTarget, dict[str, Any]]:
         async with self._ingest_lock:
-            target = self.targets.activate(target_id, expected_sha256, expected_list_revision)
-            return target, await self._activate_locked(target)
+            self._recover_selection()
+            previous = self.targets._load_selection()
+            journal = {
+                "previousSelection": previous,
+                "previousBinding": self.store.current_binding(),
+                "expected": {"targetId": target_id, "contentSha256": expected_sha256,
+                    "selectionRevision": int(previous["selectionRevision"]) + 1 if previous else 1},
+            }
+            self._write_selection_journal(journal)
+            try:
+                target = self.targets.activate(target_id, expected_sha256, expected_list_revision)
+                hud = await self._activate_locked(target)
+            except Exception:
+                self._recover_selection()
+                raise
+            self._selection_journal.unlink()
+            return target, hud
 
     async def activate(self, target: ActivatedTarget) -> dict[str, Any]:
         async with self._ingest_lock:
+            self._recover_selection()
             return await self._activate_locked(target)
 
     async def _activate_locked(self, target: ActivatedTarget) -> dict[str, Any]:
@@ -520,6 +592,7 @@ class ProductionBackendRuntime:
         capture_received_ns = perf_counter_ns()
         capture_received_at = _now()
         async with self._ingest_lock:
+            self._recover_selection()
             if self.current is not None and current.current_revision <= self.current.current_revision:
                 raise ValueError("STALE_CURRENT_REVISION")
             self.current = current

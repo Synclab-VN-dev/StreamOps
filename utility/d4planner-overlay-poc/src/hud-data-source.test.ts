@@ -353,3 +353,56 @@ describe('HudWebSocketDataSource', () => {
     expect(source.snapshot()).toMatchObject({ hud: null, freshness: 'STALE', error: 'HUD_INVALID' });
   });
 });
+
+function targets(socket: FakeSocket) {
+  const request = socket.sent.find(m => m.type === 'target.list.request')!;
+  socket.receive({protocolVersion: 'd4planner-ws/v1', type: 'target.list.result',
+    backendGeneration: 3, correlationId: request.messageId, listRevision: 1,
+    targets: [{targetId: 'target-a', validation: 'VALID', contentSha256: 'a'.repeat(64)}]});
+}
+
+it('consumes correlated errors without accumulating pending selection or accepting late errors', () => {
+  const {source, socket} = setup(); accept(socket); targets(socket);
+  for (let i = 0; i < 100; i++) {
+    source.selectTarget('target-a');
+    const id = socket.sent.at(-1)!.messageId;
+    socket.receive({protocolVersion: 'd4planner-ws/v1', type: 'error', backendGeneration: 3,
+      correlationId: id, code: i % 2 ? 'TARGET_CHANGED' : 'TARGET_INVALID'});
+    expect((source as any).pendingTarget.size).toBe(0);
+  }
+  const previous = source.snapshot().error;
+  socket.receive({protocolVersion: 'd4planner-ws/v1', type: 'error', backendGeneration: 3,
+    correlationId: 'unknown-or-duplicate', code: 'INTERNAL'});
+  expect(source.snapshot().error).toBe(previous);
+  source.disconnect();
+});
+
+it('bounds outstanding selections and clears connection-owned requests', () => {
+  const {source, socket} = setup(); accept(socket); targets(socket);
+  for (let i = 0; i < 32; i++) source.selectTarget('target-a');
+  expect(() => source.selectTarget('target-a')).toThrow('TARGET_REQUEST_LIMIT');
+  const first = socket.sent.find(m => m.type === 'target.select.request')!;
+  socket.receive({protocolVersion: 'd4planner-ws/v1', type: 'target.select.result',
+    backendGeneration: 3, correlationId: first.messageId});
+  expect((source as any).pendingTarget.size).toBe(31);
+  source.disconnect();
+  expect((source as any).pendingTarget.size).toBe(0);
+});
+
+it('old connection/generation errors do not complete a new selection', () => {
+  vi.useFakeTimers();
+  const {source, socket, sockets} = setup([1]); accept(socket); targets(socket);
+  source.selectTarget('target-a');
+  socket.close(); vi.advanceTimersByTime(1);
+  const next = sockets[1]; next.onopen?.(); accept(next); targets(next);
+  source.selectTarget('target-a');
+  const id = next.sent.at(-1)!.messageId;
+  const error = {protocolVersion: 'd4planner-ws/v1', type: 'error', backendGeneration: 3,
+    correlationId: id, code: 'TARGET_INVALID'};
+  socket.receive(error);
+  next.receive({...error, backendGeneration: 2});
+  expect((source as any).pendingTarget.size).toBe(1);
+  next.receive(error);
+  expect((source as any).pendingTarget.size).toBe(0);
+  source.disconnect();
+});

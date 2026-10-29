@@ -119,6 +119,9 @@ export class HudWebSocketDataSource {
     socket.onclose = () => {
       if (socket !== this.socket) return;
       this.clearSnapshotTimer();
+      this.pendingTarget.clear();
+      this.pendingTargetList = null;
+      this.pendingHello = null;
       this.state = { ...this.state, freshness: 'STALE', subscriptionId: null };
       this.pendingSnapshot = null;
       this.emit();
@@ -128,6 +131,9 @@ export class HudWebSocketDataSource {
 
   disconnect(): void {
     this.stopped = true;
+    this.pendingTarget.clear();
+    this.pendingTargetList = null;
+    this.pendingHello = null;
     this.clearSnapshotTimer();
     if (this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer);
@@ -151,6 +157,7 @@ export class HudWebSocketDataSource {
       throw new Error('Only a validated Target entry can be selected.');
     }
     if (this.state.listRevision === null) throw new Error('Target list is unavailable.');
+    if (this.pendingTarget.size >= 32) throw new Error('TARGET_REQUEST_LIMIT');
     const messageId = this.id('select');
     this.pendingTarget.add(messageId);
     this.send({
@@ -202,6 +209,13 @@ export class HudWebSocketDataSource {
       return;
     }
     if (message.type === 'error') {
+      const correlation = message.correlationId;
+      if (correlation != null) {
+        const selection = this.pendingTarget.delete(correlation);
+        const listing = correlation === this.pendingTargetList;
+        if (listing) this.pendingTargetList = null;
+        if (!selection && !listing && correlation !== this.pendingSnapshot?.requestId) return;
+      }
       this.state = { ...this.state, error: String(message.code ?? 'INTERNAL') };
       this.emit();
     }
@@ -334,6 +348,9 @@ export class HudWebSocketDataSource {
         && !sameContext(contextKey(message.hud?.context), pending.expectedContext)) {
       this.pendingSnapshot = null;
       this.clearSnapshotTimer();
+      this.pendingTarget.clear();
+      this.pendingTargetList = null;
+      this.pendingHello = null;
       this.state = { ...this.state, freshness: 'STALE', subscriptionId: null };
       // Do not apply the mismatched snapshot. Discover the authoritative active
       // context using its revision as the new anti-rollback floor.
