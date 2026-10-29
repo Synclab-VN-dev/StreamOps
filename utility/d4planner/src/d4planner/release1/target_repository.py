@@ -207,16 +207,19 @@ class TargetRepository:
                 None,
             )
 
-    def _refresh_candidates(self) -> tuple[TargetListEntry, ...]:
-        """Refresh filesystem state without changing the FE list generation."""
-        candidates: list[_Candidate] = []
+    def _candidate_paths(self) -> list[Path]:
         paths = [
             path for path in sorted(self.configured_root.iterdir(), key=lambda p: p.name.casefold())
             if path.suffix.lower() == ".json" and path.is_file()
         ]
         if len(paths) > self.max_files:
             raise TargetInvalid("TARGET_FILE_LIMIT_EXCEEDED")
-        for path in paths:
+        return paths
+
+    def _refresh_candidates(self) -> tuple[TargetListEntry, ...]:
+        """Refresh filesystem state without changing the FE list generation."""
+        candidates: list[_Candidate] = []
+        for path in self._candidate_paths():
             try:
                 candidates.append(self._read_candidate(path))
             except OSError:
@@ -312,12 +315,20 @@ class TargetRepository:
         state = self._load_selection()
         if not state:
             return None
-        # Active-state revalidation is an internal read. It must not invalidate
-        # a Target list revision already handed to FE.
-        self._refresh_candidates()
-        candidate = self._candidates.get(str(state.get("targetId", "")))
-        if candidate is None or candidate.entry.validation != "VALID":
+        # Restoration is not a partial listing: no descriptors or list generation
+        # are published. Revalidate safe files independently, retaining the same
+        # duplicate-ID protection as listing, including duplicates with other bytes.
+        matches: list[_Candidate] = []
+        for path in self._candidate_paths():
+            try:
+                candidate = self._read_candidate(path)
+            except (OSError, TargetInvalid):
+                continue  # Unverifiable files cannot supply the selected target.
+            if candidate.entry.validation == "VALID" and candidate.entry.target_id == state.get("targetId"):
+                matches.append(candidate)
+        if len(matches) != 1:
             return None
+        candidate = matches[0]
         if candidate.entry.content_sha256 != state.get("contentSha256"):
             return None
         assert candidate.document is not None
