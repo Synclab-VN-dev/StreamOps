@@ -234,3 +234,13 @@ def test_capture_latency_includes_producer_to_backend_polling_delay():
     backend = {"captureReceivedAt":"2026-10-29T00:00:01.200000Z", "captureToAssessmentNs":2_000_000}
     assert production._capture_to_assessment_ms(backend, "2026-10-29T00:00:00Z") == 1202
     assert production._capture_to_assessment_ms(backend) == 2
+
+
+def test_sandbox_runtime_does_not_inherit_owner_capture_or_test_composition(monkeypatch, tmp_path):
+    keys = ('D4PLANNER_EQUIPMENT_REPOSITORY_DB', 'D4PLANNER_CHARACTER_ID',
+            'D4PLANNER_CHARACTER_DISPLAY_NAME', 'D4_RULEKIT_COMPOSITION_MODULE')
+    for key in keys:
+        monkeypatch.setenv(key, 'MUST_NOT_REACH_ISOLATED_RUNTIME')
+    env = production._runtime_env(tmp_path/'app', tmp_path/'private/bootstrap.json', tmp_path/'recorded.json')
+    assert all(key not in env for key in keys)
+    assert env['D4PLANNER_EQUIPMENT_EVIDENCE_FILE'] == str(tmp_path/'recorded.json')
