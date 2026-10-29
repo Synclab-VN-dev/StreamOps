@@ -506,6 +506,59 @@ def run_native(args: argparse.Namespace) -> dict:
     return value
 
 
+
+def _native_target_b(original: dict) -> dict:
+    """Synthetic test input: current 9% is below the new 12% core target.
+
+    Independent expected: 3 of 8 weights no longer pass -> 62.5%, one WARN,
+    one of two items passing. This does not change the production scoring policy.
+    """
+    result = json.loads(json.dumps(original))
+    result["targetId"] = "synthetic-target-b"
+    result["displayName"] = "Synthetic Target B - 12% Attack Speed"
+    for slot in result["canonicalBuild"]["equipment"]["slots"]:
+        if slot["slotId"] == "gloves":
+            for affix in slot["item"]["affixes"]:
+                if affix["entityId"] == "attack-speed":
+                    affix["values"] = [12]
+    for criterion in result["assessmentPolicy"]["criteria"]:
+        if criterion["criterionId"] == "gloves.attack-speed":
+            criterion["parameters"][0]["expected"]["value"] = 12
+    return result
+
+
+def _assert_native_delta(before: dict, after: dict) -> None:
+    for payload, expected in ((before, (100, 8, 0, 2, "PASS")), (after, (62.5, 5, 1, 1, "WARN"))):
+        score = payload["score"]
+        gloves = next(row for row in payload["equipment"] if row["slotId"] == "gloves")
+        actual = (score["value"], score["passedWeight"], score["warnCount"], score["itemsPassing"], gloves["status"])
+        if actual != expected or score["evaluableWeight"] != 8 or score["failIssueCount"] != 0 or score["itemsTargeted"] != 2:
+            raise E2EFailure(f"HUD-02 independent expected {expected}, actual {actual}")
+
+
+def _invoke_hud_button(window: dict, prefix: str) -> None:
+    """UI Automation Invoke on the owned window only; never global mouse/input."""
+    escaped = prefix.replace("'", "''")
+    script = (
+        "$ErrorActionPreference='Stop';Add-Type -AssemblyName UIAutomationClient;"
+        "Add-Type -AssemblyName UIAutomationTypes;"
+        f"$root=[System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]{window['hwnd']});"
+        f"if($root.Current.ProcessId -ne {window['pid']}){{throw 'HUD_OWNER_MISMATCH'}};"
+        "$condition=New-Object System.Windows.Automation.PropertyCondition("
+        "[System.Windows.Automation.AutomationElement]::ControlTypeProperty,"
+        "[System.Windows.Automation.ControlType]::Button);"
+        "$buttons=$root.FindAll([System.Windows.Automation.TreeScope]::Descendants,$condition);"
+        f"$matched=@($buttons | Where-Object {{$_.Current.Name.Contains('{escaped}')}});"
+        "if($matched.Count-ne 1){throw ('HUD_BUTTON_NOT_UNIQUE: '+($buttons | ForEach-Object {$_.Current.Name} | ConvertTo-Json -Compress))};"
+        "$pattern=$matched[0].GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern);$pattern.Invoke()"
+    )
+    result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+                            capture_output=True, text=True, timeout=20, check=False)
+    if result.returncode:
+        raise E2EFailure(f"owned HUD button invocation failed: {result.stderr[-2000:]}")
+    time.sleep(.25)
+
+
 def run_native_hud(args: argparse.Namespace) -> dict:
     """Collect private HUD-01/HUD-02 evidence from an interactive Windows desktop."""
     if sys.platform != "win32":
@@ -514,9 +567,7 @@ def run_native_hud(args: argparse.Namespace) -> dict:
         raise E2EFailure("an Owner-approved static UAT port is required")
     install = args.install_root.resolve(); data = args.data_root.resolve()
     targets, evidence, _ = _prepare(install, data)
-    target_b_document = json.loads((targets / "target-a.json").read_text(encoding="utf-8"))
-    target_b_document["targetId"] = "synthetic-target-b"
-    target_b_document["displayName"] = "Synthetic Target B Visible Change"
+    target_b_document = _native_target_b(json.loads((targets / "target-a.json").read_text(encoding="utf-8")))
     (targets / "target-b.json").write_text(
         json.dumps(target_b_document, separators=(",", ":")), encoding="utf-8"
     )
@@ -540,6 +591,7 @@ def run_native_hud(args: argparse.Namespace) -> dict:
         "D4PLANNER_BACKEND_PYTHON": str(install / "runtime/python/python.exe"),
         "D4_HUD_PIPELINE_REPORT": str(render_report),
         "D4_HUD_PIPELINE_CONTINUOUS": "1",
+        "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS": "--force-renderer-accessibility",
         "D4_WEBVIEW_DIAGNOSTIC_REPORT": str(root / "webview-diagnostic.ndjson"),
         "D4PLANNER_LATENCY_TRACE": str(root / "backend-latency.ndjson"),
     })
@@ -564,6 +616,14 @@ def run_native_hud(args: argparse.Namespace) -> dict:
         )
         before_root = root / "before" if args.scenario == "HUD-02" else root
         before_image = before_root / ("native-hud.png" if args.scenario == "HUD-02" else "screenshot-native.png")
+        if args.scenario == "HUD-02":
+            _invoke_hud_button(window, "Equipment")
+            _invoke_hud_button(window, "Gloves")
+            _invoke_hud_button(window, "Affixes")
+            _invoke_hud_button(window, "All")
+        window = _native_window(process.pid)
+        if window is None:
+            raise E2EFailure("owned native window disappeared before capture")
         _capture_window(window, before_image)
         database = data / "state/hud.sqlite3"
         before_db = _sqlite_evidence(
@@ -593,6 +653,9 @@ def run_native_hud(args: argparse.Namespace) -> dict:
                 database, after_root / "sqlite-snapshot.db", after_root / "sqlite-state.json"
             )
             _assert_ui_matches_db(after_ui, after_db)
+            _assert_native_delta(before_db["payload"], after_db["payload"])
+            if ws_after != after_db["payload"]:
+                raise E2EFailure("WS payload differs from committed SQLite snapshot")
             if ws_after["hudRevision"] != after_ui["hudRevision"]:
                 raise E2EFailure("WS update and visible render revisions differ")
             (after_root / "ws-state.json").write_text(json.dumps(ws_after, indent=2) + "\n", encoding="utf-8")
