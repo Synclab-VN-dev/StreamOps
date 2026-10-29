@@ -613,3 +613,25 @@ it('keeps list failures and timeouts separate from transport and bounds supersed
   expect(vi.getTimerCount()).toBe(0);
   expect(source.snapshot().error).toBe('SOCKET_CLOSED');
 });
+
+it('binds local receipt telemetry to the accepted revision, never a stale or wrong-generation message', () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-10-29T01:00:00Z'));
+  const { source, socket } = setup();
+  accept(socket);
+  socket.receive({protocolVersion:'d4planner-ws/v1',type:'hud.snapshot',authoritative:true,
+    correlationId:pendingSnapshot(socket).messageId,backendGeneration:3,subscriptionId:'telemetry',hud:hud(12)});
+  expect(source.snapshot().hudReceivedAt).toBe('2026-10-29T01:00:00.000Z');
+  vi.setSystemTime(new Date('2026-10-29T01:00:01Z'));
+  socket.receive({protocolVersion:'d4planner-ws/v1',type:'hud.update',backendGeneration:4,
+    subscriptionId:'telemetry',previousHudRevision:12,hud:hud(13)});
+  expect(source.snapshot().hudReceivedAt).toBe('2026-10-29T01:00:00.000Z');
+  socket.receive({protocolVersion:'d4planner-ws/v1',type:'hud.update',backendGeneration:3,
+    subscriptionId:'telemetry',previousHudRevision:11,hud:hud(12)});
+  expect(source.snapshot().hudReceivedAt).toBe('2026-10-29T01:00:00.000Z');
+  socket.receive({protocolVersion:'d4planner-ws/v1',type:'hud.update',backendGeneration:3,
+    subscriptionId:'telemetry',previousHudRevision:12,hud:hud(13)});
+  expect(source.snapshot().hudReceivedAt).toBe('2026-10-29T01:00:01.000Z');
+  expect(source.snapshot().hud).not.toHaveProperty('hudReceivedAt');
+  source.disconnect();
+});

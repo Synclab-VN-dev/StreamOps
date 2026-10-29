@@ -60,16 +60,20 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   useEffect(() => {
     if (!hud.authoritative || hud.connection !== "CONNECTED" || snapshot?.context.state !== "BOUND"
       || snapshot.health.scoreFreshness !== "CURRENT" || snapshot.score.status !== "SCORED") return;
-    const modelUpdatedAt = new Date().toISOString();
+    if (!hud.timing) return;
+    let paintedFrame = 0;
     const frame = requestAnimationFrame(() => {
-      invoke("report_hud_pipeline", {
-        snapshot,
-        modelUpdatedAt,
-        visibleRenderedAt: new Date().toISOString(),
-      }).catch(() => undefined);
+      paintedFrame = requestAnimationFrame(() => {
+        invoke("report_hud_pipeline", {
+          snapshot,
+          modelUpdatedAt: hud.timing!.modelUpdatedAt,
+          wsReceivedAt: hud.timing!.wsReceivedAt ?? null,
+          visibleRenderedAt: new Date().toISOString(),
+        }).catch(() => undefined);
+      });
     });
-    return () => cancelAnimationFrame(frame);
-  }, [hud.connection, hud.authoritative, snapshot]);
+    return () => { cancelAnimationFrame(frame); cancelAnimationFrame(paintedFrame); };
+  }, [hud.connection, hud.authoritative, snapshot, hud.timing]);
 
   function resetComparison() {
     setSelectedSlot(null); setAffixOpen(false); setEffectOpen(false); setShowAll(false);
