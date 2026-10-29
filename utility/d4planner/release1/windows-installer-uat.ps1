@@ -30,7 +30,8 @@ if ($RegisterAndRun) {
   if ($ReviewFixes) { $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ($action.Arguments + (' -ReviewFixes -ApprovalRecord "{0}" -BaselineVersion {1} -CandidateVersion {2} -ArtifactsName {3}' -f $ApprovalRecord,$BaselineVersion,$CandidateVersion,$ArtifactsName)) }
   if ($CaseIds) {
     if ($CaseIds -notmatch '^[A-Z0-9,/-]+$') { throw 'Invalid case selection' }
-    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ($action.Arguments + (' -CaseIds "{0}" -ResumeReport "{1}"' -f $CaseIds,$ResumeReport))
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ($action.Arguments + (' -CaseIds "{0}"' -f $CaseIds))
+    if ($ResumeReport) { $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ($action.Arguments + (' -ResumeReport "{0}"' -f $ResumeReport)) }
   }
   $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 15) -MultipleInstances IgnoreNew
   Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings | Out-Null
@@ -51,7 +52,8 @@ try {
   if ($ReviewFixes) {
     $artifacts = Join-Path $Sandbox $ArtifactsName
     $driverArgs = @('-X','utf8',(Join-Path $artifacts 'windows_installer_review_e2e.py'),'--sandbox',(Join-Path $Sandbox ($EvidenceName + '-run')),'--setup-old',(Join-Path $artifacts "D4Planner-Setup-$BaselineVersion.exe"),'--setup-new',(Join-Path $artifacts "D4Planner-Setup-$CandidateVersion.exe"),'--package-new',(Join-Path $artifacts "D4Planner-$CandidateVersion.zip"),'--manifest',(Join-Path $artifacts 'expected-shas.json'),'--output',(Join-Path $evidence 'results'))
-    if ($CaseIds) { $driverArgs += @('--case-ids',$CaseIds,'--resume-report',$ResumeReport) }
+    if ($CaseIds) { $driverArgs += @('--case-ids',$CaseIds) }
+    if ($ResumeReport) { $driverArgs += @('--resume-report',$ResumeReport) }
     $quotedArgs = @($driverArgs | ForEach-Object { '"' + $_ + '"' }) -join ' '
     $driverProcess = Start-Process -FilePath $python -ArgumentList $quotedArgs -NoNewWindow -Wait -PassThru -RedirectStandardOutput (Join-Path $evidence 'driver.log') -RedirectStandardError (Join-Path $evidence 'driver.stderr.log')
     $global:LASTEXITCODE = $driverProcess.ExitCode
