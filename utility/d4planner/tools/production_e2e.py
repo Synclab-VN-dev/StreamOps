@@ -176,6 +176,12 @@ def _parse_timestamp(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
+def _capture_to_assessment_ms(backend: dict, producer_at: str | None = None) -> float:
+    ingress = ((_parse_timestamp(backend["captureReceivedAt"]) - _parse_timestamp(producer_at)).total_seconds() * 1000
+               if producer_at is not None else 0)
+    return ingress + backend["captureToAssessmentNs"] / 1_000_000
+
+
 def _percentiles(values: list[float]) -> dict:
     if not values:
         raise E2EFailure("latency stage has no samples")
@@ -761,6 +767,7 @@ def run_native_hud(args: argparse.Namespace) -> dict:
             for index in range(sample_count):
                 # Each sample waits for its own committed revision and visible render.
                 # Fixed work count is diagnostic, not a newly invented latency SLA.
+                producer_started_at = datetime.now(timezone.utc).isoformat()
                 captured_revision = _record_equipment_sample(producer, recorded, index + 2)
                 def sample_render():
                     try:
@@ -774,7 +781,7 @@ def run_native_hud(args: argparse.Namespace) -> dict:
                 db = _sqlite_evidence(database, sample_dir / "snapshot.db", sample_dir / "state.json")
                 _assert_ui_matches_db(ui, db)
                 sampled_ui.append(ui)
-                sample_evidence.append({"ui":ui, "databaseSha256":db["backupSha256"]})
+                sample_evidence.append({"ui":ui, "producerStartedAt":producer_started_at, "databaseSha256":db["backupSha256"]})
             if sampled_ui:
                 (root / "latency-samples.json").write_text(json.dumps(sample_evidence, indent=2) + "\n")
             if getattr(args, "verify_refresh", False):
@@ -819,9 +826,10 @@ def run_native_hud(args: argparse.Namespace) -> dict:
                     paired.append((backend_record, ui_record))
             if not paired:
                 raise E2EFailure("no capture-driven visible HUD revision has matching latency evidence")
+            producer_times = {row["ui"]["hudRevision"]:row["producerStartedAt"] for row in sample_evidence}
             latency = {
                 "schemaVersion":"d4planner-latency-evidence/v1", "ok":True,
-                "captureToAssessment": _percentiles([pair[0]["captureToAssessmentNs"] / 1_000_000 for pair in paired]),
+                "captureToAssessment": _percentiles([_capture_to_assessment_ms(pair[0], producer_times.get(pair[0]["hudRevision"])) for pair in paired]),
                 "assessmentToSqliteCommit": _percentiles([pair[0]["assessmentToCommitNs"] / 1_000_000 for pair in paired]),
                 "commitToWsDelivery": _percentiles([
                     (_parse_timestamp(pair[1]["wsReceivedAt"]) - _parse_timestamp(pair[0]["captureReceivedAt"])).total_seconds() * 1000
@@ -838,7 +846,7 @@ def run_native_hud(args: argparse.Namespace) -> dict:
                 ]),
                 "sla":"NOT_DEFINED_AS_APPROVED",
                 "workload":{"classification":"RECORDED_PRODUCER_SQLITE", "requestedSamples":sample_count},
-                "measurementLimits":["Capture starts at Backend ingest, excludes producer polling delay",
+                "measurementLimits":["Capture starts at recorded producer event when sampled; legacy startup-only evidence starts at Backend ingest",
                                      "WS receipt is FE socket callback; JS timestamps have millisecond resolution",
                                      "Visible render timestamp follows a double animation frame; screenshot proves native visibility"],
             }
