@@ -428,3 +428,70 @@ def test_nonzero_external_blocker_requires_explicit_reviewed_classification(tmp_
     assert result['status'] == status
     assert result['processExitCode'] == 2
     assert result['status'] != 'PASS'
+
+
+@pytest.mark.parametrize('change', ['manifest', 'script', 'evidence', 'input', 'unrelated', 'no-output', 'unchanged'])
+def test_resume_binds_case_executor_and_evidence(tmp_path, change):
+    artifact = tmp_path / 'package.zip'
+    delivery.build_package(PLAN, stage(tmp_path), artifact)
+    staging = tmp_path / 'staging'; staging.mkdir()
+    evidence = tmp_path / 'evidence'; evidence.mkdir()
+    script = staging / 'case.py'
+    script.write_text("import pathlib,json\n" + f"pathlib.Path({str(evidence / 'E2E-01.json')!r}).write_text(json.dumps({{'ok':True,'proof':'v1'}}))\n")
+    manifest = tmp_path / 'executors.json'
+    spec = {'schemaVersion':delivery.EXECUTOR_MANIFEST_VERSION,'cases':{'E2E-01':{
+        'command':[sys.executable,'case.py'],'timeoutSeconds':10,'requiredEvidence':{'proof':'v1'}}}}
+    helper=staging/'assertion-data.json';helper.write_text('{"expected":1}')
+    spec['cases']['E2E-01']['inputFiles']=['assertion-data.json']
+    manifest.write_text(json.dumps(spec))
+    inputs = dict(platform='win32',staging_root=staging,evidence_dir=evidence,
+                  expected_package_sha256=delivery.sha256_file(artifact),
+                  component_manifest=component_manifest(tmp_path),executor_manifest=manifest)
+    old = delivery.run_acceptance(ACCEPTANCE,artifact,{'E2E-01','S7-PKG-01'},None,**inputs)
+    assert next(c for c in old['cases'] if c['id']=='E2E-01')['status']=='PASS'
+    prior = tmp_path/'prior.json'; prior.write_text(json.dumps(old))
+    if change=='manifest':
+        spec['cases']['E2E-01']['requiredEvidence']['proof']='v2'
+        manifest.write_text(json.dumps(spec))
+    elif change=='script': script.write_text('raise SystemExit(7)\n')
+    elif change=='no-output': script.write_text('print("no new evidence")\n')
+    elif change=='input': helper.write_text('{"expected":2}')
+    elif change=='unrelated':
+        spec['cases']['E2E-02']={'command':[sys.executable,'unrelated.py'],'timeoutSeconds':5}
+        manifest.write_text(json.dumps(spec))
+    elif change=='evidence': (evidence/'E2E-01.json').write_text('{"ok":true,"proof":"tampered"}')
+    report=delivery.run_acceptance(ACCEPTANCE,artifact,{'E2E-01','S7-PKG-01'},prior,**inputs)
+    by_id={c['id']:c for c in report['cases']}
+    assert by_id['S7-PKG-01']['resumed'] is True
+    if change in ('unchanged','unrelated'): assert by_id['E2E-01']['resumed'] is True
+    else:
+        assert not by_id['E2E-01'].get('resumed',False)
+        assert by_id['E2E-01']['status']==('PASS' if change in ('evidence','input') else 'FAIL')
+
+
+def test_manual_only_is_not_a_successful_acceptance_run(tmp_path):
+    components=component_manifest(tmp_path)
+    report=delivery.run_acceptance(ACCEPTANCE,None,{'MAN-01'},None,component_manifest=components)
+    assert report['outcome']=='NOT_RUN'
+    assert delivery.acceptance_exit_code(report)!=0
+
+
+def test_mixed_manual_and_pass_preserves_pending_manual(tmp_path):
+    artifact=tmp_path/'package.zip'; delivery.build_package(PLAN,stage(tmp_path),artifact)
+    report=delivery.run_acceptance(ACCEPTANCE,artifact,{'S7-PKG-01','MAN-01'},None,component_manifest=component_manifest(tmp_path))
+    assert report['outcome']=='SUBSET_PASS_MAN_PENDING'
+    assert next(c for c in report['cases'] if c['id']=='MAN-01')['status']=='NOT_RUN'
+    assert delivery.acceptance_exit_code(report)==0 # genuine automated subset PASS, MAN still explicit
+
+
+def test_resume_changed_components_fail_closed_and_old_provenance_is_not_reused(tmp_path):
+    artifact=tmp_path/'package.zip'; delivery.build_package(PLAN,stage(tmp_path),artifact)
+    components=component_manifest(tmp_path)
+    old=delivery.run_acceptance(ACCEPTANCE,artifact,{'S7-PKG-01'},None,component_manifest=components)
+    for case in old['cases']: case.pop('provenanceSha256',None)
+    prior=tmp_path/'prior.json';prior.write_text(json.dumps(old))
+    result=delivery.run_acceptance(ACCEPTANCE,artifact,{'S7-PKG-01'},prior,component_manifest=components)
+    assert not result['cases'][0].get('resumed',False)
+    value=json.loads(components.read_text());value['components']['S7']='f'*40;components.write_text(json.dumps(value))
+    with pytest.raises(delivery.DeliveryError,match='RESUME_CONTEXT_MISMATCH'):
+        delivery.run_acceptance(ACCEPTANCE,artifact,{'S7-PKG-01'},prior,component_manifest=components)

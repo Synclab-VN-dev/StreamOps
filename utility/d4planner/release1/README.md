@@ -116,3 +116,29 @@ touch Windows A, or operate Steam, OBS, Diablo IV or NVDA.
 - S7-02…06 depend on S2–S6 integration, approved visual Golden, Windows/runtime
   evidence and defined workloads. Linux package tests do not satisfy them.
 - MAN-01…03 always require Owner action and review.
+
+### Resume provenance and rollback recovery
+
+Resume binds each selected automated PASS to its case specification, shared runner
+SHA-256, resolved executable/script bytes, approved port and isolated staging/evidence
+context, in addition to the existing plan/package/component bindings. Executor
+`inputFiles` (paths relative to staging) must list separately imported external
+assertion/configuration files; packaged dependencies remain bound by the package.
+Changing another case's executor does not invalidate an unchanged case. Legacy
+reports without provenance are rerun, not upgraded into current PASS evidence.
+Scenario evidence must still exist, satisfy current required fields and match its
+recorded SHA-256. Before rerunning a case, prior scenario evidence is retained in
+`.previous-evidence`; it cannot stand in for missing fresh output. Preflight is
+always rechecked. MAN-only/zero-PASS runs return NOT_RUN with nonzero exit; mixed
+successful automated subset plus MAN remains SUBSET_PASS_MAN_PENDING, never manual
+acceptance. These hashes establish local provenance, not a signed trust attestation.
+
+Rollback uses the same `upgrade-journal.json` and owned transaction directory as
+installation. Until journal commit, normal root-launcher startup remains blocked.
+Recovery aborts an interrupted rollback to the verified pre-rollback application
+(version, launcher hash and active metadata), then rollback can be retried. It
+checks current DB schema compatibility read-only, never restores an old DB, and
+never copies back/deletes Targets, Settings or the external Rule Kit snapshot store.
+A tampered recovery payload/backup fails closed with its journal preserved. Cleanup
+removes only transaction-owned files and retains unknown files. No new Rule Kit
+compatibility or distribution policy is defined by this recovery mechanism.

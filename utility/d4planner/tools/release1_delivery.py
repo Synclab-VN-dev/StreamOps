@@ -315,7 +315,7 @@ def acceptance_exit_code(report: dict) -> int:
         return 1
     if "BLOCKED" in statuses:
         return 3
-    return 0
+    return 0 if "PASS" in statuses else 3
 
 
 def load_component_shas(path: Path | None) -> dict[str, str]:
@@ -488,6 +488,25 @@ def _validate_executor_evidence(case_id: str, spec: dict, evidence_root: Path) -
     return True, "EXECUTOR_EVIDENCE_VERIFIED", path
 
 
+def _executor_command(spec: dict, root: Path, evidence_root: Path, package: Path | None,
+                      approved_port: int | None, component_shas: dict | None) -> list[str]:
+    replacements = {
+        "{STAGING_ROOT}": str(root), "{INSTALL_ROOT}": str(root / "app"),
+        "{DATA_ROOT}": str(root / "data"), "{EVIDENCE_DIR}": str(evidence_root),
+        "{PACKAGE}": str(package.resolve()) if package else "",
+        "{PYTHON}": str(root / "app/runtime/python/python.exe"),
+        "{APPROVED_PORT}": str(approved_port) if approved_port is not None else "",
+        **{f"{{{name}_SHA}}": sha for name, sha in (component_shas or {}).items()},
+    }
+    command = []
+    for token in spec["command"]:
+        expanded = token
+        for placeholder, value in replacements.items():
+            expanded = expanded.replace(placeholder, value)
+        command.append(expanded)
+    return command
+
+
 def _run_executor(
     case_id: str,
     spec: dict,
@@ -514,22 +533,16 @@ def _run_executor(
     evidence_root.mkdir(parents=True, exist_ok=True)
     log_path = _contained_destination(evidence_root, f"{case_id}.log")
     started = time.perf_counter()
-    replacements = {
-        "{STAGING_ROOT}": str(root), "{INSTALL_ROOT}": str(root / "app"),
-        "{DATA_ROOT}": str(root / "data"), "{EVIDENCE_DIR}": str(evidence_root),
-        "{PACKAGE}": str(package.resolve()) if package else "",
-        "{PYTHON}": str(root / "app/runtime/python/python.exe"),
-        "{APPROVED_PORT}": str(approved_port) if approved_port is not None else "",
-        **{f"{{{name}_SHA}}": sha for name, sha in (component_shas or {}).items()},
-    }
-    command = []
-    for token in spec["command"]:
-        expanded = token
-        for placeholder, value in replacements.items():
-            expanded = expanded.replace(placeholder, value)
-        command.append(expanded)
+    command = _executor_command(spec, root, evidence_root, package, approved_port, component_shas)
     if spec.get("requiresApprovedPort") is True and approved_port is None:
         return {"id": case_id, "status": "BLOCKED", "classification": "OWNER_APPROVAL_REQUIRED", "actual": "APPROVED_PORT_REQUIRED"}
+    scenario_path = _contained_destination(evidence_root, str(spec.get("evidenceFile", f"{case_id}.json")).replace("{CASE_ID}", case_id))
+    if scenario_path.is_file():
+        archive = evidence_root / ".previous-evidence"
+        archive.mkdir(exist_ok=True)
+        saved = archive / f"{case_id}-{sha256_file(scenario_path)}.json"
+        shutil.copyfile(scenario_path, saved)
+        scenario_path.unlink()
     owned = None
     before: list[int] = []
     try:
@@ -587,6 +600,62 @@ def _run_executor(
     finally:
         if owned is not None:
             owned.close()
+
+
+def _case_provenance(case: dict, executor: dict | None, staging_root: Path | None,
+                     evidence_dir: Path | None, package: Path | None, approved_port: int | None,
+                     component_shas: dict, platform: str) -> str:
+    """Per-case inputs, not the entire executor manifest or machine environment.
+
+    Direct executable/script arguments are hashed; separately imported external
+    assertion/config files must be declared in inputFiles. Packaged dependencies
+    are additionally bound by packageSha256 and componentShas in the report.
+    """
+    value = {"runnerSha256": sha256_file(Path(__file__)), "case": case, "executor": executor}
+    if executor is not None:
+        root = staging_root.resolve() if staging_root else Path.cwd()
+        evidence = evidence_dir.resolve() if evidence_dir else root / "evidence"
+        cwd = root / executor.get("workingDirectory", ".")
+        command = _executor_command(executor, root, evidence, package, approved_port, component_shas)
+        files = {}
+        for index, token in enumerate(command):
+            candidate = Path(token)
+            if index == 0 and not candidate.is_absolute():
+                candidate = Path(shutil.which(token) or cwd / token)
+            elif not candidate.is_absolute():
+                candidate = cwd / candidate
+            # Output/state files are not executable inputs.
+            candidate = candidate.resolve()
+            executable_input = index == 0 or candidate.suffix.lower() in {".py", ".js", ".mjs", ".ps1", ".exe", ".cmd", ".bat"}
+            if not executable_input and (evidence == candidate or evidence in candidate.parents):
+                continue
+            try:
+                if candidate.is_file(): files[str(candidate)] = sha256_file(candidate)
+            except OSError:
+                # Inline interpreter arguments may not be legal filenames;
+                # their literal bytes are already included in the executor spec.
+                continue
+        inputs = executor.get("inputFiles", [])
+        if not isinstance(inputs, list) or any(not isinstance(item, str) or not item for item in inputs):
+            raise DeliveryError("INVALID_EXECUTOR_INPUT_FILES")
+        for item in inputs:
+            candidate = _contained_destination(root, item)
+            files[str(candidate)] = sha256_file(candidate) if candidate.is_file() else None
+        value.update({"files": files, "platform": platform, "staging": str(root),
+                      "evidence": str(evidence), "approvedPort": approved_port})
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _reusable_case(previous: dict, provenance: str, case: dict, executor: dict | None,
+                   evidence_dir: Path | None) -> bool:
+    if previous.get("status") != "PASS" or previous.get("provenanceSha256") != provenance:
+        return False
+    if case["kind"] == "PACKAGE_INTEGRITY": return True
+    # Environment checks and MAN are never historical execution evidence.
+    if executor is None or evidence_dir is None or case["kind"] not in {"RUNTIME_E2E", "VISUAL_GOLDEN", "PERFORMANCE"}:
+        return False
+    ok, _, path = _validate_executor_evidence(case["id"], executor, evidence_dir.resolve())
+    return ok and previous.get("scenarioEvidenceSha256") == sha256_file(path)
 
 
 def run_acceptance(
@@ -653,7 +722,10 @@ def run_acceptance(
             }
             results.append(result)
             continue
-        if case_id in previous_cases:
+        executor = executors.get(case_id)
+        provenance = _case_provenance(case, executor, staging_root, evidence_dir, package,
+                                      approved_port, component_shas, runtime_platform)
+        if case_id in previous_cases and _reusable_case(previous_cases[case_id], provenance, case, executor, evidence_dir):
             result = {**previous_cases[case_id], "resumed": True}
             results.append(result)
             continue
@@ -688,6 +760,9 @@ def run_acceptance(
                 )
         else:
             result = {"id": case_id, "status": "FAIL", "classification": "HARNESS_FAILURE", "actual": "UNKNOWN_CASE_KIND"}
+        result["provenanceSha256"] = provenance
+        if result["status"] == "PASS" and result.get("scenarioEvidence"):
+            result["scenarioEvidenceSha256"] = sha256_file(Path(result["scenarioEvidence"]))
         result.setdefault("expected", case.get("expected", "Acceptance condition in plan"))
         result.setdefault("actual", result.get("error", result["classification"]))
         result["exitCode"] = 0 if result["status"] == "PASS" else (1 if result["status"] == "FAIL" else (3 if result["status"] == "BLOCKED" else None))
@@ -704,7 +779,10 @@ def run_acceptance(
     }
     report["outcome"] = "FAIL" if any(case["status"] == "FAIL" for case in results) else (
         "BLOCKED" if any(case["status"] == "BLOCKED" for case in results) else (
-            "SUBSET_PASS" if selected else "FULL_AUTOMATED_PASS_MAN_PENDING"
+            "NOT_RUN" if not any(case["status"] == "PASS" for case in results) else (
+                ("SUBSET_PASS_MAN_PENDING" if any(case["classification"] == "OWNER_MANUAL" for case in results) else "SUBSET_PASS")
+                if selected else "FULL_AUTOMATED_PASS_MAN_PENDING"
+            )
         )
     )
     return report
