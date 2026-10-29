@@ -14,6 +14,8 @@ export function useHudController(source: IHudDataSource) {
   const [snapshot, setSnapshot] = useState<HudSnapshot | null>(null);
   const [targets, setTargets] = useState<TargetListEntry[]>([]);
   const [connection, setConnection] = useState<"CONNECTING" | "CONNECTED" | "DISCONNECTED">("CONNECTING");
+  const [assessmentRenderable, setAssessmentRenderable] = useState(false);
+  const [authoritative, setAuthoritative] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [pendingTarget, setPendingTarget] = useState<{ targetId: string; contentSha256: string } | null>(null);
@@ -27,13 +29,19 @@ export function useHudController(source: IHudDataSource) {
       if (!mounted) return;
       if (event.type === "CONNECTION") {
         setConnection(event.state);
+        setAuthoritative(false);
         if (event.state === "DISCONNECTED") setConnectionError(event.reason ?? "Connection lost");
+      } else if (event.type === "ASSESSMENT_INVALIDATED") {
+        setAssessmentRenderable(false);
+        setAuthoritative(false);
       } else if (event.type === "TARGETS") {
         setTargets(event.targets);
       } else {
         if (!acceptsSnapshot(snapshotRef.current, event.snapshot)) return;
         snapshotRef.current = event.snapshot;
         setSnapshot(event.snapshot);
+        setAuthoritative(true);
+        setAssessmentRenderable(true);
         setConnectionError(null);
         setPendingTarget(current => {
           if (!current) return null;
@@ -75,5 +83,5 @@ export function useHudController(source: IHudDataSource) {
     // ACTIVATED still waits for the authoritative snapshot with the matching binding.
   }
 
-  return { snapshot, targets, connection, error: operationError ?? connectionError, pendingTargetId: pendingTarget?.targetId ?? null, refreshTargets, selectTarget };
+  return { snapshot, targets, connection, authoritative, assessmentRenderable, error: operationError ?? connectionError, pendingTargetId: pendingTarget?.targetId ?? null, refreshTargets, selectTarget };
 }

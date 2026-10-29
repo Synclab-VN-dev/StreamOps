@@ -25,18 +25,19 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   const source = useMemo(() => dataSource ?? productionHudDataSource(), [dataSource]);
   const hud = useHudController(source);
   const [expanded, setExpanded] = useState(true);
+  const [equipmentOpen, setEquipmentOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [affixOpen, setAffixOpen] = useState(false);
   const [effectOpen, setEffectOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
-  const snapshot = hud.snapshot;
+  const snapshot = hud.assessmentRenderable ? hud.snapshot : null;
   const selected = snapshot?.equipment.find(row => row.slotId === selectedSlot) ?? null;
 
   useEffect(() => {
-    const width = !expanded || !snapshot ? 280 : selected ? 886 : 544;
+    const width = !expanded || !equipmentOpen || !snapshot ? 280 : selected ? 886 : 544;
     invoke("set_overlay_extent", { width, height: selected ? 620 : 560 }).catch(() => undefined);
-  }, [expanded, selected, snapshot]);
+  }, [expanded, equipmentOpen, selected, snapshot]);
 
   useEffect(() => {
     if (!selectedSlot || snapshot?.equipment.some(row => row.slotId === selectedSlot)) return;
@@ -57,7 +58,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   }, [hud.connection, hud.error, snapshot]);
 
   useEffect(() => {
-    if (hud.connection !== "CONNECTED" || snapshot?.context.state !== "BOUND"
+    if (!hud.authoritative || hud.connection !== "CONNECTED" || snapshot?.context.state !== "BOUND"
       || snapshot.health.scoreFreshness !== "CURRENT" || snapshot.score.status !== "SCORED") return;
     const modelUpdatedAt = new Date().toISOString();
     const frame = requestAnimationFrame(() => {
@@ -68,7 +69,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
       }).catch(() => undefined);
     });
     return () => cancelAnimationFrame(frame);
-  }, [hud.connection, snapshot]);
+  }, [hud.connection, hud.authoritative, snapshot]);
 
   function resetComparison() {
     setSelectedSlot(null); setAffixOpen(false); setEffectOpen(false); setShowAll(false);
@@ -81,13 +82,13 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   const scoreText = snapshot?.score.status === "SCORED" && snapshot.score.value !== null
     ? String(halfUp(snapshot.score.value)) : "—";
   const targetName = snapshot?.context.target?.buildDisplayName ?? "SELECT TARGET";
-  const current = hud.connection === "CONNECTED" && snapshot?.health.scoreFreshness === "CURRENT";
+  const current = hud.authoritative && hud.connection === "CONNECTED" && snapshot?.health.scoreFreshness === "CURRENT";
 
-  return <main className="surface" data-connection={hud.connection}>
+  return <main className="surface" data-connection={hud.connection} data-freshness={current ? "CURRENT" : "STALE"}>
     <div className="panels">
       <section className="panel summary" aria-label="D4Planner Equipment HUD">
         <header className="summary-head" onMouseDown={drag}>
-          <button className="summary-toggle" onClick={() => { setExpanded(value => !value); resetComparison(); }} aria-expanded={expanded}>
+          <button className="summary-toggle" onClick={() => { setExpanded(value => !value); setEquipmentOpen(false); resetComparison(); }} aria-expanded={expanded}>
             <span className="target-title"><span className="bolt">ϟ</span>{targetName.toUpperCase()}</span>
             <span className="score"><b>{scoreText}</b><small>/100</small></span>
             <span className="issue-count">{snapshot?.score.failIssueCount ?? 0} issues · {snapshot?.score.warnCount ?? 0} warnings</span>
@@ -99,7 +100,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
             {hud.targets.length === 0 && <p className="empty-targets">No Target JSON files</p>}
             {hud.targets.map(entry => <button key={entry.targetId} role="menuitem" disabled={entry.validation !== "VALID" || hud.pendingTargetId !== null}
               aria-current={snapshot?.context.target?.targetId === entry.targetId}
-              onClick={() => void hud.selectTarget(entry)}>
+              onClick={() => { setMenuOpen(false); setEquipmentOpen(false); resetComparison(); void hud.selectTarget(entry); }}>
               <span>{entry.displayName}</span>
               <small>{entry.validation === "VALID" ? (hud.pendingTargetId === entry.targetId ? "Selecting…" : "Valid") : entry.errorCodes.join(", ")}</small>
             </button>)}
@@ -107,12 +108,12 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
         </header>
 
         {!current && <div className={`freshness ${hud.connection.toLowerCase()}`} role="status">
-          {hud.connection === "DISCONNECTED" ? "Disconnected — assessment is not current" : snapshot?.score.status === "NO_DATA" ? "NO DATA" : "Connecting…"}
+          {snapshot?.score.status === "NO_DATA" ? "NO DATA" : snapshot ? "Last-known assessment is not current — reconnecting/resynchronizing" : "Connecting…"}
         </div>}
         {hud.error && <div className="hud-error" role="alert">{hud.error}</div>}
 
         {expanded && <div className="summary-body">
-          <button className="equipment-link" aria-pressed={selectedSlot !== null} onClick={() => { if (selectedSlot) resetComparison(); else if (snapshot?.equipment[0]) setSelectedSlot(snapshot.equipment[0].slotId); }}>
+          <button className="equipment-link" aria-pressed={equipmentOpen} onClick={() => { setEquipmentOpen(value => !value); resetComparison(); }}>
             <span className="shield">⬡</span><span><b>Equipment</b><small>{snapshot?.score.failIssueCount ?? 0} issues · {snapshot?.score.warnCount ?? 0} warnings</small></span>
             <span>{snapshot?.score.itemsPassing ?? 0}/{snapshot?.score.itemsTargeted ?? 0}</span><span>›</span>
           </button>
@@ -120,8 +121,8 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
         </div>}
       </section>
 
-      {expanded && snapshot && <aside className="panel equipment" aria-label="Equipment list">
-        <div className="panel-title"><span>⬡ <b>Equipment</b></span><button aria-label="Close equipment" onClick={resetComparison}>×</button></div>
+      {expanded && equipmentOpen && snapshot && <aside className="panel equipment" aria-label="Equipment list">
+        <div className="panel-title"><span>⬡ <b>Equipment</b></span><button aria-label="Close equipment" onClick={() => { setEquipmentOpen(false); resetComparison(); }}>×</button></div>
         <p>{targetName} · Select an item</p>
         {snapshot.equipment.length === 0 && <div className="empty-equipment">No Equipment assessment data</div>}
         {snapshot.equipment.map(row => <button className={`equipment-row ${selectedSlot === row.slotId ? "selected" : ""}`} key={row.slotId} onClick={() => { setSelectedSlot(row.slotId); setAffixOpen(false); setEffectOpen(false); setShowAll(false); }}>
@@ -130,7 +131,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
         </button>)}
       </aside>}
 
-      {expanded && selected && <Compare row={selected} targetName={targetName} affixOpen={affixOpen} effectOpen={effectOpen} showAll={showAll}
+      {expanded && equipmentOpen && selected && <Compare row={selected} targetName={targetName} affixOpen={affixOpen} effectOpen={effectOpen} showAll={showAll}
         onAffix={() => setAffixOpen(value => !value)} onEffect={() => setEffectOpen(value => !value)} onFilter={setShowAll} onClose={() => setSelectedSlot(null)} recommendation={snapshot?.recommendation?.displayText ?? "Insufficient evidence"} />}
     </div>
   </main>;

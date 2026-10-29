@@ -19,6 +19,7 @@ export interface HudDataState {
   backend: { runtimeInstanceId: string; generation: number } | null;
   hud: Record<string, any> | null;
   freshness: 'STARTUP' | 'STALE' | 'CURRENT';
+  assessmentRenderable: boolean;
   subscriptionId: string | null;
   targets: readonly Record<string, any>[];
   listRevision: number | null;
@@ -55,6 +56,7 @@ export class HudWebSocketDataSource {
     backend: null,
     hud: null,
     freshness: 'STARTUP',
+    assessmentRenderable: false,
     subscriptionId: null,
     targets: [],
     listRevision: null,
@@ -119,7 +121,7 @@ export class HudWebSocketDataSource {
     socket.onclose = () => {
       if (socket !== this.socket) return;
       this.clearSnapshotTimer();
-      this.pendingTarget.clear();
+      this.rejectPendingTargets('Backend connection closed before Target activation completed.');
       this.pendingTargetList = null;
       this.pendingHello = null;
       this.state = { ...this.state, freshness: 'STALE', subscriptionId: null, error: 'SOCKET_CLOSED' };
@@ -131,7 +133,6 @@ export class HudWebSocketDataSource {
 
   disconnect(): void {
     this.stopped = true;
-    this.pendingTarget.clear();
     this.pendingTargetList = null;
     this.pendingHello = null;
     this.clearSnapshotTimer();
@@ -248,7 +249,12 @@ export class HudWebSocketDataSource {
     if (message.type === 'error') {
       const correlation = message.correlationId;
       if (correlation != null) {
-        const selection = this.pendingTarget.delete(correlation);
+        const selection = this.pendingTarget.get(correlation);
+        if (selection) {
+          this.pendingTarget.delete(correlation);
+          clearTimeout(selection.timer);
+          selection.reject(new Error(`${String(message.code ?? 'INTERNAL')}: ${String(message.message ?? 'Target selection rejected')}`));
+        }
         const listing = correlation === this.pendingTargetList;
         if (listing) this.pendingTargetList = null;
         if (!selection && !listing && correlation !== this.pendingSnapshot?.requestId) return;
@@ -270,6 +276,7 @@ export class HudWebSocketDataSource {
         backend: { runtimeInstanceId: message.runtimeInstanceId, generation: message.backendGeneration },
         hud: null,
         freshness: 'STARTUP',
+        assessmentRenderable: false,
         subscriptionId: null,
         error: null,
       };
@@ -395,7 +402,7 @@ export class HudWebSocketDataSource {
       this.clearSnapshotTimer();
       // Only the snapshot operation is superseded. Target commands on this
       // authenticated connection still require their correlated terminal reply.
-      this.state = { ...this.state, freshness: 'STALE', subscriptionId: null };
+      this.state = { ...this.state, freshness: 'STALE', assessmentRenderable: false, subscriptionId: null };
       // Do not apply the mismatched snapshot. Discover the authoritative active
       // context using its revision as the new anti-rollback floor.
       this.requestSnapshot(revision, true);
@@ -409,6 +416,7 @@ export class HudWebSocketDataSource {
       ...this.state,
       hud: structuredClone(message.hud),
       freshness: 'CURRENT',
+      assessmentRenderable: true,
       subscriptionId: message.subscriptionId,
       error: null,
     };
@@ -503,6 +511,7 @@ function sameContext(actual: Record<string, unknown>, expected?: Record<string, 
 
 export type HudDataEvent =
   | { type: "CONNECTION"; state: "CONNECTED" | "DISCONNECTED"; reason?: string }
+  | { type: "ASSESSMENT_INVALIDATED" }
   | { type: "SNAPSHOT"; snapshot: HudSnapshot }
   | { type: "TARGETS"; targets: TargetListEntry[] };
 
@@ -566,7 +575,11 @@ export class TauriHudDataSource implements IHudDataSource {
     let lastListRevision: number | null = null;
     let connected = false;
     this.unsubscribe = source.subscribe(state => {
-      const isConnected = state.backend !== null && state.error === null;
+      // Target operation errors do not invalidate the authenticated transport.
+      const wasConnected = connected;
+      if (!state.assessmentRenderable) this.listener?.({ type: 'ASSESSMENT_INVALIDATED' });
+      const isConnected = state.backend !== null && state.freshness === 'CURRENT'
+        && (state.error === null || state.error.startsWith('TARGET_'));
       if (isConnected !== connected) {
         connected = isConnected;
         this.listener?.(isConnected
@@ -577,7 +590,7 @@ export class TauriHudDataSource implements IHudDataSource {
         lastListRevision = state.listRevision;
         this.listener?.({ type: 'TARGETS', targets: structuredClone(state.targets) as TargetListEntry[] });
       }
-      if (state.freshness === 'CURRENT' && state.hud && state.hud.hudRevision !== lastRevision) {
+      if (state.freshness === 'CURRENT' && state.hud && (state.hud.hudRevision !== lastRevision || !wasConnected)) {
         lastRevision = state.hud.hudRevision;
         this.listener?.({ type: 'SNAPSHOT', snapshot: structuredClone(state.hud) as HudSnapshot });
       }
