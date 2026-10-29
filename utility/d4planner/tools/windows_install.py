@@ -131,7 +131,31 @@ def schema_compatible(data: Path, manifest: dict) -> None:
         raise InstallError("DB_SCHEMA_INCOMPATIBLE")
 
 
+def begin_transaction(root: Path, previous: dict | None, next_payload: str, *, operation: str = "INSTALL", next_state: dict | None = None) -> Path:
+    transaction = root / "transactions" / str(uuid.uuid4())
+    transaction.mkdir(parents=True)
+    if previous:
+        shutil.copyfile(root / "D4Planner.exe", transaction / "D4Planner.previous.exe")
+        atomic_json(transaction / "previous.json", previous)
+    journal = {"applicationId": APP_ID, "transaction": transaction.relative_to(root).as_posix(),
+               "previous": previous, "nextPayload": next_payload, "operation": operation}
+    if next_state is not None: journal["nextState"] = next_state
+    atomic_json(root / "upgrade-journal.json", journal)
+    return transaction
+
+
+def finish_transaction(root: Path, transaction: Path) -> None:
+    # Only files created by this transaction; keep any unknown/user-owned files.
+    (root / "upgrade-journal.json").unlink()
+    for name in ("D4Planner.previous.exe", "previous.json"):
+        (transaction / name).unlink(missing_ok=True)
+    try: transaction.rmdir()
+    except OSError: pass
+
+
 def recover(root: Path) -> dict:
+    root = root.resolve()
+    check_owned_layout(root)
     journal_path = root / "upgrade-journal.json"
     if not journal_path.exists():
         return {"recovery": "NOT_NEEDED"}
@@ -143,12 +167,26 @@ def recover(root: Path) -> dict:
     transaction = delivery._contained_destination(root, journal["transaction"])
     if transaction.parent != root / "transactions":
         raise InstallError("INVALID_TRANSACTION_PATH")
+    if journal.get("operation") == "ROLLBACK":
+        next_state = journal.get("nextState")
+        if (not old or not isinstance(next_state, dict) or next_state != old.get("previous")
+                or next_state.get("applicationId") != APP_ID or next_state.get("schemaVersion") != STATE_VERSION
+                or Path(next_state["dataDir"]).resolve() != Path(old["dataDir"]).resolve()
+                or next_state.get("payload") != journal.get("nextPayload")):
+            raise InstallError("INVALID_ROLLBACK_JOURNAL")
+        if read_state(root) not in (old, next_state):
+            raise InstallError("ROLLBACK_STATE_OWNERSHIP_MISMATCH")
+        owned_payload(root, next_state)
     if old:
         previous_payload = owned_payload(root, old)
         manifest = verify_directory(previous_payload)
+        if manifest.get("version") != old.get("version"):
+            raise InstallError("RECOVERY_VERSION_MISMATCH")
         schema_compatible(Path(old["dataDir"]), manifest)
         backup = transaction / "D4Planner.previous.exe"
-        if backup.is_file() and (not (root / "D4Planner.exe").is_file()
+        if not backup.is_file() or delivery.sha256_file(backup) != delivery.sha256_file(previous_payload / "D4Planner.exe"):
+            raise InstallError("RECOVERY_LAUNCHER_INTEGRITY")
+        if (not (root / "D4Planner.exe").is_file()
                 or delivery.sha256_file(backup) != delivery.sha256_file(root / "D4Planner.exe")):
             shutil.copyfile(backup, root / "D4Planner.recovery.exe")
             os.replace(root / "D4Planner.recovery.exe", root / "D4Planner.exe")
@@ -157,7 +195,7 @@ def recover(root: Path) -> dict:
         (root / "active.json").unlink(missing_ok=True)
         (root / "D4Planner.exe").unlink(missing_ok=True)
     (root / "D4Planner.next.exe").unlink(missing_ok=True)
-    journal_path.unlink()
+    finish_transaction(root, transaction)
     return {"recovery": "RESTORED_PREVIOUS" if old else "FIRST_INSTALL_REVERTED"}
 
 
@@ -233,14 +271,7 @@ def install(package: Path, root: Path, data: Path, expected_sha: str,
         (health_check or static_health)(destination)
         if health_check is None and (manifest.get("ruleKit") or {}).get("snapshotManagementContract") == "d4-rulekit-snapshots/v1":
             rulekit_upgrade_preflight(destination, data, owned_payload(root, previous) if previous else None)
-        transaction = root / "transactions" / identifier
-        transaction.mkdir(parents=True)
-        if previous:
-            shutil.copyfile(root / "D4Planner.exe", transaction / "D4Planner.previous.exe")
-            atomic_json(transaction / "previous.json", previous)
-        journal = {"applicationId": APP_ID, "transaction": str(transaction.relative_to(root)).replace("\\", "/"),
-                   "previous": previous, "nextPayload": payload_relative}
-        atomic_json(root / "upgrade-journal.json", journal)
+        transaction = begin_transaction(root, previous, payload_relative)
         try:
             if checkpoint: checkpoint("JOURNALED")
             shutil.copyfile(destination / "D4Planner.exe", root / "D4Planner.next.exe")
@@ -251,7 +282,7 @@ def install(package: Path, root: Path, data: Path, expected_sha: str,
             atomic_json(root / "active.json", state)
             if checkpoint: checkpoint("ACTIVATED")
             health = health_check(root) if health_check else runtime_health(root)
-            (root / "upgrade-journal.json").unlink()
+            finish_transaction(root, transaction)
         except Exception:
             recover(root)
             raise
@@ -259,7 +290,7 @@ def install(package: Path, root: Path, data: Path, expected_sha: str,
                 "dataDir":str(data), "packageSha256":expected_sha, "previousVersion":previous["version"] if previous else None, "runtimeHealth":health}
 
 
-def rollback(root: Path) -> dict:
+def rollback(root: Path, *, checkpoint=None) -> dict:
     root = root.resolve()
     with install_lock(root):
         recover(root)
@@ -269,10 +300,27 @@ def rollback(root: Path) -> dict:
         previous = state["previous"]
         manifest = verify_directory(owned_payload(root, previous))
         schema_compatible(Path(state["dataDir"]), manifest)
+        current_manifest = verify_directory(owned_payload(root, state))
+        if (manifest.get("version") != previous.get("version")
+                or current_manifest.get("version") != state.get("version")
+                or previous.get("applicationId") != APP_ID or previous.get("schemaVersion") != STATE_VERSION
+                or Path(previous["dataDir"]).resolve() != Path(state["dataDir"]).resolve()):
+            raise InstallError("ROLLBACK_STATE_OWNERSHIP_MISMATCH")
+        if delivery.sha256_file(root / "D4Planner.exe") != delivery.sha256_file(owned_payload(root, state) / "D4Planner.exe"):
+            raise InstallError("ACTIVE_LAUNCHER_INTEGRITY")
         stop_owned(root)
-        shutil.copyfile(owned_payload(root, previous) / "D4Planner.exe", root / "D4Planner.next.exe")
-        os.replace(root / "D4Planner.next.exe", root / "D4Planner.exe")
-        atomic_json(root / "active.json", previous)
+        transaction = begin_transaction(root, state, previous["payload"], operation="ROLLBACK", next_state=previous)
+        try:
+            if checkpoint: checkpoint("JOURNALED")
+            shutil.copyfile(owned_payload(root, previous) / "D4Planner.exe", root / "D4Planner.next.exe")
+            os.replace(root / "D4Planner.next.exe", root / "D4Planner.exe")
+            if checkpoint: checkpoint("LAUNCHER_REPLACED")
+            atomic_json(root / "active.json", previous)
+            if checkpoint: checkpoint("ACTIVATED")
+            finish_transaction(root, transaction)
+        except Exception:
+            recover(root)
+            raise
         return {"ok":True, "rollbackVersion":previous["version"], "dataRestored":False}
 
 
