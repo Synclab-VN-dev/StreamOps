@@ -42,3 +42,13 @@ def test_unreviewed_runtime_content_is_rejected_before_assembly(tmp_path):
     root=tmp_path/'node';root.mkdir();(root/'node.exe').write_bytes(b'unit-only-unreviewed-runtime')
     with pytest.raises(public.PublicContentError,match='UNREVIEWED_PUBLIC_INPUT_TREE'):
         public.validate_tree(root,'runtime/node')
+
+
+def test_public_sources_preserve_trusted_execution_inventory():
+    """A package must contain every byte the approved loader verifies."""
+    index_path = 'utility/d4-rulekit/snapshot-management/compatibility/compatibility-index.json'
+    inventory = json.loads((public.ROOT / index_path).read_text())
+    required = {index_path, *('utility/d4-rulekit/' + row['path'] for row in inventory['files'])}
+    assert required <= set(public.policy()['sourceAllowlist'])
+    for relative in required:
+        public.inspect_bytes(relative, (public.ROOT / relative).read_bytes())
