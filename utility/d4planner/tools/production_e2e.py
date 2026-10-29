@@ -550,7 +550,11 @@ def _invoke_hud_button(window: dict, prefix: str) -> None:
         "$buttons=$root.FindAll([System.Windows.Automation.TreeScope]::Descendants,$condition);"
         f"$matched=@($buttons | Where-Object {{$_.Current.Name.Contains('{escaped}')}});"
         "if($matched.Count-ne 1){throw ('HUD_BUTTON_NOT_UNIQUE: '+($buttons | ForEach-Object {$_.Current.Name} | ConvertTo-Json -Compress))};"
-        "$pattern=$matched[0].GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern);$pattern.Invoke()"
+        "$pattern=$null;"
+        "if($matched[0].TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern,[ref]$pattern)){$pattern.Invoke()}"
+        "elseif($matched[0].TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern,[ref]$pattern)){$pattern.Toggle()}"
+        "elseif($matched[0].TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern,[ref]$pattern)){$pattern.Expand()}"
+        "else{throw 'HUD_BUTTON_NO_SUPPORTED_ACTION'}"
     )
     result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
                             capture_output=True, text=True, timeout=20, check=False)
