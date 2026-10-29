@@ -767,9 +767,13 @@ def run_native_hud(args: argparse.Namespace) -> dict:
                 "schemaVersion":"d4planner-latency-evidence/v1", "ok":True,
                 "captureToAssessment": _percentiles([pair[0]["captureToAssessmentNs"] / 1_000_000 for pair in paired]),
                 "assessmentToSqliteCommit": _percentiles([pair[0]["assessmentToCommitNs"] / 1_000_000 for pair in paired]),
-                "commitToWsDelivery": _percentiles([pair[0]["commitToWsDeliveryNs"] / 1_000_000 for pair in paired]),
+                "commitToWsDelivery": _percentiles([
+                    (_parse_timestamp(pair[1]["wsReceivedAt"]) - _parse_timestamp(pair[0]["captureReceivedAt"])).total_seconds() * 1000
+                    - (pair[0]["captureToAssessmentNs"] + pair[0]["assessmentToCommitNs"]) / 1_000_000
+                    for pair in paired
+                ]),
                 "wsToHudModel": _percentiles([
-                    (_parse_timestamp(pair[1]["modelUpdatedAt"]) - _parse_timestamp(pair[0]["wsPublishedAt"])).total_seconds() * 1000
+                    (_parse_timestamp(pair[1]["modelUpdatedAt"]) - _parse_timestamp(pair[1]["wsReceivedAt"])).total_seconds() * 1000
                     for pair in paired
                 ]),
                 "hudModelToVisibleRender": _percentiles([
@@ -779,7 +783,8 @@ def run_native_hud(args: argparse.Namespace) -> dict:
                 "sla":"NOT_DEFINED_AS_APPROVED",
                 "workload":{"classification":"RECORDED_PRODUCER_SQLITE", "requestedSamples":sample_count},
                 "measurementLimits":["Capture starts at Backend ingest, excludes producer polling delay",
-                                     "commitToWsDelivery measures server publish completion, not client receipt"],
+                                     "WS receipt is FE socket callback; JS timestamps have millisecond resolution",
+                                     "Visible render timestamp follows a double animation frame; screenshot proves native visibility"],
             }
             if any(value < 0 for stage in latency.values() if isinstance(stage, dict)
                    for value in stage.get("samplesMilliseconds", [])):
