@@ -357,3 +357,213 @@ def test_uninjected_composition_resolves_and_forwards_rulekit_configuration(tmp_
         finally:
             await runtime.stop()
     asyncio.run(scenario())
+
+
+def _review_runtime(tmp_path):
+    targets = tmp_path / "targets"
+    targets.mkdir(exist_ok=True)
+    shutil.copy2(TARGET, targets / "a.json")
+    b = json.loads(TARGET.read_text())
+    b.update(targetId="target-b", displayName="Synthetic B")
+    (targets / "b.json").write_text(json.dumps(b))
+    bootstrap = {"ownerInstanceId": "review-owner", "childInstanceId": "review-backend",
+        "generation": 1, "dataDir": str(tmp_path / "data"), "targetFolder": str(targets),
+        "wsEndpoint": {"host": "127.0.0.1", "port": 0}, "credential": CREDENTIAL}
+    return ProductionBackendRuntime(bootstrap, rulekit=_rulekit())
+
+
+@pytest.mark.parametrize("fault", ["empty", "oversized", "unreadable"])
+def test_review_startup_and_typed_listing_recovery(tmp_path, monkeypatch, fault):
+    from jsonschema import Draft202012Validator
+    async def scenario():
+        runtime = _review_runtime(tmp_path)
+        listing = runtime.targets.list()
+        a = listing.entries[0]
+        selected = runtime.targets.activate(a.target_id, a.content_sha256, listing.revision)
+        # Fresh runtime/repository consumes durable selection; no in-memory cache.
+        runtime = ProductionBackendRuntime(runtime.bootstrap, rulekit=_rulekit())
+        bad = runtime.target_folder / "bad.json"
+        bad.write_bytes(b"" if fault == "empty" else b"x" * (runtime.targets.max_file_bytes + 1) if fault == "oversized" else b"{}")
+        original = Path.open
+        def read(path, *args, **kwargs):
+            if path == bad and fault == "unreadable":
+                raise PermissionError("PRIVATE_PATH_SECRET")
+            return original(path, *args, **kwargs)
+        monkeypatch.setattr(Path, "open", read)
+        try:
+            ready = await runtime.start()
+            assert ready["health"]["targetListing"] == "TARGET_INVALID"
+            assert ready["health"]["targetJsonCount"] == 3
+            assert runtime.targets.get_active() == selected
+            async with connect(f"ws://127.0.0.1:{runtime.server.port}", origin=ORIGIN) as ws:
+                await ws.send(json.dumps(_message("hello", "hello", 1, credential=CREDENTIAL, origin=ORIGIN, lastSeen={"hudRevision": None})))
+                assert json.loads(await ws.recv())["type"] == "hello.accepted"
+                await ws.send(json.dumps(_message("bad-list", "target.list.request", 1)))
+                error = json.loads(await ws.recv())
+                assert (error["code"], error["correlationId"], error["retryable"]) == ("TARGET_INVALID", "bad-list", False)
+                assert "PRIVATE" not in json.dumps(error)
+                Draft202012Validator(json.loads((ROOT / "utility/d4planner/contracts/release1/v1/schemas/ws.schema.json").read_text())).validate(error)
+                bad.unlink()
+                await ws.send(json.dumps(_message("good-list", "target.list.request", 1)))
+                result = json.loads(await ws.recv())
+                assert result["type"] == "target.list.result" and len(result["targets"]) == 2
+                assert runtime.targets.get_active() == selected
+        finally:
+            await runtime.stop()
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("fault", ["commit", "lock", "publish"])
+def test_review_selection_failure_does_not_switch_silently(tmp_path, monkeypatch, fault):
+    import sqlite3
+    async def scenario():
+        runtime = _review_runtime(tmp_path)
+        await runtime.start()
+        try:
+            listing = runtime.targets.list()
+            a, b = listing.entries
+            await runtime.activate_target(a.target_id, a.content_sha256, listing.revision)
+            await runtime.ingest(_evidence())
+            before = runtime.store.latest_authoritative()
+            before_selection = runtime.targets.selection_state.read_bytes()
+            original_commit = runtime.coordinator.assess_commit
+            original_publish = runtime._publish_committed
+            def fail(*args, **kwargs):
+                raise sqlite3.OperationalError("synthetic commit failure")
+            async def fail_publish(*args, **kwargs):
+                raise RuntimeError("synthetic publish failure")
+            lock = None
+            if fault == "lock":
+                runtime.store.timeout_seconds = 0.01
+                lock = sqlite3.connect(runtime.store.path)
+                lock.execute("BEGIN IMMEDIATE")
+            elif fault == "commit":
+                monkeypatch.setattr(runtime.coordinator, "assess_commit", fail)
+            else:
+                monkeypatch.setattr(runtime, "_publish_committed", fail_publish)
+            try:
+                async with connect(f"ws://127.0.0.1:{runtime.server.port}", origin=ORIGIN) as ws:
+                    await ws.send(json.dumps(_message("hello", "hello", 1, credential=CREDENTIAL,
+                        origin=ORIGIN, lastSeen={"hudRevision": None})))
+                    assert json.loads(await ws.recv())["type"] == "hello.accepted"
+                    await ws.send(json.dumps(_message("switch-fails", "target.select.request", 1,
+                        targetId=b.target_id, expectedSha256=b.content_sha256,
+                        expectedListRevision=listing.revision)))
+                    error = json.loads(await ws.recv())
+                    assert (error["type"], error["code"], error["correlationId"]) == ("error", "INTERNAL", "switch-fails")
+                    assert "synthetic" not in json.dumps(error)
+            finally:
+                if lock:
+                    lock.rollback(); lock.close()
+                monkeypatch.setattr(runtime.coordinator, "assess_commit", original_commit)
+                monkeypatch.setattr(runtime, "_publish_committed", original_publish)
+            expected = b if fault == "publish" else a
+            assert runtime.targets.get_active().target_id == expected.target_id
+            if fault != "publish":
+                assert runtime.targets.selection_state.read_bytes() == before_selection
+                assert runtime.store.latest_authoritative() == before
+            next_hud = await runtime.ingest(_evidence(2))
+            assert next_hud["context"]["target"]["targetId"] == expected.target_id
+            await runtime.stop()
+            restarted = ProductionBackendRuntime(runtime.bootstrap, rulekit=_rulekit())
+            try:
+                await restarted.start()
+                assert restarted.targets.get_active().target_id == expected.target_id
+                assert restarted.store.latest_authoritative()["context"]["target"]["targetId"] == expected.target_id
+            finally:
+                await restarted.stop()
+        finally:
+            await runtime.stop()
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("committed", [False, True])
+def test_review_interrupted_compensation_recovers_before_restart_or_ingestion(tmp_path, monkeypatch, committed):
+    async def scenario():
+        runtime = _review_runtime(tmp_path)
+        await runtime.start()
+        listing = runtime.targets.list()
+        a, b = listing.entries
+        await runtime.activate_target(a.target_id, a.content_sha256, listing.revision)
+        await runtime.ingest(_evidence())
+        original_recover = runtime._recover_selection
+        calls = 0
+        def interrupted_recover():
+            nonlocal calls
+            calls += 1
+            if calls > 1:
+                raise RuntimeError("recovery temporarily unavailable")
+            original_recover()
+        def fail_commit(*args, **kwargs):
+            raise RuntimeError("commit failed")
+        async def fail_publish(*args, **kwargs):
+            raise RuntimeError("publish failed")
+        monkeypatch.setattr(runtime, "_recover_selection", interrupted_recover)
+        if committed:
+            monkeypatch.setattr(runtime, "_publish_committed", fail_publish)
+        else:
+            monkeypatch.setattr(runtime.coordinator, "assess_commit", fail_commit)
+        try:
+            with pytest.raises(RuntimeError, match="recovery temporarily unavailable"):
+                await runtime.activate_target(b.target_id, b.content_sha256, listing.revision)
+            assert runtime._selection_journal.exists()
+            with pytest.raises(RuntimeError, match="recovery temporarily unavailable"):
+                await runtime.ingest(_evidence(2))
+            assert runtime.current.current_revision == 1
+        finally:
+            await runtime.stop()
+        restarted = ProductionBackendRuntime(runtime.bootstrap, rulekit=_rulekit())
+        try:
+            await restarted.start()
+            expected = b if committed else a
+            assert restarted.targets.get_active().target_id == expected.target_id
+            assert not restarted._selection_journal.exists()
+            hud = await restarted.ingest(_evidence(2))
+            assert hud["context"]["target"]["targetId"] == expected.target_id
+            assert restarted.store.current_binding()["targetId"] == expected.target_id
+        finally:
+            await restarted.stop()
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("fault", ["empty", "unreadable"])
+def test_review_listing_error_on_running_socket_is_typed_and_sanitized(tmp_path, monkeypatch, caplog, fault):
+    async def scenario():
+        runtime = _review_runtime(tmp_path)
+        await runtime.start()
+        bad = runtime.target_folder / "private-name.json"
+        bad.write_bytes(b"" if fault == "empty" else b"{}")
+        original = Path.open
+        def read(path, *args, **kwargs):
+            if path == bad and fault == "unreadable":
+                raise PermissionError("PRIVATE_CREDENTIAL_CONTENT")
+            return original(path, *args, **kwargs)
+        monkeypatch.setattr(Path, "open", read)
+        try:
+            async with connect(f"ws://127.0.0.1:{runtime.server.port}", origin=ORIGIN) as ws:
+                await ws.send(json.dumps(_message("hello", "hello", 1, credential=CREDENTIAL,
+                    origin=ORIGIN, lastSeen={"hudRevision": None})))
+                await ws.recv()
+                await ws.send(json.dumps(_message("list", "target.list.request", 1)))
+                error = json.loads(await ws.recv())
+                assert (error["code"], error["correlationId"]) == ("TARGET_INVALID", "list")
+                assert "private-name" not in json.dumps(error) + caplog.text
+                assert "PRIVATE_CREDENTIAL_CONTENT" not in json.dumps(error) + caplog.text
+        finally:
+            await runtime.stop()
+        assert runtime.server is None
+        assert runtime.rulekit.wrapper._child is None
+    asyncio.run(scenario())
+
+
+def test_review_inaccessible_repository_still_aborts_startup_and_cleans_up(tmp_path, monkeypatch):
+    async def scenario():
+        runtime = _review_runtime(tmp_path)
+        def inaccessible():
+            raise PermissionError("synthetic root unavailable")
+        monkeypatch.setattr(runtime.targets, "_candidate_paths", inaccessible)
+        with pytest.raises(PermissionError):
+            await runtime.start()
+        assert runtime.server is None
+        assert runtime.rulekit.wrapper._child is None
+    asyncio.run(scenario())
