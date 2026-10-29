@@ -461,7 +461,8 @@ it.each(['TARGET_CHANGED', 'TARGET_INVALID', 'success', 'list'])(
     }
     if (successful) expect((source as any).pendingTarget.has(selectionId)).toBe(true);
     reconnected.receive(response);
-    expect(source.snapshot().error).toBe(successful ? null : outcome);
+    // Correlated command errors are settled on their Promise, never transport health.
+    expect(source.snapshot().error).toBeNull();
     expect((source as any).pendingTarget.size).toBe(0);
     reconnected.receive({...listReply, correlationId: listId, listRevision: 2});
     expect(source.snapshot().listRevision).toBe(2);
@@ -469,7 +470,8 @@ it.each(['TARGET_CHANGED', 'TARGET_INVALID', 'success', 'list'])(
     expect(source.snapshot().hud?.context.target.targetId).toBe('target-a');
     reconnected.receive({...response, type: 'error', code: 'INTERNAL'});
     reconnected.receive({...listReply, correlationId: listId, listRevision: 99});
-    expect(source.snapshot().error).toBe(successful ? null : outcome);
+    // Correlated command errors are settled on their Promise, never transport health.
+    expect(source.snapshot().error).toBeNull();
     expect(source.snapshot().listRevision).toBe(2);
     const discovered = {protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
       correlationId: discovery.messageId, backendGeneration: 3, subscriptionId: 'discovered'};
@@ -573,4 +575,41 @@ it('settles a correlated terminal Target error immediately and cancels its timeo
   vi.advanceTimersByTime(2001);
   expect(settled).toHaveBeenCalledTimes(1);
   source.disconnect();
+});
+
+it('keeps list failures and timeouts separate from transport and bounds superseded list requests', () => {
+  vi.useFakeTimers();
+  const {source, socket} = setup(); accept(socket); targets(socket);
+  const request = pendingSnapshot(socket);
+  socket.receive({protocolVersion:'d4planner-ws/v1',type:'hud.snapshot',authoritative:true,
+    correlationId:request.messageId,backendGeneration:3,subscriptionId:'sub-a',hud:hud(12)});
+  source.requestTargets();
+  const oldId = socket.sent.at(-1)!.messageId;
+  source.requestTargets();
+  const id = socket.sent.at(-1)!.messageId;
+  const error = {protocolVersion:'d4planner-ws/v1',type:'error',backendGeneration:3,
+    correlationId:id,code:'TARGET_INVALID',message:'Listing unavailable'};
+  socket.receive({...error,correlationId:oldId});
+  socket.receive({...error,backendGeneration:2});
+  expect(source.snapshot().targetListStatus).toBe('LOADING');
+  socket.receive(error);
+  expect(source.snapshot()).toMatchObject({error:null,freshness:'CURRENT',targetListStatus:'ERROR',
+    targetListError:'TARGET_INVALID: Listing unavailable',targets:[],listRevision:null});
+  expect((source as any).pendingTargetList).toBeNull();
+  expect(vi.getTimerCount()).toBe(0);
+  source.requestTargets();
+  const retry = socket.sent.at(-1)!.messageId;
+  socket.receive({...error,code:'INTERNAL'}); // Late prior operation cannot end the retry.
+  expect(source.snapshot().targetListStatus).toBe('LOADING');
+  socket.receive({protocolVersion:'d4planner-ws/v1',type:'target.list.result',backendGeneration:3,
+    correlationId:retry,listRevision:1,targets:[]});
+  expect(source.snapshot()).toMatchObject({targetListStatus:'READY',targetListError:null,targets:[],error:null});
+  source.requestTargets();
+  vi.advanceTimersByTime(2001);
+  expect(source.snapshot()).toMatchObject({error:null,freshness:'CURRENT',targetListStatus:'ERROR',targetListError:'Target listing timed out.'});
+  source.requestTargets();
+  source.disconnect();
+  expect((source as any).pendingTargetList).toBeNull();
+  expect(vi.getTimerCount()).toBe(0);
+  expect(source.snapshot().error).toBe('SOCKET_CLOSED');
 });
