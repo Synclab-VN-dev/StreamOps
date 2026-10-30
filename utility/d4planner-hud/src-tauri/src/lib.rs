@@ -1,3 +1,10 @@
+static RUNTIME_LOG: std::sync::OnceLock<Option<d4planner_runtime_logging::Logger>> = std::sync::OnceLock::new();
+fn runtime_event(level:&str, tag:&str, event:&str) {if let Some(Some(log))=RUNTIME_LOG.get(){log.emit(level,tag,event,serde_json::json!({}));}}
+#[tauri::command]
+fn runtime_log_event(level:String,tag:String,event:String,fields:serde_json::Value)->Result<(),String>{
+ if !["websocket","hud","webview"].contains(&tag.as_str()) || d4planner_runtime_logging::clean(&level,&tag,&event,fields.clone()).is_none(){return Err("INVALID_LOG_EVENT".into());}
+ if let Some(Some(log))=RUNTIME_LOG.get(){log.emit(&level,&tag,&event,fields);}Ok(())
+}
 mod overlay_core;
 mod backend_process;
 
@@ -74,7 +81,7 @@ fn backend_launch_from_environment() -> Result<LaunchSpecification, String> {
         "D4PLANNER_EQUIPMENT_REPOSITORY_DB", "D4PLANNER_CHARACTER_ID",
         "D4PLANNER_CHARACTER_DISPLAY_NAME",
         "D4PLANNER_REPOSITORY_ROOT",
-        "D4PLANNER_LATENCY_TRACE",
+        "D4PLANNER_LATENCY_TRACE", "D4_LOG_DIR", "D4_LOG_RUN_ID", "D4_LOG_POLICY",
     ] {
         if let Ok(value) = env::var(name) { environment.insert(name.into(), value); }
     }
@@ -188,6 +195,7 @@ fn get_hud_ws_bootstrap(state: State<'_, BackendState>) -> Result<HudWsBootstrap
 
 #[tauri::command]
 fn start_backend(state: State<'_, BackendState>) -> Result<BackendStatus, String> {
+    runtime_event("INFO","lifecycle","START");
     let wrapper = {
         let mut slot = state.0.lock().map_err(|_| "Backend state lock poisoned")?;
         if slot.is_none() { *slot = Some(Arc::new(backend_from_environment()?)); }
@@ -209,6 +217,7 @@ fn stop_backend(state: State<'_, BackendState>) -> Result<BackendStatus, String>
 
 #[tauri::command]
 fn restart_backend(state: State<'_, BackendState>) -> Result<BackendStatus, String> {
+    runtime_event("INFO","lifecycle","RESTART");
     let wrapper = state.0.lock().map_err(|_| "Backend state lock poisoned")?.clone()
         .ok_or("managed Backend is not configured")?;
     let ready = wrapper.restart_with(rotate_backend_bootstrap()?)?;
@@ -353,6 +362,12 @@ fn report_hud_pipeline(
 #[tauri::command]
 fn report_webview_diagnostic(phase: String, detail: Option<String>) -> Result<(), String> {
     use std::io::Write;
+    // The legacy acceptance collector accepts only a finite phase vocabulary.
+    // Never persist arbitrary frontend exception strings, even from direct IPC.
+    let _ = detail;
+    if !matches!(phase.as_str(), "BOOTSTRAP_STARTED" | "APP_MOUNT_REQUESTED" | "WINDOW_ERROR" | "UNHANDLED_REJECTION" | "APP_IMPORT_FAILED") {
+        return Err("invalid diagnostic phase".into());
+    }
     let path = env::var("D4_WEBVIEW_DIAGNOSTIC_REPORT")
         .map_err(|_| "WebView diagnostics are not enabled".to_string())?;
     let record = serde_json::json!({
@@ -361,10 +376,13 @@ fn report_webview_diagnostic(phase: String, detail: Option<String>) -> Result<()
             .map_err(|error| error.to_string())?
             .as_millis(),
         "phase": phase,
-        "detail": detail,
+        "detail": serde_json::Value::Null,
     });
     let mut file = fs::OpenOptions::new().create(true).append(true).open(path)
         .map_err(|error| format!("cannot open WebView diagnostic report: {error}"))?;
+    if file.metadata().map_err(|_| "diagnostic metadata unavailable")?.len() + record.to_string().len() as u64 + 1 > 65_536 {
+        return Err("diagnostic quota reached".into());
+    }
     writeln!(file, "{record}")
         .map_err(|error| format!("cannot write WebView diagnostic report: {error}"))
 }
@@ -452,6 +470,9 @@ mod restart_port_tests {
 }
 
 pub fn run() {
+    RUNTIME_LOG.get_or_init(||d4planner_runtime_logging::Logger::start("FE",0));
+    runtime_event("INFO","native","START");
+    std::panic::set_hook(Box::new(|_|{runtime_event("ERROR","native","ERROR");if let Some(Some(l))=RUNTIME_LOG.get(){l.flush();}}));
     if env::args().any(|arg| arg == "--backend-self-test") {
         let result = (|| -> Result<serde_json::Value, String> {
             let specification = backend_launch_from_environment()?;
@@ -476,6 +497,8 @@ pub fn run() {
         };
         let wrote = env::var("D4_BACKEND_SMOKE_REPORT").ok()
             .map(|path| fs::write(path, report.to_string()).is_ok()).unwrap_or(false);
+        runtime_event(if result.is_ok(){"INFO"}else{"ERROR"},"native",if result.is_ok(){"STOP"}else{"ERROR"});
+        if let Some(Some(l))=RUNTIME_LOG.get(){l.flush();}
         std::process::exit(if result.is_ok() && wrote { 0 } else { 1 });
     }
     let self_test = env::args().any(|arg| arg == "--self-test");
@@ -493,6 +516,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            runtime_log_event,
             get_overlay_status,
             set_overlay_mode,
             drag_overlay,
@@ -574,7 +598,8 @@ pub fn run() {
             handle.exit(if result.is_ok() && write_ok { 0 } else { 1 });
         }
         if matches!(&event, tauri::RunEvent::ExitRequested { .. }) {
-            eprintln!("Owned HUD exit requested");
+            runtime_event("INFO","native","STOP");
+            if let Some(Some(l))=RUNTIME_LOG.get(){l.flush();}
             let state = handle.state::<BackendState>();
             // Clone the owned wrapper out of the slot before the guard is
             // dropped. This avoids extending the temporary guard to the end

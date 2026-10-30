@@ -1,12 +1,12 @@
 [package]
-name = "d4planner-overlay-poc"
+name = "d4planner-hud"
 version = "0.1.0"
-description = "Diablo IV transparent overlay feasibility POC"
+description = "D4Planner native Equipment HUD"
 edition = "2021"
 rust-version = "1.90"
 
 [lib]
-name = "d4planner_overlay_poc_lib"
+name = "d4planner_hud_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -17,6 +17,7 @@ default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 
 [dependencies]
+d4planner-runtime-logging = { path = "../runtime-logging" }
 tauri = { version = "2", features = [] }
 tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }

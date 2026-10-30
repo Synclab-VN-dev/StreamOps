@@ -1,4 +1,5 @@
 'use strict';
+const runtimeLog = require('../../d4-rulekit/runtime-logging/src/logger');
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -27,7 +28,7 @@ async function createComposition(env) {
   const profilePath = path.resolve(required(env, 'D4_RULEKIT_PROFILE_JSON'));
   const snapshotRoot = path.resolve(required(env, 'D4_RULEKIT_SNAPSHOT_ROOT'));
   const profile = new MaxrollPatchProfile(JSON.parse(fs.readFileSync(profilePath, 'utf8')));
-  const browser = new BrowserInfrastructure({
+  const browser = new BrowserInfrastructure({logger:runtimeLog.browserEvent,
     executablePath: env.D4_RULEKIT_CHROMIUM_EXECUTABLE || undefined,
     headless: true,
     maxContexts: positive(env, 'D4_RULEKIT_MAX_CONTEXTS', 2),

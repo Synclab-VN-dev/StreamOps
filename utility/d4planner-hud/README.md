@@ -21,8 +21,9 @@ npm run build
 cd src-tauri && cargo test && cargo check
 ```
 
-The existing executable/package name and local PowerShell tooling remain stable
-for S7 packaging. `scripts/local/d4-overlay-poc.ps1` still provides Doctor,
+Source/native binary: `d4planner-hud.exe`. S7 vẫn đóng gói thành
+`app/d4planner-fe.exe`, Root `D4Planner.exe`; application/DataRoot và Tauri
+identifier giữ nguyên. Workflow artifact/portable alias cũ giữ tương thích consumer. `scripts/local/d4-overlay-poc.ps1` still provides Doctor,
 Run, Test, Build, Smoke, SmokeRuntime, SmokeLaunch and Stop operations.
 
 ## In-game test — Dev F and owner
@@ -85,3 +86,15 @@ The HUD starts interactive, is draggable by its header, and uses
 exit shortcut. Physical Windows/game, mixed-DPI, mouse passthrough and
 `window_capture` acceptance are manual S7 gates; Linux component tests are not
 reported as proof of those behaviors.
+
+
+## Ownership sau refactor #160
+
+- `src/`: React HUD; `src-tauri/`: Tauri native FE quản lý Backend.
+- `native-launcher/`: Root bootstrap/session/quota/retention/export.
+- `runtime-logging/`: Rust logger cho Root/Tauri, không thay BE/Rule Kit ghi log.
+- `lifecycle-tests/`: production lifecycle tests.
+
+BE giữ Python logger be.log; Rule Kit giữ Node logger rulekit.log.
+Không đổi lifecycle, JSONL, quota, privacy hoặc UI.
+`vn.synclab.d4planner.overlaypoc` là persistent identity lịch sử, cố ý giữ nguyên.

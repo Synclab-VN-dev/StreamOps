@@ -65,6 +65,7 @@
     "utility/d4-rulekit/providers/maxroll/src/universal-build-mapper.js",
     "utility/d4-rulekit/providers/maxroll/src/universal-component-factory.js",
     "utility/d4-rulekit/providers/maxroll/src/value.js",
+    "utility/d4-rulekit/runtime-logging/src/logger.js",
     "utility/d4-rulekit/snapshot-management/compatibility/build-index.js",
     "utility/d4-rulekit/snapshot-management/compatibility/compatibility-index.json",
     "utility/d4-rulekit/snapshot-management/compatibility/contracts.js",

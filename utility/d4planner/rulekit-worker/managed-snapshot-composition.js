@@ -1,4 +1,5 @@
 'use strict';
+const runtimeLog = require('../../d4-rulekit/runtime-logging/src/logger');
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const {D4RuleKitApplication}=require('../../d4-rulekit/application/src');
@@ -14,7 +15,7 @@ async function createManagedComposition(env){
  let browser;
  try {
   await manager.start();
-  browser=new BrowserInfrastructure({executablePath:env.D4_RULEKIT_CHROMIUM_EXECUTABLE||undefined,headless:true,maxContexts:Number(env.D4_RULEKIT_MAX_CONTEXTS)||2,maxQueue:Number(env.D4_RULEKIT_BROWSER_MAX_QUEUE)||16,contextOptions:{serviceWorkers:'block'}});
+  browser=new BrowserInfrastructure({logger:runtimeLog.browserEvent,executablePath:env.D4_RULEKIT_CHROMIUM_EXECUTABLE||undefined,headless:true,maxContexts:Number(env.D4_RULEKIT_MAX_CONTEXTS)||2,maxQueue:Number(env.D4_RULEKIT_BROWSER_MAX_QUEUE)||16,contextOptions:{serviceWorkers:'block'}});
   await browser.start();
   const active=await manager.getActive();let provider;
   if(active.active){

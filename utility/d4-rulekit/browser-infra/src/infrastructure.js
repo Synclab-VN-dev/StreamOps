@@ -108,6 +108,7 @@ class BrowserInfrastructure {
   }
 
   async acquire(options = {}) {
+    this.#log('request');
     const normalized = validateLeaseOptions(options, this.#config);
     this.#metrics.acquireRequested += 1;
     if (this.#state !== 'running' || !this.#browser?.isConnected()) {
@@ -156,6 +157,7 @@ class BrowserInfrastructure {
       try {
         await this.#closeContext(record.context);
       } catch (error) {
+      this.#log('error');
         this.#metrics.cleanupFailureCount += 1;
         this.#scheduleRecovery('context release cleanup failed');
         throw error;
@@ -187,6 +189,7 @@ class BrowserInfrastructure {
   }
 
   async #launch() {
+    this.#log('starting');
     const started = Date.now();
     let browser = null;
     try {
@@ -207,12 +210,14 @@ class BrowserInfrastructure {
       this.#metrics.lastLaunchDurationMs = Date.now() - started;
       this.#log('started');
     } catch (error) {
+      this.#log('error');
       if (browser) {
         this.#expectedClose.add(browser);
         try {
           await this.#closeBrowser(browser);
         } catch (cleanupError) {
           this.#state = 'degraded';
+      this.#log('quarantine');
           this.#browser = browser;
           this.#metrics.cleanupFailureCount += 1;
           this.#metrics.launchFailures += 1;
@@ -229,6 +234,7 @@ class BrowserInfrastructure {
   }
 
   async #shutdown(code, message) {
+    this.#log('stopping');
     const error = infrastructureError(code, message);
     const browser = this.#browser;
     this.#generation += 1;
@@ -252,6 +258,7 @@ class BrowserInfrastructure {
         await this.#closeBrowser(browser);
       } catch (cleanupError) {
         this.#state = 'degraded';
+      this.#log('quarantine');
         this.#metrics.cleanupFailureCount += 1;
         this.#log('cleanup_failed', { code: cleanupError.code });
         throw cleanupError;
@@ -270,6 +277,7 @@ class BrowserInfrastructure {
     this.#browser = null;
     this.#pid = null;
     this.#state = 'degraded';
+      this.#log('quarantine');
     this.#metrics.crashCount += 1;
     const error = infrastructureError(ERROR_CODES.BROWSER_DISCONNECTED,
       'browser disconnected; explicit restart required');
@@ -374,6 +382,7 @@ class BrowserInfrastructure {
       this.#log('acquired', { leaseId: id });
       this.#settleCreation(creation, null, lease);
     } catch (error) {
+      this.#log('error');
       let typed = error?.code ? error : infrastructureError(
         ERROR_CODES.BROWSER_DISCONNECTED, 'failed to create browser context', error);
       if (context && !leaseCreated) {
@@ -525,6 +534,7 @@ class BrowserInfrastructure {
     try {
       return await Promise.race([Promise.resolve().then(operation), timeout]);
     } catch (error) {
+      this.#log('error');
       if (error?.code === ERROR_CODES.CLEANUP_FAILED) throw error;
       throw infrastructureError(ERROR_CODES.CLEANUP_FAILED, message, error);
     } finally {
@@ -536,6 +546,7 @@ class BrowserInfrastructure {
     if (this.#recoveryScheduled || this.#state !== 'running') return;
     this.#recoveryScheduled = true;
     this.#state = 'degraded';
+      this.#log('quarantine');
     this.#metrics.recoveryCount += 1;
     const recovery = this.#serialize(async () => {
       if (this.#state !== 'degraded') return;
@@ -545,7 +556,9 @@ class BrowserInfrastructure {
         this.#metrics.restartCount += 1;
         await this.#launch();
       } catch (error) {
+      this.#log('error');
         this.#state = 'degraded';
+      this.#log('quarantine');
         this.#metrics.recoveryFailureCount += 1;
         this.#log('recovery_failed', { code: error?.code ?? ERROR_CODES.CLEANUP_FAILED });
       }

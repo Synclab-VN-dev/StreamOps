@@ -9,6 +9,7 @@ name = "D4Planner"
 path = "src/main.rs"
 
 [dependencies]
+d4planner-runtime-logging = { path = "../runtime-logging" }
 serde_json = "1"
 sha2 = "0.10"
 rand = "0.9"

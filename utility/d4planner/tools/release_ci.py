@@ -249,7 +249,7 @@ def build(inputs, output, head, release_version):
     require('v3.09' in subprocess.check_output([str(inputs/'nsis/makensis.exe'),'/VERSION'],text=True),'NSIS_VERSION')
     require(subprocess.check_output(['rustc','--version'],text=True).split()[1]=='1.90.0','RUST_VERSION')
     output.mkdir(parents=True,exist_ok=False)
-    frontend=ROOT/'utility/d4planner-overlay-poc'
+    frontend=ROOT/'utility/d4planner-hud'
     npm='npm.cmd'
     for module in ('browser-infra','providers/maxroll','snapshot-management'):
         run([npm,'ci','--omit=dev','--ignore-scripts'],cwd=ROOT/'utility/d4-rulekit'/module)
@@ -261,7 +261,7 @@ def build(inputs, output, head, release_version):
     # Apply the same static CRT policy already used by the root launcher.
     run(['cargo','build','--release','--locked','--manifest-path',frontend/'src-tauri/Cargo.toml'],
         env={**os.environ, 'RUSTFLAGS': '-C target-feature=+crt-static'})
-    launcher=ROOT/'utility/d4planner/release1/native-launcher'
+    launcher=ROOT/'utility/d4planner-hud/native-launcher'
     run(['cargo','build','--release','--locked','--manifest-path',launcher/'Cargo.toml'], cwd=launcher)
     run(['cargo','test','--release','--locked','--manifest-path',launcher/'Cargo.toml'], cwd=launcher)
     # Backend wheel from the current source, dependencies are pinned above.
@@ -278,7 +278,7 @@ def build(inputs, output, head, release_version):
     tools=ROOT/'utility/d4planner/tools'
     stage=output/'stage'
     run([sys.executable,tools/'build_release1_stage.py','--launcher-exe',launcher/'target/release/D4Planner.exe',
-         '--frontend-exe',frontend/'src-tauri/target/release/d4planner-overlay-poc.exe',
+         '--frontend-exe',frontend/'src-tauri/target/release/d4planner-hud.exe',
          '--python-root',inputs/'python','--python-site-packages',site,'--node-root',inputs/'node',
          '--chromium-root',inputs/'chromium','--output',stage])
     package=output/f'D4Planner-{release_version}.zip'

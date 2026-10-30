@@ -68,8 +68,8 @@ python -m pytest -q utility/d4planner/tests/test_realtime_transport.py \
   utility/d4planner/tests/contracts/test_release1_contract.py
 python -m compileall -q utility/d4planner
 python -m pip check
-npm test                         # from utility/d4planner-overlay-poc
-npm run build                    # from utility/d4planner-overlay-poc
+npm test                         # from utility/d4planner-hud
+npm run build                    # from utility/d4planner-hud
 git diff --check
 ```
 

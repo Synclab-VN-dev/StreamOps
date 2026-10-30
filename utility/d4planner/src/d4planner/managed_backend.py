@@ -125,6 +125,9 @@ def load_bootstrap(path: Path) -> dict[str, Any]:
 
 
 def _emit(event: dict[str, Any]) -> None:
+    from .runtime_logging import emit
+    name = event.get("event")
+    emit("ERROR" if name in {"ERROR","STARTUP_FAILED"} else "INFO", "lifecycle", name if name in {"READY","EXIT","ERROR"} else "ERROR" if name=="STARTUP_FAILED" else "RESULT")
     print(json.dumps(event, separators=(",", ":")), flush=True)
 
 
@@ -219,6 +222,8 @@ def run_managed(bootstrap: dict[str, Any]) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from .runtime_logging import configure, emit
+    configure(); emit("INFO","lifecycle","START")
     parser = argparse.ArgumentParser(prog="d4planner-managed-backend")
     parser.parse_args(argv)
     descriptor = os.environ.get(BOOTSTRAP_ENV)
@@ -227,10 +232,15 @@ def main(argv: list[str] | None = None) -> int:
         return 64
     try:
         bootstrap = load_bootstrap(Path(descriptor))
+        configure(bootstrap["generation"])
         return run_managed(bootstrap)
     except BootstrapError as exc:
+        emit("ERROR","lifecycle","ERROR")
         print(f"managed bootstrap rejected: {exc}", file=sys.stderr)
         return 65
+    except Exception:
+        emit("ERROR","lifecycle","ERROR",errorCode="STARTUP_FAILED")
+        raise
 
 
 if __name__ == "__main__":
