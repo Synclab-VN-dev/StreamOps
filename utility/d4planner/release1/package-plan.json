@@ -2,7 +2,7 @@
   "schemaVersion": "d4planner-package-plan/v1",
   "release": "R1-EQUIPMENT-20261025",
   "applicationId": "vn.synclab.d4planner",
-  "version": "1.1.0",
+  "version": "1.2.8",
   "hudSchemaCompatibility": {
     "minimum": 2,
     "maximum": 2

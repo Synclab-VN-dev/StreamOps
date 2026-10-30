@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 import zipfile
+import zlib
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import public_package as public
 
@@ -168,7 +169,7 @@ def build_package(plan_path: Path, source: Path, output: Path, *, release_versio
     encoded = json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as package:
         info = zipfile.ZipInfo("release-manifest.json", (1980, 1, 1, 0, 0, 0)); info.external_attr = 0o644 << 16
-        package.writestr(info, encoded)
+        package.writestr(info, encoded, compress_type=zipfile.ZIP_DEFLATED, compresslevel=6)
         for entry in sorted(files, key=lambda item: item["path"]):
             info = zipfile.ZipInfo(entry["path"], (1980, 1, 1, 0, 0, 0)); info.external_attr = 0o644 << 16
             source_path = (
@@ -177,7 +178,7 @@ def build_package(plan_path: Path, source: Path, output: Path, *, release_versio
             )
             data = source_path.read_bytes()
             public.inspect_bytes(entry["path"], data)
-            package.writestr(info, data)
+            package.writestr(info, data, compress_type=zipfile.ZIP_DEFLATED, compresslevel=6)
     verify_package(output)
     return {"manifest": manifest, "artifactSha256": sha256_file(output)}
 
@@ -207,7 +208,7 @@ def verify_package(package_path: Path, *, public_only: bool = False) -> dict:
                 if hashlib.sha256(data).hexdigest() != entry.get("sha256") or len(data) != entry.get("bytes"):
                     raise DeliveryError(f"ARTIFACT_HASH_MISMATCH:{relative}")
             return manifest
-    except (OSError, zipfile.BadZipFile, KeyError, json.JSONDecodeError) as exc:
+    except (OSError, zipfile.BadZipFile, zlib.error, KeyError, json.JSONDecodeError) as exc:
         raise DeliveryError(f"INVALID_PACKAGE:{type(exc).__name__}") from exc
 
 

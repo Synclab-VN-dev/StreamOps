@@ -1,117 +1,70 @@
 # Release CI D4Planner Application
 
-Chỉ một workflow `.github/workflows/d4planner-release.yml`, tên **D4Planner Release**,
-trigger `workflow_dispatch`, inputs `version` X.Y.Z và `build_only` mặc định true.
-Checkout đúng `github.sha`; actions và runtime được pin. Workflow chưa được chạy
-trong đợt này. File trên feature branch chưa đồng nghĩa dispatch được: cần có
-workflow trên default branch. Không tự merge hoặc kích hoạt Actions.
+Một workflow `D4Planner Release`: `.github/workflows/d4planner-release.yml`.
+UAT dùng push tag trên exact feature SHA, không cần merge master. Dispatch vẫn
+có `version` X.Y.Z, `build_only=true` mặc định; dispatch chỉ khả dụng khi workflow
+có trên default branch. CI run không phải Product Version.
 
-## Application và snapshot là hai kênh riêng
+## Một nguồn Product Version
 
-Setup chứa HUD, Backend, Rule Kit, Python, Node và Chromium; **không chứa Maxroll
-Snapshot hoặc profile private**, kể cả dạng encrypted. Snapshot store nằm ở
-DataRoot/rulekit, ngoài application root, chỉ Rule Kit quản lý. Không có snapshot:
-FE/BE/Equipment hoạt động, calculation UNAVAILABLE. Production trust activation
-BLOCKED tới khi Owner chỉ định public key/key ID chính thức. Test key không được
-production tin cậy. Quyền phân phối snapshot công khai chưa được cấp.
+`package-plan.json.version` là nguồn chuẩn Application Product Version. Release CI
+reject input `version` khác plan trước build. Manifest, Setup filename,
+`VIProductVersion`/DisplayVersion và metadata đều dùng giá trị này. Version các
+crate/npm/Python component là version nội bộ, không phải Application version.
 
-## Build input công khai đã review
+`uat-encryption-policy.json.uatRevision` là số candidate UAT dương. Tag là
+`d4planner-uat/vX.Y.Z-rN`; ví dụ Product1.2.8, UAT1.2.8-r1. Một rerun cùng SHA không
+tăng Product Version. Nếu candidate có nội dung khác sau lỗi harness/build, dùng
+revision UAT mới, tag/asset cũ bất biến. Product Version tăng khi thay đổi sản phẩm
+được bàn giao (1.2.8 sửa compression và console launch). CI run ID chỉ lưu metadata.
+Windows upgrade/rollback tiếp tục so sánh version X.Y.Z và payload hash; same-version
+reinstall giữ behavior đã kiểm thử, không bỏ downgrade/ownership/schema guards.
 
-Owner cấu hình các secrets sau khi review; F không thay repository settings:
+## Build và publication
 
-- `D4PLANNER_PUBLIC_RUNTIME_INPUTS_URL`: HTTPS URL tới archive chỉ có Python, Node,
-  Chromium và NSIS. Không đưa snapshot/profile vào archive rồi lọc bỏ sau download.
-- `D4PLANNER_PUBLIC_RUNTIME_INPUTS_SHA256`: phải khớp digest đã pin trong
-  `release-runtime-lock.json`; archive private cũ bị từ chối trước download.
-- `D4PLANNER_DISTRIBUTION_APPROVAL_JSON`: approval theo source/version chính xác,
-  `artifactClass: D4PLANNER_APPLICATION_NO_SNAPSHOT`, `approvedBy: TrdHuy`,
-  `approvalRef`, `publicDistributionApproved: true`, `licensesVerified: true`.
-  Đây là quyền phân phối application/dependencies; không phải quyền snapshot.
+Checkout exact SHA với LF. Runtime/tree hashes và Cargo/npm lockfiles được pin:
+Python3.12.10, Node22.22.1, Rust1.90.0, NSIS3.09, Chrome for Testing156.0.8078.4,
+Playwright Core1.64.1. Không tải dependency lúc install/launch.
 
-`inputs-manifest.json` có schema `d4planner-public-build-inputs/v1`,
-`snapshotIncluded: false`, runtime versions và inventory SHA của mọi file.
-Archive/manifest/runtime trees phải khớp pin trong source; chỉ chấp nhận roots
-python/node/chromium/nsis. Source Rule Kit dùng allowlist; npm dependencies dùng
-lockfiles và reviewed tree digest. Content inspection chặn private manifest,
-profile, known snapshot payload đổi tên, encrypted/unreviewed archive và DB.
-Không download/mount snapshot private trong public build, cache, log hay artifact.
+Build source FE (generate icon, static CRT), root launcher, Backend wheel, Rule Kit;
+assemble allowlisted stage → ZIP DEFLATE level6 cho **từng entry** → NSIS Setup.
+NSIS giữ `SetCompress off` quanh payload ZIP để tránh nén lại dữ liệu đã nén.
+Bootstrap và maintenance Python giữ độc lập với payload để fresh install/uninstall
+và recovery không cần Python hệ thống. Không prune Chrome locale/codec/module.
 
-Versions: Python 3.12.10, Node 22.22.1, Rust 1.90.0, NSIS 3.09,
-Chromium 156.0.8078.4, Playwright Core 1.64.1. Cargo/npm dùng lockfiles;
-BE dùng requirements-release.txt. Không tải latest hoặc dependency lúc launch.
+Health probe dùng payload extract từ verified ZIP, có release-manifest đầy đủ:
+FE → Backend → Node/Chrome → authenticated WS → restart/stop/owned cleanup.
+No-snapshot calculation phải UNAVAILABLE; health không thay native UI acceptance.
 
-## Build-only
+Public UAT chỉ có `.exe.age`, checksum, safe metadata và UAT instructions. Toàn
+Setup mã hóa bằng age1.3.2 được pin trước upload. Plaintext runtime/Setup staging
+ACL owner-only và cleanup always; không cache/upload plaintext, snapshot hay keys.
+Policy UAT scoped Owner attestation độc lập với stable `licensesVerified`; không
+khẳng định đã độc lập kiểm tra thỏa thuận phân phối. Publish tải đúng artifact ID,
+verify source/tag/version/revision/hash, không rebuild/overwrite. F tải lại artifact,
+giải mã và native-test trước handoff; private identity không nằm trên Actions.
 
-`release_ci.py` verify public inputs → build FE/root → BE wheel/site-packages →
-Rule Kit dependencies → assemble stage → package → NSIS Setup. Scripts hiện có
-được tái sử dụng. Verify manifest/SHA/public content và chạy real runtime probe
-FE → Backend → Node/Chromium → WS, xác nhận calculation UNAVAILABLE khi không
-có snapshot, owned cleanup. Probe không thay native visual acceptance.
+Stable publish vẫn cần protected `d4planner-release` environment, Owner approval
+và exact-artifact gates PKG/HUD/SNAP. UAT không phê duyệt stable/merge/Owner MAN.
+T12/VISUAL_GOLDEN chỉ R1 ghi OWNER_WAIVED theo `ISSUE158_R1_VISUAL_WAIVER_20261030`,
+không ghi PASS và không áp dụng cho project/release khác. T20–T23 chờ Owner.
 
-Artifact chỉ gồm Setup EXE + release-metadata.json + SHA256SUMS, không upload
-inputs/cache/raw DB/private snapshots/log/credentials. `build_only=true` không
-tạo GitHub Release. Build/upload vẫn cần application license/distribution approval.
+## Snapshot/trust hiện tại
 
-## Publish opt-in
+Application Setup không có Maxroll Snapshot/profile private, kể cả encrypted.
+Snapshot Release độc lập:
+https://github.com/Synclab-VN-dev/StreamOps/releases/tag/d4planner-snapshots/2026.10.30-r2
 
-`build_only=false` giữ đúng artifact đã build/test, không rebuild; chờ protected
-`d4planner-release` environment có reviewer TrdHuy, prevent self-review. Thiếu
-quyền/gate/environment thì dừng an toàn; không tự tạo hoặc cấu hình environment.
+Production verification public key đã pin trong Rule Kit. Signed Registry revision2
+bind exact execution identity; test keys không được production trust. Snapshot bundle
+mã hóa được import qua root launcher's Snapshot Management forwarding → Rule Kit,
+không qua FE/BE resolver. D12/Dfjs chỉ được chứng minh trong approved Rogue fixtures.
+Registry expiry/revocation/anti-rollback vẫn bắt buộc. Không có snapshot: Equipment/
+HUD hoạt động, calculation UNAVAILABLE. Upgrade/rollback hỏi Rule Kit preflight trước
+mutation và giữ external store, DB, Targets, Settings; không restore DB cũ.
 
-`D4PLANNER_RELEASE_GATES_JSON` bind exact sourceHead/version/Setup SHA, Owner và
-approvalRef. PKG-01…08, HUD-03, VISUAL_GOLDEN, SNAP-01…07 phải PASS. Hiện production
-trust, real multiple-snapshot evidence, MAN/Golden chưa đầy đủ nên **không
-release-ready**. Network-off negative vẫn DEFERRED_OWNER.
+## Evidence baseline
 
-Download đúng immutable artifact ID, verify checksum/metadata/gates/approval,
-từ chối tag/release tồn tại. Không publish trong đợt này. Không đưa snapshot vào
-application attestation hoặc dùng approval application để vượt quyền snapshot.
-
-## R1 UAT prerelease — Owner decision 2026-10-30 / #158
-
-`d4planner-uat/vX.Y.Z` is a lightweight tag on the exact feature commit. Its
-push runs this same workflow from the tagged commit, without merging into master
-or changing default-branch protection. Only Owner/automation actors are accepted.
-The version is parsed/validated without shell evaluation. `workflow_dispatch`
-keeps its existing default `build_only=true` stable behavior.
-
-The UAT path builds from pinned upstream archives (or the existing pinned input
-archive), verifies the unchanged input manifest/tree hashes, builds actual native
-components and NSIS Setup, and runs runtime health. It then requires exact-source
-application distribution/license approval **before uploading any public artifact**.
-The publish job downloads that exact artifact ID and rechecks SHA/version/source;
-it creates only a prerelease under the UAT tag, never overwrites a release, and
-never rebuilds the Setup. Missing approvals fail closed. Snapshot artifacts and
-keys are never inputs to this workflow.
-
-UAT explicitly leaves T20–T23 Owner MAN pending; this is not stable production
-approval. Stable still requires its protected Owner environment and all other
-acceptance gates. Owner waived `VISUAL_GOLDEN` for `R1-EQUIPMENT-20261025` only:
-record `OWNER_WAIVED` with `ISSUE158_R1_VISUAL_WAIVER_20261030`, never a fabricated
-PASS. Other releases/projects cannot inherit this waiver. The acceptance runner
-reports waived visual work separately and does not turn waiver-only runs into PASS.
-
-Public UAT distribution approval additionally records `channel=UAT_PRERELEASE`,
-`ownerManualPending=true`, and `visualR1=OWNER_WAIVED`. The existing
-`D4PLANNER_DISTRIBUTION_APPROVAL_JSON` remains source/version bound; missing
-redistribution evidence must not be replaced with a fabricated approval.
-
-
-### Encrypted-only UAT artifacts
-
-The scoped UAT authorization uses `uat-encryption-policy.json`, distinct from the
-stable `licensesVerified` attestation. It constrains the release version, R1 UAT
-scope, age recipient and encrypted-only publication. It does not assert an
-independent legal review or change stable production approval.
-
-Setup is built and verified in a runner-identity-only staging directory, then
-age v1.3.2 (checksum-pinned) encrypts the whole EXE. Actions artifacts and Release
-assets allow only `.exe.age`, `SHA256SUMS`, sanitized `release-metadata.json`, and
-`UAT.md`. No plaintext Setup/runtime ZIP, snapshot or private key is uploaded or
-cached. An always-run cleanup removes plaintext staging even on failure.
-
-The private identity remains outside CI. Owner verifies the ciphertext checksum,
-decrypts locally with the separately handed-off identity, verifies
-`plaintextSha256`, then runs Setup. Download/decrypt round-trip verification is
-performed outside CI on F. Snapshot remains a separately encrypted release and
-is provisioned through Rule Kit's management API, never FE/BE file reads.
+Application1.2.7 CI run41008842415 SUCCESS; clean-machine offline VM và active signed
+snapshot T18 PASS. #158 chứa evidence/hashes và các candidate thay thế. Historical
+PASS không tự trở thành PASS cho artifact mới; regression chọn theo ảnh hưởng.

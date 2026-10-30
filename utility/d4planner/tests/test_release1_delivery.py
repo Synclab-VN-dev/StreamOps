@@ -511,3 +511,49 @@ def test_r1_visual_owner_waiver_is_explicit_not_a_pass_and_not_transferable(tmp_
     result = delivery.run_acceptance(other, None, ['S7-VIS-01'], None,
                                     component_manifest=manifest)
     assert next(case for case in result['cases'] if case['id'] == 'S7-VIS-01')['status'] == 'FAIL'
+
+
+def test_package_deflates_every_entry_and_preserves_extracted_bytes(tmp_path):
+    source = stage(tmp_path)
+    large = source / 'app/d4planner-fe.exe'
+    data = b'packager compression regression\n' * 40000
+    large.write_bytes(data)
+    package = tmp_path / 'compressed.zip'
+    delivery.build_package(PLAN, source, package)
+    with zipfile.ZipFile(package) as archive:
+        assert all(i.compress_type == zipfile.ZIP_DEFLATED for i in archive.infolist())
+        assert archive.read('app/d4planner-fe.exe') == data
+        assert archive.getinfo('app/d4planner-fe.exe').compress_size < len(data) // 10
+    delivery.verify_package(package)
+    delivery.install_package(package, tmp_path/'app', tmp_path/'data')
+    assert (tmp_path/'app/app/d4planner-fe.exe').read_bytes() == data
+
+
+def test_corrupt_deflate_stream_is_typed_package_error(tmp_path):
+    import struct
+    package = tmp_path/'corrupt.zip'
+    delivery.build_package(PLAN, stage(tmp_path), package)
+    with zipfile.ZipFile(package) as archive:
+        info = archive.getinfo('release-manifest.json')
+    payload = bytearray(package.read_bytes())
+    name_length, extra_length = struct.unpack_from('<HH', payload, info.header_offset + 26)
+    start = info.header_offset + 30 + name_length + extra_length
+    payload[start] = 0xff  # DEFLATE reserved block type; not a hash-fixture rewrite.
+    package.write_bytes(payload)
+    with pytest.raises(delivery.DeliveryError, match='INVALID_PACKAGE'):
+        delivery.verify_package(package)
+
+
+@pytest.mark.parametrize('mutation', ['duplicate', 'missing'])
+def test_compressed_package_inventory_rejects_duplicate_or_missing(tmp_path, mutation):
+    original=tmp_path/'good.zip';bad=tmp_path/'bad.zip'
+    delivery.build_package(PLAN,stage(tmp_path),original)
+    with zipfile.ZipFile(original) as source, zipfile.ZipFile(bad,'w',zipfile.ZIP_DEFLATED) as target:
+        victim=next(n for n in source.namelist() if n!='release-manifest.json')
+        for name in source.namelist():
+            if mutation=='missing' and name==victim:continue
+            target.writestr(name,source.read(name))
+        if mutation=='duplicate':
+            with pytest.warns(UserWarning,match='Duplicate name'):
+                target.writestr(victim,source.read(victim))
+    with pytest.raises(delivery.DeliveryError):delivery.verify_package(bad)

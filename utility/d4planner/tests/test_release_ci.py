@@ -111,15 +111,18 @@ def test_download_fails_before_network_without_transport_and_integrity_pin(tmp_p
     with pytest.raises(ValueError,match=error):ci.download_inputs(url,digest,tmp_path/'inputs')
 
 
-def test_uat_is_explicit_and_does_not_bypass_distribution_or_stable_gates():
-    ci.uat_context('d4planner-uat/v1.0.3','1.0.3','synclab-automation-system')
-    for tag,actor in [('v1.0.3','TrdHuy'),('d4planner-uat/v1.0.3','untrusted')]:
+def test_uat_is_explicit_and_does_not_bypass_distribution_or_stable_gates(tmp_path, monkeypatch):
+    plan=tmp_path/"plan.json";plan.write_text(json.dumps({"version":"1.0.3"}))
+    policy=tmp_path/"policy.json";policy.write_text(json.dumps({"uatRevision":1}))
+    monkeypatch.setattr(ci,"PRODUCT_PLAN",plan);monkeypatch.setattr(ci,"UAT_POLICY",policy)
+    ci.uat_context('d4planner-uat/v1.0.3-r1','1.0.3','synclab-automation-system')
+    for tag,actor in [('v1.0.3','TrdHuy'),('d4planner-uat/v1.0.3-r1','untrusted')]:
         with pytest.raises(ValueError):ci.uat_context(tag,'1.0.3',actor)
-    meta={'sourceHead':HEAD,'version':'1.0.3','sha256':'c'*64,'runtimeHealth':'PASS','encryption':'age/v1','recipient':'age1test'}
+    meta={'sourceHead':HEAD,'version':'1.0.3','sha256':'c'*64,'runtimeHealth':'PASS','encryption':'age/v1','recipient':'age1test','uatRevision':1,'releaseTag':'d4planner-uat/v1.0.3-r1'}
     approval={'schemaVersion':'d4planner-uat-encryption-policy/v1','scope':'D4PLANNER_R1_UAT',
-              'authorizationBasis':'SCOPED_OWNER_ATTESTATION','encryptedOnly':True,'allowedVersions':['1.0.3'],'recipient':'age1test'}
+              'authorizationBasis':'SCOPED_OWNER_ATTESTATION','encryptedOnly':True,'uatRevision':1,'recipient':'age1test'}
     ci.uat_approved(approval,meta)
-    for change in ({'encryptedOnly':False},{'authorizationBasis':'ASSUMED'},{'allowedVersions':['1.0.4']},{'scope':'STABLE'},{'recipient':'wrong'}):
+    for change in ({'encryptedOnly':False},{'authorizationBasis':'ASSUMED'},{'uatRevision':2},{'scope':'STABLE'},{'recipient':'wrong'}):
         with pytest.raises(ValueError):ci.uat_approved({**approval,**change},meta)
     with pytest.raises(ValueError):ci.release_approved(approval,meta)
 
@@ -165,3 +168,15 @@ def test_frontend_native_assets_generated_from_tracked_svg(tmp_path, monkeypatch
     monkeypatch.setattr(ci, 'run', lambda *a, **kw: None)
     with pytest.raises(ValueError, match='WINDOWS_ICON_MISSING'):
         ci.prepare_frontend_native_assets(tmp_path, 'npm.cmd')
+
+
+def test_product_version_and_uat_revision_are_independent(tmp_path, monkeypatch):
+    plan=tmp_path/'plan.json';plan.write_text(json.dumps({'version':'1.2.8'}))
+    monkeypatch.setattr(ci,'PRODUCT_PLAN',plan)
+    assert ci.uat_tag('1.2.8',{'uatRevision':1})=='d4planner-uat/v1.2.8-r1'
+    assert ci.uat_tag('1.2.8',{'uatRevision':2})=='d4planner-uat/v1.2.8-r2'
+    with pytest.raises(ValueError,match='PRODUCT_VERSION_MISMATCH'):
+        ci.uat_tag('1.2.9',{'uatRevision':1})
+    for invalid in [0,-1,True,'1']:
+        with pytest.raises(ValueError,match='INVALID_UAT_REVISION'):
+            ci.uat_tag('1.2.8',{'uatRevision':invalid})

@@ -153,7 +153,8 @@ tra configuration, không báo calculation READY khi worker không chạy.
 Rule Kit xác thực Ed25519, exact compatibility evidence/profile/codec/strategy,
 revision chống rollback và revocation. Không auto-fallback. Một active binding
 mỗi worker generation; switch/rollback yêu cầu worker mới và invalidate session.
-Production public key/key ID chưa có: **production trust activation BLOCKED**.
+Production verification public key đã pin; signed Registry revision2 được xác minh
+trong UAT sandbox. Private signing key không đi cùng Setup/CI.
 Không đưa test key vào cấu hình production hoặc dùng synthetic compatibility
 PASS làm production evidence. Store immutable theo ID/hash, ngoài install root.
 
@@ -161,5 +162,7 @@ Upgrade gọi Rule Kit `upgradePreflight` trước activation. Selected binding 
 tương thích/untrusted/corrupt hoặc legacy bundled snapshot chưa migrate được
 thì giữ app/data cũ. Không tự chuyển profile/snapshot, không restore DB. Fresh
 no-snapshot install/upgrade không yêu cầu key. Uninstall giữ snapshot store,
-DB, Targets, Settings. Chưa có hai snapshot thật được duyệt: real multi-snapshot
-E2E NOT_RUN; tests isolated dùng synthetic packages và ephemeral test signing key.
+DB, Targets, Settings. D12/Dfjs real-provider UAT đã có evidence trong approved Rogue fixture scope;
+không suy thành mọi class/build. Snapshot Release riêng tại
+https://github.com/Synclab-VN-dev/StreamOps/releases/tag/d4planner-snapshots/2026.10.30-r2
+. Test-only registries vẫn dùng isolated test keys, không được production trust.
