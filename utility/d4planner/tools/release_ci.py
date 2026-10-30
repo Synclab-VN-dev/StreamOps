@@ -133,8 +133,8 @@ def build(inputs, output, head, release_version):
     run([npm,'test'],cwd=frontend); run([npm,'run','build'],cwd=frontend)
     run(['cargo','build','--release','--locked','--manifest-path',frontend/'src-tauri/Cargo.toml'])
     launcher=ROOT/'utility/d4planner/release1/native-launcher'
-    run(['cargo','build','--release','--locked','--manifest-path',launcher/'Cargo.toml'])
-    run(['cargo','test','--release','--locked','--manifest-path',launcher/'Cargo.toml'])
+    run(['cargo','build','--release','--locked','--manifest-path',launcher/'Cargo.toml'], cwd=launcher)
+    run(['cargo','test','--release','--locked','--manifest-path',launcher/'Cargo.toml'], cwd=launcher)
     # Backend wheel from the current source, dependencies are pinned above.
     wheel=output/'wheel'; wheel.mkdir()
     run([sys.executable,'-m','pip','wheel','--no-deps','--no-build-isolation',ROOT/'utility/d4planner','--wheel-dir',wheel])
