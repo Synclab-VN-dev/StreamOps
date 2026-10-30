@@ -939,6 +939,13 @@ def test_supervisor_selects_exactly_one_marker_backend_for_each_mode(
     import d4planner.runtime.supervisor as supervisor_module
     from d4planner.controller import load_profile
 
+    # Exercise Windows backend selection without mutating process-global
+    # os.name (which would also change pathlib on Linux). Backends are fakes.
+    import types
+    monkeypatch.setattr(supervisor_module, "os", types.SimpleNamespace(
+        **{**vars(supervisor_module.os), "name": "nt"}
+    ))
+
     creations = []
     instances = []
 
