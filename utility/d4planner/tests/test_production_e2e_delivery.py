@@ -50,13 +50,22 @@ def test_native_evidence_timestamp_parser_is_timezone_aware():
     assert value.utcoffset().total_seconds() == 0
 
 
-def test_backend_command_writes_case_specific_evidence_and_cleans_up(monkeypatch, tmp_path):
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+def test_backend_command_writes_case_specific_evidence_and_cleans_up(monkeypatch, tmp_path, platform):
+    monkeypatch.setattr(production.sys, "platform", platform)
     data = tmp_path / "data"; data.mkdir()
     targets = data / "targets"; targets.mkdir()
     evidence = data / "equipment.json"; evidence.write_text("{}")
     monkeypatch.setattr(production, "_prepare", lambda install, root: (targets, evidence, "a" * 64))
     monkeypatch.setattr(production, "_runtime_env", lambda *args: {})
-    monkeypatch.setattr(production, "_windows_descendants", lambda pid: [])
+    # Model the owned tree while the fake child is alive, then confirmed cleanup.
+    # This is harness control-flow coverage, not Windows-native process evidence.
+    tree_calls = []
+    def descendants(pid):
+        assert pid == 4321
+        tree_calls.append(pid)
+        return [{"Name": "node.exe"}, {"Name": "chrome.exe"}] if len(tree_calls) == 1 else []
+    monkeypatch.setattr(production, "_windows_descendants", descendants)
 
     socket_result = {
         "initialRevision": 1, "finalRevision": 3, "finalTargetId": "synthetic-target-b",
@@ -104,17 +113,21 @@ def test_backend_command_writes_case_specific_evidence_and_cleans_up(monkeypatch
     exit_code = production.main([
         "backend", "--install-root", str(tmp_path / "install"),
         "--data-root", str(data), "--output", str(output),
+        "--approved-port", "38150",  # Fake process/socket: no listener is bound.
     ])
     assert exit_code == 0
     result = json.loads(output.read_text())
     assert result["acceptance"] == {"e2e03":True,"e2e04":True,"e2e05":True,"e2e06":True}
     assert result["sqlite"]["hudRevision"] == result["socket"]["resyncRevision"] == 3
     assert process.killed is False
+    assert tree_calls == [process.pid, process.pid]
     assert any('"type": "shutdown"' in line for line in process.stdin.lines)
     assert not (data / "private-bootstrap.json").exists()
 
 
-def test_backend_early_failure_cleans_owned_process_without_name_error(monkeypatch, tmp_path):
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+def test_backend_early_failure_cleans_owned_process_without_name_error(monkeypatch, tmp_path, platform):
+    monkeypatch.setattr(production.sys, "platform", platform)
     data = tmp_path / "data"; data.mkdir(); targets = data / "targets"; targets.mkdir()
     evidence = data / "equipment.json"; evidence.write_text("{}")
     monkeypatch.setattr(production, "_prepare", lambda install, root: (targets, evidence, "a" * 64))
@@ -138,10 +151,23 @@ def test_backend_early_failure_cleans_owned_process_without_name_error(monkeypat
     assert production.main([
         "backend", "--install-root", str(tmp_path / "install"),
         "--data-root", str(data), "--output", str(output),
+        "--approved-port", "38150",  # Fake process/socket: no listener is bound.
     ]) == 1
     assert process.killed is True
     assert not output.exists()
     assert not (data / "private-bootstrap.json").exists()
+
+
+@pytest.mark.parametrize("port", [None, 0, 65536])
+def test_windows_backend_rejects_missing_or_invalid_port_before_spawn(monkeypatch, tmp_path, port):
+    monkeypatch.setattr(production.sys, "platform", "win32")
+    monkeypatch.setattr(production, "_prepare", lambda *args: (tmp_path, tmp_path / "equipment.json", "a" * 64))
+    def forbidden_spawn(*args, **kwargs):
+        pytest.fail("invalid port must be rejected before child creation")
+    monkeypatch.setattr(production.subprocess, "Popen", forbidden_spawn)
+    with pytest.raises(production.E2EFailure, match="approved test port"):
+        production.run_backend(argparse.Namespace(install_root=tmp_path, data_root=tmp_path, approved_port=port))
+    assert not (tmp_path / "private-bootstrap.json").exists()
 
 
 def test_public_runtime_environment_never_inherits_bundled_snapshot(monkeypatch, tmp_path):
