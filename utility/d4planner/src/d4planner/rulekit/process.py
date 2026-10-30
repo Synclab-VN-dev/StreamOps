@@ -93,7 +93,7 @@ class AsyncioProcessDriver:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             start_new_session=os.name != "nt",
-            creationflags=(0x00000200 if os.name == "nt" else 0),  # CREATE_NEW_PROCESS_GROUP
+            creationflags=((0x00000200 | 0x08000000) if os.name == "nt" else 0),  # NEW_PROCESS_GROUP | NO_WINDOW
         )
         return SpawnedProcess(process, instance_id, generation)
 
