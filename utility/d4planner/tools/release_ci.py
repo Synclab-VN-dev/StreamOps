@@ -118,7 +118,7 @@ def prepare_upstream_inputs(destination, *, archive_directory=None):
     (destination/'python/python312._pth').write_bytes(b'python312.zip\n.\n../../backend/site-packages\nimport site\n')
     manifest={'schemaVersion':'d4planner-public-build-inputs/v1','snapshotIncluded':False,'versions':lock['versions'],
               'files':[{'path':path.relative_to(destination).as_posix(),'sha256':delivery.sha256_file(path)}
-                       for path in sorted(destination.rglob('*'),key=lambda p:p.relative_to(destination).as_posix()) if path.is_file()]}
+                       for path in sorted(destination.rglob('*'),key=lambda p:p.relative_to(destination).parts) if path.is_file()]}
     (destination/'inputs-manifest.json').write_bytes((json.dumps(manifest,sort_keys=True,indent=2)+'\n').encode())
     return validate_inputs(destination)
 

@@ -308,6 +308,11 @@ def rollback(root: Path, *, checkpoint=None) -> dict:
             raise InstallError("ROLLBACK_STATE_OWNERSHIP_MISMATCH")
         if delivery.sha256_file(root / "D4Planner.exe") != delivery.sha256_file(owned_payload(root, state) / "D4Planner.exe"):
             raise InstallError("ACTIVE_LAUNCHER_INTEGRITY")
+        # The previous application's Rule Kit owns compatibility, just as the
+        # candidate does during upgrade. Reject before changing launcher/state;
+        # never restore an older database or interpret the Registry in packaging.
+        if (manifest.get("ruleKit") or {}).get("snapshotManagementContract") == "d4-rulekit-snapshots/v1":
+            rulekit_upgrade_preflight(owned_payload(root, previous), Path(state["dataDir"]), owned_payload(root, state))
         stop_owned(root)
         transaction = begin_transaction(root, state, previous["payload"], operation="ROLLBACK", next_state=previous)
         try:
