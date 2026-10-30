@@ -119,6 +119,13 @@ impl ProcessDriver for StdProcessDriver {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
+        // A managed console child must not create a visible console beside HUD.
+        // Pipes and owned process handle remain unchanged.
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
         let mut process = command
             .spawn()
             .map_err(|error| format!("spawn failed: {error}"))?;
