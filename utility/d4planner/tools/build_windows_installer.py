@@ -55,7 +55,7 @@ def build(package: Path, python_root: Path, output: Path, makensis: Path) -> dic
     for key, value in {
         "VERSION": manifest["version"], "OUTPUT": installer.resolve(),
         "PACKAGE": package.resolve(), "PACKAGE_SHA256": delivery.sha256_file(package),
-        "PYTHON_ROOT": python_root.resolve(), "ENGINE": Path(__file__).with_name("windows_install.py").resolve(),
+        "PYTHON_ROOT": python_root.resolve(), "PYTHON_FILES": python_root.resolve() / "*", "ENGINE": Path(__file__).with_name("windows_install.py").resolve(),
         "PUBLIC_HELPER":Path(__file__).with_name("public_package.py").resolve(),
         "PUBLIC_POLICY":Path(__file__).resolve().parents[1]/"release1/public-content-policy.json",
         "DELIVERY": Path(delivery.__file__).resolve(), "MAINTENANCE_DELETE": maintenance.resolve(),
