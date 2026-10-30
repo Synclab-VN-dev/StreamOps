@@ -46,7 +46,7 @@ def release_approved(document, metadata):
     for key in ('sourceHead','version','sha256'):
         require(document.get(key) == metadata[key], 'RELEASE_APPROVAL_BINDING:' + key)
     require(document.get('approvedBy') == 'TrdHuy' and document.get('approvalRef'), 'OWNER_RELEASE_APPROVAL_REQUIRED')
-    require(all(document.get('gates',{}).get(gate) == 'PASS' for gate in GATES), 'MANDATORY_RELEASE_GATES_NOT_PASS')
+    require(all(document.get('gates',{}).get(gate) == 'PASS' or (gate=='VISUAL_GOLDEN' and document.get('gates',{}).get(gate)=='OWNER_WAIVED' and document.get('releaseId')=='R1-EQUIPMENT-20261025' and document.get('visualWaiver')=='ISSUE158_R1_VISUAL_WAIVER_20261030') for gate in GATES), 'MANDATORY_RELEASE_GATES_NOT_PASS')
 
 
 def protected_environment(document):
@@ -83,6 +83,58 @@ def download_inputs(url, expected_sha, destination):
             target.parent.mkdir(parents=True,exist_ok=True)
             with archive.open(info) as source,target.open('wb') as output: shutil.copyfileobj(source,output)
     return validate_inputs(destination)
+
+
+def prepare_upstream_inputs(destination, *, archive_directory=None):
+    """Reconstruct the already-reviewed runtime tree from exact upstream ZIPs.
+
+    This is build-time only. Launch/install never download runtimes. Existing
+    manifest/tree pins remain authoritative, including the Python path config.
+    """
+    lock=delivery.load_json(LOCK)
+    destination.mkdir(parents=True,exist_ok=False)
+    for name,entry in lock['upstreamArchives'].items():
+        require(name in {'python','node','chromium','nsis'},'UNREVIEWED_INPUT_ROOT')
+        archive_path=(archive_directory/name).with_suffix('.zip') if archive_directory else destination.parent/(name+'.zip')
+        if archive_directory is None:
+            require(urllib.parse.urlparse(entry['url']).scheme=='https','HTTPS_INPUT_REQUIRED')
+            with urllib.request.urlopen(entry['url'],timeout=120) as source,archive_path.open('wb') as output:
+                require(urllib.parse.urlparse(source.geturl()).scheme=='https','HTTPS_INPUT_REDIRECT_REQUIRED')
+                shutil.copyfileobj(source,output,1024*1024)
+        require(delivery.sha256_file(archive_path)==entry['sha256'],'UPSTREAM_ARCHIVE_INTEGRITY:'+name)
+        seen=set()
+        with zipfile.ZipFile(archive_path) as archive:
+            for item in archive.infolist():
+                if item.is_dir():continue
+                require(item.filename.startswith(entry['prefix']),'UPSTREAM_PREFIX_MISMATCH')
+                relative=delivery.safe_relative(item.filename[len(entry['prefix']):])
+                if not public.included(relative):continue
+                require(relative.as_posix().lower() not in seen,'DUPLICATE_PRIVATE_INPUT')
+                seen.add(relative.as_posix().lower())
+                require((item.external_attr>>16)&0o170000 != 0o120000,'SYMLINK_PRIVATE_INPUT')
+                target=delivery._contained_destination(destination/name,relative.as_posix())
+                target.parent.mkdir(parents=True,exist_ok=True)
+                with archive.open(item) as source,target.open('wb') as output:shutil.copyfileobj(source,output)
+    (destination/'python/python312._pth').write_bytes(b'python312.zip\n.\n../../backend/site-packages\nimport site\n')
+    manifest={'schemaVersion':'d4planner-public-build-inputs/v1','snapshotIncluded':False,'versions':lock['versions'],
+              'files':[{'path':path.relative_to(destination).as_posix(),'sha256':delivery.sha256_file(path)}
+                       for path in sorted(destination.rglob('*'),key=lambda p:p.relative_to(destination).as_posix()) if path.is_file()]}
+    (destination/'inputs-manifest.json').write_bytes((json.dumps(manifest,sort_keys=True,indent=2)+'\n').encode())
+    return validate_inputs(destination)
+
+
+def uat_context(tag, release_version, actor):
+    version(release_version)
+    require(tag=='d4planner-uat/v'+release_version,'INVALID_UAT_TAG')
+    require(actor in {'TrdHuy','synclab-automation-system'},'UAT_ACTOR_NOT_AUTHORIZED')
+
+
+def uat_approved(document, metadata):
+    distribution_approved(document,metadata['sourceHead'],metadata['version'])
+    require(document.get('channel')=='UAT_PRERELEASE','UAT_APPROVAL_REQUIRED')
+    require(document.get('ownerManualPending') is True,'UAT_MANUAL_CLASSIFICATION_REQUIRED')
+    require(metadata.get('runtimeHealth')=='PASS','UAT_RUNTIME_HEALTH_REQUIRED')
+    require(document.get('visualR1')=='OWNER_WAIVED','R1_VISUAL_DECISION_REQUIRED')
 
 
 def validate_inputs(root):
@@ -192,26 +244,46 @@ def verify_built_artifact(directory, head, release_version, expected_sha):
 
 def main():
     parser=argparse.ArgumentParser()
-    parser.add_argument('command',choices=('validate','build','verify','publish'))
+    parser.add_argument('command',choices=('validate','build','verify','publish','publish-uat','validate-upload'))
+    parser.add_argument('--channel',choices=('stable','uat'),default='stable')
     parser.add_argument('--version',required=True)
     parser.add_argument('--source',required=True)
     parser.add_argument('--directory',type=Path,required=True)
     args=parser.parse_args()
     version(args.version);validate_source(args.source)
+    if args.channel=='uat':
+        uat_context(os.environ.get('GITHUB_REF_NAME',''),args.version,os.environ.get('GITHUB_ACTOR',''))
     if args.command=='validate':
+        if args.channel=='uat':return 0  # build allowed; public upload has a separate license gate
         distribution_approved(json.loads(os.environ.get('D4_DISTRIBUTION_APPROVAL','{}')),args.source,args.version)
         if os.environ.get('D4_BUILD_ONLY')=='false':
             environment=json.loads(subprocess.check_output(['gh','api',f"repos/{os.environ['GITHUB_REPOSITORY']}/environments/d4planner-release"],text=True))
             protected_environment(environment)
     elif args.command=='build':
         inputs=args.directory/'public-runtime-inputs'; inputs.parent.mkdir(parents=True,exist_ok=True)
-        download_inputs(os.environ.get('D4_PUBLIC_RUNTIME_INPUT_URL',''),os.environ.get('D4_PUBLIC_RUNTIME_INPUT_SHA256',''),inputs)
+        if os.environ.get('D4_PUBLIC_RUNTIME_INPUT_URL'):
+            download_inputs(os.environ['D4_PUBLIC_RUNTIME_INPUT_URL'],os.environ.get('D4_PUBLIC_RUNTIME_INPUT_SHA256',''),inputs)
+        else:prepare_upstream_inputs(inputs)
         metadata=build(inputs,args.directory/'build',args.source,args.version)
         with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as output:
             output.write(f"setup_sha256={metadata['sha256']}\n")
     else:
         metadata,artifact=verify_built_artifact(args.directory,args.source,args.version,os.environ.get('D4_BUILT_SETUP_SHA256'))
         if args.command=='verify': return 0
+        if args.command in {'publish-uat','validate-upload'}:
+            require(args.channel=='uat','UAT_CHANNEL_REQUIRED')
+            document=json.loads(os.environ.get('D4_DISTRIBUTION_APPROVAL','{}'))
+            uat_approved(document,metadata)
+            if args.command=='validate-upload':return 0
+            repo=os.environ['GITHUB_REPOSITORY'];tag='d4planner-uat/v'+args.version
+            actual=subprocess.check_output(['gh','api',f'repos/{repo}/git/ref/tags/{tag}','--jq','.object.sha'],text=True).strip()
+            require(actual==args.source,'UAT_TAG_SOURCE_MISMATCH')
+            existing=subprocess.run(['gh','api','--include',f'repos/{repo}/releases/tags/{tag}'],capture_output=True,text=True,timeout=30)
+            require(existing.returncode!=0 and 'HTTP 404' in existing.stderr,'RELEASE_EXISTS_OR_UNVERIFIED')
+            run(['gh','release','create',tag,str(artifact),str(args.directory/'SHA256SUMS'),str(args.directory/'release-metadata.json'),
+                 '--repo',repo,'--verify-tag','--prerelease','--title',f'D4Planner {args.version} UAT',
+                 '--notes',f'UAT prerelease, not production approval. Owner T20-T23 pending. R1 Visual OWNER_WAIVED. Source {args.source}; SHA-256 {metadata["sha256"]}. No snapshot included.'])
+            return 0
         distribution_approved(json.loads(os.environ.get('D4_DISTRIBUTION_APPROVAL','{}')),args.source,args.version)
         release_approved(json.loads(os.environ.get('D4_RELEASE_GATES','{}')),metadata)
         protected_environment(json.loads(subprocess.check_output(['gh','api',f"repos/{os.environ['GITHUB_REPOSITORY']}/environments/d4planner-release"],text=True)))

@@ -1,5 +1,6 @@
 {
   "schemaVersion": "d4planner-acceptance-plan/v1",
+  "releaseId": "R1-EQUIPMENT-20261025",
   "cases": [
     {"id": "S7-PKG-01", "kind": "PACKAGE_INTEGRITY", "automated": true, "expected": "Package manifest, paths, sizes and SHA-256 all verify"},
     {"id": "S7-PRE-01", "kind": "WINDOWS_PREFLIGHT", "automated": true, "expected": "Windows, pinned package, isolated staging and evidence directories are verified"},
@@ -13,7 +14,7 @@
     {"id": "E2E-08", "kind": "RUNTIME_E2E", "automated": true, "expected": "Package install, upgrade and rollback preserve user state"},
     {"id": "E2E-09", "kind": "RUNTIME_E2E", "automated": true, "expected": "Crash and bounded-run cleanup leave no owned process orphan"},
     {"id": "E2E-10", "kind": "RUNTIME_E2E", "automated": true, "expected": "Full FE to Backend to score to WebSocket to HUD production chain completes"},
-    {"id": "S7-VIS-01", "kind": "VISUAL_GOLDEN", "automated": true, "expected": "Independent MagicPath Goldens match all required states"},
+    {"id": "S7-VIS-01", "kind": "OWNER_WAIVER", "automated": false, "expected": "OWNER_WAIVED for D4Planner Release 1 only; no Visual Golden PASS claimed", "waiver": {"decision": "ISSUE158_R1_VISUAL_WAIVER_20261030", "approvedBy": "TrdHuy", "scope": "R1-EQUIPMENT-20261025"}},
     {"id": "S7-PERF-01", "kind": "PERFORMANCE", "automated": true, "expected": "Runtime latency evidence reports measured P50/P95 without a fabricated SLA"},
     {"id": "MAN-01", "kind": "OWNER_MANUAL", "automated": false, "expected": "Owner performs MAN-01 checkpoint"},
     {"id": "MAN-02", "kind": "OWNER_MANUAL", "automated": false, "expected": "Owner performs MAN-02 checkpoint"},

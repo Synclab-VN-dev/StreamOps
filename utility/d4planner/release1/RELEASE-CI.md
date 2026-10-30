@@ -66,3 +66,32 @@ release-ready**. Network-off negative vẫn DEFERRED_OWNER.
 Download đúng immutable artifact ID, verify checksum/metadata/gates/approval,
 từ chối tag/release tồn tại. Không publish trong đợt này. Không đưa snapshot vào
 application attestation hoặc dùng approval application để vượt quyền snapshot.
+
+## R1 UAT prerelease — Owner decision 2026-10-30 / #158
+
+`d4planner-uat/vX.Y.Z` is a lightweight tag on the exact feature commit. Its
+push runs this same workflow from the tagged commit, without merging into master
+or changing default-branch protection. Only Owner/automation actors are accepted.
+The version is parsed/validated without shell evaluation. `workflow_dispatch`
+keeps its existing default `build_only=true` stable behavior.
+
+The UAT path builds from pinned upstream archives (or the existing pinned input
+archive), verifies the unchanged input manifest/tree hashes, builds actual native
+components and NSIS Setup, and runs runtime health. It then requires exact-source
+application distribution/license approval **before uploading any public artifact**.
+The publish job downloads that exact artifact ID and rechecks SHA/version/source;
+it creates only a prerelease under the UAT tag, never overwrites a release, and
+never rebuilds the Setup. Missing approvals fail closed. Snapshot artifacts and
+keys are never inputs to this workflow.
+
+UAT explicitly leaves T20–T23 Owner MAN pending; this is not stable production
+approval. Stable still requires its protected Owner environment and all other
+acceptance gates. Owner waived `VISUAL_GOLDEN` for `R1-EQUIPMENT-20261025` only:
+record `OWNER_WAIVED` with `ISSUE158_R1_VISUAL_WAIVER_20261030`, never a fabricated
+PASS. Other releases/projects cannot inherit this waiver. The acceptance runner
+reports waived visual work separately and does not turn waiver-only runs into PASS.
+
+Public UAT distribution approval additionally records `channel=UAT_PRERELEASE`,
+`ownerManualPending=true`, and `visualR1=OWNER_WAIVED`. The existing
+`D4PLANNER_DISTRIBUTION_APPROVAL_JSON` remains source/version bound; missing
+redistribution evidence must not be replaced with a fabricated approval.

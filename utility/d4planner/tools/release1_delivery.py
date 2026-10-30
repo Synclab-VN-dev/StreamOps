@@ -743,6 +743,13 @@ def run_acceptance(
             result = _windows_preflight(
                 package, expected_package_sha256, staging_root, evidence_dir, runtime_platform, approved_port
             )
+        elif kind == "OWNER_WAIVER":
+            waiver = case.get("waiver", {})
+            if (case_id == "S7-VIS-01" and plan.get("releaseId") == "R1-EQUIPMENT-20261025"
+                    and waiver == {"decision":"ISSUE158_R1_VISUAL_WAIVER_20261030", "approvedBy":"TrdHuy", "scope":"R1-EQUIPMENT-20261025"}):
+                result = {"id":case_id, "status":"OWNER_WAIVED", "classification":"OWNER_WAIVED", "actual":waiver["decision"]}
+            else:
+                result = {"id":case_id, "status":"FAIL", "classification":"HARNESS_FAILURE", "actual":"INVALID_RELEASE_WAIVER"}
         elif kind == "OWNER_MANUAL":
             result = {"id": case_id, "status": "NOT_RUN", "classification": "OWNER_MANUAL"}
         elif kind in {"RUNTIME_E2E", "VISUAL_GOLDEN", "PERFORMANCE"}:
@@ -785,6 +792,10 @@ def run_acceptance(
             )
         )
     )
+    if any(case["status"] == "OWNER_WAIVED" for case in results):
+        report["ownerWaivers"] = [case["id"] for case in results if case["status"] == "OWNER_WAIVED"]
+        if "PASS" in report["outcome"]:
+            report["outcome"] += "_WITH_OWNER_WAIVER"
     return report
 
 
