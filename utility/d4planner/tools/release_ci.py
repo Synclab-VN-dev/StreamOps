@@ -266,7 +266,9 @@ def build(inputs, output, head, release_version):
     shutil.copyfile(setup,public/setup.name)
     # Actual private runtime health, independent of the static package verifier.
     health=output/'runtime-health.json'
-    run([stage/'D4Planner.exe','--runtime-health','--health-report',health])
+    health_app=output/'health-install'
+    delivery.install_package(package,health_app,output/'health-data')
+    run([health_app/'D4Planner.exe','--runtime-health','--health-report',health])
     require(delivery.load_json(health).get('runtimeReady') is True,'BUILD_RUNTIME_HEALTH_NOT_READY')
     require(delivery.load_json(health).get('calculationAvailability')=='UNAVAILABLE','NO_SNAPSHOT_CALCULATION_NOT_UNAVAILABLE')
     require(metadata.get('snapshotIncluded') is False and metadata.get('artifactClass')=='D4PLANNER_APPLICATION_NO_SNAPSHOT','PUBLIC_ARTIFACT_CLASS_MISMATCH')
