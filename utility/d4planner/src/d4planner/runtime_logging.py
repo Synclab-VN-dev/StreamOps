@@ -54,7 +54,7 @@ class Sink:
             if not isinstance(component,dict): component={}
             minimum=component.get(tag,component.get('*','INFO'))
             threshold=levels.index(minimum) if minimum in levels else 1
-            if levels.index(level)<threshold:return
+            if event!='LOG_DROPPED' and levels.index(level)<threshold:return
             b=self.encode(self.record(level,tag,event,fields))
             if len(b)>4096 or not safe(self.path) or not safe(self.temp) or not self.path.is_file() or (self.temp.exists() and not self.temp.is_file()): raise ValueError('LOG_UNSAFE')
             length=self.path.stat().st_size
@@ -70,20 +70,25 @@ class Sink:
                     except (ValueError,UnicodeError): continue
                     lines.append(line)
                 keep=int(max(0,len(lines)-1)*.7); start=max(1,len(lines)-keep)
-                self.trimmed+=start-1
+                next_trimmed=self.trimmed+start-1
                 retained=lines[start:]
                 header=b''.join(lines[:1])
                 size=sum(map(len,retained))
                 while retained and len(header)+size+len(b)+1024>self.cap:
-                    size-=len(retained.pop(0));self.trimmed+=1
-                marker=self.encode(self.record('WARN','logger','LOG_TRIMMED',dict(trimmed=self.trimmed,dropped=self.dropped)))
+                    size-=len(retained.pop(0));next_trimmed+=1
+                marker=self.encode(self.record('WARN','logger','LOG_TRIMMED',dict(trimmed=next_trimmed)))
                 out=header+b''.join(retained)+marker
                 if len(out)+len(b)>self.cap: raise ValueError('LOG_CAP')
                 fd=os.open(self.temp,os.O_CREAT|os.O_WRONLY|os.O_TRUNC,0o600)
                 with os.fdopen(fd,'wb') as f: f.write(out); f.flush(); os.fsync(f.fileno())
                 os.replace(self.temp,self.path)
+                self.trimmed=next_trimmed
             with self.path.open('ab') as f: f.write(b)
-        except (OSError,ValueError,TypeError,OverflowError): self.dropped+=1
+            if self.dropped and event!='LOG_DROPPED':
+                lost=self.dropped;self.dropped=0
+                self.emit('WARN','logger','LOG_DROPPED',dropped=lost)
+        except (OSError,ValueError,TypeError,OverflowError):
+            self.dropped+=max(1,int(fields.get('dropped',1))) if event=='LOG_DROPPED' else 1
 
 class Logger:
     def __init__(self,sink):

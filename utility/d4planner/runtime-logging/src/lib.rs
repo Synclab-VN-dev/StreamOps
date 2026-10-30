@@ -294,7 +294,9 @@ impl Sink {
             .or_else(|| self.policy[&self.component]["*"].as_str())
             .unwrap_or("INFO");
         let threshold = levels.iter().position(|v| *v == minimum).unwrap_or(1);
-        if levels.iter().position(|v| *v == level).unwrap_or(1) < threshold {
+        if event != "LOG_DROPPED"
+            && levels.iter().position(|v| *v == level).unwrap_or(1) < threshold
+        {
             return;
         }
         let r = record(
@@ -307,7 +309,14 @@ impl Sink {
             fields,
         );
         if self.write(&r).is_err() {
-            self.dropped += 1;
+            self.dropped += if event == "LOG_DROPPED" {
+                r["fields"]["dropped"].as_u64().unwrap_or(1).max(1)
+            } else {
+                1
+            };
+        } else if self.dropped > 0 && event != "LOG_DROPPED" {
+            let lost = std::mem::take(&mut self.dropped);
+            self.emit("WARN", "logger", "LOG_DROPPED", json!({"dropped":lost}));
         }
     }
     fn write(&mut self, r: &Value) -> std::io::Result<()> {
@@ -344,7 +353,7 @@ impl Sink {
                 retained -= lines[start].len();
                 start += 1;
             }
-            self.trimmed += start.saturating_sub(1) as u64;
+            let next_trimmed = self.trimmed + start.saturating_sub(1) as u64;
             let mut next = header;
             for line in &lines[start.min(lines.len())..] {
                 next.extend(line);
@@ -356,7 +365,7 @@ impl Sink {
                 "WARN",
                 "logger",
                 "LOG_TRIMMED",
-                json!({"trimmed":self.trimmed,"dropped":self.dropped}),
+                json!({"trimmed":next_trimmed}),
             )));
             let tmp = self
                 .dir
@@ -373,6 +382,7 @@ impl Sink {
             f.sync_all()?;
             drop(f);
             fs::rename(&tmp, &p)?;
+            self.trimmed = next_trimmed;
         }
         let mut f = OpenOptions::new().append(true).open(&p)?;
         f.write_all(&b)?;
@@ -791,6 +801,44 @@ mod tests {
         assert!(text.contains("SESSION_HEADER"));
         assert!(text.contains("LOG_TRIMMED"));
         drop(s);
+        fs::remove_dir_all(p).unwrap();
+    }
+    #[test]
+    fn failed_compaction_retains_counters_and_recovery_reports_loss() {
+        let p = temp();
+        let session = Session::create(&p, "1.2.9", "test").unwrap();
+        let mut sink = Sink {
+            dir: session.dir.clone(),
+            run: session.id.clone(),
+            component: "FE".into(),
+            generation: 1,
+            cap: 20000,
+            dropped: 0,
+            trimmed: 0,
+            policy: json!({}),
+        };
+        // A directory at the owned temporary filename deterministically prevents replacement.
+        let tmp = p
+            .join("logs/.control")
+            .join(format!("{}-FE.tmp", session.id));
+        fs::create_dir(&tmp).unwrap();
+        for _ in 0..150 {
+            sink.emit("INFO", "native", "STATE_CHANGE", json!({}));
+        }
+        assert_eq!(sink.trimmed, 0);
+        assert!(sink.dropped > 0);
+        let lost = sink.dropped;
+        fs::remove_dir(tmp).unwrap();
+        sink.policy = json!({"FE":{"*":"ERROR"}});
+        sink.emit("ERROR", "native", "ERROR", json!({}));
+        let rows = read_lines(&session.dir.join("fe.log"), sink.cap).unwrap();
+        assert!(rows.iter().any(|line| {
+            let r: Value = serde_json::from_slice(line).unwrap();
+            r["event"] == "LOG_DROPPED" && r["fields"]["dropped"].as_u64().unwrap_or(0) >= lost
+        }));
+        assert_eq!(sink.dropped, 0);
+        assert!(fs::metadata(session.dir.join("fe.log")).unwrap().len() <= sink.cap);
+        drop(session);
         fs::remove_dir_all(p).unwrap();
     }
     #[test]

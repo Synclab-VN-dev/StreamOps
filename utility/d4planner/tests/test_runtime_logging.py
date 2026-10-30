@@ -31,7 +31,7 @@ def test_default_filter_and_invalid_event_dropped(tmp_path):
     directory,run=session(tmp_path);s=Sink(directory,run)
     s.emit('DEBUG','capture','DEBUG_PROBE',count=1);s.emit('INFO',CANARY,CANARY,secret=CANARY)
     s.emit('ERROR','capture','ERROR',count=3)
-    rows=records(s.path);assert [r['event'] for r in rows]==['SESSION_HEADER','ERROR'];assert s.dropped==1
+    rows=records(s.path);assert [r['event'] for r in rows]==['SESSION_HEADER','ERROR','LOG_DROPPED'];assert s.dropped==0;assert rows[-1]['fields']['dropped']==1
 
 def test_python_actual_ten_mb_cap_compact_crash_repair(tmp_path):
     directory,run=session(tmp_path);s=Sink(directory,run)
@@ -107,3 +107,36 @@ def test_real_node_abrupt_exit_then_same_run_recovery(tmp_path):
     recovered=subprocess.run(['node','-e',"const {Sink}=require(process.argv[1]);new Sink(process.argv[2],process.argv[3],2).emit('INFO','worker','RESTART');",str(NODE),str(directory),run],capture_output=True,text=True,timeout=5)
     assert recovered.returncode==0
     rows=records(directory/'rulekit.log');assert rows[-1]['generation']==2;assert rows[-1]['event']=='RESTART';assert sum(r['event']=='SESSION_HEADER' for r in rows)==1
+
+
+def test_io_recovery_reports_loss_and_failed_compaction_does_not_claim_trim(tmp_path,monkeypatch):
+    directory,run=session(tmp_path);s=Sink(directory,run);s.cap=2000
+    for i in range(5):s.emit('INFO','capture','STATE_CHANGE',count=i)
+    original=s.path.read_bytes()
+    def fail(*args):raise PermissionError('isolated replacement denied')
+    with monkeypatch.context() as patch:
+        patch.setattr(os,'replace',fail)
+        for _ in range(10):s.emit('INFO','capture','STATE_CHANGE',count=99)
+        assert s.trimmed==0
+        assert s.dropped>0
+    lost=s.dropped
+    s.emit('ERROR','capture','ERROR')
+    rows=records(s.path)
+    assert any(r['event']=='LOG_DROPPED' and r['fields']['dropped']>=lost for r in rows)
+    assert s.dropped==0
+    assert s.path.stat().st_size<=s.cap
+
+
+def test_node_io_recovery_counts_only_committed_trim_and_reports_loss(tmp_path):
+    directory,run=session(tmp_path)
+    script="""const fs=require('node:fs'),assert=require('node:assert/strict');
+const {Sink}=require(process.argv[1]);const s=new Sink(process.argv[2],process.argv[3]);s.cap=2000;
+for(let i=0;i<5;i++)s.emit('INFO','api','RESULT',{count:i});
+const rename=fs.renameSync;fs.renameSync=()=>{throw Error('isolated replacement denied');};
+try{for(let i=0;i<10;i++)s.emit('INFO','api','RESULT',{count:i});assert.equal(s.trimmed,0);assert(s.dropped>0);}finally{fs.renameSync=rename;}
+const lost=s.dropped;s.policy={RULEKIT:{'*':'ERROR'}};s.emit('ERROR','api','ERROR');
+const rows=fs.readFileSync(s.file,'utf8').trim().split('\\n').map(JSON.parse);
+assert(rows.some(r=>r.event==='LOG_DROPPED'&&r.fields.dropped>=lost));assert.equal(s.dropped,0);assert(fs.statSync(s.file).size<=s.cap);
+"""
+    result=subprocess.run(['node','-e',script,str(NODE),str(directory),run],capture_output=True,text=True,timeout=15)
+    assert result.returncode==0,result.stderr

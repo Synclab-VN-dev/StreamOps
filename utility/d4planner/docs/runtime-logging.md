@@ -31,3 +31,7 @@ From the installation root, `D4Planner.exe --export-logs <runId> <new-absolute-p
 The launcher retains an OS ownership lock until its child lifetime ends. Three active reservations fit under the global budget; if managed/foreign content leaves insufficient space, logging fails open rather than deleting active or foreign data. Temporary compaction files are bounded and counted; cleanup only removes authenticated-by-metadata closed run directories whose three header identities match. The old `private/native-stderr.log` is frozen in place, never appended or deleted. Legacy UAT WebView phase collection is separately bounded to 64 KiB and rejects arbitrary phase/detail strings.
 
 Counters represent diagnostic loss, not delivery guarantees. If storage remains inaccessible until exit, the process cannot persist a final loss counter; export therefore never claims COMPLETE. Runtime functionality and stdout protocols remain independent of logging availability.
+
+### Phục hồi lỗi ghi
+
+Nếu append hoặc atomic replacement thất bại, writer giữ pending dropped count trong RAM. Khi ghi được trở lại, writer phát `LOG_DROPPED` ngay cả khi threshold là ERROR; marker này là diagnostic bắt buộc. `trimmed` chỉ tăng sau khi replacement thành công. Export báo số mất/trim quan sát được trong lịch sử còn giữ, không cam kết lifetime counters sau crash hoặc retention.
