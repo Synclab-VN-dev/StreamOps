@@ -1098,6 +1098,11 @@ mod tests {
         let id = uuid::Uuid::new_v4().to_string();
         m["runId"] = json!(id);
         m["directory"] = json!(format!("C:{id}"));
+        for header in m["initialHeaders"].as_object_mut().unwrap().values_mut() {
+            let mut value: Value = serde_json::from_str(header.as_str().unwrap()).unwrap();
+            value["runId"] = json!(id);
+            *header = json!(String::from_utf8(encoded(&value)).unwrap());
+        }
         let journal = p.join("logs/.control").join(format!("{id}.init"));
         fs::write(&journal, encoded(&m)).unwrap();
         live.housekeeping();
