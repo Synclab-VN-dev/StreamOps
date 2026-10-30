@@ -4,7 +4,7 @@
   "authorizationBasis": "SCOPED_OWNER_ATTESTATION",
   "encryptedOnly": true,
   "allowedVersions": [
-    "1.2.5"
+    "1.2.6"
   ],
   "recipient": "age1u44phv85j8zjz24chh6q8ct73trkm5j9uf84pq96vnvp2jcl9u7qjhtwsj",
   "ageVersion": "v1.3.2",

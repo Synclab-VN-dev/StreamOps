@@ -139,7 +139,7 @@ FunctionEnd
 Section "D4Planner" SEC_MAIN
   InitPluginsDir
   SetOutPath "$PLUGINSDIR\python"
-  File /r "${PYTHON_ROOT}/*"
+  File /r "${PYTHON_FILES}"
   SetOutPath "$PLUGINSDIR"
   File /oname=windows_install.py "${ENGINE}"
   File /oname=release1_delivery.py "${DELIVERY}"
@@ -158,7 +158,7 @@ Section "D4Planner" SEC_MAIN
   ; Maintenance helpers are separate from the active immutable payload so an
   ; uninstall can copy them to TEMP before removing application files.
   SetOutPath "$INSTDIR\maintenance\python"
-  File /r "${PYTHON_ROOT}/*"
+  File /r "${PYTHON_FILES}"
   SetOutPath "$INSTDIR\maintenance"
   File /oname=windows_install.py "${ENGINE}"
   File /oname=release1_delivery.py "${DELIVERY}"

@@ -229,7 +229,10 @@ def build(inputs, output, head, release_version):
     run([npm,'ci','--ignore-scripts'],cwd=frontend)
     run([npm,'test'],cwd=frontend); run([npm,'run','build'],cwd=frontend)
     prepare_frontend_native_assets(frontend, npm)
-    run(['cargo','build','--release','--locked','--manifest-path',frontend/'src-tauri/Cargo.toml'])
+    # The CI runner has VC runtimes; the user's clean machine need not.
+    # Apply the same static CRT policy already used by the root launcher.
+    run(['cargo','build','--release','--locked','--manifest-path',frontend/'src-tauri/Cargo.toml'],
+        env={**os.environ, 'RUSTFLAGS': '-C target-feature=+crt-static'})
     launcher=ROOT/'utility/d4planner/release1/native-launcher'
     run(['cargo','build','--release','--locked','--manifest-path',launcher/'Cargo.toml'], cwd=launcher)
     run(['cargo','test','--release','--locked','--manifest-path',launcher/'Cargo.toml'], cwd=launcher)
