@@ -1,5 +1,8 @@
 name: D4Planner Release
 on:
+  push:
+    tags:
+      - "d4planner-uat/v*"
   workflow_dispatch:
     inputs:
       version:
@@ -14,7 +17,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: d4planner-release-${{ inputs.version }}
+  group: d4planner-release-${{ inputs.version || github.ref_name }}
   cancel-in-progress: false
 jobs:
   build:
@@ -27,6 +30,7 @@ jobs:
       RELEASE_VERSION: ${{ inputs.version }}
       SOURCE_SHA: ${{ github.sha }}
       D4_BUILD_ONLY: ${{ inputs.build_only }}
+      RELEASE_CHANNEL: ${{ github.event_name == 'push' && 'uat' || 'stable' }}
       GH_TOKEN: ${{ github.token }}
       D4_DISTRIBUTION_APPROVAL: ${{ secrets.D4PLANNER_DISTRIBUTION_APPROVAL_JSON }}
       D4_PUBLIC_RUNTIME_INPUT_URL: ${{ secrets.D4PLANNER_PUBLIC_RUNTIME_INPUTS_URL }}
@@ -39,10 +43,17 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12.10'
+      - name: Resolve UAT tag version without default-branch dispatch
+        if: github.event_name == 'push'
+        shell: pwsh
+        run: |
+          $v = $env:GITHUB_REF_NAME -replace '^d4planner-uat/v', ''
+          if ($v -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') { throw 'Invalid UAT version' }
+          "RELEASE_VERSION=$v" >> $env:GITHUB_ENV
       - name: Validate source, version, distribution and protected publish gate
         shell: pwsh
         run: |
-          python utility/d4planner/tools/release_ci.py validate --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release"
+          python utility/d4planner/tools/release_ci.py validate --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release"
           if ($LASTEXITCODE -ne 0) { throw 'Release validation failed closed' }
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -59,20 +70,28 @@ jobs:
         id: build
         shell: pwsh
         run: |
-          python utility/d4planner/tools/release_ci.py build --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release"
+          python utility/d4planner/tools/release_ci.py build --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release"
           if ($LASTEXITCODE -ne 0) { throw 'Production package build/health failed' }
+      - name: Verify UAT redistribution before any public artifact upload
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          D4_BUILT_SETUP_SHA256: ${{ steps.build.outputs.setup_sha256 }}
+        run: |
+          python utility/d4planner/tools/release_ci.py validate-upload --channel uat --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release/build/verified-artifact"
+          if ($LASTEXITCODE -ne 0) { throw 'Public UAT artifact distribution not verified; nothing uploaded' }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         id: upload
         with:
-          name: D4Planner-Setup-${{ inputs.version }}-${{ github.sha }}
+          name: D4Planner-Setup-${{ env.RELEASE_VERSION }}-${{ github.sha }}
           path: |
-            ${{ runner.temp }}/d4-release/build/verified-artifact/D4Planner-Setup-${{ inputs.version }}.exe
+            ${{ runner.temp }}/d4-release/build/verified-artifact/D4Planner-Setup-${{ env.RELEASE_VERSION }}.exe
             ${{ runner.temp }}/d4-release/build/verified-artifact/release-metadata.json
             ${{ runner.temp }}/d4-release/build/verified-artifact/SHA256SUMS
           if-no-files-found: error
           retention-days: 7
   publish:
-    if: ${{ !inputs.build_only }}
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.build_only }}
     needs: build
     runs-on: windows-2022
     timeout-minutes: 15
@@ -81,6 +100,7 @@ jobs:
       contents: write
       actions: read
     env:
+      RELEASE_CHANNEL: ${{ github.event_name == 'push' && 'uat' || 'stable' }}
       GH_TOKEN: ${{ github.token }}
       RELEASE_VERSION: ${{ inputs.version }}
       SOURCE_SHA: ${{ github.sha }}
@@ -105,3 +125,36 @@ jobs:
         run: |
           python utility/d4planner/tools/release_ci.py publish --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory verified-artifact
           if ($LASTEXITCODE -ne 0) { throw 'Release was not authorized or failed closed' }
+
+  publish-uat:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: windows-2022
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_SHA: ${{ github.sha }}
+      D4_BUILT_SETUP_SHA256: ${{ needs.build.outputs.setup_sha256 }}
+      D4_DISTRIBUTION_APPROVAL: ${{ secrets.D4PLANNER_DISTRIBUTION_APPROVAL_JSON }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12.10'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: verified-artifact
+          merge-multiple: true
+      - name: Publish original verified UAT Setup only
+        shell: pwsh
+        run: |
+          $v = $env:GITHUB_REF_NAME -replace '^d4planner-uat/v', ''
+          python utility/d4planner/tools/release_ci.py publish-uat --channel uat --version "$v" --source "$env:SOURCE_SHA" --directory verified-artifact
+          if ($LASTEXITCODE -ne 0) { throw 'UAT publication failed closed' }

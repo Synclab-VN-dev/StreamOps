@@ -79,7 +79,10 @@ def test_workflow_is_single_dispatch_build_without_unconditional_publish():
     assert 'name: D4Planner Release' in text
     assert 'workflow_dispatch:' in text and 'default: true' in text
     assert 'environment: d4planner-release' in text
-    assert 'if: ${{ !inputs.build_only }}' in text
+    assert "if: ${{ github.event_name == 'workflow_dispatch' && !inputs.build_only }}" in text
+    assert 'd4planner-uat/v*' in text
+    assert 'validate-upload --channel uat' in text
+    assert 'publish-uat --channel uat' in text
     assert 'ref: ${{ github.sha }}' in text
     assert 'artifact-ids: ${{ needs.build.outputs.artifact_id }}' in text
     assert 'if-no-files-found: error' in text
@@ -104,3 +107,25 @@ def test_exact_artifact_verification_rejects_changes_and_wrong_source(tmp_path):
 ])
 def test_download_fails_before_network_without_transport_and_integrity_pin(tmp_path,url,digest,error):
     with pytest.raises(ValueError,match=error):ci.download_inputs(url,digest,tmp_path/'inputs')
+
+
+def test_uat_is_explicit_and_does_not_bypass_distribution_or_stable_gates():
+    ci.uat_context('d4planner-uat/v1.0.3','1.0.3','synclab-automation-system')
+    for tag,actor in [('v1.0.3','TrdHuy'),('d4planner-uat/v1.0.3','untrusted')]:
+        with pytest.raises(ValueError):ci.uat_context(tag,'1.0.3',actor)
+    meta={'sourceHead':HEAD,'version':'1.0.3','sha256':'c'*64,'runtimeHealth':'PASS'}
+    approval={**distribution(),'channel':'UAT_PRERELEASE','ownerManualPending':True,'visualR1':'OWNER_WAIVED'}
+    ci.uat_approved(approval,meta)
+    for change in ({'licensesVerified':False},{'publicDistributionApproved':False},{'ownerManualPending':False},{'channel':'stable'}):
+        with pytest.raises(ValueError):ci.uat_approved({**approval,**change},meta)
+    with pytest.raises(ValueError):ci.release_approved(approval,meta)
+
+
+def test_r1_visual_waiver_never_waives_other_stable_gates_or_releases():
+    meta={'sourceHead':HEAD,'version':'1.0.3','sha256':'c'*64}
+    approval={**meta,'approvedBy':'TrdHuy','approvalRef':'owner-test','releaseId':'R1-EQUIPMENT-20261025',
+              'visualWaiver':'ISSUE158_R1_VISUAL_WAIVER_20261030','gates':{**dict.fromkeys(ci.GATES,'PASS'),'VISUAL_GOLDEN':'OWNER_WAIVED'}}
+    ci.release_approved(approval,meta)
+    for change in ({'releaseId':'R2'},{'gates':{**approval['gates'],'HUD-03':'OWNER_WAIVED'}},
+                   {'gates':{**approval['gates'],'PKG-08':'NOT_RUN'}}):
+        with pytest.raises(ValueError):ci.release_approved({**approval,**change},meta)
