@@ -36,13 +36,37 @@ Health probe dùng payload extract từ verified ZIP, có release-manifest đầ
 FE → Backend → Node/Chrome → authenticated WS → restart/stop/owned cleanup.
 No-snapshot calculation phải UNAVAILABLE; health không thay native UI acceptance.
 
-Public UAT chỉ có `.exe.age`, checksum, safe metadata và UAT instructions. Toàn
-Setup mã hóa bằng age1.3.2 được pin trước upload. Plaintext runtime/Setup staging
-ACL owner-only và cleanup always; không cache/upload plaintext, snapshot hay keys.
-Policy UAT scoped Owner attestation độc lập với stable `licensesVerified`; không
-khẳng định đã độc lập kiểm tra thỏa thuận phân phối. Publish tải đúng artifact ID,
-verify source/tag/version/revision/hash, không rebuild/overwrite. F tải lại artifact,
-giải mã và native-test trước handoff; private identity không nằm trên Actions.
+Application UAT bàn giao trực tiếp `D4Planner-Setup-X.Y.Z.exe`, SHA256SUMS,
+release-metadata.json và UAT.md. Không cần age identity/decrypt để cài Application.
+Snapshot vẫn là `.zip.age` riêng. File policy giữ tên cũ `uat-encryption-policy.json`
+để không tạo hai nguồn chuẩn, nhưng schema v2 mô tả distribution format riêng cho
+Application và Snapshot; policy trong source **không phải** license approval.
+
+Trước mọi upload (cả build_only), `prepare-upload` và `validate-upload` kiểm tra
+`D4PLANNER_DISTRIBUTION_APPROVAL_JSON` qua environment. Approval phải có
+`approvedBy: TrdHuy`, `approvalRef`, exact `sourceHead`, `version`,
+`publicDistributionApproved: true`, `licensesVerified: true`,
+`artifactClass: D4PLANNER_APPLICATION_NO_SNAPSHOT`,
+`distributionFormat: PLAINTEXT_EXE`, và `runtimeLockSha256` đúng file
+`release-runtime-lock.json`. Phạm vi phải bao phủ Application và toàn bộ bundled
+Python/Node/Chrome/dependencies; quyền tải upstream hay approval encrypted-only
+không thay thế quyền phân phối plaintext. Không đưa tài liệu/thỏa thuận riêng vào
+source/logs. Approval là attestation được Owner cung cấp qua kênh quản lý hiện có,
+không phải bằng chứng F tự kiểm chứng hợp đồng; F không tự điền true.
+
+Build private giữ content allowlist/negative inspection, runtime pins, full manifest,
+ZIP hashes và runtime health. Upload giữ exact binary/hash, kiểm tra asset allowlist,
+checksum, source/version; publish tải đúng artifact ID, không rebuild/overwrite.
+Staging plaintext chỉ nằm runner owner-only, cleanup always; không upload trước gate.
+Thiếu approval: fail-closed, không có public artifact dù build thành công.
+
+UAT publish còn cần `D4PLANNER_UAT_RELEASE_APPROVAL_JSON`: `approvedBy`,
+`approvalRef`, `publicationApproved: true`, exact `sourceHead`, `version`, `sha256`,
+`releaseTag`. Đây là approval độc lập với redistribution. Workflow tag chỉ hợp lệ
+trên exact SHA; chưa tạo tag/release nếu chưa đủ approval. Candidate dự kiến
+1.2.8-r2 giữ Product1.2.8 vì chỉ đổi delivery contract, không đổi app binary logic.
+Giữ 1.2.8-r1/asset cũ để audit; chưa công bố r2. Historical encrypted verifier chỉ
+phục vụ audit, không được workflow mới gọi để cấp quyền upload.
 
 Stable publish vẫn cần protected `d4planner-release` environment, Owner approval
 và exact-artifact gates PKG/HUD/SNAP. UAT không phê duyệt stable/merge/Owner MAN.
@@ -68,3 +92,14 @@ mutation và giữ external store, DB, Targets, Settings; không restore DB cũ.
 Application1.2.7 CI run41008842415 SUCCESS; clean-machine offline VM và active signed
 snapshot T18 PASS. #158 chứa evidence/hashes và các candidate thay thế. Historical
 PASS không tự trở thành PASS cho artifact mới; regression chọn theo ảnh hưởng.
+
+
+## S7-REL-01 — đánh giá độc lập
+
+PARTIALLY_AGREE / FIX_REQUIRED. Encrypted Application có căn cứ ở policy phân phối
+cũ; không phải tự mở rộng Snapshot policy. Contract mới yêu cầu Setup cài trực tiếp,
+nhưng không tự xác minh quyền redistribution plaintext của bundled runtimes.
+Phương án tối thiểu là đổi output/metadata/workflow đồng bộ và tách exact-source
+redistribution approval khỏi exact-artifact publication approval. Không thay installer,
+FE/BE/Rule Kit hoặc snapshot path. Thiếu approval thì source sẵn sàng review nhưng
+public artifact/handoff vẫn BLOCKED; không dùng PASS ciphertext CI cũ thay gate mới.

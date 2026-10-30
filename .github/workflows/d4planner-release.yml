@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 60
     outputs:
       artifact_id: ${{ steps.upload.outputs.artifact-id }}
-      setup_sha256: ${{ steps.encrypt.outputs.setup_sha256 }}
+      setup_sha256: ${{ steps.build.outputs.setup_sha256 }}
     env:
       RELEASE_VERSION: ${{ inputs.version }}
       SOURCE_SHA: ${{ github.sha }}
@@ -83,27 +83,24 @@ jobs:
         run: |
           python utility/d4planner/tools/release_ci.py build --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release"
           if ($LASTEXITCODE -ne 0) { throw 'Production package build/health failed' }
-      - name: Encrypt Setup before any artifact upload
-        id: encrypt
+      - name: Verify plaintext redistribution before any upload
         shell: pwsh
+        env:
+          D4_BUILT_SETUP_SHA256: ${{ steps.build.outputs.setup_sha256 }}
         run: |
-          $policy = Get-Content utility/d4planner/release1/uat-encryption-policy.json -Raw | ConvertFrom-Json
-          $archive = "$env:RUNNER_TEMP/age-pinned.zip"
-          Invoke-WebRequest $policy.ageArchiveUrl -OutFile $archive
-          if ((Get-FileHash $archive).Hash.ToLowerInvariant() -ne $policy.ageArchiveSha256) { throw 'age checksum mismatch' }
-          Expand-Archive $archive "$env:RUNNER_TEMP/age-pinned" -Force
-          $age = (Get-ChildItem "$env:RUNNER_TEMP/age-pinned" -Filter age.exe -Recurse | Select-Object -First 1).FullName
-          python utility/d4planner/tools/release_ci.py encrypt --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release/build/verified-artifact" --output "$env:RUNNER_TEMP/d4-ciphertext" --age-executable "$age"
-          if ($LASTEXITCODE -ne 0) { throw 'Setup encryption/validation failed; no upload permitted' }
+          python utility/d4planner/tools/release_ci.py prepare-upload --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release/build/verified-artifact"
+          if ($LASTEXITCODE -ne 0) { throw 'Plaintext distribution not approved; no upload' }
+          python utility/d4planner/tools/release_ci.py validate-upload --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release/build/verified-artifact"
+          if ($LASTEXITCODE -ne 0) { throw 'Public artifact validation failed closed' }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         id: upload
         with:
           name: D4Planner-Setup-${{ env.RELEASE_VERSION }}-${{ github.sha }}
           path: |
-            ${{ runner.temp }}/d4-ciphertext/D4Planner-Setup-${{ env.RELEASE_VERSION }}.exe.age
-            ${{ runner.temp }}/d4-ciphertext/release-metadata.json
-            ${{ runner.temp }}/d4-ciphertext/SHA256SUMS
-            ${{ runner.temp }}/d4-ciphertext/UAT.md
+            ${{ runner.temp }}/d4-release/build/verified-artifact/D4Planner-Setup-${{ env.RELEASE_VERSION }}.exe
+            ${{ runner.temp }}/d4-release/build/verified-artifact/release-metadata.json
+            ${{ runner.temp }}/d4-release/build/verified-artifact/SHA256SUMS
+            ${{ runner.temp }}/d4-release/build/verified-artifact/UAT.md
           if-no-files-found: error
           retention-days: 7
       - name: Remove plaintext runtime and Setup staging
@@ -163,6 +160,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       SOURCE_SHA: ${{ github.sha }}
       D4_BUILT_SETUP_SHA256: ${{ needs.build.outputs.setup_sha256 }}
+      D4_UAT_RELEASE_APPROVAL: ${{ secrets.D4PLANNER_UAT_RELEASE_APPROVAL_JSON }}
       D4_DISTRIBUTION_APPROVAL: ${{ secrets.D4PLANNER_DISTRIBUTION_APPROVAL_JSON }}
     steps:
       - name: Preserve exact LF execution bytes in the Windows checkout
