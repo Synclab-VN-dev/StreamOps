@@ -36,6 +36,9 @@ jobs:
       D4_PUBLIC_RUNTIME_INPUT_URL: ${{ secrets.D4PLANNER_PUBLIC_RUNTIME_INPUTS_URL }}
       D4_PUBLIC_RUNTIME_INPUT_SHA256: ${{ secrets.D4PLANNER_PUBLIC_RUNTIME_INPUTS_SHA256 }}
     steps:
+      - name: Preserve exact LF execution bytes in the Windows checkout
+        shell: pwsh
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.sha }}
@@ -108,6 +111,9 @@ jobs:
       D4_DISTRIBUTION_APPROVAL: ${{ secrets.D4PLANNER_DISTRIBUTION_APPROVAL_JSON }}
       D4_RELEASE_GATES: ${{ secrets.D4PLANNER_RELEASE_GATES_JSON }}
     steps:
+      - name: Preserve exact LF execution bytes in the Windows checkout
+        shell: pwsh
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.sha }}
@@ -140,6 +146,9 @@ jobs:
       D4_BUILT_SETUP_SHA256: ${{ needs.build.outputs.setup_sha256 }}
       D4_DISTRIBUTION_APPROVAL: ${{ secrets.D4PLANNER_DISTRIBUTION_APPROVAL_JSON }}
     steps:
+      - name: Preserve exact LF execution bytes in the Windows checkout
+        shell: pwsh
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}

@@ -25,7 +25,7 @@ def included(relative: Path):
 
 def tree_digest(root: Path,*,dependencies=False):
     records=[]
-    for path in sorted(root.rglob('*')):
+    for path in sorted(root.rglob('*'), key=lambda p:p.relative_to(root).parts):
         relative=path.relative_to(root)
         if not included(relative):continue
         if dependencies and relative.parts[:2]==('@streamops','browser-infrastructure'):continue
