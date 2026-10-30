@@ -608,7 +608,12 @@ impl Session {
             trimmed: 0,
             policy: json!({}),
         };
-        sink.emit("INFO", "launcher", event, json!({}));
+        sink.emit(
+            if event == "ERROR" { "ERROR" } else { "INFO" },
+            "launcher",
+            event,
+            json!({}),
+        );
     }
 }
 impl Drop for Session {
@@ -715,6 +720,10 @@ mod tests {
         let p = temp();
         let s = Session::create(&p, "1.2.8", "abc").unwrap();
         s.bootstrap_event("START");
+        s.bootstrap_event("ERROR");
+        let rows = read_lines(&s.dir.join("fe.log"), 5_000_000).unwrap();
+        let error: Value = serde_json::from_slice(rows.last().unwrap()).unwrap();
+        assert_eq!(error["level"], "ERROR");
         assert_eq!(fs::read_dir(&s.dir).unwrap().count(), 3);
         let mut sink = Sink {
             dir: s.dir.clone(),
@@ -843,6 +852,46 @@ mod tests {
         assert!(s.dir.exists());
         drop(f);
         drop(s);
+        fs::remove_dir_all(p).unwrap();
+    }
+    #[test]
+    fn capacity_evicts_oldest_closed_run_before_new_reservation() {
+        let p = temp();
+        let mut dirs = Vec::new();
+        for n in 0..3 {
+            let s = Session::create(&p, "1", "a").unwrap();
+            for (c, cap) in LIMITS {
+                let path = s.dir.join(file_name(c));
+                let header = fs::read(&path).unwrap();
+                let row = encoded(&record(
+                    &s.id,
+                    c,
+                    1,
+                    "INFO",
+                    "logger",
+                    "STATE_CHANGE",
+                    json!({}),
+                ));
+                let count = ((cap as usize - 100_000 - header.len()) / row.len()).min(100_000);
+                let mut bytes = header;
+                for _ in 0..count {
+                    bytes.extend(&row);
+                }
+                fs::write(path, bytes).unwrap();
+            }
+            let meta = p.join("logs/.control").join(format!("{}.json", s.id));
+            let mut value: Value = serde_json::from_slice(&fs::read(&meta).unwrap()).unwrap();
+            value["createdMs"] = json!(value["createdMs"].as_u64().unwrap() - 30_000 + n * 1000);
+            fs::write(meta, encoded(&value)).unwrap();
+            dirs.push(s.dir.clone());
+            drop(s);
+        }
+        let a = Session::create(&p, "1", "a").unwrap();
+        let b = Session::create(&p, "1", "a").unwrap();
+        assert!(!dirs[0].exists());
+        assert!(dirs[1].exists() && dirs[2].exists());
+        assert!(size(&p.join("logs")) + 2 * RESERVE <= GLOBAL);
+        drop((a, b));
         fs::remove_dir_all(p).unwrap();
     }
     #[test]

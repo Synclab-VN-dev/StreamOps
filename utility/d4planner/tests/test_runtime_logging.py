@@ -93,3 +93,17 @@ def test_component_tag_minimum_level_filter(tmp_path):
     directory,run=session(tmp_path);s=Sink(directory,run,policy={'BE':{'*':'ERROR','capture':'WARN'}})
     s.emit('INFO','capture','STATE_CHANGE');s.emit('WARN','capture','ERROR');s.emit('WARN','api','ERROR');s.emit('ERROR','api','ERROR')
     assert [(r['level'],r['tag']) for r in records(s.path)[1:]]==[('WARN','capture'),('ERROR','api')]
+
+
+def test_real_node_abrupt_exit_then_same_run_recovery(tmp_path):
+    directory,run=session(tmp_path)
+    script="const l=require(process.argv[1]);l.configure();console.log('READY');setInterval(()=>{for(let i=0;i<30;i++)l.emit('INFO','worker','STATE_CHANGE',{count:i})},2);"
+    env={**os.environ,'D4_LOG_DIR':str(directory),'D4_LOG_RUN_ID':run,'D4_RULEKIT_WORKER_GENERATION':'1'}
+    child=subprocess.Popen(['node','-e',script,str(NODE)],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+    try:
+        assert child.stdout.readline().strip()=='READY';time.sleep(.15);child.kill();child.wait(timeout=5)
+    finally:
+        if child.poll() is None:child.kill();child.wait(timeout=5)
+    recovered=subprocess.run(['node','-e',"const {Sink}=require(process.argv[1]);new Sink(process.argv[2],process.argv[3],2).emit('INFO','worker','RESTART');",str(NODE),str(directory),run],capture_output=True,text=True,timeout=5)
+    assert recovered.returncode==0
+    rows=records(directory/'rulekit.log');assert rows[-1]['generation']==2;assert rows[-1]['event']=='RESTART';assert sum(r['event']=='SESSION_HEADER' for r in rows)==1
