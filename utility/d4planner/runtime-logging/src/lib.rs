@@ -487,7 +487,7 @@ fn recover_initializations(root: &Path) -> std::io::Result<u64> {
         if uuid::Uuid::parse_str(id).is_err()
             || journal.file_stem().and_then(|v| v.to_str()) != Some(id)
             || m["schemaVersion"] != "d4planner-log-session/v1"
-            || name.contains(['/', '\\'])
+            || name.contains(['/', '\\', ':'])
             || !name.ends_with(id)
         {
             continue;
@@ -590,7 +590,7 @@ fn housekeeping(root: &Path, needed: u64) -> std::io::Result<()> {
         let Some(name) = m["directory"].as_str() else {
             continue;
         };
-        if name.contains(['/', '\\']) || !name.ends_with(id) {
+        if name.contains(['/', '\\', ':']) || !name.ends_with(id) {
             continue;
         }
         let dir = root.join(name);
@@ -839,7 +839,7 @@ pub fn export(data: &Path, id: &str, destination: &Path) -> std::io::Result<Valu
     }
     let m: Value = serde_json::from_slice(&fs::read(meta)?).map_err(|_| fail())?;
     let name = m["directory"].as_str().ok_or_else(fail)?;
-    if name.contains(['/', '\\']) || !name.ends_with(id) {
+    if name.contains(['/', '\\', ':']) || !name.ends_with(id) {
         return Err(fail());
     }
     let dir = root.join(name);
@@ -1088,6 +1088,23 @@ mod tests {
             drop(live);
             fs::remove_dir_all(p).unwrap();
         }
+    }
+    #[test]
+    fn initialization_recovery_rejects_drive_relative_metadata() {
+        let p = temp();
+        let live = Session::create(&p, "1", "guard").unwrap();
+        let meta = p.join("logs/.control").join(format!("{}.json", live.id));
+        let mut m: Value = serde_json::from_slice(&fs::read(meta).unwrap()).unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        m["runId"] = json!(id);
+        m["directory"] = json!(format!("C:{id}"));
+        let journal = p.join("logs/.control").join(format!("{id}.init"));
+        fs::write(&journal, encoded(&m)).unwrap();
+        live.housekeeping();
+        assert!(journal.exists());
+        assert!(!p.join("logs/.control").join(format!("{id}.lock")).exists());
+        drop(live);
+        fs::remove_dir_all(p).unwrap();
     }
     #[test]
     fn initialization_crash_child() {
