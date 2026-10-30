@@ -13,7 +13,7 @@ sys.path.insert(0, str(TOOLS))
 import windows_install as engine
 
 
-def package(tmp_path, version="1.0.0"):
+def package(tmp_path, version="1.0.0", *, managed_snapshots=False):
     executable = b"unit-test-payload-not-native-acceptance-" + version.encode()
     path = tmp_path / f"package-{version}.zip"
     manifest = {
@@ -22,6 +22,8 @@ def package(tmp_path, version="1.0.0"):
         "files":[{"path":"D4Planner.exe", "bytes":len(executable),
                   "sha256":engine.delivery.hashlib.sha256(executable).hexdigest()}],
     }
+    if managed_snapshots:
+        manifest["ruleKit"] = {"snapshotManagementContract":"d4-rulekit-snapshots/v1"}
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr("release-manifest.json", json.dumps(manifest))
         archive.writestr("D4Planner.exe", executable)
@@ -276,3 +278,24 @@ def test_rollback_recovery_rejects_tampered_backup_without_losing_journal(tmp_pa
     assert sentinel.read_text()=='keep'
     assert not backup.exists()
     assert engine.read_state(root)['version']=='1.0.1'
+
+
+def test_rollback_requires_previous_rulekit_to_accept_active_snapshot_before_mutation(tmp_path, monkeypatch):
+    root, data = prepare(tmp_path, monkeypatch)
+    for version in ('1.0.0','1.0.1'):
+        artifact,sha=package(tmp_path,version,managed_snapshots=True)
+        engine.install(artifact,root,data,sha,health_check=lambda root:None)
+    state=engine.read_state(root)
+    before={str(p):p.read_bytes() for p in (root/'active.json',root/'D4Planner.exe',data/'state/hud.sqlite3',data/'settings.json',data/'targets/user.json')}
+    calls=[]
+    def reject(payload, user_data, previous_payload):
+        calls.append((payload,user_data,previous_payload))
+        raise engine.InstallError('RULEKIT_UPGRADE_PREFLIGHT_REJECTED:TRUST_POLICY_NOT_CONFIGURED')
+    monkeypatch.setattr(engine,'rulekit_upgrade_preflight',reject)
+    with pytest.raises(engine.InstallError,match='TRUST_POLICY_NOT_CONFIGURED'):
+        engine.rollback(root)
+    assert calls==[(engine.owned_payload(root,state['previous']),data,engine.owned_payload(root,state))]
+    assert {name:Path(name).read_bytes() for name in before}==before
+    assert not (root/'upgrade-journal.json').exists()
+    monkeypatch.setattr(engine,'rulekit_upgrade_preflight',lambda *args:{'compatible':True})
+    assert engine.rollback(root)['rollbackVersion']=='1.0.0'
