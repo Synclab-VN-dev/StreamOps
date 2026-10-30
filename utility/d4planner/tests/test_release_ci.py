@@ -149,3 +149,19 @@ def test_encrypted_artifact_verifier_rejects_plaintext_and_extra_assets(tmp_path
     with pytest.raises(ValueError,match='UNEXPECTED_PUBLIC_ASSET'):ci.verify_encrypted_artifact(tmp_path,HEAD,'1.0.3',digest)
     plain.unlink();artifact.write_bytes(b'MZtampered')
     with pytest.raises(ValueError,match='PUBLISH_ARTIFACT_INTEGRITY'):ci.verify_encrypted_artifact(tmp_path,HEAD,'1.0.3',digest)
+
+
+def test_frontend_native_assets_generated_from_tracked_svg(tmp_path, monkeypatch):
+    calls=[]
+    def invoke(command, *, cwd):
+        calls.append((command, cwd))
+        icon=tmp_path/'src-tauri/icons/icon.ico'
+        icon.parent.mkdir(parents=True)
+        icon.write_bytes(b'\x00\x00\x01\x00\x01\x00' + b'icon-content')
+    monkeypatch.setattr(ci, 'run', invoke)
+    ci.prepare_frontend_native_assets(tmp_path, 'npm.cmd')
+    assert calls == [(['npm.cmd', 'run', 'icon'], tmp_path)]
+    (tmp_path/'src-tauri/icons/icon.ico').unlink()
+    monkeypatch.setattr(ci, 'run', lambda *a, **kw: None)
+    with pytest.raises(ValueError, match='WINDOWS_ICON_MISSING'):
+        ci.prepare_frontend_native_assets(tmp_path, 'npm.cmd')
