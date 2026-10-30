@@ -15,3 +15,19 @@
 Limits: FE5,000,000 / BE10,000,000 / RULEKIT15,000,000 bytes. Global200,000,000; retention14days closed runs. JSONL schema `d4planner-runtime-log/v1`; controlled tags/events and numeric/bool fields, no raw exception/payload/path. DEBUG opt-in by component/tag; INFO default. Logging/export errors never imply application failure.
 
 S8 không có Report Issue UI/upload. CI_NOT_CHECKED cho tới khi có quyền riêng.
+
+## Controlled DEBUG reproduction and export
+
+`launcher.json` (existing `d4planner-launcher-config/v1`) may contain `logging`:
+
+```json
+{"schemaVersion":"d4planner-launcher-config/v1","logging":{"FE":{"websocket":"DEBUG"},"BE":{"capture":"DEBUG","*":"WARN"},"RULEKIT":{"api":"DEBUG"}}}
+```
+
+Each component/tag value is its minimum level: DEBUG, INFO, WARN, ERROR; missing/invalid values default to INFO. Normal builds support controlled diagnostics without a global toolchain. Arbitrary messages are intentionally not supported: add a reviewed event/tag and typed safe fields to the three adapters/schema when new instrumentation is needed. Never pass raw exception text, payloads or keys.
+
+From the installation root, `D4Planner.exe --export-logs <runId> <new-absolute-private-directory>` exports three sanitized JSONL files and `manifest.json`. No network/upload, no DB/snapshot/Target. Active-run export is a bounded per-file snapshot, **not** an atomic cross-component transaction; completeness is explicitly BEST_EFFORT_BOUNDED_SNAPSHOT. Last interrupted lines are excluded. Original logs are untouched.
+
+The launcher retains an OS ownership lock until its child lifetime ends. Three active reservations fit under the global budget; if managed/foreign content leaves insufficient space, logging fails open rather than deleting active or foreign data. Temporary compaction files are bounded and counted; cleanup only removes authenticated-by-metadata closed run directories whose three header identities match. The old `private/native-stderr.log` is frozen in place, never appended or deleted. Legacy UAT WebView phase collection is separately bounded to 64 KiB and rejects arbitrary phase/detail strings.
+
+Counters represent diagnostic loss, not delivery guarantees. If storage remains inaccessible until exit, the process cannot persist a final loss counter; export therefore never claims COMPLETE. Runtime functionality and stdout protocols remain independent of logging availability.

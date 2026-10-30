@@ -49,7 +49,12 @@ class Sink:
         try:
             if level not in {'DEBUG','INFO','WARN','ERROR'} or tag not in TAGS or event not in EVENTS:
                 self.dropped+=1; return
-            if level=='DEBUG' and self.policy.get(self.component,{}).get(tag,self.policy.get(self.component,{}).get('*'))!='DEBUG': return
+            levels=('DEBUG','INFO','WARN','ERROR')
+            component=self.policy.get(self.component,{})
+            if not isinstance(component,dict): component={}
+            minimum=component.get(tag,component.get('*','INFO'))
+            threshold=levels.index(minimum) if minimum in levels else 1
+            if levels.index(level)<threshold:return
             b=self.encode(self.record(level,tag,event,fields))
             if len(b)>4096 or not safe(self.path) or not safe(self.temp) or not self.path.is_file() or (self.temp.exists() and not self.temp.is_file()): raise ValueError('LOG_UNSAFE')
             length=self.path.stat().st_size

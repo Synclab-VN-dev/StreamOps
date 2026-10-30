@@ -87,3 +87,9 @@ def test_schema_and_correlation_are_safe(tmp_path):
     schema=json.loads((ROOT/'utility/d4planner/contracts/runtime-logging/v1/log.schema.json').read_text())
     for row in records(s.path):jsonschema.Draft202012Validator(schema,format_checker=jsonschema.FormatChecker()).validate(row)
     assert records(s.path)[-2]['correlationId']!=correlation;assert CANARY not in s.path.read_text()
+
+
+def test_component_tag_minimum_level_filter(tmp_path):
+    directory,run=session(tmp_path);s=Sink(directory,run,policy={'BE':{'*':'ERROR','capture':'WARN'}})
+    s.emit('INFO','capture','STATE_CHANGE');s.emit('WARN','capture','ERROR');s.emit('WARN','api','ERROR');s.emit('ERROR','api','ERROR')
+    assert [(r['level'],r['tag']) for r in records(s.path)[1:]]==[('WARN','capture'),('ERROR','api')]

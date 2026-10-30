@@ -288,10 +288,13 @@ impl Sink {
             self.dropped += 1;
             return;
         };
-        if level == "DEBUG"
-            && !(self.policy[&self.component][tag] == "DEBUG"
-                || self.policy[&self.component]["*"] == "DEBUG")
-        {
+        let levels = ["DEBUG", "INFO", "WARN", "ERROR"];
+        let minimum = self.policy[&self.component][tag]
+            .as_str()
+            .or_else(|| self.policy[&self.component]["*"].as_str())
+            .unwrap_or("INFO");
+        let threshold = levels.iter().position(|v| *v == minimum).unwrap_or(1);
+        if levels.iter().position(|v| *v == level).unwrap_or(1) < threshold {
             return;
         }
         let r = record(
