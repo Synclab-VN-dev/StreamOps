@@ -151,12 +151,14 @@ def test_real_worker_result_outcome_and_be_correlation(tmp_path,monkeypatch):
         wrapper=RuleKitProcessWrapper(specification(D4_LOG_DIR=str(directory),D4_LOG_RUN_ID=run,D4_LOG_POLICY=json.dumps({'RULEKIT':{'*':'DEBUG'}})))
         try:
             c=await wrapper.start();assert await c.list_providers()
-            with pytest.raises(RuleKitRemoteError):await c.get_session('missing')
+            with pytest.raises(RuleKitRemoteError):await c.call('getSession',{'sessionId':'missing'})
             ref=await c.create_session(create_request(build(delay_ms=500)))
             with pytest.raises(RuleKitRemoteError) as timeout:await c.call('evaluate',{'sessionId':ref.session_id},timeout=.15)
             assert timeout.value.code=='TIMEOUT'
             await asyncio.sleep(.1)
-            pending=asyncio.create_task(c.evaluate(ref));await asyncio.sleep(.05)
+            fresh=await c.create_session(create_request(build(delay_ms=500)))
+            pending=asyncio.create_task(c.evaluate(fresh));await asyncio.sleep(.05)
+            assert not pending.done()
             restarted=await wrapper.restart();await asyncio.gather(pending,return_exceptions=True)
             assert await restarted.list_providers()
         finally:await wrapper.stop()
@@ -173,3 +175,11 @@ def test_real_worker_result_outcome_and_be_correlation(tmp_path,monkeypatch):
         assert len({r['correlationId'] for r in results})==len(results)
     assert {r['correlationId'] for r in be_rows if r['event']=='REQUEST'}=={r['correlationId'] for r in rk_rows if r['event']=='REQUEST'}
     assert {1,2}<={r['generation'] for r in rk_rows}
+    # Ordered real requests: success, API error, session create, timeout,
+    # a fresh session, cancelled in-flight request during restart, then success on generation 2.
+    expected=[True,False,True,False,True,False,True]
+    requests=[r['correlationId'] for r in be_rows if r['event']=='REQUEST']
+    assert len(requests)==len(expected)
+    for rows in [be_rows,rk_rows]:
+        outcomes={r['correlationId']:r['fields']['ok'] for r in rows if r['event']=='RESULT'}
+        assert [outcomes[correlation] for correlation in requests]==expected
