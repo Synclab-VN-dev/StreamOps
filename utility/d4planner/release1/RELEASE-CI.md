@@ -95,3 +95,23 @@ Public UAT distribution approval additionally records `channel=UAT_PRERELEASE`,
 `ownerManualPending=true`, and `visualR1=OWNER_WAIVED`. The existing
 `D4PLANNER_DISTRIBUTION_APPROVAL_JSON` remains source/version bound; missing
 redistribution evidence must not be replaced with a fabricated approval.
+
+
+### Encrypted-only UAT artifacts
+
+The scoped UAT authorization uses `uat-encryption-policy.json`, distinct from the
+stable `licensesVerified` attestation. It constrains the release version, R1 UAT
+scope, age recipient and encrypted-only publication. It does not assert an
+independent legal review or change stable production approval.
+
+Setup is built and verified in a runner-identity-only staging directory, then
+age v1.3.2 (checksum-pinned) encrypts the whole EXE. Actions artifacts and Release
+assets allow only `.exe.age`, `SHA256SUMS`, sanitized `release-metadata.json`, and
+`UAT.md`. No plaintext Setup/runtime ZIP, snapshot or private key is uploaded or
+cached. An always-run cleanup removes plaintext staging even on failure.
+
+The private identity remains outside CI. Owner verifies the ciphertext checksum,
+decrypts locally with the separately handed-off identity, verifies
+`plaintextSha256`, then runs Setup. Download/decrypt round-trip verification is
+performed outside CI on F. Snapshot remains a separately encrypted release and
+is provisioned through Rule Kit's management API, never FE/BE file reads.
