@@ -83,6 +83,7 @@ class RuleKitClient:
         self._pending_protocol[request_id] = protocol
         from ..runtime_logging import emit
         started = loop.time()
+        ok = False
         emit("DEBUG","api","REQUEST",correlationId=request_id)
         budget = timeout or self._operation_timeout
         deadline = loop.time() + budget
@@ -105,7 +106,9 @@ class RuleKitClient:
             remaining = response_deadline - loop.time()
             if remaining <= 0:
                 raise TimeoutError
-            return await asyncio.wait_for(future, remaining)
+            result = await asyncio.wait_for(future, remaining)
+            ok = True
+            return result
         except TimeoutError:
             emit("ERROR","api","TIMEOUT",errorCode="TIMEOUT",correlationId=request_id)
             with contextlib.suppress(BrokenPipeError, ConnectionError, ProtocolError, TimeoutError):
@@ -119,7 +122,7 @@ class RuleKitClient:
                 )
             raise RuleKitRemoteError("TIMEOUT", f"Rule Kit operation timed out: {method}") from None
         finally:
-            emit("INFO","api","RESULT",durationMs=(loop.time()-started)*1000,correlationId=request_id)
+            emit("INFO","api","RESULT",ok=ok,durationMs=(loop.time()-started)*1000,correlationId=request_id)
             self._pending.pop(request_id, None)
             self._pending_protocol.pop(request_id, None)
 

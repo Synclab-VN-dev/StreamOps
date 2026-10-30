@@ -140,3 +140,36 @@ assert(rows.some(r=>r.event==='LOG_DROPPED'&&r.fields.dropped>=lost));assert.equ
 """
     result=subprocess.run(['node','-e',script,str(NODE),str(directory),run],capture_output=True,text=True,timeout=15)
     assert result.returncode==0,result.stderr
+
+
+def test_real_worker_result_outcome_and_be_correlation(tmp_path,monkeypatch):
+    import d4planner.runtime_logging as logging
+    from d4planner.rulekit import RuleKitProcessWrapper,RuleKitRemoteError
+    from test_rulekit_worker import specification,create_request,build
+    directory,run=session(tmp_path);be=Logger(Sink(directory,run,policy={'BE':{'*':'DEBUG'}}));monkeypatch.setattr(logging,'_logger',be)
+    async def scenario():
+        wrapper=RuleKitProcessWrapper(specification(D4_LOG_DIR=str(directory),D4_LOG_RUN_ID=run,D4_LOG_POLICY=json.dumps({'RULEKIT':{'*':'DEBUG'}})))
+        try:
+            c=await wrapper.start();assert await c.list_providers()
+            with pytest.raises(RuleKitRemoteError):await c.get_session('missing')
+            ref=await c.create_session(create_request(build(delay_ms=500)))
+            with pytest.raises(RuleKitRemoteError) as timeout:await c.call('evaluate',{'sessionId':ref.session_id},timeout=.15)
+            assert timeout.value.code=='TIMEOUT'
+            await asyncio.sleep(.1)
+            pending=asyncio.create_task(c.evaluate(ref));await asyncio.sleep(.05)
+            restarted=await wrapper.restart();await asyncio.gather(pending,return_exceptions=True)
+            assert await restarted.list_providers()
+        finally:await wrapper.stop()
+        assert wrapper._child is None
+    try:asyncio.run(scenario())
+    finally:be.close()
+    be_rows=records(directory/'be.log');rk_rows=records(directory/'rulekit.log')
+    for rows in [be_rows,rk_rows]:
+        results=[r for r in rows if r['tag']=='api' and r['event']=='RESULT']
+        assert results and all(isinstance(r['fields'].get('ok'),bool) for r in results)
+        assert {r['fields']['ok'] for r in results}=={True,False}
+        requests={r['correlationId'] for r in rows if r['event']=='REQUEST'}
+        assert all(r['correlationId'] in requests for r in results)
+        assert len({r['correlationId'] for r in results})==len(results)
+    assert {r['correlationId'] for r in be_rows if r['event']=='REQUEST'}=={r['correlationId'] for r in rk_rows if r['event']=='REQUEST'}
+    assert {1,2}<={r['generation'] for r in rk_rows}

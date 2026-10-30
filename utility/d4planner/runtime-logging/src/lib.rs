@@ -461,10 +461,118 @@ fn size(p: &Path) -> u64 {
         })
         .sum()
 }
+// Called only under the global housekeeping lock. A durable journal precedes
+// creation of a run directory; partial headers must match its exact bytes.
+fn recover_initializations(root: &Path) -> std::io::Result<u64> {
+    let control = root.join(".control");
+    let mut reserved = 0;
+    for entry in fs::read_dir(&control)? {
+        let journal = entry?.path();
+        if journal.extension().and_then(|v| v.to_str()) != Some("init")
+            || !safe(&journal)
+            || !journal.is_file()
+            || fs::metadata(&journal)?.len() > 16384
+        {
+            continue;
+        }
+        let Ok(m) = serde_json::from_slice::<Value>(&fs::read(&journal)?) else {
+            continue;
+        };
+        let Some(id) = m["runId"].as_str() else {
+            continue;
+        };
+        let Some(name) = m["directory"].as_str() else {
+            continue;
+        };
+        if uuid::Uuid::parse_str(id).is_err()
+            || journal.file_stem().and_then(|v| v.to_str()) != Some(id)
+            || m["schemaVersion"] != "d4planner-log-session/v1"
+            || name.contains(['/', '\\'])
+            || !name.ends_with(id)
+        {
+            continue;
+        }
+        let dir = root.join(name);
+        let lock_path = control.join(format!("{id}.lock"));
+        if !safe(&dir) || !safe(&lock_path) || control.join(format!("{id}.json")).exists() {
+            continue;
+        }
+        let headers_valid = LIMITS.iter().all(|(c, _)| {
+            m["initialHeaders"][*c]
+                .as_str()
+                .and_then(|v| serde_json::from_str::<Value>(v).ok())
+                .is_some_and(|h| {
+                    h["schemaVersion"] == "d4planner-runtime-log/v1"
+                        && h["event"] == "SESSION_HEADER"
+                        && h["runId"] == id
+                        && h["component"] == *c
+                })
+        });
+        if !headers_valid {
+            continue;
+        }
+        let lock = create(&lock_path)?;
+        if lock.try_lock_exclusive().is_err() {
+            reserved += RESERVE;
+            continue;
+        }
+        if dir.exists() {
+            if !dir.is_dir() {
+                continue;
+            }
+            let entries: Vec<_> = fs::read_dir(&dir)?.collect::<Result<_, _>>()?;
+            let owned = entries.iter().all(|entry| {
+                let p = entry.path();
+                let Some((c, _)) = LIMITS
+                    .iter()
+                    .find(|(c, _)| entry.file_name() == file_name(c))
+                else {
+                    return false;
+                };
+                let expected = m["initialHeaders"][*c].as_str().unwrap().as_bytes();
+                safe(&p)
+                    && entry.file_type().map(|t| t.is_file()).unwrap_or(false)
+                    && entry
+                        .metadata()
+                        .map(|m| m.len() <= expected.len() as u64)
+                        .unwrap_or(false)
+                    && fs::read(&p)
+                        .map(|bytes| expected.starts_with(&bytes))
+                        .unwrap_or(false)
+            });
+            if !owned {
+                continue;
+            }
+            for entry in entries {
+                fs::remove_file(entry.path())?;
+            }
+            fs::remove_dir(&dir)?;
+        }
+        fs::remove_file(&journal)?;
+        drop(lock);
+        let _ = fs::remove_file(lock_path);
+    }
+    Ok(reserved)
+}
+// Explicit unlock also releases transient inherited descriptors during process spawn.
+// A session takes the file only after initialization commits.
+struct ScopedLock(Option<File>);
+impl ScopedLock {
+    fn take(mut self) -> File {
+        self.0.take().unwrap()
+    }
+}
+impl Drop for ScopedLock {
+    fn drop(&mut self) {
+        if let Some(file) = &self.0 {
+            let _ = file.unlock();
+        }
+    }
+}
 fn housekeeping(root: &Path, needed: u64) -> std::io::Result<()> {
     let control = root.join(".control");
     let mut closed = Vec::new();
-    let mut reserved = 0;
+    let mut reserved = recover_initializations(root)?;
     for e in fs::read_dir(&control)? {
         let p = e?.path();
         if p.extension().and_then(|s| s.to_str()) != Some("json") || !safe(&p) {
@@ -556,47 +664,111 @@ fn housekeeping(root: &Path, needed: u64) -> std::io::Result<()> {
 }
 impl Session {
     pub fn create(data: &Path, product: &str, source: &str) -> std::io::Result<Self> {
+        Self::create_with_checkpoints(data, product, source, |_| Ok(()))
+    }
+    fn create_with_checkpoints(
+        data: &Path,
+        product: &str,
+        source: &str,
+        mut checkpoint: impl FnMut(&str) -> std::io::Result<()>,
+    ) -> std::io::Result<Self> {
         let root = data.join("logs");
         private_dir(&root)?;
         private_dir(&root.join(".control"))?;
         let global = create(&root.join(".control/global.lock"))?;
         global.try_lock_exclusive()?;
+        let global = ScopedLock(Some(global));
         housekeeping(&root, RESERVE)?;
         let id = uuid::Uuid::new_v4().to_string();
         let name = format!("{}_{}", chrono::Utc::now().format("%Y%m%d-%H%M%S"), id);
         let dir = root.join(&name);
-        private_dir(&dir)?;
-        let lock = create(&root.join(".control").join(format!("{id}.lock")))?;
-        lock.try_lock_exclusive()?;
-        for (c, _) in LIMITS {
-            let mut f = OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(dir.join(file_name(c)))?;
-            f.write_all(&encoded(&record(
-                &id,
-                c,
-                0,
-                "INFO",
-                "logger",
-                "SESSION_HEADER",
-                json!({}),
-            )))?;
+        let control = root.join(".control");
+        let journal = control.join(format!("{id}.init"));
+        let headers: serde_json::Map<String, Value> = LIMITS
+            .iter()
+            .map(|(c, _)| {
+                let bytes = encoded(&record(
+                    &id,
+                    c,
+                    0,
+                    "INFO",
+                    "logger",
+                    "SESSION_HEADER",
+                    json!({}),
+                ));
+                ((*c).into(), json!(String::from_utf8(bytes).unwrap()))
+            })
+            .collect();
+        let metadata = json!({"schemaVersion":"d4planner-log-session/v1","runId":id,"directory":name,"createdMs":SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as u64,"productVersion":product,"sourceVersion":source,"initialHeaders":headers});
+        let bytes = encoded(&metadata);
+        if bytes.len() > 16384 {
+            return Err(fail());
         }
-        let metadata = json!({"schemaVersion":"d4planner-log-session/v1","runId":id,"directory":name,"createdMs":SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis() as u64,"productVersion":product,"sourceVersion":source});
-        let mut f = create(&root.join(".control").join(format!("{id}.json")))?;
-        f.write_all(&encoded(&metadata))?;
+        let mut intent = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&journal)?;
+        if let Err(error) = intent.write_all(&bytes).and_then(|_| intent.sync_all()) {
+            drop(intent);
+            let _ = fs::remove_file(&journal);
+            return Err(error);
+        }
+        drop(intent);
+        let result = (|| {
+            checkpoint("journal_synced")?;
+            let lock = create(&control.join(format!("{id}.lock")))?;
+            lock.try_lock_exclusive()?;
+            let lock = ScopedLock(Some(lock));
+            checkpoint("lock_created")?;
+            if let Err(error) = fs::create_dir(&dir) {
+                // A colliding directory was not created by this transaction.
+                if error.kind() == std::io::ErrorKind::AlreadyExists {
+                    let _ = fs::remove_file(&journal);
+                }
+                return Err(error);
+            }
+            private_dir(&dir)?;
+            checkpoint("directory_created")?;
+            for (c, _) in LIMITS {
+                let mut file = OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(dir.join(file_name(c)))?;
+                checkpoint(&format!("{c}_created"))?;
+                let header = metadata["initialHeaders"][c].as_str().unwrap().as_bytes();
+                // Split at a deterministic point so tests cover real torn headers.
+                let split = header.len() / 2;
+                file.write_all(&header[..split])?;
+                checkpoint(&format!("{c}_partial"))?;
+                file.write_all(&header[split..])?;
+                checkpoint(&format!("{c}_written"))?;
+                file.sync_all()?;
+                checkpoint(&format!("{c}_synced"))?;
+            }
+            #[cfg(unix)]
+            File::open(&dir)?.sync_all()?;
+            checkpoint("before_metadata_commit")?;
+            fs::rename(&journal, control.join(format!("{id}.json")))?;
+            #[cfg(unix)]
+            File::open(&control)?.sync_all()?;
+            checkpoint("metadata_committed")?;
+            Ok(Self {
+                dir,
+                id,
+                lock: lock.take(),
+                root: root.clone(),
+            })
+        })();
+        if result.is_err() {
+            let _ = recover_initializations(&root);
+        }
         drop(global);
-        Ok(Self {
-            dir,
-            id,
-            lock,
-            root,
-        })
+        result
     }
     pub fn housekeeping(&self) {
         if let Ok(g) = create(&self.root.join(".control/global.lock")) {
             if g.try_lock_exclusive().is_ok() {
+                let _guard = ScopedLock(Some(g));
                 let _ = housekeeping(&self.root, 0);
             }
         }
@@ -631,6 +803,7 @@ impl Drop for Session {
         let _ = self.lock.unlock();
         if let Ok(g) = create(&self.root.join(".control/global.lock")) {
             if g.try_lock_exclusive().is_ok() {
+                let _guard = ScopedLock(Some(g));
                 let _ = housekeeping(&self.root, 0);
             }
         }
@@ -839,6 +1012,194 @@ mod tests {
         assert_eq!(sink.dropped, 0);
         assert!(fs::metadata(session.dir.join("fe.log")).unwrap().len() <= sink.cap);
         drop(session);
+        fs::remove_dir_all(p).unwrap();
+    }
+    #[test]
+    fn failed_initialization_is_reclaimed_before_next_run() {
+        let p = temp();
+        assert!(Session::create_with_checkpoints(&p, "1", "test", |step| {
+            if step == "directory_created" {
+                Err(fail())
+            } else {
+                Ok(())
+            }
+        })
+        .is_err());
+        let live = Session::create(&p, "1", "test").unwrap();
+        let runs: Vec<_> = fs::read_dir(p.join("logs"))
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name() != ".control")
+            .collect();
+        assert_eq!(
+            runs.len(),
+            1,
+            "partial run must not survive next initialization"
+        );
+        assert_eq!(runs[0].path(), live.dir);
+        drop(live);
+        fs::remove_dir_all(p).unwrap();
+    }
+    #[test]
+    fn initialization_fault_points_leave_no_untracked_runs() {
+        for stage in [
+            "journal_synced",
+            "lock_created",
+            "directory_created",
+            "FE_created",
+            "FE_partial",
+            "FE_written",
+            "FE_synced",
+            "BE_created",
+            "BE_partial",
+            "BE_written",
+            "BE_synced",
+            "RULEKIT_created",
+            "RULEKIT_partial",
+            "RULEKIT_written",
+            "RULEKIT_synced",
+            "before_metadata_commit",
+            "metadata_committed",
+        ] {
+            let p = temp();
+            assert!(Session::create_with_checkpoints(
+                &p,
+                "1",
+                "fault",
+                |point| if point == stage { Err(fail()) } else { Ok(()) }
+            )
+            .is_err());
+            let live = Session::create(&p, "1", "healthy").unwrap();
+            let dirs: Vec<_> = fs::read_dir(p.join("logs"))
+                .unwrap()
+                .flatten()
+                .filter(|e| e.file_name() != ".control")
+                .collect();
+            assert_eq!(
+                dirs.len(),
+                if stage == "metadata_committed" { 2 } else { 1 },
+                "{stage}"
+            );
+            assert!(fs::read_dir(p.join("logs/.control"))
+                .unwrap()
+                .flatten()
+                .all(|e| e.path().extension().and_then(|s| s.to_str()) != Some("init")));
+            assert!(size(&p.join("logs")) < GLOBAL);
+            drop(live);
+            fs::remove_dir_all(p).unwrap();
+        }
+    }
+    #[test]
+    fn initialization_crash_child() {
+        let Ok(path) = env::var("S8_INIT_CRASH_PATH") else {
+            return;
+        };
+        let stage = env::var("S8_INIT_CRASH_POINT").unwrap();
+        let root = PathBuf::from(path);
+        let _ = Session::create_with_checkpoints(&root, "1", "crash", |point| {
+            if point == stage {
+                fs::write(root.join("checkpoint"), point)?;
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
+            }
+            Ok(())
+        });
+        panic!("checkpoint was not reached");
+    }
+    fn kill_initializing_run(root: &Path, stage: &str) {
+        use std::process::{Command, Stdio};
+        let mut child = Command::new(env::current_exe().unwrap())
+            .args(["--exact", "tests::initialization_crash_child"])
+            .env("S8_INIT_CRASH_PATH", root)
+            .env("S8_INIT_CRASH_POINT", stage)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !root.join("checkpoint").exists() {
+            if std::time::Instant::now() > deadline || child.try_wait().unwrap().is_some() {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("child failed to reach {stage}");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        // Init owns the global lock: a second launcher must fail open, never delete it.
+        assert!(Session::create(root, "1", "concurrent").is_err());
+        child.kill().unwrap();
+        child.wait().unwrap();
+    }
+    #[test]
+    fn killed_initialization_recovery_preserves_foreign_data() {
+        for stage in [
+            "journal_synced",
+            "lock_created",
+            "directory_created",
+            "FE_created",
+            "FE_partial",
+            "FE_synced",
+            "BE_partial",
+            "BE_synced",
+            "RULEKIT_partial",
+            "RULEKIT_synced",
+            "before_metadata_commit",
+            "metadata_committed",
+        ] {
+            let p = temp();
+            private_dir(&p.join("logs/foreign")).unwrap();
+            fs::write(p.join("logs/foreign/owner.txt"), "keep").unwrap();
+            kill_initializing_run(&p, stage);
+            let live = Session::create(&p, "1", "healthy").unwrap();
+            assert_eq!(
+                fs::read_to_string(p.join("logs/foreign/owner.txt")).unwrap(),
+                "keep"
+            );
+            let dirs: Vec<_> = fs::read_dir(p.join("logs"))
+                .unwrap()
+                .flatten()
+                .filter(|e| e.file_name() != ".control" && e.file_name() != "foreign")
+                .collect();
+            assert_eq!(
+                dirs.len(),
+                if stage == "metadata_committed" { 2 } else { 1 },
+                "{stage}"
+            );
+            drop(live);
+            fs::remove_dir_all(p).unwrap();
+        }
+    }
+    #[test]
+    fn initialization_recovery_keeps_locked_or_foreign_partial_directory() {
+        let p = temp();
+        kill_initializing_run(&p, "FE_partial");
+        let journal = fs::read_dir(p.join("logs/.control"))
+            .unwrap()
+            .flatten()
+            .find(|e| e.path().extension().and_then(|s| s.to_str()) == Some("init"))
+            .unwrap()
+            .path();
+        let m: Value = serde_json::from_slice(&fs::read(&journal).unwrap()).unwrap();
+        let dir = p.join("logs").join(m["directory"].as_str().unwrap());
+        let lock = create(
+            &p.join("logs/.control")
+                .join(format!("{}.lock", m["runId"].as_str().unwrap())),
+        )
+        .unwrap();
+        lock.try_lock_exclusive().unwrap();
+        let live = Session::create(&p, "1", "other").unwrap();
+        assert!(dir.exists());
+        drop(lock);
+        fs::write(dir.join("owner.txt"), "foreign").unwrap();
+        live.housekeeping();
+        assert!(dir.join("owner.txt").exists());
+        assert!(journal.exists());
+        fs::remove_file(dir.join("owner.txt")).unwrap();
+        live.housekeeping();
+        assert!(!dir.exists());
+        assert!(!journal.exists());
+        drop(live);
         fs::remove_dir_all(p).unwrap();
     }
     #[test]

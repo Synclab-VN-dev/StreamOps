@@ -104,6 +104,7 @@ async function main() {
 
   function execute(message) {
     const started=performance.now();
+    let ok=false;
     log.emit('DEBUG','api','REQUEST',{correlationId:message.id});
     running += 1;
     const controller = new AbortController();
@@ -111,10 +112,10 @@ async function main() {
     const management=message.protocolVersion===SNAPSHOT_PROTOCOL;
     if(!management)runningApplication++;
     Promise.resolve().then(() => invoke(message, controller)).then(
-      result => write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'result',correlationId:message.id,result}),
+      result => {ok=true;write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'result',correlationId:message.id,result});},
       error => {log.emit('ERROR','api','ERROR',{correlationId:message.id,errorCode:error?.code});write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'error',correlationId:message.id,error:publicError(error)});},
     ).finally(() => {
-      log.emit('INFO','api','RESULT',{durationMs:performance.now()-started,correlationId:message.id});
+      log.emit('INFO','api','RESULT',{ok,durationMs:performance.now()-started,correlationId:message.id});
       active.delete(message.id);
       running -= 1;
       if(!management)runningApplication--;

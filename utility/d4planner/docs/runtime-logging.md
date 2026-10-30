@@ -35,3 +35,16 @@ Counters represent diagnostic loss, not delivery guarantees. If storage remains 
 ### Phục hồi lỗi ghi
 
 Nếu append hoặc atomic replacement thất bại, writer giữ pending dropped count trong RAM. Khi ghi được trở lại, writer phát `LOG_DROPPED` ngay cả khi threshold là ERROR; marker này là diagnostic bắt buộc. `trimmed` chỉ tăng sau khi replacement thành công. Export báo số mất/trim quan sát được trong lịch sử còn giữ, không cam kết lifetime counters sau crash hoặc retention.
+
+## Review S8-F01…F04
+
+| Finding | Independent assessment | Expected/actual và quyết định |
+|---|---|---|
+| F01 — generic Browser Infrastructure | AGREE / FIX_REQUIRED | Global symbol mang tên ứng dụng vi phạm INF-11/12 dù optional. Tái sử dụng callback `config.logger` đã có, fail-open; composition của worker inject adapter allowlisted. Không sửa assertion kiến trúc. |
+| F02 — export khi app hỏng | AGREE / FIX_REQUIRED | Guard upgrade/payload chạy trước export. Dispatch export trước runtime validation, vẫn kiểm tra application identity, DataRoot, run metadata và destination. Startup bình thường vẫn fail closed. Active metadata hỏng cần explicit DataRoot; identity khác không được bypass. |
+| F03 — partial init | AGREE / FIX_REQUIRED | Run directory tạo trước ownership metadata nên lỗi ghi/kill có thể để orphan. Durable `.init` journal trước mkdir, headers fsync rồi rename journal thành metadata đã commit. Recovery chỉ xóa exact header prefixes thuộc journal, sau khi lấy ownership lock. |
+| F04 — RESULT outcome | PARTIALLY_AGREE / FIX_REQUIRED | RESULT là completion, không phải success; tuy nhiên event riêng thiếu outcome. Thêm `ok` đã có trong allowlist vào BE/worker completion, không đổi IPC/error behavior. |
+
+`RESULT.ok=true` nghĩa operation đã resolve; `false` nghĩa operation hoàn tất bằng lỗi/timeout/cancellation. REQUEST/ERROR/RESULT dùng cùng correlation hash. Process bị kill trước completion có thể không có RESULT; không suy missing RESULT thành success.
+
+Init journal tối đa 16 KiB và được tính trong global budget. Lỗi trước durable journal chưa tạo run directory. Journal lỗi/không xác minh được hoặc thư mục có foreign contents được giữ và tính quota; không đoán ownership để xóa. Journal hợp lệ của interrupted init được thu hồi ở housekeeping kế tiếp; active lock được giữ nguyên. Crash sau metadata commit để lại closed run hợp lệ, áp dụng retention bình thường. Không tự xóa orphan lịch sử thiếu mọi ownership evidence.

@@ -26,5 +26,9 @@ let logger;
 function configure(){if(logger)return logger;let pending=0,dropped=0,worker;try{if(!process.env.D4_LOG_DIR)return;worker=new Worker(__filename,{workerData:{d4log:true,dir:process.env.D4_LOG_DIR,runId:process.env.D4_LOG_RUN_ID,generation:Number(process.env.D4_RULEKIT_WORKER_GENERATION)||0,policy:JSON.parse(process.env.D4_LOG_POLICY||'{}')}});worker.unref();worker.on('error',()=>{worker=null;});worker.on('message',()=>{pending=Math.max(0,pending-1);});}catch{return;}
  logger={emit(level,tag,event,fields={}){if(!worker)return;if(!TAGS.has(tag)||!EVENTS.has(event)||pending>=256){dropped++;return;}if(dropped&&pending<255){worker.postMessage({level:'WARN',tag:'logger',event:'LOG_DROPPED',fields:{dropped}});pending++;dropped=0;}worker.postMessage({level,tag,event,fields:clean(fields)});pending++;},async close(){if(!worker)return;const w=worker;worker=null;await Promise.race([new Promise(resolve=>{w.once('exit',resolve);w.postMessage({close:true});}),new Promise(resolve=>setTimeout(resolve,500))]);await w.terminate();}};return logger;}
 function emit(...args){configure()?.emit(...args);}
-module.exports={Sink,clean,configure,emit};
-if(isMainThread)globalThis[Symbol.for('d4planner.runtimeLogger')]=module.exports;
+// Composition-owned adapter: browser infrastructure only knows its neutral callback.
+function browserEvent(record){
+ const events={request:['DEBUG','REQUEST'],starting:['INFO','START'],started:['INFO','READY'],stopping:['INFO','STOP'],stopped:['INFO','CLOSE'],error:['ERROR','ERROR'],quarantine:['WARN','QUARANTINE'],disconnected:['WARN','DISCONNECT'],acquired:['DEBUG','CREATE'],released:['DEBUG','CLOSE'],queued:['DEBUG','STATE_CHANGE'],cleanup_failed:['ERROR','ERROR'],recovery_failed:['ERROR','ERROR']};
+ const mapped=events[record?.event];if(mapped)emit(mapped[0],'browser',mapped[1],{queueDepth:record.pendingQueue,errorCode:record.code});
+}
+module.exports={Sink,clean,configure,emit,browserEvent};

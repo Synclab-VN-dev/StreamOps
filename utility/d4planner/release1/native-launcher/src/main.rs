@@ -110,6 +110,17 @@ fn run() -> Result<(), String> {
     let root = env::current_exe().map_err(|e| e.to_string())?.parent().ok_or("No installation root")?.to_owned();
     #[cfg(windows)]
     if env::args().any(|a| a == "--stop") { return windows::stop(&root); }
+    // Read-only diagnostics must work even when application recovery is required.
+    #[cfg(windows)] {
+        if env::args().any(|a| a == "--export-logs") {
+            let args:Vec<String>=env::args().collect();
+            let i=args.iter().position(|a|a=="--export-logs").unwrap();
+            let id=args.get(i+1).ok_or("Run ID required")?;
+            let destination=args.get(i+2).ok_or("New private export directory required")?;
+            d4planner_runtime_logging::export(&windows::export_data_root(&root)?,id,Path::new(destination)).map_err(|_|"Log export unavailable")?;
+            return Ok(());
+        }
+    }
     if root.join("upgrade-journal.json").exists() && !env::args().any(|a| a == "--installation-health" || a == "--runtime-health") {
         return Err("An interrupted upgrade needs Setup recovery before launch".into());
     }
@@ -119,14 +130,6 @@ fn run() -> Result<(), String> {
     let payload = dunce::simplified(&payload(&root)?).to_path_buf();
     if env::args().any(|a| a == "--installation-health") { verify(&payload)?; return Ok(()); }
     #[cfg(windows)] {
-        if env::args().any(|a| a == "--export-logs") {
-            let args:Vec<String>=env::args().collect();
-            let i=args.iter().position(|a|a=="--export-logs").unwrap();
-            let id=args.get(i+1).ok_or("Run ID required")?;
-            let destination=args.get(i+2).ok_or("New private export directory required")?;
-            d4planner_runtime_logging::export(&windows::data_root(&root)?,id,Path::new(destination)).map_err(|_|"Log export unavailable")?;
-            return Ok(());
-        }
         if env::args().any(|a| a == "--snapshot-command") { verify(&payload)?; return windows::provision(&root, &payload); }
         windows::launch(&root, &payload, env::args().any(|a| a == "--runtime-health"))
     }
@@ -196,6 +199,19 @@ mod windows {
             }
         }
         1
+    }
+
+    pub(super) fn export_data_root(root: &Path) -> Result<PathBuf, String> {
+        let active = root.join("active.json");
+        if active.exists() {
+            match fs::read(&active).ok().and_then(|bytes|serde_json::from_slice::<Value>(&bytes).ok()) {
+                Some(state) if state["applicationId"] == "vn.synclab.d4planner" => (),
+                Some(_) => return Err("Application identity mismatch".into()),
+                None if env::var_os("D4PLANNER_DATA_ROOT").is_some() => (),
+                None => return Err("Damaged installation metadata requires explicit DataRoot for export".into()),
+            }
+        }
+        data_root(root)
     }
 
     pub(super) fn data_root(root: &Path) -> Result<PathBuf, String> {

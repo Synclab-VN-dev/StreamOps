@@ -75,7 +75,7 @@
     },
     {
       "path": "browser-infra/src/infrastructure.js",
-      "sha256": "d28bae0374a3a0eb8e8da3b9627642aa85add3fa2290fbab59708fd57860f21b"
+      "sha256": "c4edcec5ac4e729df2d4573b6154bfa447613226537c8076897498f691ace670"
     },
     {
       "path": "browser-infra/src/lease.js",
@@ -243,7 +243,7 @@
     },
     {
       "path": "runtime-logging/src/logger.js",
-      "sha256": "e168e3a864af39f4b0f807435d268a48405693b358e72288709aabaa3c6c7b64"
+      "sha256": "8127d79fa23760f1db4906369b6dd9c7ff6a55c24532cf0ac9a84016c5ebd7c5"
     },
     {
       "path": "snapshot-management/compatibility/build-index.js",
@@ -330,6 +330,6 @@
     "snapshot-management/compatibility/versions/maxroll-20261023.js",
     "snapshot-management/compatibility/versions/maxroll-20261027.js"
   ],
-  "executionSha256": "ded6df65c320707e868351793dd19aa6317b08531e9263439fb69fff631cb8f3",
-  "ruleKitVersion": "rulekit-execution/sha256:ded6df65c320707e868351793dd19aa6317b08531e9263439fb69fff631cb8f3"
+  "executionSha256": "e3f686c6335396a20be5cf728b09edce8bd59d24079a2632ee6f0d25b6cc675a",
+  "ruleKitVersion": "rulekit-execution/sha256:e3f686c6335396a20be5cf728b09edce8bd59d24079a2632ee6f0d25b6cc675a"
 }

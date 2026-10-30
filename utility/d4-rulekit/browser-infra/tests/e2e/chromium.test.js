@@ -233,3 +233,17 @@ test('INF-13 75 real lifecycle leases retain bounded resource counts', async () 
   assert.equal(metrics.peakContexts, 1);
   assert.equal(instance.getStatus().pendingQueue, 0);
 });
+
+test('generic logger observes lifecycle and throwing consumer remains fail-open', async () => {
+  const events=[];
+  const instance=create({logger:record=>{events.push(record);throw Error('consumer diagnostic failure');}});
+  await instance.start();
+  await instance.withLease({},async lease=>{
+    await lease.page.goto(`${fixture.origin}/generic`);
+    assert.equal(await lease.page.textContent('#value'),'generic consumer');
+  });
+  await instance.restart();await instance.stop();
+  assert.equal(instance.getStatus().state,'stopped');
+  assert.ok(['starting','started','request','acquired','released','stopping','stopped'].every(event=>events.some(r=>r.event===event)));
+  assert.ok(events.every(record=>record.component==='browser-infrastructure'&&Object.isFrozen(record)));
+});
