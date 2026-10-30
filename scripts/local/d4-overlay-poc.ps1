@@ -5,12 +5,12 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$Project = Join-Path $Root 'utility\d4planner-overlay-poc'
-$Exe = Join-Path $Project 'src-tauri\target\release\d4planner-overlay-poc.exe'
+$Project = Join-Path $Root 'utility\d4planner-hud'
+$Exe = Join-Path $Project 'src-tauri\target\release\d4planner-hud.exe'
 
 function Require([string]$Name) {
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
-        throw "Missing $Name. See utility/d4planner-overlay-poc/README.md"
+        throw "Missing $Name. See utility/d4planner-hud/README.md"
     }
 }
 function Prepare-Dev {
@@ -78,7 +78,7 @@ switch ($Action) {
         & (Join-Path $Root 'scripts\e2e\d4-overlay-poc-smoke.ps1') -ExePath $Exe -Launch
     }
     'Stop' {
-        $procs=@(Get-Process -Name 'd4planner-overlay-poc' -ErrorAction SilentlyContinue)
+        $procs=@(Get-Process -Name 'd4planner-hud' -ErrorAction SilentlyContinue)
         foreach ($proc in $procs) {
             Write-Host "Stopping PID $($proc.Id)"
             Stop-Process -Id $proc.Id -ErrorAction Stop

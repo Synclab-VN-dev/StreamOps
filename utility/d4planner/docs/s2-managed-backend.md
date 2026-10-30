@@ -108,8 +108,8 @@ project dev dependencies for pytest; the Rust real-subprocess test needs stdlib
 only). `S2_TEST_PYTHON` can select the direct Python interpreter.
 
 ```sh
-cargo test --locked --manifest-path utility/d4planner-overlay-poc/lifecycle-tests/Cargo.toml -- --nocapture
-cargo check --locked --manifest-path utility/d4planner-overlay-poc/lifecycle-tests/Cargo.toml
+cargo test --locked --manifest-path utility/d4planner-hud/lifecycle-tests/Cargo.toml -- --nocapture
+cargo check --locked --manifest-path utility/d4planner-hud/lifecycle-tests/Cargo.toml
 PYTHONPATH=utility/d4planner/src python3 -m pytest -q utility/d4planner/tests/test_managed_backend.py utility/d4planner/tests/contracts/test_release1_contract.py
 PYTHONPATH=utility/d4planner/src python3 -m pytest -q utility/d4planner/tests/test_cli_runtime.py
 git diff --check

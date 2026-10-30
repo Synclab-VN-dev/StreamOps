@@ -67,7 +67,7 @@ jobs:
             # Python contexts, not a green job containing only skipped steps.
             $overlay = @(
               $realFiles | Where-Object {
-                $_ -like "utility/d4planner-overlay-poc/*" -or
+                $_ -like "utility/d4planner-hud/*" -or
                 $_ -like "scripts/*/d4-overlay-poc*" -or
                 $_ -eq ".github/workflows/d4-overlay-poc.yml"
               }
