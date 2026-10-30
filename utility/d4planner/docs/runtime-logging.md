@@ -18,10 +18,10 @@ S8 không có Report Issue UI/upload. CI_NOT_CHECKED cho tới khi có quyền r
 
 ## Controlled DEBUG reproduction and export
 
-`launcher.json` (existing `d4planner-launcher-config/v1`) may contain `logging`:
+`launcher.json` (existing `d4planner-launcher/v1`) may contain `logging`:
 
 ```json
-{"schemaVersion":"d4planner-launcher-config/v1","logging":{"FE":{"websocket":"DEBUG"},"BE":{"capture":"DEBUG","*":"WARN"},"RULEKIT":{"api":"DEBUG"}}}
+{"schemaVersion":"d4planner-launcher/v1","logging":{"FE":{"websocket":"DEBUG"},"BE":{"capture":"DEBUG","*":"WARN"},"RULEKIT":{"api":"DEBUG"}}}
 ```
 
 Each component/tag value is its minimum level: DEBUG, INFO, WARN, ERROR; missing/invalid values default to INFO. Normal builds support controlled diagnostics without a global toolchain. Arbitrary messages are intentionally not supported: add a reviewed event/tag and typed safe fields to the three adapters/schema when new instrumentation is needed. Never pass raw exception text, payloads or keys.

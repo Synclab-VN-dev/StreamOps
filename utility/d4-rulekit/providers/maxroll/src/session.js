@@ -95,6 +95,7 @@ class MaxrollSession {
     if (this.#closePromise) return this.#closePromise;
     this.#closePromise = (async () => {
       if (this.#status === 'CLOSED') return;
+      log.emit('INFO','session','CLOSE');
       this.#status = 'CLOSING';
       const failures = [];
       try { await this.#adapter?.close?.(); } catch (error) { failures.push(error); }
@@ -112,6 +113,7 @@ class MaxrollSession {
   }
 
   async #evaluateMapped(mapped, options) {
+    log.emit('DEBUG','session','REQUEST');
     return bounded(async () => {
       if (options.signal?.aborted) throw new MaxrollProviderError(ERROR_CODES.CANCELLED, 'evaluation cancelled');
       const applied = await this.#adapter.apply(mapped.desired, mapped.fingerprint);
