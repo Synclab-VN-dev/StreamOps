@@ -640,6 +640,16 @@ pub fn export(data: &Path, id: &str, destination: &Path) -> std::io::Result<Valu
     {
         return Err(fail());
     }
+    // Resolve the nearest existing parent: Windows case/8.3 aliases must not
+    // turn an external export into unmanaged bytes inside the quota root.
+    let root_real = fs::canonicalize(&root)?;
+    let mut parent = destination.parent().ok_or_else(fail)?;
+    while !parent.exists() {
+        parent = parent.parent().ok_or_else(fail)?;
+    }
+    if fs::canonicalize(parent)?.starts_with(&root_real) {
+        return Err(fail());
+    }
     let meta = root.join(".control").join(format!("{id}.json"));
     if !safe(&meta) {
         return Err(fail());
@@ -900,6 +910,8 @@ mod tests {
         let s = Session::create(&p, "1", "a").unwrap();
         let before = fs::read(s.dir.join("fe.log")).unwrap();
         assert!(export(&p, &s.id, &p.join("logs/export")).is_err());
+        #[cfg(windows)]
+        assert!(export(&p, &s.id, &p.join("LOGS/new/export")).is_err());
         let m = export(&p, &s.id, &p.join("export")).unwrap();
         assert_eq!(m["files"].as_array().unwrap().len(), 3);
         assert_eq!(before, fs::read(s.dir.join("fe.log")).unwrap());
