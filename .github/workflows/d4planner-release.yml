@@ -50,7 +50,7 @@ jobs:
         if: github.event_name == 'push'
         shell: pwsh
         run: |
-          $v = $env:GITHUB_REF_NAME -replace '^d4planner-uat/v', ''
+          $v = (Get-Content utility/d4planner/release1/package-plan.json -Raw | ConvertFrom-Json).version
           if ($v -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') { throw 'Invalid UAT version' }
           "RELEASE_VERSION=$v" >> $env:GITHUB_ENV
       - name: Validate source, version, distribution and protected publish gate
@@ -183,6 +183,6 @@ jobs:
       - name: Publish original verified UAT Setup only
         shell: pwsh
         run: |
-          $v = $env:GITHUB_REF_NAME -replace '^d4planner-uat/v', ''
+          $v = (Get-Content utility/d4planner/release1/package-plan.json -Raw | ConvertFrom-Json).version
           python utility/d4planner/tools/release_ci.py publish-uat --channel uat --version "$v" --source "$env:SOURCE_SHA" --directory verified-artifact
           if ($LASTEXITCODE -ne 0) { throw 'UAT publication failed closed' }
