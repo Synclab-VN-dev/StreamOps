@@ -79,3 +79,15 @@ def test_maintenance_module_import_at_windows_drive_root():
     with patch.object(Path, 'resolve', return_value=installed):
         exec(compile(source, str(installed), 'exec'), namespace)
     assert callable(namespace['inspect_directory'])
+
+
+def test_runtime_tree_digest_uses_case_sensitive_component_order_on_windows(tmp_path):
+    import hashlib,json
+    (tmp_path/'Z.dll').write_bytes(b'z')
+    (tmp_path/'a.exe').write_bytes(b'a')
+    (tmp_path/'a-dir').mkdir();(tmp_path/'a-dir/runtime.bin').write_bytes(b'r')
+    records=[('Z.dll',hashlib.sha256(b'z').hexdigest()),
+             ('a-dir/runtime.bin',hashlib.sha256(b'r').hexdigest()),
+             ('a.exe',hashlib.sha256(b'a').hexdigest())]
+    expected=hashlib.sha256(json.dumps(records,separators=(',',':')).encode()).hexdigest()
+    assert public.tree_digest(tmp_path)==expected
