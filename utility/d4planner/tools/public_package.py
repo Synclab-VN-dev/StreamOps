@@ -8,8 +8,10 @@ from __future__ import annotations
 import hashlib,json,re
 from pathlib import Path
 
-ROOT=Path(__file__).resolve().parents[3]
-POLICY=ROOT/'utility/d4planner/release1/public-content-policy.json'
+_MODULE = Path(__file__).resolve()
+# Source-tool metadata only; packaged maintenance need not have this ancestor.
+ROOT = _MODULE.parents[3] if len(_MODULE.parents) > 3 else None
+
 SKIP_PARTS={'.git','.github','.bin','__pycache__','test','tests','spec','specs','fixtures','examples','docs','benchmarks','benchmark'}
 MODULES=('application','browser-infra','providers/maxroll','snapshot-management')
 
@@ -36,8 +38,14 @@ def tree_digest(root: Path,*,dependencies=False):
 
 
 def policy():
-    candidates=(Path(__file__).with_name('public-content-policy.json'),POLICY,
-                Path(__file__).resolve().parents[1]/'utility/d4planner/release1/public-content-policy.json')
+    module = Path(__file__).resolve()
+    # Installed maintenance has no source checkout and may be at C:\App.
+    # Keep the colocated reviewed policy authoritative; source-tree fallbacks
+    # are only meaningful when the corresponding ancestor actually exists.
+    candidates = [module.with_name('public-content-policy.json')]
+    for depth in (3, 1):
+        if len(module.parents) > depth:
+            candidates.append(module.parents[depth]/'utility/d4planner/release1/public-content-policy.json')
     for candidate in candidates:
         if candidate.is_file():return json.loads(candidate.read_text(encoding='utf-8'))
     raise PublicContentError('PUBLIC_CONTENT_POLICY_MISSING')

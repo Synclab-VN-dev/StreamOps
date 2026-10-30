@@ -52,3 +52,30 @@ def test_public_sources_preserve_trusted_execution_inventory():
     assert required <= set(public.policy()['sourceAllowlist'])
     for relative in required:
         public.inspect_bytes(relative, (public.ROOT / relative).read_bytes())
+
+
+def test_missing_policy_at_shallow_install_path_is_typed_error(monkeypatch):
+    # Installed maintenance helpers may live directly below a drive root;
+    # they must not assume the source checkout's ancestor depth.
+    monkeypatch.setattr(public, '__file__', str(Path.cwd().anchor + 'public_package.py'))
+    with pytest.raises(public.PublicContentError, match='PUBLIC_CONTENT_POLICY_MISSING'):
+        public.policy()
+
+
+def test_installed_helper_uses_colocated_policy(tmp_path, monkeypatch):
+    expected = public.policy()
+    (tmp_path / 'public-content-policy.json').write_text(json.dumps(expected), encoding='utf-8')
+    monkeypatch.setattr(public, '__file__', str(tmp_path / 'public_package.py'))
+    assert public.policy() == expected
+
+
+def test_maintenance_module_import_at_windows_drive_root():
+    from pathlib import PureWindowsPath
+    from unittest.mock import patch
+
+    source = Path(public.__file__).read_text(encoding='utf-8')
+    installed = PureWindowsPath('C:/D4App/maintenance/public_package.py')
+    namespace = {'__file__': str(installed), '__name__': 'installed_public_package'}
+    with patch.object(Path, 'resolve', return_value=installed):
+        exec(compile(source, str(installed), 'exec'), namespace)
+    assert callable(namespace['inspect_directory'])
