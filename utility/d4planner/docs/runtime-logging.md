@@ -48,3 +48,11 @@ Nếu append hoặc atomic replacement thất bại, writer giữ pending droppe
 `RESULT.ok=true` nghĩa operation đã resolve; `false` nghĩa operation hoàn tất bằng lỗi/timeout/cancellation. REQUEST/ERROR/RESULT dùng cùng correlation hash. Process bị kill trước completion có thể không có RESULT; không suy missing RESULT thành success.
 
 Init journal tối đa 16 KiB và được tính trong global budget. Lỗi trước durable journal chưa tạo run directory. Journal lỗi/không xác minh được hoặc thư mục có foreign contents được giữ và tính quota; không đoán ownership để xóa. Journal hợp lệ của interrupted init được thu hồi ở housekeeping kế tiếp; active lock được giữ nguyên. Crash sau metadata commit để lại closed run hợp lệ, áp dụng retention bình thường. Không tự xóa orphan lịch sử thiếu mọi ownership evidence.
+
+CI Windows quota regression: 65.000 lần ghi đồng bộ trực tiếp vào sink vượt deadline
+40 giây của test (và 180 giây trên VM cô lập). Đây không phải SLA IPC/throughput đã
+duyệt: production dùng queue/writer thread hữu hạn. Test quota nay seed JSONL hợp
+lệ bằng production record encoder tới >99% cap 15 MB không đổi, sau đó ghi 2.500
+DEBUG events thật để vượt ngưỡng. Vẫn kiểm tra compaction, zero drops trong workload
+này, header/record mới nhất, JSONL và secret canary. Evidence full-volume lịch sử
+được giữ nguyên; boundary test không tuyên bố 65.000 writes đạt latency budget.

@@ -58,10 +58,26 @@ def test_symlink_writer_fails_open_without_mutating_foreign(tmp_path):
 
 def test_node_real_thread_privacy_filter_and_fifteen_mb_quota(tmp_path):
     directory,run=session(tmp_path)
-    script="""const {Sink}=require(process.argv[1]);const s=new Sink(process.argv[2],process.argv[3],4,{RULEKIT:{api:'DEBUG'}});for(let i=0;i<65000;i++)s.emit('DEBUG','api','DEBUG_PROBE',{count:i,token:process.argv[4],exception:process.argv[4]});s.emit('ERROR','api','ERROR');console.log(JSON.stringify({dropped:s.dropped,trimmed:s.trimmed}));"""
-    p=subprocess.run(['node','-e',script,str(NODE),str(directory),run,CANARY],capture_output=True,text=True,timeout=40)
-    assert p.returncode==0,p.stderr;assert json.loads(p.stdout)['trimmed']>0
-    f=directory/'rulekit.log';assert f.stat().st_size<=15_000_000;assert CANARY not in f.read_text();assert records(f)[-1]['event']=='ERROR'
+    # Seed valid production-shaped records near the REAL 15 MB cap, then cross
+    # it through the actual writer. This is a quota/privacy test, not 65k
+    # synchronous path checks with an undocumented 40-second throughput SLA.
+    script="""const fs=require('node:fs'),assert=require('node:assert/strict');
+const {Sink}=require(process.argv[1]);const s=new Sink(process.argv[2],process.argv[3],4,{RULEKIT:{api:'DEBUG'}});
+const header=fs.readFileSync(s.file);const seed=Buffer.from(JSON.stringify(s.record('INFO','api','RESULT',{count:-1}))+'\\n');
+const count=Math.floor((s.cap-header.length-8192)/seed.length);
+fs.appendFileSync(s.file,Buffer.from(seed.toString().repeat(count)));
+const seededBytes=fs.statSync(s.file).size;assert(seededBytes>s.cap*.99&&seededBytes<s.cap);
+for(let i=0;i<2500;i++)s.emit('DEBUG','api','DEBUG_PROBE',{count:i,token:process.argv[4],exception:process.argv[4]});
+s.emit('ERROR','api','ERROR');console.log(JSON.stringify({dropped:s.dropped,trimmed:s.trimmed,seededBytes}));"""
+    p=subprocess.run(['node','-e',script,str(NODE),str(directory),run,CANARY],capture_output=True,text=True,timeout=60)
+    assert p.returncode==0,p.stderr
+    result=json.loads(p.stdout);assert result['trimmed']>0;assert result['dropped']==0
+    assert 14_850_000<result['seededBytes']<15_000_000
+    f=directory/'rulekit.log';assert f.stat().st_size<=15_000_000;assert CANARY not in f.read_text()
+    rows=records(f);assert rows[0]['event']=='SESSION_HEADER';assert rows[-1]['event']=='ERROR'
+    assert any(r['event']=='LOG_TRIMMED' for r in rows)
+    assert [r for r in rows if r['event']=='DEBUG_PROBE'][-1]['fields']['count']==2499
+
 
 def test_real_worker_ipc_restart_reuses_run_and_new_generation(tmp_path):
     from d4planner.rulekit import LaunchSpecification,RuleKitProcessWrapper
