@@ -1,6 +1,8 @@
 """Concrete Release 1 Backend composition root."""
 
 from __future__ import annotations
+from .runtime_logging import emit as log_event
+
 
 import asyncio
 from datetime import datetime, timezone
@@ -226,6 +228,7 @@ class ProductionDomain:
         try:
             listing = self.runtime.targets.list()
         except TargetError as exc:
+            log_event("WARN","target","ERROR")
             raise TargetActivationError(exc.code, "Target listing is unavailable.") from None
         return {
             "listRevision": listing.revision,
@@ -246,6 +249,7 @@ class ProductionDomain:
         except TargetChanged as exc:
             raise TargetActivationError("TARGET_CHANGED", "Target changed; refresh the list.", retryable=True) from None
         except TargetError as exc:
+            log_event("WARN","target","ERROR")
             raise TargetActivationError(exc.code, "Target selection was rejected.") from None
         return {
             "status": "ACTIVATED", "targetId": target.target_id,
@@ -406,6 +410,7 @@ class ProductionBackendRuntime:
             try:
                 self.targets.list()
             except TargetError as exc:
+                log_event("WARN","target","ERROR")
                 listing_health = exc.code
             return {
                 "wsEndpoint": {"host": endpoint["host"], "port": self.server.port},
@@ -465,6 +470,7 @@ class ProductionBackendRuntime:
         return await self.rulekit.snapshot_api(method, request, on_health=self._forward_rulekit_health)
 
     async def capture_health_changed(self, status: str) -> None:
+        log_event("INFO","capture","STATE_CHANGE",ok=status=="READY")
         """Publish watcher degradation/recovery without relabelling stale score CURRENT."""
         capture = "HEALTHY" if status == "HEALTHY" else ("STALE" if status == "DEGRADED" else "ERROR")
         async with self._ingest_lock:

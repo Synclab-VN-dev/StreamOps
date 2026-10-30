@@ -165,6 +165,11 @@ def build_package(plan_path: Path, source: Path, output: Path, *, release_versio
     for key in ("applicationId", "version", "hudSchemaCompatibility"):
         if key in plan:
             manifest[key] = plan[key]
+    stage_report = source / "build-stage.json"
+    if stage_report.is_file():
+        source_head = json.loads(stage_report.read_text(encoding="utf-8")).get("sourceHead")
+        if isinstance(source_head, str) and len(source_head) == 40 and all(c in "0123456789abcdef" for c in source_head):
+            manifest["sourceHead"] = source_head
     output.parent.mkdir(parents=True, exist_ok=True)
     encoded = json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as package:

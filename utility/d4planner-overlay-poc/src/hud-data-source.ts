@@ -1,3 +1,4 @@
+import { runtimeLog } from "./runtime-log";
 import { invoke } from '@tauri-apps/api/core';
 import validateHudSchema from './hud-validator.generated';
 import type { HudSnapshot, SelectionResult, TargetListEntry } from './hud-model';
@@ -520,6 +521,7 @@ export class HudWebSocketDataSource {
 
   private send(message: SocketMessage): void {
     if (!this.socket || this.socket.readyState !== 1) throw new Error('WebSocket is not open.');
+    runtimeLog("DEBUG","websocket","REQUEST",{correlationId: typeof message.messageId === "string" ? message.messageId : undefined});
     this.socket.send(JSON.stringify(message));
   }
 

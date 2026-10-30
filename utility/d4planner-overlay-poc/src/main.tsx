@@ -1,3 +1,4 @@
+import { runtimeLog } from "./runtime-log";
 const root = document.getElementById("root");
 
 function showBootstrapState(message: string, failed = false) {
@@ -5,10 +6,11 @@ function showBootstrapState(message: string, failed = false) {
   root.innerHTML = `<main style="margin:16px;padding:18px;width:248px;border:1px solid rgba(255,255,255,.6);border-radius:20px;background:rgba(243,243,244,.97);box-shadow:0 14px 35px rgba(0,0,0,.14);font:12px 'Segoe UI',sans-serif;color:${failed ? "#9e4945" : "#252a31"}">${message}</main>`;
 }
 
-async function report(phase: string, detail?: string) {
+async function report(phase: string, _detail?: string) {
+  runtimeLog(phase.includes("ERROR") || phase.includes("FAILED") || phase.includes("REJECTION") ? "ERROR" : "INFO", "webview", phase === "BOOTSTRAP_STARTED" ? "START" : phase === "APP_MOUNT_REQUESTED" ? "READY" : "ERROR");
   try {
     const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("report_webview_diagnostic", { phase, detail: detail ?? null });
+    await invoke("report_webview_diagnostic", { phase, detail: null });
   } catch {
     // Diagnostics must never become a startup dependency.
   }

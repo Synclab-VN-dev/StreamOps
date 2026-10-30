@@ -1,4 +1,5 @@
 'use strict';
+const log=require('../../../runtime-logging/src/logger');
 
 const { bounded, SerialExecutor } = require('./async');
 const { ERROR_CODES, MaxrollProviderError } = require('./errors');

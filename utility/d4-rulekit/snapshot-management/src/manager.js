@@ -1,4 +1,5 @@
 'use strict';
+const log=require('../../runtime-logging/src/logger');
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const crypto=require('node:crypto');
@@ -42,6 +43,7 @@ class SnapshotManager {
     this.owner=crypto.randomUUID();this.lock=null;this.tail=Promise.resolve();this.current=null;this.quiescing=false;this.pendingTransition=null;this.registryError=null;
   }
   async start() {
+    log.emit('INFO','snapshot','START');
     await fs.mkdir(this.dataRoot,{recursive:true,mode:0o700});
     fail(!(await fs.lstat(this.dataRoot)).isSymbolicLink(),'SNAPSHOT_STORE_SYMLINK');
     for(const folder of ['store','profiles','staging']) {
@@ -59,7 +61,7 @@ class SnapshotManager {
           const checked=this.registry.verify(envelope,high.revision);
           fail(checked.hash===high.sha256,'REGISTRY_STATE_INCONSISTENT');
           this.registry.accept(envelope,high.revision);
-        } catch(error) {this.registryError=error.code??'REGISTRY_STATE_INVALID';}
+        } catch(error) {log.emit('ERROR','snapshot','ERROR');this.registryError=error.code??'REGISTRY_STATE_INVALID';}
       }
       this.current=await this.selection();
       return await this.getCapabilities();

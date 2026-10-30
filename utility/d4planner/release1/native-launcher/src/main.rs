@@ -67,6 +67,7 @@ fn equipment_config(data: &Path) -> Result<Option<EquipmentConfig>, String> {
     let value: Value = serde_json::from_slice(&fs::read(path).map_err(|e| e.to_string())?)
         .map_err(|_| "Invalid launcher.json")?;
     if value["schemaVersion"] != "d4planner-launcher/v1" { return Err("Invalid launcher configuration version".into()); }
+    if value.get("equipmentRepository").is_none() { return Ok(None); }
     let repository = &value["equipmentRepository"];
     match repository["enabled"].as_bool() {
         Some(false) if repository.as_object().is_some_and(|v| v.len() == 1) => return Ok(None),
@@ -116,10 +117,17 @@ fn run() -> Result<(), String> {
     // for containment checks, but give Node/CommonJS ordinary Win32 paths.
     // Node's relative module resolver does not support verbatim module roots.
     let payload = dunce::simplified(&payload(&root)?).to_path_buf();
-    verify(&payload)?;
-    if env::args().any(|a| a == "--installation-health") { return Ok(()); }
+    if env::args().any(|a| a == "--installation-health") { verify(&payload)?; return Ok(()); }
     #[cfg(windows)] {
-        if env::args().any(|a| a == "--snapshot-command") { return windows::provision(&root, &payload); }
+        if env::args().any(|a| a == "--export-logs") {
+            let args:Vec<String>=env::args().collect();
+            let i=args.iter().position(|a|a=="--export-logs").unwrap();
+            let id=args.get(i+1).ok_or("Run ID required")?;
+            let destination=args.get(i+2).ok_or("New private export directory required")?;
+            d4planner_runtime_logging::export(&windows::data_root(&root)?,id,Path::new(destination)).map_err(|_|"Log export unavailable")?;
+            return Ok(());
+        }
+        if env::args().any(|a| a == "--snapshot-command") { verify(&payload)?; return windows::provision(&root, &payload); }
         windows::launch(&root, &payload, env::args().any(|a| a == "--runtime-health"))
     }
     #[cfg(not(windows))] { Err("D4Planner native launch requires Windows".into()) }
@@ -190,7 +198,7 @@ mod windows {
         1
     }
 
-    fn data_root(root: &Path) -> Result<PathBuf, String> {
+    pub(super) fn data_root(root: &Path) -> Result<PathBuf, String> {
         let installed = fs::read(root.join("active.json")).ok()
             .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
             .and_then(|state| state["dataDir"].as_str().map(PathBuf::from));
@@ -246,9 +254,15 @@ mod windows {
         if stop_event.0.is_null() { return Err("Cannot create owned stop event".into()); }
         let probe_data = env::temp_dir().join(format!("D4Planner-runtime-health-{}", uuid::Uuid::new_v4()));
         let data = if probe { probe_data.clone() } else { data_root(root)? };
-        let capture = if probe { None } else { equipment_config(&data)? };
+
         if !data.is_absolute() || data.starts_with(root) { return Err("DataDir must be absolute and outside installation".into()); }
         for directory in ["targets", "state", "private"] { fs::create_dir_all(data.join(directory)).map_err(|e| e.to_string())?; }
+        let manifest:Value=serde_json::from_slice(&fs::read(payload.join("release-manifest.json")).unwrap_or_default()).unwrap_or(json!({}));
+        let log_session=d4planner_runtime_logging::Session::create(&data,manifest["version"].as_str().unwrap_or("UNKNOWN"),manifest["sourceHead"].as_str().unwrap_or("UNKNOWN")).ok();
+        if let Some(session)=&log_session {session.bootstrap_event("START");if data.join("private/native-stderr.log").exists(){session.bootstrap_event("LEGACY_FROZEN");}}
+        if let Err(error)=verify(payload){if let Some(session)=&log_session{session.bootstrap_event("ERROR");}return Err(error);}
+        let capture = if probe { None } else { match equipment_config(&data){Ok(v)=>v,Err(error)=>{if let Some(session)=&log_session{session.bootstrap_event("ERROR");}return Err(error)}} };
+        let log_policy=fs::read(data.join("launcher.json")).ok().and_then(|b|serde_json::from_slice::<Value>(&b).ok()).and_then(|v|v.get("logging").cloned()).unwrap_or(json!({}));
         let bootstrap = data.join("private").join(format!("bootstrap-{}.json", uuid::Uuid::new_v4()));
         let credential: [u8;32] = rand::random();
         let owner = uuid::Uuid::new_v4().to_string();
@@ -276,9 +290,10 @@ mod windows {
                 return Err("Cannot configure owned process job".into());
             }
             let mut command = Command::new(payload.join("app/d4planner-fe.exe"));
-            let error_log = fs::OpenOptions::new().create(true).append(true)
-                .open(data.join("private/native-stderr.log")).map_err(|e| e.to_string())?;
-            command.current_dir(payload).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::from(error_log))
+            if let Some(session)=&log_session {command.envs(session.environment());}
+            else {command.env_remove("D4_LOG_DIR").env_remove("D4_LOG_RUN_ID");}
+            command.env("D4_LOG_POLICY",log_policy.to_string());
+            command.current_dir(payload).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped())
                 .creation_flags(CREATE_SUSPENDED | CREATE_NO_WINDOW)
                 .env("D4PLANNER_BOOTSTRAP_FILE", &bootstrap)
                 .env("D4PLANNER_BACKEND_PYTHON", payload.join("runtime/python/python.exe"))
@@ -303,6 +318,8 @@ mod windows {
             let probe_report = data.join("private/runtime-health.json");
             if probe { command.arg("--backend-self-test").env("D4_BACKEND_SMOKE_REPORT", &probe_report); }
             let mut child = command.spawn().map_err(|e| e.to_string())?;
+            // Raw native stderr is drained and discarded; no credentials/paths reach disk.
+            if let Some(mut stderr)=child.stderr.take(){std::thread::spawn(move||{let mut bytes=[0;4096];while let Ok(n)=stderr.read(&mut bytes){if n==0{break}}});}
             use std::os::windows::io::AsRawHandle;
             if AssignProcessToJobObject(job.0, child.as_raw_handle() as HANDLE) == 0 {
                 let _ = child.kill(); let _ = child.wait(); return Err("Cannot assign owned FE process to job".into());
@@ -312,13 +329,16 @@ mod windows {
             extern "system" { fn NtResumeProcess(process: HANDLE) -> i32; }
             if NtResumeProcess(child.as_raw_handle() as HANDLE) < 0 { return Err("Cannot resume owned FE".into()); }
             let mut closing = None;
+            let mut last_housekeeping=Instant::now();
             let started = Instant::now();
             loop {
+                if last_housekeeping.elapsed()>Duration::from_secs(60){if let Some(session)=&log_session{session.housekeeping();}last_housekeeping=Instant::now();}
                 if probe && started.elapsed() > Duration::from_secs(55) {
                     TerminateJobObject(job.0, 124); let _ = child.wait();
                     return Err("Runtime health deadline exceeded; owned job reclaimed".into());
                 }
                 if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
+                    if let Some(session)=&log_session {session.bootstrap_event(if status.success(){"EXIT"}else{"ERROR"});}
                     if !status.success() { return Err(format!("Native HUD exited: {status}")); }
                     if probe {
                         let report: Value = serde_json::from_slice(&fs::read(&probe_report).map_err(|e| e.to_string())?)
@@ -364,6 +384,7 @@ mod windows {
                 }
             }
         })();
+        if result.is_err(){if let Some(session)=&log_session{session.bootstrap_event("ERROR");}}
         let _ = fs::remove_file(bootstrap);
         if probe { let _ = fs::remove_dir_all(probe_data); }
         result

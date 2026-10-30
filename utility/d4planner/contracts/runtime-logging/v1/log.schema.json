@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "D4Planner runtime log v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "ts",
+    "level",
+    "component",
+    "tag",
+    "event",
+    "runId",
+    "pid",
+    "generation",
+    "fields"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "d4planner-runtime-log/v1"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "level": {
+      "enum": [
+        "DEBUG",
+        "INFO",
+        "WARN",
+        "ERROR"
+      ]
+    },
+    "component": {
+      "enum": [
+        "FE",
+        "BE",
+        "RULEKIT"
+      ]
+    },
+    "tag": {
+      "enum": [
+        "api",
+        "browser",
+        "capture",
+        "hud",
+        "launcher",
+        "lifecycle",
+        "logger",
+        "native",
+        "session",
+        "snapshot",
+        "sqlite",
+        "target",
+        "websocket",
+        "webview",
+        "worker"
+      ]
+    },
+    "event": {
+      "enum": [
+        "CLOSE",
+        "CONNECT",
+        "CREATE",
+        "DEBUG_PROBE",
+        "DISCONNECT",
+        "ERROR",
+        "EXIT",
+        "LEGACY_FROZEN",
+        "LOG_DROPPED",
+        "LOG_TRIMMED",
+        "QUARANTINE",
+        "READY",
+        "RECONNECT",
+        "RECOVERY",
+        "REQUEST",
+        "RESTART",
+        "RESULT",
+        "SESSION_HEADER",
+        "START",
+        "STATE_CHANGE",
+        "STOP",
+        "TIMEOUT",
+        "UNAVAILABLE"
+      ]
+    },
+    "runId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "pid": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "generation": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "correlationId": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "active": {
+          "type": [
+            "number",
+            "boolean"
+          ]
+        },
+        "bytes": {
+          "type": [
+            "number",
+            "boolean"
+          ]
+        },
+        "count": {
+          "type": [
+            "number",
+            "boolean"
+          ]
+        },
+        "dropped": {
+          "type": [
+            "number",
+            "boolean"
+          ]
+        },
+        "durationMs": {
+          "type": [
+            "number",
+            "boolean"
+          ]
+        },
+        "exitCode": {
+          "type": [
+            "number",
+            "boolean"
+          ]
+        },
+        "ok": {
+          "type": [
+            "number",
+            "boolean"
+          ]
+        },
+        "queueDepth": {
+          "type": [
+            "number",
+            "boolean"
+          ]
+        },
+        "retryable": {
+          "type": [
+            "number",
+            "boolean"
+          ]
+        },
+        "revision": {
+          "type": [
+            "number",
+            "boolean"
+          ]
+        },
+        "trimmed": {
+          "type": [
+            "number",
+            "boolean"
+          ]
+        },
+        "errorCode": {
+          "enum": [
+            "CLEANUP_PENDING",
+            "INTERNAL",
+            "INVALID_CONFIG",
+            "IO_ERROR",
+            "SNAPSHOT_MISMATCH",
+            "STARTUP_FAILED",
+            "TARGET_CHANGED",
+            "TARGET_INVALID",
+            "TIMEOUT",
+            "UNAVAILABLE",
+            "UNKNOWN"
+          ]
+        }
+      }
+    }
+  }
+}

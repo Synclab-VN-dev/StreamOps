@@ -75,7 +75,7 @@
     },
     {
       "path": "browser-infra/src/infrastructure.js",
-      "sha256": "879d53ff12bf73e9bff0f2698512b7db15bc5a713091ba7e25ad8b739c85c22d"
+      "sha256": "d28bae0374a3a0eb8e8da3b9627642aa85add3fa2290fbab59708fd57860f21b"
     },
     {
       "path": "browser-infra/src/lease.js",
@@ -195,7 +195,7 @@
     },
     {
       "path": "providers/maxroll/src/provider.js",
-      "sha256": "2405e2217458566e69ee65f7c7ae694a7f1dab5cc57e535e1503fdc0d7d0874f"
+      "sha256": "5e2f1c8f2705d455102ed3ec072e32d84f0eaf900b4d4671f8ab8468c06f309e"
     },
     {
       "path": "providers/maxroll/src/real-metrics-extractor.js",
@@ -223,7 +223,7 @@
     },
     {
       "path": "providers/maxroll/src/session.js",
-      "sha256": "5b9e3926b8d6ae2216dd57b13b444c7a2ee24809e4a03f378c35170d666dbfd0"
+      "sha256": "9d419d3041852c75e227dbc1fccd21dcdb0e71563a53dca0e6e97388e0ecc33b"
     },
     {
       "path": "providers/maxroll/src/snapshot-capturer.js",
@@ -240,6 +240,10 @@
     {
       "path": "providers/maxroll/src/value.js",
       "sha256": "ae8d065c4fce717f19bcfb8d4efe5034e15ffc5744c53a78cb8bfe41d2a10b7d"
+    },
+    {
+      "path": "runtime-logging/src/logger.js",
+      "sha256": "079032e1bb237ebe0c1a91acf018930d899dfc7ed5fc4ee3c536c1706bd623eb"
     },
     {
       "path": "snapshot-management/compatibility/build-index.js",
@@ -295,7 +299,7 @@
     },
     {
       "path": "snapshot-management/src/manager.js",
-      "sha256": "fa142eb8601ad4f6259e5ca9a9195646b559164a42c50b8033dbd4ba0c82af0a"
+      "sha256": "703b7a93a1d54e7f213a674dd7574fc4e5b04f942022615ce588410a3ba65cf0"
     },
     {
       "path": "snapshot-management/src/production-trust-anchors.json",
@@ -326,6 +330,6 @@
     "snapshot-management/compatibility/versions/maxroll-20261023.js",
     "snapshot-management/compatibility/versions/maxroll-20261027.js"
   ],
-  "executionSha256": "402a09b65b3971c9c75211c2b9fa9a30136feb325a85ac0aba5d71ebf5d3068f",
-  "ruleKitVersion": "rulekit-execution/sha256:402a09b65b3971c9c75211c2b9fa9a30136feb325a85ac0aba5d71ebf5d3068f"
+  "executionSha256": "f827a8c7188468176e4ba652b08237ddbfa552ea578413612cd80d63bcf1215c",
+  "ruleKitVersion": "rulekit-execution/sha256:f827a8c7188468176e4ba652b08237ddbfa552ea578413612cd80d63bcf1215c"
 }

@@ -3,6 +3,10 @@
 
 const path = require('node:path');
 const readline = require('node:readline');
+const log = require('../../d4-rulekit/runtime-logging/src/logger');
+log.emit('INFO','worker','START');
+process.on('uncaughtException', () => {log.emit('ERROR','worker','ERROR',{errorCode:'STARTUP_FAILED'});Promise.resolve(log.configure()?.close()).finally(()=>process.exit(1));});
+process.on('unhandledRejection', () => {log.emit('ERROR','worker','ERROR',{errorCode:'INTERNAL'});Promise.resolve(log.configure()?.close()).finally(()=>process.exit(1));});
 
 const PROTOCOL_VERSION = 'd4-rulekit-ipc/v1';
 const APPLICATION_CONTRACT_VERSION = 'd4-rulekit-application/v1';
@@ -99,6 +103,8 @@ async function main() {
   }
 
   function execute(message) {
+    const started=performance.now();
+    log.emit('DEBUG','api','REQUEST',{correlationId:message.id});
     running += 1;
     const controller = new AbortController();
     active.set(message.id, controller);
@@ -106,8 +112,9 @@ async function main() {
     if(!management)runningApplication++;
     Promise.resolve().then(() => invoke(message, controller)).then(
       result => write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'result',correlationId:message.id,result}),
-      error => write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'error',correlationId:message.id,error:publicError(error)}),
+      error => {log.emit('ERROR','api','ERROR',{correlationId:message.id,errorCode:error?.code});write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'error',correlationId:message.id,error:publicError(error)});},
     ).finally(() => {
+      log.emit('INFO','api','RESULT',{durationMs:performance.now()-started,correlationId:message.id});
       active.delete(message.id);
       running -= 1;
       if(!management)runningApplication--;
@@ -116,6 +123,7 @@ async function main() {
   }
 
   async function shutdown(exitCode = 0) {
+    log.emit('INFO','worker','STOP');
     if (shuttingDown) return;
     shuttingDown = true;
     const forcedExit = setTimeout(
@@ -131,6 +139,7 @@ async function main() {
     await composition.close?.();
     clearTimeout(forcedExit);
     process.stdin.destroy();
+    await log.configure()?.close();
     process.exit(exitCode);
   }
 
@@ -173,6 +182,7 @@ async function main() {
   process.on('SIGTERM', () => { input.close(); void shutdown(); });
   process.on('SIGINT', () => { input.close(); void shutdown(); });
 
+  log.emit('INFO','worker','READY');
   write({
     type: 'READY', applicationContractVersion: APPLICATION_CONTRACT_VERSION,
     workerInstanceId: instanceId, workerGeneration: generation,
@@ -181,7 +191,9 @@ async function main() {
   });
 }
 
-main().catch(error => {
+main().catch(async error => {
+  log.emit('ERROR','worker','ERROR');
+  await log.configure()?.close();
   process.stderr.write(`Rule Kit worker startup failed: ${error?.message ?? 'unknown error'}\n`);
   process.exitCode = 1;
 });

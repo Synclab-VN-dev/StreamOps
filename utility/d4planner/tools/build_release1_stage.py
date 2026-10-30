@@ -10,6 +10,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import public_package as public
 
 
@@ -119,6 +120,7 @@ def assemble(args: argparse.Namespace) -> dict:
         raise StageError("MISSING_RUNTIME_FILES:" + ",".join(missing))
     report = {
         "schemaVersion": "d4planner-build-stage/v1",
+        "sourceHead": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repository, text=True).strip(),
         "output": str(root),
         "inputs": {
             "frontendSha256": sha256(root / "app/d4planner-fe.exe"),
