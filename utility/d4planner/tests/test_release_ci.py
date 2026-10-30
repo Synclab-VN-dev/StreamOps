@@ -122,6 +122,12 @@ def test_uat_is_explicit_and_does_not_bypass_distribution_or_stable_gates(tmp_pa
     approval={'schemaVersion':'d4planner-uat-encryption-policy/v1','scope':'D4PLANNER_R1_UAT',
               'authorizationBasis':'SCOPED_OWNER_ATTESTATION','encryptedOnly':True,'uatRevision':1,'recipient':'age1test'}
     ci.uat_approved(approval,meta)
+    replacement={**approval,'replacement':{'plaintextBytes':100,'ciphertextBytes':200}}
+    ci.uat_approved(replacement,{**meta,'plaintextBytes':50,'bytes':150})
+    for plain,cipher in [(100,150),(50,200),(0,150),(50,0)]:
+        with pytest.raises(ValueError,match='REPLACEMENT_NOT_SMALLER'):
+            ci.uat_approved(replacement,{**meta,'plaintextBytes':plain,'bytes':cipher})
+
     for change in ({'encryptedOnly':False},{'authorizationBasis':'ASSUMED'},{'uatRevision':2},{'scope':'STABLE'},{'recipient':'wrong'}):
         with pytest.raises(ValueError):ci.uat_approved({**approval,**change},meta)
     with pytest.raises(ValueError):ci.release_approved(approval,meta)
