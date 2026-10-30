@@ -495,3 +495,19 @@ def test_resume_changed_components_fail_closed_and_old_provenance_is_not_reused(
     value=json.loads(components.read_text());value['components']['S7']='f'*40;components.write_text(json.dumps(value))
     with pytest.raises(delivery.DeliveryError,match='RESUME_CONTEXT_MISMATCH'):
         delivery.run_acceptance(ACCEPTANCE,artifact,{'S7-PKG-01'},prior,component_manifest=components)
+
+
+def test_r1_visual_owner_waiver_is_explicit_not_a_pass_and_not_transferable(tmp_path):
+    manifest = component_manifest(tmp_path)
+    plan = json.loads(ACCEPTANCE.read_text())
+    report = delivery.run_acceptance(ACCEPTANCE, None, ['S7-VIS-01'], None,
+                                    component_manifest=manifest)
+    visual = next(case for case in report['cases'] if case['id'] == 'S7-VIS-01')
+    assert visual['status'] == 'OWNER_WAIVED'
+    assert report['outcome'] == 'NOT_RUN'  # no automated PASS claimed
+    assert delivery.acceptance_exit_code(report) == 3
+    plan['releaseId'] = 'R2'
+    other = tmp_path / 'other-plan.json'; other.write_text(json.dumps(plan))
+    result = delivery.run_acceptance(other, None, ['S7-VIS-01'], None,
+                                    component_manifest=manifest)
+    assert next(case for case in result['cases'] if case['id'] == 'S7-VIS-01')['status'] == 'FAIL'

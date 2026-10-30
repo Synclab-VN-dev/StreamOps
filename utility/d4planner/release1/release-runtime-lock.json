@@ -16,5 +16,27 @@
   },
   "snapshotIncluded": false,
   "publicInputsArchiveSha256": "2208c0417aee695518eef6d211c99c2027fff649466c83e47232c02f67b248df",
-  "publicInputsManifestSha256": "9201d5aa352808f4cea5e0edb5bd975b37079f163ff039dcff39afb9c444efda"
+  "publicInputsManifestSha256": "9201d5aa352808f4cea5e0edb5bd975b37079f163ff039dcff39afb9c444efda",
+  "upstreamArchives": {
+    "python": {
+      "url": "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip",
+      "sha256": "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3",
+      "prefix": ""
+    },
+    "node": {
+      "url": "https://nodejs.org/dist/v22.22.1/node-v22.22.1-win-x64.zip",
+      "sha256": "877cb93829e14fffbbc7903e7d8037336c9a79f3ea43c5d0b8c2379b79da56de",
+      "prefix": "node-v22.22.1-win-x64/"
+    },
+    "chromium": {
+      "url": "https://storage.googleapis.com/chrome-for-testing-public/156.0.8078.4/win64/chrome-win64.zip",
+      "sha256": "220021ecfdad08c116fc71a153e65e3861ba841c531afc4f7acc7bd5d44b41db",
+      "prefix": ""
+    },
+    "nsis": {
+      "url": "https://downloads.sourceforge.net/project/nsis/NSIS%203/3.09/nsis-3.09.zip",
+      "sha256": "f5dc52eef1f3884230520199bac6f36b82d643d86b003ce51bd24b05c6ba7c91",
+      "prefix": "nsis-3.09/"
+    }
+  }
 }
