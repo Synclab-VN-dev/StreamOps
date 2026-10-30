@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 60
     outputs:
       artifact_id: ${{ steps.upload.outputs.artifact-id }}
-      setup_sha256: ${{ steps.build.outputs.setup_sha256 }}
+      setup_sha256: ${{ steps.encrypt.outputs.setup_sha256 }}
     env:
       RELEASE_VERSION: ${{ inputs.version }}
       SOURCE_SHA: ${{ github.sha }}
@@ -61,6 +61,14 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22.22.1'
+      - name: Restrict build staging to runner identity
+        shell: pwsh
+        run: |
+          $owned = Join-Path $env:RUNNER_TEMP 'd4-release'
+          New-Item -ItemType Directory -Force $owned | Out-Null
+          $account = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+          & icacls $owned /inheritance:r /grant:r "${account}:(OI)(CI)F" 'SYSTEM:(OI)(CI)F'
+          if ($LASTEXITCODE -ne 0) { throw 'Private build ACL failed' }
       - name: Prepare pinned build tools
         shell: pwsh
         run: |
@@ -75,24 +83,35 @@ jobs:
         run: |
           python utility/d4planner/tools/release_ci.py build --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release"
           if ($LASTEXITCODE -ne 0) { throw 'Production package build/health failed' }
-      - name: Verify UAT redistribution before any public artifact upload
-        if: github.event_name == 'push'
+      - name: Encrypt Setup before any artifact upload
+        id: encrypt
         shell: pwsh
-        env:
-          D4_BUILT_SETUP_SHA256: ${{ steps.build.outputs.setup_sha256 }}
         run: |
-          python utility/d4planner/tools/release_ci.py validate-upload --channel uat --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release/build/verified-artifact"
-          if ($LASTEXITCODE -ne 0) { throw 'Public UAT artifact distribution not verified; nothing uploaded' }
+          $policy = Get-Content utility/d4planner/release1/uat-encryption-policy.json -Raw | ConvertFrom-Json
+          $archive = "$env:RUNNER_TEMP/age-pinned.zip"
+          Invoke-WebRequest $policy.ageArchiveUrl -OutFile $archive
+          if ((Get-FileHash $archive).Hash.ToLowerInvariant() -ne $policy.ageArchiveSha256) { throw 'age checksum mismatch' }
+          Expand-Archive $archive "$env:RUNNER_TEMP/age-pinned" -Force
+          $age = (Get-ChildItem "$env:RUNNER_TEMP/age-pinned" -Filter age.exe -Recurse | Select-Object -First 1).FullName
+          python utility/d4planner/tools/release_ci.py encrypt --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release/build/verified-artifact" --output "$env:RUNNER_TEMP/d4-ciphertext" --age-executable "$age"
+          if ($LASTEXITCODE -ne 0) { throw 'Setup encryption/validation failed; no upload permitted' }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         id: upload
         with:
           name: D4Planner-Setup-${{ env.RELEASE_VERSION }}-${{ github.sha }}
           path: |
-            ${{ runner.temp }}/d4-release/build/verified-artifact/D4Planner-Setup-${{ env.RELEASE_VERSION }}.exe
-            ${{ runner.temp }}/d4-release/build/verified-artifact/release-metadata.json
-            ${{ runner.temp }}/d4-release/build/verified-artifact/SHA256SUMS
+            ${{ runner.temp }}/d4-ciphertext/D4Planner-Setup-${{ env.RELEASE_VERSION }}.exe.age
+            ${{ runner.temp }}/d4-ciphertext/release-metadata.json
+            ${{ runner.temp }}/d4-ciphertext/SHA256SUMS
+            ${{ runner.temp }}/d4-ciphertext/UAT.md
           if-no-files-found: error
           retention-days: 7
+      - name: Remove plaintext runtime and Setup staging
+        if: always()
+        shell: pwsh
+        run: |
+          $owned = Join-Path $env:RUNNER_TEMP 'd4-release'
+          if (Test-Path $owned) { Remove-Item -LiteralPath $owned -Recurse -Force }
   publish:
     if: ${{ github.event_name == 'workflow_dispatch' && !inputs.build_only }}
     needs: build

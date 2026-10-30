@@ -81,7 +81,9 @@ def test_workflow_is_single_dispatch_build_without_unconditional_publish():
     assert 'environment: d4planner-release' in text
     assert "if: ${{ github.event_name == 'workflow_dispatch' && !inputs.build_only }}" in text
     assert 'd4planner-uat/v*' in text
-    assert 'validate-upload --channel uat' in text
+    assert 'encrypt --channel' in text
+    assert 'd4-ciphertext/D4Planner-Setup-${{ env.RELEASE_VERSION }}.exe.age' in text
+    assert 'if: always()' in text
     assert 'publish-uat --channel uat' in text
     assert 'ref: ${{ github.sha }}' in text
     assert 'artifact-ids: ${{ needs.build.outputs.artifact_id }}' in text
@@ -113,10 +115,11 @@ def test_uat_is_explicit_and_does_not_bypass_distribution_or_stable_gates():
     ci.uat_context('d4planner-uat/v1.0.3','1.0.3','synclab-automation-system')
     for tag,actor in [('v1.0.3','TrdHuy'),('d4planner-uat/v1.0.3','untrusted')]:
         with pytest.raises(ValueError):ci.uat_context(tag,'1.0.3',actor)
-    meta={'sourceHead':HEAD,'version':'1.0.3','sha256':'c'*64,'runtimeHealth':'PASS'}
-    approval={**distribution(),'channel':'UAT_PRERELEASE','ownerManualPending':True,'visualR1':'OWNER_WAIVED'}
+    meta={'sourceHead':HEAD,'version':'1.0.3','sha256':'c'*64,'runtimeHealth':'PASS','encryption':'age/v1','recipient':'age1test'}
+    approval={'schemaVersion':'d4planner-uat-encryption-policy/v1','scope':'D4PLANNER_R1_UAT',
+              'authorizationBasis':'SCOPED_OWNER_ATTESTATION','encryptedOnly':True,'allowedVersions':['1.0.3'],'recipient':'age1test'}
     ci.uat_approved(approval,meta)
-    for change in ({'licensesVerified':False},{'publicDistributionApproved':False},{'ownerManualPending':False},{'channel':'stable'}):
+    for change in ({'encryptedOnly':False},{'authorizationBasis':'ASSUMED'},{'allowedVersions':['1.0.4']},{'scope':'STABLE'},{'recipient':'wrong'}):
         with pytest.raises(ValueError):ci.uat_approved({**approval,**change},meta)
     with pytest.raises(ValueError):ci.release_approved(approval,meta)
 
@@ -129,3 +132,20 @@ def test_r1_visual_waiver_never_waives_other_stable_gates_or_releases():
     for change in ({'releaseId':'R2'},{'gates':{**approval['gates'],'HUD-03':'OWNER_WAIVED'}},
                    {'gates':{**approval['gates'],'PKG-08':'NOT_RUN'}}):
         with pytest.raises(ValueError):ci.release_approved({**approval,**change},meta)
+
+
+def test_encrypted_artifact_verifier_rejects_plaintext_and_extra_assets(tmp_path):
+    import hashlib
+    artifact=tmp_path/'D4Planner-Setup-1.0.3.exe.age'
+    artifact.write_bytes(b'age-encryption.org/v1\nunit-test-ciphertext-not-native-evidence')
+    digest=hashlib.sha256(artifact.read_bytes()).hexdigest()
+    metadata={'schemaVersion':'d4planner-encrypted-setup/v1','encryption':'age/v1','artifact':artifact.name,
+              'sourceHead':HEAD,'version':'1.0.3','sha256':digest,'bytes':artifact.stat().st_size,
+              'snapshotIncluded':False,'artifactClass':'D4PLANNER_APPLICATION_NO_SNAPSHOT'}
+    (tmp_path/'release-metadata.json').write_text(json.dumps(metadata))
+    (tmp_path/'SHA256SUMS').write_text(digest);(tmp_path/'UAT.md').write_text('safe instructions')
+    ci.verify_encrypted_artifact(tmp_path,HEAD,'1.0.3',digest)
+    plain=tmp_path/'Setup.exe';plain.write_bytes(b'MZplaintext')
+    with pytest.raises(ValueError,match='UNEXPECTED_PUBLIC_ASSET'):ci.verify_encrypted_artifact(tmp_path,HEAD,'1.0.3',digest)
+    plain.unlink();artifact.write_bytes(b'MZtampered')
+    with pytest.raises(ValueError,match='PUBLISH_ARTIFACT_INTEGRITY'):ci.verify_encrypted_artifact(tmp_path,HEAD,'1.0.3',digest)

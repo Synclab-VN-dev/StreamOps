@@ -130,11 +130,48 @@ def uat_context(tag, release_version, actor):
 
 
 def uat_approved(document, metadata):
-    distribution_approved(document,metadata['sourceHead'],metadata['version'])
-    require(document.get('channel')=='UAT_PRERELEASE','UAT_APPROVAL_REQUIRED')
-    require(document.get('ownerManualPending') is True,'UAT_MANUAL_CLASSIFICATION_REQUIRED')
+    # Owner attestation is deliberately distinct from independent license review.
+    require(document.get('schemaVersion')=='d4planner-uat-encryption-policy/v1' and
+            document.get('scope')=='D4PLANNER_R1_UAT','UAT_SCOPE_REQUIRED')
+    require(document.get('authorizationBasis')=='SCOPED_OWNER_ATTESTATION','UAT_AUTHORIZATION_REQUIRED')
+    require(document.get('encryptedOnly') is True and metadata.get('encryption')=='age/v1','ENCRYPTED_UAT_REQUIRED')
+    require(metadata.get('version') in document.get('allowedVersions',[]),'UAT_VERSION_NOT_AUTHORIZED')
+    require(metadata.get('recipient')==document.get('recipient'),'UAT_RECIPIENT_MISMATCH')
     require(metadata.get('runtimeHealth')=='PASS','UAT_RUNTIME_HEALTH_REQUIRED')
-    require(document.get('visualR1')=='OWNER_WAIVED','R1_VISUAL_DECISION_REQUIRED')
+
+
+def encrypt_built_artifact(directory, destination, head, release_version, age_executable):
+    metadata=delivery.load_json(directory/'release-metadata.json')
+    metadata,plain=verify_built_artifact(directory,head,release_version,metadata['sha256'])
+    policy=delivery.load_json(ROOT/'utility/d4planner/release1/uat-encryption-policy.json')
+    require(subprocess.check_output([str(age_executable),'--version'],text=True).strip()==policy['ageVersion'],'AGE_VERSION_MISMATCH')
+    destination.mkdir(parents=True,exist_ok=False)
+    cipher=destination/(plain.name+'.age')
+    run([age_executable,'--encrypt','--recipient',policy['recipient'],'--output',cipher,plain])
+    require(cipher.open('rb').read(len(b'age-encryption.org/v1\n'))==b'age-encryption.org/v1\n','AGE_CIPHERTEXT_REQUIRED')
+    result={key:metadata[key] for key in ('sourceHead','version','runtimeHealth','artifactClass','snapshotIncluded')}
+    result.update(schemaVersion='d4planner-encrypted-setup/v1',artifact=cipher.name,encryption='age/v1',recipient=policy['recipient'],
+                  sha256=delivery.sha256_file(cipher),bytes=cipher.stat().st_size,
+                  plaintextSha256=metadata['sha256'],plaintextBytes=metadata['bytes'],ownerManual='T20-T23_PENDING',visualR1='OWNER_WAIVED')
+    uat_approved(policy,result)
+    (destination/'release-metadata.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
+    (destination/'SHA256SUMS').write_text(f"{result['sha256']}  {cipher.name}\n",encoding='utf-8')
+    (destination/'UAT.md').write_text('D4Planner R1 UAT, not stable production approval.\nVerify SHA256SUMS, then decrypt locally with the separately supplied private age identity:\n\nage --decrypt --identity <private-identity-file> --output '+plain.name+' '+cipher.name+'\n\nVerify plaintextSha256 in release-metadata.json before running Setup. Snapshot is provisioned separately through Rule Kit APIs. No global development toolchains required. T20-T23 remain Owner manual; R1 Visual OWNER_WAIVED.\n',encoding='utf-8')
+    plain.unlink()
+    return result
+
+
+def verify_encrypted_artifact(directory, head, release_version, expected_sha):
+    metadata=delivery.load_json(directory/'release-metadata.json')
+    require(metadata.get('schemaVersion')=='d4planner-encrypted-setup/v1' and metadata.get('encryption')=='age/v1','ENCRYPTED_UAT_REQUIRED')
+    require(metadata.get('sourceHead')==head and metadata.get('version')==release_version,'PUBLISH_SOURCE_VERSION_MISMATCH')
+    require(metadata.get('snapshotIncluded') is False and metadata.get('artifactClass')=='D4PLANNER_APPLICATION_NO_SNAPSHOT','PUBLIC_ARTIFACT_CLASS_MISMATCH')
+    artifact=directory/f'D4Planner-Setup-{release_version}.exe.age'
+    require(metadata.get('artifact')==artifact.name and metadata.get('sha256')==expected_sha,'BUILD_ARTIFACT_BINDING')
+    require(artifact.is_file() and artifact.stat().st_size==metadata['bytes'] and delivery.sha256_file(artifact)==expected_sha,'PUBLISH_ARTIFACT_INTEGRITY')
+    require(artifact.open('rb').read(len(b'age-encryption.org/v1\n'))==b'age-encryption.org/v1\n','AGE_CIPHERTEXT_REQUIRED')
+    require({p.name for p in directory.iterdir()}=={artifact.name,'release-metadata.json','SHA256SUMS','UAT.md'},'UNEXPECTED_PUBLIC_ASSET')
+    return metadata,artifact
 
 
 def validate_inputs(root):
@@ -244,7 +281,9 @@ def verify_built_artifact(directory, head, release_version, expected_sha):
 
 def main():
     parser=argparse.ArgumentParser()
-    parser.add_argument('command',choices=('validate','build','verify','publish','publish-uat','validate-upload'))
+    parser.add_argument('command',choices=('validate','build','verify','publish','publish-uat','validate-upload','encrypt'))
+    parser.add_argument('--age-executable',type=Path)
+    parser.add_argument('--output',type=Path)
     parser.add_argument('--channel',choices=('stable','uat'),default='stable')
     parser.add_argument('--version',required=True)
     parser.add_argument('--source',required=True)
@@ -267,12 +306,16 @@ def main():
         metadata=build(inputs,args.directory/'build',args.source,args.version)
         with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as output:
             output.write(f"setup_sha256={metadata['sha256']}\n")
+    elif args.command=='encrypt':
+        require(args.age_executable and args.output,'ENCRYPT_OUTPUT_REQUIRED')
+        metadata=encrypt_built_artifact(args.directory,args.output,args.source,args.version,args.age_executable)
+        with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as output:output.write(f"setup_sha256={metadata['sha256']}\n")
     else:
-        metadata,artifact=verify_built_artifact(args.directory,args.source,args.version,os.environ.get('D4_BUILT_SETUP_SHA256'))
+        metadata,artifact=verify_encrypted_artifact(args.directory,args.source,args.version,os.environ.get('D4_BUILT_SETUP_SHA256'))
         if args.command=='verify': return 0
-        if args.command in {'publish-uat','validate-upload'}:
+        if args.command in {'publish-uat','validate-upload','encrypt'}:
             require(args.channel=='uat','UAT_CHANNEL_REQUIRED')
-            document=json.loads(os.environ.get('D4_DISTRIBUTION_APPROVAL','{}'))
+            document=delivery.load_json(ROOT/'utility/d4planner/release1/uat-encryption-policy.json')
             uat_approved(document,metadata)
             if args.command=='validate-upload':return 0
             repo=os.environ['GITHUB_REPOSITORY'];tag='d4planner-uat/v'+args.version
@@ -280,7 +323,7 @@ def main():
             require(actual==args.source,'UAT_TAG_SOURCE_MISMATCH')
             existing=subprocess.run(['gh','api','--include',f'repos/{repo}/releases/tags/{tag}'],capture_output=True,text=True,timeout=30)
             require(existing.returncode!=0 and 'HTTP 404' in existing.stderr,'RELEASE_EXISTS_OR_UNVERIFIED')
-            run(['gh','release','create',tag,str(artifact),str(args.directory/'SHA256SUMS'),str(args.directory/'release-metadata.json'),
+            run(['gh','release','create',tag,str(artifact),str(args.directory/'SHA256SUMS'),str(args.directory/'release-metadata.json'),str(args.directory/'UAT.md'),
                  '--repo',repo,'--verify-tag','--prerelease','--title',f'D4Planner {args.version} UAT',
                  '--notes',f'UAT prerelease, not production approval. Owner T20-T23 pending. R1 Visual OWNER_WAIVED. Source {args.source}; SHA-256 {metadata["sha256"]}. No snapshot included.'])
             return 0
