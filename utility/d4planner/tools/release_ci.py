@@ -202,6 +202,14 @@ def run(command, *, cwd=ROOT, **kwargs):
     subprocess.run(list(map(str,command)),cwd=cwd,check=True,timeout=1200,**kwargs)
 
 
+def prepare_frontend_native_assets(frontend, npm):
+    # Icons are generated/ignored assets; a clean checkout only contains the SVG.
+    run([npm, 'run', 'icon'], cwd=frontend)
+    icon = frontend/'src-tauri/icons/icon.ico'
+    require(icon.is_file() and icon.stat().st_size > 6, 'WINDOWS_ICON_MISSING')
+    require(icon.read_bytes()[:4] == b'\x00\x00\x01\x00', 'WINDOWS_ICON_INVALID')
+
+
 def build(inputs, output, head, release_version):
     version(release_version); validate_source(head)
     require(subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()==head,'CHECKOUT_SOURCE_MISMATCH')
@@ -220,6 +228,7 @@ def build(inputs, output, head, release_version):
     require(delivery.load_json(ROOT/'utility/d4-rulekit/providers/maxroll/node_modules/playwright-core/package.json')['version']=='1.64.1','PLAYWRIGHT_PIN')
     run([npm,'ci','--ignore-scripts'],cwd=frontend)
     run([npm,'test'],cwd=frontend); run([npm,'run','build'],cwd=frontend)
+    prepare_frontend_native_assets(frontend, npm)
     run(['cargo','build','--release','--locked','--manifest-path',frontend/'src-tauri/Cargo.toml'])
     launcher=ROOT/'utility/d4planner/release1/native-launcher'
     run(['cargo','build','--release','--locked','--manifest-path',launcher/'Cargo.toml'], cwd=launcher)
