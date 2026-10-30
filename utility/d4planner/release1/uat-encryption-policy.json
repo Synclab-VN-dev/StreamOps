@@ -7,5 +7,12 @@
   "ageVersion": "v1.3.2",
   "ageArchiveUrl": "https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-windows-amd64.zip",
   "ageArchiveSha256": "f48d8f8f9ebe903ab5027ed067652f2cc1db94bc206976430133b905dcd8e8c7",
-  "uatRevision": 1
+  "uatRevision": 1,
+  "replacement": {
+    "tag": "d4planner-uat/v1.2.7",
+    "plaintextBytes": 634197964,
+    "ciphertextBytes": 634352996,
+    "plaintextSha256": "2ec8801ea25f1a3066d2956e7ff9434b48b0e0bf231d1c1221cc288ae951ddd4",
+    "ciphertextSha256": "0ede20ad77f6583705a133a560b76c88d96e38e6304b6db73891a838546ac4f5"
+  }
 }

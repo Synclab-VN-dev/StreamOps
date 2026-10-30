@@ -154,6 +154,11 @@ def uat_approved(document, metadata):
     require(metadata.get('uatRevision')==document['uatRevision'],'UAT_REVISION_MISMATCH')
     require(metadata.get('recipient')==document.get('recipient'),'UAT_RECIPIENT_MISMATCH')
     require(metadata.get('runtimeHealth')=='PASS','UAT_RUNTIME_HEALTH_REQUIRED')
+    if 'replacement' in document:
+        baseline=document['replacement']
+        require(0 < metadata.get('plaintextBytes',0) < baseline['plaintextBytes'] and
+                0 < metadata.get('bytes',0) < baseline['ciphertextBytes'], 'REPLACEMENT_NOT_SMALLER')
+
 
 
 def encrypt_built_artifact(directory, destination, head, release_version, age_executable):
