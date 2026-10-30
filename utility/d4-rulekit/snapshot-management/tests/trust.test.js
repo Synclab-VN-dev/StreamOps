@@ -25,9 +25,21 @@ test('registry revisions cannot rollback or collide; expiry fails closed', () =>
   assert.throws(()=>registry.accept(sign({...payload,revision:2,revokedEntryIds:['revoked']})),{code:'REGISTRY_REVISION_COLLISION'});
   assert.throws(()=>registry.accept(sign({...payload,revision:3,expiresAt:'2020-01-01T00:00:00Z'})),{code:'REGISTRY_EXPIRED_OR_NOT_YET_VALID'});
 });
-test('production has no implicit trust anchor or enabled policy', () => {
-  const pending=require('../src/production-trust-anchors.json');
-  assert.equal(pending.policyStatus,'OWNER_TRUST_ANCHOR_PENDING');
-  assert.throws(()=>new TrustedRegistry({anchors:pending.keys}),{code:'TRUST_POLICY_NOT_CONFIGURED'});
+test('production pins the Owner key and rejects unrelated test signers', () => {
+  const {productionRegistry}=require('../src');
+  const pinned=require('../src/production-trust-anchors.json');
+  assert.equal(pinned.policyStatus,'OWNER_ANCHOR_PROVISIONED');
+  assert.equal(Object.keys(pinned.keys).length,1);
+  const [id,anchor]=Object.entries(pinned.keys)[0];
+  const key=crypto.createPublicKey(anchor.publicKey);
+  const fingerprint=crypto.createHash('sha256').update(key.export({type:'spki',format:'der'})).digest('hex');
+  assert.equal(fingerprint,'87b6c28de9b3b75addd0092372aff61180a512ecececac33f9a982c61d050dad');
+  assert.equal(id,'rulekit-ed25519-'+fingerprint);
+  assert.equal(anchor.minimumRegistryRevision,1);
+  const production=productionRegistry();
+  assert.equal(production.scope,'PRODUCTION');
+  const {payload,sign}=setup();
+  assert.throws(()=>production.accept(sign(payload)),{code:'REGISTRY_SIGNER_UNTRUSTED'});
+  assert.throws(()=>new TrustedRegistry({anchors:{}}),{code:'TRUST_POLICY_NOT_CONFIGURED'});
 });
 module.exports={setup};

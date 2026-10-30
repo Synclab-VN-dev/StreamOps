@@ -299,7 +299,7 @@
     },
     {
       "path": "snapshot-management/src/production-trust-anchors.json",
-      "sha256": "728f5623c1e8fa2fab45397732e207f527bd0aed775ad91d27272176dc36439e"
+      "sha256": "f294a35f2c0c40ceb057407e91cc1d17f9e4a3bf12dec74b067cbe03c6381bd8"
     },
     {
       "path": "snapshot-management/src/protocol.js",
@@ -326,6 +326,6 @@
     "snapshot-management/compatibility/versions/maxroll-20261023.js",
     "snapshot-management/compatibility/versions/maxroll-20261027.js"
   ],
-  "executionSha256": "72c258c141f7f1fdca03fe42524c88236ed0c27784f76d68b89f1205f73fb093",
-  "ruleKitVersion": "rulekit-execution/sha256:72c258c141f7f1fdca03fe42524c88236ed0c27784f76d68b89f1205f73fb093"
+  "executionSha256": "402a09b65b3971c9c75211c2b9fa9a30136feb325a85ac0aba5d71ebf5d3068f",
+  "ruleKitVersion": "rulekit-execution/sha256:402a09b65b3971c9c75211c2b9fa9a30136feb325a85ac0aba5d71ebf5d3068f"
 }

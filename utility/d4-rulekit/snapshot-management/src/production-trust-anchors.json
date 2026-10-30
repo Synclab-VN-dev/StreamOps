@@ -1,5 +1,10 @@
 {
   "schemaVersion": "d4-rulekit-production-trust/v1",
-  "policyStatus": "OWNER_TRUST_ANCHOR_PENDING",
-  "keys": {}
+  "policyStatus": "OWNER_ANCHOR_PROVISIONED",
+  "keys": {
+    "rulekit-ed25519-87b6c28de9b3b75addd0092372aff61180a512ecececac33f9a982c61d050dad": {
+      "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAIcUjAT6b1x1DuDM3Vuuf8F8m/QT2mI8oWrg3BqTI7Qc=\n-----END PUBLIC KEY-----\n",
+      "minimumRegistryRevision": 1
+    }
+  }
 }
