@@ -301,7 +301,7 @@ class FakeMarkerCapture:
         self.samples.append(sample)
 
 
-def test_e2e_sqlite_stream_orders_speech_and_marker_without_equipment_mutation(tmp_path):
+def test_e2e_sqlite_stream_orders_speech_and_marker_without_equipment_mutation(tmp_path, monkeypatch):
     paths = RuntimePaths(tmp_path / "home")
     runtime = E2ERuntime(paths)
     manager = UserPathManager(
@@ -319,6 +319,17 @@ def test_e2e_sqlite_stream_orders_speech_and_marker_without_equipment_mutation(t
         game_start_timeout=0.01,
         marker_capture=marker,
     )
+
+    # This assertion covers chronology within one ingress batch, not ordering
+    # across asynchronous producer arrivals. Publish all four inputs before
+    # allowing the first collection; a fast Windows loop may otherwise read
+    # speech before write_text and drain markers after it in the same pass.
+    inputs_ready = threading.Event()
+    prepare = supervisor._prepare_ingress
+    def prepare_complete_batch(*, include_marker):
+        assert inputs_ready.wait(5), "test inputs were not published"
+        return prepare(include_marker=include_marker)
+    monkeypatch.setattr(supervisor, "_prepare_ingress", prepare_complete_batch)
 
     thread = threading.Thread(target=supervisor.run, daemon=True)
     thread.start()
@@ -381,6 +392,8 @@ def test_e2e_sqlite_stream_orders_speech_and_marker_without_equipment_mutation(t
             window_title="Diablo IV",
         )
     )
+
+    inputs_ready.set()
 
     observed = []
 
