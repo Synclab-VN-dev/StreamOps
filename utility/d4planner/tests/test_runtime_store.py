@@ -270,3 +270,38 @@ def test_sqlite_write_failure_does_not_consume_event_sequence(monkeypatch, tmp_p
         assert rows[0]["data"]["text"] == "retry-me"
     finally:
         store.close()
+
+
+def test_read_json_retries_real_windows_sharing_violation(monkeypatch, tmp_path):
+    import os
+    if os.name != "nt":
+        pytest.skip("requires native Windows file sharing semantics")
+    import ctypes
+    from ctypes import wintypes
+    from d4planner.runtime import store as store_module
+    path = tmp_path / "state.json"
+    atomic_write_json(path, {"state": "RUNNING", "supervisorPid": 77})
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                  wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+    # Real OS handle excludes sharing; the first read must fail, not see absence.
+    handle = kernel.CreateFileW(str(path), 0x80000000, 0, None, 3, 0, None)
+    assert handle != ctypes.c_void_p(-1).value, ctypes.get_last_error()
+    waits = []
+    def release_on_retry(delay):
+        nonlocal handle
+        waits.append(delay)
+        assert kernel.CloseHandle(handle)
+        handle = None
+    try:
+        with pytest.raises(PermissionError):
+            path.read_text(encoding="utf-8")
+        monkeypatch.setattr(store_module.time, "sleep", release_on_retry)
+        assert read_json(path, strict=True) == {"state": "RUNNING", "supervisorPid": 77}
+        assert waits == [.01]
+    finally:
+        if handle is not None:
+            kernel.CloseHandle(handle)
