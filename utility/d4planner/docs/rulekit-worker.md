@@ -194,6 +194,15 @@ The test-only `D4_RULEKIT_COMPOSITION_MODULE` seam is not forwarded by productio
 Python runtime and is not read by the production bootstrap. Direct adapter
 execution without an explicit absolute test composition fails closed.
 
+Wheel acceptance uses `pip wheel --no-build-isolation`. The `[dev]` extra must
+therefore install `setuptools>=75` and `wheel` into the test interpreter itself;
+the temporary backend used by an editable PEP 517 installation does not supply
+that interpreter dependency. Validate from a fresh virtualenv using only
+`python -m pip install -e 'utility/d4planner[dev]'`, with that virtualenv's bin
+directory (Scripts on Windows) on PATH. Do not rely on manually installed build
+tools from a development environment. Wheel build/install failures include their
+captured diagnostics in the pytest assertion output.
+
 Snapshot Management remains the separately approved `d4-rulekit-snapshots/v1`:
 `listInstalled`, `checkCompatibility`, `getCapabilities`, `importPackage`,
 `activate`, `getActive`, `switchSnapshot`, `rollback`, `compareSnapshots`.

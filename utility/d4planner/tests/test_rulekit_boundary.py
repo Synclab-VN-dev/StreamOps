@@ -118,15 +118,19 @@ def test_real_ipc_rejects_unsupported_method_and_bounds_queue(tmp_path):
 
 
 def test_wheel_installs_adapter_and_resolves_external_runtime_without_cwd(tmp_path):
-    subprocess.run([sys.executable, '-m', 'pip', 'wheel', '--no-deps', '--no-build-isolation',
-                    '-w', str(tmp_path), str(ROOT / 'utility/d4planner')], check=True,
-                   capture_output=True, timeout=60)
+    build = subprocess.run([sys.executable, '-m', 'pip', 'wheel', '--no-deps', '--no-build-isolation',
+                    '-w', str(tmp_path), str(ROOT / 'utility/d4planner')],
+                   capture_output=True, text=True, timeout=60)
+    assert build.returncode == 0, f"Wheel build failed ({build.returncode}):\n{build.stdout}\n{build.stderr}"
     wheel = next(tmp_path.glob('*.whl'))
     with zipfile.ZipFile(wheel) as archive:
         assert archive.read('d4planner/rulekit/worker.js') == WORKER.read_bytes()
     target = tmp_path / 'site-packages'
-    subprocess.run([sys.executable, '-m', 'pip', 'install', '--no-deps', '--target', str(target), str(wheel)],
-                   check=True, capture_output=True, timeout=60)
+    install_result = subprocess.run([sys.executable, '-m', 'pip', 'install', '--no-deps', '--target', str(target), str(wheel)],
+                   capture_output=True, text=True, timeout=60)
+    assert install_result.returncode == 0, (
+        f"Wheel install failed ({install_result.returncode}):\n{install_result.stdout}\n{install_result.stderr}"
+    )
     install = tmp_path / 'installation'
     (install / 'utility').mkdir(parents=True)
     # A separately provisioned Rule Kit tree, like #150; never embedded in the wheel.
