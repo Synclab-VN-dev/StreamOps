@@ -10,7 +10,9 @@ requires-python = ">=3.12"
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=9.1.1", "jsonschema>=4.23,<5"]
+# Wheel acceptance runs without build isolation, so its backend must also be
+# installed in the test interpreter (PEP 517's temporary backend is not enough).
+dev = ["pytest>=9.1.1", "jsonschema>=4.23,<5", "setuptools>=75", "wheel"]
 
 [project.scripts]
 d4planner = "d4planner.cli:main"
@@ -20,6 +22,7 @@ d4planner-managed-backend = "d4planner.managed_backend:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
+"d4planner.rulekit" = ["worker.js"]
 "d4planner.controller.data" = ["*.json"]
 
 [tool.pytest.ini_options]

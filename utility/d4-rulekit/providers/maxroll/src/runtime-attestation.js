@@ -55,6 +55,33 @@ function resolvedItems(nativeState, profile) {
     .map(([slot, reference]) => [slot, nativeState.items[String(reference)]]));
 }
 
+/** Optional, bundled-version contract for runtimes that retain inactive input
+ * items while calculating only a capacity-dependent subset. Never fills from
+ * requested values: every retained item must be read back from the input frame. */
+function verifyRuntimeItemProjection(expected, profile, readback, policy) {
+  if (policy?.kind !== 'runtime-input-projection/v1' || !Array.isArray(policy.omittableSlots)
+      || !policy.omittableSlots.every(x => typeof x === 'string')
+      || new Set(policy.omittableSlots).size !== policy.omittableSlots.length
+      || !/^sha256:[a-f0-9]{64}:.+/.test(policy.authority ?? '')) {
+    throw new MaxrollProviderError(ERROR_CODES.INPUT_READBACK_UNVERIFIED, 'unknown item projection contract');
+  }
+  if (!readback?.items || !readback.resolvedItems || Array.isArray(readback.items)
+      || Array.isArray(readback.resolvedItems)) {
+    throw new MaxrollProviderError(ERROR_CODES.READBACK_MISMATCH, 'runtime item input/projection is missing');
+  }
+  const inputItems = resolvedItems({ items: readback.items }, profile);
+  const calculationItems = readback.resolvedItems;
+  const omittedSlots = Object.keys(inputItems).filter(slot => !Object.hasOwn(calculationItems, slot));
+  if (semanticHash(inputItems) !== semanticHash(expected)
+      || omittedSlots.some(slot => !policy.omittableSlots.includes(slot))
+      || Object.entries(calculationItems).some(([slot, item]) => !Object.hasOwn(inputItems, slot)
+        || semanticHash(item) !== semanticHash(inputItems[slot]))) {
+    throw new MaxrollProviderError(ERROR_CODES.READBACK_MISMATCH, 'runtime item projection differs from exact observed input');
+  }
+  return Object.freeze({ inputItems: structuredClone(inputItems), calculationItems: structuredClone(calculationItems),
+    omittedSlots: Object.freeze(omittedSlots.sort()), authority: policy.authority });
+}
+
 function inputSemantics(nativeState, profileIndex) {
   const profile = nativeState?.profiles?.[profileIndex];
   if (!profile) {
@@ -673,11 +700,17 @@ class MaxrollRuntimeAttestationObserver {
     if (this.#capture) this.#capture.reject(new MaxrollProviderError(
       ERROR_CODES.SESSION_INVALIDATED, 'attestation observer closed during capture'));
     await this.#pauseChain.catch(error => failures.push(error));
+    // Lease expiry may already have destroyed this target and detached its CDP
+    // session. Confirm page closure; an invalid lease alone is not cleanup proof.
+    const targetClosed = () => this.#lease.page?.isClosed?.() === true;
+    if (targetClosed()) return;
     for (const command of ['Network.disable', 'Debugger.disable']) {
       try { await this.#cdp?.send(command); } catch (error) { failures.push(error); }
     }
     try { await this.#cdp?.detach(); } catch (error) { failures.push(error); }
-    if (failures.length) throw new AggregateError(failures, 'attestation observer cleanup failed');
+    if (failures.length && !targetClosed()) {
+      throw new AggregateError(failures, 'attestation observer cleanup failed');
+    }
   }
 
   #newCapture() {
@@ -779,13 +812,18 @@ class MaxrollRuntimeAttestationObserver {
         && observedProfile?.worldTier === this.#semantics.identity.worldTier;
       if (!sameIdentity) return;
       const profileSha256 = semanticHash(normalizedProfile(observedProfile));
+      const projectionPolicy = this.#profile.realRuntime.itemProjection;
+      const projection = capture.itemProjection ?? capture.pendingInputState?.itemProjection;
+      if (projectionPolicy && !projection) throw new MaxrollProviderError(
+        ERROR_CODES.INPUT_READBACK_UNVERIFIED, 'calculation has no exact item input/projection observation');
+      const expectedCalculationItems = projection ? projection.calculationItems : this.#semantics.items;
       const itemsSha256 = semanticHash(observedItems);
       if (profileSha256 !== this.#semantics.profileSha256
-          || itemsSha256 !== this.#semantics.itemsSha256) {
+          || itemsSha256 !== semanticHash(expectedCalculationItems)) {
         const differences = [
           ...semanticDifferencePaths(normalizedProfile(this.#semantics.profile),
             normalizedProfile(observedProfile), 'profile'),
-          ...semanticDifferencePaths(this.#semantics.items, observedItems, 'items'),
+          ...semanticDifferencePaths(expectedCalculationItems, observedItems, 'items'),
         ].slice(0, 20);
         throw new MaxrollProviderError(ERROR_CODES.READBACK_MISMATCH,
           `runtime semantic state does not match the exported build: ${differences.join(', ')}`, {
@@ -806,13 +844,19 @@ class MaxrollRuntimeAttestationObserver {
         capture.profileReadback = Object.freeze({
           status: 'EXACT',
           normalizedProfileSha256: profileSha256,
-          resolvedItemsSha256: itemsSha256,
-          resolvedItemCount: Object.keys(observedItems).length,
+          resolvedItemsSha256: projection ? semanticHash(projection.inputItems) : itemsSha256,
+          resolvedItemCount: Object.keys(projection ? projection.inputItems : observedItems).length,
+          ...(projection ? { calculationItemProjection: Object.freeze({
+            kind: projectionPolicy.kind, authority: projection.authority,
+            inputReadbackSource: 'CDP_CALCULATION_INPUT_STORE',
+            inputItemsSha256: semanticHash(projection.inputItems), calculationItemsSha256: itemsSha256,
+            calculationItemCount: Object.keys(observedItems).length, omittedSlots: projection.omittedSlots,
+          }) } : {}),
           sections: Object.freeze(sections),
         });
         capture.runtimeState = Object.freeze({
           profile: structuredClone(observedProfile),
-          items: structuredClone(observedItems),
+          items: structuredClone(projection ? projection.inputItems : observedItems),
         });
         capture.optionEntries = structuredClone(readback?.optionEntries ?? []);
         capture.matchedPauseOrdinal = capture.pauseOrdinal;
@@ -891,6 +935,8 @@ class MaxrollRuntimeAttestationObserver {
     capture.pendingInputState = Object.freeze({
       epochObjectId: epoch.objectId,
       options: structuredClone(readback.options),
+      ...(runtime.itemProjection ? { itemProjection: verifyRuntimeItemProjection(
+        this.#semantics.items, observedProfile, readback, runtime.itemProjection) } : {}),
       profileSha256: this.#semantics.profileSha256,
       pauseOrdinal: capture.pauseOrdinal,
     });
@@ -929,6 +975,7 @@ class MaxrollRuntimeAttestationObserver {
       }
       capture.epochObjectId = pending.epochObjectId;
       capture.storedOptions = structuredClone(pending.options);
+      capture.itemProjection = pending.itemProjection;
       capture.pendingInputState = null;
       capture.epochIdentitySha256 = sha256(Buffer.from(`${scriptId}:${currentObjectId}`));
       capture.accumulator.bindEpoch(capture.epochIdentitySha256);
@@ -1238,6 +1285,7 @@ module.exports = {
   exactOptionReadback,
   resolveApplicableMetricInventory,
   inputSemantics,
+  verifyRuntimeItemProjection,
   normalizedExpectedOptions,
   normalizedProfile,
   resolveSharedOptionControls,

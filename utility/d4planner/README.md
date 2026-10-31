@@ -2,6 +2,9 @@
 
 Issues: #39 (capture POC), #43 (runtime/CLI)
 
+The managed backend-to-Rule-Kit worker contract and configuration are documented
+in [docs/rulekit-worker.md](docs/rulekit-worker.md).
+
 D4Planner is an intentionally independent bounded context for Diablo IV build
 capture. It must not depend on `streamops.server` or modify the Diablo IV game
 directory.
