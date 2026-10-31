@@ -64,7 +64,7 @@ jobs:
           $workflowChanged = (".github/workflows/tests.yml" -in $files) -or
             ("scripts/ci/test_changed_components.py" -in $files)
           $launcher = $workflowChanged -or (@(
-            $files | Where-Object { $_ -like "utility/d4planner/d4planner-launcher/*" }
+            $files | Where-Object { $_ -like "utility/d4planner/d4planner-launcher/*" -or $_ -like "utility/d4planner/d4planner-hud/runtime-logging/*" }
           ).Count -gt 0)
 
           if ($realFiles.Count -eq 0) {

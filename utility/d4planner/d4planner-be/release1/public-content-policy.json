@@ -68,6 +68,7 @@
     "utility/d4planner/d4planner-rulekit/providers/maxroll/src/universal-build-mapper.js",
     "utility/d4planner/d4planner-rulekit/providers/maxroll/src/universal-component-factory.js",
     "utility/d4planner/d4planner-rulekit/providers/maxroll/src/value.js",
+    "utility/d4planner/d4planner-rulekit/runtime-logging/src/logger.js",
     "utility/d4planner/d4planner-rulekit/snapshot-management/compatibility/build-index.js",
     "utility/d4planner/d4planner-rulekit/snapshot-management/compatibility/compatibility-index.json",
     "utility/d4planner/d4planner-rulekit/snapshot-management/compatibility/contracts.js",

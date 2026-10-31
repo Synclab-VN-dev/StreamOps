@@ -277,3 +277,26 @@ def test_publish_uses_original_exe_after_separate_owner_approval(tmp_path,monkey
     monkeypatch.setattr(ci.subprocess,'run',lambda *a,**k:SimpleNamespace(returncode=0,stderr=''))
     with pytest.raises(ValueError,match='RELEASE_EXISTS_OR_UNVERIFIED'):ci.main()
     assert len(calls)==1
+
+
+def test_hud_source_ownership_keeps_installed_identity_and_package_paths():
+    import tomllib
+    project=ci.ROOT/'utility/d4planner'
+    hud=project/'d4planner-hud'
+    launcher=project/'d4planner-launcher'
+    assert {p.name for p in project.iterdir() if p.is_dir()} == {
+        'd4planner-launcher','d4planner-be','d4planner-hud','d4planner-rulekit'}
+    for component in [hud/'src-tauri',launcher]:
+        cargo=tomllib.loads((component/'Cargo.toml').read_text())
+        dependency=cargo['dependencies']['d4planner-runtime-logging']['path']
+        assert (component/dependency).resolve()==(hud/'runtime-logging').resolve()
+    native=tomllib.loads((hud/'src-tauri/Cargo.toml').read_text())
+    assert native['package']['name']=='d4planner-overlay-poc'
+    assert json.loads((hud/'src-tauri/tauri.conf.json').read_text())['identifier']=='vn.synclab.d4planner.overlaypoc'
+    root=tomllib.loads((launcher/'Cargo.toml').read_text())
+    assert root['bin'][0]['name']=='D4Planner'
+    stage=(project/'d4planner-be/tools/build_release1_stage.py').read_text()
+    assert 'app/d4planner-fe.exe' in stage
+    workflow=(ci.ROOT/'.github/workflows/d4-overlay-poc.yml').read_text()
+    assert 'utility/d4planner/d4planner-hud/**' in workflow
+    assert 'd4planner-overlay-poc-win-x64' in workflow

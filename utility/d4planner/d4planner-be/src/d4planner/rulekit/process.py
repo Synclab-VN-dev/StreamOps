@@ -75,7 +75,7 @@ class AsyncioProcessDriver:
     async def spawn(
         self, specification: LaunchSpecification, *, instance_id: str, generation: int
     ) -> SpawnedProcess:
-        inherited_names = ("PATH", "SystemRoot", "WINDIR", "TEMP", "TMP", "PATHEXT", "COMSPEC")
+        inherited_names = ("PATH", "SystemRoot", "WINDIR", "TEMP", "TMP", "PATHEXT", "COMSPEC", "D4_LOG_DIR", "D4_LOG_RUN_ID", "D4_LOG_POLICY")
         environment = {name: os.environ[name] for name in inherited_names if name in os.environ}
         environment.update(specification.environment_allow_list)
         environment.update(
@@ -136,6 +136,8 @@ class RuleKitProcessWrapper:
             return await self._start_locked()
 
     async def _start_locked(self) -> RuleKitClient:
+        from ..runtime_logging import emit
+        emit("INFO","worker","START")
         if self._child is not None:
             raise RuntimeError("owned worker cleanup pending; stop must confirm exit")
         self.state = ProcessState.STARTING
@@ -173,6 +175,7 @@ class RuleKitProcessWrapper:
                 max_pending=self.specification.max_pending,
             )
             self.state = ProcessState.READY
+            emit("INFO","worker","READY")
             self._exit_task = asyncio.create_task(self._watch_exit(child))
             return self.client
         except BaseException:
@@ -298,5 +301,11 @@ class RuleKitProcessWrapper:
         # a sanitized logger, never forwards private worker stderr over IPC.
         # Fixed-size reads also drain oversized/no-newline diagnostics without
         # StreamReader readline limits or retaining private log content.
-        while await reader.read(16384):
-            pass
+        from ..runtime_logging import emit
+        total = 0
+        while chunk := await reader.read(16384):
+            total += len(chunk)
+            if total >= 65536:
+                emit("WARN","worker","ERROR",bytes=total)
+                total = 0
+        if total: emit("WARN","worker","ERROR",bytes=total)

@@ -47,15 +47,15 @@
     },
     {
       "path": "application/src/runtime/bootstrap.js",
-      "sha256": "42393539f65740330e8bb4ad2f1daf89f4826f30cb760f9d7648f979f92cfce2"
+      "sha256": "e61a5fe93021332ab9c5add4cd1d02e3b18a14bd80c1f7cc92a7b41d07cf75bd"
     },
     {
       "path": "application/src/runtime/managed-snapshot-composition.js",
-      "sha256": "cfa676925f97a2140376f0be741825a7a10d109ce41ae1bc6f4ec60ad46b3ca5"
+      "sha256": "2e628bf01d55b7a4cc7d4fa92144d7b3adc10c6ecbbf51a67df8fb82bdc09d3a"
     },
     {
       "path": "application/src/runtime/production-composition.js",
-      "sha256": "906b7d7508b657898c5ce8d2048d5a0edf5ae1af287f956c48ce682c131d2a70"
+      "sha256": "0b6f2bf2a2a3ef973aa824989198d288c7272da371f1267485bdb735c831ea3a"
     },
     {
       "path": "application/src/session-manager.js",
@@ -87,7 +87,7 @@
     },
     {
       "path": "browser-infra/src/infrastructure.js",
-      "sha256": "879d53ff12bf73e9bff0f2698512b7db15bc5a713091ba7e25ad8b739c85c22d"
+      "sha256": "c4edcec5ac4e729df2d4573b6154bfa447613226537c8076897498f691ace670"
     },
     {
       "path": "browser-infra/src/lease.js",
@@ -207,7 +207,7 @@
     },
     {
       "path": "providers/maxroll/src/provider.js",
-      "sha256": "2405e2217458566e69ee65f7c7ae694a7f1dab5cc57e535e1503fdc0d7d0874f"
+      "sha256": "5e2f1c8f2705d455102ed3ec072e32d84f0eaf900b4d4671f8ab8468c06f309e"
     },
     {
       "path": "providers/maxroll/src/real-metrics-extractor.js",
@@ -235,7 +235,7 @@
     },
     {
       "path": "providers/maxroll/src/session.js",
-      "sha256": "5b9e3926b8d6ae2216dd57b13b444c7a2ee24809e4a03f378c35170d666dbfd0"
+      "sha256": "43f46f90cde46c0d3522f0b9e05eacb6db2e0c327ef4c2a06e17a9652594480c"
     },
     {
       "path": "providers/maxroll/src/snapshot-capturer.js",
@@ -252,6 +252,10 @@
     {
       "path": "providers/maxroll/src/value.js",
       "sha256": "ae8d065c4fce717f19bcfb8d4efe5034e15ffc5744c53a78cb8bfe41d2a10b7d"
+    },
+    {
+      "path": "runtime-logging/src/logger.js",
+      "sha256": "8127d79fa23760f1db4906369b6dd9c7ff6a55c24532cf0ac9a84016c5ebd7c5"
     },
     {
       "path": "snapshot-management/compatibility/build-index.js",
@@ -307,7 +311,7 @@
     },
     {
       "path": "snapshot-management/src/manager.js",
-      "sha256": "fa142eb8601ad4f6259e5ca9a9195646b559164a42c50b8033dbd4ba0c82af0a"
+      "sha256": "703b7a93a1d54e7f213a674dd7574fc4e5b04f942022615ce588410a3ba65cf0"
     },
     {
       "path": "snapshot-management/src/production-trust-anchors.json",
@@ -338,6 +342,6 @@
     "snapshot-management/compatibility/versions/maxroll-20261023.js",
     "snapshot-management/compatibility/versions/maxroll-20261027.js"
   ],
-  "executionSha256": "e401c699f24e2cf634f0aecded7925ab8a5f6d9d763b70bb051607e523d60de4",
-  "ruleKitVersion": "rulekit-execution/sha256:e401c699f24e2cf634f0aecded7925ab8a5f6d9d763b70bb051607e523d60de4"
+  "executionSha256": "81d6c9d0602611f3dc4081d218d4eeb286d280238dddb9f64ce746204e3e50ff",
+  "ruleKitVersion": "rulekit-execution/sha256:81d6c9d0602611f3dc4081d218d4eeb286d280238dddb9f64ce746204e3e50ff"
 }
