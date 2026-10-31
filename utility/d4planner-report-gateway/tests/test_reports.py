@@ -301,6 +301,46 @@ class Reports(unittest.TestCase):
             self.s.upload("alice", self.rid, self.data)
         self.assertEqual(self.gh.items, [])
 
+    def test_concurrent_retries_one_issue_one_asset(self):
+        from concurrent.futures import ThreadPoolExecutor
+
+        self.s.prepare("alice", self.rid, self.request)
+
+        def submit(_):
+            try:
+                return self.s.upload("alice", self.rid, self.data)
+            except Rejected as e:
+                self.assertEqual(e.code, "CREATE_OUTCOME_UNCERTAIN")
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            list(pool.map(submit, range(8)))
+        self.s.upload("alice", self.rid, self.data)
+        self.assertEqual(len(self.gh.items), 1)
+        self.assertEqual(len(self.gh.uploads), 1)
+
+    def test_expired_complete_report_is_not_reuploaded(self):
+        self.ready()
+        self.gh.uploads = []
+        result = self.s.upload("alice", self.rid, self.data)
+        self.assertEqual(result["status"], "EXPIRED")
+        self.assertEqual(self.gh.uploads, [])
+
+    def test_all_requests_are_rate_limited(self):
+        for _ in range(60):
+            self.s.authorize_request("alice")
+        with self.assertRaisesRegex(Rejected, "RATE_LIMIT"):
+            self.s.authorize_request("alice")
+
+    def test_plaintext_with_age_prefix_is_rejected(self):
+        data = b"age-encryption.org/v1\nPRIVATE_SECRET_CANARY"
+        self.request["artifact"].update(
+            bytes=len(data), sha256=hashlib.sha256(data).hexdigest()
+        )
+        self.s.prepare("alice", self.rid, self.request)
+        with self.assertRaisesRegex(Rejected, "INVALID_CIPHERTEXT"):
+            self.s.upload("alice", self.rid, data)
+        self.assertEqual(self.gh.uploads, [])
+
 
 if __name__ == "__main__":
     unittest.main()
