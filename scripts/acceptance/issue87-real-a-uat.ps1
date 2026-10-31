@@ -22,8 +22,8 @@ $PSNativeCommandUseErrorActionPreference=$false
 $root=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $homeDir=Join-Path $root '.streamops/pr95/d4planner'
 $taskName='StreamOps-PR95-Manual'
-$reporter=Join-Path $root 'utility/d4planner/tools/issue87_uat_evidence.py'
-$sourceRoot=Join-Path $root 'utility/d4planner/src'
+$reporter=Join-Path $root 'utility/d4planner/d4planner-be/tools/issue87_uat_evidence.py'
+$sourceRoot=Join-Path $root 'utility/d4planner/d4planner-be/src'
 $venvDir=Join-Path $root '.streamops/pr95/python-venv'
 $probePython=$Python
 $originalPythonPath=$env:PYTHONPATH
@@ -267,7 +267,7 @@ try {
     # Install this checkout plus its declared dev dependency set only in the
     # PR95 venv. Do not duplicate individual packages or mutate global Python.
     $install=Run-Python 'local-pr95-dev-install' @(
-      '-m','pip','install','--editable','utility/d4planner[dev]'
+      '-m','pip','install','--editable','utility/d4planner/d4planner-be[dev]'
     )
     $install['classification']=if($install.code -eq 0){'PASS'}else{'DEPENDENCY_FAILURE'}
     if($install.code -ne 0){throw 'Cannot install D4Planner dev dependencies in PR95 isolated venv'}
@@ -280,11 +280,11 @@ try {
     $dependencyImport['classification']=if($dependencyImport.code -eq 0){'PASS'}else{'DEPENDENCY_FAILURE'}
     $pipCheck=Run-Python 'local-pr95-pip-check' @('-m','pip','check')
     $pipCheck['classification']=if($pipCheck.code -eq 0){'PASS'}else{'DEPENDENCY_FAILURE'}
-    $unit=Run-Python 'local-pytest' @('-m','pytest','-q','utility/d4planner/tests')
+    $unit=Run-Python 'local-pytest' @('-m','pytest','-q','utility/d4planner/d4planner-be/tests')
     $unit['classification']=Get-LocalPytestClassification $unit
     Write-LocalPytestFailure $unit
-    $compile=Run-Python 'local-compile' @('-m','compileall','-q','utility/d4planner')
-    $addon=Run-Python 'local-addon-build' @('utility/d4planner/tools/build_nvda_addon.py')
+    $compile=Run-Python 'local-compile' @('-m','compileall','-q','utility/d4planner/d4planner-be')
+    $addon=Run-Python 'local-addon-build' @('utility/d4planner/d4planner-be/tools/build_nvda_addon.py')
     $good=($dependencyImport.code -eq 0 -and $pipCheck.code -eq 0 -and
       $unit.code -eq 0 -and $compile.code -eq 0 -and $addon.code -eq 0)
     Set-Result 'DF-02' 'Local full pytest/compile/addon build in isolated PR95 venv' @{
