@@ -335,3 +335,16 @@ it('shows a listing failure instead of empty or stale targets and permits retry'
   expect(screen.getByText('SYNTHETIC FIREWALL')).toBeTruthy();
   view.unmount();
 });
+
+it('Report Issue pointer interaction does not start native window dragging', async () => {
+  render(<App dataSource={new FakeDataSource()} />);
+  await screen.findByText('SYNTHETIC CHARGE BOLT BUILD');
+  const menu=screen.getByRole('button',{name:'Open target menu'});
+  fireEvent.mouseDown(menu,{button:0});
+  expect(mocks.invoke.mock.calls.filter(call=>call[0]==='drag_overlay')).toHaveLength(0);
+  fireEvent.click(menu);
+  fireEvent.mouseDown(screen.getByRole('menuitem',{name:'Report Issue'}),{button:0});
+  fireEvent.click(screen.getByRole('menuitem',{name:'Report Issue'}));
+  expect(screen.getByLabelText('Report Issue')).toBeTruthy();
+  expect(mocks.invoke.mock.calls.filter(call=>call[0]==='drag_overlay')).toHaveLength(0);
+});

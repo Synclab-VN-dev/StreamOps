@@ -84,6 +84,8 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   }
 
   async function drag(event: React.MouseEvent) {
+    // Menu operations must receive their pointer-up/click; native dragging captures it.
+    if (event.target instanceof Element && event.target.closest(".menu-button, .target-menu")) return;
     if (event.button === 0) await invoke("drag_overlay").catch(() => undefined);
   }
 
