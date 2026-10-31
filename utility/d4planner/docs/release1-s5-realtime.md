@@ -29,3 +29,17 @@ Local checks: Python test_realtime_transport.py, test_production_backend.py,
 test_snapshot_backend.py; Rust lifecycle-tests includes real managed-process
 request/response, timeout and foreign-generation rejection. Synthetic fixtures
 are not Windows-native or live Diablo evidence. No periodic data polling.
+
+At the S5 checkpoint, `src/hud-data-source.ts::HudNotificationClient` is the
+FE notification adapter. Its only outbound message is the authenticated hello;
+accepted notifications call a parameterless SQLite-reread callback. It rejects
+legacy full-HUD/Target messages instead of treating candidate.6 as the old WS
+contract. Handshake timeout, bounded reconnect and stale-socket suppression are
+covered against the unchanged S1 notification schema by `npm test` in
+`utility/d4planner-overlay-poc`.
+
+The S5 overlay App is still the POC and does not consume this adapter. S6 (#151)
+replaces this staging adapter with `TauriHudDataSource`, which composes native
+SQLite reads, notification handling and managed command IPC into the HUD.
+Consequently S5 adapter tests are not evidence of an integrated or Windows-native
+HUD. S6 retains its own datasource/React tests; full-path acceptance belongs to S7.

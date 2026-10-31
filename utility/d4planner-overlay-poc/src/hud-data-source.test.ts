@@ -1,486 +1,116 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HudWebSocketDataSource, type WebSocketLike } from './hud-data-source';
-import hudFixture from '../../d4planner/contracts/release1/v1/fixtures/hud.partial.synthetic.json';
-
-class FakeSocket implements WebSocketLike {
+import Ajv2020 from 'ajv/dist/2020';
+import schema from '../../d4planner/contracts/release1/v1/schemas/ws.schema.json';
+import { HudNotificationClient, type WebSocketLike } from './hud-data-source';
+class Socket implements WebSocketLike {
   readyState = 1;
   onopen: (() => void) | null = null;
-  onmessage: ((event: { data: string }) => void) | null = null;
+  onmessage: ((event: {data: string}) => void) | null = null;
   onclose: (() => void) | null = null;
   sent: Record<string, any>[] = [];
   send(data: string) { this.sent.push(JSON.parse(data)); }
   close() { this.readyState = 3; this.onclose?.(); }
-  receive(message: Record<string, any>) { this.onmessage?.({ data: JSON.stringify(message) }); }
+  receive(message: unknown) { this.onmessage?.({data:JSON.stringify(message)}); }
 }
-
-const credential = 'test-only-private-credential-000000000000';
-const backend = { runtimeInstanceId: 'backend-a', generation: 3 };
-
-function hud(revision: number, targetId = 'target-a', characterId = 'character-a') {
-  const value = structuredClone(hudFixture) as Record<string, any>;
-  const selectionRevision = targetId === 'target-a' ? 7 : 8;
-  const contentSha256 = (targetId === 'target-a' ? 'a' : 'b').repeat(64);
-  value.hudRevision = revision;
-  value.backend = { runtimeInstanceId: backend.runtimeInstanceId, generation: backend.generation };
-  value.context.character.characterId = characterId;
-  value.context.target.targetId = targetId;
-  value.context.target.contentSha256 = contentSha256;
-  value.context.target.selectionRevision = selectionRevision;
-  value.context.binding = {
-    runtimeInstanceId: backend.runtimeInstanceId,
-    characterId,
-    currentRevision: value.context.character.currentRevision,
-    targetId,
-    targetSha256: contentSha256,
-    selectionRevision,
-    policyVersion: value.context.target.policyVersion,
-  };
-  value.score.value = targetId === 'target-a' ? 50 : 75;
-  return value;
+const protocolVersion = 'd4planner-notify/v1';
+const committed = (hudRevision = 12, epoch = 'epoch-a') => ({
+  protocolVersion, type:'hud.committed', messageId:'event', dbId:'db-a', epoch, hudRevision,
+});
+const validate = new Ajv2020().compile(schema);
+function authenticate(socket: Socket) {
+  const accepted = {protocolVersion, type:'hello.accepted', messageId:'accepted', correlationId:socket.sent[0].messageId};
+  expect(validate(accepted)).toBe(true);
+  socket.receive(accepted);
 }
-
-function setup(
-  reconnectDelaysMs?: readonly number[],
-  recovery?: { snapshotOperationTimeoutMs: number; maxDiscoveryAttempts: number },
-) {
-  const sockets: FakeSocket[] = [];
-  const source = new HudWebSocketDataSource({
-    endpoint: 'ws://127.0.0.1:12345',
-    credential,
-    origin: 'tauri://localhost',
-    reconnectDelaysMs,
-    ...recovery,
-    socketFactory: () => {
-      const socket = new FakeSocket();
-      sockets.push(socket);
-      return socket;
-    },
-  });
-  source.connect();
+function setup(accept = true) {
+  vi.useFakeTimers();
+  const sockets: Socket[] = [];
+  const reread = vi.fn(), connection = vi.fn();
+  const client = new HudNotificationClient({endpoint:'ws://127.0.0.1:12345', credential:'x'.repeat(32),
+    origin:'tauri://localhost', reread, connection, reconnectDelaysMs:[10,20], handshakeTimeoutMs:50,
+    socketFactory:() => { const s = new Socket(); sockets.push(s); return s; }});
+  client.connect();
   const socket = sockets[0];
   socket.onopen?.();
-  return { source, socket, sockets };
+  if (accept) authenticate(socket);
+  return {client, socket, sockets, reread, connection};
 }
-
-afterEach(() => vi.useRealTimers());
-
-function accept(socket: FakeSocket, runtime = backend) {
-  socket.receive({
-    protocolVersion: 'd4planner-ws/v1',
-    type: 'hello.accepted',
-    correlationId: socket.sent[0].messageId,
-    backendGeneration: runtime.generation,
-    runtimeInstanceId: runtime.runtimeInstanceId,
+afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
+describe('D5 notification-only client', () => {
+  it('rereads offline on startup and sends only the contract authentication hello', () => {
+    const {socket, reread, connection} = setup(false);
+    expect(reread).toHaveBeenCalledTimes(1);
+    expect(connection).not.toHaveBeenCalledWith(true);
+    expect(validate(socket.sent[0])).toBe(true);
+    authenticate(socket);
+    expect(reread).toHaveBeenCalledTimes(2);
+    expect(socket.sent.map(m => m.type)).toEqual(['hello']);
   });
-}
-
-function pendingSnapshot(socket: FakeSocket) {
-  return [...socket.sent].reverse().find(message => message.type === 'hud.snapshot.request')!;
-}
-
-describe('HudWebSocketDataSource', () => {
-  it('discovers initial state and applies only contiguous updates', () => {
-    const { source, socket } = setup();
-    accept(socket);
-    const request = pendingSnapshot(socket);
-    socket.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
-      correlationId: request.messageId, backendGeneration: 3,
-      subscriptionId: 'sub-a', hud: hud(12),
-    });
-    expect(source.snapshot()).toMatchObject({ freshness: 'CURRENT', subscriptionId: 'sub-a' });
-    socket.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.update', backendGeneration: 3,
-      subscriptionId: 'sub-a', previousHudRevision: 12, hud: hud(13),
-    });
-    expect(source.snapshot().hud?.hudRevision).toBe(13);
-    socket.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.update', backendGeneration: 3,
-      subscriptionId: 'sub-a', previousHudRevision: 11, hud: hud(12),
-    });
-    expect(source.snapshot().hud?.hudRevision).toBe(13);
-  });
-
-  it('preserves high-water on same-backend reconnect and rejects stale snapshot', () => {
-    const { source, socket, sockets } = setup();
-    accept(socket);
-    let request = pendingSnapshot(socket);
-    socket.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
-      correlationId: request.messageId, backendGeneration: 3, subscriptionId: 'sub-a', hud: hud(20),
-    });
-    socket.close();
-    source.connect();
-    const reconnect = sockets[1];
-    reconnect.onopen?.();
-    expect(reconnect.sent[0].lastSeen.hudRevision).toBe(20);
-    accept(reconnect);
-    expect(source.snapshot()).toMatchObject({ freshness: 'STALE', hud: { hudRevision: 20 } });
-    request = pendingSnapshot(reconnect);
-    reconnect.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
-      correlationId: request.messageId, backendGeneration: 3, subscriptionId: 'sub-stale', hud: hud(18),
-    });
-    expect(source.snapshot()).toMatchObject({ freshness: 'STALE', hud: { hudRevision: 20 } });
-    reconnect.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
-      correlationId: request.messageId, backendGeneration: 3, subscriptionId: 'sub-new', hud: hud(20),
-    });
-    expect(source.snapshot()).toMatchObject({ freshness: 'CURRENT', subscriptionId: 'sub-new' });
-  });
-
-  it('uses discovery when reconnect snapshot reveals a new active context', () => {
-    const { source, socket, sockets } = setup();
-    accept(socket);
-    let request = pendingSnapshot(socket);
-    socket.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
-      correlationId: request.messageId, backendGeneration: 3, subscriptionId: 'sub-a', hud: hud(20),
-    });
-    socket.close();
-    source.connect();
-    const reconnect = sockets[1];
-    reconnect.onopen?.();
-    accept(reconnect);
-    request = pendingSnapshot(reconnect);
-    reconnect.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
-      correlationId: request.messageId, backendGeneration: 3, subscriptionId: 'unaccepted',
-      hud: hud(21, 'target-b', 'character-b'),
-    });
-    const discovery = pendingSnapshot(reconnect);
-    expect(discovery.requestContext).toMatchObject({
-      mode: 'DISCOVER_ACTIVE_CONTEXT', minimumHudRevision: 21,
-    });
-    expect(source.snapshot()).toMatchObject({ freshness: 'STALE', hud: { hudRevision: 20 } });
-    reconnect.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
-      correlationId: discovery.messageId, backendGeneration: 3, subscriptionId: 'sub-b',
-      hud: hud(21, 'target-b', 'character-b'),
-    });
-    expect(source.snapshot()).toMatchObject({
-      freshness: 'CURRENT', subscriptionId: 'sub-b', hud: { hudRevision: 21 },
-    });
-  });
-
-  it('resets for a new backend identity and requests discovery from its revision space', () => {
-    const { source, socket, sockets } = setup();
-    accept(socket);
-    let request = pendingSnapshot(socket);
-    socket.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
-      correlationId: request.messageId, backendGeneration: 3, subscriptionId: 'sub-a', hud: hud(20),
-    });
-    socket.close();
-    source.connect();
-    const reconnect = sockets[1];
-    reconnect.onopen?.();
-    accept(reconnect, { runtimeInstanceId: 'backend-b', generation: 4 });
-    request = pendingSnapshot(reconnect);
-    expect(source.snapshot()).toMatchObject({
-      backend: { runtimeInstanceId: 'backend-b', generation: 4 }, hud: null, freshness: 'STARTUP',
-    });
-    expect(request.requestContext).toMatchObject({
-      mode: 'DISCOVER_ACTIVE_CONTEXT', minimumHudRevision: 0,
-    });
-    reconnect.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.update', backendGeneration: 3,
-      subscriptionId: 'sub-a', previousHudRevision: 20, hud: hud(21),
-    });
-    expect(source.snapshot().hud).toBeNull();
-  });
-
-  it('requests authoritative resync on a forward revision gap', () => {
-    const { source, socket } = setup();
-    accept(socket);
-    const request = pendingSnapshot(socket);
-    socket.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
-      correlationId: request.messageId, backendGeneration: 3, subscriptionId: 'sub-a', hud: hud(12),
-    });
-    socket.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.update', backendGeneration: 3,
-      subscriptionId: 'sub-a', previousHudRevision: 13, hud: hud(14),
-    });
-    const resync = pendingSnapshot(socket);
-    expect(source.snapshot()).toMatchObject({ freshness: 'STALE', hud: { hudRevision: 12 } });
-    expect(resync.requestContext).toMatchObject({
-      mode: 'RESYNC_KNOWN_CONTEXT', minimumHudRevision: 12,
-    });
-  });
-
-  it('allows only server-listed valid target IDs and waits for committed HUD binding', () => {
-    const { source, socket } = setup();
-    accept(socket);
-    const listRequest = socket.sent.find(message => message.type === 'target.list.request')!;
-    socket.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'target.list.result', backendGeneration: 3,
-      correlationId: listRequest.messageId,
-      listRevision: 4,
-      targets: [
-        { targetId: 'target-a', validation: 'VALID', contentSha256: 'a'.repeat(64) },
-        { targetId: 'target-b', validation: 'INVALID', contentSha256: 'b'.repeat(64) },
-      ],
-    });
-    expect(() => source.selectTarget('target-b')).toThrow(/validated/);
-    source.selectTarget('target-a');
-    const select = socket.sent.find(message => message.type === 'target.select.request')!;
-    socket.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'target.select.result', backendGeneration: 3,
-      correlationId: select.messageId, status: 'ACTIVATED', targetId: 'target-a',
-    });
-    expect(source.snapshot().hud).toBeNull();
-  });
-
-  it('automatically reconnects with a bounded budget and never loops forever', () => {
-    vi.useFakeTimers();
-    const { source, socket, sockets } = setup([10, 20]);
-    socket.close();
-    vi.advanceTimersByTime(10);
-    expect(sockets).toHaveLength(2);
-    sockets[1].onopen?.();
-    sockets[1].close();
-    vi.advanceTimersByTime(20);
-    expect(sockets).toHaveLength(3);
-    sockets[2].onopen?.();
-    sockets[2].close();
-    vi.runAllTimers();
-    expect(sockets).toHaveLength(3);
-    expect(source.snapshot()).toMatchObject({
-      freshness: 'STALE', error: 'RECONNECT_EXHAUSTED',
-    });
-  });
-
-  it('rejects wrong handshake correlation and late messages from an old connection', () => {
-    const { source, socket, sockets } = setup();
-    socket.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hello.accepted', correlationId: 'wrong',
-      backendGeneration: 3, runtimeInstanceId: 'backend-a',
-    });
-    expect(source.snapshot().backend).toBeNull();
-    accept(socket);
-    socket.close();
-    source.connect();
-    const reconnect = sockets[1];
-    reconnect.onopen?.();
-    accept(reconnect);
-    socket.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
-      correlationId: pendingSnapshot(reconnect).messageId, backendGeneration: 3,
-      subscriptionId: 'late-old-connection', hud: hud(99),
-    });
-    expect(source.snapshot().hud).toBeNull();
-  });
-
-  it('bounds snapshot timeout recovery and consumes late correlations', () => {
-    vi.useFakeTimers();
-    const { source, socket } = setup(undefined, {
-      snapshotOperationTimeoutMs: 10, maxDiscoveryAttempts: 2,
-    });
-    accept(socket);
-    const first = pendingSnapshot(socket);
-    expect(first.requestContext).toMatchObject({
-      mode: 'DISCOVER_ACTIVE_CONTEXT', attempt: 1, reason: 'INITIAL_CONNECTION',
-    });
-    vi.advanceTimersByTime(10);
-    const retry = pendingSnapshot(socket);
-    expect(retry.messageId).not.toBe(first.messageId);
-    expect(retry.requestContext).toMatchObject({
-      mode: 'DISCOVER_ACTIVE_CONTEXT', attempt: 2, reason: 'TIMEOUT_RETRY',
-      minimumHudRevision: 0,
-    });
-    vi.advanceTimersByTime(10);
-    expect(source.snapshot()).toMatchObject({
-      freshness: 'STALE', error: 'SNAPSHOT_RECOVERY_EXHAUSTED', subscriptionId: null,
-    });
-    const requestCount = socket.sent.filter(message => message.type === 'hud.snapshot.request').length;
-    vi.runAllTimers();
-    expect(socket.sent.filter(message => message.type === 'hud.snapshot.request')).toHaveLength(requestCount);
-    socket.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
-      correlationId: first.messageId, backendGeneration: 3,
-      subscriptionId: 'late', hud: hud(99),
-    });
-    expect(source.snapshot().hud).toBeNull();
-  });
-
-  it('rejects a HUD payload that does not satisfy the versioned schema', () => {
-    const { source, socket } = setup();
-    accept(socket);
-    const request = pendingSnapshot(socket);
-    const invalid = hud(12);
-    delete invalid.provenance;
-    socket.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
-      correlationId: request.messageId, backendGeneration: 3,
-      subscriptionId: 'sub-invalid', hud: invalid,
-    });
-    expect(source.snapshot()).toMatchObject({ hud: null, freshness: 'STALE', error: 'HUD_INVALID' });
-    expect(pendingSnapshot(socket).messageId).not.toBe(request.messageId);
-  });
-
-  it.each([
-    ['runtime instance', (value: Record<string, any>) => { value.context.binding.runtimeInstanceId = 'other'; }],
-    ['character revision', (value: Record<string, any>) => { value.context.binding.currentRevision += 1; }],
-    ['target hash', (value: Record<string, any>) => { value.context.binding.targetSha256 = 'c'.repeat(64); }],
-    ['policy version', (value: Record<string, any>) => { value.context.binding.policyVersion = 'other-policy'; }],
-  ])('rejects inconsistent %s binding without applying the assessment', (_label, mutate) => {
-    const { source, socket } = setup();
-    accept(socket);
-    const request = pendingSnapshot(socket);
-    const invalid = hud(12);
-    mutate(invalid);
-    socket.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
-      correlationId: request.messageId, backendGeneration: 3,
-      subscriptionId: 'sub-invalid', hud: invalid,
-    });
-    expect(source.snapshot()).toMatchObject({ hud: null, freshness: 'STALE', error: 'HUD_INVALID' });
-  });
-
-  it('rejects a HUD identity that disagrees with the accepted backend generation', () => {
-    const { source, socket } = setup();
-    accept(socket);
-    const request = pendingSnapshot(socket);
-    const invalid = hud(12);
-    invalid.backend.generation = 2;
-    invalid.context.binding.runtimeInstanceId = invalid.backend.runtimeInstanceId;
-    socket.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
-      correlationId: request.messageId, backendGeneration: 3,
-      subscriptionId: 'sub-invalid', hud: invalid,
-    });
-    expect(source.snapshot()).toMatchObject({ hud: null, freshness: 'STALE', error: 'HUD_INVALID' });
-  });
-});
-
-function targets(socket: FakeSocket) {
-  const request = socket.sent.find(m => m.type === 'target.list.request')!;
-  socket.receive({protocolVersion: 'd4planner-ws/v1', type: 'target.list.result',
-    backendGeneration: 3, correlationId: request.messageId, listRevision: 1,
-    targets: [{targetId: 'target-a', validation: 'VALID', contentSha256: 'a'.repeat(64)}]});
-}
-
-it('consumes correlated errors without accumulating pending selection or accepting late errors', () => {
-  const {source, socket} = setup(); accept(socket); targets(socket);
-  for (let i = 0; i < 100; i++) {
-    source.selectTarget('target-a');
-    const id = socket.sent.at(-1)!.messageId;
-    socket.receive({protocolVersion: 'd4planner-ws/v1', type: 'error', backendGeneration: 3,
-      correlationId: id, code: i % 2 ? 'TARGET_CHANGED' : 'TARGET_INVALID'});
-    expect((source as any).pendingTarget.size).toBe(0);
-  }
-  const previous = source.snapshot().error;
-  socket.receive({protocolVersion: 'd4planner-ws/v1', type: 'error', backendGeneration: 3,
-    correlationId: 'unknown-or-duplicate', code: 'INTERNAL'});
-  expect(source.snapshot().error).toBe(previous);
-  source.disconnect();
-});
-
-it('bounds outstanding selections and clears connection-owned requests', () => {
-  const {source, socket} = setup(); accept(socket); targets(socket);
-  for (let i = 0; i < 32; i++) source.selectTarget('target-a');
-  expect(() => source.selectTarget('target-a')).toThrow('TARGET_REQUEST_LIMIT');
-  const first = socket.sent.find(m => m.type === 'target.select.request')!;
-  socket.receive({protocolVersion: 'd4planner-ws/v1', type: 'target.select.result',
-    backendGeneration: 3, correlationId: first.messageId});
-  expect((source as any).pendingTarget.size).toBe(31);
-  source.disconnect();
-  expect((source as any).pendingTarget.size).toBe(0);
-});
-
-it('old connection/generation errors do not complete a new selection', () => {
-  vi.useFakeTimers();
-  const {source, socket, sockets} = setup([1]); accept(socket); targets(socket);
-  source.selectTarget('target-a');
-  socket.close(); vi.advanceTimersByTime(1);
-  const next = sockets[1]; next.onopen?.(); accept(next); targets(next);
-  source.selectTarget('target-a');
-  const id = next.sent.at(-1)!.messageId;
-  const error = {protocolVersion: 'd4planner-ws/v1', type: 'error', backendGeneration: 3,
-    correlationId: id, code: 'TARGET_INVALID'};
-  socket.receive(error);
-  next.receive({...error, backendGeneration: 2});
-  expect((source as any).pendingTarget.size).toBe(1);
-  next.receive(error);
-  expect((source as any).pendingTarget.size).toBe(0);
-  source.disconnect();
-});
-
-it.each(['TARGET_CHANGED', 'TARGET_INVALID', 'success', 'list'])(
-  'preserves Target correlations during same-connection context rediscovery: %s', outcome => {
-    const successful = outcome === 'success' || outcome === 'list';
-    vi.useFakeTimers();
-    const { source, socket, sockets } = setup([1]);
-    accept(socket);
-    socket.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
-      correlationId: pendingSnapshot(socket).messageId, backendGeneration: 3,
-      subscriptionId: 'initial', hud: hud(20),
-    });
-    socket.close(); vi.advanceTimersByTime(1);
-    const reconnected = sockets[1];
-    reconnected.onopen?.(); accept(reconnected);
-    const resync = pendingSnapshot(reconnected);
-    expect(resync.requestContext).toMatchObject({mode: 'RESYNC_KNOWN_CONTEXT', minimumHudRevision: 20});
-    const listReply = {
-      protocolVersion: 'd4planner-ws/v1', type: 'target.list.result', backendGeneration: 3,
-      correlationId: reconnected.sent.find(m => m.type === 'target.list.request')!.messageId,
-      listRevision: 1,
-      targets: [{targetId: 'target-b', validation: 'VALID', contentSha256: 'b'.repeat(64)}],
-    };
-    reconnected.receive(listReply);
-    source.selectTarget('target-b');
-    const selectionId = reconnected.sent.at(-1)!.messageId;
-    source.requestTargets();
-    const listId = reconnected.sent.at(-1)!.messageId;
-    reconnected.receive({
-      protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
-      correlationId: resync.messageId, backendGeneration: 3,
-      subscriptionId: 'mismatched', hud: hud(21, 'target-b', 'character-b'),
-    });
-    const discovery = pendingSnapshot(reconnected);
-    expect(discovery.requestContext).toMatchObject({mode: 'DISCOVER_ACTIVE_CONTEXT', minimumHudRevision: 21});
-    expect(source.snapshot()).toMatchObject({freshness: 'STALE', subscriptionId: null,
-      hud: {hudRevision: 20, context: {target: {targetId: 'target-a'}}}});
-    const response = {
-      protocolVersion: 'd4planner-ws/v1', backendGeneration: 3, correlationId: selectionId,
-      ...(successful ? {type: 'target.select.result', status: 'ACTIVATED', targetId: 'target-b'}
-        : {type: 'error', code: outcome}),
-    };
-    socket.receive(response);
-    reconnected.receive({...response, backendGeneration: 2});
-    socket.receive({...listReply, correlationId: listId, listRevision: 99});
-    reconnected.receive({...listReply, correlationId: listId, backendGeneration: 2, listRevision: 99});
-    expect(source.snapshot().listRevision).toBe(1);
-    expect(source.snapshot().error).toBeNull();
-    if (outcome === 'list') {
-      reconnected.receive({...listReply, correlationId: listId, listRevision: 2});
-      expect(source.snapshot().listRevision).toBe(2);
+  it('rereads for duplicate, reordered, gapped and replaced-DB hints without applying metadata as data', () => {
+    const {socket, reread} = setup();
+    for (const message of [committed(12),committed(12),committed(9),committed(40),committed(1,'restored')]) {
+      expect(validate(message)).toBe(true); socket.receive(message);
     }
-    if (successful) expect((source as any).pendingTarget.has(selectionId)).toBe(true);
-    reconnected.receive(response);
-    expect(source.snapshot().error).toBe(successful ? null : outcome);
-    expect((source as any).pendingTarget.size).toBe(0);
-    reconnected.receive({...listReply, correlationId: listId, listRevision: 2});
-    expect(source.snapshot().listRevision).toBe(2);
-    // Command response cannot relabel the old assessment as B.
-    expect(source.snapshot().hud?.context.target.targetId).toBe('target-a');
-    reconnected.receive({...response, type: 'error', code: 'INTERNAL'});
-    reconnected.receive({...listReply, correlationId: listId, listRevision: 99});
-    expect(source.snapshot().error).toBe(successful ? null : outcome);
-    expect(source.snapshot().listRevision).toBe(2);
-    const discovered = {protocolVersion: 'd4planner-ws/v1', type: 'hud.snapshot', authoritative: true,
-      correlationId: discovery.messageId, backendGeneration: 3, subscriptionId: 'discovered'};
-    reconnected.receive({...discovered, hud: hud(20)});
-    expect(source.snapshot().freshness).toBe('STALE');
-    reconnected.receive({...discovered, hud: hud(21, 'target-b', 'character-b')});
-    expect(source.snapshot()).toMatchObject({freshness: 'CURRENT', subscriptionId: 'discovered',
-      hud: {hudRevision: 21, context: {target: {targetId: 'target-b'}}}});
-    for (let i = 0; i < 32; i++) source.selectTarget('target-b');
-    expect(() => source.selectTarget('target-b')).toThrow('TARGET_REQUEST_LIMIT');
-    source.disconnect();
-    expect((source as any).pendingTarget.size).toBe(0);
-    expect((source as any).pendingTargetList).toBeNull();
-  },
-);
+    expect(reread).toHaveBeenCalledTimes(7);
+    expect(reread.mock.calls.every(args => args.length === 0)).toBe(true);
+    expect(socket.sent).toHaveLength(1);
+  });
+  it.each([
+    {...committed(),hud:{score:100}}, {...committed(),targets:[]}, {...committed(),type:'hud.snapshot'},
+    {...committed(),type:'target.list'}, {...committed(),protocolVersion:'d4planner-ws/v1'},
+    {...committed(),hudRevision:-1}, {...committed(),hudRevision:1.5},
+    {...committed(),hudRevision:Number.MAX_SAFE_INTEGER+1}, {...committed(),epoch:''},
+    {...committed(),dbId:'x'.repeat(161)}, {...committed(),messageId:null}, null,
+  ])('rejects messages outside the notification contract: %j', message => {
+    const {socket, connection} = setup();
+    expect(validate(message)).toBe(false);
+    socket.receive(message);
+    expect(socket.readyState).toBe(3);
+    expect(connection).toHaveBeenLastCalledWith(false);
+  });
+  it('rejects notifications before authentication', () => {
+    const {socket} = setup(false); socket.receive(committed()); expect(socket.readyState).toBe(3);
+  });
+  it('rejects wrong hello correlation', () => {
+    const {socket} = setup(false);
+    socket.receive({protocolVersion,type:'hello.accepted',messageId:'a',correlationId:'wrong'});
+    expect(socket.readyState).toBe(3);
+  });
+  it('rejects malformed JSON', () => {
+    const {socket} = setup(); socket.onmessage?.({data:'{'}); expect(socket.readyState).toBe(3);
+  });
+  it('rereads on reconnect and ignores callbacks from the previous connection', () => {
+    const {socket,sockets,reread} = setup(); socket.close(); vi.advanceTimersByTime(10);
+    const current = sockets[1]; current.onopen?.(); authenticate(current);
+    const count = reread.mock.calls.length;
+    socket.receive(committed(999)); socket.onclose?.();
+    expect(reread).toHaveBeenCalledTimes(count);
+    current.receive(committed(1)); expect(reread).toHaveBeenCalledTimes(count+1);
+  });
+  it('bounds unauthenticated connection timeout and retries', () => {
+    const {sockets,connection} = setup(false); vi.advanceTimersByTime(500);
+    expect(sockets).toHaveLength(3); expect(connection).not.toHaveBeenCalledWith(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it('disconnect cancels retries and ignores late open/messages', () => {
+    const {client,socket,sockets,reread} = setup(false); client.disconnect();
+    const count = reread.mock.calls.length; socket.onopen?.(); socket.receive(committed());
+    vi.advanceTimersByTime(500);
+    expect(sockets).toHaveLength(1); expect(socket.sent).toHaveLength(1);
+    expect(reread).toHaveBeenCalledTimes(count); expect(vi.getTimerCount()).toBe(0);
+  });
+  it('bounds factory failures while permitting offline reads', () => {
+    vi.useFakeTimers(); const reread = vi.fn();
+    const socketFactory = vi.fn(() => {throw new Error('offline');});
+    const client = new HudNotificationClient({endpoint:'ws://localhost:12345',credential:'x'.repeat(32),
+      origin:'tauri://localhost',reread,connection:vi.fn(),socketFactory,reconnectDelaysMs:[10]});
+    client.connect(); vi.advanceTimersByTime(100);
+    expect(socketFactory).toHaveBeenCalledTimes(2); expect(reread).toHaveBeenCalledTimes(1);
+    client.disconnect();
+  });
+  it('rejects a non-loopback endpoint before opening a socket', () => {
+    expect(() => new HudNotificationClient({endpoint:'ws://example.com:12345',credential:'x'.repeat(32),
+      origin:'tauri://localhost',reread:vi.fn(),connection:vi.fn(),socketFactory:() => new Socket()}))
+      .toThrow('LOOPBACK_REQUIRED');
+  });
+});
