@@ -173,6 +173,7 @@ impl Report {
         {
             return Err("INVALID_REPORT".into());
         }
+        validate_sources(&m["preview"])?;
         Ok(Self {
             id: id.into(),
             preview: m["preview"].clone(),
@@ -280,7 +281,7 @@ impl Report {
             files.push(item);
         }
         if selection.evidence {
-            let exported=evidence(&report.dir.join("evidence")).unwrap_or_else(|_|json!({"files":[{"name":"events.db","status":"UNAVAILABLE"},{"name":"equipment-projector.jsonl","status":"UNAVAILABLE"}]}));
+            let exported=evidence(&report.dir.join("evidence")).unwrap_or_else(|_|json!({"files":[{"name":"events.jsonl","status":"UNAVAILABLE","reason":"RAW_EVENT_SOURCE_UNAVAILABLE"}]}));
             for item in exported["files"]
                 .as_array()
                 .ok_or("INVALID_EVIDENCE_EXPORT")?
@@ -300,8 +301,7 @@ impl Report {
                 "logs/fe.log",
                 "logs/be.log",
                 "logs/rulekit.log",
-                "evidence/events.db",
-                "evidence/equipment-projector.jsonl",
+                "evidence/events.jsonl",
             ]
             .contains(&path)
             {
@@ -321,15 +321,30 @@ impl Report {
                 return Err("REPORT_TOO_LARGE".into());
             }
             let bytes = fs::read(&p).map_err(error)?;
+            if path == "evidence/events.jsonl" {
+                let text = std::str::from_utf8(&bytes).map_err(|_| "INVALID_EVENT_JSONL")?;
+                if !text.is_empty() && !text.ends_with('\n') {
+                    return Err("TRUNCATED_EVENT_JSONL".into());
+                }
+                for line in text.lines() {
+                    let event: Value =
+                        serde_json::from_str(line).map_err(|_| "INVALID_EVENT_JSONL")?;
+                    if !event.is_object() {
+                        return Err("INVALID_EVENT_JSONL".into());
+                    }
+                }
+            }
             item["bytes"] = json!(bytes.len());
             item["sha256"] = json!(hash(&bytes));
             item["status"] = json!("BEST_EFFORT");
         }
         report.preview = json!({"schemaVersion":"d4planner-issue-report/v1","reportId":report.id,"runId":run,"timestamp":d4planner_runtime_logging::now(),"productVersion":source["productVersion"].take(),"sourceVersion":source["sourceVersion"].take(),"consent":selection,"files":files,"bytes":total,"completeness":if total==0{"EMPTY"}else{"BEST_EFFORT"}});
+        validate_sources(&report.preview)?;
         Ok(report)
     }
     pub fn encrypt(&mut self, config: &Config) -> Result<Value> {
         config.validate()?;
+        validate_sources(&self.preview)?;
         if self.preview["bytes"].as_u64().unwrap_or(MAX + 1) > config.max_bytes {
             return Err("REPORT_TOO_LARGE".into());
         }
@@ -682,7 +697,7 @@ mod evidence_failure_test {
         };
         let r = Report::collect(&data, "no-runtime-run", s, |dest| {
             fs::create_dir(dest).unwrap();
-            fs::write(dest.join("events.db"), b"INCOMPLETE_PRIVATE_DB").unwrap();
+            fs::write(dest.join("events.jsonl"), b"{\"partial\":").unwrap();
             Err("EVIDENCE_TIMEOUT".into())
         })
         .unwrap();
@@ -690,5 +705,83 @@ mod evidence_failure_test {
         assert_eq!(r.preview["bytes"], 0);
         r.discard();
         fs::remove_dir_all(data).unwrap();
+    }
+}
+
+// Shared by collection, encryption and persisted-draft recovery. Old DB-bearing
+// drafts are rejected, never silently uploaded after the attachment contract changed.
+fn validate_sources(preview: &Value) -> Result<()> {
+    let files = preview["files"].as_array().ok_or("INVALID_EXPORT")?;
+    let mut seen = std::collections::HashSet::new();
+    for file in files {
+        let path = file["path"].as_str().ok_or("INVALID_EXPORT")?;
+        let selected = match path {
+            "logs/fe.log" => preview["consent"]["fe"] == true,
+            "logs/be.log" => preview["consent"]["be"] == true,
+            "logs/rulekit.log" => preview["consent"]["rulekit"] == true,
+            "evidence/events.jsonl" => {
+                preview["consent"]["evidence"] == true
+                    && preview["consent"]["evidenceConsent"] == true
+            }
+            _ => false,
+        };
+        if !selected || !seen.insert(path) {
+            return Err("INVALID_EXPORT_SOURCE".into());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod raw_event_contract_tests {
+    use super::*;
+    #[test]
+    fn rejects_forbidden_sources_even_in_old_drafts() {
+        for name in [
+            "events.db",
+            "character.db",
+            "events.db-wal",
+            "equipment-projector.jsonl",
+            "raw-speech.jsonl",
+        ] {
+            let preview = json!({"consent":{"evidence":true,"evidenceConsent":true},"files":[{"path":format!("evidence/{name}")}]});
+            assert!(validate_sources(&preview).is_err(), "{name}");
+        }
+    }
+    #[test]
+    fn raw_jsonl_validation_and_exact_four_source_allowlist() {
+        for (bytes, valid) in [
+            (b"{\"sessionId\":\"synthetic\"}\n".as_slice(), true),
+            (b"{\"partial\":".as_slice(), false),
+            (b"invalid\n".as_slice(), false),
+            (b"[]\n".as_slice(), false),
+        ] {
+            let data = std::env::temp_dir().join(format!("raw-event-{}", uuid::Uuid::new_v4()));
+            fs::create_dir(&data).unwrap();
+            let selection = Selection {
+                fe: false,
+                be: false,
+                rulekit: false,
+                evidence: true,
+                evidence_consent: true,
+            };
+            let result = Report::collect(&data, "synthetic", selection, |dest| {
+                fs::create_dir(dest).unwrap();
+                fs::write(dest.join("events.jsonl"), bytes).unwrap();
+                Ok(
+                    json!({"files":[{"name":"events.jsonl","status":"BEST_EFFORT","sessionId":"synthetic"}]}),
+                )
+            });
+            assert_eq!(result.is_ok(), valid);
+            if let Ok(report) = result {
+                assert_eq!(report.preview["files"].as_array().unwrap().len(), 1);
+                assert_eq!(
+                    fs::read(report.dir.join("evidence/events.jsonl")).unwrap(),
+                    bytes
+                );
+                report.discard();
+            }
+            fs::remove_dir_all(data).unwrap();
+        }
     }
 }

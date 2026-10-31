@@ -10,7 +10,7 @@ asset upload, recipient approval or visual approval is implied.
 |---|---|---|
 | Another logging framework | DISAGREE / EXISTING_COVERAGE_SUFFICIENT | S8 `runtime-logging::export` already filters JSONL and bounds reads. Add selected-source variant; retain old three-file export semantics. |
 | React accessing private files | AGREE / FIX_REQUIRED | Existing `App.tsx` has no diagnostic commands. React passes booleans/form only; native derives DataRoot from launcher-controlled S8 session. |
-| Copying live SQLite | AGREE / NEEDS_DIFFERENT_SOLUTION | Capture uses `RuntimePaths.state/events.db`, possibly WAL. Python owner exports via SQLite backup with deadline/page/byte budgets; never copies hot DB. |
+| Raw event attachment clarification (31 October) | AGREE / FIX_REQUIRED | Only FE/BE/Rule Kit logs and optional raw event JSONL. Remove DB backup/helper and projector attachment. Existing `cli.command_logs(raw=True)` selects capture state; packaged HUD has no verified session binding. Fourth source remains explicitly UNAVAILABLE, pending integration approval. |
 | Encryption needs a CLI/global age | DISAGREE / NEEDS_DIFFERENT_SOLUTION | Linked Rust age implementation and ZIP avoid a user toolchain. X25519 recipient supplied by operator configuration, no default key. |
 | Blind GitHub POST retry | AGREE / FIX_REQUIRED | GitHub Issue create is not an idempotent POST. Persist CREATING before POST, reconcile bot marker; if outcome cannot be proven, stop at CREATE_OUTCOME_UNCERTAIN, never recreate. |
 | Universal hosting/auth choice | PARTIALLY_AGREE / NEEDS_DIFFERENT_SOLUTION | Hosting, issuer/audience and App custody not approved. Hosting-neutral WSGI service with mandatory authenticated-subject/token callbacks; no insecure default implementation or deployment. |
@@ -24,7 +24,7 @@ asset upload, recipient approval or visual approval is implied.
 flowchart LR
   React[HUD form and consent] --> Native[Tauri report orchestration]
   Native --> S8[S8 selected read-only export]
-  Native --> Python[BE evidence backup helper]
+  Native --> Raw[Existing raw event JSONL contract - binding blocked]
   Native --> Archive[ZIP DEFLATE 9 then age]
   Archive --> Gateway[Authenticated Gateway]
   Gateway --> GitHub[Issue and encrypted asset]
@@ -34,7 +34,7 @@ flowchart LR
 - `report-issue/`: native crate, selected preview, private bounded ZIP, age, transport.
 - `src-tauri/src/issue_report.rs`: async blocking-task dispatch; no React-provided paths.
 - `src/ReportIssue.tsx`: tab state, exact preview, consent, retry, real URL.
-- `d4planner/diagnostic_evidence.py`: one-shot BE-owned read-only capture evidence API.
+- No DB export helper or backup code. Raw event collection does not launch capture or query DB.
 - `d4planner-report-gateway/`: host-neutral service and cleanup; no client App credential.
 - Rule Kit, snapshot trust, S8 quotas and public Setup distribution are unchanged.
 
@@ -47,8 +47,7 @@ All filenames derive from fixed source allowlists. No SQLite/path access from Re
 Launcher-controlled environment:
 
 - S8 `D4_LOG_DIR` / `D4_LOG_RUN_ID`, packaged `D4PLANNER_BACKEND_PYTHON`.
-- Optional evidence: `D4PLANNER_CAPTURE_DATA_ROOT` and `D4PLANNER_CAPTURE_SESSION_ID`.
-  No automatic scanning of capture sessions or real Owner DB.
+- Optional D4Planner Event Log: currently UNAVAILABLE until a verified existing raw JSONL source/session binding is approved. No capture environment variables or guessed legacy paths.
 - `D4PLANNER_REPORT_CONFIG`: absolute owner-controlled JSON with `recipient`
   (approved age X25519 public recipient), `gateway` (HTTPS URL), `maxBytes`.
 - `D4PLANNER_REPORT_ACCESS_TOKEN`: short-lived **user** access credential, supplied by
@@ -66,7 +65,7 @@ S8 live snapshots are best effort, never mislabeled COMPLETE. No sources still p
 an encrypted manifest-only report, not fabricated logs.
 
 Safety ceilings (not a production upload approval): 64 MB total export/ciphertext,
-32 MB per evidence source, 10-second SQLite backup and 15-second child deadline,
+Strict four-source allowlist, complete valid raw JSONL records only,
 60-second HTTP timeout, 64 KB Gateway response. ZIP DEFLATE level 9. No redirect.
 Private staging is owner-only; at most three retained sealed reports, no unlimited
 report accumulation. Files are compressed/encrypted locally. Ciphertext and private
@@ -132,3 +131,22 @@ Code/local tests do not grant deployment/public upload permission. Owner must de
 4. Approved MagicPath Golden; candidate reference is not visual acceptance.
 
 No production keys, raw user logs, snapshot, DB, screenshot or credentials are committed.
+
+## Raw event source checkpoint (Owner correction, 31 October 2026)
+
+`runtime/events/store.py::EventStore.create` records `events.jsonl` as a legacy
+path; current events are emitted through the existing event store. `cli.py::command_logs`
+with raw=True emits JSONL for the session in `_state(paths)`, with a legacy fallback.
+It has no explicit requested-session argument; the packaged HUD does not currently
+supply a verified capture RuntimePaths/session mapping. Calling it against a guessed
+DataRoot or exporting the most recent session is not an acceptable substitute.
+
+Minimal proposed integration: bind the existing capture root and requested session
+at the composition boundary; reuse `logs --raw` with an explicit session guard and
+bounded output, without new capture/storage or direct report-side DB access. Owner
+approval is required before extending that existing CLI contract. Until then the
+fourth source is selectable with separate raw-content consent but preview reports
+UNAVAILABLE. Three S8 sources, encryption, Gateway and cleanup remain independent.
+RPT-02 raw-source production integration is BLOCKED; synthetic JSONL validation is
+not evidence that packaged capture is connected. Old sealed reports containing any
+DB, WAL, projector or separate speech file are rejected on resume/encryption.

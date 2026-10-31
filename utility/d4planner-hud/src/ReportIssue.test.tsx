@@ -30,6 +30,8 @@ describe("Report Issue", () => {
     const bridge = vi.fn().mockResolvedValue(preview);
     render(<ReportIssue bridge={bridge} onClose={() => {}} />);
     fireEvent.click(screen.getByText("Collect Logs"));
+    expect(screen.getAllByRole("checkbox")).toHaveLength(4);
+    expect((screen.getByLabelText("D4Planner Event Log") as HTMLInputElement).checked).toBe(false);
     fireEvent.click(screen.getByLabelText("BE"));
     fireEvent.click(screen.getByLabelText("Rule Kit"));
     fireEvent.click(screen.getByText("Report Issue"));
@@ -54,21 +56,21 @@ describe("Report Issue", () => {
       .fn()
       .mockResolvedValue({
         ...preview,
-        files: [{ name: "events.db", status: "UNAVAILABLE" }],
+        files: [{ name: "events.jsonl", status: "UNAVAILABLE" }],
       });
     render(<ReportIssue bridge={bridge} onClose={() => {}} />);
     fireEvent.click(screen.getByText("Collect Logs"));
-    fireEvent.click(screen.getByLabelText("Existing D4 Evidence"));
+    fireEvent.click(screen.getByLabelText("D4Planner Event Log"));
     expect(
       (screen.getByText("Preview collection") as HTMLButtonElement).disabled,
     ).toBe(true);
     fireEvent.click(
-      screen.getByLabelText("I consent to include existing D4 evidence"),
+      screen.getByLabelText("I consent to include raw D4Planner events"),
     );
     fireEvent.click(screen.getByText("Preview collection"));
     await waitFor(() =>
       expect(
-        screen.getByText("events.db · 0 bytes · UNAVAILABLE"),
+        screen.getByText("events.jsonl · 0 bytes · UNAVAILABLE"),
       ).toBeTruthy(),
     );
   });

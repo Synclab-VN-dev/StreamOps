@@ -1,16 +1,7 @@
 //! S9 native orchestration; neither React paths nor GitHub App credentials cross this boundary.
 use d4planner_report_issue::{Config, Description, Report, Selection};
 use serde_json::Value;
-use std::{
-    env, fs,
-    io::Read,
-    path::PathBuf,
-    process::{Command, Stdio},
-    sync::Mutex,
-    time::Duration,
-};
-use wait_timeout::ChildExt;
-static EVIDENCE_CHILD: Mutex<Option<std::process::Child>> = Mutex::new(None);
+use std::{env, fs, path::PathBuf, sync::Mutex};
 static REPORT: Mutex<Option<Report>> = Mutex::new(None);
 fn data_root() -> Result<PathBuf, String> {
     let logs = PathBuf::from(env::var("D4_LOG_DIR").map_err(|_| "LOG_SESSION_UNAVAILABLE")?);
@@ -41,56 +32,10 @@ fn config() -> Result<Config, String> {
     config.validate()?;
     Ok(config)
 }
-fn evidence(destination: &std::path::Path) -> Result<Value, String> {
-    let mut pending = EVIDENCE_CHILD.lock().map_err(|_| "EVIDENCE_BUSY")?;
-    if let Some(child) = pending.as_mut() {
-        if child
-            .try_wait()
-            .map_err(|_| "EVIDENCE_CLEANUP_PENDING")?
-            .is_none()
-        {
-            return Err("EVIDENCE_CLEANUP_PENDING".into());
-        }
-        *pending = None;
-    }
-    let python = env::var("D4PLANNER_BACKEND_PYTHON").map_err(|_| "EVIDENCE_UNAVAILABLE")?;
-    let mut command = Command::new(python);
-    command
-        .args([
-            "-m",
-            "d4planner.diagnostic_evidence",
-            "--consent",
-            "--destination",
-        ])
-        .arg(destination)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000);
-    }
-    let mut child = command.spawn().map_err(|_| "EVIDENCE_UNAVAILABLE")?;
-    let result = child.wait_timeout(Duration::from_secs(15));
-    if !matches!(result, Ok(Some(_))) {
-        let _ = child.kill();
-        if !matches!(child.wait_timeout(Duration::from_secs(2)), Ok(Some(_))) {
-            *pending = Some(child);
-        }
-        return Err("EVIDENCE_TIMEOUT".into());
-    }
-    let mut bytes = Vec::new();
-    child
-        .stdout
-        .take()
-        .ok_or("EVIDENCE_UNAVAILABLE")?
-        .take(16_385)
-        .read_to_end(&mut bytes)
-        .map_err(|_| "EVIDENCE_UNAVAILABLE")?;
-    if bytes.len() > 16_384 {
-        return Err("EVIDENCE_UNAVAILABLE".into());
-    }
-    serde_json::from_slice(&bytes).map_err(|_| "EVIDENCE_UNAVAILABLE".into())
+fn evidence(_destination: &std::path::Path) -> Result<Value, String> {
+    // Existing logs --raw selects capture state, not the HUD run. No verified
+    // packaged capture-session binding exists yet. Never guess or export a DB.
+    Err("RAW_EVENT_SOURCE_NOT_BOUND".into())
 }
 #[tauri::command]
 pub async fn collect_issue_report(selection: Selection) -> Result<Value, String> {

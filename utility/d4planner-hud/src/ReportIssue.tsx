@@ -154,7 +154,7 @@ export function ReportIssue({
               ["fe", "FE"],
               ["be", "BE"],
               ["rulekit", "Rule Kit"],
-              ["evidence", "Existing D4 Evidence"],
+              ["evidence", "D4Planner Event Log"],
             ] as const
           ).map(([key, label]) => (
             <label key={key}>
@@ -169,7 +169,7 @@ export function ReportIssue({
           {selection.evidence && (
             <div role="note">
               <p>
-                Existing D4 evidence may contain raw speech and gameplay
+                Raw D4Planner events may contain raw speech and gameplay
                 content. It is encrypted but sensitive. Review before sending.
               </p>
               <label>
@@ -178,7 +178,7 @@ export function ReportIssue({
                   checked={selection.evidenceConsent}
                   onChange={(e) => select("evidenceConsent", e.target.checked)}
                 />
-                I consent to include existing D4 evidence
+                I consent to include raw D4Planner events
               </label>
             </div>
           )}
