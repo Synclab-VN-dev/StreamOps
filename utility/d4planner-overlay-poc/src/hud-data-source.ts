@@ -36,6 +36,8 @@ export class TauriHudDataSource implements IHudDataSource {
   private checkpoint: { dbId: string; epoch: string; revision: number } | null = null;
   private readChain: Promise<void> = Promise.resolve();
   private online = false;
+  private readQueued = false;
+  private listRequest = 0;
   private targets: TargetListEntry[] = [];
   private listRevision: number | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -65,13 +67,16 @@ export class TauriHudDataSource implements IHudDataSource {
   }
 
   refresh(): Promise<void> {
+    if (this.readQueued) return this.readChain;
+    this.readQueued = true;
     const epoch = this.epoch;
     this.readChain = this.readChain.then(async () => {
+      this.readQueued = false;
       if (!this.listener || epoch !== this.epoch) return;
       try {
         const result = await this.nativeInvoke<ReadModel | null>('read_hud_database');
         if (!this.listener || epoch !== this.epoch) return;
-        if (!result) { this.checkpoint = null; this.listener({type:'DATABASE_RESET'}); return; }
+        if (!result) { this.listener({type:'DATABASE_RESET'}); return; }
         if (result.schemaVersion !== 'd4planner-hud-db/v1' || !result.dbId || !result.epoch
           || !Number.isSafeInteger(result.hudRevision) || result.hudRevision < 0
           || !validateHudSchema(result.hud) || result.hud.hudRevision !== result.hudRevision) throw new Error('DB_INVALID_MODEL');
@@ -93,7 +98,7 @@ export class TauriHudDataSource implements IHudDataSource {
         if (!matchingProducer && snapshot.health.scoreFreshness === 'CURRENT') snapshot.health.scoreFreshness = 'STALE';
         this.listener({type:'SNAPSHOT',snapshot,receivedAt:new Date().toISOString()});
       } catch (error) {
-        if (epoch === this.epoch) { this.offline(String(error)); this.listener?.({type:'ASSESSMENT_INVALIDATED'}); }
+        if (epoch === this.epoch) { this.offline(String(error)); if (!String(error).includes('DB_BUSY')) this.listener?.({type:'ASSESSMENT_INVALIDATED'}); }
       }
     });
     return this.readChain;
@@ -145,13 +150,17 @@ export class TauriHudDataSource implements IHudDataSource {
     this.reconnectTimer = setTimeout(() => { this.reconnectTimer=null; void this.connectSocket(epoch); },this.recoveryDelaysMs[this.retry++]);
   }
   async refreshTargets(): Promise<void> {
+    const request = ++this.listRequest;
+    const epoch = this.epoch;
     this.listener?.({type:'TARGET_LIST_STATE',status:'LOADING',error:null});
     try {
       const listing = await this.nativeInvoke<{targets:TargetListEntry[];listRevision:number}>('backend_command',{method:'target.list',params:{}});
+      if (request !== this.listRequest || epoch !== this.epoch) return;
+      if (!Array.isArray(listing.targets) || !Number.isSafeInteger(listing.listRevision) || listing.listRevision < 0) throw new Error('INVALID_TARGET_LIST');
       this.targets=listing.targets; this.listRevision=listing.listRevision;
       this.listener?.({type:'TARGETS',targets:this.targets});
     } catch (error) {
-      this.listener?.({type:'TARGET_LIST_STATE',status:'ERROR',error:String(error)}); throw error;
+      if (request === this.listRequest && epoch === this.epoch) this.listener?.({type:'TARGET_LIST_STATE',status:'ERROR',error:String(error)}); throw error;
     }
   }
   async selectTarget(request: {targetId:string;expectedSha256:string}): Promise<SelectionResult> {

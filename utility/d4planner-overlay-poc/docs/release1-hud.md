@@ -1,8 +1,19 @@
+# D5 HUD integration
+
+Tauri `hud_reader.rs` opens DataDir/hud.sqlite3 read-only/query-only and validates
+the public projection against the embedded HUD schema plus binding invariants.
+React receives this validated model through `read_hud_database`; WS only triggers
+reread. DB identity/epoch controls revision high-water, independent of BE restart.
+Viewer opens and displays valid last-known data with BE/WS/Node absent. Missing DB
+is empty; corrupt/incompatible DB fails closed; busy reads retain stale last-known.
+No BE auto-restart is performed merely to view persisted data. Target commands
+use `backend_command` over the existing managed process pipe.
+
 # D4Planner Release 1 Equipment HUD (#143)
 
 This package is the native Tauri presentation layer for the S1 HUD contract.
 React renders only committed backend fields. It does not score Equipment, parse
-Target files, read SQLite, resolve Maxroll identifiers, poll REST, or substitute
+Target files, open SQLite from React, resolve Maxroll identifiers, poll REST, or substitute
 sample data when the backend WebSocket is unavailable.
 
 ## Data-source boundary
@@ -66,7 +77,7 @@ The controller waits for a validated authoritative snapshot. Ordinary connection
 loss may retain explicitly labelled last-known data; a known-context mismatch
 invalidates rendering of score and Equipment until discovery succeeds, as required
 by S1 ADR. `assessmentRenderable` and `ASSESSMENT_INVALIDATED` are internal FE
-state/events, not changes to the WebSocket schema.
+state/events, separate from notification transport.
 
 Equipment section visibility is independent of the selected comparison item.
 Toggle/close Equipment resets Compare; closing Compare keeps Equipment open;
