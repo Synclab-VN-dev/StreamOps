@@ -5,6 +5,7 @@ fn runtime_log_event(level:String,tag:String,event:String,fields:serde_json::Val
  if !["websocket","hud","webview"].contains(&tag.as_str()) || d4planner_runtime_logging::clean(&level,&tag,&event,fields.clone()).is_none(){return Err("INVALID_LOG_EVENT".into());}
  if let Some(Some(log))=RUNTIME_LOG.get(){log.emit(&level,&tag,&event,fields);}Ok(())
 }
+mod issue_report;
 mod overlay_core;
 mod hud_reader;
 mod webview_diagnostic;
@@ -528,6 +529,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             runtime_log_event,
+            issue_report::collect_issue_report,
+            issue_report::submit_issue_report,
+            issue_report::cancel_issue_report,
+            issue_report::resume_issue_report,
             get_overlay_status,
             set_overlay_mode,
             drag_overlay,
