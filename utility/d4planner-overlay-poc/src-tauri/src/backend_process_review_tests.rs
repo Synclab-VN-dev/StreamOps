@@ -414,3 +414,28 @@ raise SystemExit(m.main())
     wrapper.stop().unwrap();
     assert!(wrapper.request("target.list", serde_json::json!({}), Duration::from_secs(1)).is_err());
 }
+
+#[test]
+fn full_stdin_pipe_cannot_block_control_deadline_or_owned_stop() {
+    let sandbox = Sandbox::new();
+    let mut spec = sandbox.launch("");
+    spec.graceful_stop_timeout = Duration::from_millis(20);
+    spec.kill_timeout = Duration::from_secs(1);
+    spec.args = vec!["-c".into(), r#"
+import time
+import d4planner.managed_backend as m
+original=m._emit
+def emit(row):
+ original(row)
+ if row.get('event')=='READY': time.sleep(60)
+m._emit=emit
+raise SystemExit(m.main())
+"#.into()];
+    let wrapper=BackendProcessWrapper::new(Arc::new(StdProcessDriver),spec);
+    wrapper.start().unwrap();
+    let started=std::time::Instant::now();
+    assert!(wrapper.request("target.list",serde_json::json!({"padding":"x".repeat(200_000)}),Duration::from_millis(20)).is_err());
+    assert!(started.elapsed()<Duration::from_secs(1));
+    wrapper.stop().unwrap();
+    assert!(started.elapsed()<Duration::from_secs(2));
+}

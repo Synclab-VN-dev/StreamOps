@@ -3,7 +3,7 @@ use std::{
     collections::BTreeMap,
     io::{BufRead, BufReader, Read, Write},
     path::PathBuf,
-    process::{Child, ChildStdin, Command, Stdio},
+    process::{Child, Command, Stdio},
     sync::{mpsc, Arc, Mutex},
     thread,
     time::Duration,
@@ -96,7 +96,7 @@ fn bounded_line(reader: &mut impl BufRead) -> Result<Option<String>, String> {
 pub struct StdChild {
     pending: PendingCommands,
     process: Arc<Mutex<Child>>,
-    stdin: Arc<Mutex<ChildStdin>>,
+    stdin: mpsc::SyncSender<Vec<u8>>,
     ready: Arc<Mutex<mpsc::Receiver<Result<ReadyEnvelope, String>>>>,
 }
 
@@ -148,6 +148,15 @@ impl ProcessDriver for StdProcessDriver {
             .stdout
             .take()
             .ok_or("managed child stdout unavailable")?;
+        // One bounded writer per owned child. A full/hung OS pipe must never
+        // block request deadlines or the lifecycle operation lock.
+        let (input, writes) = mpsc::sync_channel::<Vec<u8>>(32);
+        thread::spawn(move || {
+            let mut stdin = stdin;
+            for bytes in writes {
+                if stdin.write_all(&bytes).and_then(|_| stdin.flush()).is_err() { break; }
+            }
+        });
         let (tx, rx) = mpsc::channel();
         let pending: PendingCommands = Arc::new(Mutex::new(BTreeMap::new()));
         let dispatcher = pending.clone();
@@ -178,7 +187,7 @@ impl ProcessDriver for StdProcessDriver {
         Ok(StdChild {
             pending,
             process: Arc::new(Mutex::new(process)),
-            stdin: Arc::new(Mutex::new(stdin)),
+            stdin: input,
             ready: Arc::new(Mutex::new(rx)),
         })
     }
@@ -234,14 +243,9 @@ impl ProcessDriver for StdProcessDriver {
             "childInstanceId": specification.child_instance_id,
             "generation": specification.generation,
         });
-        let mut stdin = child
-            .stdin
-            .lock()
-            .map_err(|_| "child stdin lock poisoned")?;
-        writeln!(stdin, "{message}").map_err(|error| format!("shutdown write failed: {error}"))?;
-        stdin
-            .flush()
-            .map_err(|error| format!("shutdown flush failed: {error}"))
+        let mut bytes = serde_json::to_vec(&message).map_err(|_| "shutdown encode failed")?;
+        bytes.push(b'\n');
+        child.stdin.try_send(bytes).map_err(|_| "shutdown queue full or closed".into())
     }
 
     fn wait_for_exit(&self, child: &Self::Child, timeout: Duration) -> Result<bool, String> {
@@ -299,7 +303,7 @@ impl BackendProcessWrapper<StdProcessDriver> {
             let message = serde_json::json!({"protocolVersion":"d4planner-control/v1", "type":"request", "requestId":id,
                 "ownerInstanceId":spec.owner_instance_id, "childInstanceId":spec.child_instance_id, "generation":spec.generation,
                 "method":method, "params":params});
-            let bytes = serde_json::to_vec(&message).map_err(|_| "CONTROL_ENCODE_FAILED")?;
+            let mut bytes = serde_json::to_vec(&message).map_err(|_| "CONTROL_ENCODE_FAILED")?;
             if bytes.len() >= 1_048_576 { return Err("CONTROL_FRAME_TOO_LARGE".into()); }
             let (tx, rx) = mpsc::channel();
             {
@@ -307,13 +311,10 @@ impl BackendProcessWrapper<StdProcessDriver> {
                 if pending.len() >= 32 { return Err("CONTROL_QUEUE_FULL".into()); }
                 pending.insert(id.clone(), (message, tx));
             }
-            let written = (|| -> Result<(), std::io::Error> {
-                let mut stdin = child.stdin.lock().map_err(|_| std::io::Error::other("pipe lock poisoned"))?;
-                stdin.write_all(&bytes)?; stdin.write_all(b"\n")?; stdin.flush()
-            })();
-            if written.is_err() {
+            bytes.push(b'\n');
+            if child.stdin.try_send(bytes).is_err() {
                 if let Ok(mut pending) = child.pending.lock() { pending.remove(&id); }
-                return Err("BACKEND_OFFLINE".into());
+                return Err("CONTROL_QUEUE_FULL".into());
             }
             (child, id, rx)
         };
