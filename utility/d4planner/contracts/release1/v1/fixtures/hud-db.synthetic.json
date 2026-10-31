@@ -1,0 +1,222 @@
+{
+  "schemaVersion": "d4planner-hud-db/v1",
+  "dbId": "synthetic-db",
+  "epoch": "synthetic-epoch",
+  "hudRevision": 12,
+  "hud": {
+    "schemaVersion": "d4planner-hud/v1",
+    "hudRevision": 12,
+    "producedAt": "2026-10-25T05:00:00Z",
+    "backend": {
+      "runtimeInstanceId": "backend-synthetic-a",
+      "generation": 3
+    },
+    "context": {
+      "state": "BOUND",
+      "character": {
+        "characterId": "character-synthetic-a",
+        "displayName": "Synthetic Character",
+        "currentRevision": 41
+      },
+      "target": {
+        "targetId": "synthetic-charge-bolt",
+        "displayName": "Synthetic Charge Bolt Equipment Target",
+        "buildDisplayName": "Synthetic Charge Bolt Build",
+        "contentSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "selectionRevision": 7,
+        "policyVersion": "d4planner-equipment-policy/v1+r1-equipment-weights/1.0.0"
+      },
+      "binding": {
+        "runtimeInstanceId": "backend-synthetic-a",
+        "characterId": "character-synthetic-a",
+        "currentRevision": 41,
+        "targetId": "synthetic-charge-bolt",
+        "targetSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "selectionRevision": 7,
+        "policyVersion": "d4planner-equipment-policy/v1+r1-equipment-weights/1.0.0"
+      },
+      "selectionError": null
+    },
+    "health": {
+      "capture": "HEALTHY",
+      "scoreFreshness": "CURRENT",
+      "ruleKit": "NOT_REQUIRED"
+    },
+    "score": {
+      "status": "SCORED",
+      "value": 50,
+      "passedWeight": 3,
+      "evaluableWeight": 6,
+      "evaluationCounts": {
+        "evaluatedCriteria": 2,
+        "totalCriteria": 3,
+        "evaluatedWeight": 6,
+        "totalWeight": 7
+      },
+      "failIssueCount": 0,
+      "warnCount": 1,
+      "itemsPassing": 0,
+      "itemsTargeted": 1
+    },
+    "equipment": [
+      {
+        "slotId": "gloves",
+        "slotLabel": "Gloves",
+        "targetItem": {
+          "itemId": "synthetic-gloves-a",
+          "displayName": "Synthetic Target Gloves"
+        },
+        "currentItem": {
+          "itemId": "observed-gloves-b",
+          "displayName": "Synthetic Current Gloves",
+          "observedAt": "2026-10-25T04:59:58Z",
+          "source": "CAPTURE"
+        },
+        "currentPresence": "OBSERVED",
+        "status": "WARN",
+        "reasonCode": "CORE_ROLL_BELOW_TARGET",
+        "comparisons": [
+          {
+            "criterionId": "gloves.attack-speed",
+            "targetOrder": 0,
+            "kind": "AFFIX",
+            "source": {
+              "group": "AFFIXES",
+              "occurrence": 0
+            },
+            "entityId": "attack-speed",
+            "label": "Attack Speed",
+            "displayText": "Attack Speed +9.4% / target 8%",
+            "core": true,
+            "status": "PASS",
+            "reasonCode": "VALUE_MEETS_TARGET",
+            "parameters": [
+              {
+                "parameterId": "roll",
+                "label": "Roll",
+                "index": 0,
+                "comparator": "AT_LEAST",
+                "expected": {
+                  "type": "NUMBER",
+                  "value": 8,
+                  "unit": "PERCENT"
+                },
+                "actual": {
+                  "type": "NUMBER",
+                  "value": 9.4,
+                  "unit": "PERCENT"
+                },
+                "evidence": "OBSERVED",
+                "status": "PASS",
+                "reasonCode": "VALUE_MEETS_TARGET"
+              }
+            ]
+          },
+          {
+            "criterionId": "gloves.charge-bolt-effect",
+            "targetOrder": 1,
+            "kind": "EFFECT",
+            "source": {
+              "group": "ASPECTS",
+              "occurrence": 0
+            },
+            "entityId": "charge-bolt-core-effect",
+            "label": "Charge Bolt Core Effect",
+            "displayText": "Charge Bolt effect: 9% to 2 targets",
+            "core": true,
+            "status": "WARN",
+            "reasonCode": "CORE_PARAMETER_BELOW_TARGET",
+            "parameters": [
+              {
+                "parameterId": "damage",
+                "label": "Damage",
+                "index": 0,
+                "comparator": "AT_LEAST",
+                "expected": {
+                  "type": "NUMBER",
+                  "value": 10,
+                  "unit": "PERCENT"
+                },
+                "actual": {
+                  "type": "NUMBER",
+                  "value": 9,
+                  "unit": "PERCENT"
+                },
+                "evidence": "OBSERVED",
+                "status": "WARN",
+                "reasonCode": "VALUE_BELOW_TARGET"
+              },
+              {
+                "parameterId": "targets",
+                "label": "Targets",
+                "index": 1,
+                "comparator": "AT_LEAST",
+                "expected": {
+                  "type": "NUMBER",
+                  "value": 2,
+                  "unit": "FLAT"
+                },
+                "actual": {
+                  "type": "NUMBER",
+                  "value": 2,
+                  "unit": "FLAT"
+                },
+                "evidence": "OBSERVED",
+                "status": "PASS",
+                "reasonCode": "VALUE_MEETS_TARGET"
+              }
+            ]
+          },
+          {
+            "criterionId": "gloves.core-ranks",
+            "targetOrder": 2,
+            "kind": "AFFIX",
+            "source": {
+              "group": "AFFIXES",
+              "occurrence": 0
+            },
+            "entityId": "core-skill-ranks",
+            "label": "Core Skill Ranks",
+            "displayText": "Core Skill Ranks not yet observed",
+            "core": false,
+            "status": "UNKNOWN",
+            "reasonCode": "TOOLTIP_CATEGORY_INCOMPLETE",
+            "parameters": [
+              {
+                "parameterId": "rank",
+                "label": "Ranks",
+                "index": 0,
+                "comparator": "AT_LEAST",
+                "expected": {
+                  "type": "NUMBER",
+                  "value": 2,
+                  "unit": "RANK"
+                },
+                "actual": null,
+                "evidence": "INCOMPLETE",
+                "status": "UNKNOWN",
+                "reasonCode": "PARAMETER_NOT_OBSERVED"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "recommendation": {
+      "action": "IMPROVE_ROLL",
+      "displayText": "Improve the Charge Bolt effect roll",
+      "reasonCodes": [
+        "CORE_PARAMETER_BELOW_TARGET"
+      ],
+      "criterionIds": [
+        "gloves.charge-bolt-effect"
+      ]
+    },
+    "provenance": {
+      "producer": "D4PLANNER_BE",
+      "assessmentVersion": "d4planner-r1-contract/1.0.0-candidate.6",
+      "captureRevision": 41,
+      "lastObservedAt": "2026-10-25T04:59:58Z"
+    }
+  }
+}

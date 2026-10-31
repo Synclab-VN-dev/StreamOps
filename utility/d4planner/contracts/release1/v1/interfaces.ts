@@ -1,4 +1,4 @@
-/** Normative port shapes for d4planner-r1-contract/1.0.0-candidate.5.
+/** Normative port shapes for d4planner-r1-contract/1.0.0-candidate.6.
  * Language-neutral ports, not a runtime SDK. Implementations preserve boundaries;
  * schemas/ is the sole source of serialized field definitions and required fields.
  */
@@ -74,36 +74,14 @@ declare const validatedSchema: unique symbol;
 export type SchemaPayload<Reference extends string> = {
   readonly [validatedSchema]: Reference;
 };
-export type TargetListEntry = SchemaPayload<'ws.schema.json#/$defs/targetEntry'>;
+export type TargetListEntry = SchemaPayload<'command.schema.json#/$defs/targetEntry'>;
 export type ApprovedWeightProfile = SchemaPayload<'target.schema.json#/$defs/weightProfile'>;
-export type HudContextState = SchemaPayload<'ws.schema.json#/$defs/expectedKnownContext/properties/state'>;
 export type TypedValue = SchemaPayload<'hud.schema.json#/$defs/typedValue'>;
 export type HudSnapshot = SchemaPayload<'hud.schema.json#'>;
-export type DiscoverActiveContextRequest = SchemaPayload<'ws.schema.json#/$defs/discoveryRequestContext'>;
-export type KnownHudContext = SchemaPayload<'ws.schema.json#/$defs/expectedKnownContext'>;
-export type ResyncKnownContextRequest = SchemaPayload<'ws.schema.json#/$defs/resyncRequestContext'>;
-export type SnapshotRequestContext = SchemaPayload<'ws.schema.json#/$defs/snapshotRequestContext'>;
-export type AuthoritativeHudSnapshot = SchemaPayload<'ws.schema.json#/$defs/snapshot'>;
-export type IncrementalHudUpdate = SchemaPayload<'ws.schema.json#/$defs/update'>;
-
-/** Operation timeout is distinct from WS session/lease lifetime. */
-export interface SnapshotRecoveryPolicy {
-  /** Both values are finite positive deployment configuration. */
-  readonly requestTimeoutMs: number;
-  readonly maxDiscoveryAttempts: number;
-}
-
-/** Retained across a transport reconnect; never retained across backend identity change. */
-export interface HudReconnectCheckpoint {
-  readonly runtimeInstanceId: string;
-  readonly backendGeneration: number;
-  readonly hudRevisionHighWater: number;
-  readonly knownContext: KnownHudContext;
-}
-
-export type HelloAcceptedDisposition =
-  | 'SAME_BACKEND_RECONNECT'
-  | 'NEW_BACKEND_IDENTITY';
+export type HudReadModel = SchemaPayload<'hud-db.schema.json#'>;
+export type HudNotification = SchemaPayload<'ws.schema.json#/$defs/hud.committed'>;
+export type ControlRequest = SchemaPayload<'command.schema.json#/$defs/request'>;
+export type ControlResponse = SchemaPayload<'command.schema.json#/$defs/response'>;
 
 /** Paths never cross this boundary. IDs are resolved beneath configuredRoot. */
 export interface TargetRepository {
@@ -128,14 +106,14 @@ export interface EquipmentAssessmentService {
   }>): Promise<HudSnapshot>;
 }
 
-/** Reads only durable committed BE state. FE never reads DB/files through it. */
+/** Tauri native fixed SQL, read-only/query-only; React receives validated data. */
 export interface HudDataSource {
-  snapshot(requestId: string, context: SnapshotRequestContext): Promise<AuthoritativeHudSnapshot>;
-  subscribe(subscriptionId: string, afterHudRevision: number,
-    sink: (update: IncrementalHudUpdate) => Promise<void>): Promise<() => void>;
+  readLatest(): Promise<HudReadModel | null>;
 }
-
 export interface HudPublisher {
-  publishAfterCommit(snapshot: HudSnapshot): Promise<void>;
-  forceResync(reason: 'REVISION_GAP' | 'BACKEND_GENERATION_CHANGED' | 'SLOW_CONSUMER'): Promise<void>;
+  publishAfterCommit(notification: HudNotification): Promise<void>;
+}
+/** Existing owned process pipe; no second Python entrypoint or network server. */
+export interface BackendCommandClient {
+  request(command: ControlRequest, timeoutMs: number): Promise<ControlResponse>;
 }

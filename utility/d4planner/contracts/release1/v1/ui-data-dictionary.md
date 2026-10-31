@@ -11,13 +11,13 @@ and visual acceptance remain `NOT_RUN` work for S6. Approval of this revision
 does not prove that every NO_DATA/error/stale state has an independent Golden.
 
 Display metadata is embedded in each committed HUD snapshot. BE resolves stable
-IDs to labels/text; FE does not read a catalog, Target file, DB, Maxroll data or
+IDs to labels/text; FE does not read a catalog, Target file, capture DB, Maxroll data or
 hardcoded sample names.
 
 | UI field | Producer/source | Contract field/type/unit | Status/reason rule |
 | --- | --- | --- | --- |
 | Target menu label | BE activated Target | `context.target.{targetId,displayName,buildDisplayName}` | Null in no-target/unavailable states; failed attempt does not relabel active Target |
-| Target menu options | BE folder listing over WS | `target.list.result.targets[]` | Invalid entries disabled with safe codes; no client paths |
+| Target menu options | BE folder listing over managed IPC | `target.list.result.targets[]` | Invalid entries disabled with safe codes; no client paths |
 | Build display name | Activated Target metadata | `context.target.buildDisplayName` | Synthetic fixtures explicitly say Synthetic |
 | Equipment row | BE committed assessment | `equipment[]`, `slotId`, `slotLabel`, status/reason | Current/Target stay distinct; unknown slot is not empty |
 | Current item | Capture/equipment projector | `currentItem.{itemId,displayName,observedAt,source}` or null plus `currentPresence` | Never copied from Target; null is interpreted through presence/evidence |
@@ -41,10 +41,15 @@ hardcoded sample names.
 transported for verification but is not a visible Coverage requirement.
 
 The FE may own expand/collapse, selected row, Issues-only filtering and the
-always-on-top command. It cannot calculate score/status, read Target/DB/catalog,
+always-on-top command. It cannot calculate score/status, read Target/capture DB/catalog,
 or replace missing data with MagicPath mock values. Production screenshots
 cannot be promoted as independent MagicPath Goldens.
 
 S6/S7 verify the packaged HUD window through the existing StreamOps
 `window_capture` flow. This contract does not claim that runtime verification
 has run and does not add a capture subsystem.
+
+D5: every displayed HUD field above comes from the validated public SQLite read-model
+through the Tauri native reader. React does not open SQLite. Offline preserves valid
+last-known data as OFFLINE/STALE, disables BE commands and never implies live capture.
+Missing DB/row is NO_DATA; incompatible/corrupt/unreadable DB is a typed error.
