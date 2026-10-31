@@ -1,7 +1,7 @@
 # Release 1 Equipment domain (S4 / #141)
 
 This module implements the independent Backend domain for the S1 contract
-`d4planner-r1-contract/1.0.0-candidate.5`. It is intentionally transport- and
+`d4planner-r1-contract/1.0.0-candidate.6`. It is intentionally transport- and
 process-neutral: S5 owns WebSocket delivery and S2/S3 own managed processes.
 
 ## Production boundaries
@@ -95,3 +95,8 @@ python -m pytest -q utility/d4planner/tests/contracts/test_release1_contract.py
 python -m pytest -q utility/d4planner/tests/test_equipment_projector.py
 python -m compileall -q utility/d4planner
 ```
+
+D5 public projection: hud_public_meta pins format/identity/epoch; hud_current is
+the only stable payload row. BE owns schema migration 2→3 in one transaction.
+Context/assessment payload is committed before notification; raw capture and
+internal assessment work tables are not public FE APIs.
