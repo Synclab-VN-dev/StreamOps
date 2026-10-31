@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { ReportIssue } from "./ReportIssue";
 const preview = {
@@ -30,7 +31,7 @@ describe("Report Issue", () => {
     const bridge = vi.fn().mockResolvedValue(preview);
     render(<ReportIssue bridge={bridge} onClose={() => {}} />);
     fireEvent.click(screen.getByText("Collect Logs"));
-    expect(screen.getAllByRole("checkbox")).toHaveLength(4);
+    expect(within(screen.getByRole("group", { name: "Sources for this run" })).getAllByRole("checkbox")).toHaveLength(4);
     expect((screen.getByLabelText("D4Planner Event Log") as HTMLInputElement).checked).toBe(false);
     fireEvent.click(screen.getByLabelText("BE"));
     fireEvent.click(screen.getByLabelText("Rule Kit"));
