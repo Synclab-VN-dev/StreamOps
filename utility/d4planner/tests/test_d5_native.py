@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-import time
 
 import pytest
 
@@ -71,6 +70,7 @@ def test_root_launcher_committed_db_notification_native_reader_and_target_ipc(tm
         tool._assert_native_delta(before["payload"], after["payload"])
         current = tool._windows_descendants(process.pid)
         for name in ("python.exe", "node.exe"):
+            assert len([r for r in children if r["Name"].lower() == name]) == 1, children
             assert {r["ProcessId"] for r in children if r["Name"].lower() == name} == {r["ProcessId"] for r in current if r["Name"].lower() == name}
         print(json.dumps({"classification": "WINDOWS_NATIVE_RECORDED_INPUT", "launcherPid": process.pid,
                           "fePid": fe[0]["ProcessId"], "first": first, "captureUpdated": second, "targetSelected": selected}))
