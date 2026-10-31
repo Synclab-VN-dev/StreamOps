@@ -49,4 +49,32 @@ mod tests {
         drop(db); std::fs::write(root.0.join("hud.sqlite3"),b"not a database").unwrap();
         assert_eq!(hud_reader::read_latest(&root.0).unwrap_err(),"DB_CORRUPT");
     }
+    #[test]
+    fn incompatible_schema_and_mixed_binding_are_rejected() {
+        let root=Sandbox::new(); let db=root.seed();
+        let mut hud:Value=serde_json::from_str(&db.query_row("SELECT payload_json FROM hud_current",[],|row|row.get::<_,String>(0)).unwrap()).unwrap();
+        hud["context"]["binding"]["targetId"]=serde_json::json!("wrong-target");
+        db.execute("UPDATE hud_current SET payload_json=?",[hud.to_string()]).unwrap();
+        assert_eq!(hud_reader::read_latest(&root.0).unwrap_err(),"DB_BINDING_MISMATCH");
+        db.pragma_update(None,"ignore_check_constraints",true).unwrap();
+        db.execute("UPDATE hud_public_meta SET schema_version='future/v9'",[]).unwrap();
+        assert_eq!(hud_reader::read_latest(&root.0).unwrap_err(),"DB_INCOMPATIBLE");
+    }
+    #[test]
+    fn replacement_is_reopened_and_locked_read_is_bounded() {
+        let root=Sandbox::new(); let db=root.seed(); drop(db);
+        let before=hud_reader::read_latest(&root.0).unwrap().unwrap();
+        let original=root.0.join("hud.sqlite3");
+        std::fs::rename(&original,root.0.join("old.sqlite3")).unwrap();
+        let db=root.seed();
+        db.execute("UPDATE hud_public_meta SET epoch='restored'",[]).unwrap(); drop(db);
+        assert_ne!(hud_reader::read_latest(&root.0).unwrap().unwrap()["epoch"],before["epoch"]);
+        let db=Connection::open(&original).unwrap();
+        db.pragma_update(None,"journal_mode","DELETE").unwrap();
+        db.execute_batch("BEGIN EXCLUSIVE").unwrap();
+        let started=std::time::Instant::now();
+        assert_eq!(hud_reader::read_latest(&root.0).unwrap_err(),"DB_BUSY");
+        assert!(started.elapsed()<std::time::Duration::from_secs(2));
+    }
+
 }
