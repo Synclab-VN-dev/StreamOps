@@ -47,7 +47,7 @@ jobs:
         shell: pwsh
         run: |
           $exe = "src-tauri/target/release/d4planner-overlay-poc.exe"
-          & "../../scripts/e2e/d4-overlay-poc-smoke.ps1" -ExePath $exe -Runtime -TimeoutSeconds 60
+          & (Join-Path $env:GITHUB_WORKSPACE "scripts/e2e/d4-overlay-poc-smoke.ps1") -ExePath $exe -Runtime -TimeoutSeconds 60
       - name: Package artifact
         shell: pwsh
         run: |
