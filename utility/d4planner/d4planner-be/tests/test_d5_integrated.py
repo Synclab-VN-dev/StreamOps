@@ -12,7 +12,8 @@ import pytest
 
 ROOT=Path(__file__).resolve().parents[4]
 
-def test_managed_target_ipc_commits_before_notification_and_offline_read(tmp_path):
+@pytest.mark.parametrize("logging_enabled", [False, True])
+def test_managed_target_ipc_commits_before_notification_and_offline_read(tmp_path, logging_enabled):
     chromium=os.environ.get('F2_TEST_CHROMIUM')
     if not chromium: pytest.skip('explicit isolated Chromium required for real bootstrap')
     spec=importlib.util.spec_from_file_location('d5_e2e',ROOT/'utility/d4planner/d4planner-be/tools/production_e2e.py')
@@ -30,6 +31,10 @@ def test_managed_target_ipc_commits_before_notification_and_offline_read(tmp_pat
         D4PLANNER_REPOSITORY_ROOT=str(ROOT),D4PLANNER_EQUIPMENT_EVIDENCE_FILE=str(evidence),
         D4PLANNER_RULEKIT_EXECUTABLE=shutil.which('node'), D4PLANNER_RULEKIT_WORKING_DIR=str(tmp_path),
         D4_RULEKIT_CHROMIUM_EXECUTABLE=chromium)
+    if logging_enabled:
+        from test_runtime_logging import session
+        log_dir, run_id = session(tmp_path)
+        env.update(D4_LOG_DIR=str(log_dir), D4_LOG_RUN_ID=run_id)
     executable=sys.executable
     if os.name=='nt':
         executable=sys._base_executable
@@ -49,6 +54,14 @@ def test_managed_target_ipc_commits_before_notification_and_offline_read(tmp_pat
             persisted=json.loads(db.execute('SELECT payload_json FROM hud_current').fetchone()[0])
             assert persisted['hudRevision']==result['resyncRevision']
             assert persisted['context']['binding']['targetId']=='synthetic-target-b'
+        if logging_enabled:
+            from test_runtime_logging import records
+            for component, name in [("BE", "be.log"), ("RULEKIT", "rulekit.log")]:
+                rows = records(log_dir/name)
+                assert any(row["event"] == "READY" for row in rows)
+                assert all(row["runId"] == run_id and row["component"] == component for row in rows)
+                assert any(row["generation"] == 1 for row in rows)
+                assert bootstrap['credential'] not in (log_dir/name).read_text()
     finally:
         if process.poll() is None:
             process.stdin.close()

@@ -1,4 +1,5 @@
 'use strict';
+const log=require('../../../runtime-logging/src/logger');
 
 const { bounded } = require('./async');
 const { MaxrollComponentFactory } = require('./component-factory');
@@ -32,6 +33,7 @@ class MaxrollProvider {
   getCapabilities() { return this.profile.capability(); }
 
   async createSession(options) {
+    log.emit('INFO','session','CREATE');
     this.#validateOptions(options);
     let verification;
     let manifest;
@@ -39,6 +41,7 @@ class MaxrollProvider {
       verification = await this.snapshots.verify(this.profile.snapshotId);
       manifest = await this.snapshots.load(this.profile.snapshotId);
     } catch (error) {
+      log.emit('ERROR','session','ERROR');
       throw new MaxrollProviderError(ERROR_CODES.SNAPSHOT_MISMATCH,
         'snapshot verification failed', { cause: error });
     }
@@ -83,6 +86,7 @@ class MaxrollProvider {
         timeoutMs: options.timeoutMs ?? this.sessionTimeoutMs,
       });
     } catch (error) {
+      log.emit('ERROR','session','ERROR');
       abandoned = true;
       if (session) await session.close().catch(() => {});
       else await cleanup();

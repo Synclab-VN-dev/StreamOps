@@ -15,6 +15,11 @@ test('private production bootstrap forwards eight APIs against a real offline sy
   const executablePath = process.env.BROWSER_INFRA_CHROMIUM_PATH;
   assert.ok(executablePath, 'explicit isolated Chromium required');
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'f2-bootstrap-'));
+  const runId = require('node:crypto').randomUUID();
+  const logDir = path.join(root, 'logs', `20261031-000000_${runId}`);
+  await fs.mkdir(logDir, { recursive: true });
+  await fs.mkdir(path.join(root, 'logs', '.control'));
+  for (const name of ['fe.log', 'be.log', 'rulekit.log']) await fs.writeFile(path.join(logDir, name), '');
   const site = await startRuntimeSite();
   const browser = new BrowserInfrastructure({ executablePath, headless: true, contextOptions: { serviceWorkers: 'block' } });
   let child;
@@ -40,8 +45,8 @@ test('private production bootstrap forwards eight APIs against a real offline sy
   await browser.stop(); site.resetRequests();
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('D4_RULEKIT_')));
   child = spawn(process.execPath, [path.resolve(__dirname, '../src/runtime/bootstrap.js'),
-    path.resolve(__dirname, '../../../d4planner/src/d4planner/rulekit/worker.js')], { cwd: root,
-    env: { ...env, D4_RULEKIT_WORKER_INSTANCE_ID: 'isolated-bootstrap', D4_RULEKIT_WORKER_GENERATION: '1',
+    path.resolve(__dirname, '../../../d4planner-be/src/d4planner/rulekit/worker.js')], { cwd: root,
+    env: { ...env, D4_LOG_DIR: logDir, D4_LOG_RUN_ID: runId, D4_RULEKIT_WORKER_INSTANCE_ID: 'isolated-bootstrap', D4_RULEKIT_WORKER_GENERATION: '1',
       D4_RULEKIT_PROFILE_JSON: profileFile, D4_RULEKIT_SNAPSHOT_ROOT: root,
       D4_RULEKIT_CHROMIUM_EXECUTABLE: executablePath }, stdio: ['pipe', 'pipe', 'pipe'] });
   child.stderr.resume();
@@ -77,4 +82,9 @@ test('private production bootstrap forwards eight APIs against a real offline sy
   assert.equal(site.requests.length, 0, 'offline replay must never contact origin');
   const exit = once(child, 'exit'); child.stdin.end();
   assert.deepEqual(await exit, [0, null]);
+  const logs = (await fs.readFile(path.join(logDir, 'rulekit.log'), 'utf8')).trim().split('\n').map(JSON.parse);
+  for (const event of ['START', 'READY', 'RESULT', 'STOP']) assert.ok(logs.some(row => row.event === event), event);
+  assert.ok(logs.every(row => row.runId === runId && row.generation === 1));
+  assert.ok(logs.some(row => row.tag === 'browser'));
+  assert.deepEqual((await fs.readdir(logDir)).sort(), ['be.log', 'fe.log', 'rulekit.log']);
 });

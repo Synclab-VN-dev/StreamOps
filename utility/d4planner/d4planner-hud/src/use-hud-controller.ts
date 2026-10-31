@@ -1,3 +1,4 @@
+import { runtimeLog } from "./runtime-log";
 import { useEffect, useRef, useState } from "react";
 import type { HudDataEvent, IHudDataSource } from "./hud-data-source";
 import type { HudSnapshot, SelectionResult, TargetListEntry } from "./hud-model";
@@ -30,6 +31,7 @@ export function useHudController(source: IHudDataSource) {
       if (!mounted) return;
       if (event.type === "CONNECTION") {
         connectedRef.current = event.state === "CONNECTED";
+        runtimeLog("INFO","websocket",event.state === "CONNECTED" ? "CONNECT" : event.state === "DISCONNECTED" ? "DISCONNECT" : "RECONNECT");
         setConnection(event.state);
         setAuthoritative(false);
         if (event.state === "DISCONNECTED") setConnectionError(event.reason ?? "Connection lost");
@@ -50,6 +52,7 @@ export function useHudController(source: IHudDataSource) {
       } else {
         if (!acceptsSnapshot(snapshotRef.current, event.snapshot)) return;
         snapshotRef.current = event.snapshot;
+        runtimeLog("DEBUG","hud","STATE_CHANGE",{revision:event.snapshot.hudRevision});
         setSnapshot(event.snapshot);
         setTiming({ wsReceivedAt: event.receivedAt, modelUpdatedAt: new Date().toISOString() });
         setAuthoritative(true);

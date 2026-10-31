@@ -34,7 +34,10 @@ function publicError(error) {
   };
 }
 
-async function main(composition) {
+async function main(composition, log = { emit() {}, configure() {} }) {
+  log.emit('INFO','worker','START');
+  process.on('uncaughtException', () => {log.emit('ERROR','worker','ERROR',{errorCode:'STARTUP_FAILED'});Promise.resolve(log.configure()?.close()).finally(()=>process.exit(1));});
+  process.on('unhandledRejection', () => {log.emit('ERROR','worker','ERROR',{errorCode:'INTERNAL'});Promise.resolve(log.configure()?.close()).finally(()=>process.exit(1));});
   const app = composition?.application;
   if (!app || APIS.some(method => typeof app[method] !== 'function')) {
     throw new Error('composition does not implement the approved Application contract');
@@ -100,15 +103,19 @@ async function main(composition) {
   }
 
   function execute(message) {
+    const started=performance.now();
+    let ok=false;
+    log.emit('DEBUG','api','REQUEST',{correlationId:message.id});
     running += 1;
     const controller = new AbortController();
     active.set(message.id, controller);
     const management=message.protocolVersion===SNAPSHOT_PROTOCOL;
     if(!management)runningApplication++;
     Promise.resolve().then(() => invoke(message, controller)).then(
-      result => write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'result',correlationId:message.id,result}),
-      error => write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'error',correlationId:message.id,error:publicError(error)}),
+      result => {ok=true;write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'result',correlationId:message.id,result});},
+      error => {log.emit('ERROR','api','ERROR',{correlationId:message.id,errorCode:error?.code});write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'error',correlationId:message.id,error:publicError(error)});},
     ).finally(() => {
+      log.emit('INFO','api','RESULT',{ok,durationMs:performance.now()-started,correlationId:message.id});
       active.delete(message.id);
       running -= 1;
       if(!management)runningApplication--;
@@ -117,6 +124,7 @@ async function main(composition) {
   }
 
   async function shutdown(exitCode = 0) {
+    log.emit('INFO','worker','STOP');
     if (shuttingDown) return;
     shuttingDown = true;
     const forcedExit = setTimeout(
@@ -132,6 +140,7 @@ async function main(composition) {
     await composition.close?.();
     clearTimeout(forcedExit);
     process.stdin.destroy();
+    await log.configure()?.close();
     process.exit(exitCode);
   }
 
@@ -174,6 +183,7 @@ async function main(composition) {
   process.on('SIGTERM', () => { input.close(); void shutdown(); });
   process.on('SIGINT', () => { input.close(); void shutdown(); });
 
+  log.emit('INFO','worker','READY');
   write({
     type: 'READY', applicationContractVersion: APPLICATION_CONTRACT_VERSION,
     workerInstanceId: instanceId, workerGeneration: generation,
@@ -192,7 +202,7 @@ if (require.main === module) (async () => {
     throw new Error('Rule Kit bootstrap required (test composition must be absolute)');
   }
   const factory = require(compositionPath);
-  await main(await factory.createComposition(process.env));
+  await main(await factory.createComposition(process.env), factory.diagnostics);
 })().catch(error => {
   process.stderr.write(`Rule Kit worker startup failed: ${error?.message ?? 'unknown error'}\n`);
   process.exitCode = 1;
