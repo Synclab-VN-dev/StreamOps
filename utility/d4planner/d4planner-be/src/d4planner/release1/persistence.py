@@ -69,6 +69,10 @@ class DurableHudStore:
         db.execute("PRAGMA journal_mode=WAL")
         try:
             yield db
+        except sqlite3.Error:
+            from ..runtime_logging import emit
+            emit("ERROR","sqlite","ERROR")
+            raise
         finally:
             db.close()
 

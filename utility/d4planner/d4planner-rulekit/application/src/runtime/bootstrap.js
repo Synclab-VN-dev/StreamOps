@@ -4,6 +4,8 @@
 // Internal process entrypoint, not an Application API or package export.
 // Rule Kit owns composition; the host supplies only its IPC adapter path.
 const path = require('node:path');
+const log = require('../../../runtime-logging/src/logger');
+log.emit('INFO','worker','START');
 const { createComposition } = require('./production-composition');
 
 async function boot() {
@@ -37,14 +39,16 @@ async function boot() {
       calculationAvailability: composition.calculationAvailability,
       calculationReason: composition.calculationReason,
       close: composition.close,
-    });
+    }, log);
   } catch (error) {
     await composition.close?.();
     throw error;
   }
 }
 
-boot().catch(error => {
+boot().catch(async error => {
+  log.emit('ERROR','worker','ERROR',{errorCode:'STARTUP_FAILED'});
+  await log.configure()?.close();
   process.stderr.write(`Rule Kit worker startup failed: ${error?.message ?? 'unknown error'}\n`);
   process.exitCode = 1;
 });

@@ -61,3 +61,5 @@ async function createComposition(env) {
 }
 
 module.exports = { createComposition };
+
+module.exports.diagnostics = require('../../../d4planner-rulekit/runtime-logging/src/logger');

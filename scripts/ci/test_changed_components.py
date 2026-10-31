@@ -50,6 +50,7 @@ class ChangeDetectionTests(unittest.TestCase):
         cases = [
             ('launcher', ['utility/d4planner/d4planner-launcher/src/main.rs'], ('true','true','false')),
             ('launcher-config', ['utility/d4planner/d4planner-launcher/.cargo/config.toml'], ('true','true','false')),
+            ('shared-logging', ['utility/d4planner/d4planner-hud/runtime-logging/src/lib.rs'], ('true','true','true')),
             ('hud', ['utility/d4planner/d4planner-hud/src/App.tsx'], ('true','false','true')),
             ('be', ['utility/d4planner/d4planner-be/src/d4planner/production.py'], ('true','false','false')),
             ('rulekit', ['utility/d4planner/d4planner-rulekit/application/src/index.js'], ('true','false','false')),
