@@ -301,7 +301,7 @@ class FakeMarkerCapture:
         self.samples.append(sample)
 
 
-def test_e2e_sqlite_stream_orders_speech_and_marker_without_equipment_mutation(tmp_path):
+def test_e2e_sqlite_stream_orders_speech_and_marker_without_equipment_mutation(tmp_path, monkeypatch):
     paths = RuntimePaths(tmp_path / "home")
     runtime = E2ERuntime(paths)
     manager = UserPathManager(
@@ -319,6 +319,17 @@ def test_e2e_sqlite_stream_orders_speech_and_marker_without_equipment_mutation(t
         game_start_timeout=0.01,
         marker_capture=marker,
     )
+
+    # This assertion covers chronology within one ingress batch, not ordering
+    # across asynchronous producer arrivals. Publish all four inputs before
+    # allowing the first collection; a fast Windows loop may otherwise read
+    # speech before write_text and drain markers after it in the same pass.
+    inputs_ready = threading.Event()
+    prepare = supervisor._prepare_ingress
+    def prepare_complete_batch(*, include_marker):
+        assert inputs_ready.wait(5), "test inputs were not published"
+        return prepare(include_marker=include_marker)
+    monkeypatch.setattr(supervisor, "_prepare_ingress", prepare_complete_batch)
 
     thread = threading.Thread(target=supervisor.run, daemon=True)
     thread.start()
@@ -381,6 +392,8 @@ def test_e2e_sqlite_stream_orders_speech_and_marker_without_equipment_mutation(t
             window_title="Diablo IV",
         )
     )
+
+    inputs_ready.set()
 
     observed = []
 
@@ -926,6 +939,13 @@ def test_supervisor_selects_exactly_one_marker_backend_for_each_mode(
     import d4planner.runtime.supervisor as supervisor_module
     from d4planner.controller import load_profile
 
+    # Exercise Windows backend selection without mutating process-global
+    # os.name (which would also change pathlib on Linux). Backends are fakes.
+    import types
+    monkeypatch.setattr(supervisor_module, "os", types.SimpleNamespace(
+        **{**vars(supervisor_module.os), "name": "nt"}
+    ))
+
     creations = []
     instances = []
 
@@ -972,7 +992,8 @@ def test_supervisor_selects_exactly_one_marker_backend_for_each_mode(
         assert instances[-1].stopped
 
 
-def test_e2e03_xbox16_session1_one_hook_end_to_end_to_sqlite(monkeypatch, tmp_path):
+@pytest.mark.parametrize("bootstrap_delay", [0, 2.1])
+def test_e2e03_xbox16_session1_one_hook_end_to_end_to_sqlite(monkeypatch, tmp_path, bootstrap_delay):
     """CI E2E: full Supervisor/adapter/SQLite lifecycle with fake Win32 events.
 
     Windows foreground PID and console session are modelled via E2ERuntime.
@@ -985,9 +1006,21 @@ def test_e2e03_xbox16_session1_one_hook_end_to_end_to_sqlite(monkeypatch, tmp_pa
     )
     from d4planner.runtime import supervisor as supervisor_module
 
+    # Model only this module's platform boundary; do not mutate global os.name
+    # (which would change pathlib/pytest behavior on Linux).
+    from types import SimpleNamespace
+    monkeypatch.setattr(supervisor_module, "os", SimpleNamespace(
+        name="nt", getpid=supervisor_module.os.getpid,
+    ))
+    class DelayedRuntime(E2ERuntime):
+        def ensure_controller_runtime(self):
+            time.sleep(bootstrap_delay)
+            return super().ensure_controller_runtime()
+
     paths = RuntimePaths(tmp_path / "session1")
     profile = load_profile("xbox16")
     entered, release = threading.Event(), threading.Event()
+    marker_requested, start_hook = threading.Event(), threading.Event()
     created = []
     polled = []
 
@@ -1026,6 +1059,8 @@ def test_e2e03_xbox16_session1_one_hook_end_to_end_to_sqlite(monkeypatch, tmp_pa
             return True
 
     def hook_factory(**kwargs):
+        marker_requested.set()
+        assert start_hook.wait(5.0), "test did not release hook startup barrier"
         return HookInputMarkerCapture(
             backend_factory=SyntheticWindowsHook, poll_interval=.002, **kwargs
         )
@@ -1035,7 +1070,7 @@ def test_e2e03_xbox16_session1_one_hook_end_to_end_to_sqlite(monkeypatch, tmp_pa
     monkeypatch.setattr(supervisor_module, "HookInputMarkerCapture", hook_factory)
     monkeypatch.setattr(supervisor_module, "InputMarkerCapture", forbidden_poll)
     sup = Supervisor(
-        paths=paths, runtime=E2ERuntime(paths),
+        paths=paths, runtime=DelayedRuntime(paths),
         path_manager=UserPathManager(
             paths, MemoryPathBackend(user_path="", machine_path="MACHINE")
         ), controller_profile=profile, block_marker=True,
@@ -1044,7 +1079,15 @@ def test_e2e03_xbox16_session1_one_hook_end_to_end_to_sqlite(monkeypatch, tmp_pa
     runner = threading.Thread(target=sup.run, daemon=True)
     runner.start()
     try:
-        assert entered.wait(2.0)
+        # Bootstrap performs filesystem/SQLite setup before hook installation.
+        # Its duration is not the hook readiness deadline. Await that boundary
+        # explicitly, and report state if bootstrap blocks/exits instead.
+        assert wait_until(lambda: marker_requested.is_set() or not runner.is_alive(), timeout=15.0), (
+            "bootstrap did not reach marker startup", read_json(paths.runtime_state)
+        )
+        assert marker_requested.is_set(), ("bootstrap exited before marker startup", read_json(paths.runtime_state))
+        start_hook.set()
+        assert entered.wait(2.0), ("hook did not enter", read_json(paths.runtime_state))
         early = read_json(paths.runtime_state)
         assert early["state"] != "RUNNING"
         assert early["extras"]["inputMarker"]["state"] != "ACTIVE"
@@ -1084,6 +1127,7 @@ def test_e2e03_xbox16_session1_one_hook_end_to_end_to_sqlite(monkeypatch, tmp_pa
         assert all(row.data["suppressed"] is True for row in rows)
         assert all(row.data["layoutId"] == profile.layout_id for row in rows)
     finally:
+        start_hook.set()
         release.set()
         paths.stop_request.parent.mkdir(parents=True, exist_ok=True)
         paths.stop_request.write_text("stop\n", encoding="utf-8")
