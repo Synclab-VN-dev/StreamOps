@@ -712,7 +712,9 @@ def test_real_listing_wire_schema_and_content_hashes(tmp_path, validator):
                          "contentSha256": e.content_sha256, "byteLength": e.byte_length,
                          "validation": e.validation, "errorCodes": list(e.error_codes)}
                         for e in listing.entries]}
-    Draft202012Validator(load_json(CONTRACT / "schemas/ws.schema.json")).validate(wire)
+    schema = load_json(CONTRACT / "schemas/command.schema.json")
+    for entry in wire["targets"]:
+        Draft202012Validator({"$ref": "#/$defs/targetEntry", "$defs": schema["$defs"]}).validate(entry)
     for entry in listing.entries:
         data = (good if entry.validation == "VALID" else bad).read_bytes()
         assert (entry.content_sha256, entry.byte_length) == (sha256(data).hexdigest(), len(data))

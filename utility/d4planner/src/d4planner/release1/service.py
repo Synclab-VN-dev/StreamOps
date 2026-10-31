@@ -112,7 +112,7 @@ class EquipmentAssessmentCoordinator:
                 "recommendation": result.recommendation,
                 "provenance": {
                     "producer": "D4PLANNER_BE",
-                    "assessmentVersion": "d4planner-r1-contract/1.0.0-candidate.5",
+                    "assessmentVersion": "d4planner-r1-contract/1.0.0-candidate.6",
                     "captureRevision": current.current_revision,
                     "lastObservedAt": current.captured_at,
                 },

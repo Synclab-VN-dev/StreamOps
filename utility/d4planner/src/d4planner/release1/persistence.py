@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import sqlite3
+from uuid import uuid4
 from typing import Any, Callable
 
 
@@ -53,7 +54,7 @@ class AssessmentBinding:
 class DurableHudStore:
     """SQLite commit boundary for binding + HUD snapshot + publish recovery."""
 
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
 
     def __init__(self, path: Path, *, timeout_seconds: float = 5.0):
         self.path = path
@@ -72,31 +73,42 @@ class DurableHudStore:
             db.close()
 
     def _migrate(self) -> None:
-        with self._connect() as db, db:
-            db.executescript("""
-            CREATE TABLE IF NOT EXISTS schema_meta(
-              component TEXT PRIMARY KEY, version INTEGER NOT NULL);
-            CREATE TABLE IF NOT EXISTS assessment_binding(
-              singleton INTEGER PRIMARY KEY CHECK(singleton=1), binding_json TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS hud_snapshot(
-              hud_revision INTEGER PRIMARY KEY, binding_key TEXT NOT NULL UNIQUE,
-              payload_json TEXT NOT NULL, published INTEGER NOT NULL DEFAULT 0,
-              committed_at TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS hud_current(
-              singleton INTEGER PRIMARY KEY CHECK(singleton=1),
-              hud_revision INTEGER NOT NULL,
-              payload_json TEXT NOT NULL);
-            """)
-            row = db.execute(
-                "SELECT version FROM schema_meta WHERE component='release1-hud'"
-            ).fetchone()
-            if row is not None and int(row[0]) > self.SCHEMA_VERSION:
-                raise RuntimeError("HUD_STORE_SCHEMA_NEWER_THAN_RUNTIME")
-            db.execute(
-                "INSERT INTO schema_meta(component,version) VALUES('release1-hud',?) "
-                "ON CONFLICT(component) DO UPDATE SET version=excluded.version",
-                (self.SCHEMA_VERSION,),
-            )
+        # Check before any schema mutation. DDL participates in this transaction;
+        # executescript would implicitly commit and leave partial migrations.
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            exists = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_meta'").fetchone()
+            if exists:
+                row = db.execute("SELECT version FROM schema_meta WHERE component='release1-hud'").fetchone()
+                if row is not None and int(row[0]) > self.SCHEMA_VERSION:
+                    raise RuntimeError("HUD_STORE_SCHEMA_NEWER_THAN_RUNTIME")
+            for sql in (
+                "CREATE TABLE IF NOT EXISTS schema_meta(component TEXT PRIMARY KEY, version INTEGER NOT NULL)",
+                "CREATE TABLE IF NOT EXISTS assessment_binding(singleton INTEGER PRIMARY KEY CHECK(singleton=1), binding_json TEXT NOT NULL)",
+                "CREATE TABLE IF NOT EXISTS hud_snapshot(hud_revision INTEGER PRIMARY KEY, binding_key TEXT NOT NULL UNIQUE, payload_json TEXT NOT NULL, published INTEGER NOT NULL DEFAULT 0, committed_at TEXT NOT NULL)",
+                "CREATE TABLE IF NOT EXISTS hud_current(singleton INTEGER PRIMARY KEY CHECK(singleton=1), hud_revision INTEGER NOT NULL CHECK(hud_revision>=0), payload_json TEXT NOT NULL)",
+                "CREATE TABLE IF NOT EXISTS hud_public_meta(singleton INTEGER PRIMARY KEY CHECK(singleton=1), schema_version TEXT NOT NULL, db_id TEXT NOT NULL, epoch TEXT NOT NULL)",
+            ):
+                db.execute(sql)
+            meta = db.execute("SELECT schema_version FROM hud_public_meta WHERE singleton=1").fetchone()
+            if meta and meta[0] != "d4planner-hud-db/v1":
+                raise RuntimeError("HUD_PUBLIC_SCHEMA_INCOMPATIBLE")
+            db.execute("INSERT OR IGNORE INTO hud_public_meta VALUES(1,?,?,?)",
+                       ("d4planner-hud-db/v1", str(uuid4()), str(uuid4())))
+            # Older private stores may have history but no current projection.
+            db.execute("INSERT OR IGNORE INTO hud_current SELECT 1,hud_revision,payload_json FROM hud_snapshot ORDER BY hud_revision DESC LIMIT 1")
+            db.execute("INSERT INTO schema_meta VALUES('release1-hud',?) ON CONFLICT(component) DO UPDATE SET version=excluded.version", (self.SCHEMA_VERSION,))
+            db.commit()
+
+    def public_checkpoint(self) -> dict[str, Any]:
+        """Committed notification metadata; never return business payload to WS."""
+        with self._connect() as db:
+            db.execute("BEGIN")
+            meta = db.execute("SELECT schema_version,db_id,epoch FROM hud_public_meta WHERE singleton=1").fetchone()
+            row = db.execute("SELECT hud_revision FROM hud_current WHERE singleton=1").fetchone()
+            if row is None:
+                raise RuntimeError("HUD_NO_DATA")
+            return {"dbId": meta[1], "epoch": meta[2], "hudRevision": int(row[0])}
 
     def set_binding(self, binding: AssessmentBinding) -> None:
         encoded = json.dumps(binding.as_dict(), separators=(",", ":"), sort_keys=True)
