@@ -3,7 +3,7 @@ name: D4 Overlay POC (Windows EXE)
 on:
   pull_request:
     paths:
-      - "utility/d4planner-overlay-poc/**"
+      - "utility/d4planner/d4planner-hud/**"
       - "scripts/local/d4-overlay-poc.ps1"
       - "scripts/e2e/d4-overlay-poc-smoke.ps1"
       - ".github/workflows/d4-overlay-poc.yml"
@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 60
     defaults:
       run:
-        working-directory: utility/d4planner-overlay-poc
+        working-directory: utility/d4planner/d4planner-hud
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -29,7 +29,7 @@ jobs:
           targets: x86_64-pc-windows-msvc
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: utility/d4planner-overlay-poc/src-tauri -> target
+          workspaces: utility/d4planner/d4planner-hud/src-tauri -> target
 
       - name: Install frontend dependencies
         run: npm install --no-audit --no-fund
@@ -47,7 +47,7 @@ jobs:
         shell: pwsh
         run: |
           $exe = "src-tauri/target/release/d4planner-overlay-poc.exe"
-          & "../../scripts/e2e/d4-overlay-poc-smoke.ps1" -ExePath $exe -Runtime -TimeoutSeconds 60
+          & (Join-Path $env:GITHUB_WORKSPACE "scripts/e2e/d4-overlay-poc-smoke.ps1") -ExePath $exe -Runtime -TimeoutSeconds 60
       - name: Package artifact
         shell: pwsh
         run: |
@@ -61,6 +61,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: d4planner-overlay-poc-win-x64
-          path: utility/d4planner-overlay-poc/portable/
+          path: utility/d4planner/d4planner-hud/portable/
           if-no-files-found: error
           retention-days: 14

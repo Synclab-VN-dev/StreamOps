@@ -50,13 +50,13 @@ jobs:
         if: github.event_name == 'push'
         shell: pwsh
         run: |
-          $v = (Get-Content utility/d4planner/release1/package-plan.json -Raw | ConvertFrom-Json).version
+          $v = (Get-Content utility/d4planner/d4planner-be/release1/package-plan.json -Raw | ConvertFrom-Json).version
           if ($v -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') { throw 'Invalid UAT version' }
           "RELEASE_VERSION=$v" >> $env:GITHUB_ENV
       - name: Validate source, version, distribution and protected publish gate
         shell: pwsh
         run: |
-          python utility/d4planner/tools/release_ci.py validate --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release"
+          python utility/d4planner/d4planner-be/tools/release_ci.py validate --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release"
           if ($LASTEXITCODE -ne 0) { throw 'Release validation failed closed' }
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -75,22 +75,22 @@ jobs:
           rustup toolchain install 1.90.0 --profile minimal
           if ($LASTEXITCODE -ne 0) { throw 'Pinned Rust unavailable' }
           "RUSTUP_TOOLCHAIN=1.90.0" >> $env:GITHUB_ENV
-          python -m pip install setuptools==80.9.0 wheel==0.45.1 pytest==9.1.1 -r utility/d4planner/release1/requirements-release.txt
+          python -m pip install setuptools==80.9.0 wheel==0.45.1 pytest==9.1.1 -r utility/d4planner/d4planner-be/release1/requirements-release.txt
           if ($LASTEXITCODE -ne 0) { throw 'Pinned build dependencies unavailable' }
       - name: Build and verify complete production Setup
         id: build
         shell: pwsh
         run: |
-          python utility/d4planner/tools/release_ci.py build --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release"
+          python utility/d4planner/d4planner-be/tools/release_ci.py build --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release"
           if ($LASTEXITCODE -ne 0) { throw 'Production package build/health failed' }
       - name: Verify plaintext redistribution before any upload
         shell: pwsh
         env:
           D4_BUILT_SETUP_SHA256: ${{ steps.build.outputs.setup_sha256 }}
         run: |
-          python utility/d4planner/tools/release_ci.py prepare-upload --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release/build/verified-artifact"
+          python utility/d4planner/d4planner-be/tools/release_ci.py prepare-upload --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release/build/verified-artifact"
           if ($LASTEXITCODE -ne 0) { throw 'Plaintext distribution not approved; no upload' }
-          python utility/d4planner/tools/release_ci.py validate-upload --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release/build/verified-artifact"
+          python utility/d4planner/d4planner-be/tools/release_ci.py validate-upload --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release/build/verified-artifact"
           if ($LASTEXITCODE -ne 0) { throw 'Public artifact validation failed closed' }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         id: upload
@@ -145,7 +145,7 @@ jobs:
       - name: Verify approval, original artifact, release gates and publish once
         shell: pwsh
         run: |
-          python utility/d4planner/tools/release_ci.py publish --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory verified-artifact
+          python utility/d4planner/d4planner-be/tools/release_ci.py publish --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory verified-artifact
           if ($LASTEXITCODE -ne 0) { throw 'Release was not authorized or failed closed' }
 
   publish-uat:
@@ -181,6 +181,6 @@ jobs:
       - name: Publish original verified UAT Setup only
         shell: pwsh
         run: |
-          $v = (Get-Content utility/d4planner/release1/package-plan.json -Raw | ConvertFrom-Json).version
-          python utility/d4planner/tools/release_ci.py publish-uat --channel uat --version "$v" --source "$env:SOURCE_SHA" --directory verified-artifact
+          $v = (Get-Content utility/d4planner/d4planner-be/release1/package-plan.json -Raw | ConvertFrom-Json).version
+          python utility/d4planner/d4planner-be/tools/release_ci.py publish-uat --channel uat --version "$v" --source "$env:SOURCE_SHA" --directory verified-artifact
           if ($LASTEXITCODE -ne 0) { throw 'UAT publication failed closed' }

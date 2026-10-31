@@ -5,12 +5,12 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$Project = Join-Path $Root 'utility\d4planner-overlay-poc'
+$Project = Join-Path $Root 'utility\d4planner\d4planner-hud'
 $Exe = Join-Path $Project 'src-tauri\target\release\d4planner-overlay-poc.exe'
 
 function Require([string]$Name) {
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
-        throw "Missing $Name. See utility/d4planner-overlay-poc/README.md"
+        throw "Missing $Name. See utility/d4planner/d4planner-hud/README.md"
     }
 }
 function Prepare-Dev {

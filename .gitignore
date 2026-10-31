@@ -13,8 +13,8 @@ dist/
 streamops/artifacts/*
 !streamops/artifacts/.gitkeep
 artifacts/*
-utility/d4planner/artifacts/*
-!utility/d4planner/artifacts/.gitkeep
+utility/d4planner/d4planner-be/artifacts/*
+!utility/d4planner/d4planner-be/artifacts/.gitkeep
 streamops/config/local.yaml
 config/local.yaml
 secrets/
