@@ -170,13 +170,20 @@ async def _run_managed(bootstrap: dict[str, Any], runtime: ManagedRuntime) -> in
     })
 
     while not stopping:
-        line = await asyncio.to_thread(sys.stdin.readline)
+        line = await asyncio.to_thread(sys.stdin.readline, 1048577)
+        if len(line) > 1048576:
+            exit_reason = "CONTROL_FRAME_TOO_LARGE"
+            break
         if line == "":  # inherited pipe closed: parent died/exited
             break
         try:
             command = json.loads(line)
         except json.JSONDecodeError:
             _emit({"event": "ERROR", "code": "INVALID_CONTROL_MESSAGE"})
+            continue
+        if isinstance(command, dict) and command.get("type") == "request":
+            from .control import dispatch
+            _emit(await dispatch(runtime, command, bootstrap))
             continue
         if (
             isinstance(command, dict)

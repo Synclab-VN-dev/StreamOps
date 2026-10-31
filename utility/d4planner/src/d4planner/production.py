@@ -29,7 +29,7 @@ from .transport import (
 )
 
 
-CONTRACT_REVISION = "d4planner-r1-contract/1.0.0-candidate.5"
+CONTRACT_REVISION = "d4planner-r1-contract/1.0.0-candidate.6"
 ORIGIN = "tauri://localhost"
 TAURI_BROWSER_ORIGINS = ("http://tauri.localhost", "https://tauri.localhost")
 
@@ -251,7 +251,7 @@ class ProductionDomain:
             "status": "ACTIVATED", "targetId": target.target_id,
             "contentSha256": target.content_sha256,
             "selectionRevision": target.selection_revision,
-            "hudRevision": hud["hudRevision"], "hud": hud,
+            "hudRevision": hud["hudRevision"],
         }
 
 
@@ -359,7 +359,7 @@ class ProductionBackendRuntime:
                     target=target, rulekit_state=self.rulekit_state,
                 ), _now(),
             )
-            self.hub = HudHub(initial, backend_generation=self.generation)
+            self.hub = HudHub(self.store.public_checkpoint(), backend_generation=self.generation)
             self.store.mark_published(initial["hudRevision"])
             domain = ProductionDomain(self)
             endpoint = self.bootstrap["wsEndpoint"]
@@ -436,7 +436,7 @@ class ProductionBackendRuntime:
         if self.hub is None:
             raise RuntimeError("HUD hub is not started")
         publish_started_at = _now()
-        await self.hub.publish_after_commit(hud)
+        await self.hub.publish_after_commit(self.store.public_checkpoint())
         self.store.mark_published(hud["hudRevision"])
         return perf_counter_ns(), publish_started_at
 
@@ -619,6 +619,14 @@ class ProductionBackendRuntime:
             return hud
 
     async def handle_control(self, command: dict[str, Any]) -> dict[str, Any] | None:
+        if command.get("type") == "request":
+            from .control import validate_request
+            validate_request(command)
+            domain = ProductionDomain(self)
+            if command["method"] == "target.list":
+                return await domain.list_targets()
+            params = command["params"]
+            return await domain.activate_target(params["targetId"], params["expectedSha256"], params["expectedListRevision"])
         if command.get("type") == "rulekit.snapshot":
             result = await self.snapshot_management(command.get("method", ""), command.get("params"))
             return {"correlationId": command.get("correlationId"), "result": result}

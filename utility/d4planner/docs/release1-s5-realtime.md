@@ -109,3 +109,13 @@ and error both consume the pending selection. Listing errors consume only their
 own pending request; unknown/duplicate correlated errors are ignored. Connection
 close/disconnect clears connection-owned requests; existing socket/generation
 guards reject late messages. No renderer changes or polling were added.
+
+## D5 migration (supersedes the candidate.5 WS behavior above)
+
+The running server accepts d4planner-notify/v1 hello and sends hud.committed
+DB identity/epoch/revision hints only. HudHub owns bounded coalescing metadata.
+Target commands use d4planner-control/v1 on BackendProcessWrapper's existing
+stdin/stdout pipe to managed_backend.py and ProductionBackendRuntime.handle_control.
+Native request correlation is bound to owner/child/generation; deadline expiry
+retires the waiter without stopping reusable Rule Kit sessions. FE reads SQLite
+on startup/reconnect/resume/notification/refresh; no HUD snapshot WS request.

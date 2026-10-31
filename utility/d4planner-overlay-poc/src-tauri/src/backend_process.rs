@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Read, Write},
     path::PathBuf,
     process::{Child, ChildStdin, Command, Stdio},
     sync::{mpsc, Arc, Mutex},
@@ -82,8 +82,19 @@ pub trait ProcessDriver: Send + Sync + 'static {
     fn terminate_owned_child(&self, child: &Self::Child) -> Result<(), String>;
 }
 
+type PendingCommands = Arc<Mutex<BTreeMap<String, (serde_json::Value, mpsc::Sender<Result<serde_json::Value, String>>)>>>;
+
+fn bounded_line(reader: &mut impl BufRead) -> Result<Option<String>, String> {
+    let mut bytes = Vec::new();
+    reader.take(1_048_577).read_until(b'\n', &mut bytes).map_err(|_| "CONTROL_READ_FAILED")?;
+    if bytes.is_empty() { return Ok(None); }
+    if bytes.len() > 1_048_576 { return Err("CONTROL_FRAME_TOO_LARGE".into()); }
+    String::from_utf8(bytes).map(Some).map_err(|_| "CONTROL_INVALID_UTF8".into())
+}
+
 #[derive(Clone)]
 pub struct StdChild {
+    pending: PendingCommands,
     process: Arc<Mutex<Child>>,
     stdin: Arc<Mutex<ChildStdin>>,
     ready: Arc<Mutex<mpsc::Receiver<Result<ReadyEnvelope, String>>>>,
@@ -138,25 +149,34 @@ impl ProcessDriver for StdProcessDriver {
             .take()
             .ok_or("managed child stdout unavailable")?;
         let (tx, rx) = mpsc::channel();
+        let pending: PendingCommands = Arc::new(Mutex::new(BTreeMap::new()));
+        let dispatcher = pending.clone();
         thread::spawn(move || {
-            let mut lines = BufReader::new(stdout).lines();
-            let line = lines.next();
-            let result = match line {
-                Some(Ok(line)) => serde_json::from_str::<ReadyEnvelope>(&line)
-                    .map_err(|error| format!("invalid READY handshake: {error}")),
-                Some(Err(error)) => Err(format!("READY channel failed: {error}")),
-                None => Err("child exited before READY".into()),
-            };
+            let mut reader = BufReader::new(stdout);
+            let result = bounded_line(&mut reader).and_then(|line| {
+                let line = line.ok_or("child exited before READY")?;
+                serde_json::from_str::<ReadyEnvelope>(&line).map_err(|_| "invalid READY handshake".into())
+            });
             let _ = tx.send(result);
-            // Keep the pipe open and drained through EXIT; lifecycle output is
-            // never treated as an application data transport.
-            for line in lines {
-                if line.is_err() {
-                    break;
+            while let Ok(Some(line)) = bounded_line(&mut reader) {
+                let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else { continue; };
+                if value["type"] != "response" || value["protocolVersion"] != "d4planner-control/v1" { continue; }
+                let Some(id) = value["requestId"].as_str() else { continue; };
+                if let Ok(mut pending) = dispatcher.lock() {
+                    let matches = pending.get(id).map(|(request, _)| {
+                        ["ownerInstanceId", "childInstanceId", "generation"].iter().all(|key| value[*key] == request[*key])
+                    }).unwrap_or(false);
+                    if matches {
+                        if let Some((_, sender)) = pending.remove(id) { let _ = sender.send(Ok(value)); }
+                    }
                 }
+            }
+            if let Ok(mut pending) = dispatcher.lock() {
+                for (_, (_, sender)) in std::mem::take(&mut *pending) { let _ = sender.send(Err("BACKEND_OFFLINE".into())); }
             }
         });
         Ok(StdChild {
+            pending,
             process: Arc::new(Mutex::new(process)),
             stdin: Arc::new(Mutex::new(stdin)),
             ready: Arc::new(Mutex::new(rx)),
@@ -259,6 +279,50 @@ pub struct BackendProcessWrapper<D: ProcessDriver> {
     operation: Mutex<()>,
     specification: Mutex<LaunchSpecification>,
     inner: Arc<Mutex<Inner<D::Child>>>,
+}
+
+impl BackendProcessWrapper<StdProcessDriver> {
+    /// Same owned pipe as lifecycle. A deadline retires only this request.
+    pub fn request(&self, method: &str, params: serde_json::Value, timeout: Duration) -> Result<serde_json::Value, String> {
+        if !matches!(method, "target.list" | "target.select") || timeout.is_zero() || timeout > Duration::from_secs(60) {
+            return Err("INVALID_CONTROL_REQUEST".into());
+        }
+        // Serialize admission with restart, but release before waiting for reply.
+        let (child, id, rx) = {
+            let _operation = self.operation.lock().map_err(|_| "operation lock poisoned")?;
+            let spec = self.specification.lock().map_err(|_| "specification lock poisoned")?;
+            let inner = self.inner.lock().map_err(|_| "state lock poisoned")?;
+            if inner.state != ProcessState::Ready { return Err("BACKEND_OFFLINE".into()); }
+            let child = inner.child.clone().ok_or("BACKEND_OFFLINE")?;
+            static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+            let id = format!("{}-{}", spec.generation, NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+            let message = serde_json::json!({"protocolVersion":"d4planner-control/v1", "type":"request", "requestId":id,
+                "ownerInstanceId":spec.owner_instance_id, "childInstanceId":spec.child_instance_id, "generation":spec.generation,
+                "method":method, "params":params});
+            let bytes = serde_json::to_vec(&message).map_err(|_| "CONTROL_ENCODE_FAILED")?;
+            if bytes.len() >= 1_048_576 { return Err("CONTROL_FRAME_TOO_LARGE".into()); }
+            let (tx, rx) = mpsc::channel();
+            {
+                let mut pending = child.pending.lock().map_err(|_| "pending lock poisoned")?;
+                if pending.len() >= 32 { return Err("CONTROL_QUEUE_FULL".into()); }
+                pending.insert(id.clone(), (message, tx));
+            }
+            let written = (|| -> Result<(), std::io::Error> {
+                let mut stdin = child.stdin.lock().map_err(|_| std::io::Error::other("pipe lock poisoned"))?;
+                stdin.write_all(&bytes)?; stdin.write_all(b"\n")?; stdin.flush()
+            })();
+            if written.is_err() {
+                if let Ok(mut pending) = child.pending.lock() { pending.remove(&id); }
+                return Err("BACKEND_OFFLINE".into());
+            }
+            (child, id, rx)
+        };
+        let result = rx.recv_timeout(timeout).map_err(|_| "CONTROL_TIMEOUT".to_owned());
+        if let Ok(mut pending) = child.pending.lock() { pending.remove(&id); }
+        let response = result??;
+        if !response["error"].is_null() { return Err(response["error"]["code"].as_str().unwrap_or("CONTROL_FAILED").to_owned()); }
+        Ok(response["result"].clone())
+    }
 }
 
 impl<D: ProcessDriver> BackendProcessWrapper<D> {

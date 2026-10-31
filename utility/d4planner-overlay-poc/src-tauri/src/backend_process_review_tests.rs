@@ -381,3 +381,36 @@ fn failed_ready_consumes_generation_even_after_successful_cleanup() {
     assert!(w.start().is_err());
     assert_eq!(d.spawns.load(Ordering::SeqCst), 1);
 }
+
+#[test]
+fn correlated_control_uses_owned_pipe_and_rejects_late_foreign_response() {
+    let sandbox = Sandbox::new();
+    let mut spec = sandbox.launch("");
+    spec.args = vec!["-c".into(), r#"
+import asyncio
+import d4planner.managed_backend as m
+async def command(self, row):
+ if not getattr(self, 'called', False):
+  self.called = True
+  await asyncio.sleep(.08)
+ return {'method':row['method']}
+m.BaseRuntime.handle_control = command
+original = m._emit
+def emit(row):
+ if row.get('type') == 'response':
+  original(dict(row, generation=999, result={'method':'FOREIGN'}))
+ original(row)
+m._emit = emit
+raise SystemExit(m.main())
+"#.into()];
+    let wrapper = BackendProcessWrapper::new(Arc::new(StdProcessDriver), spec);
+    wrapper.start().unwrap();
+    assert!(wrapper.request("target.list", serde_json::json!({}), Duration::from_millis(10)).is_err());
+    let result = wrapper.request("target.list", serde_json::json!({}), Duration::from_secs(1)).unwrap();
+    assert_eq!(result["method"], "target.list");
+    assert!(wrapper.request("evaluate", serde_json::json!({}), Duration::from_secs(1)).is_err());
+    // Deadline doesn't stop the process or invalidate reusable runtime.
+    assert_eq!(wrapper.state(), ProcessState::Ready);
+    wrapper.stop().unwrap();
+    assert!(wrapper.request("target.list", serde_json::json!({}), Duration::from_secs(1)).is_err());
+}

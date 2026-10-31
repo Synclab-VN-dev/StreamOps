@@ -95,6 +95,13 @@ fn get_backend_status(state: State<'_, BackendState>) -> Result<BackendStatus, S
     })
 }
 
+#[tauri::command]
+async fn backend_command(state: State<'_, BackendState>, method: String, params: serde_json::Value) -> Result<serde_json::Value, String> {
+    let wrapper = state.0.lock().map_err(|_| "Backend state lock poisoned")?.clone().ok_or("BACKEND_OFFLINE")?;
+    tauri::async_runtime::spawn_blocking(move || wrapper.request(&method, params, Duration::from_secs(10)))
+        .await.map_err(|_| "CONTROL_DISPATCH_FAILED".to_string())?
+}
+
 fn read_mode(state: &ModeState) -> Result<bool, String> {
     state.0.lock().map(|mode| *mode).map_err(|_| "mode lock poisoned".to_string())
 }
@@ -197,7 +204,8 @@ pub fn run() {
             drag_overlay,
             start_backend,
             stop_backend,
-            get_backend_status
+            get_backend_status,
+            backend_command
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").expect("configured main window");

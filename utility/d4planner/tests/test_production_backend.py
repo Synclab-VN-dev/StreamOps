@@ -35,11 +35,15 @@ def _rulekit() -> RuleKitRuntimeService:
     )))
 
 
-def _message(message_id: str, kind: str, generation: int, **extra):
-    return {
-        "protocolVersion": "d4planner-ws/v1", "messageId": message_id,
-        "type": kind, "correlationId": None, "backendGeneration": generation, **extra,
-    }
+def _message(message_id, kind, generation, **extra):
+    return {"protocolVersion":"d4planner-notify/v1", "messageId":message_id,
+            "type":kind, **{k:v for k,v in extra.items() if k != "lastSeen"}}
+
+async def _control(runtime, method, **params):
+    from d4planner.control import dispatch
+    return await dispatch(runtime, {"protocolVersion":"d4planner-control/v1", "type":"request",
+        "requestId":"test-command", **{k:runtime.bootstrap[k] for k in ('ownerInstanceId','childInstanceId','generation')},
+        "method":method, "params":params}, runtime.bootstrap)
 
 
 def _evidence(revision: int = 1) -> dict:
@@ -96,29 +100,23 @@ def test_production_runtime_real_worker_target_capture_sqlite_and_authenticated_
                 )))
                 accepted = json.loads(await ws.recv())
                 assert accepted["type"] == "hello.accepted"
-                await ws.send(json.dumps(_message("list", "target.list.request", 7)))
-                listed = json.loads(await ws.recv())
+                initial = json.loads(await ws.recv())
+                assert initial["type"] == "hud.committed" and "hud" not in initial
+                listed = (await _control(runtime, "target.list"))["result"]
                 target = next(item for item in listed["targets"] if item["validation"] == "VALID")
-                await ws.send(json.dumps(_message(
-                    "snapshot", "hud.snapshot.request", 7,
-                    requestContext={"mode": "DISCOVER_ACTIVE_CONTEXT", "reason": "INITIAL_CONNECTION",
-                                    "attempt": 1, "runtimeInstanceId": "backend-production", "minimumHudRevision": 0},
-                )))
-                snapshot = json.loads(await ws.recv())
-                assert snapshot["hud"]["context"]["state"] == "STARTUP"
-                await ws.send(json.dumps(_message(
-                    "select", "target.select.request", 7, targetId=target["targetId"],
-                    expectedSha256=target["contentSha256"], expectedListRevision=listed["listRevision"],
-                )))
-                selection_messages = [json.loads(await ws.recv()), json.loads(await ws.recv())]
-                selected = next(message for message in selection_messages if message["type"] == "target.select.result")
-                assert selected["status"] == "ACTIVATED"
+                assert runtime.store.latest_authoritative()["context"]["state"] == "STARTUP"
+                selected = await _control(runtime, "target.select", targetId=target["targetId"],
+                    expectedSha256=target["contentSha256"], expectedListRevision=listed["listRevision"])
+                assert selected["result"]["status"] == "ACTIVATED"
+                await ws.recv()  # selection commit notification
                 committed = await runtime.ingest(_evidence())
                 update = json.loads(await asyncio.wait_for(ws.recv(), 1))
-                assert update["type"] == "hud.update"
-                assert update["hud"]["hudRevision"] == committed["hudRevision"]
-                assert update["hud"]["score"] == {
-                    **update["hud"]["score"], "status": "SCORED", "value": 100.0,
+                assert update["type"] == "hud.committed"
+                assert "hud" not in update
+                persisted = runtime.store.latest_authoritative()
+                assert persisted["hudRevision"] == committed["hudRevision"]
+                assert persisted["score"] == {
+                    **persisted["score"], "status": "SCORED", "value": 100.0,
                     "passedWeight": 8, "evaluableWeight": 8, "failIssueCount": 0,
                     "warnCount": 0, "itemsPassing": 2, "itemsTargeted": 2,
                 }
@@ -225,14 +223,8 @@ def test_repository_capture_revision_commits_and_pushes_without_fuzzy_identity(t
                     lastSeen={"hudRevision": None},
                 )))
                 await ws.recv()
-                await ws.send(json.dumps(_message(
-                    "snapshot-repository", "hud.snapshot.request", 9,
-                    requestContext={"mode": "DISCOVER_ACTIVE_CONTEXT", "reason": "INITIAL_CONNECTION",
-                                    "attempt": 1, "runtimeInstanceId": "backend-repository",
-                                    "minimumHudRevision": 0},
-                )))
                 initial = json.loads(await ws.recv())
-                initial_revision = initial["hud"]["hudRevision"]
+                initial_revision = initial["hudRevision"]
                 for sequence, text in enumerate(
                     ["Head", "EQUIPPED", "RECORDED HELM", "Rare Helm", "850 Item Power", "Unequip"], 1,
                 ):
@@ -242,14 +234,16 @@ def test_repository_capture_revision_commits_and_pushes_without_fuzzy_identity(t
                         "sessionId": "recorded-repository-session", "data": {"text": text},
                     })
                 update = json.loads(await asyncio.wait_for(ws.recv(), 2))
-                assert update["type"] == "hud.update"
-                assert update["hud"]["hudRevision"] > initial_revision
-                assert update["hud"]["context"]["character"]["currentRevision"] == 1
-                assert update["hud"]["context"]["character"]["characterId"] == "character-repository"
-                assert update["hud"]["score"]["status"] == "NO_DATA"
-                assert update["hud"]["score"]["failIssueCount"] == 0
+                assert update["type"] == "hud.committed"
+                assert "hud" not in update
+                persisted = runtime.store.latest_authoritative()
+                assert persisted["hudRevision"] > initial_revision
+                assert persisted["context"]["character"]["currentRevision"] == 1
+                assert persisted["context"]["character"]["characterId"] == "character-repository"
+                assert persisted["score"]["status"] == "NO_DATA"
+                assert persisted["score"]["failIssueCount"] == 0
                 await asyncio.sleep(.25)
-                assert runtime.store.latest_authoritative()["hudRevision"] == update["hud"]["hudRevision"]
+                assert runtime.store.latest_authoritative()["hudRevision"] == persisted["hudRevision"]
                 await runtime.capture_health_changed("DEGRADED")
                 stale = runtime.store.latest_authoritative()
                 assert stale["health"]["capture"] == "STALE"
@@ -395,19 +389,14 @@ def test_review_startup_and_typed_listing_recovery(tmp_path, monkeypatch, fault)
             assert ready["health"]["targetListing"] == "TARGET_INVALID"
             assert ready["health"]["targetJsonCount"] == 3
             assert runtime.targets.get_active() == selected
-            async with connect(f"ws://127.0.0.1:{runtime.server.port}", origin=ORIGIN) as ws:
-                await ws.send(json.dumps(_message("hello", "hello", 1, credential=CREDENTIAL, origin=ORIGIN, lastSeen={"hudRevision": None})))
-                assert json.loads(await ws.recv())["type"] == "hello.accepted"
-                await ws.send(json.dumps(_message("bad-list", "target.list.request", 1)))
-                error = json.loads(await ws.recv())
-                assert (error["code"], error["correlationId"], error["retryable"]) == ("TARGET_INVALID", "bad-list", False)
-                assert "PRIVATE" not in json.dumps(error)
-                Draft202012Validator(json.loads((ROOT / "utility/d4planner/contracts/release1/v1/schemas/ws.schema.json").read_text())).validate(error)
-                bad.unlink()
-                await ws.send(json.dumps(_message("good-list", "target.list.request", 1)))
-                result = json.loads(await ws.recv())
-                assert result["type"] == "target.list.result" and len(result["targets"]) == 2
-                assert runtime.targets.get_active() == selected
+            error = await _control(runtime, "target.list")
+            assert (error["error"]["code"], error["error"]["retryable"]) == ("TARGET_INVALID", False)
+            assert "PRIVATE" not in json.dumps(error)
+            Draft202012Validator(json.loads((ROOT / "utility/d4planner/contracts/release1/v1/schemas/command.schema.json").read_text())).validate(error)
+            bad.unlink()
+            result = await _control(runtime, "target.list")
+            assert len(result["result"]["targets"]) == 2
+            assert runtime.targets.get_active() == selected
         finally:
             await runtime.stop()
     asyncio.run(scenario())
@@ -442,16 +431,10 @@ def test_review_selection_failure_does_not_switch_silently(tmp_path, monkeypatch
             else:
                 monkeypatch.setattr(runtime, "_publish_committed", fail_publish)
             try:
-                async with connect(f"ws://127.0.0.1:{runtime.server.port}", origin=ORIGIN) as ws:
-                    await ws.send(json.dumps(_message("hello", "hello", 1, credential=CREDENTIAL,
-                        origin=ORIGIN, lastSeen={"hudRevision": None})))
-                    assert json.loads(await ws.recv())["type"] == "hello.accepted"
-                    await ws.send(json.dumps(_message("switch-fails", "target.select.request", 1,
-                        targetId=b.target_id, expectedSha256=b.content_sha256,
-                        expectedListRevision=listing.revision)))
-                    error = json.loads(await ws.recv())
-                    assert (error["type"], error["code"], error["correlationId"]) == ("error", "INTERNAL", "switch-fails")
-                    assert "synthetic" not in json.dumps(error)
+                error = await _control(runtime, "target.select", targetId=b.target_id,
+                    expectedSha256=b.content_sha256, expectedListRevision=listing.revision)
+                assert error["error"]["code"] == "CONTROL_FAILED"
+                assert "synthetic" not in json.dumps(error)
             finally:
                 if lock:
                     lock.rollback(); lock.close()
@@ -540,15 +523,10 @@ def test_review_listing_error_on_running_socket_is_typed_and_sanitized(tmp_path,
             return original(path, *args, **kwargs)
         monkeypatch.setattr(Path, "open", read)
         try:
-            async with connect(f"ws://127.0.0.1:{runtime.server.port}", origin=ORIGIN) as ws:
-                await ws.send(json.dumps(_message("hello", "hello", 1, credential=CREDENTIAL,
-                    origin=ORIGIN, lastSeen={"hudRevision": None})))
-                await ws.recv()
-                await ws.send(json.dumps(_message("list", "target.list.request", 1)))
-                error = json.loads(await ws.recv())
-                assert (error["code"], error["correlationId"]) == ("TARGET_INVALID", "list")
-                assert "private-name" not in json.dumps(error) + caplog.text
-                assert "PRIVATE_CREDENTIAL_CONTENT" not in json.dumps(error) + caplog.text
+            error = await _control(runtime, "target.list")
+            assert error["error"]["code"] == "TARGET_INVALID"
+            assert "private-name" not in json.dumps(error) + caplog.text
+            assert "PRIVATE_CREDENTIAL_CONTENT" not in json.dumps(error) + caplog.text
         finally:
             await runtime.stop()
         assert runtime.server is None
