@@ -266,11 +266,8 @@ impl Report {
         .into_iter()
         .filter_map(|(n, b)| b.then_some(n))
         .collect();
-        let mut source = if selected.is_empty() {
-            json!({"files":[],"completeness":"NO_RUNTIME_LOGS_SELECTED"})
-        } else {
-            export_selected(data,run,&report.dir.join("logs"),&selected).unwrap_or_else(|_|json!({"files":selected.iter().map(|s|json!({"name":match *s {"FE"=>"fe.log","BE"=>"be.log",_=>"rulekit.log"},"status":"UNAVAILABLE"})).collect::<Vec<_>>(),"completeness":"UNAVAILABLE"}))
-        };
+        // Session metadata is independent of selected log content (including zero sources).
+        let mut source = export_selected(data,run,&report.dir.join("logs"),&selected).unwrap_or_else(|_|json!({"files":selected.iter().map(|s|json!({"name":match *s {"FE"=>"fe.log","BE"=>"be.log",_=>"rulekit.log"},"status":"UNAVAILABLE"})).collect::<Vec<_>>(),"completeness":"UNAVAILABLE"}));
         let mut files = Vec::new();
         for item in source["files"].as_array().ok_or("INVALID_EXPORT")? {
             let mut item = item.clone();
@@ -583,10 +580,15 @@ mod tests {
         let data = temp();
         let mut s = selection();
         s.fe = false;
-        let r = Report::collect(&data, "no-run", s, |_| panic!()).unwrap();
+        let session =
+            d4planner_runtime_logging::Session::create(&data, "1.2.8", "source-test").unwrap();
+        let r = Report::collect(&data, &session.id, s, |_| panic!()).unwrap();
+        assert_eq!(r.preview["productVersion"], "1.2.8");
+        assert_eq!(r.preview["sourceVersion"], "source-test");
         assert_eq!(r.preview["completeness"], "EMPTY");
         assert_eq!(r.preview["files"], json!([]));
         r.discard();
+        drop(session);
         fs::remove_dir_all(data).unwrap();
     }
 }
