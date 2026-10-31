@@ -1,9 +1,12 @@
 {
-  "name": "d4planner-overlay-poc",
-  "version": "0.1.0",
+  "name": "d4planner-equipment-hud",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
+    "generate:validator": "node scripts/generate-hud-validator.mjs",
+    "prebuild": "npm run generate:validator",
+    "pretest": "npm run generate:validator",
     "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
@@ -22,6 +25,7 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2.9.0",
     "@testing-library/react": "^16.3.0",
+    "@types/node": "^26.6.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^4.7.0",

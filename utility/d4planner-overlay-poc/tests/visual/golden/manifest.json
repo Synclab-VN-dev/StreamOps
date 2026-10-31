@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "d4planner-magicpath-golden/v1",
+  "source": {
+    "environment": "MagicPath production",
+    "projectId": "458763473602621440",
+    "componentId": "458765764401446912",
+    "revisionId": "464988421014827008",
+    "retrievedAt": "2026-10-25T19:41:00+07:00",
+    "mode": "READ_ONLY"
+  },
+  "preview": {
+    "path": "magicpath-464988421014827008.explicit.jpeg",
+    "mimeType": "image/jpeg",
+    "width": 1200,
+    "height": 630,
+    "sha256": "8d0ad5dc6710b208884254479f6be8929a47dfcec73757a5c77103124088d86c"
+  },
+  "sourceContext": {
+    "selectedRevisionId": "464988421014827008",
+    "baseRevisionId": "464988421014827008",
+    "editableFileCount": 3
+  },
+  "referenceCoverage": [
+    { "case": "summary-expanded-equipment", "status": "AVAILABLE", "evidence": "preview" },
+    { "case": "target-selector-open", "status": "BLOCKED", "reason": "approved revision source defines it but MagicPath has no independent stored preview for this interaction state" },
+    { "case": "partial-equipment", "status": "BLOCKED", "reason": "no independent state-specific MagicPath Golden" },
+    { "case": "no-data", "status": "BLOCKED", "reason": "no independent state-specific MagicPath Golden" },
+    { "case": "invalid-target", "status": "BLOCKED", "reason": "no independent state-specific MagicPath Golden" },
+    { "case": "disconnected", "status": "BLOCKED", "reason": "no independent state-specific MagicPath Golden" }
+  ]
+}

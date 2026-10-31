@@ -1,29 +1,29 @@
-# D4Planner Tauri Overlay — Issue #71 POC
+# D4Planner Release 1 Equipment HUD
 
-Goal: test whether a transparent, always-on-top Windows HUD can run on top
-of Diablo IV (Borderless Windowed) without blocking normal gameplay.
+Native Tauri HUD for #143, derived from the previously accepted transparent
+overlay feasibility work. The UI now follows approved MagicPath revision
+`464988421014827008` and renders only S1 Equipment contract data.
 
-The visual POC remains fixture-driven, but the native shell now owns the
-versioned managed Backend lifecycle for Release 1. WebSocket/HUD production
-binding is delivered separately by S5/S6; there is no mock Backend fallback.
-NVDA, game hooks, Steam Link and OBS integration remain out of scope here.
-Design reference (not pixel-perfect):
-https://designs.magicpath.ai/v1/crisply-year-9521
+See [docs/release1-hud.md](docs/release1-hud.md) for data-source, native-window,
+MagicPath Golden and acceptance boundaries.
 
-## Download from GitHub Actions (no Node or Rust necessary)
+The native shell owns the versioned managed Backend lifecycle and passes its
+private loopback bootstrap to the strict S5 WebSocket data source. Production
+never falls back to fixture or demo data. NVDA, game hooks, Steam Link and OBS
+integration remain out of scope.
 
-1. Open PR for issue #71, select Checks -> D4 Overlay POC (Windows EXE).
-2. After workflow success, download artifact d4planner-overlay-poc-win-x64.
-3. Extract ZIP. On Windows A, double-click d4planner-overlay-poc.exe.
-4. HUD starts in INTERACTIVE mode; drag it via the header.
-5. Press Ctrl + Shift + F10 to toggle PASSIVE (mouse click-through).
-   Press again to return to INTERACTIVE.
-6. Press Ctrl + Shift + F11 to exit (emergency recovery).
+## Developer verification
 
-Windows WebView2 Runtime is required (preinstalled on most modern Windows 10/11).
-Portable EXE is unsigned and may trigger Windows SmartScreen. Review
-repository/CI run before accepting an unsigned program; no installer required.
-Do not launch EXE directly from inside ZIP.
+```text
+npm install
+npm test
+npm run build
+cd src-tauri && cargo test && cargo check
+```
+
+The existing executable/package name and local PowerShell tooling remain stable
+for S7 packaging. `scripts/local/d4-overlay-poc.ps1` still provides Doctor,
+Run, Test, Build, Smoke, SmokeRuntime, SmokeLaunch and Stop operations.
 
 ## In-game test — Dev F and owner
 
@@ -79,3 +79,9 @@ boundary are documented in
   or physical global keyboard event handling under Diablo IV.
 
 CI artifact is retained for 14 days; rebuild on PR when it expires.
+
+The HUD starts interactive, is draggable by its header, and uses
+`Ctrl+Shift+F10` to recover/toggle click-through. `Ctrl+Shift+F11` is the safe
+exit shortcut. Physical Windows/game, mixed-DPI, mouse passthrough and
+`window_capture` acceptance are manual S7 gates; Linux component tests are not
+reported as proof of those behaviors.

@@ -6,6 +6,34 @@ pub enum ShortcutAction {
     Exit,
 }
 
+pub const MIN_OVERLAY_WIDTH: u32 = 280;
+pub const MAX_OVERLAY_WIDTH: u32 = 900;
+pub const MIN_OVERLAY_HEIGHT: u32 = 220;
+pub const MAX_OVERLAY_HEIGHT: u32 = 640;
+
+pub fn validated_extent(width: u32, height: u32) -> Result<(u32, u32), String> {
+    if !(MIN_OVERLAY_WIDTH..=MAX_OVERLAY_WIDTH).contains(&width)
+        || !(MIN_OVERLAY_HEIGHT..=MAX_OVERLAY_HEIGHT).contains(&height)
+    {
+        return Err("overlay extent is outside the approved HUD bounds".into());
+    }
+    Ok((width, height))
+}
+
+pub fn clamp_origin(
+    origin: (i32, i32),
+    extent: (u32, u32),
+    monitor_origin: (i32, i32),
+    monitor_extent: (u32, u32),
+) -> (i32, i32) {
+    let maximum_x = monitor_origin.0 + monitor_extent.0.saturating_sub(extent.0) as i32;
+    let maximum_y = monitor_origin.1 + monitor_extent.1.saturating_sub(extent.1) as i32;
+    (
+        origin.0.clamp(monitor_origin.0, maximum_x.max(monitor_origin.0)),
+        origin.1.clamp(monitor_origin.1, maximum_y.max(monitor_origin.1)),
+    )
+}
+
 pub fn toggle_shortcut() -> Shortcut {
     Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::F10)
 }
@@ -98,5 +126,20 @@ mod tests {
         transition_mode(&mut mode, true, |ignore| { assert!(!ignore); calls += 1; Ok(()) }).unwrap();
         assert_eq!(calls, 1);
         assert!(mode);
+    }
+
+    #[test]
+    fn approved_extent_is_bounded_and_rejects_an_oversized_hit_test_surface() {
+        assert_eq!(validated_extent(886, 620).unwrap(), (886, 620));
+        assert!(validated_extent(901, 620).is_err());
+        assert!(validated_extent(886, 641).is_err());
+        assert!(validated_extent(100, 100).is_err());
+    }
+
+    #[test]
+    fn multi_monitor_origin_is_clamped_in_physical_coordinates() {
+        assert_eq!(clamp_origin((-1800, 40), (900, 640), (-1920, 0), (1920, 1080)), (-1800, 40));
+        assert_eq!(clamp_origin((-2500, -100), (900, 640), (-1920, 0), (1920, 1080)), (-1920, 0));
+        assert_eq!(clamp_origin((-500, 900), (900, 640), (-1920, 0), (1920, 1080)), (-900, 440));
     }
 }

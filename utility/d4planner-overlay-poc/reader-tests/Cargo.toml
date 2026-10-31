@@ -1,0 +1,9 @@
+[package]
+name = "d4planner-reader-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+[dependencies]
+rusqlite = { version = "0.37", features = ["bundled"] }
+jsonschema = { version = "0.33", default-features = false }
+serde_json = "1"
