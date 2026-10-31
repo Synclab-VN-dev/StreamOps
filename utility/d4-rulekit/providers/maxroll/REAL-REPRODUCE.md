@@ -105,3 +105,18 @@ identity, password, private-key and secret variables are removed from the child 
 candidate necessarily receives the decrypted fixture to execute the approved test, which is why
 exact-SHA review and Environment approval are both required. Environment deployment-branch rules
 and required reviewers live in GitHub Settings and cannot be proven by repository source alone.
+
+## Fixture TEST ONLY mới với descriptor explicit
+
+Không sửa `FIXTURE`/r01 hoặc provider/codec pins để đóng gói capture mới. CLI hiện
+có nhận thêm `--descriptor /private/fixture-descriptor.json` cho cả package/verify.
+Descriptor bind snapshotId, manifestSha256, resources, uniqueBlobs, logicalBytes,
+recipient, assetName và checksumName; sau package thêm encryptedSha256 để verify.
+Recipient phải khớp public recipient đã pin, không nhận recipient tùy ý. Output
+mới phải dùng folder/tên riêng; encrypted archive/checksum không ghi đè.
+
+Pipeline vẫn là ZIP → age encrypt → private decrypt/extract → store integrity và
+so từng file → cleanup plaintext tạm. Descriptor chỉ là expected fixture metadata,
+**không** compatibility registry/production approval. Release/publication cần
+Owner authorization cụ thể và gate integrity/completeness/distribution; không có
+chức năng tự publish. Default r01 vẫn giữ nguyên tất cả trust pins và tên asset.

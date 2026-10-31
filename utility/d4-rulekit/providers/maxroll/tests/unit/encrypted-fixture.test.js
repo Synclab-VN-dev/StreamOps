@@ -113,3 +113,15 @@ test('REV-04 full real acceptance selects the candidate by explicit asset identi
   assert.match(realTest, /createMaxroll32173552D12aM6KTCandidateProfile/);
   assert.doesNotMatch(realTest, /const profile = createMaxroll32173552RealProfile/);
 });
+
+test('explicit new fixture descriptor keeps historical pin and approved recipient unchanged',()=>{
+ const {validateFixture}=require('../../src/encrypted-fixture');
+ const descriptor={...FIXTURE,snapshotId:'SYNTHETIC-NEW',manifestSha256:'a'.repeat(64),assetName:'ci-bundle-synthetic-r03.zip.age',checksumName:'ci-bundle-synthetic-r03.zip.age.sha256'};
+ assert.equal(validateFixture(descriptor).snapshotId,'SYNTHETIC-NEW');
+ assert.equal(FIXTURE.snapshotId,'maxroll-20261023T034150Z');
+ for(const patch of [{recipient:'age1unapproved'},{snapshotId:'../escape'},{assetName:'../escape.zip.age'},{manifestSha256:'invalid'},{uniqueBlobs:100000}])
+  assert.throws(()=>validateFixture({...descriptor,...patch}),/descriptor|recipient/);
+ assert.throws(()=>assertSafeArchiveEntries(['SYNTHETIC-NEW/../escape'],'SYNTHETIC-NEW'),/unsafe/);
+ assert.doesNotThrow(()=>assertSafeArchiveEntries(['SYNTHETIC-NEW/manifest.json'],'SYNTHETIC-NEW'));
+ for(const entry of ['C:/escape','SYNTHETIC-NEW/..\\escape'])assert.throws(()=>assertSafeArchiveEntries([entry],'SYNTHETIC-NEW'),/unsafe/);
+});

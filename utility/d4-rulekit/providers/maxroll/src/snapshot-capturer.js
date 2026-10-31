@@ -19,6 +19,17 @@ const {
   createMaxroll32173552RealProfile,
 } = require('./real-profile');
 const { METRIC_CATALOG } = require('./metric-catalog');
+const { normalizeScope, scopeFingerprint, buildScopedInventory } = require('../../../snapshot-management/src/content-version');
+const { canonical } = require('../../../snapshot-management/src/trust');
+const CAPTURE_COMPLETION = Object.freeze({minimumObservationMs:5000,quietWindowMs:1000});
+function createMaxrollSnapshotScope(sourceUrl) {
+  const navigationUrl = new URL(sourceUrl);
+  navigationUrl.hash = '';
+  const navigation = {sourceUrl:navigationUrl.href,waitUntil:'domcontentloaded'};
+  const interaction = {action:'observeRuntimeIdentity',newProfileButton:'New Profile',patchReadback:'body gamePatchPattern',exportAssetPrefix:'/assets/export-',mutation:false};
+  const definition = {allowedOrigins:LIVE_ALLOWED_ORIGINS,methods:['GET','HEAD'],excludeTypes:['media'],excludeUrl:'https://planners.maxroll.gg/users/whoami',requestHeaderPolicy:'fresh-anonymous-context',navigation,interaction,settleWaitUntil:'domcontentloaded',responseBodyTimeoutMs:15000,maxResources:2000,maxResourceBytes:41943040,maxTotalBytes:134217728,completion:CAPTURE_COMPLETION};
+  return normalizeScope({schemaVersion:'d4-rulekit-snapshot-scope/v1',policyId:'maxroll-d4-planner-anonymous-observe',policyVersion:'2',capturePolicySha256:digest(canonical(definition)),origins:LIVE_ALLOWED_ORIGINS,methods:['GET','HEAD'],include:LIVE_ALLOWED_ORIGINS.map(origin=>({origin,path:'/',match:'PREFIX'})),exclude:[{origin:'https://planners.maxroll.gg',path:'/users/whoami',match:'EXACT'}],excludedResourceTypes:['media'],navigationProfile:{id:'maxroll-d4-planner-public-url',version:'1',definitionSha256:digest(canonical(navigation))},interactionProfile:{id:'maxroll-patch-export-observation',version:'1',definitionSha256:digest(canonical(interaction))},requestHeaderPolicy:'fresh-anonymous-context',responsePolicy:'default-sanitized-json/v1',serviceWorkerPolicy:'block',navigationWaitUntil:'domcontentloaded',settleWaitUntil:'domcontentloaded',normalization:'whatwg-url-preserve-query/v1'});
+}
 
 const CAPTURE_STATUS = Object.freeze({
   CAPTURED_UNVALIDATED: 'CAPTURED_UNVALIDATED',
@@ -135,6 +146,7 @@ class MaxrollSnapshotCapturer {
       outputPath,
       snapshotId,
       sourceUrl,
+      scope: createMaxrollSnapshotScope(sourceUrl),
       policy: {
         authorizationRef: OWNER_POLICY_REFERENCE,
         acquisition: 'OWNER_REQUESTED_MANUAL_CAPTURE',
@@ -145,6 +157,7 @@ class MaxrollSnapshotCapturer {
         autoSync: false,
         autoFetch: false,
         autoRuntimeUpgrade: false,
+        completion: CAPTURE_COMPLETION,
       },
       browser: { executablePath, version: null },
       runtime: {
@@ -189,6 +202,7 @@ class MaxrollSnapshotCapturer {
           navigationWaitUntil: 'domcontentloaded',
           settleWaitUntil: 'domcontentloaded',
           responseBodyTimeoutMs: 15_000,
+          completion: CAPTURE_COMPLETION,
         },
         interact: async context => {
           observation = await this.#dependencies.captureInteraction(context, { profile });
@@ -250,7 +264,25 @@ class MaxrollSnapshotCapturer {
         blockedRequestCount: draft.capture?.blockedRequestCount ?? null,
         excludedResponseCount: draft.capture?.excludedResponseCount ?? null,
         redactedResponseCount: draft.capture?.redactedResponseCount ?? null,
+        completion: draft.capture?.completion ?? null,
       };
+      if (!draft.capture?.completion) throw new MaxrollSnapshotCaptureError('CAPTURE_INCOMPLETE', 'capture has no observed completion evidence');
+      if (draft.capture.completion) {
+        const completion = draft.capture.completion;
+        report.capture.coverage = {
+          schemaVersion:'d4-rulekit-snapshot-coverage/v1',evidenceId:'bounded-navigation-replay-ready/v2',
+          manifestSha256:verification.manifestSha256,scopeFingerprint:scopeFingerprint(report.scope),
+          navigationComplete:true,interactionsComplete:true,discoveryComplete:true,
+          pendingRequests:completion.pendingRequests,failedRequests:completion.failedRequests,
+          roots:completion.roots,nodes:completion.nodes,edges:completion.edges,
+        };
+        const scoped = await buildScopedInventory(new FileSystemSnapshotStore({rootDir}),{
+          snapshotId,manifestSha256:verification.manifestSha256,scope:report.scope,coverage:report.capture.coverage,
+        });
+        report.capture.coverageValidation = scoped.coverage;
+        report.capture.contentFingerprint = scoped.contentFingerprint;
+        if (scoped.coverage.state !== 'COMPLETE') throw new MaxrollSnapshotCaptureError('CAPTURE_INCOMPLETE','capture coverage proof did not validate');
+      }
       report.integrity = {
         status: 'PASS',
         algorithm: verification.algorithm,
@@ -302,6 +334,8 @@ class MaxrollSnapshotCapturer {
 
 module.exports = {
   CAPTURE_STATUS,
+  CAPTURE_COMPLETION,
+  createMaxrollSnapshotScope,
   MaxrollSnapshotCaptureError,
   MaxrollSnapshotCapturer,
   assertOutputPath,

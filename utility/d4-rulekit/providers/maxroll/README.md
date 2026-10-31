@@ -205,3 +205,12 @@ incompatible browsers fail explicitly; CI does not silently download a replaceme
 
 See `REAL-MAXROLL-GAP-ANALYSIS.md` before creating a real patch profile. The current selectors and
 UI protocol belong to the synthetic Phase A runtime and are not asserted to exist on Maxroll.
+
+Capture completeness uses scope policy v2: after the read-only interaction, observe at least 5 seconds
+and require 1 second of eligible-request quiescence. Eligible requests and response-body reads must
+finish within the operation deadline. A failed/missing entity body fails closed; GET `/api/twitch`
+remains in scope. The capture report records actual routed request nodes, navigation attribution,
+pending/failure counts and a manifest-bound coverage proof validated by Rule Kit's content inventory.
+This proves the bounded navigation/interaction profile, not every possible future website interaction.
+A legacy capture without that proof stays UNVERIFIED; do not retrofit a claim of complete coverage.
+Completeness and content version remain independent from compatibility, trust and distribution.

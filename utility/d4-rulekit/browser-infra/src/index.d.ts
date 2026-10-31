@@ -187,6 +187,7 @@ export interface WebSnapshotDraft {
     strippedSensitiveRequestCount: number;
     blockedRequests: readonly Readonly<{ method: string; url: string }>[];
     serviceWorkerPolicy: 'block';
+    completion?: CaptureCompletionEvidence;
   }>;
 }
 
@@ -231,7 +232,25 @@ export interface CaptureResourceDescriptor {
   readonly resourceType: string;
 }
 
+export interface CaptureCompletionPolicy {
+  minimumObservationMs: number;
+  quietWindowMs: number;
+}
+
+export interface CaptureCompletionEvidence extends Readonly<CaptureCompletionPolicy> {
+  readonly policy: 'bounded-quiescence/v1';
+  readonly pendingRequests: number;
+  readonly failedRequests: readonly Readonly<{method: string; url: string}>[];
+  readonly nodes: readonly CaptureResourceDescriptor[];
+  readonly roots: readonly Readonly<{method: string; url: string}>[];
+  readonly edges: readonly Readonly<{
+    from: Readonly<{method: string; url: string}>;
+    to: Readonly<{method: string; url: string}>;
+  }>[];
+}
+
 export interface CapturePolicy extends Omit<SnapshotLimits, 'maxSnapshots'> {
+  completion?: CaptureCompletionPolicy;
   responseBodyTimeoutMs?: number;
   requestHeaderPolicy?: 'block-sensitive' | 'strip-sensitive' | 'fresh-anonymous-context';
   navigationWaitUntil?: 'load' | 'domcontentloaded' | 'networkidle' | 'commit';

@@ -1,0 +1,286 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "d4-rulekit-registry-envelope/v1"
+    },
+    "keyId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "d4-rulekit-compatibility-registry/v1"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "issuedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "entryId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              },
+              "status": {
+                "enum": [
+                  "APPROVED",
+                  "REVOKED"
+                ]
+              },
+              "ruleKitVersion": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "providerId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "providerVersion": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "codecVersion": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "canonicalSchemaVersion": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "strategyId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              },
+              "profileId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              },
+              "profileSha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "snapshotId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              },
+              "snapshotManifestSha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "gamePatch": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "sourceUrl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "engineAsset": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                },
+                "required": [
+                  "url",
+                  "sha256"
+                ]
+              },
+              "catalog": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                },
+                "required": [
+                  "url",
+                  "sha256"
+                ]
+              },
+              "capabilities": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "stateModel": {
+                    "enum": [
+                      "stateful",
+                      "stateless"
+                    ]
+                  },
+                  "changeTypes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "uniqueItems": true
+                  },
+                  "metricIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "uniqueItems": true
+                  }
+                },
+                "required": [
+                  "stateModel",
+                  "changeTypes",
+                  "metricIds"
+                ]
+              },
+              "approval": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "reference": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "evidenceSha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "testClass": {
+                    "enum": [
+                      "REAL_PROVIDER",
+                      "SYNTHETIC_TEST_ONLY"
+                    ]
+                  }
+                },
+                "required": [
+                  "reference",
+                  "evidenceSha256",
+                  "testClass"
+                ]
+              },
+              "distribution": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "permission": {
+                    "enum": [
+                      "PRIVATE_ONLY",
+                      "PUBLIC_APPROVED"
+                    ]
+                  },
+                  "reference": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  }
+                },
+                "required": [
+                  "permission",
+                  "reference"
+                ]
+              }
+            },
+            "required": [
+              "entryId",
+              "status",
+              "ruleKitVersion",
+              "providerId",
+              "providerVersion",
+              "codecVersion",
+              "canonicalSchemaVersion",
+              "strategyId",
+              "profileId",
+              "profileSha256",
+              "snapshotId",
+              "snapshotManifestSha256",
+              "gamePatch",
+              "sourceUrl",
+              "engineAsset",
+              "catalog",
+              "capabilities",
+              "approval",
+              "distribution"
+            ]
+          },
+          "maxItems": 1000
+        },
+        "revokedEntryIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+          },
+          "uniqueItems": true
+        },
+        "revokedKeyIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "revision",
+        "issuedAt",
+        "expiresAt",
+        "entries",
+        "revokedEntryIds",
+        "revokedKeyIds"
+      ]
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9+/]{86}==$"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "keyId",
+    "payload",
+    "signature"
+  ],
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

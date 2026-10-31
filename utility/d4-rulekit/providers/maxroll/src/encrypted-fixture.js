@@ -41,17 +41,32 @@ function run(command, args, options = {}) {
   return result.stdout ?? '';
 }
 
-function assertSafeArchiveEntries(entries) {
+function validateFixture(fixture = FIXTURE) {
+  if (!fixture || typeof fixture !== 'object' ||
+      !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(fixture.snapshotId ?? '') || fixture.snapshotId.includes('..') ||
+      !/^[a-f0-9]{64}$/.test(fixture.manifestSha256 ?? '') ||
+      !Number.isSafeInteger(fixture.resources) || fixture.resources < 1 ||
+      !Number.isSafeInteger(fixture.uniqueBlobs) || fixture.uniqueBlobs < 1 || fixture.uniqueBlobs > fixture.resources ||
+      !Number.isSafeInteger(fixture.logicalBytes) || fixture.logicalBytes < 0 ||
+      fixture.recipient !== FIXTURE.recipient ||
+      !/^[A-Za-z0-9][A-Za-z0-9._-]*\.zip\.age$/.test(fixture.assetName ?? '') ||
+      fixture.checksumName !== fixture.assetName + '.sha256') {
+    throw new Error('invalid explicit test fixture descriptor or unapproved recipient');
+  }
+  return Object.freeze({ ...fixture });
+}
+
+function assertSafeArchiveEntries(entries, expectedSnapshotId = FIXTURE.snapshotId) {
   if (!entries.length) throw new Error('encrypted fixture ZIP is empty');
   for (const entry of entries) {
     const normalized = path.posix.normalize(entry);
-    if (path.posix.isAbsolute(entry) || entry.split('/').includes('..') ||
+    if (path.posix.isAbsolute(entry) || /[\\:\x00]/.test(entry) || entry.split('/').includes('..') ||
         normalized === '..' || normalized.startsWith('../')) {
       throw new Error(`unsafe ZIP path: ${entry}`);
     }
   }
   const roots = new Set(entries.map(entry => entry.replace(/^\.\//, '').split('/')[0]));
-  if (roots.size !== 1 || !roots.has(FIXTURE.snapshotId)) {
+  if (roots.size !== 1 || !roots.has(expectedSnapshotId)) {
     throw new Error('ZIP does not contain exactly the pinned snapshot root');
   }
 }
@@ -97,18 +112,19 @@ function scanPackage(snapshotPath, manifest) {
   return Object.freeze({ files: files.length, sensitiveFindings: 0 });
 }
 
-async function verifySnapshot(rootDir) {
+async function verifySnapshot(rootDir, expected = FIXTURE) {
+  const fixture = validateFixture(expected);
   const store = new FileSystemSnapshotStore({ rootDir });
-  const verification = await store.verify(FIXTURE.snapshotId);
-  const manifest = await store.load(FIXTURE.snapshotId);
+  const verification = await store.verify(fixture.snapshotId);
+  const manifest = await store.load(fixture.snapshotId);
   const logicalBytes = manifest.resources.reduce((total, resource) => total + resource.size, 0);
   const uniqueBlobs = new Set(manifest.resources.map(resource => resource.sha256)).size;
-  if (!verification.valid || verification.manifestSha256 !== FIXTURE.manifestSha256 ||
-      manifest.resources.length !== FIXTURE.resources || uniqueBlobs !== FIXTURE.uniqueBlobs ||
-      logicalBytes !== FIXTURE.logicalBytes) {
+  if (!verification.valid || verification.manifestSha256 !== fixture.manifestSha256 ||
+      manifest.resources.length !== fixture.resources || uniqueBlobs !== fixture.uniqueBlobs ||
+      logicalBytes !== fixture.logicalBytes) {
     throw new Error('snapshot integrity or expected metadata mismatch');
   }
-  const security = scanPackage(path.join(rootDir, FIXTURE.snapshotId), manifest);
+  const security = scanPackage(path.join(rootDir, fixture.snapshotId), manifest);
   return Object.freeze({
     manifestSha256: verification.manifestSha256,
     resources: manifest.resources.length, uniqueBlobs, logicalBytes, security,
@@ -129,17 +145,18 @@ function compareTrees(leftRoot, rightRoot) {
 
 async function decryptAndVerify({
   encrypted, checksum, ageBin, identity,
-  expectedEncryptedSha256 = FIXTURE.encryptedSha256,
+  fixture = FIXTURE, expectedEncryptedSha256 = fixture.encryptedSha256,
 }) {
   return withDecryptedFixture({
-    encrypted, checksum, ageBin, identity, expectedEncryptedSha256,
+    encrypted, checksum, ageBin, identity, expectedEncryptedSha256, fixture,
   }, async provisioned => provisioned.verified);
 }
 
 async function withDecryptedFixture({
   encrypted, checksum, ageBin, identity,
-  expectedEncryptedSha256 = FIXTURE.encryptedSha256,
+  fixture = FIXTURE, expectedEncryptedSha256 = fixture.encryptedSha256,
 }, operation) {
+  fixture = validateFixture(fixture);
   if (typeof operation !== 'function') throw new Error('fixture operation callback is required');
   const expectedLine = fs.readFileSync(checksum, 'utf8').trim().split(/\s+/);
   if (expectedLine.length < 2 || expectedLine[1].replace(/^\*/, '') !== path.basename(encrypted) ||
@@ -151,14 +168,14 @@ async function withDecryptedFixture({
   try {
     run(ageBin, ['--decrypt', '--identity', identity, '--output', plaintext, encrypted]);
     const entries = run('unzip', ['-Z1', plaintext]).split('\n').filter(Boolean);
-    assertSafeArchiveEntries(entries);
+    assertSafeArchiveEntries(entries, fixture.snapshotId);
     fs.mkdirSync(extracted);
     run('unzip', ['-q', plaintext, '-d', extracted]);
-    const verified = await verifySnapshot(extracted);
+    const verified = await verifySnapshot(extracted, fixture);
     fs.rmSync(plaintext, { force: true });
     return await operation(Object.freeze({
       rootDir: extracted,
-      snapshotId: FIXTURE.snapshotId,
+      snapshotId: fixture.snapshotId,
       verified: Object.freeze({ ...verified, archiveEntries: entries.length }),
     }));
   } finally {
@@ -166,28 +183,29 @@ async function withDecryptedFixture({
   }
 }
 
-async function packageEncrypted({ snapshot, outputDir, ageBin, identity }) {
+async function packageEncrypted({ snapshot, outputDir, ageBin, identity, fixture = FIXTURE }) {
+  fixture = validateFixture(fixture);
   const sourceRoot = path.dirname(path.resolve(snapshot));
-  if (path.basename(path.resolve(snapshot)) !== FIXTURE.snapshotId) {
+  if (path.basename(path.resolve(snapshot)) !== fixture.snapshotId) {
     throw new Error('source snapshot ID does not match the pinned fixture');
   }
-  const verified = await verifySnapshot(sourceRoot);
+  const verified = await verifySnapshot(sourceRoot, fixture);
   fs.mkdirSync(outputDir, { recursive: true, mode: 0o700 });
-  const encrypted = path.join(outputDir, FIXTURE.assetName);
-  const checksum = path.join(outputDir, FIXTURE.checksumName);
+  const encrypted = path.join(outputDir, fixture.assetName);
+  const checksum = path.join(outputDir, fixture.checksumName);
   if (fs.existsSync(encrypted) || fs.existsSync(checksum)) {
     throw new Error('immutable encrypted fixture output already exists');
   }
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'streamops-fixture-package-'));
   const plaintext = path.join(temporary, 'fixture.zip');
   try {
-    run('zip', ['-q', '-r', plaintext, FIXTURE.snapshotId], { cwd: sourceRoot });
-    run(ageBin, ['--encrypt', '--recipient', FIXTURE.recipient, '--output', encrypted, plaintext]);
+    run('zip', ['-q', '-r', plaintext, fixture.snapshotId], { cwd: sourceRoot });
+    run(ageBin, ['--encrypt', '--recipient', fixture.recipient, '--output', encrypted, plaintext]);
     fs.chmodSync(encrypted, 0o600);
     const encryptedSha256 = digestFile(encrypted);
-    fs.writeFileSync(checksum, `${encryptedSha256}  ${FIXTURE.assetName}\n`, { mode: 0o600 });
+    fs.writeFileSync(checksum, `${encryptedSha256}  ${fixture.assetName}\n`, { mode: 0o600 });
     const roundTrip = await decryptAndVerify({
-      encrypted, checksum, ageBin, identity, expectedEncryptedSha256: encryptedSha256,
+      encrypted, checksum, ageBin, identity, expectedEncryptedSha256: encryptedSha256, fixture,
     });
 
     const checkTemporary = fs.mkdtempSync(path.join(os.tmpdir(), 'streamops-fixture-compare-'));
@@ -195,11 +213,11 @@ async function packageEncrypted({ snapshot, outputDir, ageBin, identity }) {
       const decrypted = path.join(checkTemporary, 'fixture.zip');
       const extracted = path.join(checkTemporary, 'extracted');
       run(ageBin, ['--decrypt', '--identity', identity, '--output', decrypted, encrypted]);
-      assertSafeArchiveEntries(run('unzip', ['-Z1', decrypted]).split('\n').filter(Boolean));
+      assertSafeArchiveEntries(run('unzip', ['-Z1', decrypted]).split('\n').filter(Boolean), fixture.snapshotId);
       fs.mkdirSync(extracted);
       run('unzip', ['-q', decrypted, '-d', extracted]);
-      compareTrees(path.join(sourceRoot, FIXTURE.snapshotId),
-        path.join(extracted, FIXTURE.snapshotId));
+      compareTrees(path.join(sourceRoot, fixture.snapshotId),
+        path.join(extracted, fixture.snapshotId));
     } finally {
       fs.rmSync(checkTemporary, { recursive: true, force: true });
     }
@@ -218,5 +236,5 @@ async function packageEncrypted({ snapshot, outputDir, ageBin, identity }) {
 
 module.exports = {
   FIXTURE, assertSafeArchiveEntries, compareTrees, decryptAndVerify,
-  digestFile, packageEncrypted, verifySnapshot, withDecryptedFixture,
+  digestFile, packageEncrypted, verifySnapshot, withDecryptedFixture, validateFixture,
 };

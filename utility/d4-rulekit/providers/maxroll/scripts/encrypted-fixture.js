@@ -11,7 +11,7 @@ function parse(argv) {
   for (let index = 0; index < rest.length; index += 1) {
     const key = rest[index];
     const value = rest[index + 1];
-    if (!['--snapshot', '--output-dir', '--encrypted', '--checksum', '--age-bin', '--identity']
+    if (!['--snapshot', '--output-dir', '--encrypted', '--checksum', '--age-bin', '--identity', '--descriptor']
       .includes(key) || !value) throw new Error(`unsupported or incomplete argument: ${key}`);
     options[key.slice(2).replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase())] = value;
     index += 1;
@@ -25,9 +25,12 @@ function parse(argv) {
 
 async function main() {
   const options = parse(process.argv.slice(2));
+  const configured = options.descriptor
+    ? { ...options, fixture: JSON.parse(require('node:fs').readFileSync(options.descriptor, 'utf8')) }
+    : options;
   const result = options.command === 'package'
-    ? await packageEncrypted(options)
-    : await decryptAndVerify(options);
+    ? await packageEncrypted(configured)
+    : await decryptAndVerify(configured);
   process.stdout.write(`${JSON.stringify({
     status: 'PASS',
     encryptedAsset: result.encrypted ? require('node:path').basename(result.encrypted) : undefined,

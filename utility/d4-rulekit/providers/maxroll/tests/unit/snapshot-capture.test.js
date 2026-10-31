@@ -20,8 +20,7 @@ function sha256(value) {
 function fixture(overrides = {}) {
   const body = Buffer.from(overrides.body ?? 'calculation-runtime');
   const assetPath = overrides.assetPath ?? MAXROLL_32173552_REFERENCE.applicationAssetPath;
-  const assetSha256 = overrides.assetSha256 ??
-    MAXROLL_32173552_REFERENCE.applicationAssetSha256;
+  const assetSha256 = sha256(body);
   const resource = {
     key: `GET https://maxroll.gg${assetPath}`,
     method: 'GET',
@@ -44,11 +43,15 @@ function fixture(overrides = {}) {
       return callback({ context: { browser: () => ({ version: () => 'Fake Chromium 1' }) } });
     },
   };
-  const managerFactory = (_browser, rootDir) => ({
+  const managerFactory = (_browser, rootDir) => {
+   const {FileSystemSnapshotStore}=require('../../../../browser-infra/src');
+   const store=new FileSystemSnapshotStore({rootDir});
+   return ({
     async capture(options) {
       state.captures += 1;
       if (overrides.captureError) throw overrides.captureError;
       await options.interact({ page: {} });
+      const normalizedUrl=new URL(options.url);normalizedUrl.hash="";options={...options,url:normalizedUrl.href};
       return {
         snapshotId: options.snapshotId,
         sourceUrl: options.url,
@@ -58,38 +61,29 @@ function fixture(overrides = {}) {
         version: options.version,
         browserVersion: 'Fake Chromium 1',
         playwrightVersion: '1.64.1',
-        resources: [],
+        schemaVersion:'web-snapshot-draft/v1',
+        resources: [
+          {key:'GET '+options.url,method:'GET',url:options.url,status:200,headers:{'content-type':'text/html'},redirectedFrom:null,body:Buffer.from('<html>SYNTHETIC</html>')},
+          {key:'GET '+resource.url,method:'GET',url:resource.url,status:200,headers:resource.headers,redirectedFrom:null,body},
+        ],
         capture: { durationMs: 10, blockedRequestCount: 2,
-          excludedResponseCount: 1, redactedResponseCount: 0 },
+          excludedResponseCount: 1, redactedResponseCount: 0,
+          completion: overrides.omitCompletion ? undefined : {
+            policy:'bounded-quiescence/v1',pendingRequests:0,failedRequests:[],
+            roots:[{method:'GET',url:options.url}],
+            nodes:[{method:'GET',url:options.url,resourceType:'document'},{method:'GET',url:resource.url,resourceType:'script'},...(overrides.missingNode?[{method:'GET',url:'https://maxroll.gg/api/twitch',resourceType:'fetch'}]:[])],
+            edges:[{from:{method:'GET',url:options.url},to:{method:'GET',url:resource.url}}],
+          } },
       };
     },
-    async save(draft) {
-      const output = path.join(rootDir, draft.snapshotId);
-      await fs.mkdir(path.join(output, 'blobs'), { recursive: true });
-      await fs.writeFile(path.join(output, resource.blob), body);
-      const manifest = {
-        schemaVersion: 'web-snapshot/v1', snapshotId: draft.snapshotId,
-        sourceUrl: draft.sourceUrl, capturedAt: draft.capturedAt,
-        allowedOrigins: draft.allowedOrigins, site: draft.site, version: draft.version,
-        browserVersion: draft.browserVersion, playwrightVersion: draft.playwrightVersion,
-        serviceWorkerPolicy: 'block', resources: [resource], resourceCount: 1,
-        totalBytes: body.length, integrity: { algorithm: 'sha256',
-          manifest: { algorithm: 'sha256', anchor: 'manifest.sha256' } },
-      };
-      const bytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
-      await fs.writeFile(path.join(output, 'manifest.json'), bytes);
-      await fs.writeFile(path.join(output, 'manifest.sha256'), `${sha256(bytes)}\n`);
-    },
+    async save(draft) { return store.save(draft); },
     async verify(snapshotId) {
       if (overrides.verifyError) throw overrides.verifyError;
-      const bytes = await fs.readFile(path.join(rootDir, snapshotId, 'manifest.json'));
-      return { valid: true, algorithm: 'sha256', resourceCount: 1,
-        totalBytes: body.length, manifestSha256: sha256(bytes) };
+      return store.verify(snapshotId);
     },
-    async load(snapshotId) {
-      return JSON.parse(await fs.readFile(path.join(rootDir, snapshotId, 'manifest.json')));
-    },
+    async load(snapshotId) { return store.load(snapshotId); },
   });
+  };
   return {
     state,
     dependencies: {
@@ -116,7 +110,7 @@ test('snapshot:capture persists immutable verified package and review artifacts'
     output, executablePath: process.execPath,
   });
   assert.equal(report.status, CAPTURE_STATUS.CAPTURED_UNVALIDATED);
-  assert.equal(report.validation, CAPTURE_STATUS.PIN_MATCH_UNVALIDATED);
+  assert.equal(report.validation, CAPTURE_STATUS.PATCH_DRIFT); // Synthetic bytes never claim the pinned real runtime.
   assert.equal(report.realE2E, 'NOT_RUN');
   assert.equal(report.integrity.status, 'PASS');
   assert.equal(report.cleanup, 'PASS');
@@ -127,9 +121,9 @@ test('snapshot:capture persists immutable verified package and review artifacts'
   ]);
   const inventory = JSON.parse(await fs.readFile(
     path.join(output, 'resource-inventory.json'), 'utf8'));
-  assert.equal(inventory.resourceCount, 1);
-  assert.equal(inventory.resources[0].sha256,
-    MAXROLL_32173552_REFERENCE.applicationAssetSha256);
+  assert.equal(inventory.resourceCount, 2);
+  assert.equal(report.capture.coverageValidation.state,'COMPLETE');
+  assert.equal(inventory.resources.find(r=>r.url.includes('/assets/export-')).sha256,sha256('calculation-runtime'));
 });
 
 test('snapshot:capture preserves verified snapshot and reports PATCH_DRIFT', async t => {
@@ -145,7 +139,7 @@ test('snapshot:capture preserves verified snapshot and reports PATCH_DRIFT', asy
   assert.equal(report.validation, CAPTURE_STATUS.PATCH_DRIFT);
   assert.equal(report.runtime.observedPatch, 'future-patch');
   assert.equal(report.integrity.status, 'PASS');
-  await fs.access(path.join(output, 'blobs', `${'c'.repeat(64)}.bin`));
+  await fs.access(path.join(output, 'blobs', `${sha256('calculation-runtime')}.bin`));
 });
 
 test('snapshot:capture refuses overwrite before launching Chromium', async t => {
@@ -180,4 +174,25 @@ test('snapshot capture CLI requires exactly one output folder argument', () => {
   assert.deepEqual(parseArguments(['--output', '/tmp/capture']), { output: '/tmp/capture' });
   assert.throws(() => parseArguments([]), /usage/);
   assert.throws(() => parseArguments(['--unknown']), /unsupported/);
+});
+
+test('capture keeps GET /api/twitch in scope and enables bounded completion',async t=>{
+ const {CAPTURE_COMPLETION,createMaxrollSnapshotScope}=require('../../src/snapshot-capturer');
+ const output=await temporaryOutput(t,'completion-config'),fake=fixture();let policy;
+ const original=fake.dependencies.managerFactory;
+ fake.dependencies.managerFactory=(...args)=>{const manager=original(...args),capture=manager.capture.bind(manager);manager.capture=async options=>{policy=options.capturePolicy;return capture(options);};return manager;};
+ await new MaxrollSnapshotCapturer(fake.dependencies).capture({output,executablePath:process.execPath});
+ assert.deepEqual(policy.completion,CAPTURE_COMPLETION);
+ assert.equal(await policy.allowResource({method:'GET',url:'https://maxroll.gg/api/twitch',resourceType:'fetch'}),true);
+ const scope=createMaxrollSnapshotScope('https://maxroll.gg/d4/planner/1g1any0x#3');
+ assert.equal(scope.policyVersion,'2');assert(!scope.exclude.some(rule=>rule.path==='/api/twitch'));
+});
+
+for(const overrides of [{missingNode:true},{omitCompletion:true}])test('capture fails closed without complete observed coverage '+JSON.stringify(overrides),async t=>{
+ const output=await temporaryOutput(t,'incomplete'),fake=fixture(overrides);
+ await assert.rejects(new MaxrollSnapshotCapturer(fake.dependencies).capture({output,executablePath:process.execPath}),error=>error.code==='CAPTURE_INCOMPLETE');
+ const report=JSON.parse(await fs.readFile(path.join(output,'capture-report.json'),'utf8'));
+ assert.equal(report.status,'CAPTURE_INCOMPLETE');assert.equal(report.cleanup,'PASS');
+ const {FileSystemSnapshotStore}=require('../../../../browser-infra/src');
+ assert.equal((await new FileSystemSnapshotStore({rootDir:path.dirname(output)}).verify(path.basename(output))).valid,true);
 });

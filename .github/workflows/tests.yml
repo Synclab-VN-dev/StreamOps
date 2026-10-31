@@ -73,7 +73,7 @@ jobs:
               }
             ).Count -gt 0
             $d4planner = $overlay -or (@(
-              $realFiles | Where-Object { $_ -like "utility/d4planner/*" }
+              $realFiles | Where-Object { $_ -like "utility/d4planner/*" -or $_ -like "utility/d4-rulekit/*" -or $_ -eq ".github/workflows/tests.yml" }
             ).Count -gt 0)
             $server = $overlay -or (@(
               $realFiles | Where-Object {
@@ -176,6 +176,22 @@ jobs:
       - name: Install D4Planner dev dependencies
         if: steps.changes.outputs.d4planner == 'true'
         run: python -m pip install -e 'utility/d4planner[dev]'
+      - name: Set up pinned Node for managed Rule Kit tests
+        if: steps.changes.outputs.d4planner == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.4'
+      - name: Install locked Rule Kit worker dependencies
+        if: steps.changes.outputs.d4planner == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($package in @('snapshot-management', 'browser-infra', 'providers/maxroll', 'application')) {
+            npm ci --prefix "utility/d4-rulekit/$package"
+            if ($LASTEXITCODE -ne 0) { throw "Rule Kit dependency install failed: $package" }
+          }
+          node -e "require('./utility/d4-rulekit/snapshot-management/src/manager'); require('./utility/d4planner/tests/fixtures/snapshot-test-composition'); console.log('Rule Kit dependency preflight PASS')"
+          if ($LASTEXITCODE -ne 0) { throw 'Rule Kit dependency preflight failed before pytest' }
       - name: Test D4Planner runtime
         if: steps.changes.outputs.d4planner == 'true'
         run: python -m pytest -q utility/d4planner/tests
