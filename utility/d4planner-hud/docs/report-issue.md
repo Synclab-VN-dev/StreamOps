@@ -70,14 +70,14 @@ Strict four-source allowlist, complete valid raw JSONL records only,
 Private staging is owner-only; at most three retained sealed reports, no unlimited
 report accumulation. Files are compressed/encrypted locally. Ciphertext and private
 form draft survive process exit for retry; access tokens do not. Cancel/success removes
-owned staging. Interrupted unsealed reports are reclaimed on next collection under
+owned staging only after a verified COMPLETE/EXPIRED response, or explicit discard of an unsent draft. Closing the UI retains the report. Interrupted unsealed reports are reclaimed on next collection under
 ownership marker/lock; foreign paths and locked reports are retained. Explicit cancel
-is destructive to the local pending draft only, not to remote Issues/assets.
+is permitted only before an uncertain remote submission. Once a sealed draft has a durable description, collect/cancel are rejected until retry/reconciliation returns COMPLETE or EXPIRED. It never cancels a remote Issue or asset.
 
 A sealed report's recipient and form become immutable once submission is attempted;
-retry uses the same ciphertext/reportId and description. Editing requires recollection
-with a new reportId. This may leave a remote LOG_UPLOAD_PENDING Issue; it is not silently
-deleted. No orphan asset deletion or invented resolution of ambiguous remote state.
+retry uses the same ciphertext/reportId and description. Editing/recollection is
+allowed only for an unsent draft. A remote LOG_UPLOAD_PENDING Issue is reconciled,
+not abandoned or silently deleted. No orphan asset deletion or invented resolution of ambiguous remote state.
 
 ## Gateway contract and operations
 
@@ -150,3 +150,27 @@ UNAVAILABLE. Three S8 sources, encryption, Gateway and cleanup remain independen
 RPT-02 raw-source production integration is BLOCKED; synthetic JSONL validation is
 not evidence that packaged capture is connected. Old sealed reports containing any
 DB, WAL, projector or separate speech file are rejected on resume/encryption.
+
+## PR #162 review: pending lifecycle and terminal outcomes
+
+F-01 AGREE / FIX_REQUIRED: the previous collect/close paths called unconditional
+`discard()`, destroying the only ciphertext/reportId after an uncertain remote
+outcome. Native now refuses discard/recollection for a sealed submitted draft,
+including across application restart. Durable description and ciphertext metadata
+are synced before HTTP; retry keeps their identity and bytes. Close is UI-only.
+Explicit discard is for unsent drafts; storage limits and foreign-data rules remain.
+
+F-02 AGREE / FIX_REQUIRED: issueUrl alone is insufficient proof of upload success.
+Native checks matching reportId, repository Issue URL and COMPLETE/EXPIRED status.
+React shows expiry independently, keeps the Issue URL and never uploads automatically.
+Pending/unknown/malformed responses retain retry state. COMPLETE/EXPIRED permit local
+cleanup; an interrupted cleanup/restart can reconcile again with the same reportId.
+
+F-04: run 41169579609 / job 124444419897 at 7748fa20 had 20 Rust PASS, four
+real Python READY timeout failures. Lifecycle source, tests, managed Python and the
+Windows workflow are byte-identical to parent 951f86b3. The workflow invokes
+python3 without explicit S2_TEST_PYTHON/provisioning. Logs do not identify the actual
+Python binary or child diagnostics; environment causation remains INCONCLUSIVE.
+Local production lifecycle-module tests with explicit Python pass; that is not a
+Windows CI reproduction or proof that the remote runner is healthy. No timeout,
+assertion, workflow or lifecycle product code was changed to mask the failure.

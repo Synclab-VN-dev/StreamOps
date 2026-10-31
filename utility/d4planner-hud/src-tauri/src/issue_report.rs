@@ -41,8 +41,11 @@ fn evidence(_destination: &std::path::Path) -> Result<Value, String> {
 pub async fn collect_issue_report(selection: Selection) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let mut state = REPORT.lock().map_err(|_| "REPORT_BUSY")?;
+        if state.as_ref().is_some_and(Report::pending_remote) {
+            return Err("REPORT_RECONCILIATION_REQUIRED".into());
+        }
         if let Some(old) = state.take() {
-            old.discard();
+            old.discard()?;
         }
         let report = Report::collect(
             &data_root()?,
@@ -73,7 +76,7 @@ pub async fn submit_issue_report(
             env::var("D4PLANNER_REPORT_ACCESS_TOKEN").map_err(|_| "AUTHENTICATION_REQUIRED")?;
         let result = report.submit(&config()?, &description, &token, consent)?;
         if let Some(old) = state.take() {
-            old.discard();
+            old.discard()?;
         }
         Ok(result)
     })
@@ -82,8 +85,12 @@ pub async fn submit_issue_report(
 }
 #[tauri::command]
 pub fn cancel_issue_report() -> Result<(), String> {
-    if let Some(old) = REPORT.lock().map_err(|_| "REPORT_BUSY")?.take() {
-        old.discard();
+    let mut state = REPORT.lock().map_err(|_| "REPORT_BUSY")?;
+    if state.as_ref().is_some_and(Report::pending_remote) {
+        return Err("REPORT_RECONCILIATION_REQUIRED".into());
+    }
+    if let Some(old) = state.take() {
+        old.discard()?;
     }
     Ok(())
 }

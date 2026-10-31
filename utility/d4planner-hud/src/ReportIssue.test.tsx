@@ -82,6 +82,7 @@ describe("Report Issue", () => {
       if (++attempts === 1) throw "GATEWAY_OFFLINE";
       return {
         issueUrl: "https://github.com/Synclab-VN-dev/StreamOps/issues/123",
+        status: "COMPLETE", reportId: preview.reportId,
       };
     });
     render(<ReportIssue bridge={bridge as never} onClose={() => {}} />);
@@ -123,4 +124,67 @@ describe("Report Issue", () => {
       (screen.getByText("Submit issue") as HTMLButtonElement).disabled,
     ).toBe(true);
   });
+});
+
+describe("review: remote outcome", () => {
+  const issueUrl = "https://github.com/Synclab-VN-dev/StreamOps/issues/123";
+  async function ready(bridge: BridgeForTest) {
+    render(<ReportIssue bridge={bridge as never} onClose={() => {}} />);
+    form();
+    fireEvent.click(screen.getByText("Preview collection"));
+    await screen.findByText("Run run-1");
+    fireEvent.click(screen.getByLabelText(/I reviewed the public/));
+    fireEvent.click(screen.getByText("Submit issue"));
+  }
+  type BridgeForTest = ReturnType<typeof vi.fn>;
+  it.each(["EXPIRED", "UPLOAD_PENDING", "UNKNOWN", undefined])("never claims uploaded for %s", async (status) => {
+    const bridge = vi.fn(async (command: string) => command === "collect_issue_report" ? preview : { issueUrl, status, reportId: preview.reportId });
+    await ready(bridge);
+    await waitFor(() => expect(screen.queryByText("Encrypting and submitting…")).toBeNull());
+    expect(screen.queryByText(/Issue submitted:/)).toBeNull();
+    if (status === "EXPIRED") {
+      expect(screen.getByText(/diagnostic asset has expired/i)).toBeTruthy();
+      expect(screen.getByRole("link").getAttribute("href")).toBe(issueUrl);
+      expect(localStorage.getItem("d4planner.pendingReportId")).toBeNull();
+    } else {
+      expect(screen.getByRole("alert")).toBeTruthy();
+      expect(localStorage.getItem("d4planner.pendingReportId")).toBe(preview.reportId);
+    }
+  });
+  it("close after an uncertain remote outcome preserves reportId and reopen resumes it", async () => {
+    const bridge = vi.fn(async (command: string) => {
+      if (command === "collect_issue_report") return preview;
+      if (command === "resume_issue_report") return { ...preview, pendingRemote: true, description: { issueType:"Other", title:"Test", actual:"Failure", expected:"Success", steps:"" } };
+      throw "UPLOAD_PENDING";
+    });
+    await ready(bridge);
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByLabelText("Close report"));
+    await waitFor(() => expect(localStorage.getItem("d4planner.pendingReportId")).toBe(preview.reportId));
+    expect(bridge.mock.calls.some(x => x[0] === "cancel_issue_report")).toBe(false);
+    cleanup();
+    render(<ReportIssue bridge={bridge as never} onClose={() => {}} />);
+    await screen.findByText("Run run-1");
+    expect(bridge).toHaveBeenCalledWith("resume_issue_report", { reportId: preview.reportId });
+    expect((screen.getByText("Preview collection") as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+it("explicit cancel discards only an unsent draft; rejected cancel keeps recovery pointer", async () => {
+  let refuse = true;
+  const bridge = vi.fn(async (command: string) => {
+    if (command === "collect_issue_report") return preview;
+    if (command === "cancel_issue_report" && refuse) throw "REPORT_RECONCILIATION_REQUIRED";
+    return null;
+  });
+  render(<ReportIssue bridge={bridge as never} onClose={() => {}} />);
+  fireEvent.click(screen.getByText("Preview collection"));
+  await screen.findByText("Run run-1");
+  fireEvent.click(screen.getByText("Discard unsent draft"));
+  await screen.findByRole("alert");
+  expect(localStorage.getItem("d4planner.pendingReportId")).toBe(preview.reportId);
+  refuse = false;
+  fireEvent.click(screen.getByText("Discard unsent draft"));
+  await waitFor(() => expect(screen.queryByText("Run run-1")).toBeNull());
+  expect(localStorage.getItem("d4planner.pendingReportId")).toBeNull();
 });

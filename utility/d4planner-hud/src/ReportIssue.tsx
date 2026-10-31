@@ -9,6 +9,7 @@ export type Selection = {
   evidenceConsent: boolean;
 };
 type Preview = {
+  pendingRemote?: boolean;
   consent?: Selection;
   description?: Description;
   reportId: string;
@@ -52,8 +53,9 @@ export function ReportIssue({
   });
   const [preview, setPreview] = useState<Preview | null>(null);
   const [state, setState] = useState<
-    "idle" | "collecting" | "review" | "submitting" | "success" | "failure"
+    "idle" | "collecting" | "review" | "submitting" | "success" | "expired" | "failure"
   >("idle");
+  const [pendingRemote, setPendingRemote] = useState(false);
   const [error, setError] = useState("");
   const [consent, setConsent] = useState(false);
   const [url, setUrl] = useState("");
@@ -63,12 +65,14 @@ export function ReportIssue({
       void bridge<Preview>("resume_issue_report", { reportId: id })
         .then((p) => {
           setPreview(p);
+          setPendingRemote(p.pendingRemote === true);
           if (p.description) setForm(p.description);
           if (p.consent) setSelection(p.consent);
           setState("review");
         })
         .catch(() => setError("Previous draft could not be restored"));
   }, [bridge]);
+  const terminal = state === "success" || state === "expired";
   const busy = state === "collecting" || state === "submitting";
   const valid =
     !!(form.title.trim() && form.actual.trim() && form.expected.trim()) &&
@@ -76,6 +80,7 @@ export function ReportIssue({
       (text) => new TextEncoder().encode(text).length <= 8000,
     );
   function select(key: keyof Selection, value: boolean) {
+    if (pendingRemote) return;
     setSelection({
       ...selection,
       [key]: value,
@@ -86,6 +91,7 @@ export function ReportIssue({
     setState("idle");
   }
   async function collect() {
+    if (pendingRemote) return;
     setState("collecting");
     setError("");
     setConsent(false);
@@ -101,27 +107,44 @@ export function ReportIssue({
   }
   async function submit() {
     if (!preview || !consent) return;
+    setPendingRemote(true);
     setState("submitting");
     setError("");
     try {
-      const r = await bridge<{ issueUrl: string }>("submit_issue_report", {
+      const r = await bridge<{ issueUrl: string; status: string; reportId: string }>("submit_issue_report", {
         reportId: preview.reportId,
         description: form,
         consent,
       });
+      if (r.reportId !== preview.reportId || !/^https:\/\/github\.com\/Synclab-VN-dev\/StreamOps\/issues\/[1-9][0-9]*$/.test(r.issueUrl ?? "")) {
+        throw "INVALID_GATEWAY_RESPONSE";
+      }
+      if (r.status !== "COMPLETE" && r.status !== "EXPIRED") {
+        throw ["PENDING", "UPLOAD_PENDING", "LOG_UPLOAD_PENDING", "ERROR"].includes(r.status)
+          ? "UPLOAD_PENDING" : "INVALID_GATEWAY_RESPONSE";
+      }
       localStorage.removeItem("d4planner.pendingReportId");
+      setPendingRemote(false);
       setUrl(r.issueUrl);
-      setState("success");
+      setState(r.status === "COMPLETE" ? "success" : "expired");
     } catch (e) {
       setError(String(e));
       setState("failure");
     }
   }
-  async function close() {
-    if (busy) return;
-    await bridge("cancel_issue_report").catch(() => undefined);
-    localStorage.removeItem("d4planner.pendingReportId");
-    onClose();
+  function close() {
+    if (!busy) onClose(); // Hiding the form never cancels a remote-uncertain report.
+  }
+  async function cancel() {
+    if (busy || pendingRemote) return;
+    try {
+      await bridge("cancel_issue_report");
+      localStorage.removeItem("d4planner.pendingReportId");
+      setPreview(null);
+      setConsent(false);
+      setState("idle");
+      setError("");
+    } catch (e) { setError(String(e)); }
   }
   return (
     <aside className="report-panel" aria-label="Report Issue">
@@ -147,7 +170,7 @@ export function ReportIssue({
         </button>
       </nav>
       {tab === "logs" ? (
-        <fieldset disabled={busy || state === "success"}>
+        <fieldset disabled={busy || terminal || pendingRemote}>
           <legend>Sources for this run</legend>
           {(
             [
@@ -184,7 +207,7 @@ export function ReportIssue({
           )}
         </fieldset>
       ) : (
-        <fieldset disabled={busy || state === "success"}>
+        <fieldset disabled={busy || terminal || pendingRemote}>
           <legend>Tell us what happened</legend>
           <label>
             Issue Type
@@ -233,9 +256,9 @@ export function ReportIssue({
           </p>
         </fieldset>
       )}
-      {state !== "success" && (
+      {!terminal && (
         <button
-          disabled={busy || (selection.evidence && !selection.evidenceConsent)}
+          disabled={busy || pendingRemote || (selection.evidence && !selection.evidenceConsent)}
           onClick={() => void collect()}
         >
           Preview collection
@@ -263,6 +286,8 @@ export function ReportIssue({
           )}
         </section>
       )}
+      {pendingRemote && <p role="note">Submission outcome is pending. Close keeps this report for retry; collecting or discarding is disabled until reconciliation.</p>}
+      {preview && !terminal && <button disabled={busy || pendingRemote} onClick={() => void cancel()}>Discard unsent draft</button>}
       {error && (
         <p role="alert">
           {error}. Draft and selections are retained. Retry when the connection
@@ -272,9 +297,9 @@ export function ReportIssue({
       {state === "submitting" && (
         <p role="status">Encrypting and submitting…</p>
       )}
-      {state === "success" ? (
+      {terminal ? (
         <p role="status">
-          Issue submitted:{" "}
+          {state === "expired" ? "Issue exists; diagnostic asset has expired. No logs were uploaded again:" : "Issue submitted:"}{" "}
           <a href={url} target="_blank" rel="noreferrer">
             {url}
           </a>

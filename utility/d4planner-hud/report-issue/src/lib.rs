@@ -91,6 +91,7 @@ pub struct Report {
     dir: PathBuf,
     sealed: Option<PathBuf>,
     lock: Option<File>,
+    remote_resolved: bool,
 }
 impl Drop for Report {
     fn drop(&mut self) {
@@ -117,12 +118,28 @@ fn private_dir(path: &Path) -> Result<()> {
     d4planner_runtime_logging::private_dir(path).map_err(error)
 }
 impl Report {
-    pub fn discard(mut self) {
+    pub fn pending_remote(&self) -> bool {
+        // description is persisted before the first request. Treat legacy sealed
+        // drafts with a description as uncertain too, including filesystem errors.
+        !self.remote_resolved
+            && self.sealed.is_some()
+            && self
+                .dir
+                .join("description.json")
+                .try_exists()
+                .unwrap_or(true)
+    }
+    pub fn discard(mut self) -> Result<()> {
+        if self.pending_remote() {
+            return Err("REPORT_RECONCILIATION_REQUIRED".into());
+        }
         self.sealed = None;
         drop(self);
+        Ok(())
     }
     pub fn restored_preview(&self) -> Value {
         let mut preview = self.preview.clone();
+        preview["pendingRemote"] = json!(self.pending_remote());
         if let Ok(bytes) = fs::read(self.dir.join("description.json")) {
             if bytes.len() <= 30_000 {
                 if let Ok(d) = serde_json::from_slice::<Description>(&bytes) {
@@ -180,6 +197,7 @@ impl Report {
             sealed: Some(dir.join("report.zip.age")),
             dir,
             lock: Some(lock),
+            remote_resolved: false,
         })
     }
     pub fn collect(
@@ -222,6 +240,11 @@ impl Report {
             if fs::read(p.join("owner.json")).ok().as_deref() != Some(b"d4planner-report/v1") {
                 continue;
             }
+            if p.join("sealed.json").is_file()
+                && p.join("description.json").try_exists().unwrap_or(true)
+            {
+                return Err("REPORT_RECONCILIATION_REQUIRED".into());
+            }
             if let Ok(lock) = OpenOptions::new()
                 .read(true)
                 .write(true)
@@ -257,6 +280,7 @@ impl Report {
             preview: Value::Null,
             sealed: None,
             lock: Some(lock),
+            remote_resolved: false,
         };
         create(&report.dir.join("owner.json"))?
             .write_all(b"d4planner-report/v1")
@@ -396,9 +420,11 @@ impl Report {
                 return Err("REPORT_TOO_LARGE".into());
             }
             let metadata = json!({"preview":self.preview,"cipherSha256":hash(&fs::read(&sealed).map_err(error)?),"recipientSha256":hash(config.recipient.as_bytes())});
-            create(&self.dir.join("sealed.json"))?
+            let mut metadata_file = create(&self.dir.join("sealed.json"))?;
+            metadata_file
                 .write_all(&serde_json::to_vec(&metadata).map_err(error)?)
                 .map_err(error)?;
+            metadata_file.sync_all().map_err(error)?;
             // No raw source snapshots retained after encryption. Ciphertext supports restart/reconcile.
             for name in ["logs", "evidence"] {
                 let p = self.dir.join(name);
@@ -420,11 +446,10 @@ impl Report {
         }
         Ok(json!({"reportId":self.id,"sha256":hash(&bytes),"bytes":bytes.len()}))
     }
-    pub fn submit(
+    fn prepare_submission(
         &mut self,
         config: &Config,
         description: &Description,
-        access_token: &str,
         consent: bool,
     ) -> Result<Value> {
         if !consent {
@@ -438,9 +463,26 @@ impl Report {
                 return Err("SUBMITTED_DRAFT_IMMUTABLE".into());
             }
         } else {
-            create(&draft)?.write_all(&serialized).map_err(error)?;
+            let mut file = create(&draft)?;
+            file.write_all(&serialized).map_err(error)?;
+            file.sync_all().map_err(error)?;
         }
-        let artifact = self.encrypt(config)?;
+        self.encrypt(config)
+    }
+
+    fn accept_response(&mut self, value: Value) -> Result<Value> {
+        validate_outcome(&value, &self.id)?;
+        self.remote_resolved = true;
+        Ok(value)
+    }
+    pub fn submit(
+        &mut self,
+        config: &Config,
+        description: &Description,
+        access_token: &str,
+        consent: bool,
+    ) -> Result<Value> {
+        let artifact = self.prepare_submission(config, description, consent)?;
         let client = reqwest::blocking::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .timeout(std::time::Duration::from_secs(60))
@@ -483,20 +525,7 @@ impl Report {
             return Err("INVALID_GATEWAY_RESPONSE".into());
         }
         let value: Value = serde_json::from_slice(&bytes).map_err(error)?;
-        let url = value["issueUrl"]
-            .as_str()
-            .ok_or("INVALID_GATEWAY_RESPONSE")?;
-        if !url.starts_with("https://github.com/Synclab-VN-dev/StreamOps/issues/")
-            || !url
-                .rsplit('/')
-                .next()
-                .unwrap_or("")
-                .bytes()
-                .all(|b| b.is_ascii_digit())
-        {
-            return Err("INVALID_GATEWAY_RESPONSE".into());
-        }
-        Ok(value)
+        self.accept_response(value)
     }
 }
 
@@ -563,7 +592,7 @@ mod tests {
         drop(report);
         let mut resumed = Report::resume(&data, &id).unwrap();
         assert_eq!(resumed.encrypt(&config).unwrap(), meta);
-        resumed.discard();
+        resumed.discard().unwrap();
         drop(session);
         fs::remove_dir_all(data).unwrap();
     }
@@ -582,7 +611,7 @@ mod tests {
                 max_bytes: MAX
             })
             .is_err());
-        r.discard();
+        r.discard().unwrap();
         drop(session);
         fs::remove_dir_all(data).unwrap();
     }
@@ -604,7 +633,7 @@ mod tests {
         assert_eq!(r.preview["sourceVersion"], "source-test");
         assert_eq!(r.preview["completeness"], "EMPTY");
         assert_eq!(r.preview["files"], json!([]));
-        r.discard();
+        r.discard().unwrap();
         drop(session);
         fs::remove_dir_all(data).unwrap();
     }
@@ -636,11 +665,11 @@ mod negative_tests {
         fs::write(logs.join("be.log"), b"PRIVATE_CANARY_NOT_JSON").unwrap();
         let r = Report::collect(&p, &s.id, selected(), |_| panic!()).unwrap();
         assert_eq!(r.preview["files"].as_array().unwrap().len(), 1);
-        r.discard();
+        r.discard().unwrap();
         fs::remove_file(logs.join("fe.log")).unwrap();
         let r = Report::collect(&p, &s.id, selected(), |_| panic!()).unwrap();
         assert_eq!(r.preview["files"][0]["status"], "UNAVAILABLE");
-        r.discard();
+        r.discard().unwrap();
         drop(s);
         fs::remove_dir_all(p).unwrap();
     }
@@ -675,7 +704,7 @@ mod negative_tests {
         };
         assert!(r.encrypt(&c).is_err());
         assert!(Report::resume(&p, &r.id).is_err());
-        r.discard();
+        r.discard().unwrap();
         drop(s);
         fs::remove_dir_all(p).unwrap();
     }
@@ -703,7 +732,7 @@ mod evidence_failure_test {
         .unwrap();
         assert_eq!(r.preview["files"][0]["status"], "UNAVAILABLE");
         assert_eq!(r.preview["bytes"], 0);
-        r.discard();
+        r.discard().unwrap();
         fs::remove_dir_all(data).unwrap();
     }
 }
@@ -779,9 +808,157 @@ mod raw_event_contract_tests {
                     fs::read(report.dir.join("evidence/events.jsonl")).unwrap(),
                     bytes
                 );
-                report.discard();
+                report.discard().unwrap();
             }
             fs::remove_dir_all(data).unwrap();
+        }
+    }
+}
+
+#[cfg(test)]
+mod pending_review_tests {
+    use super::*;
+    #[test]
+    fn cancel_cannot_destroy_a_remote_uncertain_report() {
+        let data = std::env::temp_dir().join(format!("pending-review-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&data).unwrap();
+        let mut r = Report::collect(
+            &data,
+            "no-logs",
+            Selection {
+                fe: false,
+                be: false,
+                rulekit: false,
+                evidence: false,
+                evidence_consent: false,
+            },
+            |_| panic!(),
+        )
+        .unwrap();
+        let config = Config {
+            recipient: age::x25519::Identity::generate().to_public().to_string(),
+            gateway: "https://example.invalid".into(),
+            max_bytes: MAX,
+        };
+        r.encrypt(&config).unwrap();
+        let dir = r.dir.clone();
+        fs::write(dir.join("description.json"), b"{}").unwrap();
+        let before = fs::read(dir.join("report.zip.age")).unwrap();
+        let _ = r.discard();
+        assert_eq!(fs::read(dir.join("report.zip.age")).unwrap(), before);
+        fs::remove_dir_all(data).unwrap();
+    }
+}
+
+fn validate_outcome(value: &Value, id: &str) -> Result<()> {
+    let url = value["issueUrl"]
+        .as_str()
+        .ok_or("INVALID_GATEWAY_RESPONSE")?;
+    let number = url
+        .strip_prefix("https://github.com/Synclab-VN-dev/StreamOps/issues/")
+        .ok_or("INVALID_GATEWAY_RESPONSE")?;
+    if number.is_empty()
+        || !number.bytes().all(|b| b.is_ascii_digit())
+        || number.parse::<u64>().unwrap_or(0) == 0
+        || value["reportId"] != id
+    {
+        return Err("INVALID_GATEWAY_RESPONSE".into());
+    }
+    match value["status"].as_str() {
+        Some("COMPLETE" | "EXPIRED") => Ok(()),
+        Some("PENDING" | "UPLOAD_PENDING" | "LOG_UPLOAD_PENDING" | "ERROR") => {
+            Err("UPLOAD_PENDING".into())
+        }
+        _ => Err("INVALID_GATEWAY_RESPONSE".into()),
+    }
+}
+
+#[cfg(test)]
+mod outcome_review_tests {
+    use super::*;
+    fn selection() -> Selection {
+        Selection {
+            fe: false,
+            be: false,
+            rulekit: false,
+            evidence: false,
+            evidence_consent: false,
+        }
+    }
+    #[test]
+    fn uncertain_submission_restart_recollect_cancel_and_terminal_reconciliation() {
+        for status in ["COMPLETE", "EXPIRED"] {
+            let data = std::env::temp_dir().join(format!("retry-review-{}", uuid::Uuid::new_v4()));
+            fs::create_dir(&data).unwrap();
+            let mut r = Report::collect(&data, "no-logs", selection(), |_| panic!()).unwrap();
+            let config = Config {
+                recipient: age::x25519::Identity::generate().to_public().to_string(),
+                gateway: "https://example.invalid".into(),
+                max_bytes: MAX,
+            };
+            let description = Description {
+                issue_type: "Other".into(),
+                title: "synthetic".into(),
+                actual: "offline".into(),
+                expected: "retry".into(),
+                steps: "".into(),
+            };
+            let artifact = r.prepare_submission(&config, &description, true).unwrap();
+            let id = r.id.clone();
+            let dir = r.dir.clone();
+            let ciphertext = fs::read(dir.join("report.zip.age")).unwrap();
+            // Network loss after either remote POST: no terminal response reached client.
+            assert!(r.pending_remote());
+            drop(r); // application restart releases only lock, not ciphertext
+            assert!(Report::collect(&data, "no-logs", selection(), |_| panic!()).is_err());
+            let r = Report::resume(&data, &id).unwrap();
+            assert_eq!(r.restored_preview()["pendingRemote"], true);
+            assert_eq!(r.restored_preview()["description"]["title"], "synthetic");
+            assert!(r.discard().is_err());
+            let mut r = Report::resume(&data, &id).unwrap();
+            assert_eq!(
+                r.prepare_submission(&config, &description, true).unwrap(),
+                artifact
+            );
+            assert_eq!(fs::read(dir.join("report.zip.age")).unwrap(), ciphertext);
+            for response in [
+                json!({"status":"UPLOAD_PENDING"}),
+                json!({"status":"UNKNOWN"}),
+                json!({"status":"COMPLETE","reportId":"foreign"}),
+            ] {
+                assert!(r.accept_response(response).is_err());
+                assert!(r.pending_remote());
+            }
+            r.accept_response(json!({"status":status,"reportId":id,"issueUrl":"https://github.com/Synclab-VN-dev/StreamOps/issues/123"})).unwrap();
+            assert!(!r.pending_remote());
+            r.discard().unwrap();
+            assert!(!dir.exists());
+            let draft = Report::collect(&data, "no-logs", selection(), |_| panic!()).unwrap();
+            let dir = draft.dir.clone();
+            draft.discard().unwrap();
+            assert!(!dir.exists());
+            fs::remove_dir_all(data).unwrap();
+        }
+    }
+    #[test]
+    fn outcome_contract_requires_terminal_status_identity_and_valid_issue_url() {
+        for status in [
+            "COMPLETE",
+            "EXPIRED",
+            "UPLOAD_PENDING",
+            "PENDING",
+            "ERROR",
+            "UNKNOWN",
+        ] {
+            let value = json!({"status":status,"reportId":"same","issueUrl":"https://github.com/Synclab-VN-dev/StreamOps/issues/123"});
+            assert_eq!(
+                validate_outcome(&value, "same").is_ok(),
+                matches!(status, "COMPLETE" | "EXPIRED")
+            );
+            assert!(validate_outcome(&value, "different").is_err());
+        }
+        for suffix in ["", "0", "../123", "123?token=private"] {
+            assert!(validate_outcome(&json!({"status":"COMPLETE","reportId":"same","issueUrl":format!("https://github.com/Synclab-VN-dev/StreamOps/issues/{suffix}")}),"same").is_err());
         }
     }
 }
