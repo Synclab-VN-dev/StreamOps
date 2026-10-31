@@ -9,6 +9,9 @@ D4Planner is an intentionally independent bounded context for Diablo IV build
 capture. It must not depend on `streamops.server` or modify the Diablo IV game
 directory.
 
+Release 1's Equipment Target, assessment, and durable HUD commit domain is
+documented in [docs/release1-equipment-domain.md](docs/release1-equipment-domain.md).
+
 ## Runtime flow
 
 ```text

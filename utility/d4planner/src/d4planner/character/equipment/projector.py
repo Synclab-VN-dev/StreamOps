@@ -267,6 +267,17 @@ class EquipmentProjector:
         checkpoint = self.repository.checkpoint()
         if checkpoint and checkpoint[0] == session and seq <= checkpoint[1]:
             return
+        if checkpoint and checkpoint[0] != session:
+            # Parser context is session-owned. Carrying an unfinished tooltip or
+            # pending unequip into a new capture session can assign ownership to
+            # the wrong character/session. Durable confirmed equipment remains;
+            # only uncommitted stream context is discarded.
+            self.context = EquipmentContext()
+            self._diag(
+                "session.context_reset",
+                EquipmentLine("", seq, ts, session),
+                previousSessionId=checkpoint[0],
+            )
 
         text = normalize(str((event.get("data") or {}).get("text") or ""))
         line = EquipmentLine(text, seq, ts, session)

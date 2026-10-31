@@ -7,12 +7,12 @@ name = "d4planner"
 version = "0.2.0"
 description = "Diablo IV NVDA capture runtime and CLI for StreamOps."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["jsonschema>=4.23,<5"]
 
 [project.optional-dependencies]
 # Wheel acceptance runs without build isolation, so its backend must also be
 # installed in the test interpreter (PEP 517's temporary backend is not enough).
-dev = ["pytest>=9.1.1", "jsonschema>=4.23,<5", "setuptools>=75", "wheel"]
+dev = ["pytest>=9.1.1", "setuptools>=75", "wheel"]
 
 [project.scripts]
 d4planner = "d4planner.cli:main"
