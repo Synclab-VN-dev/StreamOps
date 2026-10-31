@@ -1,6 +1,6 @@
 # D4Planner Release 1 integration contract
 
-Contract revision: `d4planner-r1-contract/1.0.0-candidate.5`
+Contract revision: `d4planner-r1-contract/1.0.0-candidate.6`
 
 This directory is the versioned S1 handoff for issue #138 and scope baseline
 `R1-EQUIPMENT-20261025`. It specifies contracts only; it does not implement a
@@ -14,7 +14,9 @@ Windows process wrapper, WebSocket server, assessment runtime, or HUD.
 | `interfaces.ts` | Language-neutral ports; opaque payload references to schemas, not duplicate wire types |
 | `schemas/target.schema.json` | D4Planner target envelope and assessment policy; references canonical Rule Kit `d4-build/v1` unchanged |
 | `schemas/hud.schema.json` | Committed Equipment-only HUD read model |
-| `schemas/ws.schema.json` | Loopback WebSocket application messages |
+| `schemas/ws.schema.json` | Notification-only authenticated loopback messages |
+| `db-first.md`, `schemas/hud-db.schema.json`, `hud-db.sql` | Public SQLite projection and compatibility |
+| `schemas/command.schema.json` | Managed BE IPC business commands |
 | `schemas/process-event.schema.json` | Reviewable lifecycle trace events |
 | `fixtures/` | Synthetic examples and independent truth/sequence vectors |
 | `ui-data-dictionary.md` | UI field provenance and MagicPath delta constraints |
@@ -69,13 +71,20 @@ schema validator dependency must be installed in that harness's private venv;
 removing them would restore the known collection failure. They are not a change
 to production process lifecycle.
 
-## Documentation cleanup — 2026-10-28
+## Historical documentation cleanup — 2026-10-28
 
 Wire revision remains candidate.5: no schema, fixture, scoring policy, API or
 serialized required-field changes. Removed incomplete duplicate payload sketches
 from interfaces, consolidated history below, and archived review-run evidence in
 PR comments. Target-entry minimum length and content-hash semantics are unchanged;
 S4 producer failures belong to #147, not a schema relaxation.
+
+## 1.0.0-candidate.6 — 2026-10-31
+
+D5 replaces full-HUD WS with a versioned public SQLite projection, notification-only
+WS and correlated Target commands on the owned BE pipe. FE viewer-only is independent
+of BE readiness. See [normative DB-first contract](db-first.md). D1–D4 and the eight
+Rule Kit Application APIs are unchanged. Runtime gates require downstream evidence.
 
 <details>
 <summary>Contract candidate history</summary>

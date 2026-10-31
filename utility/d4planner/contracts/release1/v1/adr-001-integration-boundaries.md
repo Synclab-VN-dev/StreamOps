@@ -1,28 +1,105 @@
 # ADR-001: Release 1 integration boundaries and lifecycle
 
 - Status: `CANDIDATE`, technical review corrections complete; downstream evidence is recorded in `decisions-and-dependencies.md`
-- Contract: `d4planner-r1-contract/1.0.0-candidate.5`
+- Contract: `d4planner-r1-contract/1.0.0-candidate.6`
 - Scope baseline: `R1-EQUIPMENT-20261025`
 - References: Epic #137, S1 #138
 
 ## Decision
 
-The native FE owns one managed Backend child. The Backend owns one managed Rule
+The native FE optionally owns one managed Backend child in integrated mode.
+Viewer-only opens without BE/Node/WS credentials or readiness; BE startup failure
+never prevents the WebView from opening. The Backend owns one managed Rule
 Kit worker child. Each owner uses its own Template Method wrapper and an injected
 process driver. Wrappers own lifecycle only. Target storage, assessment,
 persistence, WebSocket transport, Rule Kit business calls, and rendering remain
 separate ports in `interfaces.ts`.
 
 ```mermaid
-flowchart LR
-  FE[Native FE] -->|BackendProcessWrapper| BE[D4Planner BE]
-  BE -->|RuleKitProcessWrapper| RK[Rule Kit worker]
-  BE --> TR[TargetRepository]
-  BE --> AS[EquipmentAssessmentService]
-  BE --> DB[(BE durable state)]
-  FE <-->|authenticated loopback WS| WS[BE WS transport]
-  AS -. only when applicable .-> RC[RuleKitClient: existing 8 APIs]
-  RC --> RK
+flowchart TB
+  GAME["Diablo IV / Equipment capture source"]
+  TARGET_JSON[("Target Build JSON folder")]
+  DB[("DataDir/hud.sqlite3 - versioned durable HUD read-model")]
+
+  subgraph LAUNCH["Launcher / Windows packaging - PR #150 - outside FE, BE, Rule Kit"]
+    direction TB
+    USER["User clicks desktop / Start Menu shortcut"]
+    LAUNCHER_ROOT["D4Planner.exe - installed root launcher"]
+    LAUNCHER_RUN["release1/native-launcher/src/main.rs - main / run / windows::launch"]
+    USER --> LAUNCHER_ROOT
+    LAUNCHER_ROOT --> LAUNCHER_RUN
+  end
+
+  subgraph FE["FE - utility/d4planner-overlay-poc - Tauri Rust and React"]
+    direction TB
+    FE_EXE["app/d4planner-fe.exe - native FE executable"]
+    FE_MAIN["src-tauri/src/main.rs - main()"]
+    FE_RUN["src-tauri/src/lib.rs - run() / Tauri Builder / setup()"]
+    WEBVIEW["Tauri main WebView window"]
+    TS_ENTRY["src/main.tsx - renderer bootstrap"]
+    TS_MOUNT["src/app-entry.tsx - mount()"]
+    HUD["React HUD - src/App.tsx"]
+    CONTROLLER["HUD controller - src/use-hud-controller.ts"]
+    WS_CLIENT["WebSocket CLIENT - src/hud-data-source.ts"]
+    TAURI["Native Tauri commands - src-tauri/src/lib.rs"]
+    PROC_WRAPPER["BackendProcessWrapper - src-tauri/src/backend_process.rs"]
+    DB_READER["SQLite read-only reader in Tauri Rust - PLANNED S6"]
+    FE_EXE --> FE_MAIN
+    FE_MAIN --> FE_RUN
+    FE_RUN -->|Tauri native composition and setup| TAURI
+    FE_RUN -->|create WebView window| WEBVIEW
+    WEBVIEW -.->|load bundled frontend assets| TS_ENTRY
+    TS_ENTRY --> TS_MOUNT
+    TS_MOUNT --> HUD
+    HUD -->|user intent| CONTROLLER
+    CONTROLLER -->|rendered model| HUD
+    WS_CLIENT -->|notify only after D5 migration| CONTROLLER
+    CONTROLLER -.->|Tauri invoke - lifecycle, DB-read, Target command| TAURI
+    TAURI --> PROC_WRAPPER
+    TAURI --> DB_READER
+  end
+
+  subgraph BE["BE - utility/d4planner/src/d4planner - Python"]
+    direction TB
+    BE_ENTRY["Single process/control entrypoint - managed_backend.py"]
+    BE_ROOT["Composition root - production.py / ProductionBackendRuntime"]
+    CAPTURE["RepositoryEquipmentEventSource + capture_adapter.py"]
+    TARGET["TargetRepository + TargetValidator"]
+    ASSESS["EquipmentAssessmentCoordinator + AssessmentService"]
+    WRITER["RuntimeHudStore / DurableHudStore - SQLite writer"]
+    HUB["HudHub - transport/core.py"]
+    WS_SERVER["WebSocket SERVER - transport/websocket.py / D4PlannerWebSocketServer"]
+    RK_MANAGER["RuleKitRuntimeService + RuleKitProcessWrapper + RuleKitClient"]
+    WORKER["Managed Node worker.js - relocation to src/d4planner/rulekit planned S3"]
+    BE_ENTRY -->|create_runtime / start / stop / handle_control| BE_ROOT
+    BE_ROOT --> CAPTURE
+    BE_ROOT --> TARGET
+    BE_ROOT --> RK_MANAGER
+    BE_ROOT --> WS_SERVER
+    CAPTURE -->|current equipment| ASSESS
+    TARGET -->|validated Target| ASSESS
+    ASSESS -->|score / binding / HUD projection| WRITER
+    WRITER -->|after successful commit| HUB
+    HUB -->|publish revision - PLANNED D5| WS_SERVER
+    RK_MANAGER -.->|private JSON-lines stdin/stdout IPC| WORKER
+  end
+
+  subgraph RK["D4 Rule Kit - utility/d4-rulekit - Node.js library"]
+    direction TB
+    RK_API["8 official Rule Kit Application APIs"]
+    RK_CORE["Provider / Browser Infrastructure / Snapshot compatibility"]
+    RK_API --> RK_CORE
+  end
+
+  LAUNCHER_RUN -.->|OS spawn app/d4planner-fe.exe with bootstrap env + DataDir| FE_EXE
+  GAME -.->|captured observations| CAPTURE
+  TARGET_JSON -.->|safe file read and validate| TARGET
+  PROC_WRAPPER -.->|OS spawn and owned stdin/stdout; lifecycle EXISTING; business IPC PLANNED| BE_ENTRY
+  WORKER -->|official application API calls only| RK_API
+  WRITER ==>|atomic SQLite COMMIT| DB
+  DB -.->|SQLite query-only read; no BE runtime dependency - PLANNED| DB_READER
+  WS_CLIENT -.->|connect / authenticate using loopback ws URL| WS_SERVER
+  WS_SERVER -.->|post-commit revision notification only - PLANNED| WS_CLIENT
 ```
 
 The Release 1 equipment score does not require full Character Stats or a Rule
@@ -33,7 +110,8 @@ compatibility boundary.
 BE owns capture, durable state, Equipment assessment and preparation of Build
 JSON. Rule Kit owns snapshot compatibility, registry, provider/profile resolution
 and Character Stats formula execution. BE calls Rule Kit APIs and forwards their
-results; FE receives BE data only and never reads SQLite or calls Rule Kit directly.
+results; Tauri reads the public SQLite projection read-only; React never opens SQLite
+or calls Rule Kit directly.
 This ownership clarification adds no Application API or canonical schema fields.
 
 The approved design reference and UI field mapping are maintained in
@@ -198,118 +276,12 @@ update may transition STARTUP/TARGET_ONLY to BOUND when that character is first
 identified, or replace the active character with a new BOUND/NO_DATA context;
 the previous character's score/equipment is cleared in that same revision.
 
-## WebSocket protocol and revision boundary
+## D5 DB-first, notification and command boundaries
 
-The server binds loopback only, rejects unapproved `Origin`, requires the private
-bootstrap credential in `hello`, caps frame/message size, connection count,
-rate, and pending outbound messages, and redacts credentials. TLS is not a
-substitute for this local authentication model and LAN exposure is prohibited by
-default.
-
-```mermaid
-sequenceDiagram
-  participant FE
-  participant WS as BE WebSocket
-  participant DB as BE durable state
-  FE->>WS: hello(credential, lastSeen.hudRevision)
-  WS-->>FE: hello.accepted(generation, limits)
-  FE->>WS: target.list.request
-  WS-->>FE: target.list.result(valid + safe invalid entries)
-  FE->>WS: hud.snapshot.request(DISCOVER_ACTIVE_CONTEXT or RESYNC_KNOWN_CONTEXT)
-  WS->>DB: begin consistent read / establish subscription boundary
-  DB-->>WS: latest committed snapshot R
-  WS-->>FE: authoritative hud.snapshot(R, correlation, subscription)
-  Note over WS: subscription includes commits after R
-  DB-->>WS: commit R+1
-  WS-->>FE: hud.update(previous=R, hud=R+1)
-```
-
-On every `hello.accepted`, FE compares its retained
-`HudReconnectCheckpoint` with the accepted runtime instance and backend
-generation:
-
-- If both values match, this is `SAME_BACKEND_RECONNECT`, not a backend
-  restart. FE preserves `hudRevisionHighWater` and the known context needed for
-  resync, but discards the old connection's subscription, pending correlation
-  and recovery timers. The retained assessment is immediately non-current and
-  must not render as CURRENT until an authoritative snapshot is accepted. FE
-  requests `RESYNC_KNOWN_CONTEXT` with `minimumHudRevision` equal to the retained
-  high-water mark.
-- If either value changes, this is `NEW_BACKEND_IDENTITY`. FE invalidates the
-  old checkpoint, context, assessment, subscription/correlation and recovery
-  state, permits the new backend revision sequence to start from zero, and sends
-  fresh `DISCOVER_ACTIVE_CONTEXT` with reason `BACKEND_GENERATION_CHANGED` or
-  `BACKEND_IDENTITY_CHANGED`, matching the changed identity component.
-
-The same-backend high-water mark is monotonic across transport connections. A
-snapshot below it is stale; an equal snapshot may confirm the binding and
-establish a new subscription idempotently; a newer snapshot may advance state.
-Traffic carrying an old subscription/correlation is rejected even when the
-backend identity is unchanged. After a backend identity change, traffic from
-the prior instance/generation is rejected. This prevents reconnect from
-relabeling an old score while still allowing a restarted backend to use a lower
-revision.
-
-Snapshot and subscription share one durable revision boundary: take the latest
-committed R and register delivery for commits `>R` without a gap. Push occurs
-only after commit. Incremental updates require matching runtime instance,
-generation, subscription and `previousHudRevision == current`; a gap starts a
-correlated snapshot request. A contiguous committed update may carry a valid
-single-active-context transition. The HUD binding inside that update must remain
-self-consistent, and character/Target changes invalidate prior assessment data.
-
-An authoritative full snapshot follows one of two explicit request modes:
-
-- `DISCOVER_ACTIVE_CONTEXT` is used after a fresh hello/new generation when FE
-  does not know the current character/Target. It contains no expected IDs and
-  accepts the BE's authoritative STARTUP/TARGET_ONLY/CHARACTER_ONLY/BOUND or
-  TARGET_UNAVAILABLE context for the single active character.
-- `RESYNC_KNOWN_CONTEXT` carries a discriminated expected state and exact known
-  character/Target/selection binding. Its nulls assert known absence; they are
-  not wildcards.
-
-Both modes require the pending correlation, matching runtime instance and
-generation, and a revision at least the request minimum and current local
-revision. These guards are checked before interpreting a context difference, so
-a stale or unrelated snapshot cannot trigger recovery. Equal known-context
-resync confirms/resubscribes idempotently.
-
-If a fresh, correlated `RESYNC_KNOWN_CONTEXT` snapshot has a different valid
-context, FE treats it as evidence that the single active context changed while
-updates were missed. FE does not apply that snapshot directly. It consumes the
-old request/subscription, marks the old assessment non-renderable, and sends a
-new `DISCOVER_ACTIVE_CONTEXT` request with a fresh correlation, reason
-`KNOWN_CONTEXT_CHANGED`, attempt 1, and `minimumHudRevision` at least the
-mismatching authoritative revision. Until discovery succeeds, the old identity
-may remain labelled as stale but its score/equipment cannot be shown or relabelled.
-
-Discovery has a positive operation timeout and finite `maxDiscoveryAttempts`
-from `SnapshotRecoveryPolicy`; these are distinct from WS session/lease lifetime
-and are deployment configuration, not a polling interval. A timeout consumes
-that pending correlation. A retry uses reason `TIMEOUT_RETRY`, increments
-`attempt`, and preserves the revision floor. Exhaustion stops issuing requests
-for that authenticated session and leaves assessment invalid; it cannot form an
-infinite resync loop. A later authenticated connection starts a new bounded
-discovery episode. Late responses for consumed correlations, wrong generation,
-wrong instance, attempts beyond budget, or responses below the floor cannot
-roll state back.
-
-Successful discovery atomically installs the new character/Target/binding,
-assessment and subscription. Incremental updates then resume only when they
-join that subscription and revision. The closed HUD schema and semantic
-validation ensure the selected Target, character and assessment binding agree.
-A newly accepted BE generation resets local transport/recovery state before its
-first discovery snapshot.
-
-Target selection carries listed hash/revision. The activation commit increments
-selection and HUD revision atomically; any computation for the prior binding is
-dropped. Reconnect sends last seen revision, but delivery is at-least-once and
-does not promise exactly-once. Durable snapshot/resync is authoritative.
-
-A slow consumer queue coalesces HUD updates to newest state then emits
-`resync.required`; if it remains over limit the connection closes. Target
-results/errors are never silently dropped. Ping/pong checks connection liveness
-only and is not a data polling loop.
+The normative [SQLite/IPC specification](db-first.md) supersedes candidate.5's
+full-HUD WebSocket transport and backend-generation revision resets. WS only
+invalidates the DB read. Target list/select uses the same managed process pipe
+as lifecycle control. No independent business entrypoint or DB write channel.
 
 ## Performance and operational evidence
 
@@ -317,7 +289,7 @@ Latency policy is `ASAP`: once evidence is sufficient, assess, commit, push and
 render as soon as correctness permits. No deliberate delay, periodic polling or
 batch timer is introduced. Bounded queues, coalescing and backpressure remain;
 coalescing may discard superseded HUD revisions, never commands/activation
-results. Record capture → confirmed evidence → assessment → commit → WS receipt
+results. Record capture → confirmed evidence → assessment → commit → WS notification → native DB read
 → render timestamps and report P50/P95 when runtime exists. Rule Kit latency is
 measured separately when called. S1 defines no fixed millisecond SLA and needs
 no further Owner threshold decision.

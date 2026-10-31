@@ -1,152 +1,150 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://streamops.local/schemas/d4planner-ws/v1",
-  "title": "D4Planner Release 1 loopback WebSocket messages",
+  "$id": "https://streamops.local/schemas/d4planner-notify/v1",
   "oneOf": [
-    { "$ref": "#/$defs/hello" },
-    { "$ref": "#/$defs/helloAccepted" },
-    { "$ref": "#/$defs/targetListRequest" },
-    { "$ref": "#/$defs/targetListResult" },
-    { "$ref": "#/$defs/targetSelectRequest" },
-    { "$ref": "#/$defs/targetSelectResult" },
-    { "$ref": "#/$defs/snapshotRequest" },
-    { "$ref": "#/$defs/snapshot" },
-    { "$ref": "#/$defs/update" },
-    { "$ref": "#/$defs/resyncRequired" },
-    { "$ref": "#/$defs/error" },
-    { "$ref": "#/$defs/ping" },
-    { "$ref": "#/$defs/pong" }
+    {
+      "$ref": "#/$defs/hello"
+    },
+    {
+      "$ref": "#/$defs/hello.accepted"
+    },
+    {
+      "$ref": "#/$defs/hud.committed"
+    },
+    {
+      "$ref": "#/$defs/error"
+    }
   ],
   "$defs": {
-    "id": { "type": "string", "minLength": 1, "maxLength": 160 },
-    "targetId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$" },
-    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "hello": {
-      "type": "object", "additionalProperties": false,
-      "required": ["protocolVersion", "messageId", "type", "correlationId", "backendGeneration", "credential", "origin", "lastSeen"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocolVersion",
+        "type",
+        "messageId",
+        "credential",
+        "origin"
+      ],
       "properties": {
-        "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "const": "hello" }, "correlationId": { "type": "null" }, "backendGeneration": { "type": "integer", "minimum": 1 },
-        "credential": { "type": "string", "minLength": 32, "maxLength": 512 }, "origin": { "type": "string", "minLength": 1 },
-        "lastSeen": { "type": "object", "additionalProperties": false, "required": ["hudRevision"], "properties": { "hudRevision": { "type": ["integer", "null"], "minimum": 0 } } }
+        "protocolVersion": {
+          "const": "d4planner-notify/v1"
+        },
+        "type": {
+          "const": "hello"
+        },
+        "messageId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "credential": {
+          "type": "string",
+          "minLength": 32,
+          "maxLength": 512
+        },
+        "origin": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
       }
     },
-    "helloAccepted": {
-      "type": "object", "additionalProperties": false,
-      "required": ["protocolVersion", "messageId", "type", "correlationId", "runtimeInstanceId", "backendGeneration", "sessionId", "limits"],
+    "hello.accepted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocolVersion",
+        "type",
+        "messageId",
+        "correlationId"
+      ],
       "properties": {
-        "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "const": "hello.accepted" }, "correlationId": { "$ref": "#/$defs/id" }, "runtimeInstanceId": { "$ref": "#/$defs/id" }, "backendGeneration": { "type": "integer", "minimum": 1 }, "sessionId": { "$ref": "#/$defs/id" },
-        "limits": { "type": "object", "additionalProperties": false, "required": ["maxMessageBytes", "maxPendingMessages"], "properties": { "maxMessageBytes": { "type": "integer", "minimum": 1024 }, "maxPendingMessages": { "type": "integer", "minimum": 1 } } }
+        "protocolVersion": {
+          "const": "d4planner-notify/v1"
+        },
+        "type": {
+          "const": "hello.accepted"
+        },
+        "messageId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "correlationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
       }
     },
-    "targetListRequest": { "$ref": "#/$defs/simpleRequest", "unevaluatedProperties": false, "properties": { "type": { "const": "target.list.request" } } },
-    "snapshotRequest": {
-      "type": "object", "additionalProperties": false,
-      "required": ["protocolVersion", "messageId", "type", "correlationId", "backendGeneration", "requestContext"],
+    "hud.committed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocolVersion",
+        "type",
+        "messageId",
+        "dbId",
+        "epoch",
+        "hudRevision"
+      ],
       "properties": {
-        "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "const": "hud.snapshot.request" },
-        "correlationId": { "type": "null" }, "backendGeneration": { "type": "integer", "minimum": 1 }, "requestContext": { "$ref": "#/$defs/snapshotRequestContext" }
+        "protocolVersion": {
+          "const": "d4planner-notify/v1"
+        },
+        "type": {
+          "const": "hud.committed"
+        },
+        "messageId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "dbId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "epoch": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "hudRevision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
       }
-    },
-    "simpleRequest": {
-      "type": "object", "additionalProperties": false,
-      "required": ["protocolVersion", "messageId", "type", "correlationId", "backendGeneration"],
-      "properties": { "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "type": "string" }, "correlationId": { "type": "null" }, "backendGeneration": { "type": "integer", "minimum": 1 } }
-    },
-    "targetListResult": {
-      "type": "object", "additionalProperties": false,
-      "required": ["protocolVersion", "messageId", "type", "correlationId", "backendGeneration", "listRevision", "targets"],
-      "properties": {
-        "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "const": "target.list.result" }, "correlationId": { "$ref": "#/$defs/id" }, "backendGeneration": { "type": "integer", "minimum": 1 }, "listRevision": { "type": "integer", "minimum": 0 },
-        "targets": { "type": "array", "items": { "$ref": "#/$defs/targetEntry" } }
-      }
-    },
-    "targetEntry": {
-      "type": "object", "additionalProperties": false, "required": ["targetId", "displayName", "contentSha256", "byteLength", "validation", "errorCodes"],
-      "properties": { "targetId": { "$ref": "#/$defs/targetId" }, "displayName": { "type": "string", "minLength": 1 }, "contentSha256": { "$ref": "#/$defs/sha256" }, "byteLength": { "type": "integer", "minimum": 1 }, "validation": { "enum": ["VALID", "INVALID"] }, "errorCodes": { "type": "array", "items": { "type": "string" } } }
-    },
-    "targetSelectRequest": {
-      "type": "object", "additionalProperties": false,
-      "required": ["protocolVersion", "messageId", "type", "correlationId", "backendGeneration", "targetId", "expectedSha256", "expectedListRevision"],
-      "properties": { "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "const": "target.select.request" }, "correlationId": { "type": "null" }, "backendGeneration": { "type": "integer", "minimum": 1 }, "targetId": { "$ref": "#/$defs/targetId" }, "expectedSha256": { "$ref": "#/$defs/sha256" }, "expectedListRevision": { "type": "integer", "minimum": 0 } }
-    },
-    "targetSelectResult": {
-      "type": "object", "additionalProperties": false,
-      "required": ["protocolVersion", "messageId", "type", "correlationId", "backendGeneration", "status", "targetId", "contentSha256", "selectionRevision", "hudRevision"],
-      "properties": { "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "const": "target.select.result" }, "correlationId": { "$ref": "#/$defs/id" }, "backendGeneration": { "type": "integer", "minimum": 1 }, "status": { "const": "ACTIVATED" }, "targetId": { "$ref": "#/$defs/targetId" }, "contentSha256": { "$ref": "#/$defs/sha256" }, "selectionRevision": { "type": "integer", "minimum": 1 }, "hudRevision": { "type": "integer", "minimum": 0 } }
-    },
-    "snapshotRequestContext": {
-      "oneOf": [{ "$ref": "#/$defs/discoveryRequestContext" }, { "$ref": "#/$defs/resyncRequestContext" }]
-    },
-    "discoveryRequestContext": {
-      "type": "object", "additionalProperties": false,
-      "required": ["mode", "reason", "attempt", "runtimeInstanceId", "minimumHudRevision"],
-      "properties": {
-        "mode": { "const": "DISCOVER_ACTIVE_CONTEXT" }, "runtimeInstanceId": { "$ref": "#/$defs/id" },
-        "reason": { "enum": ["INITIAL_CONNECTION", "BACKEND_GENERATION_CHANGED", "BACKEND_IDENTITY_CHANGED", "KNOWN_CONTEXT_CHANGED", "TIMEOUT_RETRY"] },
-        "attempt": { "type": "integer", "minimum": 1 },
-        "minimumHudRevision": { "type": "integer", "minimum": 0 }
-      }
-    },
-    "resyncRequestContext": {
-      "type": "object", "additionalProperties": false,
-      "required": ["mode", "runtimeInstanceId", "minimumHudRevision", "expectedContext"],
-      "properties": {
-        "mode": { "const": "RESYNC_KNOWN_CONTEXT" }, "runtimeInstanceId": { "$ref": "#/$defs/id" },
-        "minimumHudRevision": { "type": "integer", "minimum": 0 }, "expectedContext": { "$ref": "#/$defs/expectedKnownContext" }
-      }
-    },
-    "expectedKnownContext": {
-      "type": "object", "additionalProperties": false,
-      "required": ["state", "characterId", "targetId", "selectionRevision"],
-      "properties": {
-        "state": { "enum": ["STARTUP", "TARGET_ONLY", "CHARACTER_ONLY", "BOUND", "TARGET_UNAVAILABLE"] },
-        "characterId": { "type": ["string", "null"], "minLength": 1 },
-        "targetId": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/targetId" }] },
-        "selectionRevision": { "type": ["integer", "null"], "minimum": 1 }
-      },
-      "allOf": [
-        { "if": { "properties": { "state": { "const": "STARTUP" } }, "required": ["state"] }, "then": { "properties": { "characterId": { "type": "null" }, "targetId": { "type": "null" }, "selectionRevision": { "type": "null" } } } },
-        { "if": { "properties": { "state": { "const": "TARGET_ONLY" } }, "required": ["state"] }, "then": { "properties": { "characterId": { "type": "null" }, "targetId": { "$ref": "#/$defs/targetId" }, "selectionRevision": { "type": "integer", "minimum": 1 } } } },
-        { "if": { "properties": { "state": { "const": "CHARACTER_ONLY" } }, "required": ["state"] }, "then": { "properties": { "characterId": { "type": "string", "minLength": 1 }, "targetId": { "type": "null" }, "selectionRevision": { "type": "null" } } } },
-        { "if": { "properties": { "state": { "const": "BOUND" } }, "required": ["state"] }, "then": { "properties": { "characterId": { "type": "string", "minLength": 1 }, "targetId": { "$ref": "#/$defs/targetId" }, "selectionRevision": { "type": "integer", "minimum": 1 } } } },
-        { "if": { "properties": { "state": { "const": "TARGET_UNAVAILABLE" } }, "required": ["state"] }, "then": { "properties": { "targetId": { "type": "null" }, "selectionRevision": { "type": "null" } } } }
-      ]
-    },
-    "snapshot": {
-      "type": "object", "additionalProperties": false,
-      "required": ["protocolVersion", "messageId", "type", "correlationId", "backendGeneration", "authoritative", "subscriptionId", "subscriptionAfterRevision", "requestContext", "hud"],
-      "properties": {
-        "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "const": "hud.snapshot" },
-        "correlationId": { "$ref": "#/$defs/id" }, "backendGeneration": { "type": "integer", "minimum": 1 }, "authoritative": { "const": true },
-        "subscriptionId": { "$ref": "#/$defs/id" }, "subscriptionAfterRevision": { "type": "integer", "minimum": 0 },
-        "requestContext": { "$ref": "#/$defs/snapshotRequestContext" }, "hud": { "$ref": "https://streamops.local/schemas/d4planner-hud/v1" }
-      }
-    },
-    "update": {
-      "type": "object", "additionalProperties": false,
-      "required": ["protocolVersion", "messageId", "type", "correlationId", "backendGeneration", "subscriptionId", "previousHudRevision", "hud"],
-      "properties": {
-        "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "const": "hud.update" },
-        "correlationId": { "type": "null" }, "backendGeneration": { "type": "integer", "minimum": 1 }, "subscriptionId": { "$ref": "#/$defs/id" },
-        "previousHudRevision": { "type": "integer", "minimum": 0 }, "hud": { "$ref": "https://streamops.local/schemas/d4planner-hud/v1" }
-      }
-    },
-    "resyncRequired": {
-      "type": "object", "additionalProperties": false,
-      "required": ["protocolVersion", "messageId", "type", "correlationId", "backendGeneration", "reason", "latestHudRevision"],
-      "properties": { "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "const": "resync.required" }, "correlationId": { "type": "null" }, "backendGeneration": { "type": "integer", "minimum": 1 }, "reason": { "enum": ["REVISION_GAP", "BACKEND_GENERATION_CHANGED", "SLOW_CONSUMER"] }, "latestHudRevision": { "type": "integer", "minimum": 0 } }
     },
     "error": {
-      "type": "object", "additionalProperties": false,
-      "required": ["protocolVersion", "messageId", "type", "correlationId", "backendGeneration", "code", "message", "retryable"],
-      "properties": { "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "const": "error" }, "correlationId": { "type": ["string", "null"] }, "backendGeneration": { "type": "integer", "minimum": 1 }, "code": { "enum": ["AUTH_FAILED", "ORIGIN_REJECTED", "MESSAGE_TOO_LARGE", "INVALID_MESSAGE", "TARGET_NOT_FOUND", "TARGET_CHANGED", "TARGET_INVALID", "REVISION_CONFLICT", "INTERNAL"] }, "message": { "type": "string", "minLength": 1 }, "retryable": { "type": "boolean" } }
-    },
-    "ping": { "$ref": "#/$defs/heartbeat", "unevaluatedProperties": false, "properties": { "type": { "const": "ping" } } },
-    "pong": { "$ref": "#/$defs/heartbeat", "unevaluatedProperties": false, "properties": { "type": { "const": "pong" } } },
-    "heartbeat": {
-      "type": "object", "additionalProperties": false,
-      "required": ["protocolVersion", "messageId", "type", "correlationId", "backendGeneration", "sentAt"],
-      "properties": { "protocolVersion": { "const": "d4planner-ws/v1" }, "messageId": { "$ref": "#/$defs/id" }, "type": { "type": "string" }, "correlationId": { "type": ["string", "null"] }, "backendGeneration": { "type": "integer", "minimum": 1 }, "sentAt": { "type": "string", "format": "date-time" } }
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocolVersion",
+        "type",
+        "messageId",
+        "code"
+      ],
+      "properties": {
+        "protocolVersion": {
+          "const": "d4planner-notify/v1"
+        },
+        "type": {
+          "const": "error"
+        },
+        "messageId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      }
     }
   }
 }

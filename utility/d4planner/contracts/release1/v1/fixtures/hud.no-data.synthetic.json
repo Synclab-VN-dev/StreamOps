@@ -9,5 +9,5 @@
     "failIssueCount": 0, "warnCount": 0, "itemsPassing": 0, "itemsTargeted": 0
   },
   "equipment": [], "recommendation": null,
-  "provenance": { "producer": "D4PLANNER_BE", "assessmentVersion": "d4planner-r1-contract/1.0.0-candidate.5", "captureRevision": null, "lastObservedAt": null }
+  "provenance": { "producer": "D4PLANNER_BE", "assessmentVersion": "d4planner-r1-contract/1.0.0-candidate.6", "captureRevision": null, "lastObservedAt": null }
 }
