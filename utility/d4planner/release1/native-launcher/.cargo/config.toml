@@ -1,0 +1,4 @@
+# The root executable must run before any private runtime can be loaded.
+# A clean Windows installation does not include the Visual C++ redistributable.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

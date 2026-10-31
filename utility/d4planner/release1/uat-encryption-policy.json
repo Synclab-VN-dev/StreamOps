@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "d4planner-uat-distribution-policy/v2",
+  "scope": "D4PLANNER_R1_UAT",
+  "applicationFormat": "PLAINTEXT_EXE",
+  "snapshotFormat": "AGE_ZIP_SEPARATE",
+  "uatRevision": 2,
+  "distributionApproval": "EXTERNAL_EXACT_SOURCE_VERSION_RUNTIME_LOCK",
+  "publicationApproval": "EXTERNAL_EXACT_ARTIFACT_OWNER"
+}

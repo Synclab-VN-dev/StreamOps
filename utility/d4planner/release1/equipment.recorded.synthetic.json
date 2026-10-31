@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "d4planner-equipment-evidence/v1",
+  "characterId": "synthetic-recorded-character",
+  "characterDisplayName": "Synthetic Recorded Character",
+  "currentRevision": 1,
+  "capturedAt": "2026-10-26T03:00:01Z",
+  "captureHealth": "HEALTHY",
+  "slots": [
+    {
+      "slotId": "gloves",
+      "presence": "OBSERVED",
+      "evidence": ["COMPLETE_SLOT"],
+      "item": {
+        "itemId": "synthetic-recorded-gloves",
+        "displayName": "Synthetic Recorded Gloves",
+        "observedAt": "2026-10-26T03:00:01Z",
+        "source": "RECORDED_SYNTHETIC_E2E_INPUT",
+        "entities": [
+          {"kind":"AFFIX","group":"AFFIXES","entityId":"attack-speed","occurrence":0,"label":"Attack Speed","values":[{"type":"NUMBER","value":9,"unit":"PERCENT","evidence":"OBSERVED"}]},
+          {"kind":"AFFIX","group":"AFFIXES","entityId":"core-skill-ranks","occurrence":0,"label":"Core Skill Ranks","values":[{"type":"NUMBER","value":2,"unit":"RANK","evidence":"OBSERVED"}]},
+          {"kind":"EFFECT","group":"ASPECTS","entityId":"charge-bolt-core-effect","occurrence":0,"label":"Charge Bolt Core Effect","values":[{"type":"NUMBER","value":10,"unit":"PERCENT","evidence":"OBSERVED"},{"type":"NUMBER","value":2,"unit":"FLAT","evidence":"OBSERVED"}]}
+        ]
+      }
+    },
+    {
+      "slotId": "ring-1",
+      "presence": "OBSERVED",
+      "evidence": ["COMPLETE_SLOT"],
+      "item": {
+        "itemId": "synthetic-recorded-ring",
+        "displayName": "Synthetic Recorded Ring",
+        "observedAt": "2026-10-26T03:00:01Z",
+        "source": "RECORDED_SYNTHETIC_E2E_INPUT",
+        "entities": [
+          {"kind":"AFFIX","group":"AFFIXES","entityId":"resource-cost-reduction","occurrence":0,"label":"Resource Cost Reduction","values":[{"type":"NUMBER","value":6,"unit":"PERCENT","evidence":"OBSERVED"}]}
+        ]
+      }
+    }
+  ]
+}
