@@ -170,10 +170,9 @@ impl Sandbox {
         Self(p)
     }
     fn launch(&self, mutation: &str) -> LaunchSpecification {
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../..")
-            .canonicalize()
-            .unwrap();
+        let root = std::env::var_os("S2_TEST_REPOSITORY_ROOT").map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.."))
+            .canonicalize().unwrap();
         let descriptor = self.0.join("bootstrap.json");
         let payload = serde_json::json!({"protocol":"d4planner-managed/v1","contractVersion":"d4planner-r1-contract/1.0.0-candidate.6","ownerInstanceId":"owner","childInstanceId":"child","generation":1,"dataDir":self.0.join("data"),"targetFolder":self.0.join("targets"),"wsEndpoint":{"host":"127.0.0.1","port":0},"credential":"SYNTHETIC_TEST_CREDENTIAL_0000000000000000"});
         std::fs::write(&descriptor, payload.to_string()).unwrap();
@@ -195,6 +194,11 @@ impl Sandbox {
             "D4PLANNER_BOOTSTRAP_FILE".into(),
             descriptor.display().to_string(),
         );
+        // S2 tests exercise the real managed entrypoint with BaseRuntime only.
+        // Production composition is the S5 default and has separate integration
+        // tests; do not let that default change this stdlib-only handshake scope.
+        s.environment
+            .insert("D4PLANNER_RUNTIME_FACTORY".into(), String::new());
         for key in ["PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP"] {
             if let Ok(v) = std::env::var(key) {
                 s.environment.insert(key.into(), v);
@@ -375,4 +379,62 @@ fn failed_ready_consumes_generation_even_after_successful_cleanup() {
     d.ready_fails.store(false, Ordering::SeqCst);
     assert!(w.start().is_err());
     assert_eq!(d.spawns.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn correlated_control_uses_owned_pipe_and_rejects_late_foreign_response() {
+    let sandbox = Sandbox::new();
+    let mut spec = sandbox.launch("");
+    spec.args = vec!["-c".into(), r#"
+import asyncio
+import d4planner.managed_backend as m
+async def command(self, row):
+ if not getattr(self, 'called', False):
+  self.called = True
+  await asyncio.sleep(.08)
+ return {'method':row['method']}
+m.BaseRuntime.handle_control = command
+original = m._emit
+def emit(row):
+ if row.get('type') == 'response':
+  original(dict(row, generation=999, result={'method':'FOREIGN'}))
+ original(row)
+m._emit = emit
+raise SystemExit(m.main())
+"#.into()];
+    let wrapper = BackendProcessWrapper::new(Arc::new(StdProcessDriver), spec);
+    wrapper.start().unwrap();
+    assert!(wrapper.request("target.list", serde_json::json!({}), Duration::from_millis(10)).is_err());
+    let result = wrapper.request("target.list", serde_json::json!({}), Duration::from_secs(1)).unwrap();
+    assert_eq!(result["method"], "target.list");
+    assert!(wrapper.request("evaluate", serde_json::json!({}), Duration::from_secs(1)).is_err());
+    // Deadline doesn't stop the process or invalidate reusable runtime.
+    assert_eq!(wrapper.state(), ProcessState::Ready);
+    wrapper.stop().unwrap();
+    assert!(wrapper.request("target.list", serde_json::json!({}), Duration::from_secs(1)).is_err());
+}
+
+#[test]
+fn full_stdin_pipe_cannot_block_control_deadline_or_owned_stop() {
+    let sandbox = Sandbox::new();
+    let mut spec = sandbox.launch("");
+    spec.graceful_stop_timeout = Duration::from_millis(20);
+    spec.kill_timeout = Duration::from_secs(1);
+    spec.args = vec!["-c".into(), r#"
+import time
+import d4planner.managed_backend as m
+original=m._emit
+def emit(row):
+ original(row)
+ if row.get('event')=='READY': time.sleep(60)
+m._emit=emit
+raise SystemExit(m.main())
+"#.into()];
+    let wrapper=BackendProcessWrapper::new(Arc::new(StdProcessDriver),spec);
+    wrapper.start().unwrap();
+    let started=std::time::Instant::now();
+    assert!(wrapper.request("target.list",serde_json::json!({"padding":"x".repeat(200_000)}),Duration::from_millis(20)).is_err());
+    assert!(started.elapsed()<Duration::from_secs(1));
+    wrapper.stop().unwrap();
+    assert!(started.elapsed()<Duration::from_secs(2));
 }

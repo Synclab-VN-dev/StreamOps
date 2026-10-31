@@ -33,6 +33,7 @@ def managed_process_environment() -> tuple[str, dict[str, str]]:
     env = os.environ.copy()
     existing = env.get("PYTHONPATH")
     env["PYTHONPATH"] = str(SOURCE_ROOT) + (os.pathsep + existing if existing else "")
+    env["D4PLANNER_RUNTIME_FACTORY"] = "d4planner.managed_backend:BaseRuntime"
     return executable, env
 
 
