@@ -13,7 +13,7 @@ def test_backend_forwards_rulekit_health_without_owning_snapshot_compatibility(t
     subprocess.run(['node','-e',script,str(helper),str(tmp_path)],check=True,timeout=10)
     inputs=json.loads((tmp_path/'inputs.json').read_text())
     async def scenario():
-        worker=RuleKitProcessWrapper(LaunchSpecification(executable='node',args=(str(ROOT/'utility/d4planner/rulekit-worker/worker.js'),),working_directory=ROOT,
+        worker=RuleKitProcessWrapper(LaunchSpecification(executable='node',args=(str(ROOT/'utility/d4planner/src/d4planner/rulekit/worker.js'),),working_directory=ROOT,
             environment_allow_list={'D4_RULEKIT_COMPOSITION_MODULE':str(ROOT/'utility/d4planner/tests/fixtures/snapshot-test-composition.js'),'TEST_SNAPSHOT_CONFIG':str(tmp_path/'test-config.json'),'D4_RULEKIT_DATA_ROOT':str(tmp_path/'rulekit-data')},operation_timeout=3,readiness_timeout=3))
         targets=tmp_path/'targets';targets.mkdir();shutil.copy2(ROOT/'utility/d4planner/contracts/release1/v1/fixtures/target.valid.synthetic.json',targets/'target.json')
         backend=ProductionBackendRuntime({'ownerInstanceId':'owner-synthetic','childInstanceId':'backend-synthetic','generation':9,'dataDir':str(tmp_path/'data'),'targetFolder':str(targets),'wsEndpoint':{'host':'127.0.0.1','port':0},'credential':'snapshot-test-credential-01234567890123'},rulekit=RuleKitRuntimeService(worker))

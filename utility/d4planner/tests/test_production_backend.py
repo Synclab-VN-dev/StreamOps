@@ -21,7 +21,7 @@ from d4planner.rulekit import LaunchSpecification, RuleKitProcessWrapper, RuleKi
 
 ROOT = Path(__file__).resolve().parents[3]
 TARGET = ROOT / "utility/d4planner/contracts/release1/v1/fixtures/target.valid.synthetic.json"
-WORKER = ROOT / "utility/d4planner/rulekit-worker/worker.js"
+WORKER = ROOT / "utility/d4planner/src/d4planner/rulekit/worker.js"
 COMPOSITION = ROOT / "utility/d4planner/tests/fixtures/rulekit-test-composition.js"
 CREDENTIAL = "production-integration-test-credential-000000"
 
