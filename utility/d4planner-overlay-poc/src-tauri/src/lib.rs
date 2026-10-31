@@ -538,8 +538,8 @@ pub fn run() {
                         let wrapper = Arc::new(wrapper);
                         let state = app.state::<BackendState>();
                         *state.0.lock().map_err(|_| std::io::Error::other("Backend state lock poisoned"))? = Some(wrapper.clone());
-                        if wrapper.start().is_err() {
-                            eprintln!("Managed Backend unavailable; viewer remains open");
+                        if let Err(error) = wrapper.start() {
+                            eprintln!("Managed Backend unavailable ({error}); viewer remains open");
                         }
                     }
                     Err(_) => eprintln!("Managed Backend configuration unavailable; viewer remains open"),
