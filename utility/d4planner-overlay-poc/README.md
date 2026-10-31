@@ -3,7 +3,10 @@
 Goal: test whether a transparent, always-on-top Windows HUD can run on top
 of Diablo IV (Borderless Windowed) without blocking normal gameplay.
 
-Mock-only React UI; no backend, NVDA, game hooks, Steam Link or OBS integration.
+The visual POC remains fixture-driven, but the native shell now owns the
+versioned managed Backend lifecycle for Release 1. WebSocket/HUD production
+binding is delivered separately by S5/S6; there is no mock Backend fallback.
+NVDA, game hooks, Steam Link and OBS integration remain out of scope here.
 Design reference (not pixel-perfect):
 https://designs.magicpath.ai/v1/crisply-year-9521
 
@@ -57,6 +60,10 @@ GUI window and requests WM_CLOSE; must terminate cleanly without force.
 
 Build requires Node 22+, Rust MSVC, Windows C++ build tools / Windows SDK,
 and WebView2. CI artifact requires neither Node nor Rust on Windows A.
+
+The managed lifecycle contract, private bootstrap descriptor and local test
+boundary are documented in
+[`../d4planner/docs/s2-managed-backend.md`](../d4planner/docs/s2-managed-backend.md).
 
 ## Automated test boundaries
 

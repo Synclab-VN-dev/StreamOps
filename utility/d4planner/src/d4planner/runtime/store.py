@@ -156,9 +156,26 @@ def write_capture_config(
     atomic_write_json(paths.capture_state, payload)
 
 
-def read_json(path: Path) -> dict[str, Any] | None:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    return value if isinstance(value, dict) else None
+def read_json(path: Path, *, strict: bool = False) -> dict[str, Any] | None:
+    """Read state with bounded retries for Windows replacement/sharing conflicts.
+
+    Strict lifecycle callers distinguish an absent file from unreadable or
+    corrupt state: only absence can safely mean no persisted supervisor.
+    """
+    for attempt in range(4):
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(value, dict):
+                raise ValueError("JSON state must be an object")
+            return value
+        except FileNotFoundError:
+            return None
+        except (OSError, ValueError) as exc:
+            transient = isinstance(exc, PermissionError) or getattr(exc, "winerror", None) in {5, 32, 33}
+            if transient and attempt < 3:
+                time.sleep(.01 * (2**attempt))
+                continue
+            if strict:
+                raise
+            return None
+    return None

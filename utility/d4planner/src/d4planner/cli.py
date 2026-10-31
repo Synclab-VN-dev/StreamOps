@@ -100,9 +100,9 @@ def _capture_effective(paths: RuntimePaths) -> bool:
     return lease_until > time.time()
 
 
-def _state(paths: RuntimePaths) -> dict[str, Any]:
+def _state(paths: RuntimePaths, *, strict: bool = False) -> dict[str, Any]:
     state = dict(
-        read_json(paths.runtime_state)
+        read_json(paths.runtime_state, strict=strict)
         or {
             "state": RuntimeState.STOPPED.value,
             "captureActive": False,
@@ -538,7 +538,11 @@ def command_start(
         )
         return 4
     paths.ensure()
-    previous = _state(paths)
+    try:
+        previous = _state(paths, strict=True)
+    except (OSError, ValueError):
+        print("Cannot verify existing D4Planner state; no supervisor started. Retry after resolving state access or corruption.", file=sys.stderr)
+        return 4
     previous_pid = previous.get("supervisorPid")
     if _pid_alive(int(previous_pid)) if previous_pid else False:
         state = str(previous.get("state") or "")

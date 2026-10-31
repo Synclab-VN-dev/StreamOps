@@ -1038,3 +1038,47 @@ def test_block_start_accepts_ready_hook_status(monkeypatch, tmp_path, capsys):
     ) == 0
     assert arguments[0]["block_marker"] is True
     assert "F11 / BLOCK / ACTIVE" in capsys.readouterr().out
+
+
+def test_start_does_not_spawn_when_live_state_read_is_temporarily_denied(monkeypatch, tmp_path):
+    """A Windows replace/read conflict must not look like a stopped supervisor."""
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    atomic_write_json(paths.runtime_state, {
+        "state": "RUNNING", "supervisorPid": 77, "silent": True,
+        "extras": {"inputMarker": {"mode": "BLOCK", "layoutId": "xbox-steaminput-18-v1"}},
+    })
+    read_text = Path.read_text
+    attempts = 0
+    def denied_once(path, *args, **kwargs):
+        nonlocal attempts
+        if path == paths.runtime_state:
+            attempts += 1
+            if attempts == 1:
+                raise PermissionError(13, "synthetic Windows sharing conflict")
+        return read_text(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "read_text", denied_once)
+    monkeypatch.setattr(cli, "_pid_alive", lambda pid: True)
+    def forbidden_spawn(**kwargs):
+        raise AssertionError("state read failure must never start a second supervisor")
+    monkeypatch.setattr(cli, "_spawn_daemon", forbidden_spawn)
+    assert cli.command_start(paths, speech=False, isolated=False, detached=True,
+                             timeout=.1, controller_profile=None, block_marker=True) == 4
+    assert attempts >= 2
+
+
+def test_start_refuses_unreadable_or_corrupt_state_without_spawning(monkeypatch, tmp_path):
+    paths = RuntimePaths(tmp_path / "home")
+    paths.ensure()
+    monkeypatch.setattr(cli, "_spawn_daemon", lambda **kw: (_ for _ in ()).throw(
+        AssertionError("unknown state must not authorize spawn")))
+    for encoded in ('broken json', '[]'):
+        paths.runtime_state.write_text(encoded, encoding="utf-8")
+        assert cli.command_start(paths, speech=False, isolated=False, detached=True, timeout=.1) == 4
+    read_text = Path.read_text
+    def denied(path, *args, **kwargs):
+        if path == paths.runtime_state:
+            raise PermissionError(13, "synthetic persistent access denial")
+        return read_text(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "read_text", denied)
+    assert cli.command_start(paths, speech=False, isolated=False, detached=True, timeout=.1) == 4
