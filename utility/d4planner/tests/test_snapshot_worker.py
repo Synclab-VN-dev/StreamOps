@@ -8,7 +8,7 @@ import pytest
 
 from d4planner.rulekit import LaunchSpecification,RuleKitProcessWrapper,RuleKitRuntimeService,RuleKitRemoteError
 ROOT=Path(__file__).resolve().parents[3]
-WORKER=ROOT/'utility/d4planner/rulekit-worker/worker.js'
+WORKER=ROOT/'utility/d4planner/src/d4planner/rulekit/worker.js'
 
 
 @pytest.mark.parametrize("fault", ["none", "before_health", "start_failure", "stop_failure", "after_health", "rollback_failure"])

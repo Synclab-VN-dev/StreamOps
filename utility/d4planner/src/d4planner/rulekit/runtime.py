@@ -40,7 +40,7 @@ class RuleKitRuntimeService:
     def from_environment(cls, environment: Mapping[str, str] | None = None) -> "RuleKitRuntimeService":
         values = os.environ if environment is None else environment
         executable = Path(values.get("D4PLANNER_RULEKIT_EXECUTABLE", ""))
-        worker = Path(values.get("D4PLANNER_RULEKIT_WORKER", ""))
+        worker = Path(values.get("D4PLANNER_RULEKIT_WORKER", str(Path(__file__).with_name("worker.js"))))
         working_directory = Path(values.get("D4PLANNER_RULEKIT_WORKING_DIR", ""))
         for path, label in (
             (executable, "Rule Kit executable"),
@@ -59,9 +59,18 @@ class RuleKitRuntimeService:
             raise ValueError("Rule Kit data and installation roots must be absolute")
         if not managed and not required.issubset(forwarded):
             raise ValueError("production Rule Kit profile and snapshot root are required")
+        # The installed Python package owns the adapter. Rule Kit owns its
+        # private executable bootstrap; no calculation modules are imported here.
+        installation = values.get("D4_RULEKIT_INSTALLATION_ROOT")
+        rulekit_root = (Path(installation) / "utility" / "d4-rulekit" if installation
+                        else Path(__file__).resolve().parents[4] / "d4-rulekit")
+        bootstrap = Path(values.get("D4PLANNER_RULEKIT_BOOTSTRAP", str(
+            rulekit_root / "application" / "src" / "runtime" / "bootstrap.js")))
+        if not bootstrap.is_absolute() or not bootstrap.is_file():
+            raise ValueError("Rule Kit bootstrap must be an absolute existing file")
         specification = LaunchSpecification(
             executable=str(executable),
-            args=(str(worker),),
+            args=(str(bootstrap), str(worker)),
             working_directory=working_directory,
             environment_allow_list=forwarded,
             readiness_timeout=15,

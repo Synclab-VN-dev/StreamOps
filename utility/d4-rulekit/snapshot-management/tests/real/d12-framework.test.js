@@ -28,7 +28,7 @@ const path=require('node:path');
 const readline=require('node:readline');
 test(`${process.env.COMPATIBILITY_TEST_DEFINITION??'maxroll-20261023'} eight APIs through managed worker → signed resolver → real Chromium → cleanup`,{timeout:180000},async()=>{
  const h=await createHarness();
- const child=spawn(process.execPath,[path.resolve(__dirname,'../../../../d4planner/rulekit-worker/worker.js')],{env:{...process.env,D4_RULEKIT_COMPOSITION_MODULE:path.join(__dirname,'d12-harness.js'),D4_RULEKIT_WORKER_INSTANCE_ID:'isolated-framework-worker',D4_RULEKIT_WORKER_GENERATION:'1'},stdio:['pipe','pipe','pipe'],detached:process.platform!=='win32'});
+ const child=spawn(process.execPath,[path.resolve(__dirname,'../../../../d4planner/src/d4planner/rulekit/worker.js')],{env:{...process.env,D4_RULEKIT_COMPOSITION_MODULE:path.join(__dirname,'d12-harness.js'),D4_RULEKIT_WORKER_INSTANCE_ID:'isolated-framework-worker',D4_RULEKIT_WORKER_GENERATION:'1'},stdio:['pipe','pipe','pipe'],detached:process.platform!=='win32'});
  const pending=new Map();let sequence=0;
  const exit=new Promise(resolve=>child.once('exit',(code,signal)=>resolve({code,signal})));
  const ready=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('worker READY timeout')),15000);pending.set('READY',{resolve:r=>{clearTimeout(timer);resolve(r);},reject});});

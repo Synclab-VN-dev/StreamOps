@@ -46,6 +46,18 @@
       "sha256": "10feb310b8d6a5a604429053ddbb0d95d1abd532d1f4af94507636637ab617e3"
     },
     {
+      "path": "application/src/runtime/bootstrap.js",
+      "sha256": "42393539f65740330e8bb4ad2f1daf89f4826f30cb760f9d7648f979f92cfce2"
+    },
+    {
+      "path": "application/src/runtime/managed-snapshot-composition.js",
+      "sha256": "cfa676925f97a2140376f0be741825a7a10d109ce41ae1bc6f4ec60ad46b3ca5"
+    },
+    {
+      "path": "application/src/runtime/production-composition.js",
+      "sha256": "906b7d7508b657898c5ce8d2048d5a0edf5ae1af287f956c48ce682c131d2a70"
+    },
+    {
       "path": "application/src/session-manager.js",
       "sha256": "6b8ee4f4152b0ed6b72d2f7fbad28774a14e6229c8ea8871288decf7ce57d078"
     },
@@ -326,6 +338,6 @@
     "snapshot-management/compatibility/versions/maxroll-20261023.js",
     "snapshot-management/compatibility/versions/maxroll-20261027.js"
   ],
-  "executionSha256": "402a09b65b3971c9c75211c2b9fa9a30136feb325a85ac0aba5d71ebf5d3068f",
-  "ruleKitVersion": "rulekit-execution/sha256:402a09b65b3971c9c75211c2b9fa9a30136feb325a85ac0aba5d71ebf5d3068f"
+  "executionSha256": "e401c699f24e2cf634f0aecded7925ab8a5f6d9d763b70bb051607e523d60de4",
+  "ruleKitVersion": "rulekit-execution/sha256:e401c699f24e2cf634f0aecded7925ab8a5f6d9d763b70bb051607e523d60de4"
 }

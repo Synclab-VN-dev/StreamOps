@@ -186,7 +186,7 @@ Một compatibility file chỉ bổ sung **implementation support**. Signed Regi
 | `providers/maxroll/src/runtime-attestation.js` | Generic epoch provenance label/contract, preserve evidence validation |
 | `providers/maxroll/src/fixture-attestation.js` | Offline helper dùng resolved contract, legacy D12 default giữ nguyên |
 | `providers/maxroll/src/index.d.ts` | Types cho generic/internal contracts; không đổi eight APIs |
-| `utility/d4planner/rulekit-worker/managed-snapshot-composition.js` | Nhận bound factory; không tự đọc/resolve compatibility |
+| `utility/d4-rulekit/application/src/runtime/managed-snapshot-composition.js` | Nhận bound factory; không tự đọc/resolve compatibility |
 
 8 file thêm chính là `contracts.js`, `loader.js`, `catalog.js`, `build-index.js`, hai files trong `versions/`, `canonical-codec-core.js`, `real-profile-core.js` trong tree ở trên.
 

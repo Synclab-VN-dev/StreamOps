@@ -7,7 +7,7 @@ Implementation ticket: #140.
 
 The D4Planner backend owns exactly one long-lived Node worker. The Python
 `RuleKitProcessWrapper` owns process lifecycle, while `RuleKitClient` owns the
-private JSON-lines IPC correlation. The Node composition root reuses the
+private JSON-lines IPC correlation. The internal Rule Kit bootstrap (under `utility/d4-rulekit/application/src/runtime/`) reuses the
 existing `D4RuleKitApplication`, `MaxrollProvider`, `WebSnapshotManager`, and a
 single shared `BrowserInfrastructure` instance.
 
@@ -143,3 +143,102 @@ fatal exit. Content is discarded, never forwarded over IPC or retained in logs.
 Startup failure cancels its drain task after bounded owned-child cleanup. Tests
 exercise a real Node process with large stderr before successful READY and
 before fatal exit; these are Linux subprocess checks, not Windows-native proof.
+
+## Package boundary and internal bootstrap
+
+The Python package ships this layout (including in wheels):
+
+```text
+src/d4planner/rulekit/
+  __init__.py
+  client.py
+  process.py
+  protocol.py
+  runtime.py
+  worker.js
+```
+
+`worker.js` is an IPC adapter. It imports no Rule Kit implementation and receives
+only the eight Application calls, the approved Snapshot Management dispatcher,
+startup health and owned-runtime cleanup. The worker tracks restart-required
+receipts locally; it never reads manager fields. Rule Kit retains the internal
+quiescing guard even when a management failure has no success receipt.
+
+`RuleKitRuntimeService` starts one process with:
+
+```text
+<absolute node> <absolute Rule Kit bootstrap.js> <absolute packaged worker.js>
+```
+
+The private executable bootstrap is
+`utility/d4-rulekit/application/src/runtime/bootstrap.js`. Its sibling composition
+modules own profile loading, Maxroll provider construction, snapshot registry /
+resolver / strategy selection, and shared browser infrastructure. These modules
+are not exported from the Application package entrypoint or TypeScript contract.
+The Application core remains provider agnostic. No ninth Application method or
+new public integration API is introduced; bootstrap is internal process wiring.
+
+The adapter defaults to `Path(__file__).with_name("worker.js")`, independent of
+working directory. `D4PLANNER_RULEKIT_WORKER` remains an absolute-file override.
+With `D4_RULEKIT_INSTALLATION_ROOT`, the bootstrap resolves beneath that root at
+`utility/d4-rulekit/application/src/runtime/bootstrap.js`; source editable installs
+resolve the sibling Rule Kit tree. An explicit absolute
+`D4PLANNER_RULEKIT_BOOTSTRAP` can select an externally provisioned runtime. Missing
+bootstrap fails before spawning. The wheel ships the adapter, not Node, Chromium
+or Rule Kit dependencies; those remain installation assets.
+
+`D4PLANNER_RULEKIT_EXECUTABLE` and `D4_RULEKIT_CHROMIUM_EXECUTABLE` still select the
+portable installation binaries. Production legacy profile/snapshot paths must be
+absolute. The working directory remains explicit and is not a module search root.
+The test-only `D4_RULEKIT_COMPOSITION_MODULE` seam is not forwarded by production
+Python runtime and is not read by the production bootstrap. Direct adapter
+execution without an explicit absolute test composition fails closed.
+
+Snapshot Management remains the separately approved `d4-rulekit-snapshots/v1`:
+`listInstalled`, `checkCompatibility`, `getCapabilities`, `importPackage`,
+`activate`, `getActive`, `switchSnapshot`, `rollback`, `compareSnapshots`.
+The adapter allowlist is checked against its existing call schema; implementation
+exports do not grant additional APIs. Application signatures and IPC envelopes
+remain unchanged. Test fixtures may construct synthetic Rule Kit instances; that
+is test-only dependency injection, not a production BE dependency.
+
+The generated Rule Kit execution index includes the internal bootstrap and both
+composition modules. Changing these bytes changes execution identity. Keep the
+existing Owner public trust anchors and compatibility rules; do not reuse a signed
+registry bound to the old execution hash or mint a production approval in tests.
+
+Additional local gates (explicit private test Chromium):
+
+```sh
+F2_TEST_CHROMIUM=<absolute-test-chromium> python -m pytest -q tests/test_rulekit_boundary.py
+BROWSER_INFRA_CHROMIUM_PATH=<absolute-test-chromium> node --test ../d4-rulekit/application/tests/runtime-bootstrap.test.js
+```
+
+These gates cover installed wheel module resolution, no-snapshot managed startup,
+and actual production bootstrap with all eight APIs against synthetic offline
+content. They are Linux Node/Chromium evidence, not approved Maxroll snapshot or
+Windows-native acceptance.
+
+## Downstream PR #150 integration handoff
+
+Reviewed downstream tree: `9554248d3124dffe1507b4d448d99666bbdaee59`.
+Synchronize the true stack before applying these changes on the owning PR; do not
+edit another developer's checkout. Release integration is NOT_RUN until this work
+and native packaging verification are complete.
+
+| File under `utility/d4planner/` | Required change after stack synchronization |
+|---|---|
+| `tools/build_release1_stage.py` | Remove the old standalone worker-directory copy. The existing backend source copy now supplies `backend/site-packages/d4planner/rulekit/worker.js`; require that file and Rule Kit bootstrap in stage validation. |
+| `release1/public-content-policy.json` | Add the three `utility/d4-rulekit/application/src/runtime/*.js` files explicitly to `sourceAllowlist`. Include the refreshed execution index; verify all index files are shipped with exact hashes. Do not include test composition modules. |
+| `release1/package-plan.json` | Replace the old worker directory component path with `backend/site-packages/d4planner/rulekit`; account for the internal Rule Kit bootstrap assets. |
+| `release1/native-launcher/src/main.rs` | Update required-file checks and worker environment path to the packaged adapter; use installation root or another existing directory for working dir. Include bootstrap preflight; preserve portable Node/Chromium paths. |
+| `release1/start-d4planner.ps1` | Set the packaged adapter path (or omit override to use Python package default); replace old working directory; preserve installation-root configuration. |
+| `tools/production_e2e.py` | Update worker and working-directory launch paths and verify bootstrap-backed READY; do not treat a spawn as readiness. |
+| `tests/test_production_backend.py`, `tests/test_snapshot_backend.py` | Update source worker fixture paths after their owning stack commits are synchronized. Preserve synthetic classification and assertions. |
+| `tests/test_public_package.py`, `tests/test_release1_delivery.py`, `tests/test_windows_install.py`, `tests/test_production_e2e_delivery.py` | Verify new allowlist/stage/launcher paths, absence of old directory, relocated installed startup and fail-closed missing bootstrap. |
+
+Rebuild/validate the package only in its owning workspace. Re-evaluate exact
+execution-binding approval independently of unchanged formula/compatibility
+policy. Installer/native Windows E2E and downstream release integration cannot be
+reported PASS from this source/wheel test alone. No merge, release or deployment
+is part of this refactor.

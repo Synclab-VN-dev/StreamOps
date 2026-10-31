@@ -6,7 +6,12 @@ const readline = require('node:readline');
 
 const PROTOCOL_VERSION = 'd4-rulekit-ipc/v1';
 const APPLICATION_CONTRACT_VERSION = 'd4-rulekit-application/v1';
-const {PROTOCOL:SNAPSHOT_PROTOCOL,METHODS:SNAPSHOT_METHODS}=require('../../d4-rulekit/snapshot-management/src/manager');
+// Approved independent Snapshot Management contract; never infer APIs from a manager instance.
+const SNAPSHOT_PROTOCOL = 'd4-rulekit-snapshots/v1';
+const SNAPSHOT_METHODS = Object.freeze([
+  'listInstalled', 'checkCompatibility', 'getCapabilities', 'importPackage',
+  'activate', 'getActive', 'switchSnapshot', 'rollback', 'compareSnapshots',
+]);
 const APIS = Object.freeze([
   'closeSession', 'commitChanges', 'createSession', 'evaluate',
   'getSession', 'listProviders', 'previewChanges', 'resetSession',
@@ -29,13 +34,7 @@ function publicError(error) {
   };
 }
 
-async function main() {
-  const compositionPath = process.env.D4_RULEKIT_COMPOSITION_MODULE
-    ? path.resolve(process.env.D4_RULEKIT_COMPOSITION_MODULE)
-    : path.join(__dirname, 'production-composition.js');
-  const factory = require(compositionPath);
-  if (typeof factory.createComposition !== 'function') throw new Error('composition factory is invalid');
-  const composition = await factory.createComposition(process.env);
+async function main(composition) {
   const app = composition?.application;
   if (!app || APIS.some(method => typeof app[method] !== 'function')) {
     throw new Error('composition does not implement the approved Application contract');
@@ -54,6 +53,7 @@ async function main() {
   let running = 0;
   let runningApplication = 0;
   let snapshotMutation = false;
+  let restartRequired = false;
   let shuttingDown = false;
 
   async function invoke(message, controller) {
@@ -66,12 +66,13 @@ async function main() {
       try{
         const result=await composition.snapshotManagement.invoke(message.method,params);
         if(result.restartRequired){
+          restartRequired = true;
           await Promise.all([...sessions].map(id=>app.closeSession(id)));sessions.clear();
         }
         return result;
       }finally{if(mutation)snapshotMutation=false;}
     }
-    if(snapshotMutation || composition.snapshotManagement?.quiescing)throw Object.assign(new Error('snapshot binding requires worker restart'),{code:'WORKER_RESTART_REQUIRED'});
+    if(snapshotMutation || restartRequired)throw Object.assign(new Error('snapshot binding requires worker restart'),{code:'WORKER_RESTART_REQUIRED'});
     switch (message.method) {
       case 'listProviders': return app.listProviders();
       case 'createSession': {
@@ -181,7 +182,18 @@ async function main() {
   });
 }
 
-main().catch(error => {
+module.exports = { main };
+
+// Direct execution is reserved for isolated IPC tests. Production is assembled
+// by Rule Kit's private bootstrap, which calls main with contract-only handles.
+if (require.main === module) (async () => {
+  const compositionPath = process.env.D4_RULEKIT_COMPOSITION_MODULE;
+  if (!compositionPath || !path.isAbsolute(compositionPath)) {
+    throw new Error('Rule Kit bootstrap required (test composition must be absolute)');
+  }
+  const factory = require(compositionPath);
+  await main(await factory.createComposition(process.env));
+})().catch(error => {
   process.stderr.write(`Rule Kit worker startup failed: ${error?.message ?? 'unknown error'}\n`);
   process.exitCode = 1;
 });

@@ -20,6 +20,7 @@ d4planner-managed-backend = "d4planner.managed_backend:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
+"d4planner.rulekit" = ["worker.js"]
 "d4planner.controller.data" = ["*.json"]
 
 [tool.pytest.ini_options]

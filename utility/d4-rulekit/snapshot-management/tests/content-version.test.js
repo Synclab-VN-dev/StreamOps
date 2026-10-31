@@ -165,7 +165,7 @@ test('SVER-04: genuine worker IPC exposes additive method and preserves eight Ap
  const {trust}=require('./helpers');const {manager,root,save}=await fixture(t),a=await save('A'),b=await save('B');await manager.close();
  const config=path.join(root,'config.json');await fs.writeFile(config,JSON.stringify({anchors:trust([]).registry.anchors,dataRoot:root}));
  const repository=path.resolve(__dirname,'../../../..');
- const child=spawn(process.execPath,[path.join(repository,'utility/d4planner/rulekit-worker/worker.js')],{
+ const child=spawn(process.execPath,[path.join(repository,'utility/d4planner/src/d4planner/rulekit/worker.js')],{
   env:{...process.env,D4_RULEKIT_WORKER_INSTANCE_ID:'sver-synthetic-worker',D4_RULEKIT_WORKER_GENERATION:'1',D4_RULEKIT_COMPOSITION_MODULE:path.join(repository,'utility/d4planner/tests/fixtures/snapshot-test-composition.js'),TEST_SNAPSHOT_CONFIG:config},stdio:['pipe','pipe','pipe']});
  t.after(()=>{if(child.exitCode===null)child.kill();});
  const lines=createInterface({input:child.stdout})[Symbol.asyncIterator]();

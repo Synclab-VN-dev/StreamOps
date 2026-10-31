@@ -97,3 +97,7 @@ Packaging được kiểm tra read-only ở S7 HEAD `d09fdf60b02d35596f82b5d7aac
 - [build_release1_stage.py:87–90](https://github.com/Synclab-VN-dev/StreamOps/blob/d09fdf60b02d35596f82b5d7aacd4c5e56644e9f/utility/d4planner/tools/build_release1_stage.py#L87-L90) copy exact sourceAllowlist.
 - [public-content-policy.json:3–76](https://github.com/Synclab-VN-dev/StreamOps/blob/d09fdf60b02d35596f82b5d7aacd4c5e56644e9f/utility/d4planner/release1/public-content-policy.json#L3-L76) liệt kê từng source path.
 - [public_package.py:12–48](https://github.com/Synclab-VN-dev/StreamOps/blob/d09fdf60b02d35596f82b5d7aacd4c5e56644e9f/utility/d4planner/tools/public_package.py#L12-L48) policy và input digest. Cần một-time integration adapter; không được đổi thành recursive copy mọi .js từ user directory.
+
+Historical source links above are pinned to the audited SHA. The current ownership
+boundary moves composition into `application/src/runtime/` inside Rule Kit;
+D4Planner ships only `src/d4planner/rulekit/worker.js` as its IPC adapter.

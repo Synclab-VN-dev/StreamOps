@@ -1,12 +1,12 @@
 'use strict';
 const fs=require('node:fs/promises');
 const path=require('node:path');
-const {D4RuleKitApplication}=require('../../d4-rulekit/application/src');
-const {BrowserInfrastructure,WebSnapshotManager,FileSystemSnapshotStore}=require('../../d4-rulekit/browser-infra/src');
-const {MaxrollProvider}=require('../../d4-rulekit/providers/maxroll/src/provider');
-const {MaxrollPatchProfile}=require('../../d4-rulekit/providers/maxroll/src/patch-profile');
-const {createProductionManager}=require('../../d4-rulekit/snapshot-management/src');
-const {SnapshotError}=require('../../d4-rulekit/snapshot-management/src/trust');
+const {D4RuleKitApplication}=require('..');
+const {BrowserInfrastructure,WebSnapshotManager,FileSystemSnapshotStore}=require('../../../browser-infra/src');
+const {MaxrollProvider}=require('../../../providers/maxroll/src/provider');
+const {MaxrollPatchProfile}=require('../../../providers/maxroll/src/patch-profile');
+const {createProductionManager}=require('../../../snapshot-management/src');
+const {SnapshotError}=require('../../../snapshot-management/src/trust');
 async function createManagedComposition(env){
  const dataRoot=env.D4_RULEKIT_DATA_ROOT;
  if(!path.isAbsolute(dataRoot??'')||!path.isAbsolute(env.D4_RULEKIT_INSTALLATION_ROOT??''))throw new Error('Rule Kit absolute data/installation paths required');
