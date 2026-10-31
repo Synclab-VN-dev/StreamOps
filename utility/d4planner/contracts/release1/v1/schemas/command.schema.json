@@ -200,9 +200,16 @@
           "const": "response"
         },
         "result": {
-          "type": [
-            "object",
-            "null"
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/targetListResult"
+            },
+            {
+              "$ref": "#/$defs/targetSelectResult"
+            }
           ]
         },
         "error": {
@@ -235,6 +242,82 @@
               }
             }
           ]
+        }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "error": {
+                  "type": "null"
+                },
+                "result": {
+                  "type": "object"
+                }
+              }
+            },
+            {
+              "properties": {
+                "error": {
+                  "type": "object"
+                },
+                "result": {
+                  "type": "null"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "targetListResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "listRevision",
+        "targets"
+      ],
+      "properties": {
+        "listRevision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/targetEntry"
+          }
+        }
+      }
+    },
+    "targetSelectResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "targetId",
+        "contentSha256",
+        "selectionRevision",
+        "hudRevision"
+      ],
+      "properties": {
+        "status": {
+          "const": "ACTIVATED"
+        },
+        "targetId": {
+          "$ref": "#/$defs/targetId"
+        },
+        "contentSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "selectionRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "hudRevision": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     }
