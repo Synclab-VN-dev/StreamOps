@@ -231,7 +231,9 @@ impl Report {
                     let _ = FileExt::unlock(&lock);
                     drop(lock);
                     if !sealed {
-                        let _ = fs::remove_dir_all(&p);
+                        if fs::remove_dir_all(&p).is_err() {
+                            pending += 1;
+                        }
                     } else {
                         pending += 1;
                     }

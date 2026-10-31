@@ -334,6 +334,17 @@ class Reports(unittest.TestCase):
             self.s.upload("alice", self.rid, data)
         self.assertEqual(self.gh.uploads, [])
 
+    def test_user_embedded_marker_cannot_crosslink_another_issue(self):
+        self.s.prepare("alice", self.rid, self.request)
+        self.gh.create_issue(
+            "Foreign", f"different report\n<!-- d4planner-report:{self.rid} -->"
+        )
+        with self.s.connect() as c:
+            c.execute("UPDATE reports SET state='CREATING'")
+        with self.assertRaisesRegex(Rejected, "CREATE_OUTCOME_UNCERTAIN"):
+            self.s.upload("alice", self.rid, self.data)
+        self.assertEqual(self.gh.uploads, [])
+
 
 if __name__ == "__main__":
     unittest.main()

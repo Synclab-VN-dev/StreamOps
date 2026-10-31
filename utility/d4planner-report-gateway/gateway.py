@@ -326,7 +326,7 @@ class Service:
                     matches = [
                         i
                         for i in self.github.issues()
-                        if marker in i.get("body", "")
+                        if i.get("body", "").startswith(marker + "\n")
                         and i.get("user", {}).get("id") == self.bot_id
                         and "pull_request" not in i
                     ]
@@ -379,7 +379,7 @@ class Service:
             }
             issue = self.github.issue(number)
             if (
-                marker not in issue.get("body", "")
+                not issue.get("body", "").startswith(marker + "\n")
                 or issue.get("user", {}).get("id") != self.bot_id
                 or asset.get("uploader", {}).get("id") != self.bot_id
                 or not verify_mapping(mapping, issue, self.release_id, asset)
