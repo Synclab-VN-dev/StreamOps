@@ -1,0 +1,35 @@
+name: D4Planner Issue Log Cleanup
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Inspect eligible assets without deleting them
+        type: boolean
+        default: true
+permissions:
+  contents: write
+  issues: read
+concurrency:
+  group: d4planner-issue-log-cleanup
+  cancel-in-progress: false
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Validate cleanup invariants locally
+        run: python3 -m unittest discover -s utility/d4planner-report-gateway/tests -v
+      - name: Cleanup verified closed-issue assets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DIAGNOSTIC_RELEASE_ID: ${{ vars.D4PLANNER_DIAGNOSTIC_RELEASE_ID }}
+          DIAGNOSTIC_BOT_ID: ${{ vars.D4PLANNER_DIAGNOSTIC_BOT_ID }}
+          EXECUTE: ${{ github.event_name == 'schedule' || inputs.dry_run == false }}
+        shell: bash
+        run: |
+          args=()
+          if [ "$EXECUTE" = "true" ]; then args+=(--execute); fi
+          python3 utility/d4planner-report-gateway/cleanup.py "${args[@]}"
