@@ -54,6 +54,8 @@ pub fn read_latest(data_dir: &Path) -> Result<Option<Value>, String> {
             (&binding["selectionRevision"], &ctx["target"]["selectionRevision"]),
             (&binding["policyVersion"], &ctx["target"]["policyVersion"]),
         ] { if left != right { return Err("DB_BINDING_MISMATCH".into()); } }
+    } else if hud["score"]["status"] != "NO_DATA" || hud["equipment"].as_array().is_none_or(|items| !items.is_empty()) {
+        return Err("DB_BINDING_MISMATCH".into());
     }
     Ok(Some(json!({"schemaVersion":version,"dbId":id,"epoch":epoch,"hudRevision":revision,"hud":hud})))
 }

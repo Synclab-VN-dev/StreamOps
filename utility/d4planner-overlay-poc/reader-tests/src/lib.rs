@@ -77,4 +77,16 @@ mod tests {
         assert!(started.elapsed()<std::time::Duration::from_secs(2));
     }
 
+    #[test]
+    fn unbound_context_cannot_expose_previous_character_score() {
+        let root=Sandbox::new(); let db=root.seed();
+        let no_data:Value=serde_json::from_str(include_str!("../../../d4planner/contracts/release1/v1/fixtures/hud.no-data.synthetic.json")).unwrap();
+        let mut hud:Value=serde_json::from_str(&db.query_row("SELECT payload_json FROM hud_current",[],|row|row.get::<_,String>(0)).unwrap()).unwrap();
+        hud["context"]=no_data["context"].clone();
+        db.execute("UPDATE hud_current SET payload_json=?",[hud.to_string()]).unwrap();
+        assert_eq!(hud_reader::read_latest(&root.0).unwrap_err(),"DB_BINDING_MISMATCH");
+        db.execute("UPDATE hud_current SET hud_revision=0,payload_json=?",[no_data.to_string()]).unwrap();
+        assert!(hud_reader::read_latest(&root.0).unwrap().is_some());
+    }
+
 }
