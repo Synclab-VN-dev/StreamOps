@@ -89,13 +89,6 @@ class FakeGitHub:
             self.fail = ""
             raise OSError("ambiguous")
 
-    def complete_issue(self, n, body):
-        next(i for i in self.items if i["number"] == n)["body"] = body.replace(
-            "\nLOG_UPLOAD_PENDING\n",
-            "\nDIAGNOSTICS_UPLOADED (see bot mapping comment)\n",
-            1,
-        )
-
     def delete(self, aid):
         self.deleted.append(aid)
         self.uploads = [x for x in self.uploads if x["id"] != aid]

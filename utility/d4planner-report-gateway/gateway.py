@@ -197,19 +197,6 @@ class GitHub:
             "POST", f"/repos/{REPO}/issues/{n}/comments", {"body": body}
         )
 
-    def complete_issue(self, n, body):
-        return self.request(
-            "PATCH",
-            f"/repos/{REPO}/issues/{n}",
-            {
-                "body": body.replace(
-                    "\nLOG_UPLOAD_PENDING\n",
-                    "\nDIAGNOSTICS_UPLOADED (see bot mapping comment)\n",
-                    1,
-                )
-            },
-        )
-
     def delete(self, aid):
         return self.request("DELETE", f"/repos/{REPO}/releases/assets/{aid}")
 
@@ -352,7 +339,7 @@ class Service:
                     # Persist intent before POST. Crash/ambiguous response cannot cause another POST.
                     c.execute("BEGIN IMMEDIATE")
                     d = req["description"]
-                    body = f'{marker}\nLOG_UPLOAD_PENDING\n\nType: {d["issueType"]}\n\nActual:\n{d["actual"]}\n\nExpected:\n{d["expected"]}\n\nSteps:\n{d["steps"]}'
+                    body = f'{marker}\nDiagnostic status: LOG_UPLOAD_PENDING until the bot mapping comment confirms upload.\n\nType: {d["issueType"]}\n\nActual:\n{d["actual"]}\n\nExpected:\n{d["expected"]}\n\nSteps:\n{d["steps"]}'
                     number = self.github.create_issue(d["title"], body)["number"]
                 c.execute(
                     "UPDATE reports SET issue=?,state='UPLOAD_PENDING' WHERE id=?",
@@ -406,8 +393,6 @@ class Service:
                 raise Rejected("MAPPING_CONFLICT")
             if not valid:
                 self.github.comment(number, mapping_text(mapping))
-            if "\nLOG_UPLOAD_PENDING\n" in issue.get("body", ""):
-                self.github.complete_issue(number, issue["body"])
             c.execute("UPDATE reports SET state='COMPLETE' WHERE id=?", (rid,))
             return {
                 "reportId": rid,
