@@ -312,14 +312,18 @@ it('shows a listing failure instead of empty or stale targets and permits retry'
     code:'TARGET_INVALID', message:'Target listing is unavailable.', retryable:false}));
   expect(screen.getByRole('alert').textContent).toContain('TARGET_INVALID');
   expect(screen.queryByText('No Target JSON files')).toBeNull();
-  expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
+  // Target failure must not remove the independent Report Issue action.
+  expect(screen.queryAllByRole('menuitem').filter(item => item.textContent !== 'Report Issue')).toHaveLength(0);
+  expect(screen.getByRole('menuitem', {name:'Report Issue'})).toBeTruthy();
   expect(document.querySelector('main')?.getAttribute('data-connection')).toBe('CONNECTED');
   expect(document.querySelector('main')?.getAttribute('data-freshness')).toBe('CURRENT');
   fireEvent.click(screen.getByRole('button', {name:'Retry Target list'}));
   expect(screen.getByText('Loading Targets…')).toBeTruthy();
   const retry = socket.sent.at(-1)!.messageId;
   act(() => socket.receive({...envelope, type:'target.list.result',correlationId:failedId,listRevision:99,targets}));
-  expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
+  // Target failure must not remove the independent Report Issue action.
+  expect(screen.queryAllByRole('menuitem').filter(item => item.textContent !== 'Report Issue')).toHaveLength(0);
+  expect(screen.getByRole('menuitem', {name:'Report Issue'})).toBeTruthy();
   act(() => socket.receive({...envelope, type:'target.list.result',correlationId:retry,listRevision:1,targets}));
   expect(screen.queryByRole('alert')).toBeNull();
   fireEvent.click(screen.getByRole('menuitem', {name:/Firewall/}));
@@ -330,4 +334,17 @@ it('shows a listing failure instead of empty or stale targets and permits retry'
     hud:targetBSnapshot(partial.hudRevision+1)}));
   expect(screen.getByText('SYNTHETIC FIREWALL')).toBeTruthy();
   view.unmount();
+});
+
+it('Report Issue pointer interaction does not start native window dragging', async () => {
+  render(<App dataSource={new FakeDataSource()} />);
+  await screen.findByText('SYNTHETIC CHARGE BOLT BUILD');
+  const menu=screen.getByRole('button',{name:'Open target menu'});
+  fireEvent.mouseDown(menu,{button:0});
+  expect(mocks.invoke.mock.calls.filter(call=>call[0]==='drag_overlay')).toHaveLength(0);
+  fireEvent.click(menu);
+  fireEvent.mouseDown(screen.getByRole('menuitem',{name:'Report Issue'}),{button:0});
+  fireEvent.click(screen.getByRole('menuitem',{name:'Report Issue'}));
+  expect(screen.getByLabelText('Report Issue')).toBeTruthy();
+  expect(mocks.invoke.mock.calls.filter(call=>call[0]==='drag_overlay')).toHaveLength(0);
 });

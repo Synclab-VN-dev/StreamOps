@@ -4,6 +4,7 @@ import { productionHudDataSource, type IHudDataSource } from "./hud-data-source"
 import type { AssessmentStatus, CriterionComparison, EquipmentRow, TypedValue } from "./hud-model";
 import { useHudController } from "./use-hud-controller";
 import "./App.css";
+import { ReportIssue } from "./ReportIssue";
 
 function symbol(status: AssessmentStatus) {
   return status === "PASS" ? "✓" : status === "FAIL" ? "✕" : status === "WARN" ? "⚠" : "?";
@@ -27,6 +28,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   const hud = useHudController(source);
   const [expanded, setExpanded] = useState(true);
   const [equipmentOpen, setEquipmentOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [affixOpen, setAffixOpen] = useState(false);
@@ -36,9 +38,9 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   const selected = snapshot?.equipment.find(row => row.slotId === selectedSlot) ?? null;
 
   useEffect(() => {
-    const width = !expanded || !equipmentOpen || !snapshot ? 280 : selected ? 886 : 544;
-    invoke("set_overlay_extent", { width, height: selected ? 620 : 560 }).catch(() => undefined);
-  }, [expanded, equipmentOpen, selected, snapshot]);
+    const width = reportOpen ? 656 : !expanded || !equipmentOpen || !snapshot ? 280 : selected ? 886 : 544;
+    invoke("set_overlay_extent", { width, height: reportOpen || selected ? 620 : 560 }).catch(() => undefined);
+  }, [expanded, equipmentOpen, selected, snapshot, reportOpen]);
 
   useEffect(() => {
     if (!selectedSlot || snapshot?.equipment.some(row => row.slotId === selectedSlot)) return;
@@ -82,6 +84,8 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   }
 
   async function drag(event: React.MouseEvent) {
+    // Menu operations must receive their pointer-up/click; native dragging captures it.
+    if (event.target instanceof Element && event.target.closest(".menu-button, .target-menu")) return;
     if (event.button === 0) await invoke("drag_overlay").catch(() => undefined);
   }
 
@@ -102,6 +106,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
           </button>
           <button className="menu-button" aria-label="Open target menu" aria-expanded={menuOpen} onClick={() => { setMenuOpen(value => !value); if (!menuOpen) void hud.refreshTargets(); }}>⋮</button>
           {menuOpen && <div className="target-menu" role="menu">
+            <button role="menuitem" onClick={() => { setReportOpen(true); setMenuOpen(false); setEquipmentOpen(false); resetComparison(); }}>Report Issue</button>
             <strong>▣ Target Build</strong>
             {hud.targetListStatus === "LOADING" && <p role="status">Loading Targets…</p>}
             {hud.targetListStatus === "ERROR" && <div>
@@ -132,6 +137,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
         </div>}
       </section>
 
+      {reportOpen && <ReportIssue onClose={() => setReportOpen(false)} />}
       {expanded && equipmentOpen && snapshot && <aside className="panel equipment" aria-label="Equipment list">
         <div className="panel-title"><span>⬡ <b>Equipment</b></span><button aria-label="Close equipment" onClick={() => { setEquipmentOpen(false); resetComparison(); }}>×</button></div>
         <p>{targetName} · Select an item</p>
