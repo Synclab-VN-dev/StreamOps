@@ -17,6 +17,7 @@ default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 
 [dependencies]
+d4planner-report-issue = { path = "../report-issue" }
 d4planner-runtime-logging = { path = "../runtime-logging" }
 tauri = { version = "2", features = [] }
 tauri-plugin-global-shortcut = "2"

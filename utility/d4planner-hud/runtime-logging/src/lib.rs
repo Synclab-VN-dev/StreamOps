@@ -137,7 +137,7 @@ fn secure_windows(p: &Path) -> std::io::Result<()> {
         Ok(())
     }
 }
-fn private_dir(p: &Path) -> std::io::Result<()> {
+pub fn private_dir(p: &Path) -> std::io::Result<()> {
     if !safe(p) {
         return Err(fail());
     }
@@ -811,6 +811,15 @@ impl Drop for Session {
 }
 /// Read-only bounded export to a new directory; never follows links or accepts arbitrary files.
 pub fn export(data: &Path, id: &str, destination: &Path) -> std::io::Result<Value> {
+    export_sources(data, id, destination, &["FE", "BE", "RULEKIT"], false)
+}
+
+/// Selected-source export uses the same privacy filter; unselected files are never read.
+pub fn export_selected(data: &Path, id: &str, destination: &Path, selected: &[&str]) -> std::io::Result<Value> {
+    export_sources(data, id, destination, selected, true)
+}
+fn export_sources(data: &Path, id: &str, destination: &Path, selected: &[&str], partial: bool) -> std::io::Result<Value> {
+    if selected.iter().any(|s| !["FE", "BE", "RULEKIT"].contains(s)) { return Err(fail()); }
     if uuid::Uuid::parse_str(id).is_err() || destination.exists() || !safe(destination) {
         return Err(fail());
     }
@@ -846,7 +855,12 @@ pub fn export(data: &Path, id: &str, destination: &Path) -> std::io::Result<Valu
     private_dir(destination)?;
     let mut files = Vec::new();
     for (c, cap) in LIMITS {
-        let lines = read_lines(&dir.join(file_name(c)), cap)?;
+        if !selected.contains(&c) { continue; }
+        let lines = match read_lines(&dir.join(file_name(c)), cap) {
+            Ok(lines) => lines,
+            Err(_) if partial => { files.push(json!({"name":file_name(c),"component":c,"status":"UNAVAILABLE"})); continue; },
+            Err(e) => return Err(e),
+        };
         let mut bytes = Vec::new();
         let mut generations = std::collections::BTreeSet::new();
         let mut dropped = 0;

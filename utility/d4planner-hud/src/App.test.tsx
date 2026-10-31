@@ -312,14 +312,18 @@ it('shows a listing failure instead of empty or stale targets and permits retry'
     code:'TARGET_INVALID', message:'Target listing is unavailable.', retryable:false}));
   expect(screen.getByRole('alert').textContent).toContain('TARGET_INVALID');
   expect(screen.queryByText('No Target JSON files')).toBeNull();
-  expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
+  // Target failure must not remove the independent Report Issue action.
+  expect(screen.queryAllByRole('menuitem').filter(item => item.textContent !== 'Report Issue')).toHaveLength(0);
+  expect(screen.getByRole('menuitem', {name:'Report Issue'})).toBeTruthy();
   expect(document.querySelector('main')?.getAttribute('data-connection')).toBe('CONNECTED');
   expect(document.querySelector('main')?.getAttribute('data-freshness')).toBe('CURRENT');
   fireEvent.click(screen.getByRole('button', {name:'Retry Target list'}));
   expect(screen.getByText('Loading Targets…')).toBeTruthy();
   const retry = socket.sent.at(-1)!.messageId;
   act(() => socket.receive({...envelope, type:'target.list.result',correlationId:failedId,listRevision:99,targets}));
-  expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
+  // Target failure must not remove the independent Report Issue action.
+  expect(screen.queryAllByRole('menuitem').filter(item => item.textContent !== 'Report Issue')).toHaveLength(0);
+  expect(screen.getByRole('menuitem', {name:'Report Issue'})).toBeTruthy();
   act(() => socket.receive({...envelope, type:'target.list.result',correlationId:retry,listRevision:1,targets}));
   expect(screen.queryByRole('alert')).toBeNull();
   fireEvent.click(screen.getByRole('menuitem', {name:/Firewall/}));
