@@ -7,6 +7,7 @@ fn runtime_log_event(level:String,tag:String,event:String,fields:serde_json::Val
 }
 mod overlay_core;
 mod hud_reader;
+mod webview_diagnostic;
 mod backend_process;
 
 use std::{collections::BTreeMap, env, fs, path::PathBuf, sync::{Arc, Mutex}, time::Duration};
@@ -377,12 +378,7 @@ fn report_hud_pipeline(
 #[tauri::command]
 fn report_webview_diagnostic(phase: String, detail: Option<String>) -> Result<(), String> {
     use std::io::Write;
-    // The legacy acceptance collector accepts only a finite phase vocabulary.
-    // Never persist arbitrary frontend exception strings, even from direct IPC.
-    let _ = detail;
-    if !matches!(phase.as_str(), "BOOTSTRAP_STARTED" | "APP_MOUNT_REQUESTED" | "WINDOW_ERROR" | "UNHANDLED_REJECTION" | "APP_IMPORT_FAILED") {
-        return Err("invalid diagnostic phase".into());
-    }
+    let detail = webview_diagnostic::detail(&phase, detail.as_deref())?;
     let path = env::var("D4_WEBVIEW_DIAGNOSTIC_REPORT")
         .map_err(|_| "WebView diagnostics are not enabled".to_string())?;
     let record = serde_json::json!({
@@ -391,7 +387,7 @@ fn report_webview_diagnostic(phase: String, detail: Option<String>) -> Result<()
             .map_err(|error| error.to_string())?
             .as_millis(),
         "phase": phase,
-        "detail": serde_json::Value::Null,
+        "detail": detail,
     });
     let mut file = fs::OpenOptions::new().create(true).append(true).open(path)
         .map_err(|error| format!("cannot open WebView diagnostic report: {error}"))?;
