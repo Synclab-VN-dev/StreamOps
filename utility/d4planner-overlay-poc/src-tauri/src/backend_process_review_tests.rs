@@ -175,7 +175,7 @@ impl Sandbox {
             .canonicalize()
             .unwrap();
         let descriptor = self.0.join("bootstrap.json");
-        let payload = serde_json::json!({"protocol":"d4planner-managed/v1","contractVersion":"d4planner-r1-contract/1.0.0-candidate.5","ownerInstanceId":"owner","childInstanceId":"child","generation":1,"dataDir":self.0.join("data"),"targetFolder":self.0.join("targets"),"wsEndpoint":{"host":"127.0.0.1","port":0},"credential":"SYNTHETIC_TEST_CREDENTIAL_0000000000000000"});
+        let payload = serde_json::json!({"protocol":"d4planner-managed/v1","contractVersion":"d4planner-r1-contract/1.0.0-candidate.6","ownerInstanceId":"owner","childInstanceId":"child","generation":1,"dataDir":self.0.join("data"),"targetFolder":self.0.join("targets"),"wsEndpoint":{"host":"127.0.0.1","port":0},"credential":"SYNTHETIC_TEST_CREDENTIAL_0000000000000000"});
         std::fs::write(&descriptor, payload.to_string()).unwrap();
         #[cfg(unix)]
         {

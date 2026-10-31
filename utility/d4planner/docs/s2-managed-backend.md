@@ -146,3 +146,11 @@ rejection (both then exercise generation 2 with a matching descriptor and
 clean shutdown), and failed READY→successful cleanup→stop→start rejection.
 Existing concurrent/double-start, ownership, READY guards and cleanup-failure
 coverage remains unchanged. Windows-native/MAN is NOT_RUN for this change.
+
+## D5 viewer-independent startup
+
+Native FE defaults to viewer-only. `D4PLANNER_MODE=integrated` explicitly opts into
+existing owned BackendProcessWrapper startup. Failed configuration/start reports
+unavailable without aborting WebView creation. Start/stop remains available through
+the same native commands; no second lifecycle manager. DB discovery uses the
+independent absolute D4PLANNER_DATA_DIR supplied by packaging, not BE READY.

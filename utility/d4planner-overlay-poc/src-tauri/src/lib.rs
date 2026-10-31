@@ -204,14 +204,21 @@ pub fn run() {
             window.set_always_on_top(true)?;
             window.set_ignore_cursor_events(false)?;
 
-            // Packaged S2 launches the managed Backend before the UI consumes
-            // S5 data. Developer visual-only runs omit the bootstrap descriptor
-            // and remain explicitly STOPPED rather than falling back to mock BE.
-            if env::var_os("D4PLANNER_BOOTSTRAP_FILE").is_some() {
-                let wrapper = Arc::new(backend_from_environment().map_err(std::io::Error::other)?);
-                wrapper.start().map_err(std::io::Error::other)?;
-                let state = app.state::<BackendState>();
-                *state.0.lock().map_err(|_| std::io::Error::other("Backend state lock poisoned"))? = Some(wrapper);
+            // Viewer-only is the default and has no Backend bootstrap dependency.
+            // Integrated startup uses the same wrapper; a failed child never
+            // prevents creation of the FE window or reading persisted HUD data.
+            if env::var("D4PLANNER_MODE").as_deref() == Ok("integrated") {
+                match backend_from_environment() {
+                    Ok(wrapper) => {
+                        let wrapper = Arc::new(wrapper);
+                        let state = app.state::<BackendState>();
+                        *state.0.lock().map_err(|_| std::io::Error::other("Backend state lock poisoned"))? = Some(wrapper.clone());
+                        if wrapper.start().is_err() {
+                            eprintln!("Managed Backend unavailable; viewer remains open");
+                        }
+                    }
+                    Err(_) => eprintln!("Managed Backend configuration unavailable; viewer remains open"),
+                }
             }
 
             let toggle = toggle_shortcut();

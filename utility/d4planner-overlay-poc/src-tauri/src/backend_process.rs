@@ -176,7 +176,7 @@ impl ProcessDriver for StdProcessDriver {
             .map_err(|error| format!("READY timeout/channel failure: {error}"))??;
         if envelope.event != "READY"
             || envelope.protocol != "d4planner-managed/v1"
-            || envelope.contract_version != "d4planner-r1-contract/1.0.0-candidate.5"
+            || envelope.contract_version != "d4planner-r1-contract/1.0.0-candidate.6"
             || envelope.owner_instance_id != specification.owner_instance_id
             || envelope.child_instance_id != specification.child_instance_id
             || envelope.generation != specification.generation

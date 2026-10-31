@@ -20,7 +20,7 @@ from typing import Any, Protocol
 
 
 PROTOCOL = "d4planner-managed/v1"
-CONTRACT = "d4planner-r1-contract/1.0.0-candidate.5"
+CONTRACT = "d4planner-r1-contract/1.0.0-candidate.6"
 BOOTSTRAP_ENV = "D4PLANNER_BOOTSTRAP_FILE"
 RUNTIME_FACTORY_ENV = "D4PLANNER_RUNTIME_FACTORY"
 
