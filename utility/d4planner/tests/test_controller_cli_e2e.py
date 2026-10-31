@@ -45,7 +45,7 @@ def test_bad_profile_does_not_launch_supervisor(monkeypatch, tmp_path):
 def test_mode_and_profile_conflict_is_nonzero(monkeypatch, tmp_path):
     paths = RuntimePaths(tmp_path / "home")
     paths.ensure()
-    monkeypatch.setattr(cli, "_state", lambda _paths: {
+    monkeypatch.setattr(cli, "_state", lambda _paths, *, strict=False: {
         "state": "RUNNING", "supervisorPid": 128,
         "extras": {"inputMarker":{"mode":"BLOCK", "layoutId":None}},
     })
