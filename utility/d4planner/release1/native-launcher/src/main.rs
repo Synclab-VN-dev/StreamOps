@@ -36,7 +36,7 @@ fn payload(root: &Path) -> Result<PathBuf, String> {
     } else { Ok(root.to_owned()) }
 }
 
-fn verify(root: &Path) -> Result<Value, String> {
+fn verify(root: &Path, viewer: bool) -> Result<Value, String> {
     let manifest: Value = serde_json::from_slice(&fs::read(root.join("release-manifest.json")).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     if manifest["schemaVersion"] != "d4planner-release-manifest/v1" { return Err("Manifest version mismatch".into()); }
     let files = manifest["files"].as_array().ok_or("Missing files manifest")?;
@@ -46,13 +46,15 @@ fn verify(root: &Path) -> Result<Value, String> {
         let name = entry["path"].as_str().ok_or("Missing file path")?;
         if !seen.insert(name.to_lowercase()) { return Err("Duplicate resource path".into()); }
         let file = relative(root, name)?;
+        if viewer && !name.starts_with("app/") && !file.exists() { continue; }
         if fs::metadata(&file).map_err(|e| e.to_string())?.len() != entry["bytes"].as_u64().ok_or("Missing file size")?
             || digest(&file)? != entry["sha256"].as_str().ok_or("Missing file checksum")? {
             return Err(format!("Resource integrity failed: {name}"));
         }
     }
     for name in ["app/d4planner-fe.exe", "runtime/python/python.exe", "runtime/node/node.exe",
-        "runtime/chromium/chrome-win64/chrome.exe", "utility/d4planner/rulekit-worker/worker.js", "utility/d4-rulekit/snapshot-management/manage.js"] {
+        "runtime/chromium/chrome-win64/chrome.exe", "backend/site-packages/d4planner/rulekit/worker.js", "utility/d4-rulekit/snapshot-management/manage.js"] {
+        if viewer && !name.starts_with("app/") { continue; }
         if !seen.contains(name) { return Err(format!("Required resource absent: {name}")); }
     }
     Ok(manifest)
@@ -116,7 +118,7 @@ fn run() -> Result<(), String> {
     // for containment checks, but give Node/CommonJS ordinary Win32 paths.
     // Node's relative module resolver does not support verbatim module roots.
     let payload = dunce::simplified(&payload(&root)?).to_path_buf();
-    verify(&payload)?;
+    verify(&payload, env::args().any(|a| a == "--viewer"))?;
     if env::args().any(|a| a == "--installation-health") { return Ok(()); }
     #[cfg(windows)] {
         if env::args().any(|a| a == "--snapshot-command") { return windows::provision(&root, &payload); }
@@ -246,7 +248,8 @@ mod windows {
         if stop_event.0.is_null() { return Err("Cannot create owned stop event".into()); }
         let probe_data = env::temp_dir().join(format!("D4Planner-runtime-health-{}", uuid::Uuid::new_v4()));
         let data = if probe { probe_data.clone() } else { data_root(root)? };
-        let capture = if probe { None } else { equipment_config(&data)? };
+        let viewer = env::args().any(|a| a == "--viewer");
+        let capture = if probe || viewer { None } else { equipment_config(&data)? };
         if !data.is_absolute() || data.starts_with(root) { return Err("DataDir must be absolute and outside installation".into()); }
         for directory in ["targets", "state", "private"] { fs::create_dir_all(data.join(directory)).map_err(|e| e.to_string())?; }
         let bootstrap = data.join("private").join(format!("bootstrap-{}.json", uuid::Uuid::new_v4()));
@@ -260,13 +263,13 @@ mod windows {
             _ => return Err("Invalid port mode".into()),
         };
         let descriptor = json!({
-            "protocol":"d4planner-managed/v1", "contractVersion":"d4planner-r1-contract/1.0.0-candidate.5",
+            "protocol":"d4planner-managed/v1", "contractVersion":"d4planner-r1-contract/1.0.0-candidate.6",
             "ownerInstanceId":owner, "childInstanceId":uuid::Uuid::new_v4().to_string(), "generation":1,
             "dataDir":data.join("state"), "targetFolder":data.join("targets"),
             "credential":credential.iter().map(|byte| format!("{byte:02x}")).collect::<String>(),
             "wsEndpoint":{"host":"127.0.0.1","port":port}
         });
-        fs::write(&bootstrap, serde_json::to_vec(&descriptor).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        if !viewer { fs::write(&bootstrap, serde_json::to_vec(&descriptor).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?; }
         let result = (|| -> Result<(), String> {
             let job = OwnedJob(CreateJobObjectW(std::ptr::null(), std::ptr::null()));
             let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
@@ -280,13 +283,15 @@ mod windows {
                 .open(data.join("private/native-stderr.log")).map_err(|e| e.to_string())?;
             command.current_dir(payload).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::from(error_log))
                 .creation_flags(CREATE_SUSPENDED | CREATE_NO_WINDOW)
+                .env("D4PLANNER_DATA_DIR", data.join("state"))
+                .env("D4PLANNER_MODE", if viewer { "viewer" } else { "integrated" })
                 .env("D4PLANNER_BOOTSTRAP_FILE", &bootstrap)
                 .env("D4PLANNER_BACKEND_PYTHON", payload.join("runtime/python/python.exe"))
                 .env("PYTHONPATH", payload.join("backend/site-packages"))
                 .env("D4PLANNER_REPOSITORY_ROOT", payload)
                 .env("D4PLANNER_RULEKIT_EXECUTABLE", payload.join("runtime/node/node.exe"))
-                .env("D4PLANNER_RULEKIT_WORKER", payload.join("utility/d4planner/rulekit-worker/worker.js"))
-                .env("D4PLANNER_RULEKIT_WORKING_DIR", payload.join("utility/d4planner/rulekit-worker"))
+                .env("D4PLANNER_RULEKIT_WORKER", payload.join("backend/site-packages/d4planner/rulekit/worker.js"))
+                .env("D4PLANNER_RULEKIT_WORKING_DIR", payload.join("backend/site-packages/d4planner/rulekit"))
                 .env("D4_RULEKIT_DATA_ROOT", data.join("rulekit"))
                 .env("D4_RULEKIT_INSTALLATION_ROOT", payload)
                 .env_remove("D4_RULEKIT_PROFILE_JSON").env_remove("D4_RULEKIT_SNAPSHOT_ROOT")
@@ -295,6 +300,7 @@ mod windows {
                 .env_remove("D4PLANNER_EQUIPMENT_EVIDENCE_FILE")
                 .env_remove("D4PLANNER_EQUIPMENT_REPOSITORY_DB")
                 .env_remove("D4PLANNER_CHARACTER_ID").env_remove("D4PLANNER_CHARACTER_DISPLAY_NAME");
+            if viewer { command.env_remove("D4PLANNER_BOOTSTRAP_FILE"); }
             if let Some(config) = &capture {
                 command.env("D4PLANNER_EQUIPMENT_REPOSITORY_DB", &config.path)
                     .env("D4PLANNER_CHARACTER_ID", &config.character_id)

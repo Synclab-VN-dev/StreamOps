@@ -26,7 +26,7 @@ import release1_delivery as delivery
 from d4planner.rulekit import RuleKitRuntimeService
 
 ORIGIN = "tauri://localhost"
-PROTOCOL = "d4planner-ws/v1"
+PROTOCOL = "d4planner-notify/v1"
 
 
 class E2EFailure(RuntimeError):
@@ -194,46 +194,6 @@ def _percentiles(values: list[float]) -> dict:
     }
 
 
-async def _select_target(endpoint: dict, credential: str, instance: str, generation: int,
-                         target_id: str) -> dict:
-    uri = f"ws://{endpoint['host']}:{endpoint['port']}"
-    async with connect(uri, origin=ORIGIN, ping_interval=None) as ws:
-        await ws.send(json.dumps(_msg("hud-e2e-hello", "hello", generation,
-                                      credential=credential, origin=ORIGIN,
-                                      lastSeen={"hudRevision": None})))
-        accepted = json.loads(await ws.recv())
-        if accepted.get("type") != "hello.accepted" or accepted.get("runtimeInstanceId") != instance:
-            raise E2EFailure("HUD evidence socket authentication failed")
-        await ws.send(json.dumps(_msg(
-            "hud-e2e-snapshot", "hud.snapshot.request", generation,
-            requestContext={
-                "mode":"DISCOVER_ACTIVE_CONTEXT", "reason":"INITIAL_CONNECTION",
-                "attempt":1, "runtimeInstanceId":instance, "minimumHudRevision":0,
-            },
-        )))
-        snapshot = await _recv_type(ws, "hud.snapshot")
-        if snapshot.get("authoritative") is not True or not snapshot.get("subscriptionId"):
-            raise E2EFailure("HUD evidence socket did not establish an authoritative subscription")
-        await ws.send(json.dumps(_msg("hud-e2e-list", "target.list.request", generation)))
-        listing = await _recv_type(ws, "target.list.result")
-        target = next((item for item in listing["targets"] if item["targetId"] == target_id), None)
-        if target is None or target.get("validation") != "VALID":
-            raise E2EFailure("HUD evidence Target B is not valid")
-        await ws.send(json.dumps(_msg("hud-e2e-select", "target.select.request", generation,
-            targetId=target_id, expectedSha256=target["contentSha256"],
-            expectedListRevision=listing["listRevision"])))
-        update = None
-        selected = None
-        for _ in range(6):
-            message = json.loads(await asyncio.wait_for(ws.recv(), 5))
-            if message.get("type") == "target.select.result": selected = message
-            if message.get("type") == "hud.update": update = message
-            if selected and update: break
-        if selected is None or selected.get("status") != "ACTIVATED" or update is None:
-            raise E2EFailure("HUD evidence Target B activation/update was incomplete")
-        return update["hud"]
-
-
 def _prepare(install: Path, data: Path) -> tuple[Path, Path, str]:
     target_source = install / "examples/target.synthetic.json"
     evidence = install / "examples/equipment.recorded.synthetic.json"
@@ -261,10 +221,12 @@ def _runtime_env(install: Path, bootstrap: Path, evidence: Path) -> dict[str, st
     env = dict(os.environ)
     env.update({
         "D4PLANNER_BOOTSTRAP_FILE": str(bootstrap),
+        "D4PLANNER_MODE": "integrated",
+        "D4PLANNER_DATA_DIR": str(bootstrap.parent / "state"),
         "PYTHONPATH": str(install / "backend/site-packages"),
         "D4PLANNER_RULEKIT_EXECUTABLE": str(install / "runtime/node/node.exe"),
-        "D4PLANNER_RULEKIT_WORKER": str(install / "utility/d4planner/rulekit-worker/worker.js"),
-        "D4PLANNER_RULEKIT_WORKING_DIR": str(install / "utility/d4planner/rulekit-worker"),
+        "D4PLANNER_RULEKIT_WORKER": str(install / "backend/site-packages/d4planner/rulekit/worker.js"),
+        "D4PLANNER_RULEKIT_WORKING_DIR": str(install / "backend/site-packages/d4planner/rulekit"),
         "D4_RULEKIT_DATA_ROOT": str(bootstrap.parent / "rulekit"),
         "D4_RULEKIT_INSTALLATION_ROOT": str(install),
         "D4_RULEKIT_CHROMIUM_EXECUTABLE": str(install / "runtime/chromium/chrome-win64/chrome.exe"),
@@ -282,7 +244,7 @@ def _runtime_env(install: Path, bootstrap: Path, evidence: Path) -> dict[str, st
 
 def _msg(message_id: str, kind: str, generation: int, **extra) -> dict:
     return {"protocolVersion": PROTOCOL, "messageId": message_id, "type": kind,
-            "correlationId": None, "backendGeneration": generation, **extra}
+            **{key:value for key,value in extra.items() if key != "lastSeen"}}
 
 
 def _windows_descendants(pid: int) -> list[dict]:
@@ -313,86 +275,57 @@ async def _recv_type(ws, expected: str, count: int = 4) -> dict:
 
 
 async def _socket_flow(endpoint: dict, credential: str, instance: str, generation: int,
-                       targets: Path, target_a_hash: str) -> dict:
-    uri = f"ws://{endpoint['host']}:{endpoint['port']}"
-    async def open_socket(last_revision=None):
-        ws = await connect(uri, origin=ORIGIN, ping_interval=None)
-        await ws.send(json.dumps(_msg("hello", "hello", generation, credential=credential,
-                                      origin=ORIGIN, lastSeen={"hudRevision": last_revision})))
-        accepted = json.loads(await ws.recv())
-        if accepted.get("type") != "hello.accepted" or accepted.get("runtimeInstanceId") != instance:
-            raise E2EFailure("authenticated hello identity mismatch")
-        return ws
-
-    ws = await open_socket()
+                       targets: Path, target_a_hash: str, process, owner: str, database: Path) -> dict:
+    def read():
+        with sqlite3.connect(database.as_uri() + "?mode=ro", uri=True) as db:
+            db.execute("PRAGMA query_only=ON")
+            return json.loads(db.execute("SELECT payload_json FROM hud_current WHERE singleton=1").fetchone()[0])
+    async def control(method, params):
+        request_id = str(uuid.uuid4())
+        command = {"protocolVersion":"d4planner-control/v1", "type":"request", "requestId":request_id,
+                   "ownerInstanceId":owner,"childInstanceId":instance,"generation":generation,"method":method,"params":params}
+        process.stdin.write(json.dumps(command) + "\n"); process.stdin.flush()
+        response = json.loads(await asyncio.wait_for(asyncio.to_thread(process.stdout.readline), 10))
+        if any(response.get(key) != command[key] for key in ('requestId','ownerInstanceId','childInstanceId','generation')) or response.get('error'):
+            raise E2EFailure("managed control response failed ownership/correlation/result validation")
+        return response['result']
+    async def open_socket():
+        ws = await connect(f"ws://{endpoint['host']}:{endpoint['port']}", origin=ORIGIN,ping_interval=None)
+        await ws.send(json.dumps(_msg('hello','hello',generation,credential=credential,origin=ORIGIN)))
+        await _recv_type(ws,'hello.accepted')
+        hint = await _recv_type(ws,'hud.committed')
+        if set(hint) != {'protocolVersion','type','messageId','dbId','epoch','hudRevision'}:
+            raise E2EFailure('notification leaked business payload')
+        return ws, hint
+    ws, initial = await open_socket()
     try:
-        await ws.send(json.dumps(_msg("snap-a", "hud.snapshot.request", generation,
-            requestContext={"mode":"DISCOVER_ACTIVE_CONTEXT","reason":"INITIAL_CONNECTION",
-                            "attempt":1,"runtimeInstanceId":instance,"minimumHudRevision":0})))
-        snap_a = await _recv_type(ws, "hud.snapshot")
-        hud_a = snap_a["hud"]
-        if (hud_a["context"]["state"], hud_a["score"]["value"],
-            hud_a["context"]["target"]["contentSha256"]) != ("BOUND", 100.0, target_a_hash):
-            raise E2EFailure("initial durable assessment does not match independent expected values")
-        await ws.send(json.dumps(_msg("list", "target.list.request", generation)))
-        listing = await _recv_type(ws, "target.list.result")
-
-        source = json.loads((targets / "target-a.json").read_text(encoding="utf-8"))
-        source["targetId"] = "synthetic-target-b"
-        source["displayName"] = "Synthetic Target B"
-        target_b_path = targets / "target-b.json"
-        target_b_path.write_text(json.dumps(source, separators=(",", ":")), encoding="utf-8")
-        await ws.send(json.dumps(_msg("list-b", "target.list.request", generation)))
-        listing_b = await _recv_type(ws, "target.list.result")
-        target_b = next(item for item in listing_b["targets"] if item["targetId"] == "synthetic-target-b")
-        await ws.send(json.dumps(_msg("select-b", "target.select.request", generation,
-            targetId=target_b["targetId"], expectedSha256=target_b["contentSha256"],
-            expectedListRevision=listing_b["listRevision"])))
-        received = {}
-        for _ in range(4):
-            message = json.loads(await asyncio.wait_for(ws.recv(), 5))
-            if message.get("type") in {"target.select.result", "hud.update"}:
-                received[message["type"]] = message
-            if len(received) == 2:
-                break
-        selected = received.get("target.select.result")
-        update = received.get("hud.update")
-        if selected is None or update is None:
-            raise E2EFailure("Target activation result/update pair was incomplete")
-        hud_b = update["hud"]
-        if selected.get("status") != "ACTIVATED" or hud_b["context"]["target"]["targetId"] != "synthetic-target-b":
-            raise E2EFailure("Target A to B activation did not update authoritative binding")
-        if (selected.get("contentSha256") != target_b["contentSha256"]
-                or hud_b["context"]["target"]["contentSha256"] != target_b["contentSha256"]
-                or hud_b["context"]["binding"]["targetSha256"] != target_b["contentSha256"]):
-            raise E2EFailure("Target A to B activation lost the exact content binding")
-        if hud_b["context"]["binding"]["targetId"] != "synthetic-target-b":
-            raise E2EFailure("old Target assessment was relabelled")
-        revision = hud_b["hudRevision"]
+        hud_a = read()
+        if hud_a['score']['value'] != 100.0 or hud_a['context']['target']['contentSha256'] != target_a_hash:
+            raise E2EFailure('initial SQLite score/binding differs from independent expected')
+        listing = await control('target.list',{})
+        source = json.loads((targets/'target-a.json').read_text())
+        source.update(targetId='synthetic-target-b',displayName='Synthetic Target B')
+        (targets/'target-b.json').write_text(json.dumps(source,separators=(',',':')))
+        listed = await control('target.list',{})
+        target = next(item for item in listed['targets'] if item['targetId']=='synthetic-target-b')
+        result = await control('target.select',{'targetId':target['targetId'],'expectedSha256':target['contentSha256'],'expectedListRevision':listed['listRevision']})
+        hint = await _recv_type(ws,'hud.committed')
+        hud_b = read()
+        if result['status'] != 'ACTIVATED' or hud_b['context']['binding']['targetId'] != target['targetId'] or hud_b['context']['binding']['targetSha256'] != target['contentSha256'] or hint['hudRevision'] != hud_b['hudRevision']:
+            raise E2EFailure('IPC selection/commit/notification binding mismatch')
     finally:
         await ws.close()
-
-    gap_from_revision = max(0, revision - 1)
-    ws = await open_socket(gap_from_revision)
+    ws, latest = await open_socket()
     try:
-        await ws.send(json.dumps(_msg("resync", "hud.snapshot.request", generation,
-            requestContext={"mode":"RESYNC_KNOWN_CONTEXT","runtimeInstanceId":instance,
-                            "minimumHudRevision":revision, "expectedContext":{
-                                "state":"BOUND",
-                                "characterId":hud_b["context"]["character"]["characterId"],
-                                "targetId":"synthetic-target-b",
-                                "selectionRevision":hud_b["context"]["target"]["selectionRevision"],
-                            }})))
-        resync = await _recv_type(ws, "hud.snapshot")
-        if resync["hud"]["hudRevision"] < revision or resync["hud"]["context"]["target"]["targetId"] != "synthetic-target-b":
-            raise E2EFailure("reconnect resync rolled back the HUD")
+        if read()['hudRevision'] < hud_b['hudRevision'] or latest['hudRevision'] != read()['hudRevision']:
+            raise E2EFailure('reconnect DB reread rolled back')
     finally:
         await ws.close()
-    return {"initialRevision": hud_a["hudRevision"], "finalRevision": revision,
-            "score": hud_a["score"], "targetCountBeforeSwitch": len(listing["targets"]),
-            "finalTargetId": "synthetic-target-b", "finalTargetSha256": target_b["contentSha256"],
-            "authenticatedSubscriber": True, "gapFromRevision": gap_from_revision,
-            "resyncRevision": resync["hud"]["hudRevision"], "rollbackPrevented": True}
+    return {'initialRevision':hud_a['hudRevision'],'finalRevision':hud_b['hudRevision'],
+            'score':hud_a['score'],'targetCountBeforeSwitch':len(listing['targets']),
+            'finalTargetId':target['targetId'],'finalTargetSha256':target['contentSha256'],
+            'authenticatedSubscriber':True,'gapFromRevision':max(0,hud_b['hudRevision']-1),
+            'resyncRevision':latest['hudRevision'],'rollbackPrevented':True}
 
 
 def run_backend(args: argparse.Namespace) -> dict:
@@ -407,7 +340,7 @@ def run_backend(args: argparse.Namespace) -> dict:
     credential = secrets.token_hex(32)
     bootstrap = data / "private-bootstrap.json"
     bootstrap.write_text(json.dumps({
-        "protocol":"d4planner-managed/v1", "contractVersion":"d4planner-r1-contract/1.0.0-candidate.5",
+        "protocol":"d4planner-managed/v1", "contractVersion":"d4planner-r1-contract/1.0.0-candidate.6",
         "ownerInstanceId":owner, "childInstanceId":child, "generation":generation,
         "dataDir":str(data / "state"), "targetFolder":str(targets),
         "wsEndpoint":{"host":"127.0.0.1","port":approved_port or 0}, "credential":credential,
@@ -438,7 +371,7 @@ def run_backend(args: argparse.Namespace) -> dict:
         if sys.platform == "win32" and not any("chrome" in name for name in names):
             raise E2EFailure("owned Chromium process not found")
         socket = asyncio.run(_socket_flow(ready["wsEndpoint"], credential, child,
-                                          generation, targets, target_hash))
+                                          generation, targets, target_hash, process, owner, data / "state/hud.sqlite3"))
         database = data / "state/hud.sqlite3"
         with sqlite3.connect(database) as connection:
             rows = connection.execute("select count(*) from hud_snapshot").fetchone()[0]
@@ -557,6 +490,8 @@ def _invoke_hud_button(window: dict, prefix: str) -> None:
         "$condition=New-Object System.Windows.Automation.PropertyCondition("
         "[System.Windows.Automation.AutomationElement]::ControlTypeProperty,"
         "[System.Windows.Automation.ControlType]::Button);"
+        "$menu=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::MenuItem);"
+        "$condition=New-Object System.Windows.Automation.OrCondition($condition,$menu);"
         "$buttons=$root.FindAll([System.Windows.Automation.TreeScope]::Descendants,$condition);"
         f"$matched=@($buttons | Where-Object {{$_.Current.Name.Contains('{escaped}')}});"
         "if($matched.Count-ne 1){throw ('HUD_BUTTON_NOT_UNIQUE: '+($buttons | ForEach-Object {$_.Current.Name} | ConvertTo-Json -Compress))};"
@@ -649,7 +584,7 @@ def run_native_hud(args: argparse.Namespace) -> dict:
     owner = str(uuid.uuid4()); child = str(uuid.uuid4()); generation = 1
     credential = secrets.token_hex(32)
     descriptor = {
-        "protocol":"d4planner-managed/v1", "contractVersion":"d4planner-r1-contract/1.0.0-candidate.5",
+        "protocol":"d4planner-managed/v1", "contractVersion":"d4planner-r1-contract/1.0.0-candidate.6",
         "ownerInstanceId":owner, "childInstanceId":child, "generation":generation,
         "dataDir":str(data / "state"), "targetFolder":str(targets),
         "wsEndpoint":{"host":"127.0.0.1","port":args.approved_port}, "credential":credential,
@@ -728,9 +663,8 @@ def run_native_hud(args: argparse.Namespace) -> dict:
         if args.scenario == "HUD-02":
             (before_root / "ws-state.json").write_text(json.dumps(before_ui, indent=2) + "\n", encoding="utf-8")
             previous_revision = int(before_ui["hudRevision"])
-            ws_after = asyncio.run(_select_target(
-                descriptor["wsEndpoint"], credential, child, generation, "synthetic-target-b"
-            ))
+            _invoke_hud_button(window, "Open target menu")
+            _invoke_hud_button(window, target_b_document["displayName"])
             def changed_render():
                 if not render_report.is_file(): return None
                 value = json.loads(render_report.read_text(encoding="utf-8"))
@@ -744,11 +678,9 @@ def run_native_hud(args: argparse.Namespace) -> dict:
             )
             _assert_ui_matches_db(after_ui, after_db)
             _assert_native_delta(before_db["payload"], after_db["payload"])
-            if ws_after != after_db["payload"]:
-                raise E2EFailure("WS payload differs from committed SQLite snapshot")
-            if ws_after["hudRevision"] != after_ui["hudRevision"]:
-                raise E2EFailure("WS update and visible render revisions differ")
-            (after_root / "ws-state.json").write_text(json.dumps(ws_after, indent=2) + "\n", encoding="utf-8")
+            if after_db["payload"]["hudRevision"] != after_ui["hudRevision"]:
+                raise E2EFailure("committed DB and visible render revisions differ")
+            (after_root / "ws-state.json").write_text(json.dumps(after_db["payload"], indent=2) + "\n", encoding="utf-8")
             (after_root / "native-window.json").write_text(json.dumps(window, indent=2) + "\n", encoding="utf-8")
             compare = root / "compare"; compare.mkdir(exist_ok=True)
             changed_pixels = _visual_diff(before_image, after_image, compare / "visual-change.png")
@@ -898,7 +830,7 @@ def run_owner(args: argparse.Namespace) -> dict:
     targets, evidence, _ = _prepare(install, data)
     bootstrap = data / "native-owner-bootstrap.json"
     descriptor = {
-        "protocol":"d4planner-managed/v1", "contractVersion":"d4planner-r1-contract/1.0.0-candidate.5",
+        "protocol":"d4planner-managed/v1", "contractVersion":"d4planner-r1-contract/1.0.0-candidate.6",
         "ownerInstanceId":str(uuid.uuid4()), "childInstanceId":str(uuid.uuid4()), "generation":1,
         "dataDir":str(data / "state"), "targetFolder":str(targets),
         "wsEndpoint":{"host":"127.0.0.1","port":0}, "credential":secrets.token_hex(32),

@@ -142,3 +142,24 @@ never copies back/deletes Targets, Settings or the external Rule Kit snapshot st
 A tampered recovery payload/backup fails closed with its journal preserved. Cleanup
 removes only transaction-owned files and retains unknown files. No new Rule Kit
 compatibility or distribution policy is defined by this recovery mechanism.
+
+## D5 DB-first delivery
+
+Contract candidate.6 replaces the candidate.5 full-HUD WebSocket wire protocol.
+The public HUD DB is `DataRoot/state/hud.sqlite3`; launcher passes that absolute
+state directory as `D4PLANNER_DATA_DIR` independently of the private BE bootstrap.
+`D4Planner.exe --viewer` opens the same FE without BE bootstrap/start and permits
+missing optional Python/Node/Chromium resources. Existing resources still undergo
+integrity checks. Default installed mode is integrated; failed Backend startup
+leaves FE available. No second Python command entrypoint exists.
+
+Worker is `backend/site-packages/d4planner/rulekit/worker.js`. The internal Rule Kit
+bootstrap and composition modules are explicitly in the public source allowlist.
+Private snapshots and keys remain excluded. Schema migration accepts private HUD
+v2 and v3; the public projection format is d4planner-hud-db/v1. Upgrade/rollback
+must preserve state/Targets/settings; FE never migrates or recreates a failed DB.
+
+The native HUD E2E selects Target through owned-window UI Automation, exercising
+Tauri → managed IPC; its WS observer only validates committed revision metadata.
+Golden, Owner MAN, installer/Windows-native and live capture gates remain separate
+from synthetic input tests. This document is not evidence that those gates passed.

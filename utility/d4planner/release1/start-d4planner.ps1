@@ -68,7 +68,7 @@ try { $rng.GetBytes($credentialBytes) } finally { $rng.Dispose() }
 $credential = ([BitConverter]::ToString($credentialBytes) -replace '-', '').ToLowerInvariant()
 $descriptor = [ordered]@{
     protocol = 'd4planner-managed/v1'
-    contractVersion = 'd4planner-r1-contract/1.0.0-candidate.5'
+    contractVersion = 'd4planner-r1-contract/1.0.0-candidate.6'
     ownerInstanceId = [guid]::NewGuid().ToString()
     childInstanceId = [guid]::NewGuid().ToString()
     generation = 1
@@ -79,13 +79,15 @@ $descriptor = [ordered]@{
 }
 [IO.File]::WriteAllText($bootstrap, ($descriptor | ConvertTo-Json -Depth 4 -Compress), [Text.UTF8Encoding]::new($false))
 
+$env:D4PLANNER_DATA_DIR = $stateRoot
+$env:D4PLANNER_MODE = "integrated"
 $env:D4PLANNER_BOOTSTRAP_FILE = $bootstrap
 $env:D4PLANNER_BACKEND_PYTHON = $backendPython
 $env:PYTHONPATH = Join-Path $InstallRoot 'backend\site-packages'
 $env:D4PLANNER_REPOSITORY_ROOT = $InstallRoot
 $env:D4PLANNER_RULEKIT_EXECUTABLE = Join-Path $InstallRoot 'runtime\node\node.exe'
-$env:D4PLANNER_RULEKIT_WORKER = Join-Path $InstallRoot 'utility\d4planner\rulekit-worker\worker.js'
-$env:D4PLANNER_RULEKIT_WORKING_DIR = Join-Path $InstallRoot 'utility\d4planner\rulekit-worker'
+$env:D4PLANNER_RULEKIT_WORKER = Join-Path $InstallRoot 'backend\site-packages\d4planner\rulekit\worker.js'
+$env:D4PLANNER_RULEKIT_WORKING_DIR = Join-Path $InstallRoot 'backend\site-packages\d4planner\rulekit'
 $env:D4_RULEKIT_DATA_ROOT = Join-Path $DataRoot 'rulekit'
 $env:D4_RULEKIT_INSTALLATION_ROOT = $InstallRoot
 Remove-Item Env:D4_RULEKIT_PROFILE_JSON -ErrorAction SilentlyContinue

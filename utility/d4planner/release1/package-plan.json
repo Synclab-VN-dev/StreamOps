@@ -5,9 +5,9 @@
   "version": "1.2.8",
   "hudSchemaCompatibility": {
     "minimum": 2,
-    "maximum": 2
+    "maximum": 3
   },
-  "contractRevision": "d4planner-r1-contract/1.0.0-candidate.5",
+  "contractRevision": "d4planner-r1-contract/1.0.0-candidate.6",
   "magicPathRevision": "464988421014827008",
   "ruleKit": {
     "playwrightCore": "1.64.1",
@@ -37,12 +37,6 @@
       "path": "runtime/python",
       "kind": "tree",
       "owner": "S7"
-    },
-    {
-      "id": "rulekit-worker",
-      "path": "utility/d4planner/rulekit-worker",
-      "kind": "tree",
-      "owner": "S3"
     },
     {
       "id": "d4planner-contracts",

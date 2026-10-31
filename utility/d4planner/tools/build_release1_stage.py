@@ -80,8 +80,6 @@ def assemble(args: argparse.Namespace) -> dict:
     # Dependency cache may contain an older editable/project wheel. Always
     # overlay production Backend sources from the exact checked-out revision.
     copy_tree(repository / "utility/d4planner/src/d4planner", root / "backend/site-packages/d4planner")
-    copy_tree(repository / "utility/d4planner/rulekit-worker",
-              root / "utility/d4planner/rulekit-worker")
     copy_tree(repository / "utility/d4planner/contracts",
               root / "utility/d4planner/contracts")
     # Exact reviewed source allowlist; never copy a developer provider tree,
@@ -111,7 +109,7 @@ def assemble(args: argparse.Namespace) -> dict:
         root / "runtime/chromium/chrome-win64/chrome.exe",
         root / "utility/d4-rulekit/snapshot-management/manage.js",
         root / "backend/site-packages/d4planner/managed_backend.py",
-        root / "utility/d4planner/rulekit-worker/worker.js",
+        root / "backend/site-packages/d4planner/rulekit/worker.js",
         root / "utility/d4-rulekit/providers/maxroll/node_modules/playwright-core/package.json",
     ]
     missing = [str(path.relative_to(root)) for path in required if not path.is_file()]

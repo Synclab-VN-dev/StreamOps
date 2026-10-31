@@ -112,7 +112,7 @@ def test_package_is_deterministic_pinned_and_verifiable(tmp_path):
     assert first.read_bytes() == second.read_bytes()
     assert result["artifactSha256"] == delivery.sha256_file(first)
     manifest = delivery.verify_package(first)
-    assert manifest["contractRevision"] == "d4planner-r1-contract/1.0.0-candidate.5"
+    assert manifest["contractRevision"] == "d4planner-r1-contract/1.0.0-candidate.6"
     assert manifest["magicPathRevision"] == "464988421014827008"
     assert manifest["ruleKit"]["playwrightCore"] == "1.64.1"
     assert len(manifest["files"]) == len(json.loads(PLAN.read_text())["artifacts"]) + len(json.loads(PLAN.read_text())["resources"])
