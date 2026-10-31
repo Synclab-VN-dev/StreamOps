@@ -1,4 +1,5 @@
 mod overlay_core;
+mod hud_reader;
 mod backend_process;
 
 use std::{collections::BTreeMap, env, fs, path::PathBuf, sync::{Arc, Mutex}, time::Duration};
@@ -229,6 +230,13 @@ async fn backend_command(state: State<'_, BackendState>, method: String, params:
     let wrapper = state.0.lock().map_err(|_| "Backend state lock poisoned")?.clone().ok_or("BACKEND_OFFLINE")?;
     tauri::async_runtime::spawn_blocking(move || wrapper.request(&method, params, Duration::from_secs(10)))
         .await.map_err(|_| "CONTROL_DISPATCH_FAILED".to_string())?
+}
+
+#[tauri::command]
+async fn read_hud_database() -> Result<Option<serde_json::Value>, String> {
+    let data_dir = PathBuf::from(env::var("D4PLANNER_DATA_DIR").map_err(|_| "CONFIGURATION_MISSING")?);
+    tauri::async_runtime::spawn_blocking(move || hud_reader::read_latest(&data_dir))
+        .await.map_err(|_| "DB_READ_FAILED".to_string())?
 }
 
 fn read_mode(state: &ModeState) -> Result<bool, String> {
@@ -508,6 +516,7 @@ pub fn run() {
             restart_backend,
             get_backend_status,
             backend_command,
+            read_hud_database,
             get_hud_ws_bootstrap,
             set_overlay_extent,
             set_overlay_pin,

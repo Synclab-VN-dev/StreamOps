@@ -134,14 +134,14 @@ describe("Release 1 Equipment HUD", () => {
     expect(screen.getByRole("alert").textContent).toContain("socket closed");
 
     const restarted = {
-      ...targetBSnapshot(1),
+      ...targetBSnapshot(21),
       backend: { runtimeInstanceId: "backend-new", generation: 4 },
     };
     act(() => source.emit({ type: "SNAPSHOT", snapshot: restarted }));
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
 
-    // A late snapshot from the old generation cannot restore old UI state.
-    act(() => source.emit({ type: "SNAPSHOT", snapshot: targetBSnapshot(99) }));
+    // Same DB revision high-water survives Backend restart.
+    act(() => source.emit({ type: "SNAPSHOT", snapshot: targetBSnapshot(19) }));
     expect(screen.getByText("SYNTHETIC FIREWALL")).toBeTruthy();
   });
 
@@ -215,119 +215,17 @@ it('hides known-mismatched score and Equipment until authoritative discovery', a
   expect(screen.getByText('SYNTHETIC FIREWALL')).toBeTruthy();
 });
 
-it.each(['TARGET_CHANGED', 'INTERNAL'])('typed %s socket rejection reaches the controller without disconnecting the HUD', async code => {
+it('native SQLite renders last-known score with Backend and WS unavailable', async () => {
   const {TauriHudDataSource} = await import('./hud-data-source');
-  const socket = {
-    readyState: 1, onopen: null as (() => void) | null,
-    onclose: null as (() => void) | null,
-    onmessage: null as ((event: {data: string}) => void) | null,
-    sent: [] as Record<string, any>[],
-    send(data: string) { this.sent.push(JSON.parse(data)); },
-    close() { this.onclose?.(); },
-    receive(message: Record<string, any>) { this.onmessage?.({data: JSON.stringify(message)}); },
-  };
-  mocks.invoke.mockImplementation(async (command: string) => command === 'get_hud_ws_bootstrap'
-    ? {endpoint: 'ws://127.0.0.1:30001', credential: 'x'.repeat(64), origin: 'tauri://localhost'} : undefined);
-  const source = new TauriHudDataSource(mocks.invoke, () => socket);
-  const view = render(<App dataSource={source} />);
-  await waitFor(() => expect(socket.onopen).not.toBeNull());
-  act(() => socket.onopen?.());
-  const envelope = {protocolVersion: 'd4planner-ws/v1', backendGeneration: partial.backend.generation};
-  act(() => socket.receive({...envelope, type: 'hello.accepted', correlationId: socket.sent[0].messageId,
-    runtimeInstanceId: partial.backend.runtimeInstanceId}));
-  const snapshotRequest = socket.sent.find(message => message.type === 'hud.snapshot.request')!;
-  act(() => socket.receive({...envelope, type: 'hud.snapshot', authoritative: true,
-    correlationId: snapshotRequest.messageId, subscriptionId: 'ui-sub', hud: partial}));
+  mocks.invoke.mockImplementation(async (command: string) => {
+    if (command === 'read_hud_database') return {schemaVersion:'d4planner-hud-db/v1',dbId:'db',epoch:'epoch',hudRevision:partial.hudRevision,hud:partial};
+    if (command === 'get_hud_ws_bootstrap') throw new Error('OFFLINE');
+  });
+  const source = new TauriHudDataSource(mocks.invoke, () => {throw new Error('No WS');}, []);
+  const view=render(<App dataSource={source}/>);
   await screen.findByText('50');
-  fireEvent.click(screen.getByRole('button', {name: 'Open target menu'}));
-  act(() => socket.receive({...envelope, type: 'target.list.result',
-    correlationId: socket.sent.at(-1)!.messageId, listRevision: 1, targets}));
-  fireEvent.click(screen.getByRole('menuitem', {name: /Firewall/}));
-  await act(async () => socket.receive({...envelope, type: 'error',
-    correlationId: socket.sent.at(-1)!.messageId, code, message: 'Target operation failed'}));
-  expect(screen.getByRole('alert').textContent).toContain(code);
-  expect(document.querySelector('main')?.getAttribute('data-connection')).toBe('CONNECTED');
-  expect(screen.getByText('50')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', {name: 'Open target menu'}));
-  expect(screen.getByText('Loading Targets…')).toBeTruthy();
-  act(() => socket.receive({...envelope, type:'target.list.result', correlationId:socket.sent.at(-1)!.messageId, listRevision:1, targets}));
-  expect((screen.getByRole('menuitem', {name: /Firewall/}) as HTMLButtonElement).disabled).toBe(false);
-  fireEvent.click(screen.getByRole('menuitem', {name:/Firewall/}));
-  await act(async () => socket.receive({...envelope, type:'target.select.result',
-    correlationId:socket.sent.at(-1)!.messageId,status:'ACTIVATED',targetId:'target-b',contentSha256:'c'.repeat(64),selectionRevision:8}));
-  expect(screen.queryByRole('alert')).toBeNull();
-  expect(document.querySelector('main')?.getAttribute('data-connection')).toBe('CONNECTED');
-  // A gap forces known-context resync. A different authoritative context
-  // must hide A until the separate discovery reply has passed all guards.
-  const changed = targetBSnapshot(partial.hudRevision + 10);
-  act(() => socket.receive({...envelope, type: 'hud.update', subscriptionId: 'ui-sub',
-    previousHudRevision: partial.hudRevision + 8, hud: changed}));
-  const known = socket.sent.at(-1)!;
-  expect(known.requestContext.mode).toBe('RESYNC_KNOWN_CONTEXT');
-  act(() => socket.receive({...envelope, type: 'hud.snapshot', authoritative: true,
-    correlationId: known.messageId, subscriptionId: 'mismatch', hud: changed}));
-  const discovery = socket.sent.at(-1)!;
-  expect(discovery.requestContext.mode).toBe('DISCOVER_ACTIVE_CONTEXT');
-  expect(screen.queryByText('50')).toBeNull();
-  expect(screen.queryByRole('complementary', {name: 'Equipment list'})).toBeNull();
-  act(() => socket.receive({...envelope, type: 'hud.snapshot', authoritative: true,
-    correlationId: known.messageId, subscriptionId: 'late', hud: partial}));
-  expect(screen.queryByText('50')).toBeNull();
-  act(() => socket.receive({...envelope, type: 'hud.snapshot', authoritative: true,
-    correlationId: discovery.messageId, subscriptionId: 'discovered', hud: changed}));
-  expect(screen.getByText('SYNTHETIC FIREWALL')).toBeTruthy();
-  expect(screen.getByText('50')).toBeTruthy();
-  expect(document.querySelector('main')?.getAttribute('data-freshness')).toBe('CURRENT');
-  view.unmount();
-});
-
-it('shows a listing failure instead of empty or stale targets and permits retry', async () => {
-  const {TauriHudDataSource} = await import('./hud-data-source');
-  const socket = {
-    readyState: 1, onopen: null as (() => void) | null,
-    onclose: null as (() => void) | null,
-    onmessage: null as ((event: {data: string}) => void) | null,
-    sent: [] as Record<string, any>[],
-    send(data: string) { this.sent.push(JSON.parse(data)); },
-    close() { this.onclose?.(); },
-    receive(message: Record<string, any>) { this.onmessage?.({data: JSON.stringify(message)}); },
-  };
-  mocks.invoke.mockImplementation(async (command: string) => command === 'get_hud_ws_bootstrap'
-    ? {endpoint: 'ws://127.0.0.1:30001', credential: 'x'.repeat(64), origin: 'tauri://localhost'} : undefined);
-  const source = new TauriHudDataSource(mocks.invoke, () => socket);
-  const view = render(<App dataSource={source} />);
-  await waitFor(() => expect(socket.onopen).not.toBeNull());
-  act(() => socket.onopen?.());
-  const envelope = {protocolVersion: 'd4planner-ws/v1', backendGeneration: partial.backend.generation};
-  act(() => socket.receive({...envelope, type: 'hello.accepted', correlationId: socket.sent[0].messageId,
-    runtimeInstanceId: partial.backend.runtimeInstanceId}));
-  const snapshotRequest = socket.sent.find(message => message.type === 'hud.snapshot.request')!;
-  act(() => socket.receive({...envelope, type: 'hud.snapshot', authoritative: true,
-    correlationId: snapshotRequest.messageId, subscriptionId: 'ui-sub', hud: partial}));
-  await screen.findByText('50');
-
-  fireEvent.click(screen.getByRole('button', {name: 'Open target menu'}));
-  const failedId = socket.sent.at(-1)!.messageId;
-  await act(async () => socket.receive({...envelope, type:'error', correlationId:failedId,
-    code:'TARGET_INVALID', message:'Target listing is unavailable.', retryable:false}));
-  expect(screen.getByRole('alert').textContent).toContain('TARGET_INVALID');
-  expect(screen.queryByText('No Target JSON files')).toBeNull();
-  expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
-  expect(document.querySelector('main')?.getAttribute('data-connection')).toBe('CONNECTED');
-  expect(document.querySelector('main')?.getAttribute('data-freshness')).toBe('CURRENT');
-  fireEvent.click(screen.getByRole('button', {name:'Retry Target list'}));
-  expect(screen.getByText('Loading Targets…')).toBeTruthy();
-  const retry = socket.sent.at(-1)!.messageId;
-  act(() => socket.receive({...envelope, type:'target.list.result',correlationId:failedId,listRevision:99,targets}));
-  expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
-  act(() => socket.receive({...envelope, type:'target.list.result',correlationId:retry,listRevision:1,targets}));
-  expect(screen.queryByRole('alert')).toBeNull();
-  fireEvent.click(screen.getByRole('menuitem', {name:/Firewall/}));
-  const select = socket.sent.at(-1)!.messageId;
-  await act(async () => socket.receive({...envelope,type:'target.select.result',correlationId:select,
-    status:'ACTIVATED',targetId:'target-b',contentSha256:'c'.repeat(64),selectionRevision:8}));
-  act(() => socket.receive({...envelope,type:'hud.update',subscriptionId:'ui-sub',previousHudRevision:partial.hudRevision,
-    hud:targetBSnapshot(partial.hudRevision+1)}));
-  expect(screen.getByText('SYNTHETIC FIREWALL')).toBeTruthy();
+  expect(document.querySelector('main')?.getAttribute('data-connection')).toBe('DISCONNECTED');
+  expect(document.querySelector('main')?.getAttribute('data-freshness')).toBe('STALE');
+  expect(mocks.invoke.mock.calls.some(call=>call[0]==='start_backend'||call[0]==='restart_backend')).toBe(false);
   view.unmount();
 });

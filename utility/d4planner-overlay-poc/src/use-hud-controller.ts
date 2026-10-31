@@ -4,9 +4,6 @@ import type { HudSnapshot, SelectionResult, TargetListEntry } from "./hud-model"
 
 function acceptsSnapshot(current: HudSnapshot | null, next: HudSnapshot): boolean {
   if (!current) return true;
-  if (next.backend.generation < current.backend.generation) return false;
-  if (next.backend.generation > current.backend.generation) return true;
-  if (current.backend.runtimeInstanceId !== next.backend.runtimeInstanceId) return false;
   return next.hudRevision >= current.hudRevision;
 }
 
@@ -24,6 +21,7 @@ export function useHudController(source: IHudDataSource) {
   const [pendingTarget, setPendingTarget] = useState<{ targetId: string; contentSha256: string } | null>(null);
   const snapshotRef = useRef<HudSnapshot | null>(null);
   const selectionToken = useRef(0);
+  const connectedRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -31,9 +29,13 @@ export function useHudController(source: IHudDataSource) {
     const listener = (event: HudDataEvent) => {
       if (!mounted) return;
       if (event.type === "CONNECTION") {
+        connectedRef.current = event.state === "CONNECTED";
         setConnection(event.state);
         setAuthoritative(false);
         if (event.state === "DISCONNECTED") setConnectionError(event.reason ?? "Connection lost");
+      } else if (event.type === "DATABASE_RESET") {
+        snapshotRef.current = null;
+        setSnapshot(null); setAssessmentRenderable(false); setAuthoritative(false);
       } else if (event.type === "ASSESSMENT_INVALIDATED") {
         setAssessmentRenderable(false);
         setAuthoritative(false);
@@ -52,7 +54,8 @@ export function useHudController(source: IHudDataSource) {
         setTiming({ wsReceivedAt: event.receivedAt, modelUpdatedAt: new Date().toISOString() });
         setAuthoritative(true);
         setAssessmentRenderable(true);
-        setConnectionError(null);
+        if (connectedRef.current) setConnectionError(null);
+
         setPendingTarget(current => {
           if (!current) return null;
           const target = event.snapshot.context.target;
