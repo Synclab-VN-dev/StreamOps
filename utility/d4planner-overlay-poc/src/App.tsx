@@ -119,7 +119,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
         </header>
 
         {!current && <div className={`freshness ${hud.connection.toLowerCase()}`} role="status">
-          {snapshot?.score.status === "NO_DATA" ? "NO DATA" : snapshot ? "Last-known assessment is not current — reconnecting/resynchronizing" : "Connecting…"}
+          {snapshot?.score.status === "NO_DATA" ? "NO DATA" : snapshot ? (hud.connection === "DISCONNECTED" ? "OFFLINE — Last-known assessment is not current" : "Last-known assessment is not current — resynchronizing") : (hud.connection === "DISCONNECTED" ? "NO DATA" : "Connecting…")}
         </div>}
         {hud.error && <div className="hud-error" role="alert">{hud.error}</div>}
 
