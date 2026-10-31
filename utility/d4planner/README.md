@@ -1,171 +1,88 @@
-# D4Planner runtime
+# D4Planner source components
 
-Issues: #39 (capture POC), #43 (runtime/CLI)
-
-The managed backend-to-Rule-Kit worker contract and configuration are documented
-in [docs/rulekit-worker.md](docs/rulekit-worker.md).
-
-D4Planner is an intentionally independent bounded context for Diablo IV build
-capture. It must not depend on `streamops.server` or modify the Diablo IV game
-directory.
-
-Release 1's Equipment Target, assessment, and durable HUD commit domain is
-documented in [docs/release1-equipment-domain.md](docs/release1-equipment-domain.md).
-
-## Runtime flow
+Architecture authority: [issue #138](https://github.com/Synclab-VN-dev/StreamOps/issues/138),
+D5 DB-first / FE-independent. This source layout does not change the application,
+process boundaries, public contracts or installed product layout.
 
 ```text
-Diablo IV
-  -> Tolk.dll
-  -> nvdaControllerClient64.dll
-  -> NVDA 2026.2
-  -> d4plannerCapture add-on
-  -> session raw-speech.jsonl
-  -> D4Planner Supervisor
-  -> unified events.jsonl
-  -> CLI / future Web UI / OBS consumers
+utility/d4planner/
+├── d4planner-launcher/  # Native root bootstrap and owned process cleanup
+├── d4planner-be/        # Python backend, contracts and release-specific tooling
+├── d4planner-hud/       # Tauri native reader/process wrapper and React HUD
+└── d4planner-rulekit/   # Rule Kit application, providers, browser and snapshots
 ```
 
-The Real-A POC in #39/#41 established that Tolk must discover the official NVDA
-controller client. If it cannot, D4 may fall back to SAPI: the user still hears
-speech, but the NVDA add-on receives nothing.
+| Previous source | Current source |
+| --- | --- |
+| `utility/d4planner/release1/native-launcher/` | `d4planner-launcher/` |
+| `utility/d4planner/` (except native launcher) | `d4planner-be/` |
+| `utility/d4planner-overlay-poc/` | `d4planner-hud/` |
+| `utility/d4-rulekit/` | `d4planner-rulekit/` |
 
-## Install for development
+Launcher is an application bootstrap component, not another business domain.
+`d4planner-be/release1/` retains installer, manifest, acceptance and UAT ownership
+for this migration. TODO: its cross-component packaging responsibility is broader
+than BE; a future ownership change needs a separate decision.
 
-PowerShell:
+## Development and local verification
 
-    python -m pip install -e "utility/d4planner[dev]"
-    python utility/d4planner/tools/build_nvda_addon.py
+Commands below run from the repository root unless a working directory is shown.
+Use isolated virtualenvs, build targets, caches and DataDirs.
 
-The CLI entry point is:
-
-    d4planner
-
-The runtime can self-sync the 0.2.0 add-on from an editable StreamOps checkout.
-Packaged deployments may provision the built add-on separately.
-
-## CLI
-
-Primary commands:
-
-    d4planner start
-    d4planner status
-    d4planner logs -f
-    d4planner logs -f --raw
-    d4planner stop
-    d4planner doctor
-
-Default `start` uses **silent D4 capture**: D4 speech is persisted before NVDA
-synthesis and is then suppressed only when the foreground context is confidently
-Diablo IV.
-
-To keep normal NVDA audio for debugging:
-
-    d4planner start --speech
-
-To keep controller discovery process-scoped for diagnostics:
-
-    d4planner start --isolated
-
-`Ctrl+C` while following logs detaches only the CLI. The supervisor and capture
-remain active. `d4planner stop` stops the planner runtime but does not kill
-Diablo IV or Steam.
-
-## Runtime storage
-
-Production runtime state is outside the repository:
-
-```text
-%LOCALAPPDATA%\d4planner\
-├── runtime\
-│   ├── nvda-controller\
-│   └── bin\
-├── sessions\
-│   └── <timestamp>-<session-id>\
-│       ├── metadata.json
-│       ├── raw-speech.jsonl
-│       ├── capture-context.jsonl
-│       ├── events.jsonl
-│       └── runtime.log
-├── state\
-└── logs\
+```sh
+python -m venv .venv
+.venv/bin/python -m pip install -e 'utility/d4planner/d4planner-be[dev]'
+.venv/bin/python -m pytest --collect-only utility/d4planner/d4planner-be/tests
+.venv/bin/python -m pytest utility/d4planner/d4planner-be/tests/contracts
 ```
 
-Each start creates a new session. Prior raw evidence is never cleared or
-renumbered.
+Windows uses `.venv/Scripts/python.exe`. Tests that require Windows APIs must run
+on Windows; successful Linux collection is not Windows acceptance.
 
-## Controller discovery / PATH
-
-Normal runtime mode adds:
-
-    %LOCALAPPDATA%\d4planner\runtime\nvda-controller
-
-to **User PATH only**. The operation is idempotent and tracked for reversible
-cleanup. Machine PATH is read-only to D4Planner.
-
-If no verified controller client exists locally, first-run bootstrap downloads
-the official NVDA 2026.2 controller-client archive from NV Access, extracts only
-the x64 client, then verifies both PE architecture and the SHA-256 established
-during the #41 Real-A POC before installing it into the runtime directory.
-
-Diagnostic restore:
-
-    d4planner path status
-    d4planner path restore
-
-If Steam was already running before D4Planner first updated User PATH, its
-environment is stale. D4Planner reports `RESTART_REQUIRED` instead of killing
-Steam or Diablo IV.
-
-The interactive helper and supervisor tasks are reconciled at Task Scheduler
-priority 4 (Normal). Automated LAUNCH also requires an existing Steam process
-to be Normal or higher; a lower/unknown priority returns `RESTART_REQUIRED`.
-ATTACH does not restart a running game. StreamOps Steam launch requests set
-`NORMAL_PRIORITY_CLASS` explicitly rather than changing an existing process.
-
-## NVDA add-on
-
-Build output:
-
-    utility/d4planner/dist/d4plannerCapture-0.2.0.nvda-addon
-
-The runtime add-on uses NVDA 2026.2's public `filter_speechSequence` extension
-point. Capture identity comes from the live Win32 foreground HWND/PID and must
-match the exact Diablo IV PID published by the supervisor. NVDA's cached
-foreground object, process names, and window titles are diagnostic metadata
-only and can never authorize capture or suppression.
-
-Behavior:
-
-```text
-non-D4 / uncertain context -> passthrough
-D4 + --speech             -> capture + passthrough
-D4 + default silent       -> capture; if persistence succeeds, return []
-capture write failure     -> passthrough
-foreground lookup failure -> passthrough
+```sh
+cd utility/d4planner/d4planner-hud
+npm ci
+npm test
+npm run build
+npm run icon
+cargo test --locked --manifest-path reader-tests/Cargo.toml
+cargo test --locked --manifest-path lifecycle-tests/Cargo.toml
+# On a Windows build host with MSVC/WebView2:
+npm run tauri:build
 ```
 
-This fail-safe policy avoids silencing the desktop when source detection or
-persistence is uncertain.
+Run `npm ci` and the documented tests in the Rule Kit `application`,
+`browser-infra`, `providers/maxroll`, and `snapshot-management` directories.
+Browser tests require an explicitly provisioned Chromium. Private snapshot/real
+provider gates must not be replaced by synthetic evidence.
 
-## Safety boundary
+```sh
+cd utility/d4planner/d4planner-launcher
+cargo test --locked
+cargo build --locked --release
+```
 
-D4Planner does not:
+Build the launcher from its directory so Cargo loads `.cargo/config.toml` and the
+static Windows CRT settings. Production assembly is still orchestrated by
+`d4planner-be/tools/release_ci.py`; the existing approval policy is unchanged.
 
-- read Diablo IV RAM/process memory;
-- inject DLL/code into the game;
-- copy controller DLLs into the game directory;
-- hook DirectX;
-- modify game files;
-- automate mouse/keyboard/controller gameplay;
-- force-kill Diablo IV or Steam by default.
+## Source paths versus installed paths
 
-## CI
+The assembler maps relocated source inputs into the existing package contract:
 
-    python -m pip install -e "utility/d4planner[dev]"
-    python -m pytest -q utility/d4planner/tests
-    python -m compileall -q utility/d4planner
-    python utility/d4planner/tools/build_nvda_addon.py
+- Root `D4Planner.exe` launches `app/d4planner-fe.exe`.
+- Tauri owns `python -m d4planner.managed_backend` and its control IPC.
+- The adapter remains `backend/site-packages/d4planner/rulekit/worker.js`.
+- Installed Rule Kit modules remain under `utility/d4-rulekit/`.
+- Installed schemas remain under `utility/d4planner/contracts/`.
+- Package names, executable names, CLI names, product IDs, DataDir,
+  `hud.sqlite3`, Targets and Settings are unchanged.
 
-Acceptance ownership and the detailed Unit / E2E / Real-A / UAT gate matrix are
-tracked in #43.
+BE commits SQLite; native Tauri reads the public model read-only. WebSocket carries
+notification metadata only. Rule Kit retains runtime composition and its eight
+Application APIs. FE does not calculate scores or call Rule Kit directly.
+
+Historical review/evidence documents keep the paths that existed at capture time;
+use the mapping above to navigate those records. Live commands/workflows use the
+new locations. Folder migration does not authorize release, deployment, live-game
+tests or changes to production runtime.

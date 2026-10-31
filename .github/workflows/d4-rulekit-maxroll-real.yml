@@ -17,14 +17,14 @@ jobs:
     environment: maxroll-fixture-trusted
     defaults:
       run:
-        working-directory: utility/d4-rulekit/providers/maxroll
+        working-directory: utility/d4planner/d4planner-rulekit/providers/maxroll
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: utility/d4-rulekit/providers/maxroll/package-lock.json
+          cache-dependency-path: utility/d4planner/d4planner-rulekit/providers/maxroll/package-lock.json
 
       - name: Install pinned provider dependencies
         run: npm ci
@@ -84,10 +84,10 @@ jobs:
         with:
           name: maxroll-real-sanitized-evidence
           path: |
-            utility/d4-rulekit/providers/maxroll/artifacts/real.json
-            utility/d4-rulekit/providers/maxroll/artifacts/real.junit.xml
-            utility/d4-rulekit/providers/maxroll/artifacts/real-acceptance.json
-            utility/d4-rulekit/providers/maxroll/artifacts/offline-real-e2e.json
+            utility/d4planner/d4planner-rulekit/providers/maxroll/artifacts/real.json
+            utility/d4planner/d4planner-rulekit/providers/maxroll/artifacts/real.junit.xml
+            utility/d4planner/d4planner-rulekit/providers/maxroll/artifacts/real-acceptance.json
+            utility/d4planner/d4planner-rulekit/providers/maxroll/artifacts/offline-real-e2e.json
           if-no-files-found: warn
 
       - name: Cleanup decrypted identity and fixture files
