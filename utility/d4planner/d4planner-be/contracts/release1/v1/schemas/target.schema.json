@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://streamops.local/schemas/d4planner-target/v1",
+  "title": "D4Planner Release 1 target envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "targetId", "displayName", "canonicalBuild", "assessmentPolicy"],
+  "properties": {
+    "schemaVersion": { "const": "d4planner-target/v1" },
+    "targetId": { "$ref": "#/$defs/targetId" },
+    "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "canonicalBuild": { "$ref": "https://streamops.local/schemas/d4-build/v1" },
+    "preservedSections": {
+      "type": "object",
+      "description": "Opaque source sections retained for round-trip/provenance only; never Release 1 scoring input.",
+      "additionalProperties": false,
+      "properties": { "charms": {}, "sourceMetadata": {} }
+    },
+    "assessmentPolicy": { "$ref": "#/$defs/policy" }
+  },
+  "$defs": {
+    "targetId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$" },
+    "stableId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,95}$" },
+    "numericUnit": { "enum": ["PERCENT", "FLAT", "RANK", "SECONDS"] },
+    "numberOperand": {
+      "type": "object", "additionalProperties": false, "required": ["type", "value"],
+      "properties": { "type": { "const": "NUMBER" }, "value": { "type": "number" } }
+    },
+    "rangeOperand": {
+      "type": "object", "additionalProperties": false, "required": ["type", "minimum", "maximum"],
+      "properties": { "type": { "const": "NUMBER_RANGE" }, "minimum": { "type": "number" }, "maximum": { "type": "number" } }
+    },
+    "textOperand": {
+      "type": "object", "additionalProperties": false, "required": ["type", "value"],
+      "properties": { "type": { "const": "TEXT" }, "value": { "type": "string", "minLength": 1, "maxLength": 240 } }
+    },
+    "booleanOperand": {
+      "type": "object", "additionalProperties": false, "required": ["type", "value"],
+      "properties": { "type": { "const": "BOOLEAN" }, "value": { "type": "boolean" } }
+    },
+    "presenceOperand": {
+      "type": "object", "additionalProperties": false, "required": ["type", "value"],
+      "properties": { "type": { "const": "PRESENCE" }, "value": { "const": true } }
+    },
+    "numericThreshold": {
+      "type": "object", "additionalProperties": false,
+      "required": ["parameterId", "index", "comparator", "unit", "expected"],
+      "properties": {
+        "parameterId": { "$ref": "#/$defs/stableId" }, "index": { "type": "integer", "minimum": 0 },
+        "comparator": { "enum": ["AT_LEAST", "AT_MOST"] }, "unit": { "$ref": "#/$defs/numericUnit" },
+        "expected": { "$ref": "#/$defs/numberOperand" }
+      }
+    },
+    "numericRange": {
+      "type": "object", "additionalProperties": false,
+      "required": ["parameterId", "index", "comparator", "unit", "expected"],
+      "properties": {
+        "parameterId": { "$ref": "#/$defs/stableId" }, "index": { "type": "integer", "minimum": 0 },
+        "comparator": { "const": "BETWEEN" }, "unit": { "$ref": "#/$defs/numericUnit" },
+        "expected": { "$ref": "#/$defs/rangeOperand" }
+      }
+    },
+    "numericEquality": {
+      "type": "object", "additionalProperties": false,
+      "required": ["parameterId", "index", "comparator", "unit", "expected"],
+      "properties": {
+        "parameterId": { "$ref": "#/$defs/stableId" }, "index": { "type": "integer", "minimum": 0 },
+        "comparator": { "const": "EQUAL" }, "unit": { "enum": ["PERCENT", "FLAT", "RANK", "SECONDS", "NONE"] },
+        "expected": { "$ref": "#/$defs/numberOperand" }
+      }
+    },
+    "textEquality": {
+      "type": "object", "additionalProperties": false,
+      "required": ["parameterId", "index", "comparator", "unit", "expected"],
+      "properties": {
+        "parameterId": { "$ref": "#/$defs/stableId" }, "index": { "type": "integer", "minimum": 0 },
+        "comparator": { "const": "EQUAL" }, "unit": { "const": "NONE" }, "expected": { "$ref": "#/$defs/textOperand" }
+      }
+    },
+    "booleanEquality": {
+      "type": "object", "additionalProperties": false,
+      "required": ["parameterId", "index", "comparator", "unit", "expected"],
+      "properties": {
+        "parameterId": { "$ref": "#/$defs/stableId" }, "index": { "type": "integer", "minimum": 0 },
+        "comparator": { "const": "EQUAL" }, "unit": { "const": "NONE" }, "expected": { "$ref": "#/$defs/booleanOperand" }
+      }
+    },
+    "presence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["parameterId", "index", "comparator", "unit", "expected"],
+      "properties": {
+        "parameterId": { "$ref": "#/$defs/stableId" }, "index": { "const": 0 },
+        "comparator": { "const": "PRESENT" }, "unit": { "const": "NONE" }, "expected": { "$ref": "#/$defs/presenceOperand" }
+      }
+    },
+    "parameter": {
+      "oneOf": [
+        { "$ref": "#/$defs/numericThreshold" }, { "$ref": "#/$defs/numericRange" },
+        { "$ref": "#/$defs/numericEquality" }, { "$ref": "#/$defs/textEquality" },
+        { "$ref": "#/$defs/booleanEquality" }, { "$ref": "#/$defs/presence" }
+      ]
+    },
+    "sourceBinding": {
+      "type": "object", "additionalProperties": false, "required": ["group", "occurrence"],
+      "properties": {
+        "group": { "enum": ["AFFIXES", "IMPLICITS", "ASPECTS", "TEMPERS"] },
+        "occurrence": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "weightProfile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profileId", "approval", "coreWeight", "nonCoreWeight"],
+      "properties": {
+        "profileId": { "const": "r1-equipment-weights/1.0.0" },
+        "approval": {
+          "type": "object", "additionalProperties": false, "required": ["status", "decisionRef"],
+          "properties": {
+            "status": { "const": "APPROVED" },
+            "decisionRef": { "const": "https://github.com/Synclab-VN-dev/StreamOps/issues/138#issuecomment-6394334041" }
+          }
+        },
+        "coreWeight": { "const": 3 }, "nonCoreWeight": { "const": 1 }
+      }
+    },
+    "criterion": {
+      "type": "object", "additionalProperties": false,
+      "required": ["criterionId", "targetOrder", "slotId", "kind", "entityId", "source", "core", "weightClass", "parameterAggregation", "parameters", "evidenceRequirement"],
+      "properties": {
+        "criterionId": { "$ref": "#/$defs/stableId" }, "targetOrder": { "type": "integer", "minimum": 0 },
+        "slotId": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "kind": { "enum": ["AFFIX", "EFFECT"] }, "entityId": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "source": { "$ref": "#/$defs/sourceBinding" }, "core": { "type": "boolean" },
+        "weightClass": { "enum": ["CORE", "NON_CORE"] }, "parameterAggregation": { "const": "ALL" },
+        "parameters": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/parameter" } },
+        "evidenceRequirement": { "enum": ["PRESENT_VALUE", "COMPLETE_CATEGORY", "COMPLETE_SLOT"] }
+      },
+      "allOf": [
+        { "if": { "properties": { "core": { "const": true } }, "required": ["core"] }, "then": { "properties": { "weightClass": { "const": "CORE" } } } },
+        { "if": { "properties": { "core": { "const": false } }, "required": ["core"] }, "then": { "properties": { "weightClass": { "const": "NON_CORE" } } } },
+        { "if": { "properties": { "kind": { "const": "AFFIX" } }, "required": ["kind"] }, "then": { "properties": { "source": { "properties": { "group": { "enum": ["AFFIXES", "IMPLICITS", "TEMPERS"] } } } } } },
+        { "if": { "properties": { "kind": { "const": "EFFECT" } }, "required": ["kind"] }, "then": { "properties": { "source": { "properties": { "group": { "const": "ASPECTS" } } } } } }
+      ]
+    },
+    "policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "scope", "weightProfile", "itemPassRule", "issuesCountRule", "issuesFilter", "displayRounding", "recommendationPriority", "criteria"],
+      "properties": {
+        "version": { "const": "d4planner-equipment-policy/v1" }, "scope": { "const": "EQUIPMENT_ONLY" },
+        "weightProfile": { "$ref": "#/$defs/weightProfile" },
+        "itemPassRule": { "const": "ALL_TARGET_CRITERIA_PASS" },
+        "issuesCountRule": { "const": "DISTINCT_FAIL_CRITERIA" },
+        "issuesFilter": { "const": "FAIL_AND_WARN" },
+        "displayRounding": { "const": "HALF_UP_FINAL_ONLY" },
+        "recommendationPriority": {
+          "type": "array", "prefixItems": [
+            { "const": "CORE_FAIL" }, { "const": "CORE_WARN" }, { "const": "NON_CORE_WARN" },
+            { "const": "TARGET_ORDER" }, { "const": "CRITERION_ID" }
+          ], "items": false, "minItems": 5, "maxItems": 5
+        },
+        "criteria": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/criterion" } }
+      }
+    }
+  }
+}

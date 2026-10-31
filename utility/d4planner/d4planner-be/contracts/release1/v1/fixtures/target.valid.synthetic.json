@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "d4planner-target/v1",
+  "targetId": "synthetic-charge-bolt",
+  "displayName": "Synthetic Charge Bolt Equipment Target",
+  "canonicalBuild": {
+    "schemaVersion": "d4-build/v1",
+    "game": { "id": "diablo-iv", "patch": "3.2.1.73552" },
+    "character": { "classId": "2", "level": 60, "worldTier": 4 },
+    "equipment": {
+      "slots": [
+        {
+          "slotId": "gloves",
+          "item": {
+            "baseItemId": "synthetic-gloves-a",
+            "itemPower": 800,
+            "affixes": [
+              { "entityId": "attack-speed", "values": [8] },
+              { "entityId": "core-skill-ranks", "values": [2] }
+            ],
+            "implicits": [],
+            "aspects": [{ "entityId": "charge-bolt-core-effect", "values": [10, 2] }],
+            "tempers": [],
+            "sockets": []
+          }
+        },
+        {
+          "slotId": "ring-1",
+          "item": {
+            "baseItemId": "synthetic-ring-a",
+            "itemPower": 800,
+            "affixes": [{ "entityId": "resource-cost-reduction", "values": [6] }],
+            "implicits": [], "aspects": [], "tempers": [], "sockets": []
+          }
+        }
+      ]
+    },
+    "skills": { "allocations": [{ "nodeId": "synthetic-skill", "rank": 1 }], "bar": ["synthetic-skill", null] },
+    "paragon": { "boards": [{ "boardId": "synthetic-board", "rotation": 0, "allocations": [] }] },
+    "effects": { "elixirs": [], "warPlans": [] },
+    "world": { "renownSkills": 0, "renownParagon": 0 },
+    "calculationContext": { "season": 15, "options": {} }
+  },
+  "preservedSections": {
+    "charms": [{ "id": "synthetic-charm-not-scored", "rank": 7 }],
+    "sourceMetadata": { "fixture": "SYNTHETIC", "notLiveData": true }
+  },
+  "assessmentPolicy": {
+    "version": "d4planner-equipment-policy/v1",
+    "scope": "EQUIPMENT_ONLY",
+    "weightProfile": {
+      "profileId": "r1-equipment-weights/1.0.0",
+      "approval": {
+        "status": "APPROVED",
+        "decisionRef": "https://github.com/Synclab-VN-dev/StreamOps/issues/138#issuecomment-6394334041"
+      },
+      "coreWeight": 3,
+      "nonCoreWeight": 1
+    },
+    "itemPassRule": "ALL_TARGET_CRITERIA_PASS",
+    "issuesCountRule": "DISTINCT_FAIL_CRITERIA",
+    "issuesFilter": "FAIL_AND_WARN",
+    "displayRounding": "HALF_UP_FINAL_ONLY",
+    "recommendationPriority": ["CORE_FAIL", "CORE_WARN", "NON_CORE_WARN", "TARGET_ORDER", "CRITERION_ID"],
+    "criteria": [
+      {
+        "criterionId": "gloves.attack-speed", "targetOrder": 0, "slotId": "gloves", "kind": "AFFIX", "entityId": "attack-speed",
+        "source": { "group": "AFFIXES", "occurrence": 0 }, "core": true, "weightClass": "CORE", "parameterAggregation": "ALL",
+        "parameters": [{ "parameterId": "roll", "index": 0, "comparator": "AT_LEAST", "unit": "PERCENT", "expected": { "type": "NUMBER", "value": 8 } }],
+        "evidenceRequirement": "COMPLETE_CATEGORY"
+      },
+      {
+        "criterionId": "gloves.core-ranks", "targetOrder": 1, "slotId": "gloves", "kind": "AFFIX", "entityId": "core-skill-ranks",
+        "source": { "group": "AFFIXES", "occurrence": 0 }, "core": false, "weightClass": "NON_CORE", "parameterAggregation": "ALL",
+        "parameters": [{ "parameterId": "rank", "index": 0, "comparator": "AT_LEAST", "unit": "RANK", "expected": { "type": "NUMBER", "value": 2 } }],
+        "evidenceRequirement": "COMPLETE_CATEGORY"
+      },
+      {
+        "criterionId": "gloves.charge-bolt-effect", "targetOrder": 2, "slotId": "gloves", "kind": "EFFECT", "entityId": "charge-bolt-core-effect",
+        "source": { "group": "ASPECTS", "occurrence": 0 }, "core": true, "weightClass": "CORE", "parameterAggregation": "ALL",
+        "parameters": [
+          { "parameterId": "damage", "index": 0, "comparator": "AT_LEAST", "unit": "PERCENT", "expected": { "type": "NUMBER", "value": 10 } },
+          { "parameterId": "targets", "index": 1, "comparator": "AT_LEAST", "unit": "FLAT", "expected": { "type": "NUMBER", "value": 2 } }
+        ],
+        "evidenceRequirement": "COMPLETE_SLOT"
+      },
+      {
+        "criterionId": "ring-1.resource-cost", "targetOrder": 3, "slotId": "ring-1", "kind": "AFFIX", "entityId": "resource-cost-reduction",
+        "source": { "group": "AFFIXES", "occurrence": 0 }, "core": false, "weightClass": "NON_CORE", "parameterAggregation": "ALL",
+        "parameters": [{ "parameterId": "roll", "index": 0, "comparator": "AT_MOST", "unit": "PERCENT", "expected": { "type": "NUMBER", "value": 6 } }],
+        "evidenceRequirement": "PRESENT_VALUE"
+      }
+    ]
+  }
+}

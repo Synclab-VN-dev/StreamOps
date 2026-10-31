@@ -1,0 +1,14 @@
+{
+  "protocolVersion": "d4planner-control/v1",
+  "type": "request",
+  "requestId": "synthetic-1",
+  "ownerInstanceId": "synthetic-owner",
+  "childInstanceId": "synthetic-child",
+  "generation": 1,
+  "method": "target.select",
+  "params": {
+    "targetId": "synthetic-target",
+    "expectedSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "expectedListRevision": 1
+  }
+}

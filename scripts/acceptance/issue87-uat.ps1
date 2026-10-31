@@ -27,7 +27,7 @@ $ErrorActionPreference = 'Stop'
 # Expected nonzero from the read-only status probe means BLOCKED, not a script crash.
 $PSNativeCommandUseErrorActionPreference = $false
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-$reporter = Join-Path $root 'utility/d4planner/tools/issue87_uat_evidence.py'
+$reporter = Join-Path $root 'utility/d4planner/d4planner-be/tools/issue87_uat_evidence.py'
 if (-not $EvidenceDir) {
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $EvidenceDir = Join-Path $root ".streamops/pr95/uat/issue87-$stamp"

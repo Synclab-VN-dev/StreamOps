@@ -1,0 +1,26 @@
+{
+  "synthetic": true,
+  "messages": [
+    {
+      "protocolVersion": "d4planner-notify/v1",
+      "type": "hello",
+      "messageId": "hello-1",
+      "credential": "synthetic-not-a-secret-00000000000",
+      "origin": "tauri://localhost"
+    },
+    {
+      "protocolVersion": "d4planner-notify/v1",
+      "type": "hello.accepted",
+      "messageId": "reply-1",
+      "correlationId": "hello-1"
+    },
+    {
+      "protocolVersion": "d4planner-notify/v1",
+      "type": "hud.committed",
+      "messageId": "commit-1",
+      "dbId": "synthetic-db",
+      "epoch": "synthetic-epoch",
+      "hudRevision": 7
+    }
+  ]
+}

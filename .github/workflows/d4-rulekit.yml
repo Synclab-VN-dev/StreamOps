@@ -4,11 +4,11 @@ on:
     branches:
       - feat/107-d4-rulekit
     paths:
-      - 'utility/d4-rulekit/**'
+      - 'utility/d4planner/d4planner-rulekit/**'
       - '.github/workflows/d4-rulekit.yml'
   pull_request:
     paths:
-      - 'utility/d4-rulekit/**'
+      - 'utility/d4planner/d4planner-rulekit/**'
       - '.github/workflows/d4-rulekit.yml'
   workflow_dispatch:
 
@@ -27,24 +27,24 @@ jobs:
           python-version: '3.12'
 
       - name: Install isolated package with test dependencies
-        run: python -m pip install -e 'utility/d4-rulekit[dev]'
+        run: python -m pip install -e 'utility/d4planner/d4planner-rulekit[dev]'
 
       - name: Python compile and schema self-check
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifacts/d4-rulekit
-          python -m compileall -q utility/d4-rulekit/src/d4_rulekit
+          python -m compileall -q utility/d4planner/d4planner-rulekit/src/d4_rulekit
           d4-rulekit schema-check --report artifacts/d4-rulekit/schema-check.json
 
       - name: Strict fixture contract validation (positive and negative)
         shell: bash
         run: |
           set -euo pipefail
-          d4-rulekit validate utility/d4-rulekit/fixtures/valid/*.json \
+          d4-rulekit validate utility/d4planner/d4planner-rulekit/fixtures/valid/*.json \
             --report artifacts/d4-rulekit/positive.json
           set +e
-          d4-rulekit validate utility/d4-rulekit/fixtures/invalid/*.json \
+          d4-rulekit validate utility/d4planner/d4planner-rulekit/fixtures/invalid/*.json \
             --report artifacts/d4-rulekit/negative.json
           rc=$?
           set -e
@@ -67,8 +67,8 @@ jobs:
         run: |
           set -euo pipefail
           python -m d4_rulekit.contract_check \
-            --contract utility/d4-rulekit/contracts/execution-v1.json \
-            --references utility/d4-rulekit/references/3.2.3/ci03-reference-vectors.json \
+            --contract utility/d4planner/d4planner-rulekit/contracts/execution-v1.json \
+            --references utility/d4planner/d4planner-rulekit/references/3.2.3/ci03-reference-vectors.json \
             --report artifacts/d4-rulekit/ci03-contract.json
           python - <<'PY'
           import json
@@ -82,19 +82,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m pytest -q utility/d4-rulekit/tests \
+          python -m pytest -q utility/d4planner/d4planner-rulekit/tests \
             --junitxml=artifacts/d4-rulekit/junit.xml
 
       - name: Build wheel and verify installed package outside repository
         shell: bash
         run: |
           set -euo pipefail
-          python -m build --wheel utility/d4-rulekit --outdir "$RUNNER_TEMP/rulekit-wheels"
+          python -m build --wheel utility/d4planner/d4planner-rulekit --outdir "$RUNNER_TEMP/rulekit-wheels"
           python -m venv "$RUNNER_TEMP/rulekit-venv"
           "$RUNNER_TEMP/rulekit-venv/bin/python" -m pip install "$RUNNER_TEMP"/rulekit-wheels/*.whl
           ( cd "$RUNNER_TEMP" && "$RUNNER_TEMP/rulekit-venv/bin/d4-rulekit" schema-check )
           "$RUNNER_TEMP/rulekit-venv/bin/d4-rulekit" validate \
-            "$GITHUB_WORKSPACE/utility/d4-rulekit/fixtures/valid/skill.json"
+            "$GITHUB_WORKSPACE/utility/d4planner/d4planner-rulekit/fixtures/valid/skill.json"
 
       - name: Upload deterministic reports (including failure evidence)
         if: always()
@@ -111,14 +111,14 @@ jobs:
     timeout-minutes: 20
     defaults:
       run:
-        working-directory: utility/d4-rulekit/browser-infra
+        working-directory: utility/d4planner/d4planner-rulekit/browser-infra
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: utility/d4-rulekit/browser-infra/package-lock.json
+          cache-dependency-path: utility/d4planner/d4planner-rulekit/browser-infra/package-lock.json
 
       - name: Install pinned Playwright Core
         run: npm ci
@@ -142,7 +142,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: d4-rulekit-browser-infrastructure-evidence
-          path: utility/d4-rulekit/browser-infra/artifacts/
+          path: utility/d4planner/d4planner-rulekit/browser-infra/artifacts/
           if-no-files-found: error
           retention-days: 30
 
@@ -152,45 +152,42 @@ jobs:
     timeout-minutes: 10
     defaults:
       run:
-        working-directory: utility/d4-rulekit/providers/maxroll
+        working-directory: utility/d4planner/d4planner-rulekit/providers/maxroll
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: utility/d4-rulekit/providers/maxroll/package-lock.json
+          cache-dependency-path: |
+            utility/d4planner/d4planner-rulekit/providers/maxroll/package-lock.json
+            utility/d4planner/d4planner-rulekit/snapshot-management/package-lock.json
+            utility/d4planner/d4planner-rulekit/browser-infra/package-lock.json
 
-      - name: Install pinned local infrastructure dependency
-        run: npm ci
+      - name: Install pinned provider and source dependency packages
+        # Capture tests import snapshot-management and browser-infra source. Node
+        # resolves dependencies there, not in the provider's sibling node_modules.
+        run: |
+          npm ci
+          npm ci --prefix ../../snapshot-management
+          npm ci --prefix ../../browser-infra
 
-      - name: Discover preinstalled browser and runtime versions
+      - name: Install Chromium pinned by Playwright lockfile
+        run: npx --no-install playwright-core install --with-deps chromium
+
+      - name: Resolve pinned browser and runtime versions
         shell: bash
         run: |
           set -euo pipefail
-          echo "runner_os=${{ runner.os }}"
-          echo "image_os=${ImageOS:-unknown}"
-          echo "image_version=${ImageVersion:-unknown}"
-          uname -a
-          browser_path=""
-          for browser_command in chromium chromium-browser google-chrome google-chrome-stable; do
-            candidate=$(command -v "$browser_command" || true)
-            echo "probe_${browser_command}=${candidate:-NOT_FOUND}"
-            if [[ -z "$browser_path" && -n "$candidate" && -x "$candidate" ]]; then
-              browser_path="$candidate"
-            fi
-          done
-          if [[ -z "$browser_path" ]]; then
-            echo "::error::No preinstalled Chromium/Chrome executable was found on the runner"
-            exit 1
-          fi
+          browser_path=$(node -e "process.stdout.write(require('playwright-core').chromium.executablePath())")
+          test -x "$browser_path"
           echo "browser_path=$browser_path"
           "$browser_path" --version
           node --version
           node -e "console.log('playwright-core ' + require('playwright-core/package.json').version)"
           echo "BROWSER_INFRA_CHROMIUM_PATH=$browser_path" >> "$GITHUB_ENV"
 
-      - name: Verify preinstalled browser compatibility and cleanup
+      - name: Verify pinned browser compatibility and cleanup
         run: npm run smoke:browser
 
       - name: Type declarations, unit, contract and offline synthetic E2E
@@ -201,7 +198,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: d4-rulekit-maxroll-provider-evidence
-          path: utility/d4-rulekit/providers/maxroll/artifacts/
+          path: utility/d4planner/d4planner-rulekit/providers/maxroll/artifacts/
           if-no-files-found: warn
           retention-days: 30
 
@@ -211,14 +208,14 @@ jobs:
     timeout-minutes: 10
     defaults:
       run:
-        working-directory: utility/d4-rulekit/application
+        working-directory: utility/d4planner/d4planner-rulekit/application
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: utility/d4-rulekit/application/package-lock.json
+          cache-dependency-path: utility/d4planner/d4planner-rulekit/application/package-lock.json
 
       - name: Install pinned development dependencies
         run: npm ci
@@ -231,6 +228,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: d4-rulekit-application-evidence
-          path: utility/d4-rulekit/application/artifacts/
+          path: utility/d4planner/d4planner-rulekit/application/artifacts/
           if-no-files-found: error
           retention-days: 30

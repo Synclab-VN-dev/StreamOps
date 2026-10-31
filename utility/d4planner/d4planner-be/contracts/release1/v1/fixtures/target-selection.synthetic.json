@@ -1,0 +1,16 @@
+{
+  "fixtureType": "SYNTHETIC_TARGET_SELECTION",
+  "listed": {
+    "targetId": "synthetic-charge-bolt",
+    "contentSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "byteLength": 4096,
+    "listRevision": 7
+  },
+  "cases": [
+    { "id": "same-bytes", "selectTargetId": "synthetic-charge-bolt", "actualSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "exists": true, "validNow": true, "expected": "ACTIVATED" },
+    { "id": "changed-after-list", "selectTargetId": "synthetic-charge-bolt", "actualSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "exists": true, "validNow": true, "expected": "TARGET_CHANGED" },
+    { "id": "deleted-after-list", "selectTargetId": "synthetic-charge-bolt", "actualSha256": null, "exists": false, "validNow": false, "expected": "TARGET_NOT_FOUND" },
+    { "id": "invalid-after-list", "selectTargetId": "synthetic-charge-bolt", "actualSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "exists": true, "validNow": false, "expected": "TARGET_INVALID" },
+    { "id": "path-is-not-an-id", "selectTargetId": "../../secrets.json", "actualSha256": null, "exists": false, "validNow": false, "expected": "INVALID_MESSAGE" }
+  ]
+}

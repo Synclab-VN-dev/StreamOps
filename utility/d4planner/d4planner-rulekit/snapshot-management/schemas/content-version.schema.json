@@ -1,0 +1,1039 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "d4-rulekit-content-version/v1",
+  "definitions": {
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "url"
+      ],
+      "properties": {
+        "method": {
+          "enum": [
+            "GET",
+            "HEAD"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "policyId",
+        "policyVersion",
+        "capturePolicySha256",
+        "origins",
+        "methods",
+        "include",
+        "exclude",
+        "excludedResourceTypes",
+        "navigationProfile",
+        "interactionProfile",
+        "requestHeaderPolicy",
+        "responsePolicy",
+        "serviceWorkerPolicy",
+        "navigationWaitUntil",
+        "settleWaitUntil",
+        "normalization"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "d4-rulekit-snapshot-scope/v1"
+        },
+        "policyId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "policyVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "capturePolicySha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "origins": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "maxItems": 16,
+          "minItems": 1
+        },
+        "methods": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "GET",
+              "HEAD"
+            ]
+          },
+          "maxItems": 16,
+          "minItems": 1
+        },
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "origin",
+              "path",
+              "match"
+            ],
+            "properties": {
+              "origin": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048
+              },
+              "match": {
+                "enum": [
+                  "EXACT",
+                  "PREFIX"
+                ]
+              }
+            }
+          },
+          "maxItems": 64,
+          "minItems": 1
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "origin",
+              "path",
+              "match"
+            ],
+            "properties": {
+              "origin": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048
+              },
+              "match": {
+                "enum": [
+                  "EXACT",
+                  "PREFIX"
+                ]
+              }
+            }
+          },
+          "maxItems": 64
+        },
+        "excludedResourceTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "maxItems": 16
+        },
+        "navigationProfile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "version",
+            "definitionSha256"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "definitionSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        },
+        "interactionProfile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "version",
+            "definitionSha256"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "definitionSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        },
+        "requestHeaderPolicy": {
+          "const": "fresh-anonymous-context"
+        },
+        "responsePolicy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "serviceWorkerPolicy": {
+          "const": "block"
+        },
+        "navigationWaitUntil": {
+          "enum": [
+            "load",
+            "domcontentloaded",
+            "networkidle",
+            "commit"
+          ]
+        },
+        "settleWaitUntil": {
+          "enum": [
+            "load",
+            "domcontentloaded",
+            "networkidle"
+          ]
+        },
+        "normalization": {
+          "const": "whatwg-url-preserve-query/v1"
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "evidenceId",
+        "manifestSha256",
+        "scopeFingerprint",
+        "navigationComplete",
+        "interactionsComplete",
+        "discoveryComplete",
+        "pendingRequests",
+        "failedRequests",
+        "roots",
+        "nodes",
+        "edges"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "d4-rulekit-snapshot-coverage/v1"
+        },
+        "evidenceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "manifestSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "scopeFingerprint": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "navigationComplete": {
+          "type": "boolean"
+        },
+        "interactionsComplete": {
+          "type": "boolean"
+        },
+        "discoveryComplete": {
+          "type": "boolean"
+        },
+        "pendingRequests": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "failedRequests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "method",
+              "url"
+            ],
+            "properties": {
+              "method": {
+                "enum": [
+                  "GET",
+                  "HEAD"
+                ]
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              }
+            }
+          },
+          "maxItems": 5000
+        },
+        "roots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "method",
+              "url"
+            ],
+            "properties": {
+              "method": {
+                "enum": [
+                  "GET",
+                  "HEAD"
+                ]
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              }
+            }
+          },
+          "maxItems": 64,
+          "minItems": 1
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "method",
+              "url",
+              "resourceType"
+            ],
+            "properties": {
+              "method": {
+                "enum": [
+                  "GET",
+                  "HEAD"
+                ]
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "resourceType": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            }
+          },
+          "maxItems": 5000
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "from",
+              "to"
+            ],
+            "properties": {
+              "from": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "method",
+                  "url"
+                ],
+                "properties": {
+                  "method": {
+                    "enum": [
+                      "GET",
+                      "HEAD"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  }
+                }
+              },
+              "to": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "method",
+                  "url"
+                ],
+                "properties": {
+                  "method": {
+                    "enum": [
+                      "GET",
+                      "HEAD"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  }
+                }
+              }
+            }
+          },
+          "maxItems": 20000
+        }
+      }
+    },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "snapshotId",
+        "manifestSha256",
+        "scope"
+      ],
+      "properties": {
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "manifestSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "scope": {
+          "$ref": "#/definitions/scope"
+        },
+        "coverage": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/coverage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "compareParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseline",
+        "candidate"
+      ],
+      "properties": {
+        "baseline": {
+          "$ref": "#/definitions/snapshot"
+        },
+        "candidate": {
+          "$ref": "#/definitions/snapshot"
+        }
+      }
+    },
+    "compareResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "protocolVersion": {
+          "const": "d4-rulekit-snapshots/v1"
+        },
+        "contentVersionContract": {
+          "const": "d4-rulekit-content-version/v1"
+        },
+        "status": {
+          "enum": [
+            "NEW_VERSION_FOUND",
+            "UNCHANGED",
+            "UNVERIFIED"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "baselineFingerprint": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "candidateFingerprint": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "fingerprintKind": {
+          "enum": [
+            "COMPLETE_SCOPED_CONTENT",
+            "OBSERVED_SCOPED_CONTENT"
+          ]
+        },
+        "baseline": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "snapshotId": {
+              "type": "string"
+            },
+            "manifestSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "scopeFingerprint": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "snapshotId",
+            "manifestSha256",
+            "scopeFingerprint"
+          ]
+        },
+        "candidate": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "snapshotId": {
+              "type": "string"
+            },
+            "manifestSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "scopeFingerprint": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "snapshotId",
+            "manifestSha256",
+            "scopeFingerprint"
+          ]
+        },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "baseline": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "state": {
+                  "enum": [
+                    "COMPLETE",
+                    "UNVERIFIED"
+                  ]
+                },
+                "reasons": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 32
+                },
+                "missing": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 5000
+                },
+                "unreachable": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 5000
+                },
+                "scopedResourceCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                },
+                "manifestResourceCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                },
+                "evidenceId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "state",
+                "reasons",
+                "missing",
+                "unreachable",
+                "scopedResourceCount",
+                "manifestResourceCount",
+                "evidenceId"
+              ]
+            },
+            "candidate": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "state": {
+                  "enum": [
+                    "COMPLETE",
+                    "UNVERIFIED"
+                  ]
+                },
+                "reasons": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 32
+                },
+                "missing": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 5000
+                },
+                "unreachable": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 5000
+                },
+                "scopedResourceCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                },
+                "manifestResourceCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                },
+                "evidenceId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "state",
+                "reasons",
+                "missing",
+                "unreachable",
+                "scopedResourceCount",
+                "manifestResourceCount",
+                "evidenceId"
+              ]
+            }
+          },
+          "required": [
+            "baseline",
+            "candidate"
+          ]
+        },
+        "scopeComparable": {
+          "type": "boolean"
+        },
+        "diff": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "summary": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "added": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 10000
+                    },
+                    "removed": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 10000
+                    },
+                    "modified": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 10000
+                    }
+                  },
+                  "required": [
+                    "added",
+                    "removed",
+                    "modified"
+                  ]
+                },
+                "resources": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "change": {
+                        "enum": [
+                          "ADDED",
+                          "REMOVED",
+                          "MODIFIED"
+                        ]
+                      },
+                      "identity": {
+                        "type": "string"
+                      },
+                      "method": {
+                        "enum": [
+                          "GET",
+                          "HEAD"
+                        ]
+                      },
+                      "url": {
+                        "type": "string"
+                      },
+                      "oldSha256": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "newSha256": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "change",
+                      "identity",
+                      "method",
+                      "url",
+                      "oldSha256",
+                      "newSha256"
+                    ]
+                  },
+                  "maxItems": 10000
+                }
+              },
+              "required": [
+                "summary",
+                "resources"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observations": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "basis": {
+                  "const": "VERIFIED_CAPTURED_SETS_ONLY"
+                },
+                "baselineOnly": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "identity": {
+                        "type": "string"
+                      },
+                      "url": {
+                        "type": "string"
+                      },
+                      "sha256": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      }
+                    },
+                    "required": [
+                      "identity",
+                      "url",
+                      "sha256"
+                    ]
+                  },
+                  "maxItems": 10000
+                },
+                "candidateOnly": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "identity": {
+                        "type": "string"
+                      },
+                      "url": {
+                        "type": "string"
+                      },
+                      "sha256": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      }
+                    },
+                    "required": [
+                      "identity",
+                      "url",
+                      "sha256"
+                    ]
+                  },
+                  "maxItems": 10000
+                },
+                "differentBytes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "identity": {
+                        "type": "string"
+                      },
+                      "url": {
+                        "type": "string"
+                      },
+                      "oldSha256": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      },
+                      "newSha256": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      }
+                    },
+                    "required": [
+                      "identity",
+                      "url",
+                      "oldSha256",
+                      "newSha256"
+                    ]
+                  },
+                  "maxItems": 10000
+                }
+              },
+              "required": [
+                "basis",
+                "baselineOnly",
+                "candidateOnly",
+                "differentBytes"
+              ]
+            }
+          ]
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "contentVersionContract",
+        "status",
+        "reason",
+        "baselineFingerprint",
+        "candidateFingerprint",
+        "fingerprintKind",
+        "baseline",
+        "candidate",
+        "coverage",
+        "scopeComparable",
+        "diff",
+        "observations"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "UNVERIFIED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "diff": {
+                "type": "null"
+              },
+              "fingerprintKind": {
+                "const": "OBSERVED_SCOPED_CONTENT"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "diff": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "summary": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "added": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10000
+                      },
+                      "removed": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10000
+                      },
+                      "modified": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10000
+                      }
+                    },
+                    "required": [
+                      "added",
+                      "removed",
+                      "modified"
+                    ]
+                  },
+                  "resources": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "change": {
+                          "enum": [
+                            "ADDED",
+                            "REMOVED",
+                            "MODIFIED"
+                          ]
+                        },
+                        "identity": {
+                          "type": "string"
+                        },
+                        "method": {
+                          "enum": [
+                            "GET",
+                            "HEAD"
+                          ]
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "oldSha256": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^[a-f0-9]{64}$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "newSha256": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^[a-f0-9]{64}$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "change",
+                        "identity",
+                        "method",
+                        "url",
+                        "oldSha256",
+                        "newSha256"
+                      ]
+                    },
+                    "maxItems": 10000
+                  }
+                },
+                "required": [
+                  "summary",
+                  "resources"
+                ]
+              },
+              "scopeComparable": {
+                "const": true
+              },
+              "fingerprintKind": {
+                "const": "COMPLETE_SCOPED_CONTENT"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
