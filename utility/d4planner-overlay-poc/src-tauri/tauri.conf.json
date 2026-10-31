@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "D4Planner Overlay POC",
+  "productName": "D4Planner Equipment HUD",
   "version": "0.1.0",
   "identifier": "vn.synclab.d4planner.overlaypoc",
   "build": {
@@ -11,14 +11,14 @@
   },
   "app": {
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:*; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'"
     },
     "windows": [
       {
         "label": "main",
-        "title": "D4Planner Overlay POC",
-        "width": 342,
-        "height": 290,
+        "title": "D4Planner Equipment HUD",
+        "width": 544,
+        "height": 560,
         "x": 30,
         "y": 35,
         "center": false,
