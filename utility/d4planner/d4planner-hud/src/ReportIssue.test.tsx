@@ -188,3 +188,60 @@ it("explicit cancel discards only an unsent draft; rejected cancel keeps recover
   await waitFor(() => expect(screen.queryByText("Run run-1")).toBeNull());
   expect(localStorage.getItem("d4planner.pendingReportId")).toBeNull();
 });
+
+it('F162-01: native local preflight failure permits discard and retains recovery pointer', async () => {
+  const bridge = vi.fn(async (command: string) => {
+    if (command === 'collect_issue_report') return preview;
+    if (command === 'submit_issue_report') throw {code:'AUTHENTICATION_REQUIRED',state:'LOCAL_FAILURE'};
+    return null;
+  });
+  render(<ReportIssue bridge={bridge as never} onClose={() => {}}/>);
+  form(); fireEvent.click(screen.getByText('Preview collection'));
+  await screen.findByText('Run run-1');
+  fireEvent.click(screen.getByLabelText(/I reviewed the public/));
+  fireEvent.click(screen.getByText('Submit issue'));
+  await screen.findByRole('alert');
+  expect(screen.getByRole('alert').textContent).toContain('AUTHENTICATION_REQUIRED');
+  expect((screen.getByText('Discard unsent draft') as HTMLButtonElement).disabled).toBe(false);
+  expect(localStorage.getItem('d4planner.pendingReportId')).toBe(preview.reportId);
+  fireEvent.click(screen.getByText('Discard unsent draft'));
+  await waitFor(()=>expect(localStorage.getItem('d4planner.pendingReportId')).toBeNull());
+});
+
+it.each(['AUTHENTICATION_REQUIRED','INVALID_REPORT_CONFIG','CONSENT_REQUIRED','INVALID_FORM','DIAGNOSTIC_IO_FAILED','REPORT_TOO_LARGE'])('F162-01 local %s preserves draft and allows retry', async (code) => {
+  const bridge=vi.fn(async(command:string)=>{
+    if(command==='collect_issue_report') return preview;
+    throw {code,state:'LOCAL_FAILURE'};
+  });
+  render(<ReportIssue bridge={bridge as never} onClose={()=>{}}/>);form();
+  fireEvent.click(screen.getByText('Preview collection'));await screen.findByText('Run run-1');
+  fireEvent.click(screen.getByLabelText(/I reviewed the public/));fireEvent.click(screen.getByText('Submit issue'));
+  expect((await screen.findByRole('alert')).textContent).toContain(code);
+  expect((screen.getByText('Discard unsent draft') as HTMLButtonElement).disabled).toBe(false);
+  expect((screen.getByText('Preview collection') as HTMLButtonElement).disabled).toBe(false);
+  expect((screen.getByText('Retry submission') as HTMLButtonElement).disabled).toBe(false);
+  expect((screen.getByLabelText('Title') as HTMLTextAreaElement).value).toBe('Test');
+  expect(localStorage.getItem('d4planner.pendingReportId')).toBe(preview.reportId);
+});
+
+it('F162-01 restart restores local description and selection without marking it remote', async()=>{
+  localStorage.setItem('d4planner.pendingReportId',preview.reportId);
+  const bridge=vi.fn(async()=>({...preview,pendingRemote:false,description:{issueType:'Other',title:'Recovered local',actual:'Failure',expected:'Retry',steps:'persisted'},consent:{fe:true,be:false,rulekit:false,evidence:false,evidenceConsent:false}}));
+  render(<ReportIssue bridge={bridge as never} onClose={()=>{}}/>);
+  await screen.findByText('Run run-1');
+  expect((screen.getByLabelText('Title') as HTMLTextAreaElement).value).toBe('Recovered local');
+  expect((screen.getByText('Discard unsent draft') as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.click(screen.getByText('Collect Logs'));
+  expect((screen.getByLabelText('BE') as HTMLInputElement).checked).toBe(false);
+});
+
+it.each([{code:'AUTHENTICATION_REQUIRED',state:'REMOTE_OUTCOME_UNCERTAIN'},'IPC_DISCONNECTED'])('F162-01 never unlocks uncertain native/IPC failure %s',async(failure)=>{
+  const bridge=vi.fn(async(command:string)=>{if(command==='collect_issue_report')return preview;throw failure;});
+  render(<ReportIssue bridge={bridge as never} onClose={()=>{}}/>);form();
+  fireEvent.click(screen.getByText('Preview collection'));await screen.findByText('Run run-1');
+  fireEvent.click(screen.getByLabelText(/I reviewed the public/));fireEvent.click(screen.getByText('Submit issue'));
+  await screen.findByRole('alert');
+  expect((screen.getByText('Discard unsent draft') as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByText('Preview collection') as HTMLButtonElement).disabled).toBe(true);
+  expect(localStorage.getItem('d4planner.pendingReportId')).toBe(preview.reportId);
+});

@@ -84,7 +84,39 @@ impl Config {
         Ok(())
     }
 }
-/// A single pending report, owned by native state. RAII cleans private plaintext on errors/cancel.
+#[derive(Debug, Serialize)]
+pub struct SubmissionFailure {
+    pub code: String,
+    pub state: &'static str,
+}
+impl SubmissionFailure {
+    pub fn uncertain(code: impl Into<String>) -> Self {
+        Self {
+            code: code.into(),
+            state: "REMOTE_OUTCOME_UNCERTAIN",
+        }
+    }
+    pub fn for_report(code: String, report: &Report) -> Self {
+        Self {
+            code,
+            state: if report.pending_remote() {
+                "REMOTE_OUTCOME_UNCERTAIN"
+            } else {
+                "LOCAL_FAILURE"
+            },
+        }
+    }
+}
+fn read_json(path: &Path, limit: u64) -> Result<Value> {
+    if !safe(path) {
+        return Err("UNSAFE_PATH".into());
+    }
+    if fs::metadata(path).map_err(error)?.len() > limit {
+        return Err("REPORT_TOO_LARGE".into());
+    }
+    serde_json::from_slice(&fs::read(path).map_err(error)?).map_err(error)
+}
+/// A single owned report. Drop releases locks; explicit discard removes durable drafts.
 pub struct Report {
     pub id: String,
     pub preview: Value,
@@ -99,7 +131,15 @@ impl Drop for Report {
             let _ = FileExt::unlock(&lock);
             drop(lock);
         }
-        if self.sealed.is_none() && safe(&self.dir) {
+        if self.sealed.is_none()
+            && !self.dir.join("draft.json").try_exists().unwrap_or(true)
+            && !self
+                .dir
+                .join("description.json")
+                .try_exists()
+                .unwrap_or(true)
+            && safe(&self.dir)
+        {
             let _ = fs::remove_dir_all(&self.dir);
         }
     }
@@ -119,10 +159,9 @@ fn private_dir(path: &Path) -> Result<()> {
 }
 impl Report {
     pub fn pending_remote(&self) -> bool {
-        // description is persisted before the first request. Treat legacy sealed
-        // drafts with a description as uncertain too, including filesystem errors.
+        // Only the send boundary writes description.json. Legacy descriptions and
+        // damaged ciphertext remain uncertain too, including filesystem errors.
         !self.remote_resolved
-            && self.sealed.is_some()
             && self
                 .dir
                 .join("description.json")
@@ -133,13 +172,25 @@ impl Report {
         if self.pending_remote() {
             return Err("REPORT_RECONCILIATION_REQUIRED".into());
         }
-        self.sealed = None;
-        drop(self);
-        Ok(())
+        if !safe(&self.dir) {
+            return Err("UNSAFE_PATH".into());
+        }
+        if let Some(lock) = self.lock.take() {
+            let _ = FileExt::unlock(&lock);
+            drop(lock);
+        }
+        fs::remove_dir_all(&self.dir).map_err(error)
     }
     pub fn restored_preview(&self) -> Value {
         let mut preview = self.preview.clone();
         preview["pendingRemote"] = json!(self.pending_remote());
+        if let Ok(draft) = read_json(&self.dir.join("draft.json"), 100_000) {
+            if let Some(d) = draft.get("description") {
+                if let Ok(d) = serde_json::from_value::<Description>(d.clone()) {
+                    preview["description"] = json!(d);
+                }
+            }
+        }
         if let Ok(bytes) = fs::read(self.dir.join("description.json")) {
             if bytes.len() <= 30_000 {
                 if let Ok(d) = serde_json::from_slice::<Description>(&bytes) {
@@ -160,6 +211,7 @@ impl Report {
         }
         for name in [
             "owner.lock",
+            "draft.json",
             "sealed.json",
             "report.zip.age",
             "description.json",
@@ -174,6 +226,49 @@ impl Report {
             .open(dir.join("owner.lock"))
             .map_err(error)?;
         lock.try_lock_exclusive().map_err(|_| "REPORT_BUSY")?;
+        if !dir.join("sealed.json").try_exists().map_err(error)? {
+            // Never downgrade a remote intent with damaged/missing ciphertext.
+            if dir.join("description.json").try_exists().map_err(error)? {
+                return Err("INVALID_REPORT".into());
+            }
+            let draft = read_json(&dir.join("draft.json"), 100_000)?;
+            if let Some(d) = draft.get("description") {
+                serde_json::from_value::<Description>(d.clone()).map_err(|_| "INVALID_REPORT")?;
+            }
+            let preview = &draft["preview"];
+            if draft["schemaVersion"] != "d4planner-local-draft/v1" || preview["reportId"] != id {
+                return Err("INVALID_REPORT".into());
+            }
+            validate_sources(preview)?;
+            let mut total = 0u64;
+            for f in preview["files"].as_array().ok_or("INVALID_REPORT")? {
+                if f["status"] == "UNAVAILABLE" {
+                    continue;
+                }
+                let path = dir.join(f["path"].as_str().ok_or("INVALID_REPORT")?);
+                if !safe(&path) {
+                    return Err("UNSAFE_PATH".into());
+                }
+                total = total
+                    .checked_add(fs::metadata(&path).map_err(error)?.len())
+                    .ok_or("REPORT_TOO_LARGE")?;
+                if total > MAX {
+                    return Err("REPORT_TOO_LARGE".into());
+                }
+                let bytes = fs::read(path).map_err(error)?;
+                if f["sha256"] != hash(&bytes) || f["bytes"] != bytes.len() {
+                    return Err("EXPORT_CHANGED".into());
+                }
+            }
+            return Ok(Self {
+                id: id.into(),
+                preview: preview.clone(),
+                dir,
+                sealed: None,
+                lock: Some(lock),
+                remote_resolved: false,
+            });
+        }
         if fs::metadata(dir.join("sealed.json")).map_err(error)?.len() > 65_536
             || fs::metadata(dir.join("report.zip.age"))
                 .map_err(error)?
@@ -240,9 +335,7 @@ impl Report {
             if fs::read(p.join("owner.json")).ok().as_deref() != Some(b"d4planner-report/v1") {
                 continue;
             }
-            if p.join("sealed.json").is_file()
-                && p.join("description.json").try_exists().unwrap_or(true)
-            {
+            if p.join("description.json").try_exists().unwrap_or(true) {
                 return Err("REPORT_RECONCILIATION_REQUIRED".into());
             }
             if let Ok(lock) = OpenOptions::new()
@@ -251,10 +344,12 @@ impl Report {
                 .open(p.join("owner.lock"))
             {
                 if lock.try_lock_exclusive().is_ok() {
-                    let sealed = p.join("sealed.json").is_file();
+                    let durable = p.join("sealed.json").try_exists().unwrap_or(true)
+                        || p.join("draft.json").try_exists().unwrap_or(true)
+                        || p.join("description.json").try_exists().unwrap_or(true);
                     let _ = FileExt::unlock(&lock);
                     drop(lock);
-                    if !sealed {
+                    if !durable {
                         if fs::remove_dir_all(&p).is_err() {
                             pending += 1;
                         }
@@ -364,6 +459,7 @@ impl Report {
         }
         report.preview = json!({"schemaVersion":"d4planner-issue-report/v1","reportId":report.id,"runId":run,"timestamp":d4planner_runtime_logging::now(),"productVersion":source["productVersion"].take(),"sourceVersion":source["sourceVersion"].take(),"consent":selection,"files":files,"bytes":total,"completeness":if total==0{"EMPTY"}else{"BEST_EFFORT"}});
         validate_sources(&report.preview)?;
+        report.save_draft(None)?;
         Ok(report)
     }
     pub fn encrypt(&mut self, config: &Config) -> Result<Value> {
@@ -425,13 +521,6 @@ impl Report {
                 .write_all(&serde_json::to_vec(&metadata).map_err(error)?)
                 .map_err(error)?;
             metadata_file.sync_all().map_err(error)?;
-            // No raw source snapshots retained after encryption. Ciphertext supports restart/reconcile.
-            for name in ["logs", "evidence"] {
-                let p = self.dir.join(name);
-                if p.exists() {
-                    fs::remove_dir_all(p).map_err(error)?;
-                }
-            }
             self.sealed = Some(sealed);
         }
         let stored: Value =
@@ -444,7 +533,51 @@ impl Report {
         if stored["cipherSha256"] != json!(hash(&bytes)) {
             return Err("CIPHERTEXT_CHANGED".into());
         }
+        // Retry cleanup too if a local failure interrupted it after sealing.
+        for name in ["logs", "evidence"] {
+            let path = self.dir.join(name);
+            if !safe(&path) {
+                return Err("UNSAFE_PATH".into());
+            }
+            if path.exists() {
+                fs::remove_dir_all(path).map_err(error)?;
+            }
+        }
         Ok(json!({"reportId":self.id,"sha256":hash(&bytes),"bytes":bytes.len()}))
+    }
+    fn save_draft(&self, description: Option<&Description>) -> Result<()> {
+        let path = self.dir.join("draft.json");
+        let next = self.dir.join("draft.next");
+        if !safe(&path) || !safe(&next) {
+            return Err("UNSAFE_PATH".into());
+        }
+        let mut value = json!({"schemaVersion":"d4planner-local-draft/v1","preview":self.preview});
+        if let Some(d) = description {
+            value["description"] = json!(d);
+        }
+        if next.exists() {
+            fs::remove_file(&next).map_err(error)?;
+        }
+        let mut file = create(&next)?;
+        file.write_all(&serde_json::to_vec(&value).map_err(error)?)
+            .map_err(error)?;
+        file.sync_all().map_err(error)?;
+        drop(file);
+        fs::rename(next, path).map_err(error)
+    }
+    fn remember_description(&self, description: &Description) -> Result<()> {
+        if serde_json::to_vec(description).map_err(error)?.len() > 30_000 {
+            return Err("INVALID_FORM".into());
+        }
+        if self.pending_remote() {
+            if fs::read(self.dir.join("description.json")).map_err(error)?
+                != serde_json::to_vec(description).map_err(error)?
+            {
+                return Err("SUBMITTED_DRAFT_IMMUTABLE".into());
+            }
+            return Ok(());
+        }
+        self.save_draft(Some(description))
     }
     fn prepare_submission(
         &mut self,
@@ -452,22 +585,51 @@ impl Report {
         description: &Description,
         consent: bool,
     ) -> Result<Value> {
+        self.remember_description(description)?;
+        description.validate()?;
         if !consent {
             return Err("CONSENT_REQUIRED".into());
         }
-        description.validate()?;
-        let draft = self.dir.join("description.json");
-        let serialized = serde_json::to_vec(description).map_err(error)?;
-        if draft.exists() {
-            if fs::read(&draft).map_err(error)? != serialized {
+        self.encrypt(config)
+    }
+    fn mark_remote_intent(&self, description: &Description) -> Result<()> {
+        let path = self.dir.join("description.json");
+        if !safe(&path) {
+            return Err("UNSAFE_PATH".into());
+        }
+        let bytes = serde_json::to_vec(description).map_err(error)?;
+        if path.exists() {
+            if fs::read(path).map_err(error)? != bytes {
                 return Err("SUBMITTED_DRAFT_IMMUTABLE".into());
             }
         } else {
-            let mut file = create(&draft)?;
-            file.write_all(&serialized).map_err(error)?;
+            let mut file = create(&path)?;
+            file.write_all(&bytes).map_err(error)?;
             file.sync_all().map_err(error)?;
         }
-        self.encrypt(config)
+        Ok(())
+    }
+    /// Native preflight and submission share authoritative persisted state.
+    pub fn attempt(
+        &mut self,
+        config: Result<Config>,
+        token: Result<String>,
+        description: &Description,
+        consent: bool,
+    ) -> std::result::Result<Value, SubmissionFailure> {
+        let result = (|| {
+            self.remember_description(description)?;
+            description.validate()?;
+            if !consent {
+                return Err("CONSENT_REQUIRED".into());
+            }
+            let token = token?;
+            if token.trim().is_empty() {
+                return Err("AUTHENTICATION_REQUIRED".into());
+            }
+            self.submit(&config?, description, &token, consent)
+        })();
+        result.map_err(|code| SubmissionFailure::for_report(code, self))
     }
 
     fn accept_response(&mut self, value: Value) -> Result<Value> {
@@ -482,50 +644,78 @@ impl Report {
         access_token: &str,
         consent: bool,
     ) -> Result<Value> {
+        self.submit_using(
+            config,
+            description,
+            access_token,
+            consent,
+            |client, request| {
+                let response = client.execute(request).map_err(|_| "GATEWAY_OFFLINE")?;
+                let status = response.status().as_u16();
+                let mut bytes = Vec::new();
+                response
+                    .take(65_537)
+                    .read_to_end(&mut bytes)
+                    .map_err(error)?;
+                if bytes.len() > 65_536 {
+                    return Err("INVALID_GATEWAY_RESPONSE".into());
+                }
+                Ok((status, bytes))
+            },
+        )
+    }
+    fn submit_using(
+        &mut self,
+        config: &Config,
+        description: &Description,
+        access_token: &str,
+        consent: bool,
+        mut exchange: impl FnMut(
+            &reqwest::blocking::Client,
+            reqwest::blocking::Request,
+        ) -> Result<(u16, Vec<u8>)>,
+    ) -> Result<Value> {
+        if access_token.trim().is_empty() {
+            return Err("AUTHENTICATION_REQUIRED".into());
+        }
         let artifact = self.prepare_submission(config, description, consent)?;
         let client = reqwest::blocking::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .timeout(std::time::Duration::from_secs(60))
             .build()
             .map_err(error)?;
-        // Client sends ciphertext only. The short-lived user credential is never persisted.
-        let response = client
-            .put(format!(
-                "{}/reports/{}",
-                config.gateway.trim_end_matches('/'),
-                self.id
-            ))
+        let endpoint = format!(
+            "{}/reports/{}",
+            config.gateway.trim_end_matches('/'),
+            self.id
+        );
+        let put = client
+            .put(&endpoint)
             .bearer_auth(access_token)
             .json(&json!({"description":description,"artifact":artifact}))
-            .send()
-            .map_err(|_| "GATEWAY_OFFLINE")?;
-        if !response.status().is_success() {
-            return Err(format!("GATEWAY_{}", response.status().as_u16()));
-        }
-        let response = client
-            .post(format!(
-                "{}/reports/{}/asset",
-                config.gateway.trim_end_matches('/'),
-                self.id
-            ))
+            .build()
+            .map_err(error)?;
+        let post = client
+            .post(format!("{endpoint}/asset"))
             .bearer_auth(access_token)
             .header("Content-Type", "application/octet-stream")
             .body(fs::read(self.sealed.as_ref().unwrap()).map_err(error)?)
-            .send()
-            .map_err(|_| "UPLOAD_PENDING")?;
-        if !response.status().is_success() {
-            return Err(format!("GATEWAY_{}", response.status().as_u16()));
-        }
-        let mut bytes = Vec::new();
-        response
-            .take(65_537)
-            .read_to_end(&mut bytes)
+            .build()
             .map_err(error)?;
-        if bytes.len() > 65_536 {
-            return Err("INVALID_GATEWAY_RESPONSE".into());
+        // All fallible local preparation finishes first. Persist intent before handing
+        // any request to transport; every later error remains uncertain until verified terminal.
+        self.mark_remote_intent(description)?;
+        let (status, _) = exchange(&client, put)?;
+        if !(200..300).contains(&status) {
+            return Err(format!("GATEWAY_{status}"));
         }
-        let value: Value = serde_json::from_slice(&bytes).map_err(error)?;
-        self.accept_response(value)
+        let (status, bytes) = exchange(&client, post)?;
+        if !(200..300).contains(&status) {
+            return Err(format!("GATEWAY_{status}"));
+        }
+        self.accept_response(
+            serde_json::from_slice(&bytes).map_err(|_| "INVALID_GATEWAY_RESPONSE")?,
+        )
     }
 }
 
@@ -907,7 +1097,8 @@ mod outcome_review_tests {
             let id = r.id.clone();
             let dir = r.dir.clone();
             let ciphertext = fs::read(dir.join("report.zip.age")).unwrap();
-            // Network loss after either remote POST: no terminal response reached client.
+            r.mark_remote_intent(&description).unwrap();
+            // Network loss after PUT or POST: no terminal response reached client.
             assert!(r.pending_remote());
             drop(r); // application restart releases only lock, not ciphertext
             assert!(Report::collect(&data, "no-logs", selection(), |_| panic!()).is_err());
@@ -959,6 +1150,372 @@ mod outcome_review_tests {
         }
         for suffix in ["", "0", "../123", "123?token=private"] {
             assert!(validate_outcome(&json!({"status":"COMPLETE","reportId":"same","issueUrl":format!("https://github.com/Synclab-VN-dev/StreamOps/issues/{suffix}")}),"same").is_err());
+        }
+    }
+}
+
+#[cfg(test)]
+mod local_recovery_tests {
+    use super::*;
+    fn draft() -> (PathBuf, Report, Config, Description) {
+        let data = std::env::temp_dir().join(format!("f162-01-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&data).unwrap();
+        let r = Report::collect(
+            &data,
+            "no-logs",
+            Selection {
+                fe: false,
+                be: false,
+                rulekit: false,
+                evidence: false,
+                evidence_consent: false,
+            },
+            |_| panic!(),
+        )
+        .unwrap();
+        let c = Config {
+            recipient: age::x25519::Identity::generate().to_public().to_string(),
+            gateway: "https://example.invalid".into(),
+            max_bytes: MAX,
+        };
+        let d = Description {
+            issue_type: "Other".into(),
+            title: "local draft".into(),
+            actual: "failure".into(),
+            expected: "recover".into(),
+            steps: "".into(),
+        };
+        (data, r, c, d)
+    }
+    #[test]
+    fn unsealed_collection_survives_restart_and_can_be_discarded() {
+        let (data, r, _, _) = draft();
+        let id = r.id.clone();
+        let preview = r.preview.clone();
+        drop(r);
+        let restored = Report::resume(&data, &id).expect("durable unsealed collection");
+        assert_eq!(restored.preview, preview);
+        assert!(!restored.pending_remote());
+        restored.discard().unwrap();
+        fs::remove_dir_all(data).unwrap();
+    }
+    #[test]
+    fn encryption_preparation_is_not_remote_intent() {
+        let (data, mut r, c, d) = draft();
+        r.prepare_submission(&c, &d, true).unwrap();
+        assert!(!r.pending_remote(), "no HTTP was attempted");
+        r.discard().unwrap();
+        fs::remove_dir_all(data).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod submission_boundary_tests {
+    use super::*;
+    fn fixture() -> (PathBuf, Report, Config, Description) {
+        let data = std::env::temp_dir().join(format!("f162-boundary-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&data).unwrap();
+        let r = Report::collect(
+            &data,
+            "no-logs",
+            Selection {
+                fe: false,
+                be: false,
+                rulekit: false,
+                evidence: false,
+                evidence_consent: false,
+            },
+            |_| panic!(),
+        )
+        .unwrap();
+        (
+            data,
+            r,
+            Config {
+                recipient: age::x25519::Identity::generate().to_public().to_string(),
+                gateway: "https://example.invalid".into(),
+                max_bytes: MAX,
+            },
+            Description {
+                issue_type: "Other".into(),
+                title: "persist me".into(),
+                actual: "failure".into(),
+                expected: "recover".into(),
+                steps: "user steps".into(),
+            },
+        )
+    }
+    #[test]
+    fn preflight_errors_remain_local_and_restore_form_after_restart() {
+        for case in [
+            "token",
+            "config-file",
+            "config",
+            "consent",
+            "form",
+            "encryption",
+        ] {
+            let (data, mut r, mut c, mut d) = fixture();
+            let id = r.id.clone();
+            let dir = r.dir.clone();
+            if case == "config" {
+                c.gateway = "http://forbidden.invalid".into();
+            }
+            if case == "form" {
+                d.title = "".into();
+            }
+            if case == "encryption" {
+                c.max_bytes = 1;
+            }
+            let config = if case == "config-file" {
+                Err("REPORT_NOT_CONFIGURED".into())
+            } else {
+                Ok(c)
+            };
+            let token = if case == "token" {
+                Err("AUTHENTICATION_REQUIRED".into())
+            } else {
+                Ok("synthetic".into())
+            };
+            let err = r.attempt(config, token, &d, case != "consent").unwrap_err();
+            assert_eq!(err.state, "LOCAL_FAILURE", "{case}");
+            assert!(!dir.join("description.json").exists());
+            assert!(!r.pending_remote());
+            drop(r);
+            let restored = Report::resume(&data, &id).unwrap();
+            assert_eq!(restored.restored_preview()["description"], json!(d));
+            assert_eq!(restored.restored_preview()["pendingRemote"], false);
+            restored.discard().unwrap();
+            assert!(!dir.exists());
+            fs::remove_dir_all(data).unwrap();
+        }
+    }
+    #[test]
+    fn zip_failure_never_reaches_transport_and_is_retryable() {
+        let (data, mut r, c, d) = fixture();
+        let dir = r.dir.clone();
+        fs::create_dir(dir.join("report.zip")).unwrap();
+        let result = r.submit_using(&c, &d, "synthetic", true, |_, _| {
+            panic!("no HTTP before ZIP success")
+        });
+        assert!(result.is_err());
+        assert!(!r.pending_remote());
+        fs::remove_dir(dir.join("report.zip")).unwrap();
+        let id = r.id.clone();
+        drop(r);
+        let mut r = Report::resume(&data, &id).unwrap();
+        r.prepare_submission(&c, &d, true).unwrap();
+        assert!(!r.pending_remote());
+        r.discard().unwrap();
+        fs::remove_dir_all(data).unwrap();
+    }
+    #[test]
+    fn put_post_loss_http_errors_and_nonterminal_responses_preserve_identity() {
+        for case in [
+            "PUT_LOSS",
+            "POST_LOSS",
+            "HTTP_401",
+            "PENDING",
+            "UNKNOWN",
+            "MALFORMED",
+            "WRONG_ID",
+        ] {
+            let (data, mut r, c, d) = fixture();
+            let id = r.id.clone();
+            let dir = r.dir.clone();
+            let mut calls = 0;
+            let result=r.submit_using(&c,&d,"synthetic",true,|_,req| {
+                calls+=1;
+                assert_eq!(req.url().scheme(),"https");
+                if calls==1 {
+                    assert_eq!(req.method(),reqwest::Method::PUT);
+                    if case=="PUT_LOSS" {return Err("LOST_RESPONSE".into());}
+                    if case=="HTTP_401" {return Ok((401,vec![]));}
+                    return Ok((200,b"{}".to_vec()));
+                }
+                assert_eq!(req.method(),reqwest::Method::POST);
+                assert!(req.body().unwrap().as_bytes().unwrap().starts_with(b"age-encryption.org/v1"));
+                if case=="POST_LOSS" {return Err("LOST_RESPONSE".into());}
+                let value=if case=="MALFORMED" {b"broken".to_vec()}else{
+                    serde_json::to_vec(&json!({"status":case,"reportId":if case=="WRONG_ID"{"foreign"}else{&id},"issueUrl":"https://github.com/Synclab-VN-dev/StreamOps/issues/123"})).unwrap()
+                };Ok((200,value))
+            });
+            assert!(result.is_err(), "{case}");
+            assert!(r.pending_remote());
+            let ciphertext = fs::read(dir.join("report.zip.age")).unwrap();
+            drop(r);
+            let mut r = Report::resume(&data, &id).unwrap();
+            let err = r
+                .attempt(
+                    Err("REPORT_NOT_CONFIGURED".into()),
+                    Err("AUTHENTICATION_REQUIRED".into()),
+                    &d,
+                    true,
+                )
+                .unwrap_err();
+            assert_eq!(
+                err.state, "REMOTE_OUTCOME_UNCERTAIN",
+                "auth failure must not downgrade previous send"
+            );
+            assert!(r.discard().is_err());
+            assert_eq!(fs::read(dir.join("report.zip.age")).unwrap(), ciphertext);
+            let mut r = Report::resume(&data, &id).unwrap();
+            let mut calls = 0;
+            r.submit_using(&c,&d,"synthetic",true,|_,req| {
+                calls+=1;
+                if calls==1 {
+                    let body:Value=serde_json::from_slice(req.body().unwrap().as_bytes().unwrap()).unwrap();
+                    assert_eq!(body["artifact"]["reportId"],id);assert_eq!(body["artifact"]["sha256"],hash(&ciphertext));
+                    assert_eq!(body["description"],json!(d));return Ok((200,b"{}".to_vec()));
+                }
+                assert_eq!(req.body().unwrap().as_bytes().unwrap(),ciphertext);
+                Ok((200,serde_json::to_vec(&json!({"status":"COMPLETE","reportId":id,"issueUrl":"https://github.com/Synclab-VN-dev/StreamOps/issues/123"})).unwrap()))
+            }).unwrap();
+            assert!(!r.pending_remote());
+            r.discard().unwrap();
+            assert!(!dir.exists());
+            fs::remove_dir_all(data).unwrap();
+        }
+    }
+    #[test]
+    fn corrupt_local_or_remote_draft_cannot_be_downgraded_or_reclaimed() {
+        let (data, mut r, c, d) = fixture();
+        let id = r.id.clone();
+        let dir = r.dir.clone();
+        r.prepare_submission(&c, &d, true).unwrap();
+        r.mark_remote_intent(&d).unwrap();
+        drop(r);
+        fs::remove_file(dir.join("sealed.json")).unwrap();
+        assert!(Report::resume(&data, &id).is_err());
+        assert!(Report::collect(
+            &data,
+            "no-logs",
+            Selection {
+                fe: false,
+                be: false,
+                rulekit: false,
+                evidence: false,
+                evidence_consent: false
+            },
+            |_| panic!()
+        )
+        .is_err());
+        assert!(dir.join("report.zip.age").is_file());
+        fs::remove_dir_all(data).unwrap();
+        let (data, r, _, _) = fixture();
+        let id = r.id.clone();
+        let dir = r.dir.clone();
+        drop(r);
+        let mut draft: Value =
+            serde_json::from_slice(&fs::read(dir.join("draft.json")).unwrap()).unwrap();
+        draft["description"] = json!({"title":42});
+        fs::write(dir.join("draft.json"), serde_json::to_vec(&draft).unwrap()).unwrap();
+        assert!(Report::resume(&data, &id).is_err());
+        fs::write(dir.join("draft.json"), b"corrupt").unwrap();
+        assert!(Report::resume(&data, &id).is_err());
+        assert!(dir.exists());
+        fs::remove_dir_all(data).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod process_recovery_tests {
+    use super::*;
+    #[test]
+    fn child_checkpoint() {
+        let Some(data) = std::env::var_os("F162_CHILD_DATA") else {
+            return;
+        };
+        let data = PathBuf::from(data);
+        let run = std::env::var("F162_CHILD_RUN").unwrap();
+        let mut r = Report::collect(
+            &data,
+            &run,
+            Selection {
+                fe: true,
+                be: false,
+                rulekit: false,
+                evidence: false,
+                evidence_consent: false,
+            },
+            |_| panic!(),
+        )
+        .unwrap();
+        let d = Description {
+            issue_type: "Other".into(),
+            title: "process restart".into(),
+            actual: "local or network loss".into(),
+            expected: "recover".into(),
+            steps: "".into(),
+        };
+        let c = Config {
+            recipient: age::x25519::Identity::generate().to_public().to_string(),
+            gateway: "https://example.invalid".into(),
+            max_bytes: MAX,
+        };
+        if std::env::var("F162_CHILD_MODE").unwrap() == "remote" {
+            assert!(r
+                .submit_using(&c, &d, "synthetic", true, |_, request| {
+                    assert_eq!(request.method(), reqwest::Method::PUT);
+                    Err("LOST_PUT_RESPONSE".into())
+                })
+                .is_err());
+        } else {
+            assert_eq!(
+                r.attempt(Ok(c), Err("AUTHENTICATION_REQUIRED".into()), &d, true)
+                    .unwrap_err()
+                    .state,
+                "LOCAL_FAILURE"
+            );
+        }
+        fs::write(
+            data.join("checkpoint.json"),
+            serde_json::to_vec(&json!({"id":r.id,"preview":r.preview})).unwrap(),
+        )
+        .unwrap();
+        // No Report Drop: exercise OS lock release and on-disk recovery after process exit.
+        std::process::exit(0);
+    }
+    #[test]
+    fn process_exit_restores_selected_files_local_form_and_remote_intent() {
+        for mode in ["local", "remote"] {
+            let data = std::env::temp_dir().join(format!("f162-process-{}", uuid::Uuid::new_v4()));
+            fs::create_dir(&data).unwrap();
+            let session = d4planner_runtime_logging::Session::create(&data, "1", "test").unwrap();
+            let source = fs::read(session.dir.join("fe.log")).unwrap();
+            let out = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "process_recovery_tests::child_checkpoint",
+                    "--nocapture",
+                ])
+                .env("F162_CHILD_DATA", &data)
+                .env("F162_CHILD_RUN", &session.id)
+                .env("F162_CHILD_MODE", mode)
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            assert_eq!(fs::read(session.dir.join("fe.log")).unwrap(), source);
+            let checkpoint: Value =
+                serde_json::from_slice(&fs::read(data.join("checkpoint.json")).unwrap()).unwrap();
+            let r = Report::resume(&data, checkpoint["id"].as_str().unwrap()).unwrap();
+            assert_eq!(r.preview, checkpoint["preview"]);
+            assert_eq!(
+                r.restored_preview()["description"]["title"],
+                "process restart"
+            );
+            assert_eq!(r.pending_remote(), mode == "remote");
+            if mode == "remote" {
+                assert!(r.discard().is_err());
+            } else {
+                r.discard().unwrap();
+            }
+            drop(session);
+            fs::remove_dir_all(data).unwrap();
         }
     }
 }

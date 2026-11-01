@@ -67,11 +67,11 @@ an encrypted manifest-only report, not fabricated logs.
 Safety ceilings (not a production upload approval): 64 MB total export/ciphertext,
 Strict four-source allowlist, complete valid raw JSONL records only,
 60-second HTTP timeout, 64 KB Gateway response. ZIP DEFLATE level 9. No redirect.
-Private staging is owner-only; at most three retained sealed reports, no unlimited
+Private staging is owner-only; at most three retained durable reports, no unlimited
 report accumulation. Files are compressed/encrypted locally. Ciphertext and private
 form draft survive process exit for retry; access tokens do not. Cancel/success removes
-owned staging only after a verified COMPLETE/EXPIRED response, or explicit discard of an unsent draft. Closing the UI retains the report. Interrupted unsealed reports are reclaimed on next collection under
-ownership marker/lock; foreign paths and locked reports are retained. Explicit cancel
+owned staging only after a verified COMPLETE/EXPIRED response, or explicit discard of an unsent draft. Closing the UI retains the report. Incomplete collections without a durable draft or remote intent are reclaimed on next collection under
+ownership marker/lock; durable unsent drafts, foreign paths and locked reports are retained. Explicit cancel
 is permitted only before an uncertain remote submission. Once a sealed draft has a durable description, collect/cancel are rejected until retry/reconciliation returns COMPLETE or EXPIRED. It never cancels a remote Issue or asset.
 
 A sealed report's recipient and form become immutable once submission is attempted;
@@ -189,3 +189,33 @@ inspector additionally rejects Gateway component paths in stage and final archiv
 Installed worker, executable names, DataRoot and DB/WS contracts remain unchanged.
 Cleanup workflow uses the relocated source path; its endpoint/permissions/eligibility
 policy is unchanged. Local Gateway tests use fake GitHub and never execute cleanup.
+
+## F162-01 — local failure and restart recovery
+
+Native submission errors carry `{code, state}`. `LOCAL_FAILURE` is returned only
+when the currently owned report has no persisted remote intent. Missing auth/config,
+invalid form/consent and encryption failures retain an editable/discardable local
+draft. A failure of a retry after a previous send remains `REMOTE_OUTCOME_UNCERTAIN`,
+even if the new failure is missing authentication. React never guesses from an HTTP
+status or error string; unknown bridge errors lock the draft conservatively.
+
+Collection persists a private, versioned `draft.json` before returning its ID.
+Submission saves bounded form data there before local preflight; successful sealing
+retains the existing ciphertext metadata. `resume` validates either the unsealed
+selected files/hashes or sealed ciphertext. Discard explicitly deletes only an owned,
+proven-unsent or verified-terminal report; Drop releases locks without deleting a
+durable draft. Private plaintext from unsent collection is retained until encryption
+or explicit discard, subject to the existing three-report/byte ceilings.
+
+`description.json` remains the conservative remote-intent marker, including legacy
+drafts. All fallible local encryption, HTTP request construction and ciphertext reads
+finish before this marker is synced, immediately before transport. The crash window
+between intent persistence and send is intentionally uncertain: it is safer to
+reconcile the same ID than discard a possibly sent request. PUT/POST transport errors,
+HTTP failures and malformed/non-terminal responses cannot erase this state. Only
+verified COMPLETE/EXPIRED allows terminal cleanup. No new Gateway endpoint is added.
+
+Corrupt drafts fail closed and retain files; a missing/damaged ciphertext must not
+downgrade an existing remote intent. Recovery errors retain the pointer; closing and
+reopening retries native recovery. Historical pre-fix unsealed drafts already deleted
+by the old Drop implementation cannot be reconstructed; no false recovery is claimed.

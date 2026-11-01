@@ -61,7 +61,8 @@ export function ReportIssue({
   const [url, setUrl] = useState("");
   useEffect(() => {
     const id = localStorage.getItem("d4planner.pendingReportId");
-    if (id)
+    if (id) {
+      setPendingRemote(true); // Until native recovery proves the draft is unsent.
       void bridge<Preview>("resume_issue_report", { reportId: id })
         .then((p) => {
           setPreview(p);
@@ -70,7 +71,8 @@ export function ReportIssue({
           if (p.consent) setSelection(p.consent);
           setState("review");
         })
-        .catch(() => setError("Previous draft could not be restored"));
+        .catch(() => setError("Previous draft could not be restored; close and reopen to retry recovery"));
+    }
   }, [bridge]);
   const terminal = state === "success" || state === "expired";
   const busy = state === "collecting" || state === "submitting";
@@ -107,7 +109,6 @@ export function ReportIssue({
   }
   async function submit() {
     if (!preview || !consent) return;
-    setPendingRemote(true);
     setState("submitting");
     setError("");
     try {
@@ -128,7 +129,11 @@ export function ReportIssue({
       setUrl(r.issueUrl);
       setState(r.status === "COMPLETE" ? "success" : "expired");
     } catch (e) {
-      setError(String(e));
+      const failure = e as {code?: unknown; state?: unknown} | null;
+      // Only an authoritative native classification permits local discard.
+      // Bridge failures and malformed/non-terminal responses are uncertain.
+      setPendingRemote(failure?.state !== "LOCAL_FAILURE");
+      setError(typeof failure?.code === "string" ? failure.code : String(e));
       setState("failure");
     }
   }
