@@ -142,6 +142,7 @@ def test_working_snapshot_refuses_unignored_private_key(repository,tmp_path):
         vm.source_snapshot(repository,None,tmp_path/'source.zip')
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason='QEMU host lock runs on Linux F; guest does not manage the VM')
 def test_managed_builder_excludes_concurrent_runs_and_does_not_stop_existing_vm(tmp_path):
     from build_vm_manager import ManagedBuilder
     config=tmp_path/'config.json'
@@ -157,6 +158,7 @@ def test_managed_builder_excludes_concurrent_runs_and_does_not_stop_existing_vm(
     second.acquire(); second.close(ssh)
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason='QEMU host lock runs on Linux F; guest does not manage the VM')
 def test_only_wrapper_started_vm_is_shutdown(tmp_path):
     from build_vm_manager import ManagedBuilder
     config=tmp_path/'config.json'
