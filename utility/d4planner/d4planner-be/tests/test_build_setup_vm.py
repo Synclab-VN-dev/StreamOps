@@ -21,7 +21,7 @@ def repository(tmp_path):
     plan = repo / 'utility/d4planner/d4planner-be/release1/package-plan.json'
     plan.parent.mkdir(parents=True)
     plan.write_text('{"version":"1.2.8"}')
-    (repo/'tracked.txt').write_text('committed\n')
+    (repo/'tracked.txt').write_bytes(b'committed\n')
     subprocess.run(['git','-C',str(repo),'add','.'],check=True)
     subprocess.run(['git','-C',str(repo),'-c','user.name=test','-c','user.email=test@example.invalid',
                     'commit','-qm','fixture'],check=True)
@@ -119,7 +119,7 @@ def test_existing_output_is_never_overwritten(tmp_path):
 def test_working_snapshot_includes_edits_and_staged_deletion_without_changing_repo(repository,tmp_path):
     original=subprocess.check_output(['git','-C',str(repository),'rev-parse','HEAD'],text=True).strip()
     subprocess.run(['git','-C',str(repository),'rm','tracked.txt'],check=True,capture_output=True)
-    (repository/'new.py').write_text('current source\n')
+    (repository/'new.py').write_bytes(b'current source\n')
     (repository/'.gitignore').write_text('ignored/\n')
     (repository/'ignored').mkdir()
     (repository/'ignored/private.key').write_text('excluded')
