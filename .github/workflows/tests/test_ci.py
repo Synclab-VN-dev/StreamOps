@@ -231,6 +231,22 @@ class Contracts(unittest.TestCase):
             self.assertIn(b'\\u2713',buffer.getvalue())
         finally:ctx.close()
 
+    def test_cleanup_removes_owned_readonly_git_pack_without_touching_source(self):
+        self.contract();job=self.plan()['jobs'][0];out=Path(self.tmp.name)/'out';out.mkdir()
+        ctx=ci.Context(self.root,job,out,ci.snapshot(self.root))
+        pack=ctx.temp/'pack.idx';pack.write_bytes(b'owned');pack.chmod(0o444)
+        original=self.root/'original.idx';original.write_bytes(b'caller');original.chmod(0o444)
+        real_rmtree=ci.shutil.rmtree
+        def exercise(path, *, onexc):
+            onexc(os.unlink,str(pack),PermissionError('read-only'))
+            with self.assertRaises(PermissionError):
+                onexc(os.unlink,str(original),PermissionError('outside ownership'))
+            real_rmtree(path)
+        with patch.object(ci.shutil,'rmtree',side_effect=exercise):ctx.close()
+        self.assertFalse(ctx.temp.exists())
+        self.assertTrue(original.exists())
+        original.chmod(0o644)
+
     def test_clean_no_change(self):
         self.contract();self.commit();self.base=self.git('rev-parse','HEAD').strip()
         p=self.plan()

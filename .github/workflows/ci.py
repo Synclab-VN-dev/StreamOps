@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -262,7 +263,7 @@ class Context:
         # Legacy native harnesses detach HEAD and create local venvs. Give each
         # execution an owned checkout; never run those mutations in the caller's tree.
         checkout=self.temp/'source'
-        subprocess.run(['git','-c','core.autocrlf=false','clone','--quiet','--shared','--no-checkout',str(self.root),str(checkout)],check=True)
+        subprocess.run(['git','-c','core.autocrlf=false','clone','--quiet','--shared','--no-hardlinks','--no-checkout',str(self.root),str(checkout)],check=True)
         subprocess.run(['git','-C',str(checkout),'-c','core.autocrlf=false','checkout','--quiet','--detach',self.source['head']],check=True)
         original=set(tracked_paths(self.root))
         for name in tracked_paths(checkout):
@@ -396,7 +397,18 @@ class Context:
                 matches.append(target)
         require(len(matches)==1,'ONE_VERIFIED_BUILD_REQUIRED')
         return matches[0]
-    def close(self):shutil.rmtree(self.temp)
+    def close(self):
+        def remove_readonly(function, path, error):
+            # Git packs on Windows can be read-only. Only mutate our owned copy;
+            # prepare_checkout explicitly disables hardlinks to the source repo.
+            target=Path(path)
+            if (not isinstance(error,PermissionError) or target.is_symlink()
+                    or not target.resolve().is_relative_to(self.temp.resolve())
+                    or target.stat().st_mode & stat.S_IWRITE):
+                raise error
+            target.chmod(target.stat().st_mode | stat.S_IWRITE)
+            function(path)
+        shutil.rmtree(self.temp,onexc=remove_readonly)
 
 def execute(root, document, job, output, *, version=None, channel='stable', inputs=None):
     output=Path(output).resolve()
@@ -443,7 +455,10 @@ def execute(root, document, job, output, *, version=None, channel='stable', inpu
             result['artifactManifest']={str(p.relative_to(output/'artifacts')).replace(os.sep,'/'):digest(p.read_bytes()) for p in (output/'artifacts').rglob('*') if p.is_file()}
             result.update(commands=ctx.commands,testCounts=ctx.test_counts,artifacts=ctx.artifacts)
             try:ctx.close()
-            except Exception:result.update(status='FAIL',error='OWNED_CLEANUP_FAILED')
+            except Exception as error:
+                detail='OWNED_CLEANUP_FAILED: '+ctx.redact(str(error))
+                result.update(status='FAIL',cleanupError=detail)
+                result.setdefault('error',detail)
         result.update(finishedAt=stamp(),seconds=round(time.monotonic()-started,3))
         write_json(output/'result.json',result)
     return result
