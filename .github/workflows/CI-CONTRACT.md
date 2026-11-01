@@ -39,7 +39,10 @@ Jobs prepare their own dependencies. Nearest test-contract folder owns files;
 with no source verification requirement. Unknown paths, removed contracts without
 replacement coverage, missing history, malformed metadata and unsupported runner
 profiles fail closed. Rename detection examines both deleted and added paths.
-PRs use merge-base; pushes use before/after. Local `--changed` includes tracked
+PRs use merge-base; pushes use before/after. A verified new-branch push
+(`created=true`, zero `before`, matching `after`/checkout HEAD) conservatively
+selects all regular tests and records that reason; it never selects publishing
+or manual trusted-fixture jobs. Zero `before` on other events remains blocked. Local `--changed` includes tracked
 edits and nonignored untracked files. Contract metadata from both sides is examined.
 
 Test jobs use operation `test`. Product jobs use `build` or `publish` and may declare

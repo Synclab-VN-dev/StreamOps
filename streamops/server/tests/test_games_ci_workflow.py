@@ -13,7 +13,8 @@ def test_game_gate_ids_and_audit_are_mandatory():
                   'GAME_WHEEL','GAME_RACE','GAME_REGRESSION','GAME_AUDIT_SELFTEST'):
         assert f"ctx.env['{field}']='success'" in source
         assert field in audit
-    assert "finally:\n        ctx.shell('./scripts/ci/verify_game_required_gates.ps1'" in source
+    assert "finally:\n        try:\n            ctx.shell('./scripts/ci/verify_game_required_gates.ps1'" in source
+    assert 'if primary_failure is None:raise' in source
     for name in ('Game G1','Game G2','Game G3','Game G4','Game G5','Game G6','Test installed wheel',
                  'Game observer/lifecycle race regression','Test StreamOps','FE-G1','FE-G2','FE-G3','FE-G4','FE-G6'):
         assert name in source

@@ -168,7 +168,7 @@ def ownership(path, specs):
     depth = max(len(PurePosixPath(s['root']).parts) for s in candidates)
     return [s['id'] for s in candidates if len(PurePosixPath(s['root']).parts)==depth]
 
-def plan(root, *, base=None, head='HEAD', dirty=False, push=False, component=None, product=None, operation='test', all_jobs=False, tag=None):
+def plan(root, *, base=None, head='HEAD', dirty=False, push=False, component=None, product=None, operation='test', all_jobs=False, tag=None, all_reason='explicit all tests'):
     specs = discover(root, None if dirty else head)
     identity = snapshot(root, None if dirty else head)
     reasons, changes = {}, []
@@ -184,7 +184,7 @@ def plan(root, *, base=None, head='HEAD', dirty=False, push=False, component=Non
         reasons[selected[0]] = ['approved release tag pattern']
     elif all_jobs:
         require(operation=='test', 'EXPLICIT_PRODUCT_REQUIRED')
-        reasons = {n:['explicit all tests'] for n,s in specs.items() if s['kind']=='test'}
+        reasons = {n:[all_reason] for n,s in specs.items() if s['kind']=='test'}
     else:
         require(operation=='test', 'EXPLICIT_PRODUCT_REQUIRED')
         changes, ancestor = changed_paths(root,base,head,dirty,push)
@@ -287,7 +287,10 @@ class Context:
     def log(self, text):
         for secret in self.redactions: text=text.replace(secret,'***')
         with (self.output/'commands.log').open('a',encoding='utf-8') as out:out.write(text+'\n')
-        print(text,flush=True)
+        # Preserve full UTF-8 evidence; legacy Windows consoles may be cp1252.
+        encoding=getattr(sys.stdout,'encoding',None) or 'utf-8'
+        console_text=text.encode(encoding,errors='backslashreplace').decode(encoding)
+        print(console_text,flush=True)
     def run(self, args, *, cwd=None, env=None, expected=(0,)):
         cwd=Path(cwd or self.root)
         if not cwd.is_absolute():cwd=self.root/cwd
@@ -479,6 +482,7 @@ def main(argv=None):
     p.add_argument('--output',type=Path,default=Path(tempfile.gettempdir())/('streamops-ci-'+uuid.uuid4().hex))
     a=p.parse_args(argv);root=a.root.resolve()
     a.output=a.output.resolve()
+    all_reason='explicit all tests'
     try:
         require(not a.output.is_relative_to(root),'OUTPUT_MUST_BE_OUTSIDE_SOURCE')
         if a.command=='actions-plan':
@@ -490,6 +494,10 @@ def main(argv=None):
             elif name=='push':
                 if os.environ.get('GITHUB_REF','').startswith('refs/tags/'):
                     a.tag=os.environ['GITHUB_REF_NAME'];a.operation='publish'
+                elif event.get('created') is True and event.get('before')=='0'*40:
+                    require(git(root,'rev-parse','HEAD')==event.get('after'),'PUSH_SOURCE_MISMATCH')
+                    a.all=True
+                    all_reason='new branch push: no before SHA; conservative all tests'
                 else:a.base=event['before'];a.push=True
             elif name=='workflow_dispatch':
                 inputs=event.get('inputs',{})
@@ -512,7 +520,7 @@ def main(argv=None):
             if a.changed and not base:
                 upstream=git(root,'rev-parse','--abbrev-ref','--symbolic-full-name','@{upstream}')
                 base=upstream
-            document=plan(root,base=base,head=a.head,dirty=a.changed,push=a.push,component=a.component,product=a.product,operation=a.operation,all_jobs=a.all,tag=a.tag)
+            document=plan(root,base=base,head=a.head,dirty=a.changed,push=a.push,component=a.component,product=a.product,operation=a.operation,all_jobs=a.all,tag=a.tag,all_reason=all_reason)
             write_json(a.output/'plan.json',document)
         if a.command=='plan':
             matrix=matrices(document);write_json(a.output/'matrix.json',matrix)

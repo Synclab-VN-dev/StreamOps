@@ -134,7 +134,15 @@ def run(ctx):
     ctx.env.update({'GAME_SCOPE':'true','CI_EVENT_NAME':'push'})
     for key in ('G1','G2','G3','G4','G5','G6','WHEEL','RACE','REGRESSION','AUDIT_SELFTEST'):
         ctx.env['GAME_'+key]='not_run'
+    primary_failure=None
     try:
         _run(ctx)
+    except BaseException as error:
+        primary_failure=error
+        raise
     finally:
-        ctx.shell('./scripts/ci/verify_game_required_gates.ps1', shell='pwsh')
+        try:
+            ctx.shell('./scripts/ci/verify_game_required_gates.ps1', shell='pwsh')
+        except Exception as audit_error:
+            if primary_failure is None:raise
+            ctx.log('Secondary gate audit failure (primary error preserved): '+str(audit_error))

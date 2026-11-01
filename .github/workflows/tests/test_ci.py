@@ -1,4 +1,6 @@
 """Planner/executor acceptance using disposable Git repositories, never remote APIs."""
+import contextlib
+import io
 import importlib.util
 import json
 import os
@@ -191,6 +193,43 @@ class Contracts(unittest.TestCase):
                 self.assertEqual(ctx.env['D4_PUBLIC_RUNTIME_INPUT_URL'],values['D4PLANNER_PUBLIC_RUNTIME_INPUTS_URL'])
                 self.assertEqual(ctx.env['D4_PUBLIC_RUNTIME_INPUT_SHA256'],'a'*64)
             finally:ctx.close()
+
+    def test_new_branch_push_selects_all_regular_tests_without_publish(self):
+        self.contract();self.contract('second/ci.test.py','second');self.commit()
+        event=Path(self.tmp.name)/'event.json'
+        event.write_text(json.dumps({'created':True,'before':'0'*40,'after':self.git('rev-parse','HEAD').strip()}))
+        output=Path(self.tmp.name)/'plan'
+        with patch.dict(os.environ,{'GITHUB_EVENT_PATH':str(event),'GITHUB_EVENT_NAME':'push',
+                                    'GITHUB_REF':'refs/heads/new-branch'}):
+            code=ci.main(['actions-plan','--root',str(self.root),'--output',str(output)])
+        self.assertEqual(code,0)
+        document=json.loads((output/'plan.json').read_text())
+        self.assertEqual({j['component'] for j in document['jobs']},{'widget','second'})
+        self.assertTrue(all(j['operation']=='test' and j['capability']=='read' for j in document['jobs']))
+        self.assertTrue(all('new branch push' in j['reasons'][0] for j in document['jobs']))
+
+    def test_zero_before_without_created_flag_still_fails_closed(self):
+        self.contract();self.commit()
+        event=Path(self.tmp.name)/'event.json';event.write_text(json.dumps({'before':'0'*40,'created':False}))
+        with patch.dict(os.environ,{'GITHUB_EVENT_PATH':str(event),'GITHUB_EVENT_NAME':'push','GITHUB_REF':'refs/heads/existing'}):
+            self.assertEqual(ci.main(['actions-plan','--root',str(self.root),'--output',str(Path(self.tmp.name)/'plan')]),2)
+
+    def test_unicode_child_output_on_cp1252_console_keeps_exit_and_utf8_log(self):
+        self.contract();job=self.plan()['jobs'][0];out=Path(self.tmp.name)/'out';out.mkdir()
+        ctx=ci.Context(self.root,job,out,ci.snapshot(self.root))
+        ctx.redactions=['PRIVATE_CANARY']
+        buffer=io.BytesIO();console=io.TextIOWrapper(buffer,encoding='cp1252')
+        try:
+            with contextlib.redirect_stdout(console):
+                ctx.python('-c', "print(chr(0x2713)+chr(0x25a0)+' PRIVATE_CANARY')")
+            console.flush()
+            self.assertEqual(ctx.commands[-1]['exitCode'],0)
+            log=(out/'commands.log').read_text(encoding='utf-8')
+            self.assertIn(chr(0x2713)+chr(0x25a0)+' ***',log)
+            self.assertNotIn('PRIVATE_CANARY',log)
+            self.assertNotIn(b'PRIVATE_CANARY',buffer.getvalue())
+            self.assertIn(b'\\u2713',buffer.getvalue())
+        finally:ctx.close()
 
     def test_clean_no_change(self):
         self.contract();self.commit();self.base=self.git('rev-parse','HEAD').strip()
