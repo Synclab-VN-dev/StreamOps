@@ -11,41 +11,6 @@ import release_ci as ci
 HEAD='a'*40
 
 
-def distribution():
-    return {'sourceHead':HEAD,'version':'1.0.3','approvedBy':'TrdHuy','approvalRef':'owner-approval-test',
-            'publicDistributionApproved':True,'licensesVerified':True,
-            'artifactClass':'D4PLANNER_APPLICATION_NO_SNAPSHOT','distributionFormat':'PLAINTEXT_EXE',
-            'runtimeLockSha256':ci.delivery.sha256_file(ci.LOCK)}
-
-
-def test_distribution_requires_explicit_application_permission_for_exact_source():
-    ci.distribution_approved(distribution(),HEAD,'1.0.3')
-    for patch in ({'sourceHead':'b'*40},{'version':'1.0.1'},{'approvedBy':'synclab-automation-system'},
-                  {'publicDistributionApproved':False},{'licensesVerified':False},{'artifactClass':'PRIVATE_SNAPSHOT_BUNDLE'}):
-        with pytest.raises(ValueError): ci.distribution_approved({**distribution(),**patch},HEAD,'1.0.3')
-    with pytest.raises(ValueError): ci.distribution_approved({},HEAD,'1.0.3')
-
-
-def test_release_acceptance_attestation_is_exact_artifact_and_all_gates():
-    metadata={'sourceHead':HEAD,'version':'1.0.3','sha256':'c'*64}
-    approval={**metadata,'approvedBy':'TrdHuy','approvalRef':'owner-test','gates':dict.fromkeys(ci.GATES,'PASS')}
-    ci.release_approved(approval,metadata)
-    for gate in ci.GATES:
-        with pytest.raises(ValueError,match='MANDATORY_RELEASE_GATES'):
-            ci.release_approved({**approval,'gates':{**approval['gates'],gate:'BLOCKED'}},metadata)
-    for field in metadata:
-        with pytest.raises(ValueError,match='RELEASE_APPROVAL_BINDING'):
-            ci.release_approved({**approval,field:'different'},metadata)
-
-
-def test_environment_cannot_be_unprotected_or_approved_by_automation():
-    rule={'type':'required_reviewers','prevent_self_review':True,'reviewers':[{'type':'User','reviewer':{'login':'TrdHuy'}}]}
-    ci.protected_environment({'protection_rules':[rule]})
-    for document in ({},{'protection_rules':[]},{'protection_rules':[{**rule,'prevent_self_review':False}]},
-                     {'protection_rules':[{**rule,'reviewers':[{'type':'User','reviewer':{'login':'synclab-automation-system'}}]}]}):
-        with pytest.raises(ValueError): ci.protected_environment(document)
-
-
 @pytest.mark.parametrize('release_version',['1','v1.0.0','1.0.0-rc.1','01.0.0','1.2.3; echo bad','1.2.3\n'])
 def test_versions_fail_before_build_or_publish(release_version):
     with pytest.raises(ci.InstallError,match='INVALID_RELEASE_VERSION'): ci.version(release_version)
@@ -79,7 +44,8 @@ def test_workflow_is_single_dispatch_build_without_unconditional_publish():
     text=(ci.ROOT/'.github/workflows/d4planner-release.yml').read_text()
     assert 'name: D4Planner Release' in text
     assert 'workflow_dispatch:' in text and 'default: true' in text
-    assert 'environment: d4planner-release' in text
+    assert 'environment: d4planner-release' not in text
+    assert '_APPROVAL_JSON' not in text and 'D4_RELEASE_GATES' not in text
     assert "if: ${{ github.event_name == 'workflow_dispatch' && !inputs.build_only }}" in text
     assert 'd4planner-uat/v*' in text
     assert 'prepare-upload --channel' in text
@@ -112,7 +78,7 @@ def test_download_fails_before_network_without_transport_and_integrity_pin(tmp_p
     with pytest.raises(ValueError,match=error):ci.download_inputs(url,digest,tmp_path/'inputs')
 
 
-def test_uat_is_explicit_and_does_not_bypass_distribution_or_stable_gates(tmp_path, monkeypatch):
+def test_uat_context_and_snapshot_format_remain_explicit(tmp_path, monkeypatch):
     plan=tmp_path/"plan.json";plan.write_text(json.dumps({"version":"1.0.3"}))
     policy=tmp_path/"policy.json";policy.write_text(json.dumps({"uatRevision":1}))
     monkeypatch.setattr(ci,"PRODUCT_PLAN",plan);monkeypatch.setattr(ci,"UAT_POLICY",policy)
@@ -126,17 +92,6 @@ def test_uat_is_explicit_and_does_not_bypass_distribution_or_stable_gates(tmp_pa
     for change in ({'applicationFormat':'AGE_EXE'},{'snapshotFormat':'PLAINTEXT'},{'uatRevision':2},{'scope':'STABLE'}):
         with pytest.raises(ValueError):ci.uat_approved({**policy,**change},meta)
     with pytest.raises(ValueError):ci.uat_approved(policy,{**meta,'encryption':'age/v1'})
-    with pytest.raises(ValueError):ci.release_approved(policy,meta)
-
-
-def test_r1_visual_waiver_never_waives_other_stable_gates_or_releases():
-    meta={'sourceHead':HEAD,'version':'1.0.3','sha256':'c'*64}
-    approval={**meta,'approvedBy':'TrdHuy','approvalRef':'owner-test','releaseId':'R1-EQUIPMENT-20261025',
-              'visualWaiver':'ISSUE158_R1_VISUAL_WAIVER_20261030','gates':{**dict.fromkeys(ci.GATES,'PASS'),'VISUAL_GOLDEN':'OWNER_WAIVED'}}
-    ci.release_approved(approval,meta)
-    for change in ({'releaseId':'R2'},{'gates':{**approval['gates'],'HUD-03':'OWNER_WAIVED'}},
-                   {'gates':{**approval['gates'],'PKG-08':'NOT_RUN'}}):
-        with pytest.raises(ValueError):ci.release_approved({**approval,**change},meta)
 
 
 def test_encrypted_artifact_verifier_rejects_plaintext_and_extra_assets(tmp_path):
@@ -184,12 +139,6 @@ def test_product_version_and_uat_revision_are_independent(tmp_path, monkeypatch)
             ci.uat_tag('1.2.8',{'uatRevision':invalid})
 
 
-def test_plaintext_upload_requires_explicit_format_approval():
-    # Existing ciphertext approval must never authorize a public executable.
-    with pytest.raises(ValueError, match='PLAINTEXT'):
-        ci.distribution_approved({k:v for k,v in distribution().items() if k!='distributionFormat'}, HEAD, '1.0.3')
-
-
 def test_application_workflow_uploads_exe_only_after_gate():
     text=(ci.ROOT/'.github/workflows/d4planner-release.yml').read_text()
     assert 'prepare-upload --channel' in text
@@ -210,73 +159,20 @@ def upload_fixture(tmp_path,monkeypatch):
 
 def test_prepare_and_verify_direct_exe_exact_bytes(tmp_path,monkeypatch):
     folder,meta=upload_fixture(tmp_path,monkeypatch);original=(folder/meta['artifact']).read_bytes()
-    result=ci.prepare_upload(folder,HEAD,'1.0.3',distribution())
+    result=ci.prepare_upload(folder,HEAD,'1.0.3')
     assert (folder/meta['artifact']).read_bytes()==original
     assert result['sha256']==meta['sha256'] and result['encryption']=='none'
     assert result['releaseTag']=='d4planner-uat/v1.0.3-r2'
-    ci.verify_upload(folder,HEAD,'1.0.3',meta['sha256'],distribution())
+    ci.verify_upload(folder,HEAD,'1.0.3',meta['sha256'])
     (folder/'SHA256SUMS').write_text('wrong')
-    with pytest.raises(ValueError,match='CHECKSUM_FILE_MISMATCH'):ci.verify_upload(folder,HEAD,'1.0.3',meta['sha256'],distribution())
-
-
-@pytest.mark.parametrize('patch',[{}, {'distributionFormat':'AGE_EXE'},{'runtimeLockSha256':'0'*64},{'licensesVerified':False},{'sourceHead':'b'*40}])
-def test_upload_gate_rejects_missing_or_stale_approval_before_mutation(tmp_path,monkeypatch,patch):
-    folder,meta=upload_fixture(tmp_path,monkeypatch)
-    approval={} if not patch else {**distribution(),**patch}
-    before={p.name:p.read_bytes() for p in folder.iterdir()}
-    with pytest.raises(ValueError):ci.prepare_upload(folder,HEAD,'1.0.3',approval)
-    assert before=={p.name:p.read_bytes() for p in folder.iterdir()}
+    with pytest.raises(ValueError,match='CHECKSUM_FILE_MISMATCH'):ci.verify_upload(folder,HEAD,'1.0.3',meta['sha256'])
 
 
 @pytest.mark.parametrize('name',['private.zip.age','snapshot.json','key.pem'])
 def test_upload_rejects_unlisted_private_assets(tmp_path,monkeypatch,name):
-    folder,meta=upload_fixture(tmp_path,monkeypatch);ci.prepare_upload(folder,HEAD,'1.0.3',distribution())
+    folder,meta=upload_fixture(tmp_path,monkeypatch);ci.prepare_upload(folder,HEAD,'1.0.3')
     (folder/name).write_bytes(b'private-test-canary')
-    with pytest.raises(ValueError,match='UNEXPECTED_PUBLIC_ASSET'):ci.verify_upload(folder,HEAD,'1.0.3',meta['sha256'],distribution())
-
-
-def test_uat_publication_is_separate_from_format_and_distribution(tmp_path,monkeypatch):
-    folder,meta=upload_fixture(tmp_path,monkeypatch);meta=ci.prepare_upload(folder,HEAD,'1.0.3',distribution())
-    with pytest.raises(ValueError,match='OWNER_UAT_PUBLICATION'):ci.uat_release_approved(distribution(),meta)
-    approval={**meta,'approvedBy':'TrdHuy','approvalRef':'isolated-test','publicationApproved':True}
-    ci.uat_release_approved(approval,meta)
-    for key in ['sourceHead','version','sha256','releaseTag']:
-        with pytest.raises(ValueError,match='UAT_PUBLICATION_BINDING'):ci.uat_release_approved({**approval,key:'wrong'},meta)
-
-
-@pytest.mark.parametrize('command',['validate-upload','publish-uat'])
-def test_cli_blocks_without_permission_before_any_github_call(tmp_path,monkeypatch,command):
-    folder,meta=upload_fixture(tmp_path,monkeypatch)
-    monkeypatch.setattr(sys,'argv',['release_ci.py',command,'--channel','uat','--version','1.0.3','--source',HEAD,'--directory',str(folder)])
-    monkeypatch.setenv('GITHUB_REF_NAME','d4planner-uat/v1.0.3-r2');monkeypatch.setenv('GITHUB_ACTOR','synclab-automation-system')
-    monkeypatch.delenv('D4_DISTRIBUTION_APPROVAL',raising=False)
-    def forbidden(*a,**k):pytest.fail('No GitHub/network call allowed without distribution gate')
-    monkeypatch.setattr(ci.subprocess,'check_output',forbidden);monkeypatch.setattr(ci,'run',forbidden)
-    with pytest.raises(ValueError,match='OWNER_DISTRIBUTION'):ci.main()
-
-
-def test_publish_uses_original_exe_after_separate_owner_approval(tmp_path,monkeypatch):
-    from types import SimpleNamespace
-    folder,meta=upload_fixture(tmp_path,monkeypatch);meta=ci.prepare_upload(folder,HEAD,'1.0.3',distribution())
-    monkeypatch.setattr(sys,'argv',['release_ci.py','publish-uat','--channel','uat','--version','1.0.3','--source',HEAD,'--directory',str(folder)])
-    for key,value in {'GITHUB_REF_NAME':meta['releaseTag'],'GITHUB_ACTOR':'synclab-automation-system','GITHUB_REPOSITORY':'isolated/test','D4_BUILT_SETUP_SHA256':meta['sha256'],'D4_DISTRIBUTION_APPROVAL':json.dumps(distribution())}.items():monkeypatch.setenv(key,value)
-    calls=[]
-    monkeypatch.setattr(ci,'run',lambda command,**kw:calls.append(command))
-    monkeypatch.setattr(ci.subprocess,'check_output',lambda *a,**k:HEAD+'\n')
-    monkeypatch.setattr(ci.subprocess,'run',lambda *a,**k:SimpleNamespace(returncode=1,stderr='HTTP 404'))
-    monkeypatch.delenv('D4_UAT_RELEASE_APPROVAL',raising=False)
-    with pytest.raises(ValueError,match='OWNER_UAT_PUBLICATION'):ci.main()
-    assert calls==[]
-    monkeypatch.setenv('D4_UAT_RELEASE_APPROVAL',json.dumps({**meta,'approvedBy':'TrdHuy','approvalRef':'isolated-only','publicationApproved':True}))
-    assert ci.main()==0
-    assert len(calls)==1 and calls[0][:4]==['gh','release','create',meta['releaseTag']]
-    assert str(folder/meta['artifact']) in calls[0]
-    assert not any(str(arg).endswith('.age') for arg in calls[0])
-    assert ci.delivery.sha256_file(folder/meta['artifact'])==meta['sha256']
-    # Existing release cannot be overwritten, even with an approval.
-    monkeypatch.setattr(ci.subprocess,'run',lambda *a,**k:SimpleNamespace(returncode=0,stderr=''))
-    with pytest.raises(ValueError,match='RELEASE_EXISTS_OR_UNVERIFIED'):ci.main()
-    assert len(calls)==1
+    with pytest.raises(ValueError,match='UNEXPECTED_PUBLIC_ASSET'):ci.verify_upload(folder,HEAD,'1.0.3',meta['sha256'])
 
 
 def test_hud_source_ownership_keeps_installed_identity_and_package_paths():
@@ -300,3 +196,106 @@ def test_hud_source_ownership_keeps_installed_identity_and_package_paths():
     workflow=(ci.ROOT/'.github/workflows/d4-overlay-poc.yml').read_text()
     assert 'utility/d4planner/d4planner-hud/**' in workflow
     assert 'd4planner-overlay-poc-win-x64' in workflow
+
+
+def cli(monkeypatch, folder, command, channel='stable'):
+    monkeypatch.setattr(sys, 'argv', ['release_ci.py', command, '--channel', channel,
+        '--version', '1.0.3', '--source', HEAD, '--directory', str(folder)])
+    monkeypatch.setenv('GITHUB_REPOSITORY', 'isolated/test')
+    monkeypatch.setenv('GITHUB_REF_NAME', 'd4planner-uat/v1.0.3-r2')
+    monkeypatch.setenv('GITHUB_ACTOR', 'synclab-automation-system')
+    for name in ('D4_DISTRIBUTION_APPROVAL','D4_RELEASE_GATES','D4_UAT_RELEASE_APPROVAL'):
+        monkeypatch.setenv(name, 'invalid stale secret must not be read')
+
+
+def response(status, document=None, code=None):
+    from types import SimpleNamespace
+    return SimpleNamespace(returncode=(0 if status == 200 else 1) if code is None else code,
+        stdout=f'HTTP/2.0 {status} Test\r\ncontent-type: application/json\r\n\r\n'+json.dumps(document or {}),
+        stderr='')
+
+
+def test_build_only_validate_prepare_verify_never_checks_github_or_approval(tmp_path, monkeypatch):
+    folder, meta = upload_fixture(tmp_path, monkeypatch)
+    monkeypatch.setenv('D4_BUILD_ONLY', 'true')
+    monkeypatch.setenv('D4_BUILT_SETUP_SHA256', meta['sha256'])
+    def forbidden(*a, **kw):
+        pytest.fail('build-only must not query or mutate GitHub')
+    monkeypatch.setattr(ci.subprocess, 'run', forbidden)
+    monkeypatch.setattr(ci.subprocess, 'check_output', forbidden)
+    monkeypatch.setattr(ci, 'run', forbidden)
+    for command in ('validate', 'prepare-upload', 'validate-upload', 'verify'):
+        cli(monkeypatch, folder, command)
+        assert ci.main() == 0
+    assert (folder / meta['artifact']).is_file()
+
+
+@pytest.mark.parametrize('status,error', [(200,'RELEASE_ALREADY_EXISTS'),(401,'GITHUB_LOOKUP_FAILED'),
+    (403,'GITHUB_LOOKUP_FAILED'),(429,'GITHUB_LOOKUP_FAILED'),(500,'GITHUB_LOOKUP_FAILED')])
+def test_publish_preflight_blocks_existing_release_and_api_errors(tmp_path, monkeypatch, status, error):
+    folder, _ = upload_fixture(tmp_path, monkeypatch)
+    cli(monkeypatch, folder, 'validate')
+    monkeypatch.setenv('D4_BUILD_ONLY', 'false')
+    calls=[]
+    monkeypatch.setattr(ci.subprocess, 'run', lambda args, **kw: calls.append(args) or response(status))
+    with pytest.raises(ValueError, match=error):
+        ci.main()
+    assert calls == [['gh','api','--include','repos/isolated/test/releases/tags/v1.0.3']]
+
+
+def test_release_lookup_fails_closed_on_network_or_malformed_response(monkeypatch):
+    from types import SimpleNamespace
+    for result in [SimpleNamespace(returncode=1,stdout='',stderr='network failure HTTP 404'),
+                   SimpleNamespace(returncode=0,stdout='HTTP/2.0 200 OK\n\nnot JSON',stderr='')]:
+        monkeypatch.setattr(ci.subprocess, 'run', lambda *a, **kw: result)
+        with pytest.raises(ValueError, match='GITHUB_LOOKUP_FAILED'):
+            ci.require_release_absent('isolated/test', 'v1.0.3')
+    def timeout(*a, **kw):
+        raise ci.subprocess.TimeoutExpired('gh',30)
+    monkeypatch.setattr(ci.subprocess,'run',timeout)
+    with pytest.raises(ci.subprocess.TimeoutExpired):
+        ci.require_release_absent('isolated/test','v1.0.3')
+
+
+@pytest.mark.parametrize('channel,existing_tag', [('stable',False),('stable',True),('uat',True)])
+def test_publish_absent_release_uses_original_artifact_and_never_overwrites(tmp_path, monkeypatch, channel, existing_tag):
+    folder, meta = upload_fixture(tmp_path, monkeypatch)
+    ci.prepare_upload(folder,HEAD,'1.0.3')
+    monkeypatch.setenv('D4_BUILT_SETUP_SHA256',meta['sha256'])
+    monkeypatch.setenv('D4_BUILD_ONLY','false')
+    tag = 'v1.0.3' if channel == 'stable' else 'd4planner-uat/v1.0.3-r2'
+    queries=[];writes=[]
+    def lookup(args, **kw):
+        queries.append(args[-1])
+        if '/releases/tags/' in args[-1]: return response(404)
+        return response(200,{'object':{'type':'commit','sha':HEAD}}) if existing_tag else response(404)
+    monkeypatch.setattr(ci.subprocess,'run',lookup)
+    monkeypatch.setattr(ci,'run',lambda args,**kw:writes.append(args))
+    cli(monkeypatch,folder,'validate',channel)
+    assert ci.main()==0
+    cli(monkeypatch,folder,'publish' if channel=='stable' else 'publish-uat',channel)
+    assert ci.main()==0
+    assert queries.count(f'repos/isolated/test/releases/tags/{tag}')==2
+    assert len(writes)==(1 if existing_tag else 2)
+    assert writes[-1][:4]==['gh','release','create',tag]
+    assert str(folder/meta['artifact']) in writes[-1]
+    assert ci.delivery.sha256_file(folder/meta['artifact'])==meta['sha256']
+    # Another publisher winning after preflight must block all new writes.
+    before=list(writes)
+    monkeypatch.setattr(ci.subprocess,'run',lambda *a,**kw:response(200,{'tag_name':tag}))
+    with pytest.raises(ValueError,match='RELEASE_ALREADY_EXISTS'):ci.main()
+    assert writes==before
+
+
+def test_existing_tag_must_resolve_to_build_head_without_rewriting(monkeypatch):
+    writes=[]
+    monkeypatch.setattr(ci,'run',lambda *a,**kw:writes.append(a))
+    monkeypatch.setattr(ci.subprocess,'run',lambda *a,**kw:response(200,{'object':{'type':'commit','sha':'b'*40}}))
+    with pytest.raises(ValueError,match='TAG_SOURCE_MISMATCH'):
+        ci.ensure_source_tag('isolated/test','v1.0.3',HEAD)
+    assert writes==[]
+    replies=iter([response(200,{'object':{'type':'tag','sha':'b'*40}}),
+                  response(200,{'object':{'type':'commit','sha':HEAD}})])
+    monkeypatch.setattr(ci.subprocess,'run',lambda *a,**kw:next(replies))
+    ci.ensure_source_tag('isolated/test','v1.0.3',HEAD)
+    assert writes==[]

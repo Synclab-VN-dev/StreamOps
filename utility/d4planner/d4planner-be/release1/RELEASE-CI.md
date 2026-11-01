@@ -42,36 +42,33 @@ Snapshot vẫn là `.zip.age` riêng. File policy giữ tên cũ `uat-encryption
 để không tạo hai nguồn chuẩn, nhưng schema v2 mô tả distribution format riêng cho
 Application và Snapshot; policy trong source **không phải** license approval.
 
-Trước mọi upload (cả build_only), `prepare-upload` và `validate-upload` kiểm tra
-`D4PLANNER_DISTRIBUTION_APPROVAL_JSON` qua environment. Approval phải có
-`approvedBy: TrdHuy`, `approvalRef`, exact `sourceHead`, `version`,
-`publicDistributionApproved: true`, `licensesVerified: true`,
-`artifactClass: D4PLANNER_APPLICATION_NO_SNAPSHOT`,
-`distributionFormat: PLAINTEXT_EXE`, và `runtimeLockSha256` đúng file
-`release-runtime-lock.json`. Phạm vi phải bao phủ Application và toàn bộ bundled
-Python/Node/Chrome/dependencies; quyền tải upstream hay approval encrypted-only
-không thay thế quyền phân phối plaintext. Không đưa tài liệu/thỏa thuận riêng vào
-source/logs. Approval là attestation được Owner cung cấp qua kênh quản lý hiện có,
-không phải bằng chứng F tự kiểm chứng hợp đồng; F không tự điền true.
+### Policy build-only / publish (Owner cập nhật 2026-11-01)
 
-Build private giữ content allowlist/negative inspection, runtime pins, full manifest,
+- `build_only=true`: build và upload artifact đã verify. Không query GitHub Release,
+  không đọc approval secret, không chạy publish job. Build lại cùng version/HEAD
+  hoặc HEAD mới không cần cập nhật secret.
+- `build_only=false`: kiểm tra Release `vX.Y.Z` trước build và kiểm tra lại ngay
+  trước publish. Release đã tồn tại thì dừng, không overwrite/upload thêm assets.
+  Chỉ HTTP 404 rõ ràng được coi là chưa tồn tại; lỗi auth, rate limit, network,
+  timeout hoặc response không hợp lệ đều dừng. Không tự tăng version.
+- UAT tag giữ namespace `d4planner-uat/vX.Y.Z-rN`, dùng cùng kiểm tra Release tồn tại.
+  Luồng UAT vẫn kiểm tra tag/source context và metadata định dạng của artifact.
+- Tag có sẵn nhưng chưa có Release được dùng lại nếu resolve đúng commit build,
+  kể cả annotated tag. Tag trỏ commit khác bị chặn để không di chuyển tag hoặc
+  gắn binary mới vào source cũ. Tag chưa có được tạo bằng API không force.
+- Workflow không còn sử dụng `D4PLANNER_DISTRIBUTION_APPROVAL_JSON`,
+  `D4PLANNER_RELEASE_GATES_JSON`, `D4PLANNER_UAT_RELEASE_APPROVAL_JSON`, hoặc
+  environment `d4planner-release`. Không cần sửa/xóa secret hay repository settings.
+
+Build vẫn giữ content allowlist/negative inspection, runtime pins, full manifest,
 ZIP hashes và runtime health. Upload giữ exact binary/hash, kiểm tra asset allowlist,
 checksum, source/version; publish tải đúng artifact ID, không rebuild/overwrite.
-Staging plaintext chỉ nằm runner owner-only, cleanup always; không upload trước gate.
-Thiếu approval: fail-closed, không có public artifact dù build thành công.
+Binding source/version/checksum **giữa artifact và lượt build** vẫn bắt buộc;
+chỉ bỏ binding với approval secret. Staging runner owner-only, cleanup always.
+Không chứa private snapshot, credentials hay Gateway server trong Setup.
 
-UAT publish còn cần `D4PLANNER_UAT_RELEASE_APPROVAL_JSON`: `approvedBy`,
-`approvalRef`, `publicationApproved: true`, exact `sourceHead`, `version`, `sha256`,
-`releaseTag`. Đây là approval độc lập với redistribution. Workflow tag chỉ hợp lệ
-trên exact SHA; chưa tạo tag/release nếu chưa đủ approval. Candidate dự kiến
-1.2.8-r2 giữ Product1.2.8 vì chỉ đổi delivery contract, không đổi app binary logic.
-Giữ 1.2.8-r1/asset cũ để audit; chưa công bố r2. Historical encrypted verifier chỉ
-phục vụ audit, không được workflow mới gọi để cấp quyền upload.
-
-Stable publish vẫn cần protected `d4planner-release` environment, Owner approval
-và exact-artifact gates PKG/HUD/SNAP. UAT không phê duyệt stable/merge/Owner MAN.
-T12/VISUAL_GOLDEN chỉ R1 ghi OWNER_WAIVED theo `ISSUE158_R1_VISUAL_WAIVER_20261030`,
-không ghi PASS và không áp dụng cho project/release khác. T20–T23 chờ Owner.
+Thay đổi policy tự động hóa không phải bằng chứng Owner MAN, Visual hoặc production
+acceptance đã PASS. Không thay Snapshot compatibility/trust policy.
 
 ## Snapshot/trust hiện tại
 
@@ -94,7 +91,7 @@ snapshot T18 PASS. #158 chứa evidence/hashes và các candidate thay thế. Hi
 PASS không tự trở thành PASS cho artifact mới; regression chọn theo ảnh hưởng.
 
 
-## S7-REL-01 — đánh giá độc lập
+## S7-REL-01 — đánh giá lịch sử (policy approval đã được thay thế ở trên)
 
 PARTIALLY_AGREE / FIX_REQUIRED. Encrypted Application có căn cứ ở policy phân phối
 cũ; không phải tự mở rộng Snapshot policy. Contract mới yêu cầu Setup cài trực tiếp,

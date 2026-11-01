@@ -1,9 +1,8 @@
 """Single Release workflow support. No Actions dispatch/query or implicit release.
 
 Public runtime build inputs are checksum-addressed and content-allowlisted.
-The runner never downloads/mounts Maxroll snapshots. Application dependency
-redistribution approval is independent from snapshot rights. Publishing additionally needs
-the protected environment and exact-artifact acceptance attestation.
+The runner never downloads/mounts Maxroll snapshots. Build-only validates artifacts without publication gates. Publication refuses an
+existing GitHub Release; unknown API outcomes fail closed.
 """
 from __future__ import annotations
 import argparse
@@ -26,7 +25,6 @@ ROOT = Path(__file__).resolve().parents[4]
 LOCK = ROOT / 'utility/d4planner/d4planner-be/release1/release-runtime-lock.json'
 PRODUCT_PLAN = ROOT / 'utility/d4planner/d4planner-be/release1/package-plan.json'
 UAT_POLICY = ROOT / 'utility/d4planner/d4planner-be/release1/uat-encryption-policy.json'
-GATES = tuple(f'PKG-{n:02}' for n in range(1,9)) + ('HUD-03', 'VISUAL_GOLDEN') + tuple(f'SNAP-{n:02}' for n in range(1,8))
 
 
 def require(condition, error):
@@ -37,30 +35,47 @@ def validate_source(value):
     require(bool(re.fullmatch('[0-9a-f]{40}', value)), 'INVALID_SOURCE_SHA')
 
 
-def distribution_approved(document, head, release_version):
-    require(document.get('approvedBy') == 'TrdHuy' and document.get('approvalRef'), 'OWNER_DISTRIBUTION_APPROVAL_REQUIRED')
-    require(document.get('sourceHead') == head and document.get('version') == release_version, 'DISTRIBUTION_APPROVAL_BINDING')
-    require(document.get('publicDistributionApproved') is True and document.get('licensesVerified') is True, 'PRIVATE_RESOURCE_DISTRIBUTION_NOT_APPROVED')
-    require(document.get('artifactClass') == 'D4PLANNER_APPLICATION_NO_SNAPSHOT', 'APPLICATION_DISTRIBUTION_APPROVAL_REQUIRED')
-    require(document.get('distributionFormat') == 'PLAINTEXT_EXE', 'PLAINTEXT_DISTRIBUTION_APPROVAL_REQUIRED')
-    require(document.get('runtimeLockSha256') == delivery.sha256_file(LOCK), 'DISTRIBUTION_RUNTIME_BINDING')
+def github_document(endpoint):
+    """Return JSON or None for an explicit HTTP 404; never infer absence on errors."""
+    result = subprocess.run(['gh', 'api', '--include', endpoint],
+                            capture_output=True, text=True, timeout=30)
+    statuses = re.findall(r'^HTTP/\S+ (\d{3})\b', result.stdout, re.MULTILINE)
+    status = statuses[-1] if statuses else None
+    if result.returncode != 0 and status == '404':
+        return None
+    require(result.returncode == 0 and status == '200', 'GITHUB_LOOKUP_FAILED')
+    try:
+        document = json.loads(re.split(r'\r?\n\r?\n', result.stdout, maxsplit=1)[1])
+    except (ValueError, IndexError):
+        raise ValueError('GITHUB_LOOKUP_FAILED') from None
+    require(isinstance(document, dict), 'GITHUB_LOOKUP_FAILED')
+    return document
 
 
-def release_approved(document, metadata):
-    for key in ('sourceHead','version','sha256'):
-        require(document.get(key) == metadata[key], 'RELEASE_APPROVAL_BINDING:' + key)
-    require(document.get('approvedBy') == 'TrdHuy' and document.get('approvalRef'), 'OWNER_RELEASE_APPROVAL_REQUIRED')
-    require(all(document.get('gates',{}).get(gate) == 'PASS' or (gate=='VISUAL_GOLDEN' and document.get('gates',{}).get(gate)=='OWNER_WAIVED' and document.get('releaseId')=='R1-EQUIPMENT-20261025' and document.get('visualWaiver')=='ISSUE158_R1_VISUAL_WAIVER_20261030') for gate in GATES), 'MANDATORY_RELEASE_GATES_NOT_PASS')
+def require_release_absent(repo, tag):
+    require(github_document(f'repos/{repo}/releases/tags/{tag}') is None,
+            'RELEASE_ALREADY_EXISTS')
 
 
-def protected_environment(document):
-    rules = document.get('protection_rules',[])
-    required = [rule for rule in rules if rule.get('type') == 'required_reviewers']
-    # GitHub accepts any one reviewer; accept exactly the Owner, never a broader
-    # list that would let automation approve its own publication.
-    require(any(rule.get('prevent_self_review') is True and
-                [(entry.get('type'),entry.get('reviewer',{}).get('login')) for entry in rule.get('reviewers',[])] == [('User','TrdHuy')]
-                for rule in required), 'PROTECTED_OWNER_ENVIRONMENT_REQUIRED')
+def ensure_source_tag(repo, tag, head):
+    # A pre-existing tag is not a Release. Reuse it only if it resolves to the
+    # exact build source; never move or overwrite a tag to publish other bytes.
+    document = github_document(f'repos/{repo}/git/ref/tags/{tag}')
+    if document is None:
+        run(['gh', 'api', f'repos/{repo}/git/refs', '--method', 'POST',
+             '-f', f'ref=refs/tags/{tag}', '-f', f'sha={head}'])
+        return
+    obj = document.get('object', {})
+    for _ in range(8):
+        if obj.get('type') != 'tag':
+            break
+        sha = obj.get('sha', '')
+        validate_source(sha)
+        document = github_document(f'repos/{repo}/git/tags/{sha}')
+        require(document is not None, 'TAG_SOURCE_UNVERIFIED')
+        obj = document.get('object', {})
+    require(obj.get('type') == 'commit' and obj.get('sha') == head,
+            'TAG_SOURCE_MISMATCH')
 
 
 def download_inputs(url, expected_sha, destination):
@@ -156,9 +171,8 @@ def uat_approved(document, metadata):
     require(metadata.get('runtimeHealth')=='PASS','UAT_RUNTIME_HEALTH_REQUIRED')
 
 
-def prepare_upload(directory, head, release_version, approval):
-    # Authorize public upload only after explicit plaintext distribution permission.
-    distribution_approved(approval, head, release_version)
+def prepare_upload(directory, head, release_version):
+    # Integrity and content checks apply equally to build-only and publication.
     metadata=delivery.load_json(directory/'release-metadata.json')
     metadata,artifact=verify_built_artifact(directory,head,release_version,metadata['sha256'])
     policy=delivery.load_json(UAT_POLICY)
@@ -172,21 +186,13 @@ def prepare_upload(directory, head, release_version, approval):
     return metadata
 
 
-def verify_upload(directory, head, release_version, expected_sha, approval):
-    distribution_approved(approval,head,release_version)
+def verify_upload(directory, head, release_version, expected_sha):
     metadata,artifact=verify_built_artifact(directory,head,release_version,expected_sha)
     uat_approved(delivery.load_json(UAT_POLICY),metadata)
     require({p.name for p in directory.iterdir()}=={artifact.name,'release-metadata.json','SHA256SUMS','UAT.md'},'UNEXPECTED_PUBLIC_ASSET')
     require(not any(p.is_symlink() for p in directory.iterdir()),'PUBLIC_ASSET_SYMLINK')
     require((directory/'SHA256SUMS').read_text(encoding='utf-8')==f"{expected_sha}  {artifact.name}\n",'CHECKSUM_FILE_MISMATCH')
     return metadata,artifact
-
-
-def uat_release_approved(document, metadata):
-    require(document.get('approvedBy')=='TrdHuy' and document.get('approvalRef'), 'OWNER_UAT_PUBLICATION_APPROVAL_REQUIRED')
-    require(document.get('publicationApproved') is True,'OWNER_UAT_PUBLICATION_APPROVAL_REQUIRED')
-    for key in ('sourceHead','version','sha256','releaseTag'):
-        require(document.get(key)==metadata.get(key),'UAT_PUBLICATION_BINDING:'+key)
 
 
 def verify_encrypted_artifact(directory, head, release_version, expected_sha):
@@ -333,11 +339,12 @@ def main():
     if args.channel=='uat':
         uat_context(os.environ.get('GITHUB_REF_NAME',''),args.version,os.environ.get('GITHUB_ACTOR',''))
     if args.command=='validate':
-        if args.channel=='uat':return 0  # build allowed; public upload has a separate license gate
-        distribution_approved(json.loads(os.environ.get('D4_DISTRIBUTION_APPROVAL','{}')),args.source,args.version)
-        if os.environ.get('D4_BUILD_ONLY')=='false':
-            environment=json.loads(subprocess.check_output(['gh','api',f"repos/{os.environ['GITHUB_REPOSITORY']}/environments/d4planner-release"],text=True))
-            protected_environment(environment)
+        build_only = os.environ.get('D4_BUILD_ONLY', 'true')
+        require(build_only in {'true', 'false', ''}, 'INVALID_BUILD_ONLY')
+        if args.channel == 'stable' and build_only != 'false':
+            return 0
+        tag = uat_tag(args.version) if args.channel == 'uat' else f'v{args.version}'
+        require_release_absent(os.environ['GITHUB_REPOSITORY'], tag)
     elif args.command=='build':
         inputs=args.directory/'public-runtime-inputs'; inputs.parent.mkdir(parents=True,exist_ok=True)
         if os.environ.get('D4_PUBLIC_RUNTIME_INPUT_URL'):
@@ -347,34 +354,25 @@ def main():
         with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as output:
             output.write(f"setup_sha256={metadata['sha256']}\n")
     elif args.command=='prepare-upload':
-        metadata=prepare_upload(args.directory,args.source,args.version,json.loads(os.environ.get('D4_DISTRIBUTION_APPROVAL','{}')))
+        metadata=prepare_upload(args.directory,args.source,args.version)
     else:
-        metadata,artifact=verify_upload(args.directory,args.source,args.version,os.environ.get('D4_BUILT_SETUP_SHA256'),json.loads(os.environ.get('D4_DISTRIBUTION_APPROVAL','{}')))
+        metadata,artifact=verify_upload(args.directory,args.source,args.version,os.environ.get('D4_BUILT_SETUP_SHA256'))
         if args.command=='verify': return 0
         if args.command in {'publish-uat','validate-upload'}:
             if args.command=='publish-uat':require(args.channel=='uat','UAT_CHANNEL_REQUIRED')
             document=delivery.load_json(UAT_POLICY)
             uat_approved(document,metadata)
             if args.command=='validate-upload':return 0
-            uat_release_approved(json.loads(os.environ.get('D4_UAT_RELEASE_APPROVAL','{}')),metadata)
             repo=os.environ['GITHUB_REPOSITORY'];tag=uat_tag(args.version,document)
-            actual=subprocess.check_output(['gh','api',f'repos/{repo}/git/ref/tags/{tag}','--jq','.object.sha'],text=True).strip()
-            require(actual==args.source,'UAT_TAG_SOURCE_MISMATCH')
-            existing=subprocess.run(['gh','api','--include',f'repos/{repo}/releases/tags/{tag}'],capture_output=True,text=True,timeout=30)
-            require(existing.returncode!=0 and 'HTTP 404' in existing.stderr,'RELEASE_EXISTS_OR_UNVERIFIED')
+            require_release_absent(repo, tag)
+            ensure_source_tag(repo, tag, args.source)
             run(['gh','release','create',tag,str(artifact),str(args.directory/'SHA256SUMS'),str(args.directory/'release-metadata.json'),str(args.directory/'UAT.md'),
                  '--repo',repo,'--verify-tag','--prerelease','--title',f"D4Planner {args.version} UAT r{document['uatRevision']}",
                  '--notes',f'UAT prerelease, not production approval. Owner T20-T23 pending. R1 Visual OWNER_WAIVED. Source {args.source}; SHA-256 {metadata["sha256"]}. No snapshot included.'])
             return 0
-        distribution_approved(json.loads(os.environ.get('D4_DISTRIBUTION_APPROVAL','{}')),args.source,args.version)
-        release_approved(json.loads(os.environ.get('D4_RELEASE_GATES','{}')),metadata)
-        protected_environment(json.loads(subprocess.check_output(['gh','api',f"repos/{os.environ['GITHUB_REPOSITORY']}/environments/d4planner-release"],text=True)))
         repo=os.environ['GITHUB_REPOSITORY'];tag=f'v{args.version}'
-        for endpoint in (f'repos/{repo}/git/ref/tags/{tag}', f'repos/{repo}/releases/tags/{tag}'):
-            existing=subprocess.run(['gh','api','--include',endpoint],capture_output=True,text=True,timeout=30)
-            require(existing.returncode!=0 and 'HTTP 404' in existing.stderr,'RELEASE_OR_TAG_EXISTS_OR_UNVERIFIED')
-        # Atomic create-ref refuses races/overwrite; no force and no rebuild.
-        run(['gh','api',f'repos/{repo}/git/refs','--method','POST','-f',f'ref=refs/tags/{tag}','-f',f'sha={args.source}'])
+        require_release_absent(repo, tag)
+        ensure_source_tag(repo, tag, args.source)
         run(['gh','release','create',tag,str(artifact),str(args.directory/'SHA256SUMS'),str(args.directory/'release-metadata.json'),
              '--repo',repo,'--verify-tag','--title',f'D4Planner {args.version}','--notes',f"Source {args.source}; SHA-256 {metadata['sha256']}"])
     return 0
