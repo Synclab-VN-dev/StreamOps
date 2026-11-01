@@ -14,6 +14,7 @@ from playwright.sync_api import Browser, expect
 
 from streamops.server.app import create_app
 from streamops.server.services import SteamService
+from streamops.server.tests.browser_obs_process import ControllableObsManager
 from streamops.server.tests.test_games_lifecycle import GAME, build_service
 from streamops.server.tests.test_steam import FakeSteamBackend, RUNNING, STOPPED
 from .conftest import wait_until
@@ -26,10 +27,16 @@ pytestmark = pytest.mark.only_browser("chromium")
 def integrated_game_ui_server(server_config, capture_service, tmp_path):
     service, platform = build_service(tmp_path, interval=0.025)
     steam = FakeSteamBackend(status=RUNNING)
+    # Node health includes OBS status. Keep this fixture synthetic on Windows
+    # as well as Linux; never inspect the host desktop or contact a real OBS.
+    obs_executable = tmp_path / "obs64.exe"
+    obs_executable.write_bytes(b"test")
+    obs_manager = ControllableObsManager(obs_executable)
+    obs_manager.set_stopped()
     app = create_app(
         server_config, capture_service=capture_service,
         steam_service=SteamService(steam), game_service=service,
-        manage_runtime=False,
+        manage_runtime=False, obs_manager=obs_manager,
     )
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listener.bind(("127.0.0.1", 0))
@@ -43,8 +50,8 @@ def integrated_game_ui_server(server_config, capture_service, tmp_path):
         target=server.run, kwargs={"sockets": [listener]}, daemon=True,
     )
     thread.start()
-    wait_until(lambda: server.started, timeout=15)
     try:
+        wait_until(lambda: server.started, timeout=15)
         yield f"http://127.0.0.1:{port}", platform, steam
     finally:
         server.should_exit = True
