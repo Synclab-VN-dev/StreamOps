@@ -1,8 +1,10 @@
+> CI #166: workflow hiện tại là `.github/workflows/main.yml`, product contract ở `utility/d4planner/ci.release.py`. Manual build dùng operation=build, product=d4planner-release, version=<version>; publish là operation riêng. Core build/verify và policy bên dưới được giữ nguyên.
+
 # Release CI D4Planner Application
 
-Một workflow `D4Planner Release`: `.github/workflows/d4planner-release.yml`.
+Một workflow `CI`: `.github/workflows/main.yml`; build/release implementation thuộc product contract.
 UAT dùng push tag trên exact feature SHA, không cần merge master. Dispatch vẫn
-có `version` X.Y.Z, `build_only=true` mặc định; dispatch chỉ khả dụng khi workflow
+có `version` X.Y.Z; chọn `product=d4planner-release` và `operation=build` để chỉ build; dispatch chỉ khả dụng khi workflow
 có trên default branch. CI run không phải Product Version.
 
 Build từ F qua Windows VM và lấy Setup/log về F: [hướng dẫn VM build](../../script/build/README.md).
@@ -47,11 +49,10 @@ Application và Snapshot; policy trong source **không phải** license approval
 
 ### Policy build-only / publish (Owner cập nhật 2026-11-01)
 
-- `build_only=true`: build và upload artifact đã verify. Không query GitHub Release,
+- `operation=build`: build và upload artifact đã verify. Không query GitHub Release,
   không đọc approval secret, không chạy publish job. Build lại cùng version/HEAD
   hoặc HEAD mới không cần cập nhật secret.
-- `build_only=false`: kiểm tra Release `vX.Y.Z` trước build và kiểm tra lại ngay
-  trước publish. Release đã tồn tại thì dừng, không overwrite/upload thêm assets.
+- `operation=publish`: kiểm tra Release `vX.Y.Z` trước build và kiểm tra lại ngay trước publish, sau khi xác minh source/version/checksum artifact. Release đã tồn tại thì dừng, không overwrite/upload thêm assets.
   Chỉ HTTP 404 rõ ràng được coi là chưa tồn tại; lỗi auth, rate limit, network,
   timeout hoặc response không hợp lệ đều dừng. Không tự tăng version.
 - UAT tag giữ namespace `d4planner-uat/vX.Y.Z-rN`, dùng cùng kiểm tra Release tồn tại.

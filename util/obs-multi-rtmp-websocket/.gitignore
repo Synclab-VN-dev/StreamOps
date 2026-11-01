@@ -31,3 +31,7 @@
 
 # Exclude CMake build number cache
 /cmake/.CMakeBuildNumber
+
+# Component-owned CI contracts are source, not generated plugin artifacts.
+!/ci.test.py
+!/ci.release.py

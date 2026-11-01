@@ -41,19 +41,20 @@ def test_public_inputs_are_pinned_and_fail_on_tampering(tmp_path,monkeypatch):
 
 
 def test_workflow_is_single_dispatch_build_without_unconditional_publish():
-    text=(ci.ROOT/'.github/workflows/d4planner-release.yml').read_text()
-    assert 'name: D4Planner Release' in text
-    assert 'workflow_dispatch:' in text and 'default: true' in text
+    text=(ci.ROOT/'.github/workflows/main.yml').read_text()
+    contract=(ci.ROOT/'utility/d4planner/ci.release.py').read_text()
+    read=text.split('\n  read:')[1].split('\n  build:')[0]
+    publish=text.split('\n  publish:')[1].split('\n  external_publish:')[0]
+    # PR jobs never receive release credentials; publish requires an explicit plan.
+    assert 'secrets.' not in read
+    assert "github.event_name == 'workflow_dispatch'" in publish
+    assert "startsWith(github.ref, 'refs/tags/')" in publish
     assert 'environment: d4planner-release' not in text
     assert '_APPROVAL_JSON' not in text and 'D4_RELEASE_GATES' not in text
-    assert "if: ${{ github.event_name == 'workflow_dispatch' && !inputs.build_only }}" in text
-    assert 'd4planner-uat/v*' in text
-    assert 'prepare-upload --channel' in text
-    assert 'd4-release/build/verified-artifact/D4Planner-Setup-${{ env.RELEASE_VERSION }}.exe' in text
-    assert 'if: always()' in text
-    assert 'publish-uat --channel uat' in text
-    assert 'ref: ${{ github.sha }}' in text
-    assert 'artifact-ids: ${{ needs.build.outputs.artifact_id }}' in text
+    assert "'release_tags':['d4planner-uat/v*']" in contract
+    assert "ctx.env['D4_BUILD_ONLY']='false' if ctx.intent=='publish' else 'true'" in contract
+    assert "ctx.build_artifact('setup')" in contract
+    assert "'publish-uat' if ctx.channel=='uat' else 'publish'" in contract
     assert 'if-no-files-found: error' in text
 
 
@@ -140,11 +141,10 @@ def test_product_version_and_uat_revision_are_independent(tmp_path, monkeypatch)
 
 
 def test_application_workflow_uploads_exe_only_after_gate():
-    text=(ci.ROOT/'.github/workflows/d4planner-release.yml').read_text()
-    assert 'prepare-upload --channel' in text
-    assert 'validate-upload --channel' in text
+    text=(ci.ROOT/'utility/d4planner/ci.release.py').read_text()
+    assert "'prepare-upload'" in text and "'validate-upload'" in text
     assert '.exe.age' not in text
-    assert text.index('validate-upload --channel') < text.index('uses: actions/upload-artifact@')
+    assert text.index("'validate-upload'") < text.index('ctx.artifact(')
 
 
 def upload_fixture(tmp_path,monkeypatch):
@@ -195,9 +195,9 @@ def test_hud_source_ownership_keeps_installed_identity_and_package_paths():
     assert root['bin'][0]['name']=='D4Planner'
     stage=(project/'d4planner-be/tools/build_release1_stage.py').read_text()
     assert 'app/d4planner-fe.exe' in stage
-    workflow=(ci.ROOT/'.github/workflows/d4-overlay-poc.yml').read_text()
-    assert 'utility/d4planner/d4planner-hud/**' in workflow
-    assert 'd4planner-overlay-poc-win-x64' in workflow
+    workflow=(hud/'ci.test.py').read_text()
+    assert 'utility/d4planner/d4planner-hud/portable' in workflow
+    assert 'd4planner-overlay-poc.exe' in workflow
 
 
 def cli(monkeypatch, folder, command, channel='stable'):

@@ -5,7 +5,7 @@ Current repository Ruleset **Master** is [#24454446](https://github.com/Synclab-
 currently has `strict_required_status_checks_policy=true` but
 `required_status_checks=[]`. **This is not adequate merge protection.**
 
-The `.github/workflows/tests.yml` Windows job now:
+The `streamops/ci.test.py` native job, dispatched by `.github/workflows/main.yml`, retains the following gates. The final aggregate keeps the required check name `windows`:
 - Executes G1–G6, wheel HTTP/WS smoke, three repeat race tests and full regression for GameService changes.
 - Always runs `Game E2E-01 — required gate audit`, even when a previous stage fails.
 - Checks that game-relevant changes activated the GameService test scope.

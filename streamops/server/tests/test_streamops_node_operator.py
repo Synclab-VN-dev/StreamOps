@@ -76,10 +76,10 @@ def test_operator_powershell_parse_and_idle_status_stop():
 
 
 def test_no_staged_deployment_artifact_dependency():
-    workflow = (ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "main.yml").read_text(encoding="utf-8")
     assert "streamops_node_bundle.py" not in workflow
     assert "streamops-node-deployment-" not in workflow
-    release = (ROOT / ".github" / "workflows" / "obs-multi-rtmp-build.yml").read_text(encoding="utf-8")
+    release = (ROOT / "util" / "obs-multi-rtmp-websocket" / "ci.release.py").read_text(encoding="utf-8")
     assert "obs_plugin_package.py" in release
 
 

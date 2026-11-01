@@ -1,0 +1,43 @@
+name: Maintenance
+'on':
+  schedule:
+  - cron: 17 * * * *
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Inspect eligible assets without deleting
+        type: boolean
+        default: true
+permissions:
+  contents: write
+  issues: read
+concurrency:
+  group: d4planner-issue-log-cleanup
+  cancel-in-progress: false
+jobs:
+  cleanup:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: 3.12.10
+    - name: Execute maintenance contract
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        DIAGNOSTIC_RELEASE_ID: ${{ vars.D4PLANNER_DIAGNOSTIC_RELEASE_ID }}
+        DIAGNOSTIC_BOT_ID: ${{ vars.D4PLANNER_DIAGNOSTIC_BOT_ID }}
+        MAINTENANCE_DRY_RUN: ${{ github.event_name == 'schedule' || inputs.dry_run != false }}
+      run: python .github/workflows/script/schedule.py --event "$GITHUB_EVENT_NAME" --dry-run "$MAINTENANCE_DRY_RUN" --output "$RUNNER_TEMP/maintenance/report.json"
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: always()
+      with:
+        name: maintenance-report
+        path: ${{ runner.temp }}/maintenance
+        if-no-files-found: error

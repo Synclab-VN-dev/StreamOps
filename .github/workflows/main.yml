@@ -1,0 +1,379 @@
+name: CI
+'on':
+  pull_request: null
+  push: null
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options:
+        - test
+        - build
+        - publish
+        default: test
+        description: Explicit operation; normal PR/push only tests
+      component:
+        type: string
+        description: Test contract ID; empty selects all regular tests
+      product:
+        type: string
+        description: Release contract ID; required for manual build/publish
+      version:
+        type: string
+        description: Exact product version for build/publish
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ inputs.operation || github.event_name }}
+  cancel-in-progress: false
+env:
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      read: ${{ steps.plan.outputs.read }}
+      build: ${{ steps.plan.outputs.build }}
+      fixture: ${{ steps.plan.outputs.fixture }}
+      publish: ${{ steps.plan.outputs.publish }}
+      external_publish: ${{ steps.plan.outputs.external_publish }}
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: 3.12.10
+    - id: plan
+      run: python .github/workflows/ci.py actions-plan --output "$RUNNER_TEMP/ci-plan"
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: ci-plan
+        path: ${{ runner.temp }}/ci-plan
+        if-no-files-found: error
+  read:
+    needs:
+    - plan
+    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.read).include[0] != null }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.read) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: 3.12.10
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: ci-plan
+        path: ${{ runner.temp }}/ci-plan
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      if: matrix.node != ''
+      with:
+        node-version: ${{ matrix.node }}
+    - name: Prepare requested Rust toolchain
+      if: matrix.rust != ''
+      shell: bash
+      env:
+        REQUESTED_RUST: ${{ matrix.rust }}
+      run: 'rustup toolchain install "$REQUESTED_RUST" --profile minimal
+
+        rustup default "$REQUESTED_RUST"'
+    - name: Execute source-bound contract
+      shell: bash
+      env:
+        CI_JOB: ${{ matrix.key }}
+        CI_VERSION: ${{ inputs.version }}
+        CI_CHANNEL: ${{ github.ref_type == 'tag' && 'uat' || 'stable' }}
+      run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --channel "$CI_CHANNEL" --output "$RUNNER_TEMP/ci-results"
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: always()
+      with:
+        name: ci-evidence-${{ matrix.key }}
+        path: ${{ runner.temp }}/ci-results
+        if-no-files-found: error
+        retention-days: 30
+  build:
+    needs:
+    - plan
+    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.build).include[0] != null && (github.event_name == 'workflow_dispatch' || (github.event_name
+      == 'push' && startsWith(github.ref, 'refs/tags/'))) }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.build) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: 3.12.10
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: ci-plan
+        path: ${{ runner.temp }}/ci-plan
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      if: matrix.node != ''
+      with:
+        node-version: ${{ matrix.node }}
+    - name: Prepare requested Rust toolchain
+      if: matrix.rust != ''
+      shell: bash
+      env:
+        REQUESTED_RUST: ${{ matrix.rust }}
+      run: 'rustup toolchain install "$REQUESTED_RUST" --profile minimal
+
+        rustup default "$REQUESTED_RUST"'
+    - name: Execute source-bound contract
+      shell: bash
+      env:
+        CI_JOB: ${{ matrix.key }}
+        CI_VERSION: ${{ inputs.version }}
+        CI_CHANNEL: ${{ github.ref_type == 'tag' && 'uat' || 'stable' }}
+        CI_TRUSTED_EXECUTION: '1'
+        CI_READ_TOKEN: ${{ github.token }}
+        CI_BOUND_SECRET_1: ${{ matrix.secret_1 == 'D4PLANNER_PUBLIC_RUNTIME_INPUTS_URL' && secrets.D4PLANNER_PUBLIC_RUNTIME_INPUTS_URL || matrix.secret_1 == 'D4PLANNER_PUBLIC_RUNTIME_INPUTS_SHA256'
+          && secrets.D4PLANNER_PUBLIC_RUNTIME_INPUTS_SHA256 || '' }}
+        CI_BOUND_SECRET_2: ${{ matrix.secret_2 == 'D4PLANNER_PUBLIC_RUNTIME_INPUTS_URL' && secrets.D4PLANNER_PUBLIC_RUNTIME_INPUTS_URL || matrix.secret_2 == 'D4PLANNER_PUBLIC_RUNTIME_INPUTS_SHA256'
+          && secrets.D4PLANNER_PUBLIC_RUNTIME_INPUTS_SHA256 || '' }}
+      run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --channel "$CI_CHANNEL" --output "$RUNNER_TEMP/ci-results"
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: always()
+      with:
+        name: ci-evidence-${{ matrix.key }}
+        path: ${{ runner.temp }}/ci-results
+        if-no-files-found: error
+        retention-days: 30
+  fixture:
+    needs:
+    - plan
+    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.fixture).include[0] != null && (github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))) && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.fixture) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    permissions:
+      contents: read
+    environment: maxroll-fixture-trusted
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: 3.12.10
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: ci-plan
+        path: ${{ runner.temp }}/ci-plan
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      if: matrix.node != ''
+      with:
+        node-version: ${{ matrix.node }}
+    - name: Prepare requested Rust toolchain
+      if: matrix.rust != ''
+      shell: bash
+      env:
+        REQUESTED_RUST: ${{ matrix.rust }}
+      run: 'rustup toolchain install "$REQUESTED_RUST" --profile minimal
+
+        rustup default "$REQUESTED_RUST"'
+    - name: Execute source-bound contract
+      shell: bash
+      env:
+        CI_JOB: ${{ matrix.key }}
+        CI_VERSION: ${{ inputs.version }}
+        CI_CHANNEL: ${{ github.ref_type == 'tag' && 'uat' || 'stable' }}
+        CI_TRUSTED_EXECUTION: '1'
+        CI_READ_TOKEN: ${{ github.token }}
+        CI_BOUND_SECRET_1: ${{ matrix.secret_1 == 'MAXROLL_FIXTURE_AGE_IDENTITY' && secrets.MAXROLL_FIXTURE_AGE_IDENTITY || '' }}
+      run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --channel "$CI_CHANNEL" --output "$RUNNER_TEMP/ci-results"
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: always()
+      with:
+        name: ci-evidence-${{ matrix.key }}
+        path: ${{ runner.temp }}/ci-results
+        if-no-files-found: error
+        retention-days: 30
+  publish:
+    needs:
+    - plan
+    - read
+    - build
+    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.publish).include[0] != null && (github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))) && needs.read.result != 'failure' && needs.read.result != 'cancelled' && needs.build.result
+      != 'failure' && needs.build.result != 'cancelled' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.publish) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: 3.12.10
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: ci-plan
+        path: ${{ runner.temp }}/ci-plan
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      if: matrix.node != ''
+      with:
+        node-version: ${{ matrix.node }}
+    - name: Prepare requested Rust toolchain
+      if: matrix.rust != ''
+      shell: bash
+      env:
+        REQUESTED_RUST: ${{ matrix.rust }}
+      run: 'rustup toolchain install "$REQUESTED_RUST" --profile minimal
+
+        rustup default "$REQUESTED_RUST"'
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        pattern: ci-evidence-*
+        path: ${{ runner.temp }}/ci-inputs
+    - name: Execute source-bound contract
+      shell: bash
+      env:
+        CI_JOB: ${{ matrix.key }}
+        CI_VERSION: ${{ inputs.version }}
+        CI_CHANNEL: ${{ github.ref_type == 'tag' && 'uat' || 'stable' }}
+        CI_TRUSTED_EXECUTION: '1'
+        CI_PUBLISH_TOKEN: ${{ github.token }}
+      run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --channel "$CI_CHANNEL" --output "$RUNNER_TEMP/ci-results"
+        --inputs "$RUNNER_TEMP/ci-inputs"
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: always()
+      with:
+        name: ci-evidence-${{ matrix.key }}
+        path: ${{ runner.temp }}/ci-results
+        if-no-files-found: error
+        retention-days: 30
+  external_publish:
+    needs:
+    - plan
+    - read
+    - build
+    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.external_publish).include[0] != null && (github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))) && github.event_name == 'workflow_dispatch' && inputs.operation == 'publish' && (github.ref
+      == 'refs/heads/master' || github.ref == 'refs/heads/feat/issue-47-obs-plugin-manager') && needs.read.result != 'failure' && needs.read.result != 'cancelled'
+      && needs.build.result != 'failure' && needs.build.result != 'cancelled' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.external_publish) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    permissions:
+      contents: read
+    environment: obs-plugin-release
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: 3.12.10
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: ci-plan
+        path: ${{ runner.temp }}/ci-plan
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      if: matrix.node != ''
+      with:
+        node-version: ${{ matrix.node }}
+    - name: Prepare requested Rust toolchain
+      if: matrix.rust != ''
+      shell: bash
+      env:
+        REQUESTED_RUST: ${{ matrix.rust }}
+      run: 'rustup toolchain install "$REQUESTED_RUST" --profile minimal
+
+        rustup default "$REQUESTED_RUST"'
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        pattern: ci-evidence-*
+        path: ${{ runner.temp }}/ci-inputs
+    - name: Execute source-bound contract
+      shell: bash
+      env:
+        CI_JOB: ${{ matrix.key }}
+        CI_VERSION: ${{ inputs.version }}
+        CI_CHANNEL: ${{ github.ref_type == 'tag' && 'uat' || 'stable' }}
+        CI_TRUSTED_EXECUTION: '1'
+        CI_BOUND_SECRET_1: ${{ matrix.secret_1 == 'SYNCLAB_OBS_RELEASE_TOKEN' && secrets.SYNCLAB_OBS_RELEASE_TOKEN || '' }}
+      run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --channel "$CI_CHANNEL" --output "$RUNNER_TEMP/ci-results"
+        --inputs "$RUNNER_TEMP/ci-inputs"
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: always()
+      with:
+        name: ci-evidence-${{ matrix.key }}
+        path: ${{ runner.temp }}/ci-results
+        if-no-files-found: error
+        retention-days: 30
+  result:
+    name: windows
+    needs:
+    - plan
+    - read
+    - build
+    - fixture
+    - publish
+    - external_publish
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: 3.12.10
+    - name: Require successful planner
+      env:
+        PLAN_STATUS: ${{ needs.plan.result }}
+      run: test "$PLAN_STATUS" = success
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: ci-plan
+        path: ${{ runner.temp }}/ci-plan
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        pattern: ci-evidence-*
+        path: ${{ runner.temp }}/ci-results
+    - name: Fail closed on missing, cancelled, blocked or mismatched jobs
+      run: python .github/workflows/ci.py aggregate --plan "$RUNNER_TEMP/ci-plan/plan.json" --output "$RUNNER_TEMP/ci-results"
