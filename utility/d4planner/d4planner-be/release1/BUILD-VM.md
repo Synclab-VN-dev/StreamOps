@@ -121,6 +121,8 @@ transport.log
 preflight.log
 connection.log
 cleanup.log
+timing.log
+timing.json
 run.json
 ```
 
@@ -129,3 +131,12 @@ minh nằm trong `download/`, không được tuyên bố thành công. `--check
 PASS chỉ xác nhận toolchain, không phải Setup build PASS. Unit tests mô phỏng SSH
 không thay thế Windows-native build. Full build chỉ PASS khi exit 0 và artifact
 đã qua checksum + native runtime health. Owner MAN/Visual/release gates độc lập.
+
+### Thời gian build
+
+Terminal và `timing.log` ghi timestamp UTC, thời gian từng pha và dòng `TOTAL`
+sau cleanup/shutdown. `timing.json` chứa `totalSeconds`, thời gian/trạng thái từng
+pha để so sánh performance giữa các lượt. Thời lượng dùng monotonic clock, không
+bị sai khi đồng hồ hệ thống được đồng bộ lại. Tổng bao gồm chuẩn bị source, bật/kết
+nối VM, setup, upload, build, download/verify, cleanup và shutdown; log vẫn được
+kết thúc khi build lỗi. `--check`/`--setup-only` chỉ đo các pha thực sự được chạy.

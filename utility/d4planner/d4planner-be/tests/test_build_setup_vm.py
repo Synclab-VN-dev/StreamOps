@@ -58,7 +58,7 @@ def artifact_files(head):
 
 
 @pytest.mark.parametrize('mode',['success','failed','tampered','wrong_head','extra_asset','timeout','disconnect','check'])
-def test_orchestration_downloads_only_verified_artifacts(repository,tmp_path,monkeypatch,mode):
+def test_orchestration_downloads_only_verified_artifacts(repository,tmp_path,monkeypatch,mode,capsys):
     head=subprocess.check_output(['git','-C',str(repository),'rev-parse','HEAD'],text=True).strip()
     files,result=artifact_files(head)
     if mode=='failed': result['exitCode']=2
@@ -96,6 +96,16 @@ def test_orchestration_downloads_only_verified_artifacts(repository,tmp_path,mon
     if mode in {'failed','extra_asset'}: assert downloaded==['result.json','build.log']
     if mode=='check': assert not downloaded and len(calls)==4
     assert not any(name.endswith('.key') for name in downloaded)
+    timing=json.loads((out/'timing.json').read_text())
+    assert timing['status']==('PASS' if mode in {'success','check'} else 'FAIL')
+    assert timing['totalSeconds']>=0
+    assert timing['phases'][-1]['phase']=='vm_shutdown'
+    if mode=='check': assert not any(p['phase']=='build' for p in timing['phases'])
+    terminal=capsys.readouterr().out
+    assert 'TOTAL:' in terminal and 'TOTAL:' in (out/'timing.log').read_text()
+    if mode=='success':
+        print('SIMULATED SSH — no VM/build executed:\n'+terminal)
+
 
 
 def test_ssh_uses_key_verification_and_encoded_powershell(monkeypatch):
@@ -178,3 +188,19 @@ def test_normal_rebuild_cache_policy_in_powershell():
     result=subprocess.run([shell,'-NoProfile','-File',str(Path(__file__).with_name('test_build_vm_cache.ps1'))],capture_output=True,text=True,timeout=30)
     assert result.returncode==0, result.stdout+result.stderr
     assert 'Cache policy PASS' in result.stdout
+
+
+def test_timing_uses_elapsed_clock_and_includes_shutdown(tmp_path,monkeypatch,capsys):
+    clock=[0.0]
+    monkeypatch.setattr(vm.time,'monotonic',lambda:clock[0])
+    timing=vm.BuildTiming(tmp_path)
+    timing.phase('build')
+    clock[0]=2.5
+    timing.phase('vm_shutdown')
+    clock[0]=3.75
+    timing.finish(True)
+    report=json.loads((tmp_path/'timing.json').read_text())
+    assert report['totalSeconds']==3.75
+    assert [p['seconds'] for p in report['phases']]==[2.5,1.25]
+    assert all(p['startedAt'].endswith('+00:00') for p in report['phases'])
+    assert 'TOTAL: 0m 3.750s (3.750s) [PASS]' in capsys.readouterr().out

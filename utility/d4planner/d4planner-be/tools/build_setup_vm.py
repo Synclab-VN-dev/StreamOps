@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -164,6 +165,53 @@ if (-not (Test-Path -LiteralPath ($root+'/result.json'))) {{ throw 'Cannot confi
 """, timeout=30)
 
 
+class BuildTiming:
+    """Host wall timestamps for correlation; monotonic durations for performance."""
+    def __init__(self, output):
+        self.output = output
+        self.started = time.monotonic()
+        self.started_at = self.timestamp()
+        self.active = None
+        self.phases = []
+        self.emit('START run')
+
+    @staticmethod
+    def timestamp():
+        return datetime.now(timezone.utc).isoformat(timespec='milliseconds')
+
+    def emit(self, message):
+        line = f'[{self.timestamp()}] {message}'
+        with (self.output/'timing.log').open('a', encoding='utf-8') as log:
+            log.write(line+'\n')
+        print(line, flush=True)
+
+    def phase(self, name):
+        self.end()
+        self.active = (name, time.monotonic(), self.timestamp())
+        self.emit(f'START {name}')
+
+    def end(self, status='PASS'):
+        if self.active is None:
+            return
+        name, started, started_at = self.active
+        seconds = time.monotonic()-started
+        self.phases.append({'phase':name, 'startedAt':started_at,
+                            'finishedAt':self.timestamp(), 'seconds':round(seconds, 3), 'status':status})
+        self.active = None
+        self.emit(f'END {name}: {seconds:.3f}s [{status}]')
+
+    def finish(self, success):
+        self.end()
+        seconds = time.monotonic()-self.started
+        status = 'PASS' if success else 'FAIL'
+        report = {'schemaVersion':'d4planner-vm-build-timing/v1', 'startedAt':self.started_at,
+                  'finishedAt':self.timestamp(), 'totalSeconds':round(seconds, 3),
+                  'status':status, 'phases':self.phases}
+        (self.output/'timing.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
+        minutes, remaining = divmod(seconds, 60)
+        self.emit(f'TOTAL: {int(minutes)}m {remaining:.3f}s ({seconds:.3f}s) [{status}]')
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--vm', default='d4planner-builder', help='SSH alias for the Windows builder')
@@ -185,12 +233,15 @@ def main(argv=None):
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     os.chmod(output, 0o700)
+    timing = BuildTiming(output)
+    success = False
     run_id = uuid.uuid4().hex
     remote = None
     running = False
     safe_cleanup = True
     transfer = tempfile.TemporaryDirectory(prefix='d4planner-transfer-')
     try:
+        timing.phase('source_snapshot')
         manager.acquire()
         archive = Path(transfer.name)/'source.zip'
         if not args.check and not args.setup_only:
@@ -200,7 +251,9 @@ def main(argv=None):
             if not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', version) or version != plan_version:
                 raise ValueError('Version must match package-plan.json')
             sha = digest(archive)
+        timing.phase('vm_start_connect')
         manager.ensure_running(ssh)
+        timing.phase('runner_upload')
         init = ssh.powershell(fr"""
 $ErrorActionPreference='Stop'
 $p='C:/D4Builder/runs/d4planner-build-{run_id}'
@@ -220,6 +273,7 @@ $p.Replace('\','/')
             ssh.upload(GUEST.with_name(name), remote+'/'+name)
         invoke = f"& {ps_quote(remote + '/build_setup_vm.ps1')} -Root {ps_quote(remote)}"
         running = True
+        timing.phase('toolchain_setup')
         print(f'Checking/setup Windows toolchain; log: {output / "preflight.log"}', flush=True)
         with (output/'preflight.log').open('w') as log:
             check = ssh.powershell(invoke + (' -CheckOnly' if args.check else ' -SetupOnly') + '; exit $LASTEXITCODE', timeout=args.timeout, stdout=log)
@@ -230,9 +284,12 @@ $p.Replace('\','/')
         if check.returncode:
             raise RuntimeError('Windows toolchain preflight failed; see preflight.log')
         if args.check or args.setup_only:
+            success = True
             print(f'VM preflight PASS: {output / "preflight.log"}')
             return 0
+        timing.phase('source_upload')
         ssh.upload(archive, remote + '/source.zip')
+        timing.phase('build')
         print(f'Building {head} / {version} on {args.vm}; log: {output / "transport.log"}', flush=True)
         running = True
         with (output / 'transport.log').open('w') as log:
@@ -241,6 +298,8 @@ $p.Replace('\','/')
         if completed.returncode == 255:
             raise RuntimeError('SSH connection lost during build')
         running = False
+        timing.end('PASS' if completed.returncode == 0 else 'FAIL')
+        timing.phase('download_verify')
         # Fetch diagnostics even when compilation/tests fail. Never recursively
         # copy the build tree, runtime inputs, credentials or private VM data.
         for name in ('result.json', 'build.log'):
@@ -259,9 +318,11 @@ $p.Replace('\','/')
         for name in sorted(expected):
             (staging / name).replace(output / name)
         staging.rmdir()
+        success = True
         print(f'Artifact verified: {output / f"D4Planner-Setup-{version}.exe"}')
         return 0
     except (Exception, KeyboardInterrupt) as error:
+        timing.end('FAIL')
         if running and remote:
             try:
                 cancelled = cancel_owned(ssh, remote)
@@ -277,6 +338,7 @@ $p.Replace('\','/')
         return 1
     finally:
         teardown_failed = False
+        timing.phase('cleanup')
         transfer.cleanup()
         if remote and safe_cleanup:
             try:
@@ -288,11 +350,17 @@ $p.Replace('\','/')
             except Exception as error:
                 teardown_failed = True
                 print(f'FAILED: run cleanup: {error}', file=sys.stderr)
+        timing.end('FAIL' if teardown_failed or not safe_cleanup else 'PASS')
+        timing.phase('vm_shutdown')
+        shutdown_failed = False
         try:
             manager.close(ssh)
         except Exception as error:
             teardown_failed = True
+            shutdown_failed = True
             print(f'FAILED: VM shutdown: {error}', file=sys.stderr)
+        timing.end('FAIL' if shutdown_failed else 'PASS')
+        timing.finish(success and not teardown_failed and safe_cleanup)
         if teardown_failed:
             return 1
 
