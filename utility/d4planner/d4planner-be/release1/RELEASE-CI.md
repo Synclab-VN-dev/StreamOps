@@ -5,7 +5,7 @@ UAT dùng push tag trên exact feature SHA, không cần merge master. Dispatch 
 có `version` X.Y.Z, `build_only=true` mặc định; dispatch chỉ khả dụng khi workflow
 có trên default branch. CI run không phải Product Version.
 
-Build từ F qua Windows VM và lấy Setup/log về F: [BUILD-VM.md](BUILD-VM.md).
+Build từ F qua Windows VM và lấy Setup/log về F: [hướng dẫn VM build](../../script/build/README.md).
 Wrapper tự khởi động VM builder đã enrollment và cài toolchain thiếu; không dispatch Actions hoặc publish.
 
 ## Một nguồn Product Version

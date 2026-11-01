@@ -3,7 +3,7 @@
 Từ root checkout/worktree, chạy một lệnh:
 
 ```bash
-python3 utility/d4planner/d4planner-be/tools/build_setup_vm.py
+python3 utility/d4planner/script/build/build_vm.py
 ```
 
 Output mặc định: `~/d4planner-builds/<timestamp>-<id>/`. Khi thành công, wrapper
@@ -69,7 +69,7 @@ plan trong source đã chụp; không liên quan GitHub secret hay Release đã 
 
 1. Kiểm tra toolchain, tự cài phần thiếu: Python 3.12.10, Node 22.22.1, Git,
    Rust 1.90.0 MSVC, Visual Studio C++ và Windows SDK. Download HTTPS, kiểm tra
-   SHA-256 theo `tools/vm-toolchain-lock.json`. Dùng lại Python đăng ký đúng phiên
+   SHA-256 theo `toolchain-lock.json`. Dùng lại Python đăng ký đúng phiên
    bản thay vì cài lại. Frameworks được giữ qua các lần build.
 2. Gửi snapshot qua SCP, xác minh SHA-256 và Git HEAD trên VM. Tạo venv, source,
    staging và TEMP riêng dưới `C:\D4Builder\runs\d4planner-build-<uuid>`.
@@ -91,16 +91,16 @@ và **xác minh lại toàn bộ pins mỗi lần dùng**. Installed product pat
 
 ```bash
 # Compile lại từ cache sạch; không cài lại framework
-python3 utility/d4planner/d4planner-be/tools/build_setup_vm.py --rebuild
+python3 utility/d4planner/script/build/build_vm.py --rebuild
 
 # Chỉ setup phần thiếu, không build
-python3 utility/d4planner/d4planner-be/tools/build_setup_vm.py --setup-only
+python3 utility/d4planner/script/build/build_vm.py --setup-only
 
 # Chỉ kiểm tra, không cài toolchain
-python3 utility/d4planner/d4planner-be/tools/build_setup_vm.py --check
+python3 utility/d4planner/script/build/build_vm.py --check
 
 # Chọn output mới; thư mục đã tồn tại bị từ chối
-python3 utility/d4planner/d4planner-be/tools/build_setup_vm.py --output "$HOME/d4planner-builds/my-build"
+python3 utility/d4planner/script/build/build_vm.py --output "$HOME/d4planner-builds/my-build"
 ```
 
 Lần đầu tải/cài framework và compile dependency sẽ lâu hơn các lần sau.
@@ -140,3 +140,10 @@ pha để so sánh performance giữa các lượt. Thời lượng dùng monoto
 bị sai khi đồng hồ hệ thống được đồng bộ lại. Tổng bao gồm chuẩn bị source, bật/kết
 nối VM, setup, upload, build, download/verify, cleanup và shutdown; log vẫn được
 kết thúc khi build lỗi. `--check`/`--setup-only` chỉ đo các pha thực sự được chạy.
+
+### Source layout
+
+`build_vm.py` là entrypoint trên F, bao gồm quản lý VM và timing.
+`windows_build.ps1` gộp setup toolchain và build trong Windows; cấu hình pin nằm
+ở `toolchain-lock.json`. Tests ở `tests/`. Pipeline release hiện có vẫn là
+`utility/d4planner/d4planner-be/tools/release_ci.py`; wrapper chỉ điều phối nó.

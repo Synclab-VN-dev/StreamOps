@@ -54,6 +54,7 @@ class ChangeDetectionTests(unittest.TestCase):
             ('hud', ['utility/d4planner/d4planner-hud/src/App.tsx'], ('true','false','true')),
             ('be', ['utility/d4planner/d4planner-be/src/d4planner/production.py'], ('true','false','false')),
             ('rulekit', ['utility/d4planner/d4planner-rulekit/application/src/index.js'], ('true','false','false')),
+            ('build-wrapper', ['utility/d4planner/script/build/build_vm.py'], ('true','false','false')),
             ('server', ['streamops/server/app.py'], ('false','false','true')),
             ('workflow', ['.github/workflows/tests.yml'], ('true','true','true')),
             ('workflow-and-server', ['.github/workflows/tests.yml','streamops/server/app.py'], ('true','true','true')),

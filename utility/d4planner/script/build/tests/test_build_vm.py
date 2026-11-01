@@ -10,8 +10,8 @@ import zipfile
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-import build_setup_vm as vm
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import build_vm as vm
 
 
 @pytest.fixture
@@ -66,7 +66,7 @@ def test_orchestration_downloads_only_verified_artifacts(repository,tmp_path,mon
     if mode=='extra_asset': result['files']['../private.key']='0'*64
     remote_files={**files,'result.json':json.dumps(result).encode(),'build.log':b'fixture build log'}
     if mode=='tampered': remote_files['D4Planner-Setup-1.2.8.exe']=b'tampered'
-    calls=[]; downloaded=[]
+    calls=[]; downloaded=[]; uploaded=[]
     class FakeSSH:
         def __init__(self,host): assert host=='builder'
         def powershell(self,code,**kw):
@@ -82,7 +82,9 @@ def test_orchestration_downloads_only_verified_artifacts(repository,tmp_path,mon
             assert '-SourceHead '+head in code and '-Version 1.2.8' in code
             if mode=='timeout': raise subprocess.TimeoutExpired('ssh',1)
             return SimpleNamespace(returncode=255 if mode=='disconnect' else 2 if mode=='failed' else 0)
-        def upload(self,local,remote): assert Path(local).is_file()
+        def upload(self,local,remote):
+            assert Path(local).is_file()
+            uploaded.append(remote.rsplit('/',1)[1])
         def download(self,remote,local):
             name=remote.rsplit('/',1)[1]; downloaded.append(name)
             Path(local).write_bytes(remote_files[name])
@@ -96,6 +98,8 @@ def test_orchestration_downloads_only_verified_artifacts(repository,tmp_path,mon
     if mode in {'failed','extra_asset'}: assert downloaded==['result.json','build.log']
     if mode=='check': assert not downloaded and len(calls)==4
     assert not any(name.endswith('.key') for name in downloaded)
+    assert uploaded[:2]==['windows_build.ps1','toolchain-lock.json']
+    assert len(uploaded)==(2 if mode=='check' else 3)
     timing=json.loads((out/'timing.json').read_text())
     assert timing['status']==('PASS' if mode in {'success','check'} else 'FAIL')
     assert timing['totalSeconds']>=0
@@ -154,7 +158,7 @@ def test_working_snapshot_refuses_unignored_private_key(repository,tmp_path):
 
 @pytest.mark.skipif(sys.platform == 'win32', reason='QEMU host lock runs on Linux F; guest does not manage the VM')
 def test_managed_builder_excludes_concurrent_runs_and_does_not_stop_existing_vm(tmp_path):
-    from build_vm_manager import ManagedBuilder
+    from build_vm import ManagedBuilder
     config=tmp_path/'config.json'
     config.write_text(json.dumps({'schemaVersion':1,'dedicatedBuilder':True,'alias':'dedicated','startCommand':['unused']}))
     first=ManagedBuilder('dedicated',config); second=ManagedBuilder('dedicated',config)
@@ -170,7 +174,7 @@ def test_managed_builder_excludes_concurrent_runs_and_does_not_stop_existing_vm(
 
 @pytest.mark.skipif(sys.platform == 'win32', reason='QEMU host lock runs on Linux F; guest does not manage the VM')
 def test_only_wrapper_started_vm_is_shutdown(tmp_path):
-    from build_vm_manager import ManagedBuilder
+    from build_vm import ManagedBuilder
     config=tmp_path/'config.json'
     config.write_text(json.dumps({'schemaVersion':1,'dedicatedBuilder':True,'alias':'dedicated'}))
     manager=ManagedBuilder('dedicated',config); manager.acquire(); manager.started=True
@@ -204,3 +208,13 @@ def test_timing_uses_elapsed_clock_and_includes_shutdown(tmp_path,monkeypatch,ca
     assert [p['seconds'] for p in report['phases']]==[2.5,1.25]
     assert all(p['startedAt'].endswith('+00:00') for p in report['phases'])
     assert 'TOTAL: 0m 3.750s (3.750s) [PASS]' in capsys.readouterr().out
+
+
+def test_relocated_cli_resolves_repository_and_guest_from_another_cwd(tmp_path):
+    root=Path(__file__).resolve().parents[5]
+    assert vm.ROOT==root
+    assert vm.GUEST==root/'utility/d4planner/script/build/windows_build.ps1'
+    assert vm.GUEST.is_file() and vm.GUEST.with_name('toolchain-lock.json').is_file()
+    result=subprocess.run([sys.executable,str(Path(vm.__file__).resolve()),'--help'],
+                          cwd=tmp_path,capture_output=True,text=True,timeout=10)
+    assert result.returncode==0 and '--rebuild' in result.stdout and '--setup-only' in result.stdout

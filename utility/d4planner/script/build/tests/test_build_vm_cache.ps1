@@ -1,4 +1,4 @@
-param([string]$Guest=(Join-Path $PSScriptRoot '../tools/build_setup_vm.ps1'))
+param([string]$Guest=(Join-Path $PSScriptRoot '../windows_build.ps1'))
 $ErrorActionPreference='Stop'
 $path=Resolve-Path $Guest
 $tokens=$null;$errors=$null

@@ -25,7 +25,8 @@ jobs:
             utility/d4planner/d4planner-be/tests/test_controller_additional_gates.py \
             utility/d4planner/d4planner-be/tests/test_multi_key_hook.py \
             utility/d4planner/d4planner-be/tests/test_multi_key_capture.py \
-            utility/d4planner/d4planner-be/tests/test_issue87_uat_evidence.py
+            utility/d4planner/d4planner-be/tests/test_issue87_uat_evidence.py \
+            utility/d4planner/script/build/tests
       - name: Server-side Report Gateway contract and cleanup mocks
         run: python -m unittest discover -s utility/d4planner/d4planner-be/report-gateway/tests -v
       - name: Controller CLI validate on Linux
@@ -84,7 +85,7 @@ jobs:
               }
             ).Count -gt 0
             $d4planner = $workflowChanged -or $launcher -or $overlay -or (@(
-              $realFiles | Where-Object { $_ -like "utility/d4planner/d4planner-be/*" -or $_ -like "utility/d4planner/d4planner-rulekit/*" -or $_ -eq ".github/workflows/tests.yml" }
+              $realFiles | Where-Object { $_ -like "utility/d4planner/d4planner-be/*" -or $_ -like "utility/d4planner/d4planner-rulekit/*" -or $_ -like "utility/d4planner/script/build/*" -or $_ -eq ".github/workflows/tests.yml" }
             ).Count -gt 0)
             $server = $overlay -or (@(
               $realFiles | Where-Object {
@@ -225,7 +226,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Rule Kit dependency preflight failed before pytest' }
       - name: Test D4Planner runtime
         if: steps.changes.outputs.d4planner == 'true'
-        run: python -m pytest -q utility/d4planner/d4planner-be/tests
+        run: python -m pytest -q utility/d4planner/d4planner-be/tests utility/d4planner/script/build/tests
       - name: Issue87 UT-04 and E2E-03/11 required gates (synthetic CI)
         if: steps.changes.outputs.d4planner == 'true'
         shell: pwsh

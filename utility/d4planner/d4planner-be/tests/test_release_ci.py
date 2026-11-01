@@ -180,8 +180,10 @@ def test_hud_source_ownership_keeps_installed_identity_and_package_paths():
     project=ci.ROOT/'utility/d4planner'
     hud=project/'d4planner-hud'
     launcher=project/'d4planner-launcher'
+    # Owner-approved shared tooling sits beside the four runtime components.
     assert {p.name for p in project.iterdir() if p.is_dir()} == {
-        'd4planner-launcher','d4planner-be','d4planner-hud','d4planner-rulekit'}
+        'd4planner-launcher','d4planner-be','d4planner-hud','d4planner-rulekit','script'}
+    assert {p.name for p in (project/'script').iterdir() if p.is_dir()} == {'build'}
     for component in [hud/'src-tauri',launcher]:
         cargo=tomllib.loads((component/'Cargo.toml').read_text())
         dependency=cargo['dependencies']['d4planner-runtime-logging']['path']
