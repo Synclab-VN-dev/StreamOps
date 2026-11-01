@@ -1,118 +1,131 @@
-# Build Setup trên Windows VM, nhận artifact trên F
+# Build Setup bằng Windows VM từ F
 
-Host wrapper: `tools/build_setup_vm.py`; guest runner: `tools/build_setup_vm.ps1`.
-Host chỉ cần Python 3.11+, Git, OpenSSH `ssh`/`scp`. Không cần Docker hoặc PowerShell
-trên F. Đây là wrapper cho **VM đã chạy và đã cấu hình SSH**, không phải VM provisioner.
-
-## Chuẩn bị VM một lần
-
-VM build Windows x64 cần:
-
-- OpenSSH Server, SFTP và đăng nhập bằng key từ F; host key đã được xác minh/lưu
-  trong known_hosts. Wrapper dùng BatchMode và StrictHostKeyChecking, không hỏi
-  password hoặc tự chấp nhận host key.
-- Git for Windows, Python **3.12.10**, Node **22.22.1** (`npm.cmd` trên PATH).
-- Rust **1.90.0** MSVC toolchain, Visual Studio C++ x64 Build Tools và Windows SDK.
-- Internet để tải đúng dependency/runtime pins của Release CI. Python build venv
-  được tạo riêng mỗi run; không pip install vào Python hệ thống. Không cần `gh`
-  hoặc GitHub token trong VM vì đây chỉ là build-only.
-
-VM local đã dùng cho test hiện khởi động với `-nic none`, **chưa có SSH transport**.
-Muốn dùng wrapper với VM đó phải cấu hình network/SSH trước. Với QEMU, dùng NAT
-và host port forwarding chỉ bind `127.0.0.1`, không bridge ra LAN. Chọn port còn
-trống cho VM riêng; wrapper không tự đổi VM launcher, firewall hoặc SSH config.
-
-Hướng dẫn Microsoft:
-[cài OpenSSH Server](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_install_firstuse),
-[cấu hình public key](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_keymanagement).
-
-Đặt SSH alias trong `~/.ssh/config` trên F, ví dụ (thay port/user/key theo VM):
-
-```sshconfig
-Host d4planner-builder
-    HostName 127.0.0.1
-    Port <VM-forwarded-port>
-    User <VM-build-user>
-    IdentityFile ~/.ssh/<VM-build-key>
-    IdentitiesOnly yes
-```
-
-Kiểm tra transport/key bằng `ssh d4planner-builder whoami` trước. VM/account này
-chỉ dùng cho build; wrapper không cần quyền Administrator khi build.
-
-## Một lệnh trên F
-
-Từ root repository, kiểm tra toolchain trước:
+Từ root checkout/worktree, chạy một lệnh:
 
 ```bash
-python3 utility/d4planner/d4planner-be/tools/build_setup_vm.py \
-  --vm d4planner-builder --check \
-  --output "$HOME/d4planner-builds/check-$(date +%Y%m%d-%H%M%S)"
+python3 utility/d4planner/d4planner-be/tools/build_setup_vm.py
 ```
 
-Build commit hiện tại và lấy artifact:
+Output mặc định: `~/d4planner-builds/<timestamp>-<id>/`. Khi thành công, wrapper
+in đường dẫn `D4Planner-Setup-<version>.exe`. Không lấy binary ứng dụng từ GitHub
+Actions: Launcher, HUD/Tauri và BE được build từ source chuyển sang VM.
 
-```bash
-python3 utility/d4planner/d4planner-be/tools/build_setup_vm.py \
-  --vm d4planner-builder \
-  --ref HEAD --version 1.2.8 \
-  --output "$HOME/d4planner-builds/setup-$(date +%Y%m%d-%H%M%S)"
-```
+## VM trên F
 
-`--repo` mặc định là repository chứa wrapper. `--ref` là local commit/ref đã có
-trên F; không tự fetch/pull. Chỉ source **đã commit** được chuyển, không lấy staged,
-unstaged, untracked hoặc ignored files. Có thể bỏ `--version` để lấy version từ
-package-plan của commit đã chọn. Nếu nhập version thì phải khớp plan.
-
-`--python 'C:/path/to/python.exe'` chọn Python trong VM nếu chưa có trên PATH.
-`--timeout 5400` thay deadline mặc định 3600 giây. Output phải là thư mục mới;
-không ghi đè kết quả cũ.
-
-## Pipeline và output
-
-Wrapper tạo shallow Git checkout riêng, giữ nguyên commit HEAD và bytes LF;
-truyền ZIP và guest script qua SCP. Guest xác minh hash source trước khi giải nén.
-Trong thư mục `%TEMP%/d4planner-build-<uuid>` riêng, guest tạo venv và gọi đúng:
-
-1. `release_ci.py validate` với `D4_BUILD_ONLY=true`.
-2. `release_ci.py build`: compile, tests, staging, NSIS Setup, runtime health.
-3. `release_ci.py prepare-upload` và `validate-upload`: kiểm tra artifact.
-
-Không gọi publish, tạo tag/Release hoặc upload GitHub. Không chỉnh checkout có sẵn
-trong VM. Không tự cài MSVC/Node/Rust/SSH; preflight báo thiếu trước khi build.
-
-Khi thành công, thư mục output trên F có:
+Builder riêng đã được clone từ VM test, có disk/UEFI/TPM riêng. OpenSSH dùng key,
+NAT và host forwarding chỉ trên loopback; không dùng Windows A/production.
+Thông tin enrollment nằm ngoài repository:
 
 ```text
-D4Planner-Setup-1.2.8.exe
-SHA256SUMS
+~/.local/share/streamops/d4planner-builder/
+  config.json
+  ssh_config
+  known_hosts
+  id_ed25519
+  start-vm.py
+  windows.qcow2
+```
+
+Wrapper đọc `config.json`, giữ khóa độc quyền giữa các worktree và tự khởi động
+VM nếu chưa chạy. Chỉ tắt VM khi chính lượt chạy này đã khởi động nó. VM đang chạy
+sẵn được giữ nguyên. SSH luôn xác minh host key; không tự accept key lạ.
+
+Trên một host khác, Windows OS/license và SSH enrollment phải có một lần; script
+không tự tạo Windows OS hoặc tin host key chưa xác minh. Có thể dùng alias SSH
+riêng với `--vm <alias>`; VM ngoài enrollment cần đang chạy. File config có format:
+
+```json
+{
+  "schemaVersion": 1,
+  "dedicatedBuilder": true,
+  "alias": "d4planner-builder",
+  "sshConfig": "/absolute/path/ssh_config",
+  "startCommand": ["python3", "/absolute/path/start-vm.py"]
+}
+```
+
+Host cần Python 3.11+, Git và OpenSSH. Build account trong VM riêng cần admin
+cho lần đầu cài MSVC/SDK. Không cần GitHub token/credential để build.
+
+## Source và version
+
+Mặc định gửi source **hiện tại**, gồm staged, unstaged và untracked không bị
+Git ignore; giữ cả thao tác xóa file. Không gửi `.git` của worktree đang dùng,
+ignored dependency/cache/output, hoặc untracked file có tên private key phổ biến.
+Developer phải gitignore các secret/local artifacts của mình; wrapper không thể
+nhận diện mọi loại secret theo nội dung.
+
+Wrapper tạo checkout tạm. Nếu source khác HEAD, nó tạo commit snapshot **chỉ trong
+checkout tạm**, không commit/stash/reset repository của developer. `source.json`
+ghi base HEAD, snapshot HEAD và tree hash; release metadata dùng snapshot HEAD.
+Source được chụp trước khi setup lâu, nên chỉnh sửa tiếp trên F không thay đổi
+lượt build đang chạy. Không sửa source đồng thời trong thời gian chụp snapshot.
+
+Muốn chỉ build một commit cụ thể: `--ref HEAD` hoặc `--ref <SHA>`.
+Version tự lấy từ `release1/package-plan.json`. `--version` nếu truyền phải khớp
+plan trong source đã chụp; không liên quan GitHub secret hay Release đã tồn tại.
+
+## Setup, build, teardown
+
+1. Kiểm tra toolchain, tự cài phần thiếu: Python 3.12.10, Node 22.22.1, Git,
+   Rust 1.90.0 MSVC, Visual Studio C++ và Windows SDK. Download HTTPS, kiểm tra
+   SHA-256 theo `tools/vm-toolchain-lock.json`. Dùng lại Python đăng ký đúng phiên
+   bản thay vì cài lại. Frameworks được giữ qua các lần build.
+2. Gửi snapshot qua SCP, xác minh SHA-256 và Git HEAD trên VM. Tạo venv, source,
+   staging và TEMP riêng dưới `C:\D4Builder\runs\d4planner-build-<uuid>`.
+3. Chạy `release_ci.py validate`, `build`, `prepare-upload`, `validate-upload`
+   với `D4_BUILD_ONLY=true`: cùng compile/test/staging/NSIS/runtime-health pipeline
+   như Release CI. Không publish, tạo tag/Release hoặc query GitHub Actions.
+4. Tải bốn artifact và diagnostics về F; kiểm tra checksum/source/version/class/
+   runtimeHealth. Chỉ promote Setup sau khi xác minh đủ.
+5. Xóa source, venv, staging, temporary files của đúng run sau khi nhận kết quả.
+   Không xóa framework hoặc run khác. Timeout/disconnect thử kill đúng process
+   tree theo PID + start time; nếu không xác minh được cleanup thì báo lỗi và
+   giữ run để xử lý, không xóa khi process có thể còn chạy.
+
+Normal build giữ Cargo compilation cache và cache download pip/npm để dùng lại.
+`--rebuild` xóa Cargo compilation cache trước build; framework, runtime pin và
+package download cache vẫn giữ. Cả hai mode đều dọn temporary run directory.
+Public Python/Node/Chromium/NSIS runtime inputs được cache theo hash runtime lock,
+và **xác minh lại toàn bộ pins mỗi lần dùng**. Installed product paths không đổi.
+
+```bash
+# Compile lại từ cache sạch; không cài lại framework
+python3 utility/d4planner/d4planner-be/tools/build_setup_vm.py --rebuild
+
+# Chỉ setup phần thiếu, không build
+python3 utility/d4planner/d4planner-be/tools/build_setup_vm.py --setup-only
+
+# Chỉ kiểm tra, không cài toolchain
+python3 utility/d4planner/d4planner-be/tools/build_setup_vm.py --check
+
+# Chọn output mới; thư mục đã tồn tại bị từ chối
+python3 utility/d4planner/d4planner-be/tools/build_setup_vm.py --output "$HOME/d4planner-builds/my-build"
+```
+
+Lần đầu tải/cài framework và compile dependency sẽ lâu hơn các lần sau.
+`--timeout` mặc định 10800 giây cho mỗi pha setup/build; đây là deadline, không
+phải thời gian dự đoán. Log ở output directory cập nhật trong lúc chạy.
+
+## Output và mức evidence
+
+```text
+D4Planner-Setup-<version>.exe
 release-metadata.json
+SHA256SUMS
 UAT.md
+source.json
+result.json
 build.log
 transport.log
 preflight.log
 connection.log
-result.json
+cleanup.log
 run.json
 ```
 
-Host chỉ lấy bốn artifact có tên xác định và hai file diagnostics, không copy
-recursive runtime/source/private VM directories. SHA-256 của từng file và
-source/version/size/class/runtimeHealth trong metadata đều được kiểm tra lại.
-Download lỗi hoặc hash sai nằm trong `download/`, không được promote thành Setup
-thành công. Exit 0 chỉ khi build và xác minh cuối đều PASS; `--check` exit 0 chỉ
-có nghĩa preflight PASS, không phải đã build.
-
-Build lỗi vẫn lấy `build.log`/`result.json` nếu transport còn hoạt động. Mất SSH,
-timeout hoặc Ctrl-C sẽ thử dừng đúng cây process của run, đối chiếu PID và thời
-điểm khởi động trong owner record. Nếu không kết nối lại/xác minh được cleanup,
-wrapper báo rõ; không tuyên bố process đã dừng. Giữ run directory để debug,
-đường dẫn nằm trong `run.json`; không tự xóa các run khác. Wrapper không tắt VM.
-
-## Mức evidence
-
-Unit tests kiểm tra snapshot Git thật, orchestrator với SSH giả lập, checksum,
-failure/cancel, và không ghi đè output. Chúng không chứng minh SSH Windows hay
-Setup runtime PASS. Full build qua SSH chỉ được coi PASS khi wrapper thực sự kết
-thúc exit 0 với artifact đã xác minh. Một compile PASS không thay native health
-check hoặc các gate Owner/Visual.
+Build lỗi vẫn lấy build.log/result.json nếu SSH hoạt động. Output tải chưa xác
+minh nằm trong `download/`, không được tuyên bố thành công. `--check`/`--setup-only`
+PASS chỉ xác nhận toolchain, không phải Setup build PASS. Unit tests mô phỏng SSH
+không thay thế Windows-native build. Full build chỉ PASS khi exit 0 và artifact
+đã qua checksum + native runtime health. Owner MAN/Visual/release gates độc lập.

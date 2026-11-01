@@ -2,16 +2,24 @@ param(
     [Parameter(Mandatory=$true)][string]$Root,
     [string]$Python = 'python',
     [switch]$CheckOnly,
+    [switch]$SetupOnly,
+    [switch]$Rebuild,
     [string]$SourceHead,
     [string]$Version,
     [string]$SourceSha256
 )
+$ProgressPreference = 'SilentlyContinue'
 $ErrorActionPreference = 'Stop'
 $rootPath = [IO.Path]::GetFullPath($Root)
 if ((Split-Path $rootPath -Leaf) -notmatch '^d4planner-build-[0-9a-f]{32}$') {
     throw 'Expected a dedicated wrapper run directory'
 }
-$env:RUSTUP_TOOLCHAIN = '1.90.0'
+$process = Get-Process -Id $PID
+@{pid=$PID; started=$process.StartTime.ToUniversalTime().Ticks.ToString()} |
+    ConvertTo-Json | Set-Content -LiteralPath (Join-Path $rootPath 'owner.json') -Encoding UTF8
+. (Join-Path $PSScriptRoot 'setup_build_vm.ps1') -CheckOnly:$CheckOnly
+$Python=$pythonBase
+if ($SetupOnly) { exit 0 }
 
 function Get-Preflight {
     $errors = [Collections.Generic.List[string]]::new()
@@ -67,13 +75,24 @@ if ($CheckOnly) {
     exit 0
 }
 
+$env:CARGO_BUILD_JOBS='2'
+$env:D4_LOCAL_RUNTIME_CACHE='C:\D4Builder\frameworks\public-runtimes'
+function Initialize-BuildCache([string]$CacheRoot, [switch]$Clean) {
+    # Caller supplies the dedicated builder cache root, never a source/user path.
+    $target=Join-Path $CacheRoot 'cargo-target'
+    if ($Clean -and (Test-Path -LiteralPath $target)) {
+        if ((Get-Item -LiteralPath $target).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Refusing to clear redirected compilation cache' }
+        Remove-Item -LiteralPath $target -Recurse -Force
+    }
+    return $target
+}
+$env:CARGO_TARGET_DIR=Initialize-BuildCache 'C:\D4Builder\cache' -Clean:$Rebuild
+
+
 $log = Join-Path $rootPath 'build.log'
 $resultPath = Join-Path $rootPath 'result.json'
 $script:buildExit = 1
 $result = @{exitCode=1; sourceHead=$SourceHead; version=$Version; files=@{}; error=$null}
-$process = Get-Process -Id $PID
-@{pid=$PID; started=$process.StartTime.ToUniversalTime().Ticks.ToString()} |
-    ConvertTo-Json | Set-Content -LiteralPath (Join-Path $rootPath 'owner.json') -Encoding UTF8
 '' | Set-Content -LiteralPath $log -Encoding UTF8
 
 function Invoke-Native([string]$Program, [string[]]$Argv) {
@@ -88,7 +107,7 @@ function Invoke-Native([string]$Program, [string[]]$Argv) {
         & $Program @Argv 2>&1 | ForEach-Object {
             $line = $_.ToString()
             $writer.WriteLine($line)
-            Write-Host $line
+            [Console]::WriteLine($line)
         }
         $code = $LASTEXITCODE
     } finally { $ErrorActionPreference = $saved; $writer.Dispose() }

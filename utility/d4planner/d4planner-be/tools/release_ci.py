@@ -283,8 +283,8 @@ def build(inputs, output, head, release_version):
          'utility/d4planner/d4planner-be/tests/test_package_entrypoint.py'])
     tools=ROOT/'utility/d4planner/d4planner-be/tools'
     stage=output/'stage'
-    run([sys.executable,tools/'build_release1_stage.py','--launcher-exe',launcher/'target/release/D4Planner.exe',
-         '--frontend-exe',frontend/'src-tauri/target/release/d4planner-overlay-poc.exe',
+    run([sys.executable,tools/'build_release1_stage.py','--launcher-exe',Path(os.environ.get('CARGO_TARGET_DIR',launcher/'target'))/'release/D4Planner.exe',
+         '--frontend-exe',Path(os.environ.get('CARGO_TARGET_DIR',frontend/'src-tauri/target'))/'release/d4planner-overlay-poc.exe',
          '--python-root',inputs/'python','--python-site-packages',site,'--node-root',inputs/'node',
          '--chromium-root',inputs/'chromium','--output',stage])
     package=output/f'D4Planner-{release_version}.zip'
@@ -347,7 +347,18 @@ def main():
         require_release_absent(os.environ['GITHUB_REPOSITORY'], tag)
     elif args.command=='build':
         inputs=args.directory/'public-runtime-inputs'; inputs.parent.mkdir(parents=True,exist_ok=True)
-        if os.environ.get('D4_PUBLIC_RUNTIME_INPUT_URL'):
+        if os.environ.get('D4_LOCAL_RUNTIME_CACHE'):
+            # Optional local builder cache; the same manifest/tree pins remain mandatory.
+            cache=Path(os.environ['D4_LOCAL_RUNTIME_CACHE'])/delivery.sha256_file(LOCK)
+            if not cache.exists():
+                partial=cache.with_name(cache.name+'.partial')
+                if partial.exists(): shutil.rmtree(partial)
+                partial.parent.mkdir(parents=True,exist_ok=True)
+                prepare_upstream_inputs(partial)
+                partial.rename(cache)
+            validate_inputs(cache)
+            inputs=cache
+        elif os.environ.get('D4_PUBLIC_RUNTIME_INPUT_URL'):
             download_inputs(os.environ['D4_PUBLIC_RUNTIME_INPUT_URL'],os.environ.get('D4_PUBLIC_RUNTIME_INPUT_SHA256',''),inputs)
         else:prepare_upstream_inputs(inputs)
         metadata=build(inputs,args.directory/'build',args.source,args.version)

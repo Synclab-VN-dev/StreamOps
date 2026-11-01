@@ -6,7 +6,7 @@ có `version` X.Y.Z, `build_only=true` mặc định; dispatch chỉ khả dụn
 có trên default branch. CI run không phải Product Version.
 
 Build từ F qua Windows VM và lấy Setup/log về F: [BUILD-VM.md](BUILD-VM.md).
-Wrapper cần VM có SSH và toolchain; không tự dispatch Actions hoặc publish.
+Wrapper tự khởi động VM builder đã enrollment và cài toolchain thiếu; không dispatch Actions hoặc publish.
 
 ## Một nguồn Product Version
 

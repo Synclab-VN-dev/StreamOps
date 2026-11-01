@@ -299,3 +299,27 @@ def test_existing_tag_must_resolve_to_build_head_without_rewriting(monkeypatch):
     monkeypatch.setattr(ci.subprocess,'run',lambda *a,**kw:next(replies))
     ci.ensure_source_tag('isolated/test','v1.0.3',HEAD)
     assert writes==[]
+
+
+@pytest.mark.parametrize('tampered',[False,True])
+def test_local_runtime_cache_revalidates_before_build(tmp_path,monkeypatch,tampered):
+    lock=tmp_path/'runtime-lock.json'; lock.write_text('pin')
+    monkeypatch.setattr(ci,'LOCK',lock)
+    root=tmp_path/'cache'; cached=root/ci.delivery.sha256_file(lock); cached.mkdir(parents=True)
+    (cached/'marker').write_text('tampered' if tampered else 'valid')
+    checks=[]; builds=[]
+    def validate(path):
+        checks.append(path)
+        if (path/'marker').read_text()!='valid': raise ValueError('PRIVATE_INPUT_INTEGRITY')
+    monkeypatch.setattr(ci,'validate_inputs',validate)
+    monkeypatch.setattr(ci,'prepare_upstream_inputs',lambda *_:pytest.fail('Validated cache must be reused'))
+    monkeypatch.setattr(ci,'product_version',lambda *_:None)
+    monkeypatch.setattr(ci,'build',lambda inputs,*args:builds.append(inputs) or {'sha256':'a'*64})
+    monkeypatch.setenv('D4_LOCAL_RUNTIME_CACHE',str(root)); monkeypatch.setenv('GITHUB_OUTPUT',str(tmp_path/'output'))
+    monkeypatch.setattr(sys,'argv',['release_ci.py','build','--channel','stable','--version','1.2.8','--source',HEAD,'--directory',str(tmp_path/'run')])
+    if tampered:
+        with pytest.raises(ValueError,match='PRIVATE_INPUT_INTEGRITY'): ci.main()
+        assert not builds
+    else:
+        ci.main(); assert builds==[cached]
+    assert checks==[cached]
