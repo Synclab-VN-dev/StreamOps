@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import signal
 import subprocess
 import time
 import urllib.request
@@ -39,6 +40,30 @@ pytestmark = [pytest.mark.only_browser("chromium"),
         reason="Runs in required dedicated FE-G5 after pinned reference renderer install")]
 
 
+def _stop_reference_renderer(process, *, windows=None):
+    """npm.cmd is a parent shell: terminate its owned tree before removing sources."""
+    if process.poll() is not None:
+        return
+    windows = os.name == 'nt' if windows is None else windows
+    if windows:
+        result = subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],
+                                capture_output=True, timeout=15)
+        if result.returncode and process.poll() is None:
+            raise RuntimeError('Cannot stop owned reference renderer process tree')
+    else:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        if windows:
+            raise
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait(timeout=5)
+
+
 @pytest.fixture(scope="module")
 def magicpath_reference_url():
     """Start the isolated original MagicPath React+Tailwind source, no FE import."""
@@ -46,6 +71,7 @@ def magicpath_reference_url():
     process = subprocess.Popen(
         ["npm.cmd" if os.name == "nt" else "npm", "run", "start"],
         cwd=SOURCE, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
+        start_new_session=os.name != "nt",
         env={**os.environ, "CI": "1"},
     )
     url = f"http://127.0.0.1:{port}"
@@ -62,11 +88,7 @@ def magicpath_reference_url():
             raise TimeoutError("MagicPath reference server not ready")
         yield url
     finally:
-        process.terminate()
-        try: process.wait(timeout=8)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
+        _stop_reference_renderer(process)
 
 
 @pytest.fixture(scope="module")
@@ -76,6 +98,7 @@ def magicpath_updated_reference_url():
     process = subprocess.Popen(
         ["npm.cmd" if os.name == "nt" else "npm", "run", "start"],
         cwd=source, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
+        start_new_session=os.name != "nt",
         env={**os.environ, "CI": "1"},
     )
     url = "http://127.0.0.1:5179"
@@ -92,11 +115,7 @@ def magicpath_updated_reference_url():
             raise TimeoutError("Updated MagicPath reference renderer not ready")
         yield url
     finally:
-        process.terminate()
-        try: process.wait(timeout=8)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
+        _stop_reference_renderer(process)
 
 
 def _ready(page):

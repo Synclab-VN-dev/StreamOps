@@ -18,7 +18,7 @@ if ($eventName -eq 'pull_request') {
         $_ -like 'scripts/devices/a-windows/issue85*' -or
         $_ -like 'scripts/ci/*game*' -or
         $_ -eq 'pyproject.toml' -or
-        $_ -eq '.github/workflows/tests.yml'
+        $_ -eq '.github/workflows/main.yml'
     }).Count -gt 0
     Write-Host "E2E-01 changed files: $($changed -join ', ')"
 } elseif ($eventName -eq 'push') {

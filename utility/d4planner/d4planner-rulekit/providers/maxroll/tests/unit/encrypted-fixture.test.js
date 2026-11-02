@@ -47,25 +47,28 @@ test('encrypted fixture ZIP validation rejects traversal, absolute and mixed roo
 
 test('encrypted fixture workflow is trusted-dispatch only and pins ciphertext without live capture', () => {
   const workflow = fs.readFileSync(path.resolve(__dirname,
-    '../../../../../../../.github/workflows/d4-rulekit-maxroll-real.yml'), 'utf8');
+    '../../../../../../../.github/workflows/main.yml'), 'utf8');
   const orchestrator = fs.readFileSync(path.resolve(__dirname,
     '../../src/offline-real-e2e.js'), 'utf8');
   assert.match(workflow, /workflow_dispatch:/);
-  assert.doesNotMatch(workflow, /pull_request(?:_target)?:|\bpush:/);
+  const fixtureJob = workflow.split('\n  fixture:')[1].split('\n  publish:')[0];
+  assert.match(fixtureJob, /github\.event_name == 'workflow_dispatch'/);
+  assert.doesNotMatch(workflow, /pull_request_target:/);
+  const contract = fs.readFileSync(path.resolve(__dirname, '../../../../ci.test.py'), 'utf8');
   assert.match(orchestrator, /test-fixture\/enc-e2e-20261023-r01/);
   assert.equal(FIXTURE.assetName, 'ci-data-pack-20261023-r01.zip.age');
   assert.match(orchestrator, /d12am6kt-candidate/);
   assert.match(workflow, /secrets\.MAXROLL_FIXTURE_AGE_IDENTITY/);
-  assert.match(workflow, /BLOCKED_KEY_PROVISIONING/);
-  assert.doesNotMatch(workflow, /e2e:real:live-capture|snapshot:capture|maxroll\.gg/);
+  assert.match(contract, /BLOCKED_KEY_PROVISIONING/);
+  assert.doesNotMatch(contract, /e2e:real:live-capture|snapshot:capture|maxroll\.gg/);
   assert.match(workflow, /github\.ref == 'refs\/heads\/master'/);
   assert.doesNotMatch(workflow, /refs\/heads\/feat\/127-128-real-maxroll-provider/);
   assert.match(workflow, /environment: maxroll-fixture-trusted/);
-  assert.match(workflow, /--ephemeral-identity/);
-  assert.match(workflow, /e2e:real:offline/);
+  assert.match(contract, /--ephemeral-identity/);
+  assert.match(contract, /e2e:real:offline/);
   assert.match(workflow, /if: always\(\)/);
-  assert.doesNotMatch(workflow, /artifacts\/(?:snapshot|blobs|fixture)|\.zip\.age\s*$/m);
-  assert.doesNotMatch(workflow, /RUNTIME_COMPATIBILITY=PATCH_DRIFT|OFFLINE_E2E=NOT_RUN/);
+  assert.doesNotMatch(contract, /artifacts\/(?:snapshot|blobs|fixture)|\.zip\.age\s*$/m);
+  assert.doesNotMatch(contract, /RUNTIME_COMPATIBILITY=PATCH_DRIFT|OFFLINE_E2E=NOT_RUN/);
 });
 
 test('offline real CLI accepts only explicit identity, age and Chromium paths', () => {

@@ -1,0 +1,117 @@
+name: Maintenance
+'on':
+  schedule:
+  - cron: 17 * * * *
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Inspect only; false explicitly authorizes eligible maintenance
+        type: boolean
+        default: true
+      schedule:
+        description: Schedule contract ID; empty selects all maintenance contracts
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: d4planner-issue-log-cleanup
+  cancel-in-progress: false
+jobs:
+  plan:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      maintenance: ${{ steps.plan.outputs.maintenance }}
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: 3.12.10
+    - id: plan
+      env:
+        MAINTENANCE_DRY_RUN: ${{ github.event_name == 'schedule' || inputs.dry_run != false }}
+      run: python .github/workflows/ci.py actions-plan --operation schedule --dry-run "$MAINTENANCE_DRY_RUN" --output "$RUNNER_TEMP/maintenance-plan"
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: maintenance-plan
+        path: ${{ runner.temp }}/maintenance-plan
+        if-no-files-found: error
+  maintenance:
+    needs: plan
+    if: ${{ needs.plan.result == 'success' && fromJSON(needs.plan.outputs.maintenance).include[0] != null && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.maintenance) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    permissions:
+      contents: write
+      issues: read
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: 3.12.10
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: maintenance-plan
+        path: ${{ runner.temp }}/maintenance-plan
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      if: matrix.node != ''
+      with:
+        node-version: ${{ matrix.node }}
+    - name: Prepare requested Rust toolchain
+      if: matrix.rust != ''
+      shell: bash
+      env:
+        REQUESTED_RUST: ${{ matrix.rust }}
+      run: |
+        rustup toolchain install "$REQUESTED_RUST" --profile minimal
+        rustup default "$REQUESTED_RUST"
+    - name: Execute maintenance capability
+      shell: bash
+      env:
+        CI_JOB: ${{ matrix.key }}
+        CI_MAINTENANCE_TOKEN: ${{ github.token }}
+        DIAGNOSTIC_RELEASE_ID: ${{ vars.D4PLANNER_DIAGNOSTIC_RELEASE_ID }}
+        DIAGNOSTIC_BOT_ID: ${{ vars.D4PLANNER_DIAGNOSTIC_BOT_ID }}
+        MAINTENANCE_DRY_RUN: ${{ github.event_name == 'schedule' || inputs.dry_run != false }}
+      run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/maintenance-plan/plan.json" --job "$CI_JOB" --dry-run "$MAINTENANCE_DRY_RUN" --output "$RUNNER_TEMP/maintenance"
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: always()
+      with:
+        name: maintenance-evidence-${{ matrix.key }}
+        path: ${{ runner.temp }}/maintenance
+        if-no-files-found: error
+  result:
+    needs: [plan, maintenance]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: 3.12.10
+    - name: Require planner success
+      env:
+        PLAN_STATUS: ${{ needs.plan.result }}
+      run: test "$PLAN_STATUS" = success
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: maintenance-plan
+        path: ${{ runner.temp }}/maintenance-plan
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        pattern: maintenance-evidence-*
+        path: ${{ runner.temp }}/maintenance
+    - run: python .github/workflows/ci.py aggregate --plan "$RUNNER_TEMP/maintenance-plan/plan.json" --output "$RUNNER_TEMP/maintenance"

@@ -1,62 +1,42 @@
-# Issue #47 — Synclab custom OBS plugin: single-workflow managed release
+# OBS plugin — current managed release policy (#166)
 
-> Release policy (2026-10-10): one existing GitHub Actions workflow owns build,
-> package and publication. PR/push **never** publishes. Release requires an
-> explicit manual dispatch with `publish_release=true` and a protected
-> environment approval. PR #52 remains Draft until real-A acceptance is complete.
+Updated by Owner decision 2026-11-02. The Issue #47 development-branch exception
+is retired. Production publication is **trusted master + workflow_dispatch +
+operation=publish** only. Same-repository write collaborators are trusted under
+CI-CONTRACT.md; no malicious-writer isolation claim is made.
 
-## Source and target
+## Source, orchestration and regression ownership
 
-- Source: `Synclab-VN-dev/StreamOps/util/obs-multi-rtmp-websocket` (C++ custom
-  `sorayuki.multi_rtmp` WebSocket Vendor support, `list_targets`).
-- Existing build workflow: `.github/workflows/obs-multi-rtmp-build.yml`.
-  This file already exists on default branch `master`, so GitHub can dispatch
-  the PR #52 version via `--ref feat/issue-47-obs-plugin-manager`.
-- Packaging and strict verifier: `scripts/release/obs_plugin_package.py`.
-- Distribution only to `Synclab-VN-dev/StreamOps-OBS-Plugins`, via its GitHub Releases.
-- Current v1 source: `buildspec.json` version `0.7.4.3`, built for OBS 32.2.1 Windows x64.
-- No upstream ZIP relabeling, arbitrary asset URL, non-reviewed artifact, or
-  dependency on merging the still-unaccepted Plugin Manager backend.
+- Source/product owner: `util/obs-multi-rtmp-websocket/`.
+- Generic wrapper: `.github/workflows/main.yml` (no OBS test commands).
+- Generic engine: `.github/workflows/ci.py` discovers `ci.test.py` (ID `obs-plugin`)
+  and `ci.release.py` (ID `obs-plugin-release`). No component registry.
+- `obs-plugin--regression`: isolated Python, release-policy and package-harness
+  tests at `streamops/server/tests/test_obs_plugin_release_{workflow_policy,harness}.py`.
+  Paths stay for existing StreamOps integration coverage; OBS owns their invocation
+  and watches both test files plus the packager/installer/source dependencies.
+- `obs-plugin--candidate`: existing Windows C++/DLL build and unapproved package
+  verification, reusing the product implementation. No install/control of OBS.
+- Packager/verifier: `scripts/release/obs_plugin_package.py`.
+- Destination: `Synclab-VN-dev/StreamOps-OBS-Plugins`; exact buildspec version and
+  OBS 32.2.1 compatibility are required.
 
-## Single workflow and event policy
+## Publication sequence
 
-```text
-PR/push event
-  → Windows build
-  → package UNAPPROVED candidate + SHA/manifest/provenance/license
-  → upload Actions artifact
-  → FINISH (no release secret or publish job)
+1. Manual publish on master: validate intent/ref/version/OBS compatibility.
+2. Build custom DLL, package candidate and reviewed payload from the same source.
+3. Separate `external_publish` capability: `obs-plugin-release` environment and
+   `SYNCLAB_OBS_RELEASE_TOKEN`, scoped to the distribution repository.
+4. Revalidate same-run build report, artifact hashes, approved manifest, source
+   commit, version and exactly four assets before exposing token to transport.
+5. Refuse existing Release; create draft with four assets.
+6. Download remote assets, byte-compare all four, then promote that draft.
+   Failed verification must not promote. Never overwrite or rebuild during publish.
 
-Manual workflow_dispatch, publish_release=false (default)
-  → same build/package candidate
-  → FINISH (no release secret or publish job)
-
-Manual workflow_dispatch, publish_release=true, expected_version=VERSION
-  → Windows build
-  → package unapproved CI candidate and approved reviewed payload from same build
-  → validate source/buildspec version and OBS 32.2.1 compatibility
-  → verify ZIP/files/manifest/provenance/license/source commit/SHA
-  → protected environment obs-plugin-release (required reviewer)
-  → download exactly approved candidate into independent publish job
-  → verify again BEFORE release credential is exposed
-  → create DRAFT with exactly 4 assets in Synclab distribution repository
-  → redownload and byte-compare 4 remote assets
-  → promote same draft to published without rebuilding
-  → final GitHub Release becomes discoverable by Plugin Manager
-```
-
-The `publish` job is explicitly gated by `github.event_name ==
-'workflow_dispatch' && inputs.publish_release == true`. Both production
-`master` and the explicitly reviewed `feat/issue-47-obs-plugin-manager`
-branch are allowed; all other refs are blocked. The `windows-build` job never
-receives the cross-repository release token. Secret only exists in the last
-publish step, after environment approval and independent byte verification.
-A failed upload/compare leaves a **draft**, not a visible release. Existing
-tags are never overwritten.
-
-The older `obs-plugin-managed-release.yml` and
-`obs-plugin-promote-release.yml` workflows are superseded and removed from
-this branch. Do not dispatch them.
+PR/push tests and manual build do not publish. Normal GITHUB_TOKEN has read-only
+permissions in the external publish job; it cannot replace the distribution token.
+No feature branch is authorized. Keep existing environment/token binding; this
+refactor neither changes settings nor claims protection rules have been provisioned.
 
 ## Artifact contract
 
@@ -79,80 +59,24 @@ must agree. Candidate packages mark `approved=false`; only an authorized
 manual release request creates `approved=true` metadata. SHA/provenance
 are checksums and traceability, not cryptographic signatures.
 
-## One-time repository protection (operator/admin)
+## Commands (documentation only; publication is not a test)
 
-1. StreamOps → Settings → Secrets and variables → Actions: configure
-   `SYNCLAB_OBS_RELEASE_TOKEN`, a least-privilege fine-grained token with
-   Contents read/write **only** on `Synclab-VN-dev/StreamOps-OBS-Plugins`.
-   Normal StreamOps `GITHUB_TOKEN` cannot write this other repository.
-2. StreamOps → Settings → Environments: configure `obs-plugin-release` with
-   *required reviewers* and restricted deployment branches. During PR #52
-   release acceptance, allow the exact reviewed feature branch; for later
-   releases, narrow this to `master`. A bare environment without rules is
-   NOT an adequate production publication gate.
-3. Protect distribution release/tag `obs-multi-rtmp/v*`, restrict asset
-   deletion/replacement and review GPL redistribution/source availability.
-4. Review custom C++ source and real OBS 32.2.1 Vendor API behavior on an
-   isolated test system before approving each release.
-5. Never check tokens into repo, workflow output, or test logs.
+Local component regression, without building a Windows DLL:
 
-## Commands
-
-**Build only from PR #52** (never publish):
-
-```powershell
-gh workflow run obs-multi-rtmp-build.yml `
-  --repo Synclab-VN-dev/StreamOps `
-  --ref feat/issue-47-obs-plugin-manager
+```sh
+python .github/workflows/ci.py run --component obs-plugin --job obs-plugin--regression --output /tmp/obs-regression
 ```
 
-**Manually build and request publication of reviewed v1** (publish waits at
-environment approval, no automatic PR publication):
+Build-only: manual main.yml, `operation=build`, `product=obs-plugin-release`,
+`version=<exact buildspec version>`. Production manual intent:
 
-```powershell
-gh workflow run obs-multi-rtmp-build.yml `
-  --repo Synclab-VN-dev/StreamOps `
-  --ref feat/issue-47-obs-plugin-manager `
-  -f publish_release=true `
-  -f expected_version=0.7.4.3
+```sh
+gh workflow run main.yml --repo Synclab-VN-dev/StreamOps --ref master \
+  -f operation=publish -f product=obs-plugin-release -f version=0.7.4.3
 ```
 
-Check run details and verify release in the target repository:
-
-```powershell
-gh run list --repo Synclab-VN-dev/StreamOps `
-  --workflow obs-multi-rtmp-build.yml `
-  --branch feat/issue-47-obs-plugin-manager --limit 5
-
-gh release view 'obs-multi-rtmp/v0.7.4.3' `
-  --repo Synclab-VN-dev/StreamOps-OBS-Plugins
-```
-
-The release operation must not be triggered until environment protection,
-license review, source review and token permissions are checked. A run may
-produce a candidate artifact yet leave publication blocked if the reviewer
-does not approve or the token is missing.
-
-## Release-gate and real-A acceptance sequence
-
-1. RH01–RH03: Windows source build, package, tamper detection and
-   installer compatibility tests PASS on exact branch SHA.
-2. RH04/RH05 are **one manual run** with separate protected `publish` job:
-   source build, create draft, verify remote bytes, publish approved release.
-   No second dispatch required.
-3. RG01: published v1 `0.7.4.3` has valid manifest/provenance/SHA and
-   is discoverable from A. Verify read-only `/api/v1/obs/plugins/available`.
-4. D03–D05: with A backed up, OBS outputs idle, maintenance authorized,
-   install v1 through Plugin Manager API (never manually replace plugin DLL),
-   restart OBS through Process API and verify vendor `sorayuki.multi_rtmp`.
-5. Only after v1 installation/verification, implement **real** v2 with
-   source code changes, distinct source commit/version and distinct DLL SHA,
-   then use same manual workflow to publish v2.
-6. D06–D08/D14: update v1→v2, byte-compare config, verify vendor, test
-   rollback and recovery in a safe isolated/approved window.
-7. D09/D15 negative tests must fail closed and preserve output/file hashes.
-
-**STOP** if environment protection or token policy is absent, source
-commit/version/ZIP hashes differ, real Vendor API fails, existing release tag
-exists, license source-availability requirements are unmet, or maintenance
-approval/backup on Windows A is missing.
+Do not execute publication during automated regression. Tests use temporary
+synthetic packages, mocked installer probes and policy preflight; they do not
+prove real OBS/native deployment acceptance. Historical RH/RG/Windows-A runtime
+acceptance still requires its separately authorized environment and evidence.
+No OBS/Steam/game operation, live Release write or settings change is part of #166.
