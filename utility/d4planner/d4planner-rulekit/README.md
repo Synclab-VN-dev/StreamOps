@@ -65,7 +65,7 @@ existing Python DSL/CLI contracts unchanged.
 - **Evidence register:** `docs/game-mechanics-3.2.3.md`.
 - **Reference vectors:** `references/3.2.3/ci03-reference-vectors.json`.
 - **Negative regression:** `tests/test_execution_contract.py`.
-- **Workflow:** `.github/workflows/d4-rulekit.yml` executes G1 and CI-03 independently.
+- **Workflow:** `.github/workflows/main.yml` discovers this folder’s `ci.test.py`; its schema job executes G1 and CI-03.
 
 ```bash
 python -m d4_rulekit.contract_check \
