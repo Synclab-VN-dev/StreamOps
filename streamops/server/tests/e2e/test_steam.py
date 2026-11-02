@@ -2,7 +2,7 @@
 from __future__ import annotations
 import pytest
 from playwright.sync_api import Page, expect
-from .test_games_ui import games_ui_server
+from .test_games_ui import games_ui_server, page  # shared fixture orders browser teardown before server
 
 pytestmark=pytest.mark.only_browser("chromium")
 

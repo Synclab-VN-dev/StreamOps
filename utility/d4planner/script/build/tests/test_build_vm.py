@@ -1,0 +1,220 @@
+"""Host wrapper tests: real Git snapshots, simulated SSH only, no release writes."""
+import base64
+import hashlib
+import json
+from pathlib import Path
+import subprocess
+import sys
+from types import SimpleNamespace
+import zipfile
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import build_vm as vm
+
+
+@pytest.fixture
+def repository(tmp_path):
+    repo = tmp_path / 'repo'
+    subprocess.run(['git','init','-q',str(repo)],check=True)
+    plan = repo / 'utility/d4planner/d4planner-be/release1/package-plan.json'
+    plan.parent.mkdir(parents=True)
+    plan.write_text('{"version":"1.2.8"}')
+    (repo/'tracked.txt').write_bytes(b'committed\n')
+    subprocess.run(['git','-C',str(repo),'add','.'],check=True)
+    subprocess.run(['git','-C',str(repo),'-c','user.name=test','-c','user.email=test@example.invalid',
+                    'commit','-qm','fixture'],check=True)
+    return repo
+
+
+def test_snapshot_preserves_head_and_lf_excludes_local_changes(repository,tmp_path):
+    head=subprocess.check_output(['git','-C',str(repository),'rev-parse','HEAD'],text=True).strip()
+    (repository/'tracked.txt').write_text('uncommitted\n')
+    (repository/'private.key').write_text('must not transfer')
+    archive=tmp_path/'source.zip'
+    assert vm.source_snapshot(repository,'HEAD',archive)==(head,'1.2.8')
+    extract=tmp_path/'extract'
+    with zipfile.ZipFile(archive) as z:
+        assert 'private.key' not in z.namelist()
+        assert z.read('tracked.txt')==b'committed\n'
+        z.extractall(extract)
+    assert subprocess.check_output(['git','-C',str(extract),'rev-parse','HEAD'],text=True).strip()==head
+    assert subprocess.check_output(['git','-C',str(extract),'status','--porcelain'],text=True)==''
+    assert (repository/'tracked.txt').read_text()=='uncommitted\n'
+
+
+def artifact_files(head):
+    setup='D4Planner-Setup-1.2.8.exe'
+    binary=b'synthetic installer bytes, not Windows build evidence'
+    sha=hashlib.sha256(binary).hexdigest()
+    metadata={'sourceHead':head,'version':'1.2.8','artifact':setup,'sha256':sha,'bytes':len(binary),
+              'snapshotIncluded':False,'artifactClass':'D4PLANNER_APPLICATION_NO_SNAPSHOT','runtimeHealth':'PASS'}
+    files={setup:binary,'release-metadata.json':json.dumps(metadata).encode(),
+           'SHA256SUMS':f'{sha}  {setup}\n'.encode(),'UAT.md':b'Synthetic fixture'}
+    result={'exitCode':0,'sourceHead':head,'version':'1.2.8',
+            'files':{name:hashlib.sha256(data).hexdigest() for name,data in files.items()}}
+    return files,result
+
+
+@pytest.mark.parametrize('mode',['success','failed','tampered','wrong_head','extra_asset','timeout','disconnect','check'])
+def test_orchestration_downloads_only_verified_artifacts(repository,tmp_path,monkeypatch,mode,capsys):
+    head=subprocess.check_output(['git','-C',str(repository),'rev-parse','HEAD'],text=True).strip()
+    files,result=artifact_files(head)
+    if mode=='failed': result['exitCode']=2
+    if mode=='wrong_head': result['sourceHead']='0'*40
+    if mode=='extra_asset': result['files']['../private.key']='0'*64
+    remote_files={**files,'result.json':json.dumps(result).encode(),'build.log':b'fixture build log'}
+    if mode=='tampered': remote_files['D4Planner-Setup-1.2.8.exe']=b'tampered'
+    calls=[]; downloaded=[]; uploaded=[]
+    class FakeSSH:
+        def __init__(self,host): assert host=='builder'
+        def powershell(self,code,**kw):
+            calls.append(code)
+            if 'D4_BUILDER_READY' in code: return SimpleNamespace(returncode=0,stdout='D4_BUILDER_READY')
+            if 'Remove-Item -LiteralPath $p' in code: return SimpleNamespace(returncode=0,stdout='cleaned')
+            if 'New-Item' in code:
+                import re
+                run_id=re.search(r'd4planner-build-([0-9a-f]{32})',code)[1]
+                return SimpleNamespace(returncode=0,stdout='C:/Temp/d4planner-build-'+run_id+'\n')
+            if '-CheckOnly' in code or '-SetupOnly' in code: return SimpleNamespace(returncode=0,stdout='{"ready":true}')
+            if 'taskkill.exe' in code: return SimpleNamespace(returncode=0,stdout='owned cleanup')
+            assert '-SourceHead '+head in code and '-Version 1.2.8' in code
+            if mode=='timeout': raise subprocess.TimeoutExpired('ssh',1)
+            return SimpleNamespace(returncode=255 if mode=='disconnect' else 2 if mode=='failed' else 0)
+        def upload(self,local,remote):
+            assert Path(local).is_file()
+            uploaded.append(remote.rsplit('/',1)[1])
+        def download(self,remote,local):
+            name=remote.rsplit('/',1)[1]; downloaded.append(name)
+            Path(local).write_bytes(remote_files[name])
+    monkeypatch.setattr(vm,'WindowsSSH',FakeSSH)
+    out=tmp_path/'out'
+    args=['--vm','builder','--repo',str(repository),'--output',str(out)]
+    if mode=='check': args+=['--check']
+    assert vm.main(args)==(0 if mode in {'success','check'} else 1)
+    assert (out/'D4Planner-Setup-1.2.8.exe').exists()==(mode=='success')
+    assert any('taskkill.exe' in code for code in calls)==(mode in {'timeout','disconnect'})
+    if mode in {'failed','extra_asset'}: assert downloaded==['result.json','build.log']
+    if mode=='check': assert not downloaded and len(calls)==4
+    assert not any(name.endswith('.key') for name in downloaded)
+    assert uploaded[:2]==['windows_build.ps1','toolchain-lock.json']
+    assert len(uploaded)==(2 if mode=='check' else 3)
+    timing=json.loads((out/'timing.json').read_text())
+    assert timing['status']==('PASS' if mode in {'success','check'} else 'FAIL')
+    assert timing['totalSeconds']>=0
+    assert timing['phases'][-1]['phase']=='vm_shutdown'
+    if mode=='check': assert not any(p['phase']=='build' for p in timing['phases'])
+    terminal=capsys.readouterr().out
+    assert 'TOTAL:' in terminal and 'TOTAL:' in (out/'timing.log').read_text()
+    if mode=='success':
+        print('SIMULATED SSH — no VM/build executed:\n'+terminal)
+
+
+
+def test_ssh_uses_key_verification_and_encoded_powershell(monkeypatch):
+    calls=[]
+    monkeypatch.setattr(vm.subprocess,'run',lambda args,**kw:calls.append(args) or SimpleNamespace(returncode=0))
+    code="Write-Output 'path with spaces & $value'"
+    vm.WindowsSSH('windows-builder').powershell(code)
+    command=calls[0]
+    assert 'BatchMode=yes' in command and 'StrictHostKeyChecking=yes' in command
+    assert base64.b64decode(command[-1]).decode('utf-16-le').endswith(code)
+    for invalid in ['-oProxyCommand=bad','host;touch bad','user@host:22','host\nother']:
+        with pytest.raises(ValueError):vm.WindowsSSH(invalid)
+
+
+def test_existing_output_is_never_overwritten(tmp_path):
+    (tmp_path/'keep').write_text('retained')
+    with pytest.raises(FileExistsError): vm.main(['--vm','builder','--output',str(tmp_path),'--check'])
+    assert (tmp_path/'keep').read_text()=='retained'
+
+
+def test_working_snapshot_includes_edits_and_staged_deletion_without_changing_repo(repository,tmp_path):
+    original=subprocess.check_output(['git','-C',str(repository),'rev-parse','HEAD'],text=True).strip()
+    subprocess.run(['git','-C',str(repository),'rm','tracked.txt'],check=True,capture_output=True)
+    (repository/'new.py').write_bytes(b'current source\n')
+    (repository/'.gitignore').write_text('ignored/\n')
+    (repository/'ignored').mkdir()
+    (repository/'ignored/private.key').write_text('excluded')
+    before=subprocess.check_output(['git','-C',str(repository),'status','--porcelain'])
+    archive=tmp_path/'source.zip'
+    head,version=vm.source_snapshot(repository,None,archive)
+    assert head!=original and version=='1.2.8'
+    with zipfile.ZipFile(archive) as z:
+        assert 'tracked.txt' not in z.namelist()
+        assert 'ignored/private.key' not in z.namelist()
+        assert z.read('new.py')==b'current source\n'
+    assert json.loads(archive.with_suffix('.json').read_text())['baseHead']==original
+    assert subprocess.check_output(['git','-C',str(repository),'status','--porcelain'])==before
+    assert subprocess.check_output(['git','-C',str(repository),'rev-parse','HEAD'],text=True).strip()==original
+
+
+def test_working_snapshot_refuses_unignored_private_key(repository,tmp_path):
+    (repository/'private.key').write_text('not transferred')
+    with pytest.raises(ValueError,match='secret-like'):
+        vm.source_snapshot(repository,None,tmp_path/'source.zip')
+
+
+@pytest.mark.skipif(sys.platform == 'win32', reason='QEMU host lock runs on Linux F; guest does not manage the VM')
+def test_managed_builder_excludes_concurrent_runs_and_does_not_stop_existing_vm(tmp_path):
+    from build_vm import ManagedBuilder
+    config=tmp_path/'config.json'
+    config.write_text(json.dumps({'schemaVersion':1,'dedicatedBuilder':True,'alias':'dedicated','startCommand':['unused']}))
+    first=ManagedBuilder('dedicated',config); second=ManagedBuilder('dedicated',config)
+    first.acquire()
+    with pytest.raises(RuntimeError,match='active build'): second.acquire()
+    commands=[]
+    ssh=SimpleNamespace(powershell=lambda code,**kw:commands.append(code) or SimpleNamespace(returncode=0,stdout='D4_BUILDER_READY'))
+    first.ensure_running(ssh)
+    first.close(ssh)
+    assert not any('shutdown' in code for code in commands)
+    second.acquire(); second.close(ssh)
+
+
+@pytest.mark.skipif(sys.platform == 'win32', reason='QEMU host lock runs on Linux F; guest does not manage the VM')
+def test_only_wrapper_started_vm_is_shutdown(tmp_path):
+    from build_vm import ManagedBuilder
+    config=tmp_path/'config.json'
+    config.write_text(json.dumps({'schemaVersion':1,'dedicatedBuilder':True,'alias':'dedicated'}))
+    manager=ManagedBuilder('dedicated',config); manager.acquire(); manager.started=True
+    commands=[]
+    ssh=SimpleNamespace(powershell=lambda code,**kw:commands.append(code) or SimpleNamespace(returncode=0))
+    manager.close(ssh)
+    assert len(commands)==1 and 'shutdown.exe /s' in commands[0]
+    assert manager.lock is None
+
+
+def test_normal_rebuild_cache_policy_in_powershell():
+    import shutil
+    shell=shutil.which('pwsh') or shutil.which('powershell.exe')
+    if not shell: pytest.skip('PowerShell unavailable; native cache test must run on Windows builder')
+    result=subprocess.run([shell,'-NoProfile','-File',str(Path(__file__).with_name('test_build_vm_cache.ps1'))],capture_output=True,text=True,timeout=30)
+    assert result.returncode==0, result.stdout+result.stderr
+    assert 'Cache policy PASS' in result.stdout
+
+
+def test_timing_uses_elapsed_clock_and_includes_shutdown(tmp_path,monkeypatch,capsys):
+    clock=[0.0]
+    monkeypatch.setattr(vm.time,'monotonic',lambda:clock[0])
+    timing=vm.BuildTiming(tmp_path)
+    timing.phase('build')
+    clock[0]=2.5
+    timing.phase('vm_shutdown')
+    clock[0]=3.75
+    timing.finish(True)
+    report=json.loads((tmp_path/'timing.json').read_text())
+    assert report['totalSeconds']==3.75
+    assert [p['seconds'] for p in report['phases']]==[2.5,1.25]
+    assert all(p['startedAt'].endswith('+00:00') for p in report['phases'])
+    assert 'TOTAL: 0m 3.750s (3.750s) [PASS]' in capsys.readouterr().out
+
+
+def test_relocated_cli_resolves_repository_and_guest_from_another_cwd(tmp_path):
+    root=Path(__file__).resolve().parents[5]
+    assert vm.ROOT==root
+    assert vm.GUEST==root/'utility/d4planner/script/build/windows_build.ps1'
+    assert vm.GUEST.is_file() and vm.GUEST.with_name('toolchain-lock.json').is_file()
+    result=subprocess.run([sys.executable,str(Path(vm.__file__).resolve()),'--help'],
+                          cwd=tmp_path,capture_output=True,text=True,timeout=10)
+    assert result.returncode==0 and '--rebuild' in result.stdout and '--setup-only' in result.stdout

@@ -8,6 +8,8 @@ test-results/
 .ruff_cache/
 .streamops/
 build/
+# D4Planner build tooling is source, not generated build output.
+!/utility/d4planner/script/build/
 dist/
 *.egg-info/
 streamops/artifacts/*

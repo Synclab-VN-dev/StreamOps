@@ -1,9 +1,15 @@
+> CI #166: workflow hiện tại là `.github/workflows/main.yml`, product contract ở `utility/d4planner/ci.release.py`. Manual build dùng operation=build, product=d4planner-release, version=<version>; publish là operation riêng. Core build/verify dùng chung với VM; policy bên dưới phản ánh quyết định Owner mới nhất.
+
 # Release CI D4Planner Application
 
-Một workflow `D4Planner Release`: `.github/workflows/d4planner-release.yml`.
-UAT dùng push tag trên exact feature SHA, không cần merge master. Dispatch vẫn
-có `version` X.Y.Z, `build_only=true` mặc định; dispatch chỉ khả dụng khi workflow
-có trên default branch. CI run không phải Product Version.
+Một workflow `CI`: `.github/workflows/main.yml`; build/release implementation thuộc product contract.
+Test/UAT installer dùng manual `operation=build`, `product=d4planner-release`,
+`version=X.Y.Z`: build → verify → Actions artifact. Không tạo GitHub Release.
+Production dùng manual `operation=publish` trên trusted master. Không auto publish
+khi push tag; version nhập tay không bị ghi đè theo ref.
+
+Build từ F qua Windows VM và lấy Setup/log về F: [hướng dẫn VM build](../../script/build/README.md).
+Wrapper tự khởi động VM builder đã enrollment và cài toolchain thiếu; không dispatch Actions hoặc publish.
 
 ## Một nguồn Product Version
 
@@ -12,11 +18,6 @@ reject input `version` khác plan trước build. Manifest, Setup filename,
 `VIProductVersion`/DisplayVersion và metadata đều dùng giá trị này. Version các
 crate/npm/Python component là version nội bộ, không phải Application version.
 
-`uat-encryption-policy.json.uatRevision` là số candidate UAT dương. Tag là
-`d4planner-uat/vX.Y.Z-rN`; ví dụ Product1.2.8, UAT1.2.8-r1. Một rerun cùng SHA không
-tăng Product Version. Nếu candidate có nội dung khác sau lỗi harness/build, dùng
-revision UAT mới, tag/asset cũ bất biến. Product Version tăng khi thay đổi sản phẩm
-được bàn giao (1.2.8 sửa compression và console launch). CI run ID chỉ lưu metadata.
 Windows upgrade/rollback tiếp tục so sánh version X.Y.Z và payload hash; same-version
 reinstall giữ behavior đã kiểm thử, không bỏ downgrade/ownership/schema guards.
 
@@ -38,27 +39,27 @@ No-snapshot calculation phải UNAVAILABLE; health không thay native UI accepta
 
 Application UAT bàn giao trực tiếp `D4Planner-Setup-X.Y.Z.exe`, SHA256SUMS,
 release-metadata.json và UAT.md. Không cần age identity/decrypt để cài Application.
-Snapshot vẫn là `.zip.age` riêng. File policy giữ tên cũ `uat-encryption-policy.json`
-để không tạo hai nguồn chuẩn, nhưng schema v2 mô tả distribution format riêng cho
-Application và Snapshot; policy trong source **không phải** license approval.
+Snapshot vẫn là `.zip.age` riêng, không chứa trong Setup. Metadata artifact không
+còn UAT revision hoặc release tag giả định. `UAT.md` là hướng dẫn test artifact,
+không phải authorization publish hay bằng chứng Owner MAN.
 
-### Policy build-only / publish (Owner cập nhật 2026-11-01)
+### Policy build-only / publish
 
-- `build_only=true`: build và upload artifact đã verify. Không query GitHub Release,
-  không đọc approval secret, không chạy publish job. Build lại cùng version/HEAD
-  hoặc HEAD mới không cần cập nhật secret.
-- `build_only=false`: kiểm tra Release `vX.Y.Z` trước build và kiểm tra lại ngay
-  trước publish. Release đã tồn tại thì dừng, không overwrite/upload thêm assets.
-  Chỉ HTTP 404 rõ ràng được coi là chưa tồn tại; lỗi auth, rate limit, network,
-  timeout hoặc response không hợp lệ đều dừng. Không tự tăng version.
-- UAT tag giữ namespace `d4planner-uat/vX.Y.Z-rN`, dùng cùng kiểm tra Release tồn tại.
-  Luồng UAT vẫn kiểm tra tag/source context và metadata định dạng của artifact.
-- Tag có sẵn nhưng chưa có Release được dùng lại nếu resolve đúng commit build,
-  kể cả annotated tag. Tag trỏ commit khác bị chặn để không di chuyển tag hoặc
-  gắn binary mới vào source cũ. Tag chưa có được tạo bằng API không force.
-- Workflow không còn sử dụng `D4PLANNER_DISTRIBUTION_APPROVAL_JSON`,
-  `D4PLANNER_RELEASE_GATES_JSON`, `D4PLANNER_UAT_RELEASE_APPROVAL_JSON`, hoặc
-  environment `d4planner-release`. Không cần sửa/xóa secret hay repository settings.
+- Build-only không query GitHub Release, không đọc production credential và không
+  publish. Cùng version có thể build lại. Version phải đúng package plan; mismatch
+  bị báo lỗi, không bị silently override.
+- Build phase của publish cũng không nhận production credential. Sau build/verify,
+  publish job xác minh source/version/checksum, rồi kiểm tra Release `vX.Y.Z`.
+  Đã tồn tại thì dừng; chỉ HTTP 404 rõ ràng được coi là chưa tồn tại. Auth, network,
+  rate limit, timeout hoặc malformed response đều fail closed.
+- Tag có sẵn chỉ được tái sử dụng nếu resolve đúng source HEAD. Không move tag,
+  overwrite Release hoặc thêm asset vào Release đã tồn tại.
+- Theo threat model Owner chốt ngày 2026-11-02, write collaborators (gồm bot) là
+  trusted; giữ same-repository feature branches. Không yêu cầu chống collaborator
+  malicious/compromised sửa workflow. Chỉ job manual publish trên master nhận
+  GITHUB_TOKEN contents:write; PR/test/build giữ read. Không cần PAT/Environment
+  mới hoặc thêm Review deployments. Thiếu token vẫn BLOCKED. Xem
+  [CI contract](../../../../../.github/workflows/CI-CONTRACT.md).
 
 Build vẫn giữ content allowlist/negative inspection, runtime pins, full manifest,
 ZIP hashes và runtime health. Upload giữ exact binary/hash, kiểm tra asset allowlist,
