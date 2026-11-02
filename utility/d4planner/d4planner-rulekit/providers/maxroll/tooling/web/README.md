@@ -60,3 +60,16 @@ CHROMIUM_EXECUTABLE=/absolute/pinned/chrome node browser-check.js
 `browser-check.js` uses a normal HTTP client browser, with no Playwright request routes and no browser offline mode. It tests desktop and Pixel 7 emulation, edits a real build, checks the native Save payload, asserts local rejection, and checks every external request attempt fails due to CSP. Evidence includes screenshots and native JSON; keep it private and outside Git/Actions artifacts. Tests do not claim canonical JSON compatibility.
 
 See [architecture and audit](ASSESSMENT.md) for boundaries and limitations. No snapshot bytes or generated evidence belong in this directory.
+
+
+## Diagnosing a blank frame on a real device
+
+Reload the localhost page and wait 10 seconds. Diagnostics now include `clientEvents` with a per-load session ID: `CLIENT_BOOT`, `DOM_READY`, `PAGE_SHOW`, `JS_ERROR`, `UNHANDLED_REJECTION`, `CONSOLE_ERROR`, `RESOURCE_ERROR`, and parent `FRAME_STATE`. Parent reports include viewport/frame dimensions and New Profile presence even when child initialization fails. The CLI's private `editor.runtime/server.log` also receives these events. Report the time/browser used so F can find the right session. No remote debugging app or external telemetry endpoint is required.
+
+Missing/blocked counters are cumulative **server totals**, not per-page error counts. Rendering a frame or finding a button does not establish visual/interactivity success. Preserve the failing session before restarting; a restart/reload that recovers the UI does not by itself establish root cause. Keep logs private; do not upload raw browser logs or generated screenshots to Git.
+
+Additional targeted diagnostic/security test:
+
+```bash
+CHROMIUM_EXECUTABLE=/absolute/pinned/chrome node --test diagnostics.test.js
+```

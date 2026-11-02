@@ -16,6 +16,17 @@ async function main() {
     for (const mobile of [false, true]) {
       const context = await browser.newContext(mobile ? { ...devices['Pixel 7'] } : { viewport: { width: 1440, height: 1100 } });
       const page = await context.newPage();
+      const runtimeErrors = [], unexpectedConsoleErrors = [];
+      page.on('pageerror', error => runtimeErrors.push(error.message));
+      page.on('console', message => {
+        if (message.type() !== 'error') return;
+        const value = message.text();
+        // Expected transport/optional-ad failures; runtime errors are never allowlisted.
+        if (value.includes('violates the following Content Security Policy') && value.includes('blocked')) return;
+        if (value === 'Failed to load resource: the server responded with a status of 404 (Not Found)' || value === 'Failed to load resource: the server responded with a status of 405 (Method Not Allowed)') return;
+        if (value.includes('/js/sponsor.js') && value.includes("MIME type ('text/html')")) return;
+        unexpectedConsoleErrors.push(value);
+      });
       const externalResponses = [], externalAttempts = [], externalFinished = [], externalFailures = [];
       const localOrigin = new URL(url).origin;
       const external = u => /^https?:/.test(u) && new URL(u).origin !== localOrigin;
@@ -24,6 +35,15 @@ async function main() {
       page.on('requestfailed', r => { if (external(r.url())) externalFailures.push(r.failure()?.errorText); });
       page.on('requestfinished', r => { if (external(r.url())) externalFinished.push(r.url()); });
       await page.goto(url);
+      // Reload exercises initialization without relying on a retained frame or UI state.
+      for (let load = 0; load < 3; load++) {
+        const loaded = page.frames()[1];
+        await loaded.getByRole('button', { name: 'New Profile', exact: true }).waitFor({ state: 'visible' });
+        const box = await page.locator('iframe').boundingBox();
+        assert(box && box.width > 200 && box.height > 200, 'Nonzero usable frame area');
+        assert.equal(await loaded.evaluate(() => document.readyState), 'complete');
+        if (load < 2) await page.reload();
+      }
       const frame = page.frames()[1];
       await frame.getByRole('button', { name: 'New Profile', exact: true }).click();
       const level = frame.locator('input[type=number][min="1"][max="70"]');
@@ -56,6 +76,8 @@ async function main() {
       await fs.writeFile(path.join(output, mobile ? 'mobile-native-save.json' : 'desktop-native-save.json'), JSON.stringify(payload), { mode: 0o600 });
       assert.equal(new URL(save.url()).origin, localOrigin);
       assert.equal((await save.response()).status(), 405, 'Native save rejected locally (export outside this checkpoint)');
+      assert.deepEqual(runtimeErrors, [], 'No uncaught JavaScript/Promise errors during actual UI edits');
+      assert.deepEqual(unexpectedConsoleErrors, [], 'No unexpected browser console errors during UI edits');
       const safety = await frame.evaluate(async () => {
         const result = {};
         try { await fetch('https://example.invalid/no-egress'); result.external = false; } catch { result.external = true; }
@@ -74,7 +96,7 @@ async function main() {
       assert.deepEqual(externalFinished, [], 'No external HTTP request completed');
       await page.screenshot({ path: path.join(output, mobile ? 'mobile.png' : 'desktop.png'), fullPage: false });
       results.push({ mobileEmulation: mobile, newProfile: true, level: 69, helm: 'Runic Skullcap', skillPoints: 1, paragonPoints: 1, saveStatus: 405,
-        externalAttemptCount: externalAttempts.length, externalResponses: externalResponses.length, externalFinished: externalFinished.length, safety });
+        reloads: 2, runtimeErrors, unexpectedConsoleErrors, externalAttemptCount: externalAttempts.length, externalResponses: externalResponses.length, externalFinished: externalFinished.length, safety });
       await context.close();
     }
     const report = { browser: browser.version(), url, androidReal: 'NOT_RUN', results };

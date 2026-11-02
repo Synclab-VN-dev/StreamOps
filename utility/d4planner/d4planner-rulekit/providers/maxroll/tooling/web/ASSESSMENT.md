@@ -103,3 +103,35 @@ Additional server tests: 4 tests covering exact route matching, rewrite behavior
 Initial test failures were fixed transparently: router `__manifest` namespace rejection; required eval CSP permission; mobile List text hidden while its parent control is visible; OS TIME_WAIT affecting preflight/rebind; browser-specific CSP failure spelling. Infrastructure E2E initially lacked the pinned executable environment variable; rerun with `BROWSER_INFRA_CHROMIUM_PATH` passed all 25. No acceptance was removed to bypass these failures.
 
 Status: **local automated checks PASS; real Android acceptance NOT_RUN; CI_NOT_CHECKED**. Full original Local Build Editor/export completion is not claimed.
+
+
+## Android blank-frame incident and diagnostic follow-up
+
+Owner reported a black Planner frame in Samsung Internet **and Chrome Android**, while the shell showed 71 missing / 258 blocked. Those counters were server-global across earlier automated runs and Owner sessions; the old ring retained only 100 events and no JavaScript errors or frame lifecycle. It is impossible to reconstruct all 71/258 events or establish a root cause from that evidence. Do not attribute the blank frame to Samsung, missing sprites, CSP, or an engine incompatibility without evidence.
+
+The follow-up adds early `error`, `unhandledrejection`, console-error and resource-error telemetry in `client.js`, plus parent-side frame geometry/readiness in `shell.js`. Each load has a non-secret random iframe name/session ID; diagnostic events are separate from network-block counters and are sent only to the same-origin loopback endpoint. They are retained in a bounded 200-event ring and the private CLI server log. URL queries are stripped; report bodies remain limited to 2 KiB. Original errors are not suppressed. The wrapper labels the counters as server totals.
+
+No CSP/sandbox directives, origin mapping, native Maxroll code, snapshot bytes/version, calculation or export semantics changed. The owned UAT service was stopped/started using its PID-identity/pidfd CLI. After that restart and a reload, Owner explicitly reported that Android now loads and editing works. This is observed recovery, **not a proven root-cause fix**. Changes to diagnostic timing, reload/runtime state, and the iframe name cannot be distinguished causally from available evidence.
+
+Actual Chrome Android session `8566d957-cb82-4a7c-8433-72d962113b6d` on 2026-11-02 reported a 384×655 frame, completed document, New Profile present and changing geometry during scrolling. There were zero JS_ERROR, UNHANDLED_REJECTION or CONSOLE_ERROR events in that recorded session. Its UA was Chrome/156.0.0.0 Mobile; the reduced Android/10/K UA does not establish the device's real OS version. Owner's visual/edit confirmation is the manual evidence; DOM telemetry alone is not visual acceptance. Samsung recovery has not been separately confirmed, and individual equipment/skill/paragon Android assertions were not enumerated by Owner.
+
+W03 Chrome Android: **Owner-confirmed render recovery**. Owner also confirms editing generally; W04–W06 per-control manual coverage remains unenumerated. Previous blank-frame failure is retained in history; repeat-failure root cause remains **UNRESOLVED**. The complete fix DoD is not claimed solely from automated tests.
+
+### Request impact classification
+
+- External fonts/styles, Ziff/Google ads/tracking: expected client CSP blocks; fresh Linux/Android sessions render despite these blocks.
+- Missing item/skill/aspect sprite sheets and individual item WebP images: visual coverage gaps; explain absent item pictures, not demonstrated as the earlier entire-frame blank cause.
+- Missing whoami: cloud account UI unavailable; anonymous editing demonstrated.
+- Local-HTTPS twitch request constructed by captured code: blocked. Frozen `mve` catches fetch failure and returns false; it supplies live-stream status, not Planner initialization.
+- Missing favicon/touch icons and the captured HTML-MIME sponsor script: optional shell/ad failures. Browser tests explicitly classify these; unexpected console/runtime errors fail the test.
+- Uncaptured application modules/router/game data would be initialization blockers; no such failure was observed in the recovered Android session. The historical aggregate alone cannot rule one out for the failing session.
+
+### Catalog versus artwork
+
+Read-only inspection of the captured complete `data.min.json?b8bc3970` response (9,366,658 bytes, version 3.2.1.73552) finds 12,195 raw item records and 6,380 affix records. Counts by native `type`: Helm 840, ChestArmor 836, Gloves 837, Legs 823, Boots 822, Ring 180, Amulet 127; weapon types are present too (e.g. Sword 220, Dagger 174, Bow 93). Localization `data.enus.json?90146625` contains 12,072 item entries. These are raw records, including variants/class/season and non-equipment entries, **not counts of independently selectable supported equipment**. Exact response integrity does not certify exhaustive UI/calculation support or artwork completeness. No additional capture, online asset download or snapshot mixing was performed.
+
+### Follow-up tests
+
+Four targeted HTTP tests pass, including separating runtime errors from blocked-request totals and stripping report URL queries. A new real Chromium synthetic test deliberately throws an initialization error, rejects a Promise and emits console.error: all three reach diagnostics with the correct session; parent navigation, popup and cross-origin frame navigation remain blocked. This synthetic test validates observability/security only, not Maxroll behavior.
+
+The actual snapshot browser test now asserts usable frame geometry, complete document/New Profile, two reloads per desktop/mobile case, no uncaught runtime errors and no unexpected console errors before checking actual build interactions/native payload. Desktop and Pixel 7 emulation pass with 244 CSP-failed external attempts per case and zero external responses/completions. Three independent lifecycle cycles still pass. Evidence remains private under `evidence/android-fix/`; **CI_NOT_CHECKED**.

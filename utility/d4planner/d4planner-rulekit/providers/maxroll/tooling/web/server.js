@@ -3,6 +3,7 @@
 const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { randomUUID } = require('node:crypto');
 const { FileSystemSnapshotStore } = require('../../../../browser-infra/src');
 const { resourceKey } = require('../../../../browser-infra/src/snapshot/interceptor');
 const { loadCatalog } = require('../../../../snapshot-management/compatibility/loader');
@@ -58,15 +59,19 @@ async function startServer(config, { snapshot: suppliedSnapshot } = {}) {
   if (!Number.isInteger(config.port) || config.port < 1024 || config.port > 65535) throw new Error('Unprivileged port required');
   const snapshot = suppliedSnapshot || await loadSnapshot(config);
   const client = await fs.readFile(path.join(__dirname, 'client.js'));
+  const shell = await fs.readFile(path.join(__dirname, 'shell.js'));
+  const clientEvents = [];
+  const categories = Object.create(null);
   const recent = [];
   let missing = 0, blocked = 0, served = 0;
   function record(kind, url) {
     const u = new URL(url, 'http://127.0.0.1');
     recent.push({ kind, url: (u.origin + u.pathname).slice(0, 300) });
     if (recent.length > 100) recent.shift();
+    categories[kind] = (categories[kind] || 0) + 1;
     if (kind === 'MISSING') missing++; else blocked++;
   }
-  function diagnostic() { return { snapshotId: snapshot.manifest.snapshotId, served, missing, blocked, recent }; }
+  function diagnostic() { return { snapshotId: snapshot.manifest.snapshotId, served, missing, blocked, recent, categories, clientEvents }; }
   const sourcePath = new URL(snapshot.manifest.sourceUrl).pathname;
   const server = http.createServer(async (req, res) => {
     try {
@@ -88,17 +93,26 @@ async function startServer(config, { snapshot: suppliedSnapshot } = {}) {
           let bytes = 0, body = '';
           for await (const part of req) { bytes += part.length; if (bytes > 2048) return send(413, '{}'); body += part; }
           const event = JSON.parse(body);
-          record(String(event.kind).slice(0, 64), String(event.url));
+          const kind = String(event.kind).slice(0, 64);
+          if (['CLIENT_BOOT', 'DOM_READY', 'PAGE_SHOW', 'JS_ERROR', 'UNHANDLED_REJECTION', 'CONSOLE_ERROR', 'RESOURCE_ERROR', 'FRAME_STATE'].includes(kind)) {
+            const safeUrl = new URL(String(event.url), origin);
+            const entry = { time: new Date().toISOString(), kind, session: String(event.session || '').replace(/[^a-zA-Z0-9-]/g, '').slice(0, 50),
+              url: safeUrl.origin + safeUrl.pathname, detail: event.detail };
+            clientEvents.push(entry);
+            if (clientEvents.length > 200) clientEvents.shift();
+            console.log(JSON.stringify({ clientEvent: entry }));
+          } else record(kind, String(event.url));
           return send(204, '');
         }
         record('BLOCKED_METHOD', url.href);
         return send(405, '{"error":"Local UI UAT: Save/export is unavailable; no request was sent online"}');
       }
+      if (url.pathname === '/__local/shell.js') return send(200, shell, 'application/javascript');
       if (url.pathname === '/__local/client.js') return send(200, client, 'application/javascript');
       if (url.pathname === '/__local/diagnostics') return send(200, JSON.stringify(diagnostic()));
       if (url.pathname === '/') {
         // Parent frame-src + child sandbox block navigation/popups to production.
-        const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Local frozen Maxroll Planner</title><style>html,body{margin:0;height:100%;background:#101010;color:white;font:13px sans-serif}body{display:flex;flex-direction:column}header{min-height:36px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:4px 8px}iframe{border:0;width:100%;flex:1;min-height:0}a{color:#8cf}</style></head><body><header>Frozen snapshot · UI UAT · Save/export unavailable · <span id="status">loading diagnostics</span> · <a href="/__local/diagnostics" target="_blank">diagnostics</a></header><iframe title="Frozen Maxroll Planner" sandbox="allow-scripts allow-same-origin allow-forms" src="${sourcePath}"></iframe><script>const update=()=>fetch('/__local/diagnostics').then(r=>r.json()).then(d=>document.getElementById('status').textContent=d.missing+' missing / '+d.blocked+' blocked');update();setInterval(update,3000);</script></body></html>`;
+        const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Local frozen Maxroll Planner</title><style>html,body{margin:0;height:100%;background:#101010;color:white;font:13px sans-serif}body{display:flex;flex-direction:column}header{min-height:36px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:4px 8px}iframe{border:0;width:100%;flex:1;min-height:0}a{color:#8cf}</style></head><body><header>Frozen snapshot · UI UAT · Save/export unavailable · <span id="status">loading diagnostics</span> · <a href="/__local/diagnostics" target="_blank">diagnostics</a></header><iframe name="${randomUUID()}" title="Frozen Maxroll Planner" sandbox="allow-scripts allow-same-origin allow-forms" src="${sourcePath}"></iframe><script src="/__local/shell.js"></script></body></html>`;
         return send(200, html, 'text/html; charset=utf-8', { 'Content-Security-Policy': CSP + "; frame-ancestors 'none'" });
       }
       const original = originalUrl(url);

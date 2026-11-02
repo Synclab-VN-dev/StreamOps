@@ -5,12 +5,35 @@
   const origin = location.origin;
   const hosts = new Set(['maxroll.gg', 'assets-ng.maxroll.gg', 'planners.maxroll.gg']);
   const nativeFetch = window.fetch.bind(window);
-  const report = (kind, url) => {
+  const session = window.name || 'unframed';
+  const report = (kind, url, detail) => {
     let safe = String(url);
     try { const u = new URL(safe, location.href); safe = u.origin + u.pathname; } catch { safe = 'invalid-url'; }
     nativeFetch('/__local/report', { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ kind, url: safe.slice(0, 300) }) }).catch(() => {});
+      body: JSON.stringify({ kind, url: safe.slice(0, 300), session, detail }) }).catch(() => {});
   };
+  // Diagnostics only: never suppress the original exception or console output.
+  const clean = value => String(value || '').replace(/https?:\/\/[^\s"'<>]+/g, value => {
+    try { const u = new URL(value); return u.origin + u.pathname; } catch { return '[url]'; }
+  }).slice(0, 400);
+  window.addEventListener('error', event => {
+    if (event.target !== window) {
+      report('RESOURCE_ERROR', event.target.src || event.target.href || location.href,
+        { tag: event.target.tagName });
+    } else report('JS_ERROR', event.filename || location.href,
+      { message: clean(event.message), line: event.lineno, column: event.colno });
+  }, true);
+  window.addEventListener('unhandledrejection', event => report('UNHANDLED_REJECTION', location.href,
+    { message: clean(event.reason?.message || event.reason) }));
+  const consoleError = console.error.bind(console);
+  console.error = (...args) => {
+    report('CONSOLE_ERROR', location.href, { message: clean(args.map(a => typeof a === 'string' ? a : a?.message || '[object]').join(' ')) });
+    consoleError(...args);
+  };
+  report('CLIENT_BOOT', location.href, { userAgent: navigator.userAgent.slice(0, 250),
+    width: innerWidth, height: innerHeight, secureContext: isSecureContext });
+  document.addEventListener('DOMContentLoaded', () => report('DOM_READY', location.href));
+  window.addEventListener('pageshow', event => report('PAGE_SHOW', location.href, { persisted: event.persisted }));
   function map(value) {
     const u = new URL(value, location.href);
     if (u.origin === origin) return u.href;

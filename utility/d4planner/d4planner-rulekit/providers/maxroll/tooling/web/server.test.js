@@ -51,7 +51,15 @@ test('HTTP replay, no proxy fallback, POST/Host protection, conflict and cleanup
     assert.equal(await new Promise((resolve, reject) => { http.get(base, {headers:{Host:'evil.test'}}, r => { r.resume(); resolve(r.statusCode); }).on('error', reject); }), 403);
     assert.equal((await fetch(base, {headers:{'Sec-Fetch-Site':'cross-site'}})).status, 403);
     assert.equal((await fetch(base+'/__local/report', {method:'POST',headers:{Origin:base},body:JSON.stringify({kind:'test',url:'https://example.invalid/path?secret=hidden'})})).status, 204);
+    const blockedBefore = (await (await fetch(base+'/__local/diagnostics')).json()).blocked;
+    await fetch(base+'/__local/report', {method:'POST',headers:{Origin:base},body:JSON.stringify({kind:'JS_ERROR',session:'test-session',url:base+'/main.js?token=hidden',detail:{message:'Synthetic startup failure',line:7}})});
     const diag = await (await fetch(base+'/__local/diagnostics')).json();
+    assert.equal(diag.blocked, blockedBefore, 'Runtime errors are separate from network blocks');
+    assert.equal(diag.clientEvents[0].kind, 'JS_ERROR');
+    assert.equal(diag.clientEvents[0].session, 'test-session');
+    assert.equal(diag.clientEvents[0].detail.line, 7);
+    assert(!JSON.stringify(diag.clientEvents).includes('token='));
+    assert.equal((await fetch(base+'/__local/shell.js')).status, 200);
     assert(diag.missing>=3); assert(!JSON.stringify(diag).includes('secret'));
     // SSH forwarding may use a different client-side port: rewritten URLs use that Host.
     const forwarded = await fetch(base+'/d4/planner/example', {headers:{Host:'127.0.0.1:6095'}});
