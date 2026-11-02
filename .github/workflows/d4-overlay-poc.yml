@@ -41,6 +41,8 @@ jobs:
         run: npm run build
       - name: Rust runtime logging tests
         run: cargo test --locked --manifest-path runtime-logging/Cargo.toml
+      - name: Rust report archive/encryption/retry tests
+        run: cargo test --locked --manifest-path report-issue/Cargo.toml
       - name: Rust mode/hotkey tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: Build portable Windows EXE

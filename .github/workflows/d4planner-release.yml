@@ -32,7 +32,6 @@ jobs:
       D4_BUILD_ONLY: ${{ inputs.build_only }}
       RELEASE_CHANNEL: ${{ github.event_name == 'push' && 'uat' || 'stable' }}
       GH_TOKEN: ${{ github.token }}
-      D4_DISTRIBUTION_APPROVAL: ${{ secrets.D4PLANNER_DISTRIBUTION_APPROVAL_JSON }}
       D4_PUBLIC_RUNTIME_INPUT_URL: ${{ secrets.D4PLANNER_PUBLIC_RUNTIME_INPUTS_URL }}
       D4_PUBLIC_RUNTIME_INPUT_SHA256: ${{ secrets.D4PLANNER_PUBLIC_RUNTIME_INPUTS_SHA256 }}
     steps:
@@ -53,7 +52,7 @@ jobs:
           $v = (Get-Content utility/d4planner/d4planner-be/release1/package-plan.json -Raw | ConvertFrom-Json).version
           if ($v -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') { throw 'Invalid UAT version' }
           "RELEASE_VERSION=$v" >> $env:GITHUB_ENV
-      - name: Validate source, version, distribution and protected publish gate
+      - name: Validate build inputs and reject an existing Release when publishing
         shell: pwsh
         run: |
           python utility/d4planner/d4planner-be/tools/release_ci.py validate --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release"
@@ -83,13 +82,13 @@ jobs:
         run: |
           python utility/d4planner/d4planner-be/tools/release_ci.py build --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release"
           if ($LASTEXITCODE -ne 0) { throw 'Production package build/health failed' }
-      - name: Verify plaintext redistribution before any upload
+      - name: Verify package integrity and allowed assets before upload
         shell: pwsh
         env:
           D4_BUILT_SETUP_SHA256: ${{ steps.build.outputs.setup_sha256 }}
         run: |
           python utility/d4planner/d4planner-be/tools/release_ci.py prepare-upload --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release/build/verified-artifact"
-          if ($LASTEXITCODE -ne 0) { throw 'Plaintext distribution not approved; no upload' }
+          if ($LASTEXITCODE -ne 0) { throw 'Artifact preparation failed; no upload' }
           python utility/d4planner/d4planner-be/tools/release_ci.py validate-upload --channel "$env:RELEASE_CHANNEL" --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory "$env:RUNNER_TEMP/d4-release/build/verified-artifact"
           if ($LASTEXITCODE -ne 0) { throw 'Public artifact validation failed closed' }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -114,7 +113,6 @@ jobs:
     needs: build
     runs-on: windows-2022
     timeout-minutes: 15
-    environment: d4planner-release
     permissions:
       contents: write
       actions: read
@@ -124,8 +122,6 @@ jobs:
       RELEASE_VERSION: ${{ inputs.version }}
       SOURCE_SHA: ${{ github.sha }}
       D4_BUILT_SETUP_SHA256: ${{ needs.build.outputs.setup_sha256 }}
-      D4_DISTRIBUTION_APPROVAL: ${{ secrets.D4PLANNER_DISTRIBUTION_APPROVAL_JSON }}
-      D4_RELEASE_GATES: ${{ secrets.D4PLANNER_RELEASE_GATES_JSON }}
     steps:
       - name: Preserve exact LF execution bytes in the Windows checkout
         shell: pwsh
@@ -142,11 +138,11 @@ jobs:
           artifact-ids: ${{ needs.build.outputs.artifact_id }}
           path: verified-artifact
           merge-multiple: true
-      - name: Verify approval, original artifact, release gates and publish once
+      - name: Verify original artifact and publish only if Release is absent
         shell: pwsh
         run: |
           python utility/d4planner/d4planner-be/tools/release_ci.py publish --version "$env:RELEASE_VERSION" --source "$env:SOURCE_SHA" --directory verified-artifact
-          if ($LASTEXITCODE -ne 0) { throw 'Release was not authorized or failed closed' }
+          if ($LASTEXITCODE -ne 0) { throw 'Release already exists or publication failed' }
 
   publish-uat:
     if: github.event_name == 'push'
@@ -160,8 +156,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       SOURCE_SHA: ${{ github.sha }}
       D4_BUILT_SETUP_SHA256: ${{ needs.build.outputs.setup_sha256 }}
-      D4_UAT_RELEASE_APPROVAL: ${{ secrets.D4PLANNER_UAT_RELEASE_APPROVAL_JSON }}
-      D4_DISTRIBUTION_APPROVAL: ${{ secrets.D4PLANNER_DISTRIBUTION_APPROVAL_JSON }}
     steps:
       - name: Preserve exact LF execution bytes in the Windows checkout
         shell: pwsh

@@ -125,6 +125,8 @@ def test_wheel_installs_adapter_and_resolves_external_runtime_without_cwd(tmp_pa
     wheel = next(tmp_path.glob('*.whl'))
     with zipfile.ZipFile(wheel) as archive:
         assert archive.read('d4planner/rulekit/worker.js') == WORKER.read_bytes()
+        assert 'd4planner/managed_backend.py' in archive.namelist()
+        assert not any('gateway' in name.lower() for name in archive.namelist())
     target = tmp_path / 'site-packages'
     install_result = subprocess.run([sys.executable, '-m', 'pip', 'install', '--no-deps', '--target', str(target), str(wheel)],
                    capture_output=True, text=True, timeout=60)

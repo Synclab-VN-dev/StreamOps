@@ -26,6 +26,8 @@ jobs:
             utility/d4planner/d4planner-be/tests/test_multi_key_hook.py \
             utility/d4planner/d4planner-be/tests/test_multi_key_capture.py \
             utility/d4planner/d4planner-be/tests/test_issue87_uat_evidence.py
+      - name: Server-side Report Gateway contract and cleanup mocks
+        run: python -m unittest discover -s utility/d4planner/d4planner-be/report-gateway/tests -v
       - name: Controller CLI validate on Linux
         run: |
           python -m d4planner.cli controller profiles

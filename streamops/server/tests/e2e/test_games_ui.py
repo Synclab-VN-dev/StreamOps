@@ -115,7 +115,17 @@ class FakeContract:
 
 
 @pytest.fixture
-def games_ui_server():
+def page(games_ui_server, page):
+    """Create the browser context after its server; close it before server teardown.
+
+    Reuse pytest-playwright's page so tracing/screenshots retain their lifecycle.
+    An open observer must not reconnect while its fixture server is shutting down.
+    """
+    return page
+
+
+@pytest.fixture
+def games_ui_server(browser):
     fake = FakeContract()
     app = FastAPI()
 
@@ -211,21 +221,26 @@ def games_ui_server():
     server=uvicorn.Server(uvicorn.Config(app,log_level="warning",lifespan="on",timeout_graceful_shutdown=3))
     thread=threading.Thread(target=server.run,kwargs={"sockets":[listener]},daemon=True)
     thread.start()
-    wait_until(lambda:server.started)
-    try: yield f"http://127.0.0.1:{port}",fake
+    try:
+        wait_until(lambda: server.started)
+        yield f"http://127.0.0.1:{port}", fake
     finally:
-        # Close live WS consumers before uvicorn lifespan shutdown; do not leave
-        # a fixture waiting on a browser that is still open in pytest teardown.
-        if fake.loop:
-            async def close_peers():
-                for ws in tuple(fake.peers | fake.steam_peers):
-                    try:
-                        await ws.close(code=1001)
-                    except Exception:
-                        pass
-            asyncio.run_coroutine_threadsafe(close_peers(),fake.loop).result(timeout=5)
-        server.should_exit=True;thread.join(timeout=10)
-        if thread.is_alive(): raise RuntimeError("Fake WS server could not stop")
+        consumers_closed = not browser.contexts
+        try:
+            if fake.loop and fake.loop.is_running():
+                async def close_peers():
+                    for ws in tuple(fake.peers | fake.steam_peers | fake.node_peers):
+                        try:
+                            await ws.close(code=1001)
+                        except WebSocketDisconnect:
+                            pass
+                asyncio.run_coroutine_threadsafe(close_peers(), fake.loop).result(timeout=5)
+        finally:
+            server.should_exit = True
+            thread.join(timeout=10)
+            listener.close()
+        assert not thread.is_alive(), "Fake WS server could not stop"
+        assert consumers_closed, "Browser consumers must close before the test server"
 
 
 def test_games_catalog_filter_and_detail(page: Page, games_ui_server):
@@ -762,6 +777,11 @@ def test_detail_back_restores_scroll_focus_after_long_library(page: Page, games_
     base, fake = games_ui_server
     page.set_viewport_size({"width":width,"height":height})
     page.goto(base+"/games")
+    # The initial pushed snapshot and games.list response can both render the
+    # library. Finish that handshake before injecting the long-library scenario.
+    page.wait_for_function("window.StreamOpsGames?.client.connected && "
+                           "!window.StreamOpsGames.store.loading && "
+                           "window.StreamOpsGames.client.pending.size === 0")
     entries = [game("Indexed game "+str(i), "steam:"+str(1000+i), "STOPPED")
                for i in range(18)]
     fake.set_library(entries)

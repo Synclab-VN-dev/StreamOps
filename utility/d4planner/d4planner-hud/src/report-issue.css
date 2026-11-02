@@ -1,0 +1,64 @@
+.report-panel {
+  width: 360px;
+  max-height: 620px;
+  overflow: auto;
+  background: #f5f8fa;
+  border: 1px solid #d4e0e7;
+  border-radius: 14px;
+  padding: 16px;
+  color: #435965;
+  box-sizing: border-box;
+  font-size: 12px;
+  pointer-events: auto;
+}
+.report-panel header,
+.report-panel nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.report-panel label {
+  display: block;
+  margin: 8px 0;
+}
+.report-panel textarea,
+.report-panel select {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  background: white;
+  border: 1px solid #d7e1e8;
+  border-radius: 6px;
+  padding: 6px;
+  color: inherit;
+}
+.report-panel fieldset {
+  border: 0;
+  padding: 0;
+}
+.report-panel button {
+  padding: 7px;
+  border: 1px solid #d7e1e8;
+  border-radius: 6px;
+  background: white;
+  color: #277da8;
+  cursor: pointer;
+}
+.report-panel button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.report-panel [role="alert"] {
+  color: #934a37;
+}
+.report-panel li {
+  overflow-wrap: anywhere;
+}
+.report-panel footer {
+  border-top: 1px solid #d7e1e8;
+  margin-top: 12px;
+}
+.report-panel a {
+  overflow-wrap: anywhere;
+}
