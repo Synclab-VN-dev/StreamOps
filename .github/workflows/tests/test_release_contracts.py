@@ -19,12 +19,17 @@ class ReleaseAdapter(unittest.TestCase):
             module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
             calls=[]
             output=temp/'output';output.write_text('setup_sha256='+'a'*64+'\n')
-            ctx=SimpleNamespace(root=ROOT,version='1.2.8',channel='stable',temp=temp,intent='build',
+            ctx=SimpleNamespace(root=ROOT,version='1.2.8',temp=temp,intent='build',
                 source={'head':'a'*40},job={'operation':'build'},env={'GITHUB_OUTPUT':str(output)},
                 isolated_python=lambda:None,tool=lambda *a:None,shell=lambda *a,**k:None,
                 python=lambda *a,**k:calls.append(tuple(map(str,a))),
                 artifact=lambda *a:calls.append(('artifact',)))
-            module.run(ctx)
+            # A tag ref must not override the explicit manual version.
+            from unittest.mock import patch
+            import os
+            with patch.dict(os.environ,{'GITHUB_REF_TYPE':'tag','GITHUB_REF_NAME':'d4planner-uat/v9.9.9'}):
+                module.run(ctx)
+            self.assertTrue(all(c[c.index('--version')+1]=='1.2.8' for c in calls if '--version' in c))
             operations=[c[1] for c in calls if c[0].endswith('release_ci.py')]
             self.assertEqual(operations,['validate','build','prepare-upload','validate-upload'])
             self.assertEqual(ctx.env['D4_BUILD_ONLY'],'true')
@@ -39,7 +44,7 @@ class ReleaseAdapter(unittest.TestCase):
             exports=[]
             def run(*args):
                 if args[1]=='validate-upload':raise RuntimeError('integrity rejected')
-            ctx=SimpleNamespace(root=ROOT,version='1.2.8',channel='stable',temp=temp,intent='build',
+            ctx=SimpleNamespace(root=ROOT,version='1.2.8',temp=temp,intent='build',
                 source={'head':'a'*40},job={'operation':'build'},env={'GITHUB_OUTPUT':str(output)},
                 isolated_python=lambda:None,tool=lambda *a:None,shell=lambda *a,**k:None,
                 python=run,artifact=lambda *a:exports.append(a))

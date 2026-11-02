@@ -263,13 +263,13 @@ try {
         '-r','utility/d4planner/d4planner-be/release1/requirements-release.txt')
     $tool = 'utility/d4planner/d4planner-be/tools/release_ci.py'
     $out = Join-Path $rootPath 'out'
-    $common = @('--channel','stable','--version',$Version,'--source',$SourceHead,'--directory',$out)
+    $common = @('--version',$Version,'--source',$SourceHead,'--directory',$out)
     Invoke-Native $pythonBuild (@($tool,'validate')+$common)
     Invoke-Native $pythonBuild (@($tool,'build')+$common)
     $artifact = Join-Path $out 'build\verified-artifact'
     $meta = Get-Content -LiteralPath (Join-Path $artifact 'release-metadata.json') -Raw | ConvertFrom-Json
     $env:D4_BUILT_SETUP_SHA256 = $meta.sha256
-    $verifyArgs = @('--channel','stable','--version',$Version,'--source',$SourceHead,'--directory',$artifact)
+    $verifyArgs = @('--version',$Version,'--source',$SourceHead,'--directory',$artifact)
     Invoke-Native $pythonBuild (@($tool,'prepare-upload')+$verifyArgs)
     Invoke-Native $pythonBuild (@($tool,'validate-upload')+$verifyArgs)
     foreach ($name in @("D4Planner-Setup-$Version.exe",'release-metadata.json','SHA256SUMS','UAT.md')) {

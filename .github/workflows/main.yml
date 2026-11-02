@@ -1,7 +1,8 @@
 name: CI
 'on':
   pull_request: null
-  push: null
+  push:
+    branches: [master]
   workflow_dispatch:
     inputs:
       operation:
@@ -97,8 +98,7 @@ jobs:
       env:
         CI_JOB: ${{ matrix.key }}
         CI_VERSION: ${{ inputs.version }}
-        CI_CHANNEL: ${{ github.ref_type == 'tag' && 'uat' || 'stable' }}
-      run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --channel "$CI_CHANNEL" --output "$RUNNER_TEMP/ci-results"
+      run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --output "$RUNNER_TEMP/ci-results"
     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       if: always()
       with:
@@ -109,8 +109,7 @@ jobs:
   build:
     needs:
     - plan
-    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.build).include[0] != null && (github.event_name == 'workflow_dispatch' || (github.event_name
-      == 'push' && startsWith(github.ref, 'refs/tags/'))) }}
+    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.build).include[0] != null && github.event_name == 'workflow_dispatch' && (inputs.operation == 'build' || inputs.operation == 'publish') }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.build) }}
@@ -148,14 +147,13 @@ jobs:
       env:
         CI_JOB: ${{ matrix.key }}
         CI_VERSION: ${{ inputs.version }}
-        CI_CHANNEL: ${{ github.ref_type == 'tag' && 'uat' || 'stable' }}
         CI_TRUSTED_EXECUTION: '1'
         CI_READ_TOKEN: ${{ github.token }}
         CI_BOUND_SECRET_1: ${{ matrix.secret_1 == 'D4PLANNER_PUBLIC_RUNTIME_INPUTS_URL' && secrets.D4PLANNER_PUBLIC_RUNTIME_INPUTS_URL || matrix.secret_1 == 'D4PLANNER_PUBLIC_RUNTIME_INPUTS_SHA256'
           && secrets.D4PLANNER_PUBLIC_RUNTIME_INPUTS_SHA256 || '' }}
         CI_BOUND_SECRET_2: ${{ matrix.secret_2 == 'D4PLANNER_PUBLIC_RUNTIME_INPUTS_URL' && secrets.D4PLANNER_PUBLIC_RUNTIME_INPUTS_URL || matrix.secret_2 == 'D4PLANNER_PUBLIC_RUNTIME_INPUTS_SHA256'
           && secrets.D4PLANNER_PUBLIC_RUNTIME_INPUTS_SHA256 || '' }}
-      run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --channel "$CI_CHANNEL" --output "$RUNNER_TEMP/ci-results"
+      run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --output "$RUNNER_TEMP/ci-results"
     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       if: always()
       with:
@@ -166,8 +164,7 @@ jobs:
   fixture:
     needs:
     - plan
-    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.fixture).include[0] != null && (github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))) && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' }}
+    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.fixture).include[0] != null && github.event_name == 'workflow_dispatch' && inputs.operation == 'test' && github.ref == 'refs/heads/master' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.fixture) }}
@@ -206,11 +203,10 @@ jobs:
       env:
         CI_JOB: ${{ matrix.key }}
         CI_VERSION: ${{ inputs.version }}
-        CI_CHANNEL: ${{ github.ref_type == 'tag' && 'uat' || 'stable' }}
         CI_TRUSTED_EXECUTION: '1'
         CI_READ_TOKEN: ${{ github.token }}
         CI_BOUND_SECRET_1: ${{ matrix.secret_1 == 'MAXROLL_FIXTURE_AGE_IDENTITY' && secrets.MAXROLL_FIXTURE_AGE_IDENTITY || '' }}
-      run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --channel "$CI_CHANNEL" --output "$RUNNER_TEMP/ci-results"
+      run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --output "$RUNNER_TEMP/ci-results"
     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       if: always()
       with:
@@ -223,16 +219,15 @@ jobs:
     - plan
     - read
     - build
-    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.publish).include[0] != null && (github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))) && needs.read.result != 'failure' && needs.read.result != 'cancelled' && needs.build.result
-      != 'failure' && needs.build.result != 'cancelled' }}
+    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.publish).include[0] != null && github.event_name == 'workflow_dispatch' && inputs.operation == 'publish' && github.ref == 'refs/heads/master' && needs.read.result != 'failure' && needs.read.result != 'cancelled' && needs.build.result != 'failure' && needs.build.result != 'cancelled' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.publish) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.timeout }}
     permissions:
-      contents: write
+      contents: read
+    environment: production-release
     steps:
     - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       with:
@@ -267,10 +262,9 @@ jobs:
       env:
         CI_JOB: ${{ matrix.key }}
         CI_VERSION: ${{ inputs.version }}
-        CI_CHANNEL: ${{ github.ref_type == 'tag' && 'uat' || 'stable' }}
         CI_TRUSTED_EXECUTION: '1'
-        CI_PUBLISH_TOKEN: ${{ github.token }}
-      run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --channel "$CI_CHANNEL" --output "$RUNNER_TEMP/ci-results"
+        CI_PUBLISH_TOKEN: ${{ secrets.CI_PRODUCTION_RELEASE_TOKEN }}
+      run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --output "$RUNNER_TEMP/ci-results"
         --inputs "$RUNNER_TEMP/ci-inputs"
     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       if: always()
@@ -284,10 +278,7 @@ jobs:
     - plan
     - read
     - build
-    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.external_publish).include[0] != null && (github.event_name == 'workflow_dispatch'
-      || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))) && github.event_name == 'workflow_dispatch' && inputs.operation == 'publish' && (github.ref
-      == 'refs/heads/master' || github.ref == 'refs/heads/feat/issue-47-obs-plugin-manager') && needs.read.result != 'failure' && needs.read.result != 'cancelled'
-      && needs.build.result != 'failure' && needs.build.result != 'cancelled' }}
+    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.external_publish).include[0] != null && github.event_name == 'workflow_dispatch' && inputs.operation == 'publish' && github.ref == 'refs/heads/master' && needs.read.result != 'failure' && needs.read.result != 'cancelled' && needs.build.result != 'failure' && needs.build.result != 'cancelled' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.external_publish) }}
@@ -330,10 +321,9 @@ jobs:
       env:
         CI_JOB: ${{ matrix.key }}
         CI_VERSION: ${{ inputs.version }}
-        CI_CHANNEL: ${{ github.ref_type == 'tag' && 'uat' || 'stable' }}
         CI_TRUSTED_EXECUTION: '1'
         CI_BOUND_SECRET_1: ${{ matrix.secret_1 == 'SYNCLAB_OBS_RELEASE_TOKEN' && secrets.SYNCLAB_OBS_RELEASE_TOKEN || '' }}
-      run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --channel "$CI_CHANNEL" --output "$RUNNER_TEMP/ci-results"
+      run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --output "$RUNNER_TEMP/ci-results"
         --inputs "$RUNNER_TEMP/ci-inputs"
     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       if: always()

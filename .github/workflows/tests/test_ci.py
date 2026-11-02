@@ -194,13 +194,13 @@ class Contracts(unittest.TestCase):
                 self.assertEqual(ctx.env['D4_PUBLIC_RUNTIME_INPUT_SHA256'],'a'*64)
             finally:ctx.close()
 
-    def test_new_branch_push_selects_all_regular_tests_without_publish(self):
+    def test_initial_master_push_selects_all_regular_tests_without_publish(self):
         self.contract();self.contract('second/ci.test.py','second');self.commit()
         event=Path(self.tmp.name)/'event.json'
         event.write_text(json.dumps({'created':True,'before':'0'*40,'after':self.git('rev-parse','HEAD').strip()}))
         output=Path(self.tmp.name)/'plan'
         with patch.dict(os.environ,{'GITHUB_EVENT_PATH':str(event),'GITHUB_EVENT_NAME':'push',
-                                    'GITHUB_REF':'refs/heads/new-branch'}):
+                                    'GITHUB_REF':'refs/heads/master'}):
             code=ci.main(['actions-plan','--root',str(self.root),'--output',str(output)])
         self.assertEqual(code,0)
         document=json.loads((output/'plan.json').read_text())
@@ -246,6 +246,86 @@ class Contracts(unittest.TestCase):
         self.assertFalse(ctx.temp.exists())
         self.assertTrue(original.exists())
         original.chmod(0o644)
+
+    def test_publish_context_rejects_pr_feature_push_build_and_wrong_identity(self):
+        self.contract('product/ci.release.py','product',jobs=[dict(id='publish',profile='linux',timeout=20,operation='publish',capability='publish')])
+        self.commit();p=ci.plan(self.root,product='product',operation='publish')
+        event=Path(self.tmp.name)/'event.json'
+        base={'GITHUB_ACTIONS':'true','GITHUB_EVENT_NAME':'workflow_dispatch',
+              'GITHUB_REF':'refs/heads/master','GITHUB_SHA':p['source']['head'],
+              'GITHUB_EVENT_PATH':str(event),'CI_TRUSTED_EXECUTION':'1',
+              'CI_PUBLISH_TOKEN':'PRIVATE_PUBLISH_CANARY'}
+        cases=[({'GITHUB_EVENT_NAME':'pull_request'},'publish'),
+               ({'GITHUB_REF':'refs/heads/feature'},'publish'),
+               ({'GITHUB_REF':'refs/tags/v1.2.8'},'publish'),
+               ({'GITHUB_EVENT_NAME':'push'},'publish'),({},'build'),
+               ({'GITHUB_SHA':'f'*40},'publish'),({'GITHUB_ACTIONS':'false'},'publish')]
+        for index,(change,operation) in enumerate(cases):
+            event.write_text(json.dumps({'inputs':{'operation':operation,'product':'product','version':'1.2.8'}}))
+            with patch.dict(os.environ,{**base,**change},clear=True):
+                result=ci.execute(self.root,p,p['jobs'][0],Path(self.tmp.name)/str(index),version='1.2.8')
+            self.assertEqual(result['status'],'BLOCKED',result)
+            self.assertEqual(result['commands'],[])
+            self.assertNotIn('PRIVATE_PUBLISH_CANARY',json.dumps(result))
+        event.write_text(json.dumps({'inputs':{'operation':'publish','product':'product','version':'1.2.8'}}))
+        base.pop('CI_PUBLISH_TOKEN')
+        with patch.dict(os.environ,base,clear=True):
+            result=ci.execute(self.root,p,p['jobs'][0],Path(self.tmp.name)/'missing-token',version='1.2.8')
+        self.assertEqual(result['error'],'PUBLISH_CREDENTIAL_NOT_PROVIDED')
+
+    def test_read_execution_strips_production_credentials_from_child_and_evidence(self):
+        self.contract()
+        path=self.root/'widget/ci.test.py'
+        path.write_text(path.read_text().replace("print(\'2 passed in 0.01s\')", "import os; assert not any(\'CANARY\' in v for v in os.environ.values()); print(2)"))
+        p=self.plan()
+        with patch.dict(os.environ,{'CI_PUBLISH_TOKEN':'PRODUCTION_CANARY','GH_TOKEN':'GH_CANARY',
+                                  'CI_BOUND_SECRET_1':'BOUND_CANARY','GITHUB_TOKEN':'GITHUB_CANARY'}):
+            result=ci.execute(self.root,p,p['jobs'][0],Path(self.tmp.name)/'secret-negative')
+        self.assertEqual(result['status'],'PASS',result)
+        for payload in (json.dumps(p),json.dumps(ci.matrices(p)),json.dumps(result),
+                        (Path(self.tmp.name)/'secret-negative/commands.log').read_text()):
+            for value in ('PRODUCTION_CANARY','GH_CANARY','BOUND_CANARY','GITHUB_CANARY'):
+                self.assertNotIn(value,payload)
+
+    def test_feature_and_tag_push_are_rejected_by_actions_planner(self):
+        self.contract();self.commit()
+        event=Path(self.tmp.name)/'event.json';event.write_text(json.dumps({'before':self.base,'after':self.git('rev-parse','HEAD').strip()}))
+        for index,ref in enumerate(('refs/heads/feature','refs/tags/v1.2.8')):
+            with patch.dict(os.environ,{'GITHUB_EVENT_PATH':str(event),'GITHUB_EVENT_NAME':'push','GITHUB_REF':ref}):
+                self.assertEqual(ci.main(['actions-plan','--root',str(self.root),'--output',str(Path(self.tmp.name)/str(index))]),2)
+
+    def test_actions_master_push_and_pr_cannot_request_publish_via_cli(self):
+        self.contract();self.commit()
+        head=self.git('rev-parse','HEAD').strip()
+        for index,name in enumerate(('push','pull_request')):
+            event=Path(self.tmp.name)/'event.json'
+            event.write_text(json.dumps({'before':self.base,'after':head,
+                'pull_request':{'head':{'sha':head},'base':{'sha':self.base}}}))
+            env={'GITHUB_EVENT_PATH':str(event),'GITHUB_EVENT_NAME':name,'GITHUB_REF':'refs/heads/master'}
+            with patch.dict(os.environ,env):
+                output=Path(self.tmp.name)/('normal'+str(index))
+                self.assertEqual(ci.main(['actions-plan','--root',str(self.root),'--output',str(output)]),0)
+                document=json.loads((output/'plan.json').read_text())
+                self.assertEqual(document['operation'],'test')
+                self.assertTrue(all(j['capability']=='read' for j in document['jobs']))
+                self.assertEqual(ci.main(['actions-plan','--root',str(self.root),'--operation','publish',
+                                         '--product','widget','--output',str(Path(self.tmp.name)/('bad'+str(index)))]),2)
+
+    def test_verified_build_report_and_bytes_required_before_publish_adapter(self):
+        self.contract();p=self.plan();out=Path(self.tmp.name)/'out';out.mkdir()
+        ctx=ci.Context(self.root,p['jobs'][0],out,p['source'])
+        self.addCleanup(ctx.close);ctx.plan_id=p['planId']
+        inputs=Path(self.tmp.name)/'inputs';artifact=inputs/'build/artifacts/setup/file.exe'
+        artifact.parent.mkdir(parents=True);artifact.write_bytes(b'synthetic-test-only')
+        ctx.inputs=inputs
+        report={'component':'widget','operation':'build','status':'PASS','source':p['source'],
+                'planId':p['planId'],'artifactManifest':{'setup/file.exe':ci.digest(artifact.read_bytes())}}
+        ci.write_json(inputs/'build/result.json',report)
+        self.assertEqual(ctx.build_artifact('setup'),artifact.parent)
+        artifact.write_bytes(b'tampered')
+        with self.assertRaisesRegex(ci.ContractError,'BUILD_ARTIFACT_INTEGRITY'):ctx.build_artifact('setup')
+        report['source']={};ci.write_json(inputs/'build/result.json',report)
+        with self.assertRaisesRegex(ci.ContractError,'BUILD_REPORT_IDENTITY'):ctx.build_artifact('setup')
 
     def test_clean_no_change(self):
         self.contract();self.commit();self.base=self.git('rev-parse','HEAD').strip()

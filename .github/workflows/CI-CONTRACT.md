@@ -39,15 +39,16 @@ Jobs prepare their own dependencies. Nearest test-contract folder owns files;
 with no source verification requirement. Unknown paths, removed contracts without
 replacement coverage, missing history, malformed metadata and unsupported runner
 profiles fail closed. Rename detection examines both deleted and added paths.
-PRs use merge-base; pushes use before/after. A verified new-branch push
+PRs use merge-base; master pushes use before/after. A verified initial master push
 (`created=true`, zero `before`, matching `after`/checkout HEAD) conservatively
 selects all regular tests and records that reason; it never selects publishing
 or manual trusted-fixture jobs. Zero `before` on other events remains blocked. Local `--changed` includes tracked
 edits and nonignored untracked files. Contract metadata from both sides is examined.
 
-Test jobs use operation `test`. Product jobs use `build` or `publish` and may declare
-`release_tags`; unknown or ambiguous tag ownership fails closed. A publish plan
-contains both build and publish jobs; changed files never imply publishing.
+Test jobs use operation `test`. Product jobs use `build` or `publish`. Every declared
+job is required; schema v1 rejects the `required` field (including `required:false`).
+A publish plan contains both build and publish jobs; changed files never imply
+publishing. Tag-triggered release metadata and channel selection are removed.
 
 ## Capabilities and trust
 
@@ -55,26 +56,65 @@ Profiles `linux` and `windows` select hosted ubuntu-24.04 and windows-2022.
 Contracts cannot request self-hosted runners or choose an environment. Tool
 versions are plain validated values, never interpolated as shell source.
 
-| Capability | Operation | Wrapper policy |
+| Capability | Operation | Source wrapper policy |
 |---|---|---|
 | read | test/build | contents:read, no repository secrets |
-| public-inputs | build | explicit dispatch/tag; optional approved public input URL/hash aliases; read token |
-| fixture | manual test | dispatch on master, maxroll-fixture-trusted; exact age identity alias; read token |
-| publish | publish | explicit dispatch or recognized tag, contents:write; verified same-run build |
-| external-publish | publish | manual publish on master or feat/issue-47-obs-plugin-manager; obs-plugin-release; exact OBS release token |
+| public-inputs | build | explicit dispatch; optional public input URL/hash aliases; read token only |
+| fixture | manual test | dispatch on master, maxroll-fixture-trusted; exact age identity alias |
+| publish | publish | manual publish on master; production-release environment; CI_PRODUCTION_RELEASE_TOKEN, no write GITHUB_TOKEN |
+| external-publish | publish | manual publish on master; obs-plugin-release environment; exact OBS release token |
 
-Secret names/aliases are declarations, not grants. Engine validates the fixed
-approved bindings; workflow supplies only those bindings in their execution step.
-PR metadata cannot enable privileged jobs. No `pull_request_target` is used.
-Credentials are omitted from plans, arguments and reports, and redacted from logs.
-Build/test cannot import broad release credentials from the caller environment.
-Local privileged execution additionally needs `CI_TRUSTED_EXECUTION=1` and explicit
-credentials; this flag is a local preflight, not the GitHub authorization boundary.
+Secret aliases request capability; they never grant it. Source checks validate
+operation, master ref, dispatch inputs/product/version and source SHA before binding
+publish credentials or importing the contract. Missing credentials block execution.
+The executor strips inherited credential variables from read/build subprocesses.
+Plans/matrices contain names only; bound secret values are redacted from evidence.
+`CI_TRUSTED_EXECUTION=1` is defense in depth, not an authorization boundary. Local
+production publishing is blocked: production requires GitHub manual master context.
 
-Read-only inventory on 2026-11-01: `obs-plugin-release` exists with **no protection
-rules**. `maxroll-fixture-trusted` was absent from the environments response.
-Do not claim an approval gate exists merely from its YAML name. Provisioning and
-changing protection rules remain Owner/admin work; no fixture run was performed.
+### External enforcement: BLOCKED, not established by this PR
+
+Read-only inventory on 2026-11-02 found default workflow permissions `read`, and
+only `obs-plugin-release`, with no branch policy or protection rules. No production
+or fixture environment protection has been verified. No settings were changed.
+
+Owner/admin must provision environment-only production credentials (no repository
+or organization-level copies), restrict deployment to the **master branch only**
+(not tags or refs/pull/*/merge), and configure no required reviewers, matching the
+Owner's manual-dispatch authorization. `production-release` uses
+`CI_PRODUCTION_RELEASE_TOKEN`; the OBS environment also needs its branch restriction.
+Do not provision/release until the remaining GITHUB_TOKEN bypass below is resolved.
+A missing environment secret leaves the shipped publish executor BLOCKED.
+
+**Environment isolation alone does not satisfy the malicious-YAML threat case.**
+A same-repository PR can edit its YAML to request `contents:write` and use the
+automatic GITHUB_TOKEN outside the environment. The repository's read default is
+not a permissions ceiling. Source guards, static tests, protected branches and an
+environment-only PAT cannot prove that an arbitrary replacement workflow cannot
+create a Release. The maintenance workflow's existing write capability reinforces
+why a code-only claim would be false; its domain behavior is unchanged here.
+
+Owner/admin must establish an independently enforced restriction on untrusted
+workflow write capability, or approve a different isolation model (for example,
+fork PR execution without write tokens/secrets, or externally trusted publishing
+with repository isolation). Those are policy/settings decisions, not implemented
+by this PR. Do not call CI-11's adversarial-YAML security gate PASS until verified.
+No actual malicious publish attempt is used to test this boundary.
+
+References: [GitHub workflow permissions](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository),
+[environment deployment restrictions](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments).
+
+## Owner flows
+
+- Development: local test → pull_request CI → Owner review/merge → master push CI.
+  Feature pushes do not run an additional push CI; no tag triggers.
+- Test installer: workflow_dispatch `operation=build`, product and explicit version
+  → build/verify → Actions artifact → Owner download/install/test. No GitHub Release,
+  production credential, or Release-existence check. UAT is testing an artifact.
+- Production: trusted master + workflow_dispatch `operation=publish`, product/version
+  → build/verify → separately authorized credential → stable GitHub Release.
+  The external security gate above must be resolved first. No extra deployment
+  review is prescribed. Manual versions are validated, never inferred from a tag.
 
 ## Execution and evidence
 
@@ -91,7 +131,7 @@ publishing. Product verifiers additionally enforce version/source/resource polic
 Logs and diagnostics are not substitutes for independent native/visual evidence.
 
 `PASS`, `FAIL`, `BLOCKED`, `NOT_RUN`, `CANCELLED`, and `NO_CHANGE` remain distinct.
-Aggregate fails on missing, duplicate, wrong-source or non-PASS required reports.
+Aggregate fails on missing, duplicate, wrong-source or non-PASS reports (all declared jobs are required).
 Only a successfully validated empty plan can produce NO_CHANGE. The final check
 also requires planner success; skipped or cancelled jobs cannot manufacture PASS.
 
@@ -110,8 +150,7 @@ Windows runtime is BLOCKED on Linux. Do not start a VM implicitly.
 
 Publish interface: `run --product <ID> --operation publish --version <VERSION>`.
 This documents the command, not authorization to release. Separate publish jobs
-consume `--inputs <downloaded same-run reports/artifacts>`. Local sequential
-publish must also point `--inputs` to its build output. Build-only never checks
+consume `--inputs <downloaded same-run reports/artifacts>`. Local production publish is blocked; mocked transport tests exercise verification. Build-only never checks
 Release existence. Publish refuses an existing version through the existing core.
 
 ## Migration ledger
@@ -131,7 +170,7 @@ Release existence. Publish refuses an existing version through the existing core
 | game-manager-visual | nested visual contract: independent reference builds, immutable hashes, enforced approval and screenshot/diff evidence |
 | obs-multi-rtmp-build / build | OBS test/product contract: DLL + unapproved package, no OBS install/control |
 | obs-multi-rtmp-build / publish | OBS product contract: manual/ref/version/OBS pin, draft/four assets/roundtrip byte-compare/promote |
-| d4planner-release / build/publish/UAT | product-root adapter reuses tools/release_ci.py; exact Setup integrity, stable/UAT policy, source-bound artifacts |
+| d4planner-release / build/publish | product-root adapter reuses tools/release_ci.py; exact Setup integrity; manual test artifact and stable publication are separate; legacy UAT Release removed |
 | d4planner-issue-log-cleanup | schedule wrapper + script/schedule.py, unchanged domain eligibility and revalidation |
 
 HUD changes retain the historical StreamOps integration dependency; Launcher-only
