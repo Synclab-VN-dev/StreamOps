@@ -1,7 +1,9 @@
 """Component-owned CI commands migrated from the corresponding native workflows."""
 CI_SPEC = {'version': 1,
  'id': 'd4planner-rulekit',
- 'watch': ['.github/workflows/main.yml', '.github/workflows/ci.py'],
+ # Legacy source paths remain watched while migration is compared with master.
+ 'watch': ['utility/d4-rulekit/**',
+           '.github/workflows/main.yml', '.github/workflows/ci.py'],
  'depends_on': [],
  'jobs': [{'id': 'schema', 'profile': 'linux', 'timeout': 900},
           {'id': 'browser',
