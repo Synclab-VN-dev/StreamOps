@@ -227,5 +227,36 @@ it('native SQLite renders last-known score with Backend and WS unavailable', asy
   expect(document.querySelector('main')?.getAttribute('data-connection')).toBe('DISCONNECTED');
   expect(document.querySelector('main')?.getAttribute('data-freshness')).toBe('STALE');
   expect(mocks.invoke.mock.calls.some(call=>call[0]==='start_backend'||call[0]==='restart_backend')).toBe(false);
+  fireEvent.click(screen.getByRole('button', {name:'Open target menu'}));
+  fireEvent.click(screen.getByRole('menuitem', {name:'Report Issue'}));
+  expect(screen.getByLabelText('Report Issue')).toBeTruthy();
+  expect(mocks.invoke.mock.calls.some(call=>call[0]==='start_backend')).toBe(false);
   view.unmount();
+});
+
+it('Report Issue pointer interaction does not start native window dragging', async () => {
+  render(<App dataSource={new FakeDataSource()} />);
+  await screen.findByText('SYNTHETIC CHARGE BOLT BUILD');
+  const menu=screen.getByRole('button',{name:'Open target menu'});
+  fireEvent.mouseDown(menu,{button:0});
+  expect(mocks.invoke.mock.calls.filter(call=>call[0]==='drag_overlay')).toHaveLength(0);
+  fireEvent.click(menu);
+  fireEvent.mouseDown(screen.getByRole('menuitem',{name:'Report Issue'}),{button:0});
+  fireEvent.click(screen.getByRole('menuitem',{name:'Report Issue'}));
+  expect(screen.getByLabelText('Report Issue')).toBeTruthy();
+  expect(mocks.invoke.mock.calls.filter(call=>call[0]==='drag_overlay')).toHaveLength(0);
+});
+
+it('keeps Report Issue usable while managed Target IPC fails and retries', async () => {
+  const source = new FakeDataSource();
+  const refresh = vi.spyOn(source, 'refreshTargets').mockRejectedValueOnce(new Error('BACKEND_OFFLINE'));
+  render(<App dataSource={source}/>);
+  fireEvent.click(await screen.findByRole('button', {name:'Open target menu'}));
+  expect((await screen.findByRole('alert')).textContent).toContain('BACKEND_OFFLINE');
+  expect(screen.getByRole('menuitem', {name:'Report Issue'})).toBeTruthy();
+  expect(screen.queryByRole('menuitem', {name:/Firewall/})).toBeNull();
+  fireEvent.click(screen.getByRole('button', {name:'Retry Target list'}));
+  expect(await screen.findByRole('menuitem', {name:/Firewall/})).toBeTruthy();
+  expect(refresh).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole('menuitem', {name:'Report Issue'})).toBeTruthy();
 });
