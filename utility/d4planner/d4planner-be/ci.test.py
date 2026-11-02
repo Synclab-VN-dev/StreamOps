@@ -1,7 +1,15 @@
 """Component-owned CI commands migrated from the corresponding native workflows."""
 CI_SPEC = {'version': 1,
  'id': 'd4planner-be',
- 'watch': ['.github/workflows/main.yml',
+ # Legacy source paths remain watched while migration is compared with master.
+ 'watch': ['utility/d4planner/src/**',
+           'utility/d4planner/tests/**',
+           'utility/d4planner/tools/**',
+           'utility/d4planner/nvda-addon/**',
+           'utility/d4planner/artifacts/**',
+           'utility/d4planner/docs/**',
+           'utility/d4planner/pyproject.toml',
+           '.github/workflows/main.yml',
            '.github/workflows/ci.py',
            'scripts/e2e/issue87*',
            'scripts/e2e/issue95*',
