@@ -41,19 +41,22 @@ def test_public_inputs_are_pinned_and_fail_on_tampering(tmp_path,monkeypatch):
 
 
 def test_workflow_is_single_dispatch_build_without_unconditional_publish():
-    text=(ci.ROOT/'.github/workflows/d4planner-release.yml').read_text()
-    assert 'name: D4Planner Release' in text
-    assert 'workflow_dispatch:' in text and 'default: true' in text
+    text=(ci.ROOT/'.github/workflows/main.yml').read_text()
+    contract=(ci.ROOT/'utility/d4planner/ci.release.py').read_text()
+    read=text.split('\n  read:')[1].split('\n  build:')[0]
+    publish=text.split('\n  publish:')[1].split('\n  external_publish:')[0]
+    # PR jobs never receive release credentials; publish requires an explicit plan.
+    assert 'secrets.' not in read
+    assert "github.event_name == 'workflow_dispatch'" in publish
+    assert "github.ref == 'refs/heads/master'" in publish
+    assert 'environment:' not in publish
+    assert 'CI_PUBLISH_TOKEN: ${{ github.token }}' in publish
     assert 'environment: d4planner-release' not in text
     assert '_APPROVAL_JSON' not in text and 'D4_RELEASE_GATES' not in text
-    assert "if: ${{ github.event_name == 'workflow_dispatch' && !inputs.build_only }}" in text
-    assert 'd4planner-uat/v*' in text
-    assert 'prepare-upload --channel' in text
-    assert 'd4-release/build/verified-artifact/D4Planner-Setup-${{ env.RELEASE_VERSION }}.exe' in text
-    assert 'if: always()' in text
-    assert 'publish-uat --channel uat' in text
-    assert 'ref: ${{ github.sha }}' in text
-    assert 'artifact-ids: ${{ needs.build.outputs.artifact_id }}' in text
+    assert 'release_tags' not in contract
+    assert "ctx.env['D4_BUILD_ONLY']='true'" in contract
+    assert "ctx.build_artifact('setup')" in contract
+    assert 'publish-uat' not in contract
     assert 'if-no-files-found: error' in text
 
 
@@ -78,39 +81,6 @@ def test_download_fails_before_network_without_transport_and_integrity_pin(tmp_p
     with pytest.raises(ValueError,match=error):ci.download_inputs(url,digest,tmp_path/'inputs')
 
 
-def test_uat_context_and_snapshot_format_remain_explicit(tmp_path, monkeypatch):
-    plan=tmp_path/"plan.json";plan.write_text(json.dumps({"version":"1.0.3"}))
-    policy=tmp_path/"policy.json";policy.write_text(json.dumps({"uatRevision":1}))
-    monkeypatch.setattr(ci,"PRODUCT_PLAN",plan);monkeypatch.setattr(ci,"UAT_POLICY",policy)
-    ci.uat_context('d4planner-uat/v1.0.3-r1','1.0.3','synclab-automation-system')
-    for tag,actor in [('v1.0.3','TrdHuy'),('d4planner-uat/v1.0.3-r1','untrusted')]:
-        with pytest.raises(ValueError):ci.uat_context(tag,'1.0.3',actor)
-    meta={'sourceHead':HEAD,'version':'1.0.3','sha256':'c'*64,'runtimeHealth':'PASS','encryption':'none','uatRevision':1,'releaseTag':'d4planner-uat/v1.0.3-r1'}
-    policy={'schemaVersion':'d4planner-uat-distribution-policy/v2','scope':'D4PLANNER_R1_UAT',
-            'applicationFormat':'PLAINTEXT_EXE','snapshotFormat':'AGE_ZIP_SEPARATE','uatRevision':1}
-    ci.uat_approved(policy,meta)
-    for change in ({'applicationFormat':'AGE_EXE'},{'snapshotFormat':'PLAINTEXT'},{'uatRevision':2},{'scope':'STABLE'}):
-        with pytest.raises(ValueError):ci.uat_approved({**policy,**change},meta)
-    with pytest.raises(ValueError):ci.uat_approved(policy,{**meta,'encryption':'age/v1'})
-
-
-def test_encrypted_artifact_verifier_rejects_plaintext_and_extra_assets(tmp_path):
-    import hashlib
-    artifact=tmp_path/'D4Planner-Setup-1.0.3.exe.age'
-    artifact.write_bytes(b'age-encryption.org/v1\nunit-test-ciphertext-not-native-evidence')
-    digest=hashlib.sha256(artifact.read_bytes()).hexdigest()
-    metadata={'schemaVersion':'d4planner-encrypted-setup/v1','encryption':'age/v1','artifact':artifact.name,
-              'sourceHead':HEAD,'version':'1.0.3','sha256':digest,'bytes':artifact.stat().st_size,
-              'snapshotIncluded':False,'artifactClass':'D4PLANNER_APPLICATION_NO_SNAPSHOT'}
-    (tmp_path/'release-metadata.json').write_text(json.dumps(metadata))
-    (tmp_path/'SHA256SUMS').write_text(digest);(tmp_path/'UAT.md').write_text('safe instructions')
-    ci.verify_encrypted_artifact(tmp_path,HEAD,'1.0.3',digest)
-    plain=tmp_path/'Setup.exe';plain.write_bytes(b'MZplaintext')
-    with pytest.raises(ValueError,match='UNEXPECTED_PUBLIC_ASSET'):ci.verify_encrypted_artifact(tmp_path,HEAD,'1.0.3',digest)
-    plain.unlink();artifact.write_bytes(b'MZtampered')
-    with pytest.raises(ValueError,match='PUBLISH_ARTIFACT_INTEGRITY'):ci.verify_encrypted_artifact(tmp_path,HEAD,'1.0.3',digest)
-
-
 def test_frontend_native_assets_generated_from_tracked_svg(tmp_path, monkeypatch):
     calls=[]
     def invoke(command, *, cwd):
@@ -127,29 +97,23 @@ def test_frontend_native_assets_generated_from_tracked_svg(tmp_path, monkeypatch
         ci.prepare_frontend_native_assets(tmp_path, 'npm.cmd')
 
 
-def test_product_version_and_uat_revision_are_independent(tmp_path, monkeypatch):
+def test_manual_product_version_mismatch_is_rejected_not_overridden(tmp_path, monkeypatch):
     plan=tmp_path/'plan.json';plan.write_text(json.dumps({'version':'1.2.8'}))
     monkeypatch.setattr(ci,'PRODUCT_PLAN',plan)
-    assert ci.uat_tag('1.2.8',{'uatRevision':1})=='d4planner-uat/v1.2.8-r1'
-    assert ci.uat_tag('1.2.8',{'uatRevision':2})=='d4planner-uat/v1.2.8-r2'
+    assert ci.product_version('1.2.8')=='1.2.8'
     with pytest.raises(ValueError,match='PRODUCT_VERSION_MISMATCH'):
-        ci.uat_tag('1.2.9',{'uatRevision':1})
-    for invalid in [0,-1,True,'1']:
-        with pytest.raises(ValueError,match='INVALID_UAT_REVISION'):
-            ci.uat_tag('1.2.8',{'uatRevision':invalid})
+        ci.product_version('1.2.9')
 
 
 def test_application_workflow_uploads_exe_only_after_gate():
-    text=(ci.ROOT/'.github/workflows/d4planner-release.yml').read_text()
-    assert 'prepare-upload --channel' in text
-    assert 'validate-upload --channel' in text
+    text=(ci.ROOT/'utility/d4planner/ci.release.py').read_text()
+    assert "'prepare-upload'" in text and "'validate-upload'" in text
     assert '.exe.age' not in text
-    assert text.index('validate-upload --channel') < text.index('uses: actions/upload-artifact@')
+    assert text.index("'validate-upload'") < text.index('ctx.artifact(')
 
 
 def upload_fixture(tmp_path,monkeypatch):
     plan=tmp_path/'plan.json';plan.write_text(json.dumps({'version':'1.0.3'}));monkeypatch.setattr(ci,'PRODUCT_PLAN',plan)
-    policy=tmp_path/'policy.json';policy.write_text(json.dumps({'schemaVersion':'d4planner-uat-distribution-policy/v2','scope':'D4PLANNER_R1_UAT','applicationFormat':'PLAINTEXT_EXE','snapshotFormat':'AGE_ZIP_SEPARATE','uatRevision':2}));monkeypatch.setattr(ci,'UAT_POLICY',policy)
     folder=tmp_path/'artifact';folder.mkdir()
     artifact=folder/'D4Planner-Setup-1.0.3.exe';artifact.write_bytes(b'unit-only-binary-integrity-not-native-evidence')
     meta={'schemaVersion':'d4planner-setup-build/v1','artifactClass':'D4PLANNER_APPLICATION_NO_SNAPSHOT','snapshotIncluded':False,'artifact':artifact.name,'version':'1.0.3','sourceHead':HEAD,'bytes':artifact.stat().st_size,'sha256':ci.delivery.sha256_file(artifact),'runtimeHealth':'PASS'}
@@ -162,7 +126,7 @@ def test_prepare_and_verify_direct_exe_exact_bytes(tmp_path,monkeypatch):
     result=ci.prepare_upload(folder,HEAD,'1.0.3')
     assert (folder/meta['artifact']).read_bytes()==original
     assert result['sha256']==meta['sha256'] and result['encryption']=='none'
-    assert result['releaseTag']=='d4planner-uat/v1.0.3-r2'
+    assert 'releaseTag' not in result and 'uatRevision' not in result
     ci.verify_upload(folder,HEAD,'1.0.3',meta['sha256'])
     (folder/'SHA256SUMS').write_text('wrong')
     with pytest.raises(ValueError,match='CHECKSUM_FILE_MISMATCH'):ci.verify_upload(folder,HEAD,'1.0.3',meta['sha256'])
@@ -195,13 +159,13 @@ def test_hud_source_ownership_keeps_installed_identity_and_package_paths():
     assert root['bin'][0]['name']=='D4Planner'
     stage=(project/'d4planner-be/tools/build_release1_stage.py').read_text()
     assert 'app/d4planner-fe.exe' in stage
-    workflow=(ci.ROOT/'.github/workflows/d4-overlay-poc.yml').read_text()
-    assert 'utility/d4planner/d4planner-hud/**' in workflow
-    assert 'd4planner-overlay-poc-win-x64' in workflow
+    workflow=(hud/'ci.test.py').read_text()
+    assert 'utility/d4planner/d4planner-hud/portable' in workflow
+    assert 'd4planner-overlay-poc.exe' in workflow
 
 
-def cli(monkeypatch, folder, command, channel='stable'):
-    monkeypatch.setattr(sys, 'argv', ['release_ci.py', command, '--channel', channel,
+def cli(monkeypatch, folder, command):
+    monkeypatch.setattr(sys, 'argv', ['release_ci.py', command,
         '--version', '1.0.3', '--source', HEAD, '--directory', str(folder)])
     monkeypatch.setenv('GITHUB_REPOSITORY', 'isolated/test')
     monkeypatch.setenv('GITHUB_REF_NAME', 'd4planner-uat/v1.0.3-r2')
@@ -259,13 +223,13 @@ def test_release_lookup_fails_closed_on_network_or_malformed_response(monkeypatc
         ci.require_release_absent('isolated/test','v1.0.3')
 
 
-@pytest.mark.parametrize('channel,existing_tag', [('stable',False),('stable',True),('uat',True)])
-def test_publish_absent_release_uses_original_artifact_and_never_overwrites(tmp_path, monkeypatch, channel, existing_tag):
+@pytest.mark.parametrize('existing_tag', [False,True])
+def test_publish_absent_release_uses_original_artifact_and_never_overwrites(tmp_path, monkeypatch, existing_tag):
     folder, meta = upload_fixture(tmp_path, monkeypatch)
     ci.prepare_upload(folder,HEAD,'1.0.3')
     monkeypatch.setenv('D4_BUILT_SETUP_SHA256',meta['sha256'])
     monkeypatch.setenv('D4_BUILD_ONLY','false')
-    tag = 'v1.0.3' if channel == 'stable' else 'd4planner-uat/v1.0.3-r2'
+    tag = 'v1.0.3'
     queries=[];writes=[]
     def lookup(args, **kw):
         queries.append(args[-1])
@@ -273,9 +237,9 @@ def test_publish_absent_release_uses_original_artifact_and_never_overwrites(tmp_
         return response(200,{'object':{'type':'commit','sha':HEAD}}) if existing_tag else response(404)
     monkeypatch.setattr(ci.subprocess,'run',lookup)
     monkeypatch.setattr(ci,'run',lambda args,**kw:writes.append(args))
-    cli(monkeypatch,folder,'validate',channel)
+    cli(monkeypatch,folder,'validate')
     assert ci.main()==0
-    cli(monkeypatch,folder,'publish' if channel=='stable' else 'publish-uat',channel)
+    cli(monkeypatch,folder,'publish')
     assert ci.main()==0
     assert queries.count(f'repos/isolated/test/releases/tags/{tag}')==2
     assert len(writes)==(1 if existing_tag else 2)
@@ -318,7 +282,7 @@ def test_local_runtime_cache_revalidates_before_build(tmp_path,monkeypatch,tampe
     monkeypatch.setattr(ci,'product_version',lambda *_:None)
     monkeypatch.setattr(ci,'build',lambda inputs,*args:builds.append(inputs) or {'sha256':'a'*64})
     monkeypatch.setenv('D4_LOCAL_RUNTIME_CACHE',str(root)); monkeypatch.setenv('GITHUB_OUTPUT',str(tmp_path/'output'))
-    monkeypatch.setattr(sys,'argv',['release_ci.py','build','--channel','stable','--version','1.2.8','--source',HEAD,'--directory',str(tmp_path/'run')])
+    monkeypatch.setattr(sys,'argv',['release_ci.py','build','--version','1.2.8','--source',HEAD,'--directory',str(tmp_path/'run')])
     if tampered:
         with pytest.raises(ValueError,match='PRIVATE_INPUT_INTEGRITY'): ci.main()
         assert not builds
