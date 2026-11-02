@@ -91,3 +91,30 @@ def test_runtime_tree_digest_uses_case_sensitive_component_order_on_windows(tmp_
              ('a.exe',hashlib.sha256(b'a').hexdigest())]
     expected=hashlib.sha256(json.dumps(records,separators=(',',':')).encode()).hexdigest()
     assert public.tree_digest(tmp_path)==expected
+
+
+@pytest.mark.parametrize('prefix', [
+    'backend/site-packages/report-gateway',
+    'backend/site-packages/d4planner_report_gateway',
+    'utility/d4planner/d4planner-be/report-gateway',
+])
+def test_desktop_stage_and_manifest_reject_server_gateway(tmp_path, prefix):
+    import hashlib
+    name = prefix + '/gateway.py'
+    data = b'# synthetic server service; never part of the desktop'
+    member = tmp_path / 'stage' / name
+    member.parent.mkdir(parents=True)
+    member.write_bytes(data)
+    with pytest.raises(public.PublicContentError, match='SERVER_GATEWAY_IN_DESKTOP_PACKAGE'):
+        public.inspect_directory(tmp_path / 'stage')
+    manifest = {
+        'schemaVersion': delivery.MANIFEST_VERSION,
+        'ruleKit': {'snapshotIncluded': False},
+        'files': [{'path': name, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}],
+    }
+    package = tmp_path / 'injected.zip'
+    with zipfile.ZipFile(package, 'w') as archive:
+        archive.writestr('release-manifest.json', json.dumps(manifest))
+        archive.writestr(name, data)
+    with pytest.raises(public.PublicContentError, match='SERVER_GATEWAY_IN_DESKTOP_PACKAGE'):
+        delivery.verify_package(package, public_only=True)
