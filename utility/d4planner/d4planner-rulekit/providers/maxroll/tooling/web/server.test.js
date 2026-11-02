@@ -3,7 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const net = require('node:net');
 const http = require('node:http');
-const { startServer, loadSnapshot, originalUrl, rewriteHtml } = require('./server');
+const { startServer, loadSnapshot, originalUrl, rewriteHtml, rewriteCss } = require('./server');
 const { resourceKey } = require('../../../../browser-infra/src/snapshot/interceptor');
 async function freePort() {
   const s = net.createServer(); await new Promise(r => s.listen(0, '127.0.0.1', r));
@@ -69,4 +69,13 @@ test('HTTP replay, no proxy fallback, POST/Host protection, conflict and cleanup
   } finally { await running.close(); }
   const next = net.createServer(); await new Promise((r,j)=>next.once('error',j).listen(port,'127.0.0.1',r));
   await new Promise(r=>next.close(r));
+});
+
+test('stylesheet URLs retain source origin, parent path, query and root semantics', () => {
+  const css = '@import"../theme.css?v=1"; a{background:url(/images/icon.webp);border-image:url(../border.png) 5;mask:url(data:image/svg+xml;base64,AA==)}';
+  const result = rewriteCss(css, 'https://assets-ng.maxroll.gg/d4-tools/css/main.css', 'http://127.0.0.1:6085');
+  assert(result.includes('/__snapshot/assets-ng.maxroll.gg/d4-tools/theme.css?v=1'));
+  assert(result.includes('/__snapshot/assets-ng.maxroll.gg/images/icon.webp'));
+  assert(result.includes('/__snapshot/assets-ng.maxroll.gg/d4-tools/border.png'));
+  assert(result.includes('data:image/svg+xml;base64,AA=='));
 });

@@ -2,9 +2,11 @@
 
 This provider-owned tool renders the captured Planner directly in the client browser. It starts one loopback Node HTTP server; it does not start Chromium, VNC, a remote desktop, a capture job, or a network proxy. This checkpoint supports UI experimentation, not canonical export or durable native Save. Changes may be lost when closing/reloading the tab.
 
+See [independent UI capture and acceptance](UI-CHECKPOINT.md) for the current checkpoint: separate UI trust pins, complete capture tooling, visual references and HTTP browser tests. The calculation-bound configuration below remains supported for existing installations.
+
 ## Run
 
-Prerequisites: Linux, Python 3 with `pidfd_open`/`pidfd_send_signal`, Node >=20, the existing browser-infra dependencies installed (`npm ci --ignore-scripts` in `../../../../browser-infra`), and an already provisioned, approved compatible private snapshot. Do not download/capture another version to satisfy startup.
+Prerequisites: Linux, Python 3 with `pidfd_open`/`pidfd_send_signal`, Node >=20, the existing browser-infra dependencies installed (`npm ci --ignore-scripts` in `../../../../browser-infra`), and an already provisioned, approved compatible private snapshot. Startup never downloads or captures. A separately authorized UI capture may select its own version using the explicit `uiTrust` configuration documented above.
 
 Create a private JSON config outside Git, using the configured snapshot binding from Rule Kit:
 
@@ -25,7 +27,7 @@ python3 cli.py status --config /absolute/private/editor.json
 python3 cli.py stop --config /absolute/private/editor.json
 ```
 
-Start verifies compatibility and every snapshot blob before listening, prints readiness and the tunnel command. Repeated start reuses this CLI's live process. Runtime state/logs are in a private sibling `editor.runtime/` directory. Occupied ports fail without signalling their owner. Stop uses Linux process identity plus pidfd and SIGTERM; it never kills unrelated workers. Foreground alternative: `node server.js --config /absolute/private/editor.json`, stop with Ctrl+C.
+Start verifies legacy calculation compatibility or explicit UI trust pins, and every snapshot blob, before listening, prints readiness and the tunnel command. Repeated start reuses this CLI's live process. Runtime state/logs are in a private sibling `editor.runtime/` directory. Occupied ports fail without signalling their owner. Stop uses Linux process identity plus pidfd and SIGTERM; it never kills unrelated workers. Foreground alternative: `node server.js --config /absolute/private/editor.json`, stop with Ctrl+C.
 
 In **a local Termux shell on Android**, keep this running:
 

@@ -6,8 +6,7 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { FileSystemSnapshotStore } = require('../../../../browser-infra/src');
 const { resourceKey } = require('../../../../browser-infra/src/snapshot/interceptor');
-const { loadCatalog } = require('../../../../snapshot-management/compatibility/loader');
-const ORIGINS = ['https://maxroll.gg', 'https://assets-ng.maxroll.gg', 'https://planners.maxroll.gg'];
+const { UI_ORIGINS: ORIGINS, verifyUiReceipt } = require('./ui-package');
 const CSP = "default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; worker-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; manifest-src 'none'";
 const FRAME_CSP = CSP + "; sandbox allow-scripts allow-same-origin allow-forms; frame-ancestors 'self'";
 function mappedUrl(url, origin) {
@@ -32,11 +31,20 @@ function rewrite(text, origin) {
   }
   return text;
 }
+function rewriteCss(text, original, origin) {
+  // A root-relative URL belongs to the source stylesheet's origin, not Maxroll's HTML origin.
+  const resolve = value => {
+    try { const u = new URL(value, original); return ORIGINS.includes(u.origin) ? mappedUrl(u.href, origin) : value; }
+    catch { return value; }
+  };
+  return text.replace(/url\(\s*(["']?)([^"'()]+)\1\s*\)/g, (_, quote, value) => 'url("' + resolve(value.trim()) + '")')
+    .replace(/(@import\s*)(["'])([^"']+)\2/g, (_, prefix, quote, value) => prefix + quote + resolve(value) + quote);
+}
 function rewriteHtml(text, origin) {
   // Remove speculative DNS/preconnect and third-party script tags before the parser can issue requests.
   text = text.replace(/<link\b[^>]*\brel=["'](?:preconnect|dns-prefetch)["'][^>]*>/gi, '');
   text = text.replace(/<script\b([^>]*\bsrc=["']([^"']+)["'][^>]*)>[\s\S]*?<\/script>/gi, (tag, attrs, src) => {
-    try { const u = new URL(src, 'https://maxroll.gg'); return ORIGINS.includes(u.origin) ? tag : ''; } catch { return ''; }
+    try { const u = new URL(src, 'https://maxroll.gg'); return ORIGINS.includes(u.origin) && u.pathname !== '/js/sponsor.js' ? tag : ''; } catch { return ''; }
   });
   text = text.replace(/\s(?:integrity|nonce)=["'][^"']*["']/gi, '');
   text = rewrite(text, origin);
@@ -44,16 +52,21 @@ function rewriteHtml(text, origin) {
 }
 async function loadSnapshot(config) {
   if (!path.isAbsolute(config.snapshotRoot || '')) throw new Error('snapshotRoot must be absolute');
-  const definition = loadCatalog().definitions.find(d => d.identity.snapshotId === config.snapshotId
-    && d.identity.snapshotManifestSha256 === config.manifestSha256);
-  if (!definition) throw new Error('Unsupported configured snapshot binding');
+  if (!config.uiTrust) {
+    // Backward-compatible legacy mode only. Independent UI captures never load calculation bindings.
+    const { loadCatalog } = require('../../../../snapshot-management/compatibility/loader');
+    const definition = loadCatalog().definitions.find(d => d.identity.snapshotId === config.snapshotId
+      && d.identity.snapshotManifestSha256 === config.manifestSha256);
+    if (!definition) throw new Error('Unsupported configured snapshot binding');
+  }
   const store = new FileSystemSnapshotStore({ rootDir: config.snapshotRoot });
   const verified = await store.verify(config.snapshotId);
   if (verified.manifestSha256 !== config.manifestSha256) throw new Error('Snapshot digest mismatch');
   // Reuse store verification, manifest and exact method/URL resource map. No capture or HTTP client.
   const snapshot = await store.loadPackage(config.snapshotId);
+  const uiVerification = config.uiTrust ? await verifyUiReceipt(config, snapshot.manifest, verified) : { status: 'LEGACY_CALCULATION_PIN' };
   if (snapshot.manifest.allowedOrigins.some(o => !ORIGINS.includes(o))) throw new Error('Unsupported replay origin');
-  return snapshot;
+  return { ...snapshot, uiVerification };
 }
 async function startServer(config, { snapshot: suppliedSnapshot } = {}) {
   if (!Number.isInteger(config.port) || config.port < 1024 || config.port > 65535) throw new Error('Unprivileged port required');
@@ -71,7 +84,7 @@ async function startServer(config, { snapshot: suppliedSnapshot } = {}) {
     categories[kind] = (categories[kind] || 0) + 1;
     if (kind === 'MISSING') missing++; else blocked++;
   }
-  function diagnostic() { return { snapshotId: snapshot.manifest.snapshotId, served, missing, blocked, recent, categories, clientEvents }; }
+  function diagnostic() { return { snapshotId: snapshot.manifest.snapshotId, uiVerification: snapshot.uiVerification, uiMode: config.uiTrust ? 'INDEPENDENT_CAPTURE' : 'LEGACY_CALCULATION_PIN', calculationStatus: 'NOT_ASSESSED', served, missing, blocked, recent, categories, clientEvents }; }
   const sourcePath = new URL(snapshot.manifest.sourceUrl).pathname;
   const server = http.createServer(async (req, res) => {
     try {
@@ -112,7 +125,7 @@ async function startServer(config, { snapshot: suppliedSnapshot } = {}) {
       if (url.pathname === '/__local/diagnostics') return send(200, JSON.stringify(diagnostic()));
       if (url.pathname === '/') {
         // Parent frame-src + child sandbox block navigation/popups to production.
-        const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Local frozen Maxroll Planner</title><style>html,body{margin:0;height:100%;background:#101010;color:white;font:13px sans-serif}body{display:flex;flex-direction:column}header{min-height:36px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:4px 8px}iframe{border:0;width:100%;flex:1;min-height:0}a{color:#8cf}</style></head><body><header>Frozen snapshot · UI UAT · Save/export unavailable · <span id="status">loading diagnostics</span> · <a href="/__local/diagnostics" target="_blank">diagnostics</a></header><iframe name="${randomUUID()}" title="Frozen Maxroll Planner" sandbox="allow-scripts allow-same-origin allow-forms" src="${sourcePath}"></iframe><script src="/__local/shell.js"></script></body></html>`;
+        const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Local frozen Maxroll Planner</title><style>html,body{margin:0;height:100%;background:#101010;color:white;font:13px sans-serif}body{display:flex;flex-direction:column}header{min-height:36px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:4px 8px}iframe{border:0;width:100%;flex:1;min-height:0}a{color:#8cf}</style></head><body><header>Frozen snapshot · UI UAT · Cloud login/share/save and export unavailable · <span id="status">loading diagnostics</span> · <a href="/__local/diagnostics" target="_blank">diagnostics</a></header><iframe name="${randomUUID()}" title="Frozen Maxroll Planner" sandbox="allow-scripts allow-same-origin allow-forms" src="${sourcePath}"></iframe><script src="/__local/shell.js"></script></body></html>`;
         return send(200, html, 'text/html; charset=utf-8', { 'Content-Security-Policy': CSP + "; frame-ancestors 'none'" });
       }
       const original = originalUrl(url);
@@ -128,7 +141,9 @@ async function startServer(config, { snapshot: suppliedSnapshot } = {}) {
       const isHtml = type.includes('text/html');
       if (isHtml && req.headers['sec-fetch-dest'] === 'document') return send(302, '', 'text/plain', { Location: '/' });
       if (/javascript|text\/css|text\/html/.test(type)) {
-        body = isHtml ? rewriteHtml(body.toString('utf8'), origin) : rewrite(body.toString('utf8'), origin);
+        body = isHtml ? rewriteHtml(body.toString('utf8'), origin)
+          : type.includes('text/css') ? rewriteCss(body.toString('utf8'), original, origin)
+          : rewrite(body.toString('utf8'), origin);
       }
       served++;
       return send(resource.status, body, type, isHtml ? { 'Content-Security-Policy': FRAME_CSP } : {});
@@ -152,4 +167,4 @@ async function main() {
   process.once('SIGTERM', stop); process.once('SIGINT', stop);
 }
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });
-module.exports = { startServer, loadSnapshot, originalUrl, mappedUrl, rewrite, rewriteHtml };
+module.exports = { startServer, loadSnapshot, originalUrl, mappedUrl, rewrite, rewriteHtml, rewriteCss };

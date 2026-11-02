@@ -3,7 +3,7 @@
 (() => {
   'use strict';
   const origin = location.origin;
-  const hosts = new Set(['maxroll.gg', 'assets-ng.maxroll.gg', 'planners.maxroll.gg']);
+  const hosts = new Set(['maxroll.gg', 'assets-ng.maxroll.gg', 'planners.maxroll.gg', 'fonts.googleapis.com', 'fonts.gstatic.com']);
   const nativeFetch = window.fetch.bind(window);
   const session = window.name || 'unframed';
   const report = (kind, url, detail) => {

@@ -1,5 +1,7 @@
 # #173 — HTTP snapshot replay assessment
 
+Historical calculation-bound checkpoint below. The later owner-authorized independent UI capture, current decision and acceptance are in [UI-CHECKPOINT.md](UI-CHECKPOINT.md); its separate version authorization supersedes the original no-new-capture scope.
+
 ## Current → proposed → alternatives → impact → risks
 
 **Current:** Rule Kit Browser Infrastructure owns Chromium leases, snapshot verification and interception; Maxroll Provider owns its codec/runtime adapter. The private editor prototype opens the original origin inside Playwright and fulfills requests from the frozen package. That interception cannot accompany Android Chrome. The application API contract remains independent of this tooling. Baseline: integration branch `docs/138-d4planner-r1-contract`, commit `1cea452f6450d1a9a2983c6b5c22b06b1b9f9a52` (PR #145). The earlier remote-desktop branch/PR #174 is not a dependency.
