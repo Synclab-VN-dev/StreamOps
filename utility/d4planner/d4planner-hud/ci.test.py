@@ -1,7 +1,10 @@
 """Component-owned CI commands migrated from the corresponding native workflows."""
 CI_SPEC = {'version': 1,
  'id': 'd4planner-hud',
- 'watch': ['.github/workflows/main.yml', '.github/workflows/ci.py', 'scripts/e2e/d4-overlay-poc-smoke.ps1'],
+ # Legacy source paths remain watched while migration is compared with master.
+ 'watch': ['scripts/local/d4-overlay-poc.ps1',
+           'utility/d4planner-overlay-poc/**',
+           '.github/workflows/main.yml', '.github/workflows/ci.py', 'scripts/e2e/d4-overlay-poc-smoke.ps1'],
  'depends_on': [],
  'jobs': [{'id': 'native', 'profile': 'windows', 'timeout': 3600, 'tools': {'node': '22', 'rust': 'stable'}}]}
 
