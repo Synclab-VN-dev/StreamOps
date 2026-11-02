@@ -296,13 +296,13 @@ class Contracts(unittest.TestCase):
         path=self.root/'widget/ci.test.py'
         path.write_text(path.read_text().replace("print(\'2 passed in 0.01s\')", "import os; assert not any(\'CANARY\' in v for v in os.environ.values()); print(2)"))
         p=self.plan()
-        with patch.dict(os.environ,{'CI_PUBLISH_TOKEN':'PRODUCTION_CANARY','GH_TOKEN':'GH_CANARY',
+        with patch.dict(os.environ,{'CI_PUBLISH_TOKEN':'PRODUCTION_CANARY','CI_MAINTENANCE_TOKEN':'MAINTENANCE_CANARY','GH_TOKEN':'GH_CANARY',
                                   'CI_BOUND_SECRET_1':'BOUND_CANARY','GITHUB_TOKEN':'GITHUB_CANARY'}):
             result=ci.execute(self.root,p,p['jobs'][0],Path(self.tmp.name)/'secret-negative')
         self.assertEqual(result['status'],'PASS',result)
         for payload in (json.dumps(p),json.dumps(ci.matrices(p)),json.dumps(result),
                         (Path(self.tmp.name)/'secret-negative/commands.log').read_text()):
-            for value in ('PRODUCTION_CANARY','GH_CANARY','BOUND_CANARY','GITHUB_CANARY'):
+            for value in ('PRODUCTION_CANARY','MAINTENANCE_CANARY','GH_CANARY','BOUND_CANARY','GITHUB_CANARY'):
                 self.assertNotIn(value,payload)
 
     def test_feature_and_tag_push_are_rejected_by_actions_planner(self):

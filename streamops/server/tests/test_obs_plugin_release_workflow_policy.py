@@ -1,5 +1,5 @@
 """Manual publishing security spans the trusted wrapper and product-owned contract."""
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import ast
 import yaml
 import importlib.util
@@ -104,4 +104,11 @@ def test_wrapper_has_no_obs_regression_commands_and_owner_selects_suite():
     assert calls[-1]==('-m','pytest','-q',
         'streamops/server/tests/test_obs_plugin_release_workflow_policy.py',
         'streamops/server/tests/test_obs_plugin_release_harness.py')
-    assert str(Path(__file__).relative_to(ROOT)) in module.CI_SPEC['watch']
+    assert Path(__file__).relative_to(ROOT).as_posix() in module.CI_SPEC['watch']
+
+
+@pytest.mark.parametrize('path_type',[PurePosixPath,PureWindowsPath])
+def test_watch_paths_use_git_posix_on_each_platform(path_type):
+    root=path_type('repo')
+    test=root/'streamops/server/tests/test_obs_plugin_release_workflow_policy.py'
+    assert test.relative_to(root).as_posix()=='streamops/server/tests/test_obs_plugin_release_workflow_policy.py'

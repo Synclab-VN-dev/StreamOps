@@ -1,6 +1,6 @@
 """Mocked server-side contract tests; no real GitHub writes or cleanup."""
 CI_SPEC = {'version': 1, 'id': 'report-gateway',
-           'watch': ['.github/workflows/script/schedule.py', '.github/workflows/schedule.yml'],
+           'watch': ['.github/workflows/ci.py', '.github/workflows/schedule.yml'],
            'jobs': [{'id': 'mocked-contract', 'profile': 'linux', 'timeout': 300}]}
 
 def run(ctx):

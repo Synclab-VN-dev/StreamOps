@@ -5,7 +5,7 @@ Issue #166. Base: PR #164, `7148c404865b11d0e492f6159354f3312357b9dc`.
 ## Entrypoints and ownership
 
 `main.yml` transports jobs, approved credentials and artifacts. `ci.py` discovers
-`ci.test.py` and `ci.release.py` recursively from Git files. It reads one literal
+`ci.test.py`, `ci.release.py` and `ci.schedule.py` recursively from Git files. It reads one literal
 `CI_SPEC` assignment through AST; planning never imports component code.
 Execution invokes `run(context)` only after validating source and job identity.
 There is no component registry in the engine or workflow. Release adapters belong
@@ -63,6 +63,7 @@ versions are plain validated values, never interpolated as shell source.
 | fixture | manual test | dispatch on master, maxroll-fixture-trusted; exact age identity alias |
 | publish | publish | manual publish on master; job-scoped contents:write GITHUB_TOKEN; verified same-run build |
 | external-publish | publish | manual publish on master; obs-plugin-release environment; exact OBS release token |
+| maintenance | schedule | schedule/manual on trusted default branch; contents:write + issues:read; exact maintenance token/config bindings; local dry-run only |
 
 Secret aliases request capability; they never grant it. Source checks validate
 operation, master ref, dispatch inputs/product/version and source SHA before binding
@@ -168,22 +169,99 @@ Release existence. Publish refuses an existing version through the existing core
 | StreamOps OBS policy/package regressions | obs-plugin regression: Linux job invokes existing policy + harness suites; watches both tests/packager/installer/source; StreamOps full suite retains integration coverage |
 | obs-multi-rtmp-build / publish | OBS product contract: explicit manual master-only/version/OBS pin; retired development-branch exception; draft/four assets/roundtrip byte-compare/promote |
 | d4planner-release / build/publish | product-root adapter reuses tools/release_ci.py; exact Setup integrity; manual test artifact and stable publication are separate; legacy UAT Release removed |
-| d4planner-issue-log-cleanup | schedule wrapper + script/schedule.py, unchanged domain eligibility and revalidation |
+| d4planner-issue-log-cleanup | schedule.yml → ci.py → Report Gateway ci.schedule.py → cleanup.py; centralized implementation removed, domain eligibility/revalidation unchanged |
 
 HUD changes retain the historical StreamOps integration dependency; Launcher-only
 changes do not select StreamOps. Logging shared by HUD and Launcher is explicitly
 watched. Independent report-gateway selection does not imply local desktop startup.
 
-## Maintenance
+## Component-owned maintenance — superseding Owner decision 2026-11-02
 
-`schedule.yml` preserves cron `17 * * * *`, concurrency, 10-minute timeout,
-contents:write/issues:read, and manual dry-run default. The Python script validates
-trusted default-branch context, runs gateway mock tests, validates explicit IDs,
-and calls the existing cleanup domain. Scheduled mode executes; manual mode
-executes only for explicit dry_run=false. Local mode is dry-run only. Domain
-CLOSED >24h, latest close, refetch/mapping/foreign/orphan protections are unchanged.
-No live cleanup is part of CI tests. Reports contain source/mode/counts/exit/duration,
-never credentials or diagnostic content.
+The taxonomy is now:
+
+| Contract file | Responsibility / selection |
+|---|---|
+| ci.test.py | Component test/regression commands; --component ID |
+| ci.release.py | Product build/verify/publish semantics; --product ID |
+| ci.schedule.py | Component maintenance orchestration; --schedule ID |
+
+There is one generic engine. Schedule kind is inferred from the filename; metadata
+remains literal schema version 1. IDs are unique across all three kinds. Example:
+
+```python
+CI_SPEC = {'version': 1, 'id': 'example-maintenance', 'jobs': [
+    {'id': 'audit', 'operation': 'schedule', 'capability': 'maintenance',
+     'profile': 'linux', 'timeout': 600},
+]}
+def run(ctx):
+    # Component owns context/config/preflight/domain invocation and public audit.
+    ...
+```
+
+No cron/owner registry, arbitrary permission/environment/secret field or speculative
+metadata is added. Schedule jobs require the reviewed maintenance capability;
+other kinds cannot request it. Unknown fields/secret bindings fail closed. Common
+tool/profile fields retain their existing validation/bootstrap semantics. The
+manual-only job flag is invalid for schedule contracts: every schedule contract
+participates in the shared hourly trigger and is available for manual selection.
+
+Schedule planning only parses AST. `actions-plan --operation schedule` discovers
+all schedule contracts (or the manual input ID); `--all --operation schedule` is
+the equivalent explicit local planning selection. PR changed-file planning selects
+the owning **test** contract; it never executes maintenance. Deleted/renamed
+contracts use the existing ownership/uncovered-change rules; explicit stale IDs
+fail closed. Existing source/contract identity, owned checkout, timeout for child
+commands, redaction, artifact manifests and required-report aggregation are reused.
+
+`main.yml` and `schedule.yml` remain the only workflows. `schedule.yml` plans a
+dynamic maintenance matrix and calls `ci.py run`, then `ci.py aggregate`. It owns
+only trusted event/ref/capability transport, runner bootstrap and artifact upload.
+New contracts using the approved capability require no wrapper/engine registry edit.
+
+### Context and credential policy
+
+- Cron stays `17 * * * *`; concurrency group is retained across cutover.
+- Scheduled event: execute after context/config/preflight checks.
+- Manual: dry_run defaults true; false must match the dispatch payload.
+- GitHub context must be schedule/workflow_dispatch on the event repository's
+  default branch (master here), with checkout SHA matching GITHUB_SHA.
+- Local: dry-run allowed; execute BLOCKED before importing the contract.
+- Contract requests maintenance; the reviewed wrapper grants **contents:write,
+  issues:read**, passing github.token as CI_MAINTENANCE_TOKEN. Context exposes it
+  as GITHUB_TOKEN only to maintenance. Read/build jobs never inherit this token.
+- Wrapper binds vars.D4PLANNER_DIAGNOSTIC_RELEASE_ID → DIAGNOSTIC_RELEASE_ID and
+  vars.D4PLANNER_DIAGNOSTIC_BOT_ID → DIAGNOSTIC_BOT_ID. These are reviewed config
+  bindings, not arbitrary metadata-selected variables/secrets. Engine knows neither
+  config name nor cleanup domain. No settings/secrets were provisioned here.
+- Same-repository trusted-writer threat model still applies. Contracts cannot grant
+  themselves GitHub permissions; no claim is made against deliberate writer sabotage.
+
+### Report Gateway owner and local parity
+
+Owner: `utility/d4planner/d4planner-be/report-gateway/ci.schedule.py`, ID
+`report-gateway-maintenance`. It validates context, runs business tests
+`test_reports.py` without credentials, validates positive release/bot IDs and token,
+then calls cleanup.py. Eligibility, CLOSED >24h/latest close, refetch/mapping,
+foreign/orphan and delete semantics remain exclusively in cleanup.py. Only public
+counts go into maintenance.json, which is attached to the generic result/evidence.
+The orchestration tests run via the owning ci.test.py; preflight avoids recursively
+invoking its own engine-integration test. The centralized schedule implementation
+has been deleted without a compatibility shim.
+
+```sh
+python .github/workflows/ci.py run --schedule report-gateway-maintenance --dry-run true --output /tmp/maintenance
+```
+
+For a real read-only inspection the operator explicitly supplies
+CI_MAINTENANCE_TOKEN and the two diagnostic IDs; missing configuration blocks.
+This refactor's tests instead inject mocked transport through the **same run(ctx)**
+and generic executor, exercising local dry-run/report/aggregate without production
+credentials or network mutation. Local real cleanup is never authorized by a flag.
+
+CI-01: two wrappers, component ownership. CI-02: zero-registry schedule onboarding.
+CI-03: static metadata/negative validation. CI-07: common executor/local parity.
+CI-11: reviewed maintenance capability/grants. CI-13: cron/modes/domain preserved.
+CI-14: onboarding and synthetic/mock regression evidence. Actual cleanup is NOT_RUN.
 
 ## Local-first and handoff
 

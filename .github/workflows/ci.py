@@ -23,8 +23,8 @@ import uuid
 ROOT = Path(__file__).resolve().parents[2]
 VERSION = 'streamops-ci/v1'
 PROFILES = {'linux': ('linux', 'ubuntu-24.04'), 'windows': ('win32', 'windows-2022')}
-CAPABILITIES = {'read': [], 'fixture': ['fixture'], 'public-inputs': ['public-inputs'], 'publish': ['publish'], 'external-publish': ['publish']}
-SECRET_BINDINGS = {'read':{}, 'publish':{}, 'fixture':{'AGE_IDENTITY_SECRET':'MAXROLL_FIXTURE_AGE_IDENTITY'},
+CAPABILITIES = {'read': [], 'fixture': ['fixture'], 'public-inputs': ['public-inputs'], 'publish': ['publish'], 'external-publish': ['publish'], 'maintenance': ['schedule']}
+SECRET_BINDINGS = {'read':{}, 'publish':{}, 'maintenance':{}, 'fixture':{'AGE_IDENTITY_SECRET':'MAXROLL_FIXTURE_AGE_IDENTITY'},
     'external-publish':{'GH_TOKEN':'SYNCLAB_OBS_RELEASE_TOKEN'},
     'public-inputs':{'D4_PUBLIC_RUNTIME_INPUT_URL':'D4PLANNER_PUBLIC_RUNTIME_INPUTS_URL','D4_PUBLIC_RUNTIME_INPUT_SHA256':'D4PLANNER_PUBLIC_RUNTIME_INPUTS_SHA256'}}
 NAME = re.compile(r'^[a-z][a-z0-9-]{0,63}$')
@@ -73,7 +73,7 @@ def metadata(text, path):
         for item in spec.get(field, []): safe_path(item, pattern=True)
     require(isinstance(spec.get('depends_on', []), list), 'INVALID_DEPENDENCIES')
     require(all(isinstance(x,str) and NAME.fullmatch(x) for x in spec.get('depends_on', [])), 'INVALID_DEPENDENCY_ID')
-    kind = 'release' if path.endswith('ci.release.py') else 'test'
+    kind = {'ci.test.py':'test','ci.release.py':'release','ci.schedule.py':'schedule'}[PurePosixPath(path).name]
     require(isinstance(spec.get('jobs'), list) and spec['jobs'], 'JOBS_REQUIRED: '+path)
     ids = set()
     for job in spec['jobs']:
@@ -84,9 +84,11 @@ def metadata(text, path):
         require(job.get('profile') in PROFILES, 'UNAPPROVED_RUNNER_PROFILE')
         require(type(job.get('timeout')) is int and 1 <= job['timeout'] <= 7200, 'INVALID_TIMEOUT')
         operation = job.get('operation','test')
-        require(operation in ({'test'} if kind == 'test' else {'build','publish'}), 'INVALID_OPERATION')
+        require(operation in {'test':{'test'},'release':{'build','publish'},'schedule':{'schedule'}}[kind], 'INVALID_OPERATION')
         capability = job.get('capability','read')
         require(capability in CAPABILITIES, 'UNAPPROVED_CAPABILITY')
+        require((capability=='maintenance') == (kind=='schedule'), 'MAINTENANCE_CAPABILITY_REQUIRED')
+        require(kind!='schedule' or 'manual' not in job, 'SCHEDULE_MANUAL_FLAG_UNSUPPORTED')
         require(capability not in {'publish','external-publish'} or operation == 'publish', 'WRITE_CAPABILITY_OUTSIDE_PUBLISH')
         require(operation != 'publish' or capability in {'publish','external-publish'}, 'PUBLISH_CAPABILITY_REQUIRED')
         secrets = job.get('secrets', {})
@@ -110,7 +112,7 @@ def tracked_paths(root, ref=None):
 def discover(root, ref=None):
     specs = {}
     for path in tracked_paths(root, ref):
-        if PurePosixPath(path).name not in {'ci.test.py','ci.release.py'}: continue
+        if PurePosixPath(path).name not in {'ci.test.py','ci.release.py','ci.schedule.py'}: continue
         if ref: text = git(root, 'show', f'{ref}:{path}', binary=True).decode('utf-8')
         else:
             target = root/path
@@ -166,18 +168,20 @@ def ownership(path, specs):
     depth = max(len(PurePosixPath(s['root']).parts) for s in candidates)
     return [s['id'] for s in candidates if len(PurePosixPath(s['root']).parts)==depth]
 
-def plan(root, *, base=None, head='HEAD', dirty=False, push=False, component=None, product=None, operation='test', all_jobs=False, all_reason='explicit all tests'):
+def plan(root, *, base=None, head='HEAD', dirty=False, push=False, component=None, product=None, schedule=None, operation='test', all_jobs=False, all_reason='explicit all tests'):
+    require(sum(bool(x) for x in (component,product,schedule)) <= 1,'ONE_SELECTOR_REQUIRED')
+    if schedule: operation='schedule'
     specs = discover(root, None if dirty else head)
     identity = snapshot(root, None if dirty else head)
     reasons, changes = {}, []
-    if component or product:
-        name = component or product
+    if component or product or schedule:
+        name = component or product or schedule
         require(name in specs, 'UNKNOWN_COMPONENT_OR_PRODUCT: '+name)
-        require(specs[name]['kind']==('release' if product else 'test'), 'CONTRACT_KIND_MISMATCH')
+        require(specs[name]['kind']==('schedule' if schedule else 'release' if product else 'test'), 'CONTRACT_KIND_MISMATCH')
         reasons[name] = ['explicit selection']
     elif all_jobs:
-        require(operation=='test', 'EXPLICIT_PRODUCT_REQUIRED')
-        reasons = {n:[all_reason] for n,s in specs.items() if s['kind']=='test'}
+        require(operation in {'test','schedule'}, 'EXPLICIT_PRODUCT_REQUIRED')
+        reasons = {n:[all_reason] for n,s in specs.items() if s['kind']==operation}
     else:
         require(operation=='test', 'EXPLICIT_PRODUCT_REQUIRED')
         changes, ancestor = changed_paths(root,base,head,dirty,push)
@@ -235,10 +239,39 @@ def authorize_publish(version, head, product):
             or not version or inputs.get('version')!=version or os.environ.get('GITHUB_SHA')!=head):
         raise Blocked('PUBLISH_INTENT_SOURCE_MISMATCH')
 
+def maintenance_context(dry_run, source):
+    """Reviewed capability guard; no maintenance domain knowledge."""
+    require(type(dry_run) is bool, 'INVALID_DRY_RUN')
+    event=os.environ.get('GITHUB_EVENT_NAME','local')
+    if event=='local' and os.environ.get('GITHUB_ACTIONS')!='true':
+        if not dry_run:raise Blocked('LOCAL_EXECUTION_NOT_AUTHORIZED')
+        return event, True
+    if os.environ.get('GITHUB_ACTIONS')!='true' or event not in {'schedule','workflow_dispatch'}:
+        raise Blocked('UNTRUSTED_MAINTENANCE_EVENT')
+    try:
+        payload=json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+        default=payload['repository']['default_branch']
+        if not isinstance(default,str) or not default:raise ValueError()
+    except (KeyError,TypeError,ValueError,OSError):
+        raise Blocked('MAINTENANCE_CONTEXT_REQUIRED') from None
+    if os.environ.get('GITHUB_REF')!='refs/heads/'+default:
+        raise Blocked('TRUSTED_DEFAULT_BRANCH_REQUIRED')
+    if os.environ.get('GITHUB_SHA')!=source['head']:
+        raise Blocked('MAINTENANCE_SOURCE_MISMATCH')
+    if event=='schedule':dry_run=False
+    else:
+        value=payload.get('inputs',{}).get('dry_run','true')
+        if type(value) not in (str,bool) or value not in ('true','false',True,False):raise Blocked('INVALID_DRY_RUN')
+        approved=value in ('true',True)
+        if dry_run!=approved:raise Blocked('MAINTENANCE_INTENT_MISMATCH')
+    if not dry_run and source.get('dirty'):raise Blocked('DIRTY_MAINTENANCE_EXECUTION')
+    return event,dry_run
+
 class Context:
-    def __init__(self, root, job, output, source, version=None, inputs=None):
+    def __init__(self, root, job, output, source, version=None, inputs=None, dry_run=True):
         if job['capability'] in {'publish','external-publish'}:
             authorize_publish(version, source['head'], job['component'])
+        self.maintenance_event,self.dry_run = maintenance_context(dry_run,source) if job['capability']=='maintenance' else ('local',True)
         self.root=root; self.job=job; self.output=output; self.source=source
         self.version=version; self.inputs=inputs
         self.plan_id=None
@@ -260,6 +293,10 @@ class Context:
             token=self.env.get('GH_TOKEN') if job['capability']=='external-publish' else os.environ.get('CI_PUBLISH_TOKEN')
             if not token: raise Blocked('PUBLISH_CREDENTIAL_NOT_PROVIDED')
             self.env['GH_TOKEN']=token;self.env['GITHUB_TOKEN']=token;self.redactions.append(token)
+        if job['capability']=='maintenance':
+            token=os.environ.get('CI_MAINTENANCE_TOKEN')
+            if not token:raise Blocked('MAINTENANCE_CREDENTIAL_NOT_PROVIDED')
+            self.env['GITHUB_TOKEN']=token;self.redactions.append(token)
         self.temp=Path(tempfile.mkdtemp(prefix='ci-'+job['key']+'-'))
         self.env['RUNNER_TEMP']=str(self.temp)
         self.env['PIP_CACHE_DIR']=str(self.temp/'pip-cache')
@@ -419,7 +456,7 @@ class Context:
             function(path)
         shutil.rmtree(self.temp,onexc=remove_readonly)
 
-def execute(root, document, job, output, *, version=None, inputs=None):
+def execute(root, document, job, output, *, version=None, inputs=None, dry_run=True):
     output=Path(output).resolve()
     require(not output.is_relative_to(root.resolve()), 'OUTPUT_MUST_BE_OUTSIDE_SOURCE')
     output.mkdir(parents=True,exist_ok=False)
@@ -433,7 +470,7 @@ def execute(root, document, job, output, *, version=None, inputs=None):
         comparable=current if expected.get('dirty') or len(expected['tree'])==64 else snapshot(root,'HEAD')
         require(comparable==expected and (len(expected['tree'])==64 or not current['dirty']), 'SOURCE_CHANGED_SINCE_PLAN')
         require(PROFILES[job['profile']][0]==sys.platform, 'OS_PROFILE_MISMATCH')
-        if job['capability']!='read':
+        if job['capability'] not in {'read','maintenance'}:
             if os.environ.get('CI_TRUSTED_EXECUTION')!='1':raise Blocked('TRUSTED_EXECUTION_REQUIRED')
         spec=metadata((root/job['contract']).read_text(encoding='utf-8'),job['contract'])
         require(spec['sha256']==job['contractSha256'], 'CONTRACT_CHANGED_SINCE_PLAN')
@@ -442,7 +479,7 @@ def execute(root, document, job, output, *, version=None, inputs=None):
         require(declared is not None and all(job.get(k)==v for k,v in declared.items()), 'JOB_METADATA_MISMATCH')
         require(job['capability']==declared.get('capability','read') and job['operation']==declared.get('operation','test'), 'JOB_CAPABILITY_MISMATCH')
         if document['operation']=='publish':require(not expected['dirty'],'DIRTY_PUBLISH_SOURCE')
-        ctx=Context(root,job,output,expected,version,inputs)
+        ctx=Context(root,job,output,expected,version,inputs,dry_run)
         ctx.plan_id=document['planId']
         ctx.intent=document['operation']
         ctx.prepare_checkout()
@@ -494,13 +531,15 @@ def matrices(document):
                            'secret_2':[v for k,v in sorted(j.get('secrets',{}).items())][1] if len(j.get('secrets',{}))>1 else ''}
                           for j in document['jobs'] if j['capability']==capability and j['operation'] in operation]}
     return {'read':rows('read',{'test','build'}),'fixture':rows('fixture',{'test'}), 'build':rows('public-inputs',{'build'}),
-            'publish':rows('publish',{'publish'}),'external_publish':rows('external-publish',{'publish'})}
+            'publish':rows('publish',{'publish'}),'external_publish':rows('external-publish',{'publish'}), 'maintenance':rows('maintenance',{'schedule'})}
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('command',choices=['plan','run','aggregate','actions-plan'])
     p.add_argument('--root',type=Path,default=ROOT);p.add_argument('--base');p.add_argument('--head',default='HEAD')
     p.add_argument('--changed',action='store_true');p.add_argument('--push',action='store_true');p.add_argument('--all',action='store_true')
-    p.add_argument('--component');p.add_argument('--product');p.add_argument('--operation',choices=['test','build','publish'],default='test')
+    p.add_argument('--component');p.add_argument('--product');p.add_argument('--schedule')
+    p.add_argument('--dry-run',choices=['true','false'],default='true')
+    p.add_argument('--operation',choices=['test','build','publish','schedule'],default='test')
     p.add_argument('--version')
     p.add_argument('--plan',type=Path);p.add_argument('--job');p.add_argument('--inputs',type=Path)
     p.add_argument('--output',type=Path,default=Path(tempfile.gettempdir())/('streamops-ci-'+uuid.uuid4().hex))
@@ -512,9 +551,15 @@ def main(argv=None):
         if a.command=='actions-plan':
             event=json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
             name=os.environ['GITHUB_EVENT_NAME'];a.head='HEAD'
-            if name in {'pull_request','push'}:
+            if a.operation=='schedule' or a.schedule or name=='schedule':
+                maintenance_context(a.dry_run=='true',snapshot(root,'HEAD'))
+                require(not a.component and not a.product,'SCHEDULE_SELECTOR_REQUIRED')
+                a.schedule=event.get('inputs',{}).get('schedule') or a.schedule
+                a.operation='schedule';a.all=not a.schedule
+            elif name in {'pull_request','push'}:
                 require(a.operation=='test' and not a.product,'AUTOMATIC_TEST_ONLY')
-            if name=='pull_request':
+            if a.operation=='schedule':pass
+            elif name=='pull_request':
                 require(git(root,'rev-parse','HEAD')==event['pull_request']['head']['sha'],'PR_SOURCE_MISMATCH')
                 a.base=event['pull_request']['base']['sha']
             elif name=='push':
@@ -546,7 +591,7 @@ def main(argv=None):
             if a.changed and not base:
                 upstream=git(root,'rev-parse','--abbrev-ref','--symbolic-full-name','@{upstream}')
                 base=upstream
-            document=plan(root,base=base,head=a.head,dirty=a.changed,push=a.push,component=a.component,product=a.product,operation=a.operation,all_jobs=a.all,all_reason=all_reason)
+            document=plan(root,base=base,head=a.head,dirty=a.changed,push=a.push,component=a.component,product=a.product,schedule=a.schedule,operation=a.operation,all_jobs=a.all,all_reason=all_reason)
             write_json(a.output/'plan.json',document)
         if a.command=='plan':
             matrix=matrices(document);write_json(a.output/'matrix.json',matrix)
@@ -559,7 +604,7 @@ def main(argv=None):
         require(not a.job or jobs,'UNKNOWN_JOB')
         results=[]
         for job in jobs:
-            results.append(execute(root,document,job,a.output/job['key'],version=a.version,inputs=a.inputs or (a.output if job['operation']=='publish' else None)))
+            results.append(execute(root,document,job,a.output/job['key'],version=a.version,inputs=a.inputs or (a.output if job['operation']=='publish' else None),dry_run=a.dry_run=='true'))
         if a.job:return 0 if results[0]['status']=='PASS' else 1
         result=aggregate(document,results);write_json(a.output/'aggregate.json',result);print(json.dumps(result))
         return 0 if result['status'] in {'PASS','NO_CHANGE'} else 1
