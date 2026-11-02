@@ -164,8 +164,9 @@ Release existence. Publish refuses an existing version through the existing core
 | d4-rulekit / browser, provider, application | Rule Kit jobs: locked npm, pinned browser, unit/type/contract/offline synthetic E2E and reports |
 | d4-rulekit-maxroll-real | Rule Kit explicit encrypted-fixture job: age checksum, ephemeral key, offline acceptance, sanitized four files |
 | game-manager-visual | nested visual contract: independent reference builds, immutable hashes, enforced approval and screenshot/diff evidence |
-| obs-multi-rtmp-build / build | OBS test/product contract: DLL + unapproved package, no OBS install/control |
-| obs-multi-rtmp-build / publish | OBS product contract: manual/ref/version/OBS pin, draft/four assets/roundtrip byte-compare/promote |
+| obs-multi-rtmp-build / build | obs-plugin candidate: unchanged Windows DLL + unapproved package verification; no OBS install/control |
+| StreamOps OBS policy/package regressions | obs-plugin regression: Linux job invokes existing policy + harness suites; watches both tests/packager/installer/source; StreamOps full suite retains integration coverage |
+| obs-multi-rtmp-build / publish | OBS product contract: explicit manual master-only/version/OBS pin; retired development-branch exception; draft/four assets/roundtrip byte-compare/promote |
 | d4planner-release / build/publish | product-root adapter reuses tools/release_ci.py; exact Setup integrity; manual test artifact and stable publication are separate; legacy UAT Release removed |
 | d4planner-issue-log-cleanup | schedule wrapper + script/schedule.py, unchanged domain eligibility and revalidation |
 
@@ -191,3 +192,19 @@ not synthetic PASS; an exception to push requires Owner approval. Do not poll,
 trigger or rerun Actions, publish, perform real cleanup, or change repository
 settings as part of local verification. Runtime business code, visual references,
 and release approval policy remain outside this refactor.
+
+## OBS regression ownership — Owner update 2026-11-02
+
+`main.yml → ci.py → util/obs-multi-rtmp-websocket/ci.test.py → regression suites`.
+The wrapper transports event/capability/credentials/artifacts only. OBS policy
+and packaging tests stay at their existing StreamOps test paths, but their explicit
+Linux invocation belongs to `obs-plugin--regression`. The native candidate job
+remains separate and unchanged; a regression-only local result does not claim the
+Windows candidate passed. No component/path registry was added to the engine.
+
+The previous policy assertion requiring a development ref was stale. It is replaced
+by master-only wrapper assertions and executable product preflight negatives for
+PR/push/feature/tag/build intent, exact version and OBS compatibility. Existing
+manifest/provenance/installer/tamper and draft/four-assets/roundtrip assertions stay.
+CI-02/07 cover owning invocation, CI-10 coverage preservation, CI-13 OBS cutover,
+and CI-14 the updated contract/migration evidence. No live publication is a test.

@@ -1,5 +1,7 @@
 """Manual immutable OBS plugin publication; never installs or controls OBS."""
 import shutil
+import json
+import re
 
 CI_SPEC = {'version': 1,
  'id': 'obs-plugin-release',
@@ -14,7 +16,19 @@ CI_SPEC = {'version': 1,
            'capability': 'external-publish',
            'secrets': {'GH_TOKEN': 'SYNCLAB_OBS_RELEASE_TOKEN'}}]}
 
+def validate_publication(ctx):
+    """Product preflight, shared by reviewed build and publish; no credentials used."""
+    if (ctx.intent != 'publish' or ctx.env.get('GITHUB_EVENT_NAME') != 'workflow_dispatch'
+            or ctx.env.get('GITHUB_REF') != 'refs/heads/master'):
+        raise ValueError('OBS_PUBLICATION_REQUIRES_MANUAL_MASTER')
+    if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', ctx.version or ''):
+        raise ValueError('OBS_RELEASE_VERSION_REQUIRED')
+    spec=json.loads((ctx.root/'util/obs-multi-rtmp-websocket/buildspec.json').read_text())
+    if spec['version'] != ctx.version or spec['dependencies']['obs-studio']['version'] != '32.2.1':
+        raise ValueError('OBS_RELEASE_VERSION_OR_COMPATIBILITY_MISMATCH')
+
 def run(ctx):
+    if ctx.intent=='publish':validate_publication(ctx)
     ctx.env["EXPECTED_VERSION"]=ctx.version or ""
     if ctx.job["operation"] in ("build","test"):
         # Build candidate plugin
@@ -75,20 +89,6 @@ if ($LASTEXITCODE -ne 0) { throw "Managed plugin package verification failed." }
         ctx.artifact('.streamops/issue-45-ci','native-dll')
         ctx.artifact('.streamops/obs-managed-candidate','candidate')
         if ctx.intent=='publish':
-            # Validate deliberate manual release request
-            ctx.shell(r'''
-if ($env:GITHUB_REF -notin @('refs/heads/master', 'refs/heads/feat/issue-47-obs-plugin-manager')) {
-  throw "Manual publication is restricted to reviewed release branches."
-}
-if ($env:EXPECTED_VERSION -notmatch '^\d+\.\d+\.\d+\.\d+$') {
-  throw "Release requires expected_version with four numeric parts."
-}
-$spec = Get-Content 'util/obs-multi-rtmp-websocket/buildspec.json' -Raw | ConvertFrom-Json
-if ($spec.version -ne $env:EXPECTED_VERSION -or
-    $spec.dependencies.'obs-studio'.version -ne '32.2.1') {
-  throw "Requested release version/OBS compatibility differs from custom source."
-}
-''',shell='pwsh')
             # Package reviewed manual release
             ctx.shell(r'''
 $sha = (git rev-parse HEAD).Trim()
