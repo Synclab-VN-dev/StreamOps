@@ -1,4 +1,4 @@
-"""Owner policy regression; these tests do not provision a GitHub trust boundary."""
+"""Intended-flow policy; malicious write collaborators are outside the threat model."""
 import json
 import os
 from pathlib import Path
@@ -17,10 +17,18 @@ class OwnerPolicy(unittest.TestCase):
         self.assertIn('  workflow_dispatch:',triggers)
         self.assertNotIn('tags:',triggers)
 
-    def test_no_default_write_token_or_tag_publish(self):
+    def test_write_token_is_scoped_to_manual_master_publish(self):
         text=(ROOT/'.github/workflows/main.yml').read_text()
-        self.assertNotIn('contents: write',text)
-        self.assertNotIn('CI_PUBLISH_TOKEN: ${{ github.token }}',text)
+        publish=text.split('\n  publish:',1)[1].split('\n  external_publish:',1)[0]
+        others=text.replace(publish,'')
+        self.assertIn('permissions:\n      contents: write',publish)
+        self.assertIn('CI_PUBLISH_TOKEN: ${{ github.token }}',publish)
+        self.assertNotIn('contents: write',others)
+        self.assertNotIn('CI_PUBLISH_TOKEN:',others)
+        for condition in ("github.event_name == 'workflow_dispatch'", "inputs.operation == 'publish'", "github.ref == 'refs/heads/master'"):
+            self.assertIn(condition,publish.split('strategy:',1)[0])
+        self.assertNotIn('environment:',publish)
+        self.assertNotIn('CI_PRODUCTION_RELEASE_TOKEN',text)
         self.assertNotIn("startsWith(github.ref, 'refs/tags/')",text)
 
     def test_optional_jobs_rejected(self):

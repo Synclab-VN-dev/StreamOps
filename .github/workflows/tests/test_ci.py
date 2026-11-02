@@ -273,6 +273,24 @@ class Contracts(unittest.TestCase):
             result=ci.execute(self.root,p,p['jobs'][0],Path(self.tmp.name)/'missing-token',version='1.2.8')
         self.assertEqual(result['error'],'PUBLISH_CREDENTIAL_NOT_PROVIDED')
 
+    def test_manual_master_context_binds_ephemeral_token_without_publishing(self):
+        self.contract('product/ci.release.py','product',jobs=[dict(id='publish',profile='linux',timeout=20,operation='publish',capability='publish')])
+        self.commit();p=ci.plan(self.root,product='product',operation='publish')
+        event=Path(self.tmp.name)/'event.json'
+        event.write_text(json.dumps({'inputs':{'operation':'publish','product':'product','version':'1.2.8'}}))
+        env={'GITHUB_ACTIONS':'true','GITHUB_EVENT_NAME':'workflow_dispatch',
+             'GITHUB_REF':'refs/heads/master','GITHUB_SHA':p['source']['head'],
+             'GITHUB_EVENT_PATH':str(event),'CI_PUBLISH_TOKEN':'SYNTHETIC_EPHEMERAL_TOKEN'}
+        out=Path(self.tmp.name)/'context';out.mkdir()
+        with patch.dict(os.environ,env,clear=True):
+            ctx=ci.Context(self.root,p['jobs'][0],out,p['source'],version='1.2.8')
+        try:
+            self.assertEqual(ctx.env['GH_TOKEN'],'SYNTHETIC_EPHEMERAL_TOKEN')
+            self.assertEqual(ctx.redact('token=SYNTHETIC_EPHEMERAL_TOKEN'),'token=***')
+            self.assertEqual(ctx.commands,[])  # No transport or publication is executed.
+            self.assertNotIn('SYNTHETIC_EPHEMERAL_TOKEN',json.dumps(p))
+        finally:ctx.close()
+
     def test_read_execution_strips_production_credentials_from_child_and_evidence(self):
         self.contract()
         path=self.root/'widget/ci.test.py'

@@ -61,7 +61,7 @@ versions are plain validated values, never interpolated as shell source.
 | read | test/build | contents:read, no repository secrets |
 | public-inputs | build | explicit dispatch; optional public input URL/hash aliases; read token only |
 | fixture | manual test | dispatch on master, maxroll-fixture-trusted; exact age identity alias |
-| publish | publish | manual publish on master; production-release environment; CI_PRODUCTION_RELEASE_TOKEN, no write GITHUB_TOKEN |
+| publish | publish | manual publish on master; job-scoped contents:write GITHUB_TOKEN; verified same-run build |
 | external-publish | publish | manual publish on master; obs-plugin-release environment; exact OBS release token |
 
 Secret aliases request capability; they never grant it. Source checks validate
@@ -72,37 +72,34 @@ Plans/matrices contain names only; bound secret values are redacted from evidenc
 `CI_TRUSTED_EXECUTION=1` is defense in depth, not an authorization boundary. Local
 production publishing is blocked: production requires GitHub manual master context.
 
-### External enforcement: BLOCKED, not established by this PR
+### Threat model — Owner decision 2026-11-02
 
-Read-only inventory on 2026-11-02 found default workflow permissions `read`, and
-only `obs-plugin-release`, with no branch policy or protection rules. No production
-or fixture environment protection has been verified. No settings were changed.
+Development stays on same-repository feature branches. Write collaborators,
+including `synclab-automation-system`, are trusted. Deliberately malicious or
+compromised write collaborators modifying workflow/engine source are outside
+acceptance #166. No fork migration or independently enforced permission ceiling
+is required. Repository read defaults are not claimed to impose such a ceiling.
 
-Owner/admin must provision environment-only production credentials (no repository
-or organization-level copies), restrict deployment to the **master branch only**
-(not tags or refs/pull/*/merge), and configure no required reviewers, matching the
-Owner's manual-dispatch authorization. `production-release` uses
-`CI_PRODUCTION_RELEASE_TOKEN`; the OBS environment also needs its branch restriction.
-Do not provision/release until the remaining GITHUB_TOKEN bypass below is resolved.
-A missing environment secret leaves the shipped publish executor BLOCKED.
+F1 is PARTIALLY_AGREE / FIX_REQUIRED for intended-flow isolation; the prior
+adversarial-YAML/admin-provisioning blocker is superseded by this Owner decision.
+CI-11 now verifies that the reviewed workflow and engine reject accidental or
+metadata-driven escalation: PR/read and manual build do not receive production
+write capability; production requires manual master publish plus exact intent,
+source and artifact validation. Static metadata can request capability but only
+the reviewed workflow grants it. No `pull_request_target` is used.
 
-**Environment isolation alone does not satisfy the malicious-YAML threat case.**
-A same-repository PR can edit its YAML to request `contents:write` and use the
-automatic GITHUB_TOKEN outside the environment. The repository's read default is
-not a permissions ceiling. Source guards, static tests, protected branches and an
-environment-only PAT cannot prove that an arbitrary replacement workflow cannot
-create a Release. The maintenance workflow's existing write capability reinforces
-why a code-only claim would be false; its domain behavior is unchanged here.
+The workflow defaults to contents:read. Only the production publish job requests
+contents:write and supplies its ephemeral GITHUB_TOKEN to the publish executor.
+It runs after build jobs; the executor/product verifier revalidate same-run
+source/version/checksum before any Release mutation. No new PAT, production
+Environment, admin provisioning or deployment-review step is required. Missing
+token still fails closed. Owner review/merge and manual publish are the intended
+authorization, not a defense against a trusted writer intentionally rewriting it.
 
-Owner/admin must establish an independently enforced restriction on untrusted
-workflow write capability, or approve a different isolation model (for example,
-fork PR execution without write tokens/secrets, or externally trusted publishing
-with repository isolation). Those are policy/settings decisions, not implemented
-by this PR. Do not call CI-11's adversarial-YAML security gate PASS until verified.
-No actual malicious publish attempt is used to test this boundary.
-
-References: [GitHub workflow permissions](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository),
-[environment deployment restrictions](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments).
+Historical read-only inventory found only obs-plugin-release with no branch
+policy/protection, and repository workflow permissions default read. No settings
+were changed. Existing external OBS and fixture credentials remain separate;
+their live execution/provisioning is not exercised or claimed by this change.
 
 ## Owner flows
 
@@ -112,9 +109,8 @@ References: [GitHub workflow permissions](https://docs.github.com/en/repositorie
   → build/verify → Actions artifact → Owner download/install/test. No GitHub Release,
   production credential, or Release-existence check. UAT is testing an artifact.
 - Production: trusted master + workflow_dispatch `operation=publish`, product/version
-  → build/verify → separately authorized credential → stable GitHub Release.
-  The external security gate above must be resolved first. No extra deployment
-  review is prescribed. Manual versions are validated, never inferred from a tag.
+  → build/verify → job-scoped write token → stable GitHub Release.
+  No extra deployment review is prescribed. Manual versions are validated, never inferred from a tag.
 
 ## Execution and evidence
 

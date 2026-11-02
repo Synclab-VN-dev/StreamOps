@@ -221,7 +221,7 @@ def plan(root, *, base=None, head='HEAD', dirty=False, push=False, component=Non
     return document
 
 def authorize_publish(version, head, product):
-    """Defense in depth. GitHub/admin credential isolation is separately required."""
+    """Enforce intended flow; write collaborators are trusted by Owner policy."""
     if (os.environ.get('GITHUB_ACTIONS')!='true'
             or os.environ.get('GITHUB_EVENT_NAME')!='workflow_dispatch'
             or os.environ.get('GITHUB_REF')!='refs/heads/master'):

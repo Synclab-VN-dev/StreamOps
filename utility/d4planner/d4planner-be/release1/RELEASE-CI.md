@@ -54,11 +54,12 @@ không phải authorization publish hay bằng chứng Owner MAN.
   rate limit, timeout hoặc malformed response đều fail closed.
 - Tag có sẵn chỉ được tái sử dụng nếu resolve đúng source HEAD. Không move tag,
   overwrite Release hoặc thêm asset vào Release đã tồn tại.
-- Publish dùng credential riêng trong environment `production-release`; không dùng
-  write GITHUB_TOKEN. Thiếu credential thì BLOCKED. Enforcement ngoài source chưa
-  được provision/verify: xem [CI contract](../../../../../.github/workflows/CI-CONTRACT.md).
-  Environment không tự giải quyết nguy cơ same-repository PR sửa YAML xin token ghi.
-  Không claim production security PASS; không yêu cầu thêm deployment review.
+- Theo threat model Owner chốt ngày 2026-11-02, write collaborators (gồm bot) là
+  trusted; giữ same-repository feature branches. Không yêu cầu chống collaborator
+  malicious/compromised sửa workflow. Chỉ job manual publish trên master nhận
+  GITHUB_TOKEN contents:write; PR/test/build giữ read. Không cần PAT/Environment
+  mới hoặc thêm Review deployments. Thiếu token vẫn BLOCKED. Xem
+  [CI contract](../../../../../.github/workflows/CI-CONTRACT.md).
 
 Build vẫn giữ content allowlist/negative inspection, runtime pins, full manifest,
 ZIP hashes và runtime health. Upload giữ exact binary/hash, kiểm tra asset allowlist,

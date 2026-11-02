@@ -49,7 +49,8 @@ def test_workflow_is_single_dispatch_build_without_unconditional_publish():
     assert 'secrets.' not in read
     assert "github.event_name == 'workflow_dispatch'" in publish
     assert "github.ref == 'refs/heads/master'" in publish
-    assert 'environment: production-release' in publish
+    assert 'environment:' not in publish
+    assert 'CI_PUBLISH_TOKEN: ${{ github.token }}' in publish
     assert 'environment: d4planner-release' not in text
     assert '_APPROVAL_JSON' not in text and 'D4_RELEASE_GATES' not in text
     assert 'release_tags' not in contract
