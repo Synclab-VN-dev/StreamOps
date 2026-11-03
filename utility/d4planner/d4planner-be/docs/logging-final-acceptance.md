@@ -56,6 +56,14 @@ The upgraded app is also reopened on its preserved `launcher.json`, producer DB
 and selected Target before recovery/uninstall. Process and listener cleanup is
 checked independently from intentionally preserved files.
 
+The upgrade fixture seeds user inputs and closed logs, but lets the previous
+runtime create its own HUD database. Copying a newer runtime's HUD DB into the
+previous release is a downgrade test and correctly fails with
+`HUD_STORE_SCHEMA_NEWER_THAN_RUNTIME`; an initial native run exposed this fixture
+error. Keep that failed attempt separately and rerun the corrected upgrade path.
+Automated launches use `--launch` so a failed start exits instead of leaving an
+interactive error dialog; teardown still attempts uninstall after a stop error.
+
 ## Measurement interpretation
 
 The default INFO arm and disabled arm use identical installed bytes and recorded

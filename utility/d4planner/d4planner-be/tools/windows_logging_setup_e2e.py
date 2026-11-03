@@ -32,6 +32,19 @@ def preserved(root, before):
     return {"files": len(before), "unchanged": True}
 
 
+def seed_upgrade_data(source, destination):
+    """Seed user inputs, letting the old runtime create its own compatible HUD DB."""
+    for name in ("logs", "state", "targets", "settings.json", "user-owned.bin", "launcher.json", "recorded-producer.sqlite3"):
+        old, new = source / name, destination / name
+        if old.is_dir():
+            shutil.copytree(old, new, dirs_exist_ok=True, ignore=shutil.ignore_patterns("hud.sqlite3*"))
+        else:
+            shutil.copyfile(old, new)
+    config = read_json(destination / "launcher.json")
+    config["equipmentRepository"]["path"] = str(destination / "recorded-producer.sqlite3")
+    write_json(destination / "launcher.json", config)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("sandbox", "setup-old", "setup-new", "output"):
@@ -124,8 +137,9 @@ def main():
         nonlocal launch
         if launch is not None:
             if launch.poll() is None: call([root / "D4Planner.exe", "--stop"])
-            assert launch.wait(timeout=25) == 0
+            code = launch.wait(timeout=25)
             launch = None
+            assert code == 0, f"launcher exited {code}"
     def clean_runtime():
         for tool in ("python.exe", "node.exe", "rustc.exe"):
             assert call(["where.exe", tool], check=False).returncode != 0, "global toolchain on PATH"
@@ -168,27 +182,22 @@ def main():
         if not case("OLD-INSTALL", "Compatible previous Setup installs in separate fresh UAT root", lambda: setup(args.setup_old)): return 1
         # Closed genuine logs and user state from the final Setup are user-owned
         # upgrade inputs; retain hashes. Do not copy transient locks/control files.
-        for name in ("logs", "state", "targets", "settings.json", "user-owned.bin", "launcher.json", "recorded-producer.sqlite3"):
-            source = old_data / name; destination = data / name
-            if source.is_dir(): shutil.copytree(source, destination, dirs_exist_ok=True)
-            else: shutil.copyfile(source, destination)
-        config = read_json(data / "launcher.json")
-        config["equipmentRepository"]["path"] = str(data / "recorded-producer.sqlite3")
-        write_json(data / "launcher.json", config)
+        seed_upgrade_data(old_data, data)
         baseline = inventory(data)
         write_json(output / "upgrade-data-inventory.json", baseline)
         def upgrading():
             nonlocal launch, baseline
             previous = state()
-            launch = subprocess.Popen([str(root / "D4Planner.exe")], env=env)
+            launch = subprocess.Popen([str(root / "D4Planner.exe"), "--launch"], env=env)
             deadline = time.monotonic() + 60
             tree = []
             while time.monotonic() < deadline:
                 tree = owned_tree(launch.pid)
                 if any(r["name"].lower() == "node.exe" for r in tree): break
-                assert launch.poll() is None
+                assert launch.poll() is None, f"old launcher exited {launch.returncode}"
                 time.sleep(.1)
-            assert any(r["name"].lower() == "node.exe" for r in tree)
+            assert any(r["name"].lower() == "node.exe" for r in tree), "old runtime worker did not start"
+            assert (data / "state/hud.sqlite3").is_file(), "old runtime must create its own HUD database"
             trees.extend(tree)
             # Runtime-owned SQLite may legitimately change during launch. Verify
             # immutable user files/logs separately and logical DB state below.
@@ -210,7 +219,7 @@ def main():
             old_runs = {p.name for p in (data / "logs").iterdir() if p.is_dir()}
             render = output / "upgraded-render.json"
             runtime_env = dict(env, D4_HUD_PIPELINE_REPORT=str(render), D4_HUD_PIPELINE_CONTINUOUS="1")
-            launch = subprocess.Popen([str(root / "D4Planner.exe")], env=runtime_env)
+            launch = subprocess.Popen([str(root / "D4Planner.exe"), "--launch"], env=runtime_env)
             def observed():
                 assert launch.poll() is None, "upgraded launcher exited"
                 try: return read_json(render)
@@ -255,7 +264,9 @@ def main():
         case("UPGRADE-UNINSTALL", "Final Setup uninstalls and retains all current user/log/DB bytes", lambda: uninstall(final_inventory))
     finally:
         try:
-            stop()
+            stop_error = None
+            try: stop()
+            except Exception as error: stop_error = repr(error)
             # Even failed scenarios leave the dedicated installation unregistered.
             if (root / "Uninstall.exe").exists():
                 case("FAILURE-CLEANUP", "Failed scenario uninstalls without deleting user data", lambda: uninstall(inventory(data)))
@@ -271,6 +282,7 @@ def main():
                 "@{processes=@($owned|Select-Object ProcessId,Name);listeners=@($listeners|Select-Object LocalPort,OwningProcess)}|ConvertTo-Json -Compress"])
             cleanup = json.loads(checked.stdout)
             assert not cleanup["processes"] and not cleanup["listeners"], "owned process/listener leak"
+            assert stop_error is None, stop_error
             report["cleanup"] = {"uatRegistrationRemoved": True, "productionRegistrationUnchanged": True,
                                  "ownedProcessesAfter": 0, "ownedListenersAfter": 0}
         except Exception as error:

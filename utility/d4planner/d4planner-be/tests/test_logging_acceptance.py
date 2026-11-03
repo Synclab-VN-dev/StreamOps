@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from logging_acceptance import comparison, log_evidence, percentiles
-from windows_logging_setup_e2e import inventory, preserved
+from windows_logging_setup_e2e import inventory, preserved, seed_upgrade_data
 
 
 @pytest.mark.parametrize("values", [[], [-1], [float("nan")], [float("inf")]])
@@ -74,3 +74,21 @@ def test_user_data_preservation_detects_loss(tmp_path, fault):
     if fault == "changed": path.write_bytes(b"wrong")
     else: path.unlink()
     with pytest.raises(AssertionError): preserved(tmp_path, before)
+
+
+def test_upgrade_fixture_does_not_downgrade_new_runtime_database(tmp_path):
+    source, destination = tmp_path / "new-data", tmp_path / "old-data"
+    destination.mkdir()
+    for directory in ("logs", "state", "targets"):
+        (source / directory).mkdir(parents=True)
+        (source / directory / "user-file").write_bytes(b"preserved")
+    for name in ("hud.sqlite3", "hud.sqlite3-wal", "hud.sqlite3-shm"):
+        (source / "state" / name).write_bytes(b"newer schema")
+    for name in ("settings.json", "user-owned.bin", "recorded-producer.sqlite3"):
+        (source / name).write_bytes(b"preserved")
+    (source / "launcher.json").write_text(json.dumps({"equipmentRepository": {"path": "old path"}}))
+    seed_upgrade_data(source, destination)
+    assert not list((destination / "state").glob("hud.sqlite3*"))
+    assert (destination / "state/user-file").read_bytes() == b"preserved"
+    assert (source / "state/hud.sqlite3").read_bytes() == b"newer schema"
+    assert json.loads((destination / "launcher.json").read_text())["equipmentRepository"]["path"] == str(destination / "recorded-producer.sqlite3")
