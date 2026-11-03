@@ -95,6 +95,31 @@ snapshot/calculation UNAVAILABLE. Native FE updates and end-to-end producer-to-
 render timings are paired. All input is recorded/synthetic, never live-game
 evidence. CPU/IO omit descendants that already exited; RAM is not a peak measure.
 
+Resource ownership (F-01): Toolhelp parent PIDs are discovery hints; Windows can
+reuse a terminated parent's PID. After all timed operations, the sampler takes
+two CIM snapshots with creation time and parent identity. The original Launcher
+`Popen` must remain alive throughout. An admitted descendant must retain its
+PID/creation time in both snapshots and have a stable, chronological ancestor
+chain to that root. Names do not establish ownership. A child older than its
+apparent parent, a reused PID, or an inaccessible/missing identity is excluded.
+No process is stopped by the sampler.
+
+`resources` contains only admitted counter rows. `resourceEvidence` retains both
+raw snapshots, rejected PIDs/reasons, the root identity, and verified totals.
+Consumers must honor its status: `MEASURED` for the discovered live set,
+`PARTIAL` for a verified subset, or `NOT_MEASURED` with null totals when none can
+be verified. An empty list is not zero CPU/RAM/IO. These are end-of-workload
+counters, not all lifetime descendants or a saturation measurement. CIM creation
+times have microsecond precision; see Microsoft's
+[ParentProcessId documentation](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-process).
+
+The `bf4e5142` benchmark/Setup evidence remains historical and immutable. Its
+four erroneous OS counter rows were independently excluded using CIM creation
+times older than the application run; startup/render/end-to-end samples were
+not changed. F-01 hardens future collection without invalidating that audited
+dataset. Validate this resource-only change with targeted tests and a native
+collection probe; it does not require rerunning Setup lifecycle acceptance.
+
 Keep `setup-acceptance.json`, `commands.log`, `benchmark/benchmark.json`, per-run
 samples, manifests and SHA inventories in private custody. Publish only sanitized
 aggregate results, exact source/base/Setup hashes, commands, exit codes, durations,

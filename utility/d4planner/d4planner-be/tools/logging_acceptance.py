@@ -66,6 +66,123 @@ def log_evidence(data, run_name=None):
     return {"runId": ids.pop(), "files": result}
 
 
+RESOURCE_COUNTERS = ("KernelModeTime", "UserModeTime", "WorkingSetSize", "ReadTransferCount", "WriteTransferCount")
+
+
+def verify_resource_snapshots(root_pid, candidate_pids, snapshots, *, root_alive):
+    """Admit only stable identities with a live, chronological chain to Launcher.
+
+    Toolhelp PIDs are discovery hints, not ownership. CIM creation timestamps
+    have microsecond precision. Missing ancestors/identity/counters fail closed;
+    raw snapshots remain available even when only a subset can be measured.
+    """
+    result = {"schemaVersion": "d4planner-resource-evidence/v1", "status": "NOT_MEASURED",
+              "rootPid": root_pid, "rawSnapshots": snapshots, "accepted": [], "rejected": [], "totals": None,
+              "scope": "Previously discovered, still-live descendants; excludes Launcher, exited and later descendants"}
+    candidates = sorted(set(candidate_pids) - {root_pid})
+    if not root_alive:
+        result["reason"] = "ROOT_NOT_ALIVE"
+        return result
+
+    def created(row):
+        try:
+            value = datetime.fromisoformat(row["CreatedUtc"].replace("Z", "+00:00"))
+            return value if value.tzinfo is not None else None
+        except (KeyError, TypeError, AttributeError, ValueError):
+            return None
+
+    try:
+        before = {int(row["ProcessId"]): row for row in snapshots["identity"]}
+        after = {int(row["ProcessId"]): row for row in snapshots["counters"]}
+        if len(before) != len(snapshots["identity"]) or len(after) != len(snapshots["counters"]):
+            raise ValueError("duplicate PID")
+    except (KeyError, TypeError, ValueError):
+        result["reason"] = "INVALID_SNAPSHOT"
+        return result
+    root_created = created(before.get(root_pid, {}))
+    if root_created is None or root_created != created(after.get(root_pid, {})):
+        result["reason"] = "ROOT_IDENTITY_UNVERIFIED"
+        return result
+    result["rootCreatedUtc"] = before[root_pid]["CreatedUtc"]
+
+    def ownership(pid, visiting):
+        if pid == root_pid:
+            return None
+        if pid in visiting:
+            return "ANCESTRY_CYCLE"
+        first, last = before.get(pid), after.get(pid)
+        if first is None or last is None:
+            return "PROCESS_OR_ANCESTOR_MISSING"
+        birth = created(first)
+        if birth is None or created(last) is None:
+            return "CREATION_TIME_UNAVAILABLE"
+        if birth != created(last):
+            return "PID_REUSED"
+        if birth < root_created:
+            return "PREDATES_RUN"
+        parent = first.get("ParentProcessId")
+        if not isinstance(parent, int) or parent != last.get("ParentProcessId"):
+            return "PARENT_IDENTITY_UNVERIFIED"
+        reason = ownership(parent, visiting | {pid})
+        if reason:
+            return reason
+        if birth < created(before[parent]):
+            return "PARENT_PID_REUSED"
+        return None
+
+    for pid in candidates:
+        reason = ownership(pid, set())
+        if reason is None:
+            try:
+                values = [int(after[pid][key]) for key in RESOURCE_COUNTERS]
+                if any(value < 0 for value in values):
+                    raise ValueError("negative counter")
+            except (KeyError, TypeError, ValueError):
+                reason = "COUNTERS_UNAVAILABLE"
+        if reason:
+            result["rejected"].append({"pid": pid, "reason": reason})
+        else:
+            result["accepted"].append(dict(after[pid]))
+    if result["accepted"]:
+        result["status"] = "PARTIAL" if result["rejected"] else "MEASURED"
+        result["totals"] = {key: sum(int(row[key]) for row in result["accepted"]) for key in RESOURCE_COUNTERS}
+    else:
+        result["reason"] = "NO_VERIFIED_DESCENDANTS"
+    return result
+
+
+def collect_resource_evidence(process, tree):
+    """Read-only, after all timed operations; Popen liveness anchors root identity."""
+    ids = sorted({process.pid, *(int(row["pid"]) for row in tree)})
+    snapshots = {"identity": [], "counters": []}
+    if process.poll() is not None:
+        return verify_resource_snapshots(process.pid, ids, snapshots, root_alive=False)
+    # Two independent CIM observations detect PID reuse during collection. The
+    # original Popen handle must remain alive throughout; its PID cannot then
+    # refer to a different root. Names are diagnostic only, never an allowlist.
+    script = ("$ErrorActionPreference='Stop'; function Observe { @(Get-CimInstance Win32_Process -ErrorAction Stop | "
+              f"Where-Object {{$_.ProcessId -in @({','.join(map(str, ids))})}} | "
+              "Select-Object ProcessId,ParentProcessId,Name,@{Name='CreatedUtc';Expression={"
+              "if ($null -ne $_.CreationDate) {$_.CreationDate.ToUniversalTime().ToString('o')}}},"
+              + ",".join(RESOURCE_COUNTERS) + ") }; "
+              "$identity=@(Observe); $counters=@(Observe); "
+              "@{identity=$identity;counters=$counters}|ConvertTo-Json -Depth 4 -Compress")
+    try:
+        completed = subprocess.run(["powershell.exe", "-NoProfile", "-Command", script],
+                                   capture_output=True, text=True, timeout=30)
+        if completed.returncode != 0:
+            result = verify_resource_snapshots(process.pid, ids, snapshots, root_alive=False)
+            result.update(reason="CIM_QUERY_FAILED", exitCode=completed.returncode,
+                          rawStdout=completed.stdout, rawStderr=completed.stderr)
+            return result
+        snapshots = json.loads(completed.stdout)
+        return verify_resource_snapshots(process.pid, ids, snapshots, root_alive=process.poll() is None)
+    except (OSError, subprocess.TimeoutExpired, ValueError, TypeError) as error:
+        result = verify_resource_snapshots(process.pid, ids, snapshots, root_alive=False)
+        result.update(reason="RESOURCE_COLLECTION_UNAVAILABLE", error=type(error).__name__)
+        return result
+
+
 def native_sample(install, payload, data, output, *, mode="INFO", samples=20):
     """Reuse production E2E producer, native window, DB and render assertions."""
     import production_e2e as e2e
@@ -144,13 +261,9 @@ def native_sample(install, payload, data, output, *, mode="INFO", samples=20):
         e2e._assert_native_delta(before_target["payload"], after_target["payload"])
         report["targetActivationMs"] = (e2e._parse_timestamp(target_ui["visibleRenderedAt"]) - target_started).total_seconds() * 1000
         report["targetSelected"] = target_ui
-        # One snapshot AFTER timed operations; no sampler competing with renders.
-        ids = ",".join(str(row["pid"]) for row in tree)
-        resource = subprocess.run(["powershell.exe", "-NoProfile", "-Command",
-            f"@(Get-CimInstance Win32_Process | Where-Object {{$_.ProcessId -in @({ids})}} | "
-            "Select-Object ProcessId,Name,KernelModeTime,UserModeTime,WorkingSetSize,ReadTransferCount,WriteTransferCount) | ConvertTo-Json -Compress"],
-            capture_output=True, text=True, timeout=30)
-        report["resources"] = json.loads(resource.stdout) if resource.returncode == 0 and resource.stdout.strip() else {"status": "NOT_MEASURED"}
+        # Identity checks/counters stay AFTER timed operations, outside latency.
+        report["resourceEvidence"] = collect_resource_evidence(process, tree)
+        report["resources"] = report["resourceEvidence"]["accepted"]
     finally:
         # Root owns a Windows job. Always stop it even when an assertion fails.
         stopped = subprocess.run([str(install / "D4Planner.exe"), "--stop"], env=env, timeout=25)
