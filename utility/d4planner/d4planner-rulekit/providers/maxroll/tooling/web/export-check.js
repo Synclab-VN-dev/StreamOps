@@ -10,7 +10,7 @@ async function run(config){
   const browser=await chromium.launch({executablePath:config.chromium});const results=[];
   try{for(const mobile of [false,true]){
     const context=await browser.newContext({...(mobile?devices['Pixel 7']:{viewport:{width:1440,height:1100}}),acceptDownloads:true});
-    const page=await context.newPage();const errors=[],external=[],payloads=[],externalAttempts=[],externalFailures=[];
+    context.setDefaultTimeout(30000);const page=await context.newPage();const errors=[],external=[],payloads=[],externalAttempts=[],externalFailures=[];
     page.on('request',r=>{if(new URL(r.url()).origin!==new URL(config.url).origin)externalAttempts.push(r.url());});
     page.on('requestfailed',r=>{if(new URL(r.url()).origin!==new URL(config.url).origin)externalFailures.push(r.failure()?.errorText);});
     page.on('pageerror',e=>errors.push(e.message));
@@ -34,6 +34,12 @@ async function run(config){
     }
     await frame.getByRole('button',{name:'My Profiles',exact:true}).waitFor();
     const rich=await download('captured-profile');
+    await frame.locator('[class*=profiles_ProfileDialog]').locator(':scope > [class*=DialogHeader] button').last().click();
+    const previous=rich.exported.nativeState.activeProfile,alternate=previous===0?1:0;
+    await frame.locator('[class*=sets_SetOption__name]').nth(alternate).click();
+    const switched=await download('switched-profile');assert.equal(switched.exported.nativeState.activeProfile,alternate,'Native profile selection changes the serialized active profile');
+    await frame.locator('[class*=profiles_ProfileDialog]').locator(':scope > [class*=DialogHeader] button').last().click();
+    await frame.locator('[class*=sets_SetOption__name]').nth(previous).click();
     await page.locator('#import-build').setInputFiles(rich.target);
     await page.getByText('Native file loaded into this tab.',{exact:false}).waitFor();
     frame=page.frames()[1];await frame.locator('[class*=PlannerEquipment]').first().waitFor();
@@ -67,7 +73,11 @@ async function run(config){
     const wrong=structuredClone(first.exported);wrong.provenance.snapshotManifestSha256='0'.repeat(64);
     await page.locator('#import-build').setInputFiles({name:'wrong-snapshot.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(wrong))});
     await page.getByText('Import rejected:',{exact:false}).waitFor();
-    results.push({richProfiles:rich.exported.nativeState.profiles.length,richItems:Object.keys(rich.exported.nativeState.items).length,mobileEmulation:mobile,download:true,equipment:true,emptySockets:true,skills:true,paragon:true,roundtrip:true,rejectedWrongSnapshot:true,externalAttempts:externalAttempts.length,errors,external});await context.close();
+    for(const [name,buffer] of [['invalid.json',Buffer.from('{invalid')],['tampered.json',Buffer.from(JSON.stringify({...first.exported,nativeState:{...first.exported.nativeState,activeProfile:999}}))],['hash-mismatch.json',Buffer.from(JSON.stringify({...first.exported,integrity:{algorithm:'sha256',nativeStateSha256:'0'.repeat(64)}}))]]){
+      await page.getByRole('button',{name:'Export JSON',exact:true}).click();
+      await page.locator('#import-build').setInputFiles({name,mimeType:'application/json',buffer});await page.getByText('Import rejected:',{exact:false}).waitFor();
+    }
+    results.push({profileSwitch:true,richProfiles:rich.exported.nativeState.profiles.length,richItems:Object.keys(rich.exported.nativeState.items).length,mobileEmulation:mobile,download:true,equipment:true,emptySockets:true,skills:true,paragon:true,roundtrip:true,rejectedWrongSnapshot:true,rejectedInvalidAndTampered:true,externalAttempts:externalAttempts.length,errors,external});await context.close();
   }}finally{await browser.close();await fs.writeFile(path.join(config.evidenceDir,'export-report.json'),JSON.stringify({results,android:'NOT_RUN'},null,2));}
   console.log(JSON.stringify(results));
 }

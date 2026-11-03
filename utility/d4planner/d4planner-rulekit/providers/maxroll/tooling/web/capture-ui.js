@@ -5,6 +5,9 @@ const path=require('node:path');
 const {createHash}=require('node:crypto');
 const {BrowserInfrastructure,FileSystemSnapshotStore,WebSnapshotManager}=require('../../../../browser-infra/src');
 const {scenarios}=require('./ui-scenarios');
+const {fullScenarios}=require('./full-scenarios');
+const {moduleDependencies,htmlDependencies}=require('./resource-dependencies');
+const {collectSelectable,entityDependencies,auxiliaryDependencies}=require('./catalog-coverage');
 const {UI_ORIGINS:ORIGINS}=require('./ui-package');
 const hash=b=>createHash('sha256').update(b).digest('hex');
 function dependencies(text,base) {
@@ -24,9 +27,10 @@ async function capture(config) {
   const browser=new BrowserInfrastructure({executablePath:config.chromium,headless:true,maxContexts:1,maxQueue:1,
     contextOptions:{serviceWorkers:'block',viewport:{width:1440,height:1100}}});
   const store=new FileSystemSnapshotStore({rootDir:config.snapshotRoot,limits:{maxResources:6000,maxResourceBytes:64*1024*1024,maxTotalBytes:512*1024*1024}});
-  const queue=new Set(),observed=new Set(),fingerprints=new Map(),tasks=new Set(),responseHashes=new Map();
+  let nativeData;
+  const queue=new Set(),observed=new Set(),attempted=new Set(),fingerprints=new Map(),tasks=new Set(),responseHashes=new Map();
   const coverage={schemaVersion:'maxroll-ui-coverage/v1',startedAt:new Date().toISOString(),authorizationRef:config.authorizationRef,
-    calculationStatus:'NOT_ASSESSED',scenarios:{},dependencies:[],references:[],errors:[],status:'CAPTURING'};
+    calculationStatus:'NOT_ASSESSED',scenarios:{},dependencies:[],unavailableDependencies:[],references:[],errors:[],status:'CAPTURING'};
   const manager=new WebSnapshotManager({store,browser:{withLease:(options,fn)=>browser.withLease(options,async lease=>{
     const page=lease.page;
         page.on('pageerror',e=>coverage.errors.push(e.message));
@@ -35,8 +39,12 @@ async function capture(config) {
           observed.add(r.url());
           const task=(async()=>{
             const type=r.headers()['content-type']||'';
+            if(config.comprehensive&&r.status()===200){
+              if(type.includes('javascript'))for(const url of moduleDependencies(await r.text(),r.url()))queue.add(url);
+              if(type.includes('text/html'))for(const url of htmlDependencies(await r.text(),r.url()))queue.add(url);
+            }
             if(type.includes('text/css'))for(const url of dependencies(await r.text(),r.url()))queue.add(url);
-            if(/\/game\/data\.min\.json/.test(r.url())&&r.status()===200){const data=await r.json();for(const node of Object.values(data.paragonNodes||{}))if(Number.isInteger(node.iconMask)&&node.iconMask>0)queue.add(new URL('/d4-tools/images/webp/'+node.iconMask+'.webp','https://assets-ng.maxroll.gg').href);}
+            if(/\/game\/data\.min\.json/.test(r.url())&&r.status()===200){const data=await r.json();nativeData=data;for(const node of Object.values(data.paragonNodes||{}))if(Number.isInteger(node.iconMask)&&node.iconMask>0)queue.add(new URL('/d4-tools/images/webp/'+node.iconMask+'.webp','https://assets-ng.maxroll.gg').href);}
             if(/\/assets\/export-|\/game\/data\.(?:min|enus)\.json/.test(r.url())&&r.status()===200)fingerprints.set(r.url(),hash(await r.body()));
           })().catch(e=>coverage.errors.push('Inventory '+r.url()+': '+e.message));
           tasks.add(task);task.finally(()=>tasks.delete(task));
@@ -67,11 +75,11 @@ async function capture(config) {
             return [...urls];
           });
           for(const url of urls)if(ORIGINS.includes(new URL(url).origin))queue.add(url);
-          for(let round=0;round<8;round++){
+          for(let round=0;round<24;round++){
             await Promise.all([...tasks]);
-            const pending=[...queue].filter(u=>!observed.has(u));if(!pending.length)break;
-            coverage.dependencies.push(...pending);
-            for(let i=0;i<pending.length;i+=8)await page.evaluate(async urls=>{await Promise.all(urls.map(url=>fetch(url,{credentials:'omit',cache:'no-store',mode:'cors'}).then(r=>r.arrayBuffer()).catch(()=>{})));},pending.slice(i,i+8));
+            const pending=[...queue].filter(u=>!observed.has(u)&&!attempted.has(u));if(!pending.length)break;
+            coverage.dependencies.push(...pending);for(const url of pending)attempted.add(url);
+            for(let i=0;i<pending.length;i+=8){const outcomes=await page.evaluate(async urls=>Promise.all(urls.map(async url=>{try{const r=await fetch(url,{credentials:'omit',cache:'no-store',mode:'cors'});await r.arrayBuffer();return {url,status:r.status};}catch{return {url,status:'FETCH_FAILED'};}})),pending.slice(i,i+8));coverage.unavailableDependencies.push(...outcomes.filter(r=>r.status!==200));}
           }
           await page.waitForTimeout(400);
         }
@@ -86,6 +94,16 @@ async function capture(config) {
           const file='desktop-'+label+'.png';await locator.screenshot({path:path.join(config.evidenceDir,file),animations:'disabled',scale:'css'});
           coverage.references.push({viewport:'desktop',state:label,file});
         }});
+        if(config.comprehensive){
+          coverage.scenarios.full=await fullScenarios(page);
+          coverage.selectable=await collectSelectable(page);
+          if(!nativeData)throw Error('Native catalog absent');
+          coverage.entityDependencies=entityDependencies(nativeData,coverage.selectable);
+          coverage.auxiliaryDependencies=auxiliaryDependencies(nativeData);
+          for(const row of coverage.entityDependencies)for(const image of row.images)queue.add(image.url);
+          for(const row of coverage.auxiliaryDependencies)queue.add(row.url);
+          await inventory();
+        }
         coverage.scenarios.mobile={mode:'PENDING_SEPARATE_CLEAN_PROFILE_REFERENCE'};
         await Promise.all([...tasks]);
         const before=new Map(fingerprints);

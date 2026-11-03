@@ -1,5 +1,7 @@
 # Local frozen Maxroll Web UI — #173
 
+**Comprehensive acceptance:** See [COMPLETE-UI.md](COMPLETE-UI.md) for the selectable catalog audit, full HTTP/visual/negative tests and one-command offline acceptance runner. Earlier limited icon checks are not full UI acceptance.
+
 **Current scope:** Native JSON download and import are supported. See [EXPORT.md](EXPORT.md) for the native Save workflow, format, security, tests and Android acceptance. This supersedes earlier export-out-of-scope notes.
 
 This provider-owned tool renders the captured Planner directly in the client browser. It starts one loopback Node HTTP server; it does not start Chromium, VNC, a remote desktop, a capture job, or a network proxy. This checkpoint supports UI experimentation, native JSON downloads; canonical export and cloud Save remain unsupported. Changes may be lost when closing/reloading the tab.
