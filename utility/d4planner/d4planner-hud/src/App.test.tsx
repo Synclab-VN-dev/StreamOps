@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import partialFixture from "../../d4planner-be/contracts/release1/v1/fixtures/hud.partial.synthetic.json";
 import noDataFixture from "../../d4planner-be/contracts/release1/v1/fixtures/hud.no-data.synthetic.json";
@@ -51,7 +51,9 @@ function targetBSnapshot(revision = 13): HudSnapshot {
   };
 }
 
-beforeEach(() => { cleanup(); vi.clearAllMocks(); mocks.invoke.mockResolvedValue(undefined); });
+beforeEach(() => { vi.clearAllMocks(); mocks.invoke.mockResolvedValue(undefined); });
+// Unmount/cancel animation frames before Vitest disposes the native mocks.
+afterEach(cleanup);
 
 describe("Release 1 Equipment HUD", () => {
   it("renders BE score, item counts and partial Equipment without client-side coverage UI", async () => {
