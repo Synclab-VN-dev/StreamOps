@@ -83,6 +83,11 @@ class PlannerServerManager {
       return {schemaVersion: SCHEMA, status: 'READY', url: `http://127.0.0.1:${this.port}/`,
         snapshotId: this.identity.snapshotId, manifestSha256: this.identity.manifestSha256, reused};
     } catch (error) {
+      // Cancelling a new "open" request must not interrupt tabs using a
+      // previously READY listener. Shutdown still closes it in close().
+      if (reused && !this.closed && signal.aborted && signal.reason?.code === 'PLANNER_UNAVAILABLE') {
+        throw failure('PLANNER_UNAVAILABLE');
+      }
       await this.stopListener();
       this.state = 'FAILED';
       throw error.code?.startsWith('PLANNER_') ? error : failure('PLANNER_HEALTH_FAILED');

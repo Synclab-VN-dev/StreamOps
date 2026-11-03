@@ -94,3 +94,23 @@ test('wrong server identity fails health and closes only the owned listener', as
   const m = owned(t, {...f, start: (c, options) => startServer(c, {...options, health: {...options.health, identity: {pid: -1}}})});
   await assert.rejects(m.ensureReady(), {code: 'PLANNER_HEALTH_FAILED'}); assert.equal(m.running, null);
 });
+
+test('cancelling a reuse request preserves the READY server used by existing tabs', async t => {
+  const f = await fixture(t), m = owned(t, f);
+  const ready = await m.ensureReady(), server = m.running.server;
+  const health = m.health.bind(m);
+  let checking;
+  const checked = new Promise(resolve => { checking = resolve; });
+  m.health = signal => new Promise((resolve, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason), {once: true}); checking();
+  });
+  const caller = new AbortController();
+  const pending = m.ensureReady({signal: caller.signal});
+  await checked; caller.abort();
+  await assert.rejects(pending, {code: 'PLANNER_UNAVAILABLE'});
+  await m.flight?.promise.catch(() => {});
+  assert.equal(m.state, 'READY'); assert.equal(m.running.server, server);
+  assert.equal((await fetch(ready.url)).status, 200);
+  m.health = health;
+  assert.equal((await m.ensureReady()).reused, true);
+});
