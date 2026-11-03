@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .client import RuleKitClient
-from .protocol import PROTOCOL_VERSION, ProtocolError, validate_ready
+from .protocol import PROTOCOL_VERSION, PLANNER_PROTOCOL_VERSION, ProtocolError, validate_ready
 
 
 class ProcessState(StrEnum):
@@ -173,6 +173,7 @@ class RuleKitProcessWrapper:
                 worker_generation=self.generation,
                 operation_timeout=self.specification.operation_timeout,
                 max_pending=self.specification.max_pending,
+                planner_available=ready.get("plannerContractVersion") == PLANNER_PROTOCOL_VERSION,
             )
             self.state = ProcessState.READY
             emit("INFO","worker","READY")

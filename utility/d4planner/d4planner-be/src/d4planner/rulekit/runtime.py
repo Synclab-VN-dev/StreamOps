@@ -7,13 +7,15 @@ import copy
 from pathlib import Path
 from typing import Mapping
 
-from .client import RuleKitClient
+from .client import RuleKitClient, RuleKitRemoteError
 import asyncio
 from .process import LaunchSpecification, RuleKitProcessWrapper
 
 
 PRODUCTION_ENVIRONMENT = (
     "D4_RULEKIT_DATA_ROOT",
+    "D4_RULEKIT_PLANNER_STATE_ROOT",
+    "D4_RULEKIT_PLANNER_PORT",
     "D4_RULEKIT_INSTALLATION_ROOT",
     "D4_RULEKIT_PROFILE_JSON",
     "D4_RULEKIT_SNAPSHOT_ROOT",
@@ -70,9 +72,12 @@ class RuleKitRuntimeService:
             rulekit_root / "application" / "src" / "runtime" / "bootstrap.js")))
         if not bootstrap.is_absolute() or not bootstrap.is_file():
             raise ValueError("Rule Kit bootstrap must be an absolute existing file")
+        planner_adapter = rulekit_root / "providers/maxroll/tooling/planner/worker-adapter.js"
+        if not planner_adapter.is_file():
+            raise ValueError("Rule Kit Planner adapter is missing")
         specification = LaunchSpecification(
             executable=str(executable),
-            args=(str(bootstrap), str(worker)),
+            args=(str(bootstrap), str(planner_adapter), str(worker)),
             working_directory=working_directory,
             environment_allow_list=forwarded,
             readiness_timeout=15,
@@ -103,6 +108,12 @@ class RuleKitRuntimeService:
         except BaseException:
             await self.stop()
             raise
+
+    async def ensure_planner_ready(self) -> dict:
+        # No worker start/restart and no calculation availability gate here.
+        if self.client is None or not (await self.wrapper.inspect_health())["ready"]:
+            raise RuleKitRemoteError("PLANNER_UNAVAILABLE", "Local Planner unavailable.")
+        return await self.client.ensure_planner_ready()
 
     async def snapshot_api(self, method: str, request: dict | None = None, *, on_health=None) -> dict | list:
         """Transport/lifecycle adapter only. Decisions belong to the Node Rule Kit."""

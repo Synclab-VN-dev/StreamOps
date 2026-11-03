@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { productionHudDataSource, type IHudDataSource } from "./hud-data-source";
 import type { AssessmentStatus, CriterionComparison, EquipmentRow, TypedValue } from "./hud-model";
@@ -30,6 +30,9 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   const [equipmentOpen, setEquipmentOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const plannerPending = useRef(false);
+  const [plannerOpening, setPlannerOpening] = useState(false);
+  const [plannerError, setPlannerError] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [affixOpen, setAffixOpen] = useState(false);
   const [effectOpen, setEffectOpen] = useState(false);
@@ -83,6 +86,26 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
     setSelectedSlot(null); setAffixOpen(false); setEffectOpen(false); setShowAll(false);
   }
 
+  async function createBuild() {
+    if (plannerPending.current) return;
+    plannerPending.current = true; setPlannerOpening(true); setPlannerError(null);
+    try {
+      await invoke("open_local_planner");
+      setMenuOpen(false);
+    } catch (error) {
+      const messages: Record<string, string> = {
+        PLANNER_SNAPSHOT_UNAVAILABLE: "Local Planner snapshot is unavailable. Provision a validated UI package.",
+        PLANNER_SNAPSHOT_UNTRUSTED: "Local Planner snapshot could not be verified.",
+        PLANNER_START_FAILED: "Local Planner could not start. Please try again.",
+        PLANNER_HEALTH_FAILED: "Local Planner did not become ready. Please try again.",
+        PLANNER_PORT_CONFLICT: "Local Planner port is in use. The other service was left running.",
+        PLANNER_BUSY: "Local Planner is busy. Please try again.",
+        PLANNER_UNAVAILABLE: "Local Planner is unavailable. Check the application runtime.",
+      };
+      setPlannerError(messages[String(error)] ?? messages.PLANNER_UNAVAILABLE);
+    } finally { plannerPending.current = false; setPlannerOpening(false); }
+  }
+
   async function drag(event: React.MouseEvent) {
     // Menu operations must receive their pointer-up/click; native dragging captures it.
     if (event.target instanceof Element && event.target.closest(".menu-button, .target-menu")) return;
@@ -107,6 +130,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
           <button className="menu-button" aria-label="Open target menu" aria-expanded={menuOpen} onClick={() => { setMenuOpen(value => !value); if (!menuOpen) void hud.refreshTargets(); }}>⋮</button>
           {menuOpen && <div className="target-menu" role="menu">
             <button role="menuitem" onClick={() => { setReportOpen(true); setMenuOpen(false); setEquipmentOpen(false); resetComparison(); }}>Report Issue</button>
+            <button role="menuitem" disabled={plannerOpening} aria-busy={plannerOpening} onClick={() => void createBuild()}>{plannerOpening ? "Opening Planner…" : "Create Build"}</button>
             <strong>▣ Target Build</strong>
             {hud.targetListStatus === "LOADING" && <p role="status">Loading Targets…</p>}
             {hud.targetListStatus === "ERROR" && <div>
@@ -127,6 +151,8 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
           {snapshot?.score.status === "NO_DATA" ? "NO DATA" : snapshot ? (hud.connection === "DISCONNECTED" ? "OFFLINE — Last-known assessment is not current" : "Last-known assessment is not current — resynchronizing") : (hud.connection === "DISCONNECTED" ? "NO DATA" : "Connecting…")}
         </div>}
         {hud.error && <div className="hud-error" role="alert">{hud.error}</div>}
+        {plannerOpening && <div className="freshness" role="status">Opening Planner…</div>}
+        {plannerError && <div className="hud-error" role="alert">{plannerError}</div>}
 
         {expanded && <div className="summary-body">
           <button className="equipment-link" aria-pressed={equipmentOpen} onClick={() => { setEquipmentOpen(value => !value); resetComparison(); }}>
