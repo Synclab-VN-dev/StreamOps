@@ -145,7 +145,9 @@ class State:
             elif op == 'abort':
                 transition = data['transition']
                 if transition:
-                    data['packages'][transition['targetId']]['activationRejected'] = True
+                    # With no previous service there is nothing to fall back to. A later
+                    # explicit start may retry all verification/probe gates for this candidate.
+                    data['packages'][transition['targetId']]['activationRejected'] = bool(transition['oldId'])
                     data['history'].append({**transition, 'operation': 'ROLLBACK_AFTER_FAILURE'})
                 data['transition'] = None
             else:

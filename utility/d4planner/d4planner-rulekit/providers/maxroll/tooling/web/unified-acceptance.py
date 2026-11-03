@@ -82,6 +82,8 @@ def main():
                 os.kill(db.read()['runs'][run_id]['ownerPid'], signal.SIGINT)
                 assert proc.wait(timeout=90) != 0
                 assert db.read()['runs'][run_id]['status'] == 'FAILED'
+                cancelled = json.loads((Path(config['stateRoot'])/'runs'/run_id/'run-report.json').read_text())
+                assert cancelled['captureBrowserCleanup'] == 'PASS'
             finally:
                 if proc.poll() is None: proc.terminate(); proc.wait(timeout=10)
         phases['interrupted-capture'] = {'status': 'PASS', 'actual': 'Real npm capture rejected after SIGINT; no candidate promoted', 'evidence': 'interrupted-capture.log'}

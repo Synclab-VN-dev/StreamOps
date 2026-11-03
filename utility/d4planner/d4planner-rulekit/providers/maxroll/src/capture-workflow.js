@@ -37,12 +37,14 @@ async function loadConfig(filename = defaultConfig()) {
 function processCommand(bin, args, {input, log, signal, timeout = 900000} = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, {stdio: ['pipe', 'pipe', 'pipe'], signal});
-    let stdout = '', stderr = '';
+    let stdout = '', stderr = '', failure;
     const timer = setTimeout(() => child.kill('SIGTERM'), timeout);
     child.stdout.on('data', bytes => {if (log) log.write(bytes); else stdout += bytes;});
     child.stderr.on('data', bytes => {if (log) log.write(bytes); stderr = (stderr + bytes).slice(-4000);});
-    child.once('error', reject);
-    child.once('close', code => {clearTimeout(timer); code === 0 ? resolve(stdout) : reject(Object.assign(Error('Child gate failed (' + code + '): ' + stderr), {code: 'GATE_FAILED'}));});
+    // Abort emits error before stdio closes. Wait for close before closing the private log
+    // or recording cleanup, otherwise late browser output can crash the orchestrator.
+    child.once('error', error => {failure = error;});
+    child.once('close', code => {clearTimeout(timer); code === 0 && !failure ? resolve(stdout) : reject(failure || Object.assign(Error('Child gate failed (' + code + '): ' + stderr), {code: 'GATE_FAILED'}));});
     child.stdin.end(input);
   });
 }
@@ -96,7 +98,9 @@ async function run(options, dependencies = {}) {
     finally {await new Promise(resolve => log.end(resolve));}
   }
   try {
-    browser = (dependencies.browserFactory || (opts => new BrowserInfrastructure(opts)))({executablePath: c.chromium, headless: true, maxContexts: 2, maxQueue: 1, contextOptions: {serviceWorkers: 'block', viewport: {width: 1440, height: 1100}}});
+    browser = (dependencies.browserFactory || (opts => new BrowserInfrastructure(opts)))({executablePath: c.chromium, headless: true, maxContexts: 2, maxQueue: 1,
+      launchOptions: {handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false},
+      contextOptions: {serviceWorkers: 'block', viewport: {width: 1440, height: 1100}}});
     await browser.start();
     // Separate anonymous contexts preserve each capture policy; only the browser process is shared.
     const facade = {start: async () => {}, stop: async () => {}, withLease: (...args) => browser.withLease(...args)};
@@ -122,7 +126,7 @@ async function run(options, dependencies = {}) {
         throw error;
       }
     }
-    await browser.stop(); browser = null;
+    await browser.stop(); browser = null; report.captureBrowserCleanup = 'PASS';
     if (mode === 'all') {
       report.consistency = consistent(packages[0].identity, packages[1].identity) ? 'PASS' : 'FAILED';
       if (report.consistency !== 'PASS') throw Object.assign(Error('UI/calculation runtime or game-data drift; pair not eligible for activation'), {code: 'CONSISTENCY_FAILED'});
@@ -162,7 +166,7 @@ async function run(options, dependencies = {}) {
     report.status = 'FAILED'; report.error = error.code || 'CAPTURE_OR_VALIDATION_FAILED';
     throw Object.assign(error, {report});
   } finally {
-    try {if (browser) await browser.stop();} catch {report.status = 'FAILED'; report.error = 'CLEANUP_FAILED';}
+    try {if (browser) {await browser.stop(); report.captureBrowserCleanup = 'PASS';}} catch {report.status = 'FAILED'; report.error = 'CLEANUP_FAILED'; report.captureBrowserCleanup = 'FAIL';}
     report.packages = packages; report.finishedAt = new Date().toISOString();
     await fs.writeFile(path.join(runDir, 'run-report.json'), JSON.stringify(report, null, 2), {flag: 'wx'});
     await db({operation: 'finish', runId, result: {status: report.status, consistency: report.consistency, finishedAt: report.finishedAt, error: report.error || null}});

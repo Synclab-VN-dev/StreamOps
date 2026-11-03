@@ -5,7 +5,7 @@ async function fixture(t,{drift=false,gateFailure=false,incomplete=false}={}){
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'capture-workflow-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
  const c={stateRoot:path.join(root,'state'),uiRoot:path.join(root,'ui'),calculationRoot:path.join(root,'calc'),chromium:'/synthetic/browser',authorizationRef:'SYNTHETIC_TEST_ONLY',sourceUrl:'https://maxroll.gg/d4/planner/fixture'};
  const calls=[];let starts=0,stops=0;
- const deps={loadConfig:async()=>c,browserFactory:()=>({start:async()=>starts++,stop:async()=>stops++}),
+ const deps={loadConfig:async()=>c,browserFactory:opts=>{assert.deepEqual(opts.launchOptions,{handleSIGINT:false,handleSIGTERM:false,handleSIGHUP:false});return {start:async()=>starts++,stop:async()=>stops++};},
  calculation:{capture:async o=>{calls.push('calculation');await fs.mkdir(o.output,{recursive:true});return {validation:'PATCH_DRIFT'};}},
  captureUi:async o=>{calls.push('ui');if(incomplete)throw Error('Missing native category model');await fs.mkdir(path.join(o.snapshotRoot,o.snapshotId),{recursive:true});await fs.writeFile(path.join(o.snapshotRoot,o.snapshotId,'ui-coverage.json'),'{}');},
  identity:async(root)=>({integrity:{manifestSha256:'a'.repeat(64)},identity:{version:'same-label',fingerprints:{engine:drift&&root===c.uiRoot?'changed':'engine',game:'game',localization:'localization'}}}),

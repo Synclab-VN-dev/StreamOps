@@ -27,6 +27,7 @@ async function main() {
   const abort = () => controller.abort();
   process.once('SIGINT', abort);
   process.once('SIGTERM', abort);
+  process.once('SIGHUP', abort);
   if (!options.output || options.mode === 'ui' || options.mode === 'all' || options.config) {
     const {run} = require('../src/capture-workflow');
     const report = await run({...options, signal: controller.signal});

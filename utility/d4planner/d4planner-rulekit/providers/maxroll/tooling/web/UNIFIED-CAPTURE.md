@@ -67,7 +67,7 @@ Capture outputs live in `<uiRoot>/<runId>-ui` and `<calculationRoot>/<runId>-cal
 
 Validation statuses: CAPTURED_UNVALIDATED → VALIDATING → VALIDATED, or UNSUPPORTED_VERSION/FAILED. Only a VALIDATED UI from a COMPLETE run is automatically eligible. Calculation cannot receive VALIDATED through this state boundary. A consistency-failed `all` run is never eligible, even if a package has usable bytes.
 
-Metadata transactions use kernel `flock`, private files, temp+fsync+atomic rename+directory fsync, and digest/schema/selection checks. Locks release on process death; concurrent capture commands cannot overwrite each other's records. This checksum detects accidental corruption, not malicious edits by the same OS user; authorization still comes from owned private configuration and exact package trust pins. No registry is placed in FE/HUD/BE.
+Metadata transactions use kernel `flock`, private files, temp+fsync+atomic rename+directory fsync, and digest/schema/selection checks. Locks release on process death; concurrent capture commands cannot overwrite each other's records. This checksum detects accidental corruption, not malicious edits by the same OS user; authorization still comes from owned private configuration and exact package trust pins. No registry is placed in FE/HUD/BE. The orchestrator owns SIGINT/SIGTERM/SIGHUP and disables Playwright process-exit handlers for its shared capture browser, so cancellation writes FAILED and closes the browser before returning. Child validation gates drain/close their streams before metadata cleanup.
 
 Activation is serialized by the existing service lock:
 
