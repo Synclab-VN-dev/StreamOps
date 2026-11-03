@@ -52,11 +52,12 @@ async function run(config){
       return command('calculation-real','npm',['run','test:real'],provider,{MAXROLL_AUTHORIZED_SNAPSHOT_ROOT:c.snapshotRoot,MAXROLL_AUTHORIZED_SNAPSHOT_ID:c.snapshotId,MAXROLL_AUTHORIZED_MANIFEST_SHA256:c.manifestSha256,MAXROLL_SNAPSHOT_AUTHORIZATION_REF:c.authorizationRef,MAXROLL_SOURCE_URL:c.sourceUrl,MAXROLL_REAL_PROFILE_ID:c.profileId});
     });
   }finally{
+    await phase('git-clean-final',async()=>{assert.equal((await exec('git',['rev-parse','HEAD'],{cwd:__dirname})).stdout.trim(),head,'HEAD must remain unchanged throughout acceptance');assert.equal((await exec('git',['status','--porcelain'],{cwd:__dirname})).stdout.trim(),'','Repository must remain clean throughout acceptance');return {head};});
     net.Socket.prototype.connect=connect;
     await phase('server-network',async()=>{assert.equal(outboundAttempts,0,'Replay server makes no outbound TCP connection');return {outboundAttempts};});
     if(running)await phase('cleanup',async()=>{const port=running.server.address().port;await running.close();const s=net.createServer();await new Promise((r,j)=>{s.once('error',j);s.listen(port,'127.0.0.1',r);});await new Promise(r=>s.close(r));return {portReleased:true};});
     const definitions=[
-      ['FULL-01','UI integrity and provenance',['git-clean','resource','server']],['FULL-02','Selectable entity and static dependency closure',['resource','browser']],
+      ['FULL-01','UI integrity and provenance',['git-clean','git-clean-final','resource','server']],['FULL-02','Selectable entity and static dependency closure',['resource','browser']],
       ['FULL-03','Equipment artwork coverage and image decode',['resource','browser','visual']],['FULL-04','Picker/editor/equipped/tooltip and modifiers',['browser','visual']],
       ['FULL-05','Skill allocation/refund/icons',['browser','visual']],['FULL-06','Paragon nodes/glyph/board/rotate/pan/zoom',['browser','visual']],
       ['FULL-07','Profiles/classes/levels',['browser','export']],['FULL-08','Native UI export and actual download',['browser','export']],

@@ -104,6 +104,7 @@ async function startServer(config, { snapshot: suppliedSnapshot } = {}) {
       if (!['GET', 'HEAD'].includes(req.method)) {
         if (req.headers.origin !== origin) return send(403, '{"error":"Same-origin POST required"}');
         if (req.method === 'POST' && ['/__local/export','/__local/import'].includes(url.pathname)) {
+          if(req.headers['x-local-snapshot']!==config.manifestSha256) return send(409,JSON.stringify({error:'UI package changed. Reload local Planner before transferring JSON.'}));
           try {
             const input=await readJson(req);
             const output=url.pathname.endsWith('/export')?exportBuild(input,snapshot,config):importBuild(input,snapshot,config);
@@ -128,7 +129,7 @@ async function startServer(config, { snapshot: suppliedSnapshot } = {}) {
         record('BLOCKED_METHOD', url.href);
         return send(405, '{"error":"Cloud save unavailable; use local Export JSON. No request was sent online"}');
       }
-      if (url.pathname === '/__local/shell.js') return send(200, shell, 'application/javascript');
+      if (url.pathname === '/__local/shell.js') return send(200, Buffer.concat([Buffer.from('const LOCAL_SNAPSHOT_HASH = '+JSON.stringify(config.manifestSha256||null)+';\n'),shell]), 'application/javascript');
       if (url.pathname === '/__local/client.js') return send(200, client, 'application/javascript');
       if (url.pathname === '/__local/diagnostics') return send(200, JSON.stringify(diagnostic()));
       if (url.pathname === '/') {

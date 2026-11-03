@@ -5,8 +5,8 @@
   let imported=null,downloadUrl=null;
   const transfer=document.getElementById('transfer-status');
   const post=async(path,body)=>{
-    const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    if(!response.ok)throw Error('Invalid native build or snapshot mismatch');
+    const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Local-Snapshot':LOCAL_SNAPSHOT_HASH},body:JSON.stringify(body)});
+    if(!response.ok){const result=await response.json();throw Object.assign(Error(result.error||'Invalid native build or snapshot mismatch'),{status:response.status});}
     return response;
   };
   window.localNativeImport=()=>imported;
@@ -20,7 +20,7 @@
       link.textContent='Download Native JSON';transfer.replaceChildren(link);
       link.click(); // Parent is not sandboxed. Child download permissions remain unchanged.
       transfer.append(' · Native only; canonical conversion unsupported. Not saved to cloud.');
-    }catch(error){transfer.textContent='Export failed. No build was saved.';throw error;}
+    }catch(error){transfer.textContent='Export failed: '+error.message;throw error;}
   };
   document.getElementById('export-build').addEventListener('click',()=>{
     const button=[...frame.contentDocument.querySelectorAll('button')].find(b=>b.textContent.trim()==='My Profiles');
@@ -36,7 +36,7 @@
       transfer.textContent='Importing native file…';
       await new Promise(resolve=>{frame.addEventListener('load',resolve,{once:true});frame.src=frame.getAttribute('src');});
       transfer.textContent='Native file loaded into this tab. Export again to retain edits; reload/closing the page discards tab state.';
-    }catch{transfer.textContent='Import rejected: invalid native file, integrity or snapshot mismatch.';}
+    }catch(error){transfer.textContent=error.status===409?'Import rejected: '+error.message:'Import rejected: invalid native file, integrity or snapshot mismatch.';}
     event.target.value='';
   });
   window.addEventListener('pagehide',()=>{if(downloadUrl)URL.revokeObjectURL(downloadUrl);});

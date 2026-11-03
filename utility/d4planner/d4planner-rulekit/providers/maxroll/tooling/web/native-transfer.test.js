@@ -18,7 +18,9 @@ test('transfer HTTP requires same origin JSON, returns attachment, rejects cloud
  const input=JSON.stringify({data:JSON.stringify(state)});
  assert.equal((await fetch(base+'/__local/export',{method:'POST',body:input})).status,403);
  assert.equal((await fetch(base+'/__local/export',{method:'POST',headers:{Origin:'https://example.invalid','Content-Type':'application/json'},body:input})).status,403);
- const headers={Origin:base,'Content-Type':'application/json'};
+ const headers={Origin:base,'Content-Type':'application/json','X-Local-Snapshot':config.manifestSha256};
+ assert.equal((await fetch(base+'/__local/export',{method:'POST',headers:{...headers,'X-Local-Snapshot':'0'.repeat(64)},body:input})).status,409);
+ assert.equal((await fetch(base+'/__local/export',{method:'POST',headers:{Origin:base,'Content-Type':'application/json'},body:input})).status,409,'A stale pre-pin tab must reload, never silently retag its native state');
  const r=await fetch(base+'/__local/export',{method:'POST',headers,body:input});assert.equal(r.status,200);assert.match(r.headers.get('content-disposition'),/attachment/);const envelope=await r.json();
  const imp=await fetch(base+'/__local/import',{method:'POST',headers,body:JSON.stringify(envelope)});assert.equal(imp.status,200);assert.deepEqual(JSON.parse((await imp.json()).data),state);
  for(const body of ['{broken','{}'])assert.equal((await fetch(base+'/__local/export',{method:'POST',headers,body})).status,422);

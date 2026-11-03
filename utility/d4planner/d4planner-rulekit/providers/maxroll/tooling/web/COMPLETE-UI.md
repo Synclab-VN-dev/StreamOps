@@ -55,7 +55,9 @@ The full visual gate compares desktop/mobile picker cards, artwork crops, editor
 
 The existing `client.js → shell.js → native-transfer.js → src/build-export.js` path captures the actual native Save serialization. The download is initiated in the parent document; the sandbox/CSP remain unchanged. No account or online POST is required. The UI explicitly reports that cloud persistence did not occur.
 
-Envelope: `maxroll-native-build-export/v1`, `MAXROLL_NATIVE_STATE`, complete `nativeState`, loader metadata, SHA-256 integrity and UI snapshot provenance. Import is tied to the exact UI snapshot ID and manifest hash. It uses the native profile loader, not a parallel serializer. State is tab-local: download before closing/reloading. Imported state is never published or persisted by a cloud backend.
+Envelope: `maxroll-native-build-export/v1`, `MAXROLL_NATIVE_STATE`, complete `nativeState`, loader metadata, SHA-256 integrity and UI snapshot provenance. Import is tied to the exact UI snapshot ID and manifest hash. It uses the native profile loader, not a parallel serializer. Transfer requests also carry the manifest hash embedded in the page's shell script. After a UAT package switch, stale tabs fail with HTTP 409 and a reload instruction; their old native state cannot be relabelled with the new package provenance.
+
+State is tab-local: download before closing/reloading. Imported state is never published or persisted by a cloud backend.
 
 The browser tests download actual files and compare the complete native state after import/export: the captured multi-profile build and a build created through UI with affixes, temper, aspect, gem, skills, glyph and rotated board. Separate tests retain `[null,null]`, assert profile switching, and reject invalid JSON, tampered integrity and a wrong snapshot. Unknown native fields are preserved by the transfer boundary, not converted or discarded.
 
