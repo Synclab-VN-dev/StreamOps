@@ -48,7 +48,22 @@
   }
   window.fetch = (input, init) => {
     try {
-      if (input instanceof Request) return nativeFetch(new Request(map(input.url), input), init);
+      const url=new URL(map(input instanceof Request?input.url:input));
+      const method=(init?.method||(input instanceof Request?input.method:'GET')).toUpperCase();
+      if(method==='POST'&&url.pathname==='/__snapshot/planners.maxroll.gg/profiles/d4'&&window.parent!==window){
+        return (async()=>{
+          try{
+            const body=init?.body??await input.text();
+            await window.parent.localNativeExport(JSON.parse(body));
+            return new Response(JSON.stringify({error:'Native JSON download prepared locally. Cloud save is unavailable.'}),{status:409,headers:{'Content-Type':'application/json'}});
+          }catch{return new Response(JSON.stringify({error:'Local native export failed. No cloud save occurred.'}),{status:422,headers:{'Content-Type':'application/json'}});}
+        })();
+      }
+      if(method==='GET'&&/^\/__snapshot\/planners.maxroll.gg\/profiles(?:\/load)?\/d4\/[^/]+$/.test(url.pathname)&&window.parent!==window){
+        const imported=window.parent.localNativeImport?.();
+        if(imported)return Promise.resolve(new Response(JSON.stringify(imported),{headers:{'Content-Type':'application/json'}}));
+      }
+      if (input instanceof Request) return nativeFetch(new Request(url.href, input), init);
       return nativeFetch(map(input), init);
     } catch (error) { return Promise.reject(error); }
   };

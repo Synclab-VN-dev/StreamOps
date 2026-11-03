@@ -1,6 +1,8 @@
 # Local frozen Maxroll Web UI — #173
 
-This provider-owned tool renders the captured Planner directly in the client browser. It starts one loopback Node HTTP server; it does not start Chromium, VNC, a remote desktop, a capture job, or a network proxy. This checkpoint supports UI experimentation, not canonical export or durable native Save. Changes may be lost when closing/reloading the tab.
+**Current scope:** Native JSON download and import are supported. See [EXPORT.md](EXPORT.md) for the native Save workflow, format, security, tests and Android acceptance. This supersedes earlier export-out-of-scope notes.
+
+This provider-owned tool renders the captured Planner directly in the client browser. It starts one loopback Node HTTP server; it does not start Chromium, VNC, a remote desktop, a capture job, or a network proxy. This checkpoint supports UI experimentation, native JSON downloads; canonical export and cloud Save remain unsupported. Changes may be lost when closing/reloading the tab.
 
 See [independent UI capture and acceptance](UI-CHECKPOINT.md) for the current checkpoint: separate UI trust pins, complete capture tooling, visual references and HTTP browser tests. The calculation-bound configuration below remains supported for existing installations.
 
@@ -44,7 +46,7 @@ Open **http://127.0.0.1:6085/** in Android Chrome. Port numbers may differ on th
 3. Under **Skills**, choose the List icon (label may be hidden on narrow screens), assign Puncture; confirm the point counter changes.
 4. Under **Paragon**, select the node adjacent to Start; confirm the point counter changes.
 5. Repeat with Chrome's Desktop site/landscape if the original mobile layout makes controls difficult to reach. This tool does not redesign the third-party UI.
-6. Check the local diagnostics link for missing resources/blocked external attempts. Save/export is unavailable: native POST is rejected locally with 405 and never sent to production. Do not enter Maxroll credentials or rely on Sign In/My Profiles cloud functionality.
+6. Check the local diagnostics link for missing resources/blocked external attempts. Use the header Export JSON workflow described in EXPORT.md. Cloud POST is never sent to production. Do not enter Maxroll credentials or rely on Sign In/My Profiles cloud functionality.
 7. Close the tab/tunnel. Stop the server when UAT is finished and verify status is STOPPED.
 
 Real Android render, touch/input, and owner-network tunnel access remain manual gates. Chromium mobile emulation is supplementary evidence only.
@@ -59,7 +61,7 @@ LOCAL_EDITOR_EVIDENCE=/absolute/private/evidence \
 CHROMIUM_EXECUTABLE=/absolute/pinned/chrome node browser-check.js
 ```
 
-`browser-check.js` uses a normal HTTP client browser, with no Playwright request routes and no browser offline mode. It tests desktop and Pixel 7 emulation, edits a real build, checks the native Save payload, asserts local rejection, and checks every external request attempt fails due to CSP. Evidence includes screenshots and native JSON; keep it private and outside Git/Actions artifacts. Tests do not claim canonical JSON compatibility.
+`browser-check.js` uses a normal HTTP client browser, with no Playwright request routes and no browser offline mode. It tests desktop and Pixel 7 emulation, actual downloaded JSON, native import/export round-trips and external request enforcement. Evidence includes screenshots and native JSON; keep it private and outside Git/Actions artifacts. Tests do not claim canonical JSON compatibility.
 
 See [architecture and audit](ASSESSMENT.md) for boundaries and limitations. No snapshot bytes or generated evidence belong in this directory.
 

@@ -15,6 +15,7 @@ async function reference(config){
   const verified=await store.verify(config.snapshotId);
   assert.equal(verified.manifestSha256,config.manifestSha256);
   const manifest=await store.load(config.snapshotId),byUrl=new Map(manifest.resources.map(r=>[r.url,r]));
+  try { if((await fs.readdir(config.referenceDir)).length)throw Error('Reference directory must be empty; preserve previous evidence'); } catch(error) { if(error.code!=='ENOENT')throw error; }
   const browser=await chromium.launch({executablePath:config.chromium});
   const results=[];await fs.mkdir(config.referenceDir,{recursive:true,mode:0o700});
   try{

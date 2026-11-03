@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 const http = require('node:http');
+const {exportBuild,importBuild,readJson}=require('./native-transfer');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
@@ -102,6 +103,13 @@ async function startServer(config, { snapshot: suppliedSnapshot } = {}) {
       if (req.headers['sec-fetch-site'] === 'cross-site') return send(403, '{"error":"Cross-site access disabled"}');
       if (!['GET', 'HEAD'].includes(req.method)) {
         if (req.headers.origin !== origin) return send(403, '{"error":"Same-origin POST required"}');
+        if (req.method === 'POST' && ['/__local/export','/__local/import'].includes(url.pathname)) {
+          try {
+            const input=await readJson(req);
+            const output=url.pathname.endsWith('/export')?exportBuild(input,snapshot,config):importBuild(input,snapshot,config);
+            return send(200,JSON.stringify(output), 'application/json',url.pathname.endsWith('/export')?{'Content-Disposition':'attachment; filename="maxroll-native-build.json"'}:{});
+          } catch { return send(422,JSON.stringify({error:'Invalid native build, integrity or snapshot mismatch. No build was saved.'})); }
+        }
         if (req.method === 'POST' && url.pathname === '/__local/report') {
           let bytes = 0, body = '';
           for await (const part of req) { bytes += part.length; if (bytes > 2048) return send(413, '{}'); body += part; }
@@ -118,14 +126,14 @@ async function startServer(config, { snapshot: suppliedSnapshot } = {}) {
           return send(204, '');
         }
         record('BLOCKED_METHOD', url.href);
-        return send(405, '{"error":"Local UI UAT: Save/export is unavailable; no request was sent online"}');
+        return send(405, '{"error":"Cloud save unavailable; use local Export JSON. No request was sent online"}');
       }
       if (url.pathname === '/__local/shell.js') return send(200, shell, 'application/javascript');
       if (url.pathname === '/__local/client.js') return send(200, client, 'application/javascript');
       if (url.pathname === '/__local/diagnostics') return send(200, JSON.stringify(diagnostic()));
       if (url.pathname === '/') {
         // Parent frame-src + child sandbox block navigation/popups to production.
-        const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Local frozen Maxroll Planner</title><style>html,body{margin:0;height:100%;background:#101010;color:white;font:13px sans-serif}body{display:flex;flex-direction:column}header{min-height:36px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:4px 8px}iframe{border:0;width:100%;flex:1;min-height:0}a{color:#8cf}</style></head><body><header>Frozen snapshot · UI UAT · Cloud login/share/save and export unavailable · <span id="status">loading diagnostics</span> · <a href="/__local/diagnostics" target="_blank">diagnostics</a></header><iframe name="${randomUUID()}" title="Frozen Maxroll Planner" sandbox="allow-scripts allow-same-origin allow-forms" src="${sourcePath}"></iframe><script src="/__local/shell.js"></script></body></html>`;
+        const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Local frozen Maxroll Planner</title><style>html,body{margin:0;height:100%;background:#101010;color:white;font:13px sans-serif}body{display:flex;flex-direction:column}header{min-height:36px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:4px 8px}iframe{border:0;width:100%;flex:1;min-height:0}a{color:#8cf}</style></head><body><header>Frozen snapshot · UI UAT · Cloud save unavailable · Native JSON download supported · <button id="export-build">Export JSON</button><label>Import JSON <input id="import-build" type="file" accept=".json,application/json"></label><span id="transfer-status" role="status"></span> · <span id="status">loading diagnostics</span> · <a href="/__local/diagnostics" target="_blank">diagnostics</a></header><iframe name="${randomUUID()}" title="Frozen Maxroll Planner" sandbox="allow-scripts allow-same-origin allow-forms" src="${sourcePath}"></iframe><script src="/__local/shell.js"></script></body></html>`;
         return send(200, html, 'text/html; charset=utf-8', { 'Content-Security-Policy': CSP + "; frame-ancestors 'none'" });
       }
       const original = originalUrl(url);

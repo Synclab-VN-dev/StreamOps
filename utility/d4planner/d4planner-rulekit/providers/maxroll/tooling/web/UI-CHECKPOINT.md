@@ -1,5 +1,7 @@
 # Independent Planner UI checkpoint — #173 / PR #175
 
+Historical UI-only checkpoint. [EXPORT.md](EXPORT.md) records the subsequent owner-authorized native download/import scope; Save/export exclusions below apply to the earlier checkpoint only.
+
 ## Assessment and decision
 
 **AGREE / FIX_REQUIRED.** The calculation capture was sufficient for its calculation binding, but not a complete UI capture. Its 365 responses omitted item, skill and aspect atlases. The old HTTP loader also required a calculation catalog binding just to display the UI. Neither a successful calculation nor an HTTP 200 establishes UI completeness.
