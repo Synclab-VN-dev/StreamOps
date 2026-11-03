@@ -10,6 +10,7 @@ mod overlay_core;
 mod hud_reader;
 mod webview_diagnostic;
 mod backend_process;
+mod planner;
 
 use std::{collections::BTreeMap, env, fs, path::PathBuf, sync::{Arc, Mutex}, time::Duration};
 use tauri::{
@@ -26,6 +27,7 @@ const MODE_EVENT: &str = "overlay-mode-changed";
 
 struct ModeState(Mutex<bool>);
 struct BackendState(Mutex<Option<Arc<BackendProcessWrapper<StdProcessDriver>>>>);
+static PLANNER_OPEN_PENDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[derive(Clone, serde::Serialize)]
 struct OverlayStatus {
@@ -74,6 +76,7 @@ fn backend_launch_from_environment() -> Result<LaunchSpecification, String> {
     }
     for name in [
         "D4_RULEKIT_DATA_ROOT", "D4_RULEKIT_INSTALLATION_ROOT",
+        "D4_RULEKIT_PLANNER_STATE_ROOT", "D4_RULEKIT_PLANNER_PORT",
         "D4PLANNER_RULEKIT_EXECUTABLE", "D4PLANNER_RULEKIT_WORKER",
         "D4PLANNER_RULEKIT_WORKING_DIR", "D4_RULEKIT_PROFILE_JSON",
         "D4_RULEKIT_SNAPSHOT_ROOT", "D4_RULEKIT_CHROMIUM_EXECUTABLE",
@@ -238,9 +241,20 @@ fn get_backend_status(state: State<'_, BackendState>) -> Result<BackendStatus, S
 
 #[tauri::command]
 async fn backend_command(state: State<'_, BackendState>, method: String, params: serde_json::Value) -> Result<serde_json::Value, String> {
+    // Planner has a dedicated native command; React cannot bypass URL validation/open policy.
+    if !matches!(method.as_str(), "target.list" | "target.select") { return Err("INVALID_CONTROL_REQUEST".into()); }
     let wrapper = state.0.lock().map_err(|_| "Backend state lock poisoned")?.clone().ok_or("BACKEND_OFFLINE")?;
     tauri::async_runtime::spawn_blocking(move || wrapper.request(&method, params, Duration::from_secs(10)))
         .await.map_err(|_| "CONTROL_DISPATCH_FAILED".to_string())?
+}
+
+#[tauri::command]
+async fn open_local_planner(state: State<'_, BackendState>) -> Result<planner::Ready, String> {
+    let wrapper = state.0.lock().map_err(|_| "PLANNER_UNAVAILABLE")?.clone().ok_or("PLANNER_UNAVAILABLE")?;
+    let port = planner::configured_port()?;
+    tauri::async_runtime::spawn_blocking(move || planner::open(&PLANNER_OPEN_PENDING, port,
+        || wrapper.request("planner.ensureReady", serde_json::json!({}), Duration::from_secs(16)), planner::system_browser))
+        .await.map_err(|_| "PLANNER_UNAVAILABLE".to_string())?
 }
 
 #[tauri::command]
@@ -541,6 +555,7 @@ pub fn run() {
             restart_backend,
             get_backend_status,
             backend_command,
+            open_local_planner,
             read_hud_database,
             get_hud_ws_bootstrap,
             set_overlay_extent,

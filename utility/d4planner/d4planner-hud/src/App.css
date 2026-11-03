@@ -5,9 +5,9 @@ button { color: inherit; font: inherit; }
 .surface { width: 100%; height: 100%; padding: 16px; background: transparent; }
 .panels { display: flex; align-items: flex-start; gap: 12px; width: max-content; }
 .panel { flex: none; overflow: hidden; border: 1px solid rgba(255,255,255,.6); border-radius: 20px; background: rgba(243,243,244,.95); box-shadow: 0 14px 35px rgba(0,0,0,.14); backdrop-filter: blur(20px); }
-.summary { position: relative; width: 248px; }
+.summary { position: relative; width: 248px; overflow: visible; z-index: 30; }
 .summary-head { position: relative; user-select: none; cursor: move; }
-.summary-toggle { width: 100%; min-height: 103px; padding: 16px 16px 12px; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.summary-toggle { border-radius: 20px 20px 0 0; width: 100%; min-height: 103px; padding: 16px 16px 12px; border: 0; background: transparent; text-align: left; cursor: pointer; }
 .target-title { display: block; max-width: 175px; overflow: hidden; color: #252a31; font-size: 12px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
 .bolt { margin-right: 6px; color: #2587bd; font-size: 17px; }
 .score { display: inline-block; margin-top: 14px; }
@@ -16,7 +16,7 @@ button { color: inherit; font: inherit; }
 .issue-count { margin-left: 18px; color: #a45c30; font-size: 9px; }
 .chevron { position: absolute; right: 16px; bottom: 23px; color: #8a8e93; }
 .menu-button { position: absolute; z-index: 2; right: 11px; top: 11px; padding: 3px 8px; border: 0; border-radius: 8px; background: transparent; font-size: 20px; cursor: pointer; }
-.target-menu { position: absolute; z-index: 20; top: 43px; right: 10px; width: 214px; padding: 8px; border: 1px solid rgba(0,0,0,.1); border-radius: 12px; background: rgba(255,255,255,.98); box-shadow: 0 10px 28px rgba(0,0,0,.18); cursor: default; }
+.target-menu { max-height: calc(100vh - 90px); overflow-y: auto; position: absolute; z-index: 20; top: 43px; right: 10px; width: 214px; padding: 8px; border: 1px solid rgba(0,0,0,.1); border-radius: 12px; background: rgba(255,255,255,.98); box-shadow: 0 10px 28px rgba(0,0,0,.18); cursor: default; }
 .target-menu > strong { display: block; padding: 7px; font-size: 11px; }
 .target-menu button { display: flex; width: 100%; flex-direction: column; padding: 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer; }
 .target-menu button[aria-current="true"] { background: #e1edf5; }

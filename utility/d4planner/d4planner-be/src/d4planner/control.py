@@ -10,7 +10,7 @@ def validate_request(command):
     if any(not isinstance(command[k], str) or not 1 <= len(command[k]) <= 160 for k in ('requestId','ownerInstanceId','childInstanceId')) or type(command['generation']) is not int or command['generation'] < 1:
         raise ValueError('INVALID_CONTROL_MESSAGE')
     params = command['params']
-    if command['method'] == 'target.list' and params == {}:
+    if command['method'] in {'target.list', 'planner.ensureReady'} and params == {}:
         return
     if command['method'] != 'target.select':
         raise ValueError('UNSUPPORTED_METHOD')
@@ -37,7 +37,7 @@ async def dispatch(runtime, command, bootstrap):
             raise ValueError('UNSUPPORTED_METHOD')
     except Exception as exc:
         code = str(exc) if isinstance(exc, ValueError) else getattr(exc, 'code', 'CONTROL_FAILED')
-        if code not in {'INVALID_CONTROL_MESSAGE','UNSUPPORTED_METHOD','INVALID_PARAMETERS','OWNERSHIP_MISMATCH','TARGET_CHANGED','TARGET_NOT_FOUND','TARGET_INVALID','TARGET_POLICY_INVALID'}:
+        if code not in {'INVALID_CONTROL_MESSAGE','UNSUPPORTED_METHOD','INVALID_PARAMETERS','OWNERSHIP_MISMATCH','TARGET_CHANGED','TARGET_NOT_FOUND','TARGET_INVALID','TARGET_POLICY_INVALID', 'PLANNER_SNAPSHOT_UNAVAILABLE', 'PLANNER_SNAPSHOT_UNTRUSTED', 'PLANNER_START_FAILED', 'PLANNER_HEALTH_FAILED', 'PLANNER_PORT_CONFLICT', 'PLANNER_BUSY', 'PLANNER_UNAVAILABLE'}:
             code = 'CONTROL_FAILED'
         envelope['error'] = {'code':code,'message':'Backend command failed.', 'retryable':bool(getattr(exc,'retryable',False))}
     return envelope

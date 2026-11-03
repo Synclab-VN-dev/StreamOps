@@ -145,7 +145,8 @@ sys.path.insert(0, sys.argv[1])
 from d4planner.rulekit import RuleKitRuntimeService
 service = RuleKitRuntimeService.from_environment(json.loads(sys.argv[2]))
 spec = service.wrapper.specification
-assert Path(spec.args[1]) == Path(sys.argv[1]) / 'd4planner/rulekit/worker.js'
+assert Path(spec.args[2]) == Path(sys.argv[1]) / 'd4planner/rulekit/worker.js'
+assert Path(spec.args[1]).name == 'worker-adapter.js'
 assert Path(spec.args[0]).is_file()
 if 'D4_RULEKIT_CHROMIUM_EXECUTABLE' in spec.environment_allow_list:
     import asyncio
@@ -165,9 +166,9 @@ print(json.dumps(list(spec.args)))
         env['D4_RULEKIT_CHROMIUM_EXECUTABLE'] = os.environ['F2_TEST_CHROMIUM']
     result = subprocess.run([sys.executable, '-I', '-c', code, str(target), json.dumps(env)],
                             cwd=tmp_path, check=True, capture_output=True, text=True, timeout=10)
-    bootstrap, worker = json.loads(result.stdout)
+    bootstrap, planner_adapter, worker = json.loads(result.stdout)
     # Actual relocated Node module loading, even without a provisioned snapshot.
-    result = subprocess.run(['node', bootstrap, worker], cwd=tmp_path,
+    result = subprocess.run(['node', bootstrap, planner_adapter, worker], cwd=tmp_path,
         env={**os.environ, 'D4_RULEKIT_WORKER_INSTANCE_ID': 'installed', 'D4_RULEKIT_WORKER_GENERATION': '0'},
         capture_output=True, text=True, timeout=10)
     assert 'managed worker identity is required' in result.stderr
@@ -190,7 +191,7 @@ def test_real_production_bootstrap_no_snapshot_and_owned_shutdown(tmp_path):
             health = await service.start()
             assert health['ready'] and health['calculationAvailability'] == 'UNAVAILABLE'
             assert health['providers'][0]['id'] == 'maxroll'
-            assert service.wrapper.specification.args == (str(BOOTSTRAP), str(WORKER))
+            assert service.wrapper.specification.args == (str(BOOTSTRAP), str(ROOT/'utility/d4planner/d4planner-rulekit/providers/maxroll/tooling/planner/worker-adapter.js'), str(WORKER))
             capabilities = await service.client.snapshot_call('getCapabilities')
             assert capabilities['reason'] == 'SNAPSHOT_NOT_SELECTED'
             assert capabilities['active'] is None

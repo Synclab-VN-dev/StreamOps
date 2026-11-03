@@ -288,7 +288,7 @@ pub struct BackendProcessWrapper<D: ProcessDriver> {
 impl BackendProcessWrapper<StdProcessDriver> {
     /// Same owned pipe as lifecycle. A deadline retires only this request.
     pub fn request(&self, method: &str, params: serde_json::Value, timeout: Duration) -> Result<serde_json::Value, String> {
-        if !matches!(method, "target.list" | "target.select") || timeout.is_zero() || timeout > Duration::from_secs(60) {
+        if !matches!(method, "target.list" | "target.select" | "planner.ensureReady") || timeout.is_zero() || timeout > Duration::from_secs(60) {
             return Err("INVALID_CONTROL_REQUEST".into());
         }
         // Serialize admission with restart, but release before waiting for reply.
@@ -319,7 +319,14 @@ impl BackendProcessWrapper<StdProcessDriver> {
             (child, id, rx)
         };
         let result = rx.recv_timeout(timeout).map_err(|_| "CONTROL_TIMEOUT".to_owned());
-        if let Ok(mut pending) = child.pending.lock() { pending.remove(&id); }
+        if let Ok(mut pending) = child.pending.lock() {
+            if let Some((mut request, _)) = pending.remove(&id) {
+                if result.is_err() && method == "planner.ensureReady" {
+                    request["type"] = "cancel".into();
+                    if let Ok(mut bytes) = serde_json::to_vec(&request) { bytes.push(b'\n'); let _ = child.stdin.try_send(bytes); }
+                }
+            }
+        }
         let response = result??;
         if !response["error"].is_null() { return Err(response["error"]["code"].as_str().unwrap_or("CONTROL_FAILED").to_owned()); }
         Ok(response["result"].clone())

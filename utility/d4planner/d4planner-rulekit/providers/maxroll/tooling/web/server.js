@@ -69,7 +69,7 @@ async function loadSnapshot(config) {
   if (snapshot.manifest.allowedOrigins.some(o => !ORIGINS.includes(o))) throw new Error('Unsupported replay origin');
   return { ...snapshot, uiVerification };
 }
-async function startServer(config, { snapshot: suppliedSnapshot } = {}) {
+async function startServer(config, { snapshot: suppliedSnapshot, health, onClientEvent = entry => console.log(JSON.stringify({clientEvent: entry})) } = {}) {
   if (!Number.isInteger(config.port) || config.port < 1024 || config.port > 65535) throw new Error('Unprivileged port required');
   const snapshot = suppliedSnapshot || await loadSnapshot(config);
   const client = await fs.readFile(path.join(__dirname, 'client.js'));
@@ -101,6 +101,10 @@ async function startServer(config, { snapshot: suppliedSnapshot } = {}) {
         res.end(req.method === 'HEAD' ? undefined : body);
       }
       if (req.headers['sec-fetch-site'] === 'cross-site') return send(403, '{"error":"Cross-site access disabled"}');
+      if (url.pathname === '/__local/health') {
+        if (!health || req.method !== 'GET' || req.headers['x-local-planner-owner'] !== health.token) return send(403, '{}');
+        return send(200, JSON.stringify(health.identity));
+      }
       if (!['GET', 'HEAD'].includes(req.method)) {
         if (req.headers.origin !== origin) return send(403, '{"error":"Same-origin POST required"}');
         if (req.method === 'POST' && ['/__local/export','/__local/import'].includes(url.pathname)) {
@@ -122,7 +126,7 @@ async function startServer(config, { snapshot: suppliedSnapshot } = {}) {
               url: safeUrl.origin + safeUrl.pathname, detail: event.detail };
             clientEvents.push(entry);
             if (clientEvents.length > 200) clientEvents.shift();
-            console.log(JSON.stringify({ clientEvent: entry }));
+            onClientEvent(entry);
           } else record(kind, String(event.url));
           return send(204, '');
         }

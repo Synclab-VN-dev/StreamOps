@@ -631,6 +631,11 @@ class ProductionBackendRuntime:
         if command.get("type") == "request":
             from .control import validate_request
             validate_request(command)
+            if command["method"] == "planner.ensureReady":
+                if self.rulekit is None:
+                    from .rulekit.client import RuleKitRemoteError
+                    raise RuleKitRemoteError("PLANNER_UNAVAILABLE", "Local Planner unavailable.")
+                return await self.rulekit.ensure_planner_ready()
             domain = ProductionDomain(self)
             if command["method"] == "target.list":
                 return await domain.list_targets()

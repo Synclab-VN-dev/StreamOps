@@ -260,3 +260,36 @@ it('keeps Report Issue usable while managed Target IPC fails and retries', async
   expect(refresh).toHaveBeenCalledTimes(2);
   expect(screen.getByRole('menuitem', {name:'Report Issue'})).toBeTruthy();
 });
+
+
+describe("Create Build native action", () => {
+  it("coalesces clicks, shows pending and opens only through the no-argument native command", async () => {
+    let finish!: () => void;
+    mocks.invoke.mockImplementation((command: string) => command === "open_local_planner"
+      ? new Promise<void>(resolve => { finish = resolve; }) : Promise.resolve());
+    const source = new FakeDataSource(noData);
+    render(<App dataSource={source} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open target menu" }));
+    const create = await screen.findByRole("menuitem", { name: "Create Build" });
+    fireEvent.click(create); fireEvent.click(create);
+    expect(screen.getByRole("menuitem", { name: "Opening Planner…" }).getAttribute("disabled")).not.toBeNull();
+    expect(mocks.invoke.mock.calls.filter(([name]) => name === "open_local_planner")).toEqual([["open_local_planner"]]);
+    expect(source.selections).toEqual([]);
+    await act(async () => finish());
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(mocks.invoke.mock.calls.some(([name]) => ["start_backend", "restart_backend"].includes(name))).toBe(false);
+  });
+  it.each(["PLANNER_SNAPSHOT_UNAVAILABLE", "PLANNER_SNAPSHOT_UNTRUSTED", "PLANNER_START_FAILED", "PLANNER_HEALTH_FAILED", "PLANNER_PORT_CONFLICT", "PLANNER_BUSY", "PLANNER_UNAVAILABLE", "secret /private/path"]) ("shows safe retryable feedback for %s without changing Target or HUD extent", async error => {
+    mocks.invoke.mockImplementation((command: string) => command === "open_local_planner" ? Promise.reject(error) : Promise.resolve());
+    const source = new FakeDataSource();
+    render(<App dataSource={source} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open target menu" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Create Build" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Local Planner");
+    expect(document.body.textContent).not.toContain("/private/path");
+    expect((screen.getByRole("menuitem", { name: "Create Build" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(source.selections).toEqual([]);
+    expect(screen.getByRole("menuitem", { name: "Report Issue" })).toBeTruthy();
+    expect(mocks.invoke.mock.calls.filter(([name]) => name === "set_overlay_extent").every(([, args]) => args.width === 280)).toBe(true);
+  });
+});
