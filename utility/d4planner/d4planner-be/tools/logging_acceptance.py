@@ -75,6 +75,8 @@ def native_sample(install, payload, data, output, *, mode="INFO", samples=20):
     assert not any((data / name).exists() for name in ("logs", "launcher.json", "recorded-producer.sqlite3")), "fresh workload DataDir required"
     output.mkdir(parents=True, exist_ok=False)
     targets, fixture, _ = e2e._prepare(payload, data)
+    target_b = e2e._native_target_b(read_json(targets / "target-a.json"))
+    write_json(targets / "target-b.json", target_b)
     recorded = read_json(fixture)
     producer = EquipmentRepository(data / "recorded-producer.sqlite3")
     revision = e2e._record_equipment_sample(producer, recorded, 1)
@@ -126,6 +128,20 @@ def native_sample(install, payload, data, output, *, mode="INFO", samples=20):
             e2e._assert_ui_matches_db(ui, db(index))
             measurements.append({"producerStartedAt": at.isoformat(), "observerElapsedMs": elapsed, "ui": ui})
         report.update(first=first, samples=measurements, ownedTree=tree)
+        # Actual FE-origin operation through Tauri managed control and DB/render.
+        before_target = db("before-target")
+        e2e._invoke_hud_button(window, "Open target menu")
+        target_started = datetime.now(timezone.utc)
+        e2e._invoke_hud_button(window, target_b["displayName"])
+        def selected():
+            value = rendered(revision)
+            return value if value and value["targetId"] == target_b["targetId"] else None
+        target_ui = e2e._wait_for(selected, 30, "FE Target activation rendered")
+        after_target = db("after-target")
+        e2e._assert_ui_matches_db(target_ui, after_target)
+        e2e._assert_native_delta(before_target["payload"], after_target["payload"])
+        report["targetActivationMs"] = (e2e._parse_timestamp(target_ui["visibleRenderedAt"]) - target_started).total_seconds() * 1000
+        report["targetSelected"] = target_ui
         # One snapshot AFTER timed operations; no sampler competing with renders.
         ids = ",".join(str(row["pid"]) for row in tree)
         resource = subprocess.run(["powershell.exe", "-NoProfile", "-Command",

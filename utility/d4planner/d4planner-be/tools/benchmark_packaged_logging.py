@@ -43,6 +43,7 @@ def benchmark(args):
                 write_json(args.output / "benchmark.json", report)
         arms = {mode: [r for r in report["runs"] if r["mode"] == mode and not r["warmup"]] for mode in ("disabled", "INFO")}
         report["startupToRenderMs"] = comparison(*[[r["startupToRenderMs"] for r in arms[mode]] for mode in arms])
+        report["targetActivationMs"] = comparison(*[[r["targetActivationMs"] for r in arms[mode]] for mode in arms])
         report["stages"] = {stage: comparison(*[[v for r in arms[mode] for v in r["stages"][stage]["samples"]] for mode in arms])
                             for stage in arms["INFO"][0]["stages"]}
         report["INFOReadyDiagnostics"] = {name: percentiles([r[name] for r in arms["INFO"]]) for name in ("beReadyMs", "rulekitReadyMs")}

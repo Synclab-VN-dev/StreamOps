@@ -56,7 +56,12 @@ the instrumentation call sites. No production off switch is introduced.
 
 Order alternates by pair. One complete warmup pair is retained but excluded from
 quantiles. Every capture revision must reach the actual native WebView and match
-SQLite. P50 is median; P95 uses inclusive linear interpolation. Reports retain
+SQLite. Each run also activates Target B through native UI Automation and checks
+the committed score delta. Its timing includes UI Automation invocation overhead
+in both arms. Current D5 capture/Target scoring uses BE assessment; the Rule Kit
+worker participates in startup/health, not each score update. Do not label these
+operations as worker calculation or live-game measurements.
+P50 is median; P95 uses inclusive linear interpolation. Reports retain
 all samples, absolute and percentage differences, counts, durations, loss markers,
 and cumulative process CPU/IO plus end-of-workload RAM. Small samples and scheduler
 noise do not justify a speedup claim or a new SLA. Record regression analysis
