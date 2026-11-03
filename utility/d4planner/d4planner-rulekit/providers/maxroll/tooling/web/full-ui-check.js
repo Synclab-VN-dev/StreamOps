@@ -7,6 +7,7 @@ const {UI_ORIGINS}=require('./ui-package');const {mappedUrl}=require('./server')
 const hash=b=>createHash('sha256').update(b).digest('hex');
 async function run(config){
   const store=new FileSystemSnapshotStore({rootDir:config.snapshotRoot});assert.equal((await store.verify(config.snapshotId)).manifestSha256,config.manifestSha256);
+  const receipt=JSON.parse(await fs.readFile(path.join(config.snapshotRoot,config.snapshotId,'ui-coverage.json')));
   const manifest=await store.load(config.snapshotId),expected=new Map(manifest.resources.map(r=>[r.url,r]));
   await fs.mkdir(config.output,{recursive:false,mode:0o700});
   const results=[],browser=await chromium.launch({executablePath:config.chromium});let failure;const artifactHashes={};
@@ -23,7 +24,7 @@ async function run(config){
       if(config.online&&r.status()>=400)missing.push({url:r.url(),status:r.status()});
       if(!config.online){if(new URL(r.url()).origin!==origin)responses.push(r.url());if(r.status()>=400)missing.push({url:r.url(),status:r.status()});}
       else if(r.status()===200){const exp=expected.get(r.url());if(!exp){if(['script','stylesheet','image','font'].includes(r.request().resourceType()))drift.push('UNCAPTURED_ASSET '+r.url());return;}const type=r.headers()['content-type']||'';
-        if(/javascript|text\/css|image\/|font\//.test(type)||r.url().includes('/game/data.'))tasks.push((async()=>{const digest=hash(await r.body());fingerprints[r.url()]=digest;if(digest!==exp.sha256&&new URL(r.url()).hostname!=='fonts.googleapis.com')drift.push(r.url());})().catch(()=>{drift.push('RESPONSE_BODY_UNAVAILABLE '+r.url());}));}
+        if(/javascript|text\/css|image\/|font\//.test(type)||r.url().includes('/game/data.'))tasks.push((async()=>{const digest=hash(await r.body());fingerprints[r.url()]=digest;if(digest!==exp.sha256&&!(receipt.fontVariants||[]).some(v=>v.url===r.url()&&v.sha256===digest))drift.push(r.url());})().catch(()=>{drift.push('RESPONSE_BODY_UNAVAILABLE '+r.url());}));}
     });
     await page.goto(config.online?manifest.sourceUrl:config.url);
     let surface=page;

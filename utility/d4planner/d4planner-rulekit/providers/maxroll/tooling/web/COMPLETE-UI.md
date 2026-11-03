@@ -26,6 +26,7 @@ Discovery combines:
 - CSS `url()` and `@import`, resolved relative to the owning stylesheet.
 - Runtime computed background/border/mask images, including `::before` and `::after`.
 - Native class/slot/category lists before layout, search, or virtualization. Numeric user-owned instance IDs are distinct from catalog template IDs. Set IDs are distinguished from their selectable members.
+- Google Fonts UA variants: a second clean lease in the same Chromium process discovers Android CSS hashes and immutable WOFF URLs. Font bodies enter the same capture; canonical captured CSS is replayed on both viewports. The online reference accepts only the exact captured canonical or recorded variant CSS hashes, with every observed font body pinned.
 - Every primary and class/sex artwork variant of selectable items; skill, affix, paragon, glyph, stone and item-set image fields.
 
 The audit records `Entity ID → Image ID → URL → manifest entry → blob/hash/MIME`. HTTP browser tests independently re-enumerate the native category model and compare it with the captured inventory. Every captured image is decoded through the real HTTP server, with nonzero natural dimensions. Runtime tests cover picker search and last-row scrolling, equipped slots, editors and actual tooltip portals.

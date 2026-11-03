@@ -6,6 +6,7 @@ const {createHash}=require('node:crypto');
 const {BrowserInfrastructure,FileSystemSnapshotStore,WebSnapshotManager}=require('../../../../browser-infra/src');
 const {scenarios}=require('./ui-scenarios');
 const {fullScenarios}=require('./full-scenarios');
+const {devices}=require('../../../../browser-infra/node_modules/playwright-core');
 const {moduleDependencies,htmlDependencies}=require('./resource-dependencies');
 const {collectSelectable,entityDependencies,auxiliaryDependencies}=require('./catalog-coverage');
 const {UI_ORIGINS:ORIGINS}=require('./ui-package');
@@ -24,7 +25,7 @@ async function capture(config) {
   const output=path.join(config.snapshotRoot,config.snapshotId);
   try {await fs.access(output);throw Error('Capture output already exists');}catch(e){if(e.code!=='ENOENT')throw e;}
   await fs.mkdir(config.evidenceDir,{recursive:true,mode:0o700});
-  const browser=new BrowserInfrastructure({executablePath:config.chromium,headless:true,maxContexts:1,maxQueue:1,
+  const browser=new BrowserInfrastructure({executablePath:config.chromium,headless:true,maxContexts:2,maxQueue:1,
     contextOptions:{serviceWorkers:'block',viewport:{width:1440,height:1100}}});
   const store=new FileSystemSnapshotStore({rootDir:config.snapshotRoot,limits:{maxResources:6000,maxResourceBytes:64*1024*1024,maxTotalBytes:512*1024*1024}});
   let nativeData;
@@ -96,6 +97,21 @@ async function capture(config) {
         }});
         if(config.comprehensive){
           coverage.scenarios.full=await fullScenarios(page);
+          // Google Fonts varies CSS and immutable WOFF URLs by browser UA. Discover the mobile
+          // response in a separate clean lease, then capture its font bodies in this package.
+          coverage.fontVariants=await browser.withLease({},async lease=>{
+            const mobile=lease.page,cdp=await mobile.context().newCDPSession(mobile);
+            await cdp.send('Network.enable');await cdp.send('Network.setCacheDisabled',{cacheDisabled:true});
+            await cdp.send('Network.setUserAgentOverride',{userAgent:devices['Pixel 7'].userAgent});
+            await mobile.context().route('**/*',route=>route.request().method()==='GET'&&new URL(route.request().url()).hostname==='fonts.googleapis.com'?route.continue():route.abort());
+            const variants=[];
+            for(const url of [...observed].filter(url=>new URL(url).hostname==='fonts.googleapis.com')){
+              const response=await mobile.goto(url);if(response.status()!==200)throw Error('Mobile font stylesheet unavailable');
+              const bytes=await response.body(),urls=dependencies(bytes.toString(),url);
+              if(!urls.length)throw Error('Mobile font stylesheet has no font dependencies');
+              variants.push({url,userAgent:devices['Pixel 7'].userAgent,sha256:hash(bytes),dependencies:urls});for(const font of urls)queue.add(font);
+            }return variants;
+          });
           coverage.selectable=await collectSelectable(page);
           if(!nativeData)throw Error('Native catalog absent');
           coverage.entityDependencies=entityDependencies(nativeData,coverage.selectable);

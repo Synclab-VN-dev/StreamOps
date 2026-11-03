@@ -95,9 +95,18 @@ async function fullScenarios(p,{checkpoint=async()=>{}}={}){
   await p.waitForTimeout(100);
   const view=paragon.locator('.d4t-ParagonScroll');await view.scrollIntoViewIfNeeded();
   const page=typeof p.page==='function'?p.page():p;const box=await view.boundingBox();
+  const bounds=p===page?{x:0,y:0,...page.viewportSize()}:await (await p.frameElement()).boundingBox();
+  const x=(Math.max(box.x,bounds.x)+Math.min(box.x+box.width,bounds.x+bounds.width))/2;
+  const y=(Math.max(box.y,bounds.y+70)+Math.min(box.y+box.height,bounds.y+bounds.height))/2;
   const transform=await boards.getAttribute('style');
-  await page.mouse.move(box.x+15,box.y+15);await page.mouse.down();await page.mouse.move(box.x+65,box.y+35,{steps:5});await page.waitForTimeout(60);await page.mouse.up();
-  await p.waitForFunction(before=>document.querySelector('.d4t-boards').getAttribute('style')!==before,transform);
+  if(touch){const cdp=await page.context().newCDPSession(page);try{
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
+    for(let i=1;i<=5;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x+10*i,y:y+4*i}]});await page.waitForTimeout(30);}
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  }finally{await cdp.detach();}}else{
+    await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+50,y+20,{steps:5});await page.waitForTimeout(60);await page.mouse.up();
+  }
+  await p.waitForFunction(before=>document.querySelector('.d4t-boards').getAttribute('style')!==before,transform,{timeout:5000});
   assert.notEqual(await boards.getAttribute('style'),transform,'Pan changes native board transform');
   await checkpoint('paragon-pan',paragon);
   return {equipment:rows,affix:'Toughened',temper:'Fire Resistance',aspect:'Aspect of Might',gem:'Royal Ruby',unequip:true,skillAllocateRefund:true,skillTreeAndDescription:true,paragonAllocateRefund:true,glyph:true,boardAddRotate:true,panZoom:true,touchInput:touch};

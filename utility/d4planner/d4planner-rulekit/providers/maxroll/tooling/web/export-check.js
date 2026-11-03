@@ -36,10 +36,15 @@ async function run(config){
     const rich=await download('captured-profile');
     await frame.locator('[class*=profiles_ProfileDialog]').locator(':scope > [class*=DialogHeader] button').last().click();
     const previous=rich.exported.nativeState.activeProfile,alternate=previous===0?1:0;
-    await frame.locator('[class*=sets_SetOption__name]').nth(alternate).click();
+    async function selectProfile(index){
+      const name=rich.exported.nativeState.profiles[index].name;
+      if(mobile)await frame.locator('[class*=sets_SetOption__name]').first().click();
+      await frame.locator('[class*=sets_SetOption__name]').getByText(name,{exact:true}).click();
+    }
+    await selectProfile(alternate);
     const switched=await download('switched-profile');assert.equal(switched.exported.nativeState.activeProfile,alternate,'Native profile selection changes the serialized active profile');
     await frame.locator('[class*=profiles_ProfileDialog]').locator(':scope > [class*=DialogHeader] button').last().click();
-    await frame.locator('[class*=sets_SetOption__name]').nth(previous).click();
+    await selectProfile(previous);
     await page.locator('#import-build').setInputFiles(rich.target);
     await page.getByText('Native file loaded into this tab.',{exact:false}).waitFor();
     frame=page.frames()[1];await frame.locator('[class*=PlannerEquipment]').first().waitFor();
