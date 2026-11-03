@@ -49,7 +49,7 @@ Configuration includes the exact UI snapshot pins, `chromium`, a new `output` di
 
 Tooltip checks assert the selected item's title before and after capture. They capture the visible native tooltip directly without scrolling its floating portal: automatic locator scrolling can move the pointer onto a different slot. Oversized mobile tooltips are compared within the actual native viewport, with no content masks.
 
-The full visual gate compares desktop/mobile picker cards, artwork crops, editor, equipped slot, tooltip, skill and paragon states with the same native state and viewport. No masks are used. The existing 0.5% pixel-difference threshold is unchanged. Each picker artwork crop also has a negative mutation: hiding that exact background must fail the normal gate. A mutation merely changing the equipped slot cannot satisfy a picker regression.
+The full visual gate compares desktop/mobile picker cards, artwork crops, editor, equipped slot, tooltip, skill and paragon states with the same native state and viewport. Native GraphControls animate zoom for 250 ms. Tests wait for the transition before starting a pan or capturing its result; otherwise the gesture cancels zoom at a frame-dependent intermediate scale. No masks are used. The existing 0.5% pixel-difference threshold is unchanged. Each picker artwork crop also has a negative mutation: hiding that exact background must fail the normal gate. A mutation merely changing the equipped slot cannot satisfy a picker regression.
 
 ## Native JSON
 
@@ -58,6 +58,8 @@ The existing `client.js → shell.js → native-transfer.js → src/build-export
 Envelope: `maxroll-native-build-export/v1`, `MAXROLL_NATIVE_STATE`, complete `nativeState`, loader metadata, SHA-256 integrity and UI snapshot provenance. Import is tied to the exact UI snapshot ID and manifest hash. It uses the native profile loader, not a parallel serializer. Transfer requests also carry the manifest hash embedded in the page's shell script. After a UAT package switch, stale tabs fail with HTTP 409 and a reload instruction; their old native state cannot be relabelled with the new package provenance.
 
 State is tab-local: download before closing/reloading. Imported state is never published or persisted by a cloud backend.
+
+The native `useSyncedGameCachePosition` hook reads `d4-planner-cache[loaderId].skillsPosition/paragonPosition` and can overwrite imported positions. The bootstrap clears only those two view-cache entries for the imported loader before the captured frontend runs. Other planners, display preferences and the native payload remain unchanged. The multi-profile browser regression reproduces switching away/back before import and requires full-state equality, including each selected step.
 
 The browser tests download actual files and compare the complete native state after import/export: the captured multi-profile build and a build created through UI with affixes, temper, aspect, gem, skills, glyph and rotated board. Separate tests retain `[null,null]`, assert profile switching, and reject invalid JSON, tampered integrity and a wrong snapshot. Unknown native fields are preserved by the transfer boundary, not converted or discarded.
 

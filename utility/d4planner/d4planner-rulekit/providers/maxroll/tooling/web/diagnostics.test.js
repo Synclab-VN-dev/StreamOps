@@ -47,3 +47,28 @@ test('startup errors reach localhost diagnostics; frame navigation cannot escape
     assert.deepEqual(externalResponses,[]);
   } finally { await browser.close(); await running.close(); }
 });
+
+test('native import clears only the loader view-position cache before captured scripts run',async()=>{
+  const probe=net.createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const port=probe.address().port;await new Promise(r=>probe.close(r));
+  const source='https://maxroll.gg/d4/planner/12345678';
+  const snapshot={manifest:{snapshotId:'synthetic-ui',sourceUrl:source,version:'fixture'},resources:new Map([
+    ['GET '+source,{status:200,headers:{'content-type':'text/html'},body:Buffer.from('<head></head><body><button>New Profile</button><script>window.cacheAtBootstrap=JSON.parse(localStorage.getItem("d4-planner-cache")||"{}");</script></body>')}],
+    ['GET https://planners.maxroll.gg/profiles/load/d4/12345678',{body:Buffer.from(JSON.stringify({id:'12345678',data:'{}'}))}]
+  ])};
+  const config={port,manifestSha256:'a'.repeat(64)},running=await startServer(config,{snapshot});
+  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_EXECUTABLE});
+  try{
+    const page=await browser.newPage();await page.goto('http://127.0.0.1:'+port);
+    const cache={'12345678':{skillsPosition:{p:8},paragonPosition:{p:9},skillsMode:'list'},anotherPlanner:{paragonPosition:{p:7}}};
+    await page.evaluate(cache=>{localStorage.setItem('d4-planner-cache',JSON.stringify(cache));localStorage.setItem('unrelated','keep');},cache);
+    const {exportBuild}=require('./native-transfer');
+    const state={profiles:[{name:'Synthetic',level:1,items:{}}],items:{},activeProfile:0};
+    const envelope=exportBuild({data:JSON.stringify(state)},snapshot,config);
+    await page.locator('#import-build').setInputFiles({name:'fixture.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(envelope))});
+    await page.getByText('Native file loaded into this tab.',{exact:false}).waitFor();
+    const observed=await page.frames()[1].evaluate(()=>window.cacheAtBootstrap);
+    assert.deepEqual(observed,{'12345678':{skillsMode:'list'},anotherPlanner:{paragonPosition:{p:7}}});
+    assert.equal(await page.evaluate(()=>localStorage.getItem('unrelated')),'keep');
+    assert.deepEqual(await page.evaluate(()=>JSON.parse(window.localNativeImport().data)),state,'Imported native data is not rewritten');
+  }finally{await browser.close();await running.close();}
+});

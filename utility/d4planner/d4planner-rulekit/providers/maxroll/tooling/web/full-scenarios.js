@@ -83,6 +83,7 @@ async function fullScenarios(p,{checkpoint=async()=>{}}={}){
   await p.waitForFunction(before=>document.querySelector('.d4t-boards').getAttribute('style')!==before,before);
   assert.notEqual(await boards.getAttribute('style'),before,'Zoom changes native board transform');
   await paragon.locator('[class*=controls_Button__]').nth(1).click();
+  await p.waitForTimeout(300); // Native GraphControls zoom duration is 250ms.
   await checkpoint('paragon-zoom',paragon);
   await paragon.locator('.d4t-node.d4t-gate').first().click();await p.getByText('Cheap Shot',{exact:true}).click();
   assert.equal(await paragon.locator('.d4t-ParagonBoard').count(),2);
@@ -92,7 +93,7 @@ async function fullScenarios(p,{checkpoint=async()=>{}}={}){
   await checkpoint('paragon-board-rotation',paragon);
   // Panning is clamped while the entire board fits; zoom in before testing drag.
   for(let i=0;i<6;i++)await paragon.locator('[class*=controls_Button__]').nth(0).click();
-  await p.waitForTimeout(100);
+  await p.waitForTimeout(300); // Finish native zoom before pan can cancel its animation.
   const view=paragon.locator('.d4t-ParagonScroll');await view.scrollIntoViewIfNeeded();
   const page=typeof p.page==='function'?p.page():p;const box=await view.boundingBox();
   const bounds=p===page?{x:0,y:0,...page.viewportSize()}:await (await p.frameElement()).boundingBox();
@@ -108,6 +109,7 @@ async function fullScenarios(p,{checkpoint=async()=>{}}={}){
   }
   await p.waitForFunction(before=>document.querySelector('.d4t-boards').getAttribute('style')!==before,transform,{timeout:5000});
   assert.notEqual(await boards.getAttribute('style'),transform,'Pan changes native board transform');
+  await p.waitForTimeout(300);
   await checkpoint('paragon-pan',paragon);
   return {equipment:rows,affix:'Toughened',temper:'Fire Resistance',aspect:'Aspect of Might',gem:'Royal Ruby',unequip:true,skillAllocateRefund:true,skillTreeAndDescription:true,paragonAllocateRefund:true,glyph:true,boardAddRotate:true,panZoom:true,touchInput:touch};
 }

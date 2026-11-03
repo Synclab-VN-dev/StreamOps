@@ -5,6 +5,21 @@
   const origin = location.origin;
   const hosts = new Set(['maxroll.gg', 'assets-ng.maxroll.gg', 'planners.maxroll.gg', 'fonts.googleapis.com', 'fonts.gstatic.com']);
   const nativeFetch = window.fetch.bind(window);
+  const incoming = window.parent !== window && window.parent.localNativeImport?.();
+  if (incoming) {
+    // Native useSyncedGameCachePosition otherwise overwrites imported skill/paragon
+    // step positions with old browser preferences. Clear only this loader's view positions
+    // before the captured frontend initializes; never change the imported native payload.
+    const key = 'd4-planner-cache';
+    try {
+      const cache = JSON.parse(localStorage.getItem(key) || '{}');
+      const view = cache && Object.hasOwn(cache, incoming.id) && cache[incoming.id];
+      if (view && typeof view === 'object') {
+        delete view.skillsPosition; delete view.paragonPosition;
+        localStorage.setItem(key, JSON.stringify(cache));
+      }
+    } catch { localStorage.removeItem(key); }
+  }
   const session = window.name || 'unframed';
   const report = (kind, url, detail) => {
     let safe = String(url);
