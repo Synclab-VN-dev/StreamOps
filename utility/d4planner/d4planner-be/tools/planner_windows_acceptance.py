@@ -188,6 +188,8 @@ async def run(args):
                 value = await cdp('Page.captureScreenshot')
                 (output/(name+'.png')).write_bytes(base64.b64decode(value['data']))
             async def click_create():
+                # A CDP page exists before the installed WebView has mounted React.
+                await wait(lambda: evaluate("!!document.querySelector('.menu-button')"), 'HUD React mounted')
                 await evaluate("(()=>{const b=document.querySelector('.menu-button');if(b.getAttribute('aria-expanded')!=='true')b.click();})()")
                 await wait(lambda: evaluate("Array.from(document.querySelectorAll('[role=menuitem]')).some(e=>e.textContent==='Create Build'&&!e.disabled)"), 'Create Build enabled')
                 await evaluate("Array.from(document.querySelectorAll('[role=menuitem]')).find(e=>e.textContent==='Create Build').click()")
