@@ -1,3 +1,5 @@
+For automatic **capture → start → open**, three capture modes, candidate selection and rollback, see [UNIFIED-CAPTURE.md](UNIFIED-CAPTURE.md). The pinned-config instructions below remain supported for legacy installations.
+
 # Local frozen Maxroll Web UI — #173
 
 **Comprehensive acceptance:** See [COMPLETE-UI.md](COMPLETE-UI.md) for the selectable catalog audit, full HTTP/visual/negative tests and one-command offline acceptance runner. Earlier limited icon checks are not full UI acceptance.

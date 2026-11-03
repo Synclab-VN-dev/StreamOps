@@ -85,7 +85,7 @@ async function startServer(config, { snapshot: suppliedSnapshot } = {}) {
     categories[kind] = (categories[kind] || 0) + 1;
     if (kind === 'MISSING') missing++; else blocked++;
   }
-  function diagnostic() { return { snapshotId: snapshot.manifest.snapshotId, uiVerification: snapshot.uiVerification, uiMode: config.uiTrust ? 'INDEPENDENT_CAPTURE' : 'LEGACY_CALCULATION_PIN', calculationStatus: 'NOT_ASSESSED', served, missing, blocked, recent, categories, clientEvents }; }
+  function diagnostic() { return { snapshotId: snapshot.manifest.snapshotId, manifestSha256: config.manifestSha256, uiVerification: snapshot.uiVerification, uiMode: config.uiTrust ? 'INDEPENDENT_CAPTURE' : 'LEGACY_CALCULATION_PIN', calculationStatus: 'NOT_ASSESSED', served, missing, blocked, recent, categories, clientEvents }; }
   const sourcePath = new URL(snapshot.manifest.sourceUrl).pathname;
   const server = http.createServer(async (req, res) => {
     try {
@@ -169,6 +169,16 @@ async function startServer(config, { snapshot: suppliedSnapshot } = {}) {
 }
 async function main() {
   if (process.argv[2] !== '--config' || !process.argv[3]) throw new Error('Usage: node server.js --config /absolute/config.json');
+  if(process.env.LOCAL_UI_OWNER_STATE){
+    // Do not bind if the CLI dies between spawning us and durably recording ownership.
+    let recorded=false;
+    for(let i=0;i<100;i++){
+      try{recorded=JSON.parse(await fs.readFile(process.env.LOCAL_UI_OWNER_STATE,'utf8')).pid===process.pid;}catch{}
+      if(recorded)break;
+      await new Promise(resolve=>setTimeout(resolve,20));
+    }
+    if(!recorded)throw Error('CLI ownership was not committed; refusing orphan listener');
+  }
   const config = JSON.parse(await fs.readFile(process.argv[3], 'utf8'));
   const running = await startServer(config);
   console.log(JSON.stringify({ ready: true, pid: process.pid, url: `http://127.0.0.1:${config.port}/`, snapshotId: config.snapshotId }));

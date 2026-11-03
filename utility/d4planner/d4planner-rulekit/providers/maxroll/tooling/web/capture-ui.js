@@ -20,12 +20,12 @@ function dependencies(text,base) {
   }
   return [...urls];
 }
-async function capture(config) {
+async function capture(config, {browser: sharedBrowser} = {}) {
   for(const key of ['snapshotRoot','snapshotId','chromium','evidenceDir','authorizationRef'])if(!config[key])throw Error('Required: '+key);
   const output=path.join(config.snapshotRoot,config.snapshotId);
   try {await fs.access(output);throw Error('Capture output already exists');}catch(e){if(e.code!=='ENOENT')throw e;}
   await fs.mkdir(config.evidenceDir,{recursive:true,mode:0o700});
-  const browser=new BrowserInfrastructure({executablePath:config.chromium,headless:true,maxContexts:2,maxQueue:1,
+  const browser=sharedBrowser || new BrowserInfrastructure({executablePath:config.chromium,headless:true,maxContexts:2,maxQueue:1,
     contextOptions:{serviceWorkers:'block',viewport:{width:1440,height:1100}}});
   const store=new FileSystemSnapshotStore({rootDir:config.snapshotRoot,limits:{maxResources:6000,maxResourceBytes:64*1024*1024,maxTotalBytes:512*1024*1024}});
   let nativeData,nativeProfile;
@@ -59,9 +59,9 @@ async function capture(config) {
     }
   })}});
   try {
-    await browser.start();
+    if(!sharedBrowser)await browser.start();
     const draft=await manager.capture({snapshotId:config.snapshotId,site:'maxroll-d4-planner-ui',version:'CAPTURED_UNVALIDATED',
-      url:config.sourceUrl || 'https://maxroll.gg/d4/planner/',allowedOrigins:ORIGINS,timeoutMs:480000,maxResources:6000,maxResourceBytes:64*1024*1024,maxTotalBytes:512*1024*1024,
+      url:config.sourceUrl || 'https://maxroll.gg/d4/planner/',signal:config.signal,allowedOrigins:ORIGINS,timeoutMs:480000,maxResources:6000,maxResourceBytes:64*1024*1024,maxTotalBytes:512*1024*1024,
       capturePolicy:{responsePolicy:response=>{const digest=hash(response.body);const prior=responseHashes.get(response.url);if(prior&&prior!==digest)console.error('CONFLICT',response.url,prior,digest);responseHashes.set(response.url,digest);},requestHeaderPolicy:'fresh-anonymous-context',navigationWaitUntil:'domcontentloaded',settleWaitUntil:'domcontentloaded',
         completion:{minimumObservationMs:1000,quietWindowMs:1000},allowResource:({url,resourceType,method})=>method==='GET'&&resourceType!=='media'&&!/\/users\/whoami|\/js\/sponsor\.js|^\/api\/me$/.test(new URL(url).pathname)},
       interact:async({page})=>{
@@ -140,7 +140,7 @@ async function capture(config) {
     console.log(JSON.stringify({snapshotId:config.snapshotId,...verified,status:coverage.status}));
     return coverage;
   }catch(error){coverage.status='FAILED';coverage.failure=error.message;throw error;}
-  finally{await browser.stop();coverage.cleanup=browser.getStatus();await fs.writeFile(path.join(config.evidenceDir,'capture-report.json'),JSON.stringify(coverage,null,2),{mode:0o600});}
+  finally{if(!sharedBrowser)await browser.stop();coverage.cleanup=browser.getStatus();await fs.writeFile(path.join(config.evidenceDir,'capture-report.json'),JSON.stringify(coverage,null,2),{mode:0o600});}
 }
 if(require.main===module)fs.readFile(process.argv[2],'utf8').then(JSON.parse).then(capture).catch(e=>{console.error(e);process.exitCode=1;});
 module.exports={capture,dependencies,ORIGINS,hash};
