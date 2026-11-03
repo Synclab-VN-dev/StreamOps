@@ -7,7 +7,9 @@ const {readSelection, failure} = require('./selection');
 const SCHEMA = 'd4planner-local-planner/v1';
 
 class PlannerServerManager {
-  constructor({stateRoot, port = 6085, timeoutMs = 12000, load = loadSnapshot, start = startServer} = {}) {
+  // A first Windows read verifies thousands of private blobs before binding.
+  // Keep integrity mandatory and allow cold filesystem/antivirus latency.
+  constructor({stateRoot, port = 6085, timeoutMs = 30000, load = loadSnapshot, start = startServer} = {}) {
     this.stateRoot = stateRoot;
     this.port = port;
     this.timeoutMs = timeoutMs;
