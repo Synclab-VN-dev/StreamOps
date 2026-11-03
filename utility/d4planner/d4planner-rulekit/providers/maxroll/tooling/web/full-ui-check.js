@@ -16,6 +16,8 @@ async function run(config){
     const ctx=await browser.newContext({...(mobile?devices['Pixel 7']:{}),viewport:size,deviceScaleFactor:1,serviceWorkers:'block',acceptDownloads:true});
     if(config.online)await ctx.route('**/*',route=>{const r=route.request(),u=new URL(r.url());return r.method()==='GET'&&UI_ORIGINS.includes(u.origin)&&!(/\/users\/whoami|\/js\/sponsor\.js|^\/api\/me$/.test(u.pathname))?route.continue():route.abort('blockedbyclient');});
     ctx.setDefaultTimeout(30000);const page=await ctx.newPage(),errors=[],responses=[],attempts=[],failed=[],missing=[],fingerprints={},drift=[],tasks=[],consoleErrors=[];
+    let nativeSerialized;
+    page.on('request',r=>{if(r.url().endsWith('/__local/export'))nativeSerialized=JSON.parse(r.postDataJSON().data);});
     const origin=config.online?new URL(manifest.sourceUrl).origin:new URL(config.url).origin;
     page.on('console',m=>{if(m.type()==='error'){const message=m.text(),url=m.location().url;const expectedNetwork=/Failed to load resource:|Content Security Policy|Content-Security-Policy|blocked by CORS policy|net::ERR_FAILED/.test(message);consoleErrors.push({kind:expectedNetwork?'NETWORK_POLICY':'UNEXPECTED',url: url?new URL(url).origin+new URL(url).pathname:null,messageSha256:hash(message)});}});
     page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(!config.online&&new URL(r.url()).origin!==origin)attempts.push(r.url());});
@@ -47,6 +49,9 @@ async function run(config){
       await surface.getByRole('button',{name:'My Profiles',exact:true}).click();await surface.locator('input.d4t-save-name').fill('Full QA edited build');
       const downloading=page.waitForEvent('download');await surface.locator('.d4t-section-save button').last().click();const d=await downloading;assert.equal(await d.failure(),null);
       const file=path.join(config.output,name+'-edited-native.json');await d.saveAs(file);const e=JSON.parse(await fs.readFile(file));const active=e.nativeState.profiles[e.nativeState.activeProfile],item=e.nativeState.items[active.items['4']];
+      assert.deepEqual(e.nativeState,nativeSerialized,'Every field equals the actual native Save serializer output');
+      assert.equal(active.level,70);assert.equal(active.skillTree.steps[0].data['28'],1);
+      const exportedBoards=active.paragon.steps[0].data;assert.equal(exportedBoards.length,2);assert.equal(exportedBoards[0].nodes['283'],1);assert.equal(exportedBoards[0].glyph,'Rare_061_Intelligence_Side');assert.equal(exportedBoards[0].glyphLevel,150);assert.equal(exportedBoards[1].rotation,1);
       assert(item.explicits?.length&&item.tempered?.length&&item.aspects?.length);assert.equal(typeof item.sockets[0],'string');assert.equal(item.sockets[1],null);
       await page.locator('#import-build').setInputFiles(file);await page.getByText('Native file loaded into this tab.',{exact:false}).waitFor();surface=page.frames()[1];await surface.getByRole('button',{name:'My Profiles',exact:true}).waitFor();
       await page.getByRole('button',{name:'Export JSON',exact:true}).click();await surface.locator('input.d4t-save-name').fill('Full QA roundtrip');
