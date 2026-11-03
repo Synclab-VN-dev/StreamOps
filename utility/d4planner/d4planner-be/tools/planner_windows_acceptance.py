@@ -84,8 +84,12 @@ async def run(args):
             phases[name] = {'status': 'FAIL', 'error': str(error)}; raise
         finally: print(name+': '+phases[name]['status'], flush=True)
     try:
-        targets = await wait(lambda: json_url(f'http://127.0.0.1:{debug}/json/list'), 'owned WebView CDP')
-        target = next(t for t in targets if t['type'] == 'page' and 'tauri.localhost' in t['url'])
+        async def hud_startup():
+            targets = await wait(lambda: [t for t in json_url(f'http://127.0.0.1:{debug}/json/list')
+                if t['type'] == 'page' and 'tauri.localhost' in t['url']], 'owned HUD WebView CDP target')
+            return targets[0]
+        await phase('installed-hud-startup', hud_startup)
+        target = phases['installed-hud-startup']['actual']
         async with connect(target['webSocketDebuggerUrl'], proxy=None) as ws:
             seq = 0
             async def cdp(method, params=None):
@@ -189,7 +193,7 @@ async def run(args):
             current = next((p for p in processes() if p['ProcessId'] == observed['ProcessId']), None)
             if current and current['CreationDate'] == observed['CreationDate'] and url in (current['CommandLine'] or ''):
                 subprocess.run(['taskkill.exe', '/PID', str(current['ProcessId']), '/T', '/F'], check=True, timeout=20)
-        report = {'classification': 'WINDOWS_INSTALLED_VM', 'status': 'PASS' if len(phases) == 7 and all(p['status'] == 'PASS' for p in phases.values()) else 'FAIL',
+        report = {'classification': 'WINDOWS_INSTALLED_VM', 'status': 'PASS' if len(phases) == 8 and all(p['status'] == 'PASS' for p in phases.values()) else 'FAIL',
                   'phases': phases, 'ownerGameFocusController': 'NOT_RUN', 'ci': 'CI_NOT_CHECKED'}
         (output/'report.json').write_text(json.dumps(report, indent=2))
         if report['status'] != 'PASS' and sys.exc_info()[0] is None:
