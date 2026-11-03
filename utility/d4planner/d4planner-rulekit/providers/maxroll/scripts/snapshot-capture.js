@@ -29,7 +29,7 @@ async function main() {
   process.once('SIGTERM', abort);
   process.once('SIGHUP', abort);
   if (!options.output || options.mode === 'ui' || options.mode === 'all' || options.config) {
-    const {run} = require('../src/capture-workflow');
+    const {run} = require('../tooling/capture-workflow');
     const report = await run({...options, signal: controller.signal});
     process.stdout.write(JSON.stringify(report) + '\n');
     return;

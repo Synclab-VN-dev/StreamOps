@@ -27,3 +27,11 @@ test('auxiliary closure includes nested buff icons, glyph rarity arrays and sock
   const rows=auxiliaryDependencies(data);assert.deepEqual([...new Set(rows.map(r=>r.imageId))].sort((a,b)=>a-b),[21,22,23,24,25,26]);
   assert(rows.some(r=>r.field==='buffs.0.icon'));assert(!rows.some(r=>r.entityId==='quest'),'Unrelated raw quest records do not establish selectable coverage');
 });
+
+test('new/uncovered native classes cannot silently receive UI validation',()=>{
+  const {assertClassCoverage}=require('./catalog-coverage');
+  const coverage={groups:[{className:'Rogue'},{className:'Rogue'}]};
+  assert.doesNotThrow(()=>assertClassCoverage({classes:{0:{name:'Rogue'}}},coverage));
+  assert.throws(()=>assertClassCoverage({classes:{0:{name:'Rogue'},1:{name:'New Native Class'}}},coverage),e=>e.code==='UNSUPPORTED_VERSION');
+  assert.throws(()=>assertClassCoverage({classes:{}},coverage),e=>e.code==='UNSUPPORTED_VERSION');
+});

@@ -1,6 +1,6 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
-const {run,state,consistent}=require('../../src/capture-workflow');
+const {run,state,consistent}=require('../../tooling/capture-workflow');
 async function fixture(t,{drift=false,gateFailure=false,incomplete=false}={}){
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'capture-workflow-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
  const c={stateRoot:path.join(root,'state'),uiRoot:path.join(root,'ui'),calculationRoot:path.join(root,'calc'),chromium:'/synthetic/browser',authorizationRef:'SYNTHETIC_TEST_ONLY',sourceUrl:'https://maxroll.gg/d4/planner/fixture'};

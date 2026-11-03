@@ -55,6 +55,13 @@ def main():
         command(name, ['node', str(WEB/'export-check.js'), str(file)])
 
     try:
+        index = ROOT/'snapshot-management/compatibility/compatibility-index.json'
+        original_index = index.read_bytes()
+        command('calculation-index-preflight', ['npm','run','build:compatibility'], cwd=ROOT/'snapshot-management')
+        if index.read_bytes() != original_index:
+            phases['calculation-index-preflight']['status'] = 'FAIL'
+            raise AssertionError('Capture tooling must not change calculation execution identity')
+        phases['calculation-index-preflight']['sha256'] = hashlib.sha256(original_index).hexdigest()
         command('cli-orchestration', ['node', '--test', 'tests/unit/snapshot-capture.test.js', 'tests/unit/capture-workflow.test.js'])
         command('registry-activation-negative', ['python3', str(WEB/'capture-state.test.py')])
         command('legacy-calculation', ['npm', 'run', 'snapshot:capture', '--', '--output', str(output/'legacy-calculation')])
@@ -113,15 +120,19 @@ def main():
         try:
             service('cleanup', 'stop')
             with socket.socket() as sock: sock.bind(('127.0.0.1', config['web']['port']))
-            assert original_config == args.config.read_bytes()
-            assert subprocess.check_output(['git','rev-parse','HEAD'],cwd=PROVIDER,text=True).strip() == head
-            assert not subprocess.check_output(['git','status','--porcelain'],cwd=PROVIDER,text=True).strip()
-            phases['unchanged-config-head'] = {'status':'PASS','configSha256':hashlib.sha256(original_config).hexdigest(),'head':head}
         except Exception as error:
             phases['cleanup'] = {'status':'FAIL','error':str(error)}
-        required=['cli-orchestration','registry-activation-negative','legacy-calculation','automatic-calculation','capture-ui','first-start','idempotent-start','open-first-ui','interrupted-capture','start-after-failed-capture','open-after-failed-capture','capture-all','safe-update','open-updated-ui','rollback','restore-latest','application','providers-maxroll','browser-infra','snapshot-management','calculation-real','cleanup','unchanged-config-head']
+        try:
+            assert original_config == args.config.read_bytes(), 'Fixed configuration changed during workflow'
+            assert subprocess.check_output(['git','rev-parse','HEAD'],cwd=PROVIDER,text=True).strip() == head, 'HEAD changed during workflow'
+            dirty = subprocess.check_output(['git','status','--porcelain'],cwd=PROVIDER,text=True).strip()
+            assert not dirty, 'Repository changed during regression: ' + dirty
+            phases['unchanged-config-head'] = {'status':'PASS','configSha256':hashlib.sha256(original_config).hexdigest(),'head':head}
+        except Exception as error:
+            phases['unchanged-config-head'] = {'status':'FAIL','error':str(error)}
+        required=['calculation-index-preflight','cli-orchestration','registry-activation-negative','legacy-calculation','automatic-calculation','capture-ui','first-start','idempotent-start','open-first-ui','interrupted-capture','start-after-failed-capture','open-after-failed-capture','capture-all','safe-update','open-updated-ui','rollback','restore-latest','application','providers-maxroll','browser-infra','snapshot-management','calculation-real','cleanup','unchanged-config-head']
         passed=all(phases.get(k,{}).get('status')=='PASS' for k in required)
-        definitions=[('CAP-01','CLI backward compatibility',['cli-orchestration','legacy-calculation']),('CAP-02','Comprehensive UI capture and validation',['capture-ui']),('CAP-03','Calculation capture remains unvalidated',['legacy-calculation','automatic-calculation']),('CAP-04','Coordinated identities and drift rejection',['capture-all','cli-orchestration']),('CAP-05','Automatic IDs and pins',['capture-ui','automatic-calculation']),('CAP-06','Concurrent/corrupt metadata',['registry-activation-negative']),('CAP-07','First automatic selection',['first-start']),('CAP-08','Idempotent start',['idempotent-start']),('CAP-09','Validated update',['safe-update','open-updated-ui']),('CAP-10','Rollback and interrupted promotion',['registry-activation-negative','rollback','restore-latest']),('CAP-11','Failed capture leaves active unchanged',['interrupted-capture','start-after-failed-capture','open-after-failed-capture']),('CAP-12','UI/native regression',['capture-ui','capture-all']),('CAP-13','Existing calculation regression',['application','providers-maxroll','browser-infra','snapshot-management','calculation-real']),('CAP-14','Offline/security/ownership/cleanup',['capture-ui','registry-activation-negative','cleanup']),('CAP-15','Unchanged-config three-step workflow across updates',['capture-ui','first-start','open-first-ui','interrupted-capture','start-after-failed-capture','open-after-failed-capture','capture-all','safe-update','open-updated-ui','unchanged-config-head'])]
+        definitions=[('CAP-01','CLI backward compatibility',['cli-orchestration','legacy-calculation']),('CAP-02','Comprehensive UI capture and validation',['capture-ui']),('CAP-03','Calculation capture remains unvalidated',['legacy-calculation','automatic-calculation']),('CAP-04','Coordinated identities and drift rejection',['capture-all','cli-orchestration']),('CAP-05','Automatic IDs and pins',['capture-ui','automatic-calculation']),('CAP-06','Concurrent/corrupt metadata',['registry-activation-negative']),('CAP-07','First automatic selection',['first-start']),('CAP-08','Idempotent start',['idempotent-start']),('CAP-09','Validated update',['safe-update','open-updated-ui']),('CAP-10','Rollback and interrupted promotion',['registry-activation-negative','rollback','restore-latest']),('CAP-11','Failed capture leaves active unchanged',['interrupted-capture','start-after-failed-capture','open-after-failed-capture']),('CAP-12','UI/native regression',['capture-ui','capture-all']),('CAP-13','Existing calculation regression',['calculation-index-preflight','application','providers-maxroll','browser-infra','snapshot-management','calculation-real']),('CAP-14','Offline/security/ownership/cleanup',['capture-ui','registry-activation-negative','cleanup']),('CAP-15','Unchanged-config three-step workflow across updates',['capture-ui','first-start','open-first-ui','interrupted-capture','start-after-failed-capture','open-after-failed-capture','capture-all','safe-update','open-updated-ui','unchanged-config-head'])]
         ledger=[{'id':i,'expected':expected,'status':'PASS' if all(phases.get(k,{}).get('status')=='PASS' for k in deps) else 'FAIL','actual':{k:phases.get(k,{'status':'NOT_RUN'}) for k in deps},'owner':'F AUTO'} for i,expected,deps in definitions]
         ledger.append({'id':'CAP-16','expected':'Physical Android browser/touch/download after automation','status':'NOT_RUN','owner':'Owner MAN','priorAcceptance':'Owner accepted prior UI before this task'})
         report={'schemaVersion':'maxroll-unified-acceptance/v1','head':head,'status':'LOCAL_PASS' if passed else 'FAIL','ci':'CI_NOT_CHECKED','ledger':ledger,'phases':phases,'state':db.read()}

@@ -1,7 +1,7 @@
 'use strict';
 const fs=require('node:fs/promises');const path=require('node:path');
 const {FileSystemSnapshotStore}=require('../../../../browser-infra/src');
-const {entityDependencies,auxiliaryDependencies,profileDependencies}=require('./catalog-coverage');
+const {assertClassCoverage,entityDependencies,auxiliaryDependencies,profileDependencies}=require('./catalog-coverage');
 const {dependencies}=require('./capture-ui');
 const {moduleDependencies,htmlDependencies}=require('./resource-dependencies');
 async function audit(config,selectable){
@@ -13,6 +13,7 @@ async function audit(config,selectable){
   const receipt=JSON.parse(await fs.readFile(path.join(config.snapshotRoot,config.snapshotId,'ui-coverage.json')));
   const coverage=selectable||receipt.selectable;
   if(!coverage)throw Error('Full selectable inventory missing');
+  assertClassCoverage(data,coverage);
   const rows=entityDependencies(data,coverage),aux=auxiliaryDependencies(data);
   const loader=[...pkg.resources.values()].find(r=>r.url.includes('/profiles/load/d4/'));if(!loader)throw Error('Captured profile missing');
   const profileImages=profileDependencies(data,JSON.parse(JSON.parse(loader.body).data));

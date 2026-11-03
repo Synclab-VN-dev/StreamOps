@@ -2,13 +2,13 @@
 
 ## Assessment and ownership
 
-AGREE / FIX_REQUIRED. `scripts/snapshot-capture.js` already owns the npm command and preserves the persistent calculation contract from #132. It should remain an argument/dispatch boundary; `src/capture-workflow.js` composes the existing `MaxrollSnapshotCapturer`, `capture-ui.js`, store and acceptance runner. No new browser/capture framework is introduced.
+AGREE / FIX_REQUIRED. `scripts/snapshot-capture.js` already owns the npm command and preserves the persistent calculation contract from #132. It should remain an argument/dispatch boundary; `tooling/capture-workflow.js` composes the existing `MaxrollSnapshotCapturer`, `capture-ui.js`, store and acceptance runner. No new browser/capture framework is introduced. The existing build-index includes every provider src file in calculation execution identity; placing this orchestrator under tooling preserves that identity. The calculation index and its bindings remain byte-for-byte unchanged.
 
 The signed registry in `snapshot-management/schemas/registry.schema.json` binds calculation provider/codec/schema/strategy and approval evidence. Its `selection.json` selects an approved calculation binding. A captured UI cannot satisfy that contract. Reusing it for UI activation would require false compatibility approval or a public contract change. Therefore provider-local `capture_state.py` stores capture history and the **single UI operational selection**. It never modifies the calculation registry, selection, compatibility catalog, engine or Application APIs. Legacy server config pins become generated process configuration after one-time adoption; they are no longer a second mutable UI selection.
 
 `all` reuses one BrowserInfrastructure process with separate anonymous leases. Sharing page/cache/storage would alter the existing capture policies and risk missed response bodies. It stores separate immutable packages, compares exact runtime asset and game-data/localization URL+SHA maps plus observed version, then permits UI validation. A same patch label with different bytes fails consistency; neither member is offered as a synchronized pair. Calculation remains CAPTURED_UNVALIDATED with its original PATCH_DRIFT/PIN_MATCH_UNVALIDATED report, regardless of UI results.
 
-Tradeoffs: comprehensive UI capture includes online reference preparation and several minutes of browser QA. A new structure may require provider tooling updates and reports UNSUPPORTED_VERSION rather than claiming compatibility. This is an explicit manual capture command, never an online background sync or CI capture. Activation has bounded downtime on the fixed port and a recovery journal; it does not promise zero downtime.
+Tradeoffs: comprehensive UI capture includes online reference preparation and several minutes of browser QA. Native catalog classes must exactly match the captured coverage; new/uncovered classes fail UNSUPPORTED_VERSION rather than producing a partially validated UI. A new structure may require provider tooling updates and reports UNSUPPORTED_VERSION rather than claiming compatibility. This is an explicit manual capture command, never an online background sync or CI capture. Activation has bounded downtime on the fixed port and a recovery journal; it does not promise zero downtime.
 
 ## Normal three-step workflow
 
@@ -94,7 +94,7 @@ Solid edges are calls; dotted edges are returns. All source paths exist.
 
 ```mermaid
 flowchart TD
-  CLI[scripts/snapshot-capture.js] -->|1 call: mode dispatch| W[src/capture-workflow.js]
+  CLI[scripts/snapshot-capture.js] -->|1 call: mode dispatch| W[tooling/capture-workflow.js]
   W -->|2 call: calculation capture| C[src/snapshot-capturer.js]
   W -->|3 call: comprehensive UI capture| U[tooling/web/capture-ui.js]
   C -->|4 call: capture/save/verify| M[browser-infra/src/snapshot/manager.js]

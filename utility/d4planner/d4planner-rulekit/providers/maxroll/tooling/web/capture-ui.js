@@ -8,7 +8,7 @@ const {scenarios}=require('./ui-scenarios');
 const {fullScenarios}=require('./full-scenarios');
 const {devices}=require('../../../../browser-infra/node_modules/playwright-core');
 const {moduleDependencies,htmlDependencies}=require('./resource-dependencies');
-const {collectSelectable,entityDependencies,auxiliaryDependencies,profileDependencies}=require('./catalog-coverage');
+const {assertClassCoverage,collectSelectable,entityDependencies,auxiliaryDependencies,profileDependencies}=require('./catalog-coverage');
 const {UI_ORIGINS:ORIGINS}=require('./ui-package');
 const hash=b=>createHash('sha256').update(b).digest('hex');
 function dependencies(text,base) {
@@ -115,6 +115,7 @@ async function capture(config, {browser: sharedBrowser} = {}) {
           });
           coverage.selectable=await collectSelectable(page);
           if(!nativeData)throw Error('Native catalog absent');
+          assertClassCoverage(nativeData,coverage.selectable);
           coverage.entityDependencies=entityDependencies(nativeData,coverage.selectable);
           coverage.auxiliaryDependencies=auxiliaryDependencies(nativeData);
           if(!nativeProfile)throw Error('Captured native profile missing');

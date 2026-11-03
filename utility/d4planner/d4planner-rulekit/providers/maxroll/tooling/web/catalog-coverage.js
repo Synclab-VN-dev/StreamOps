@@ -85,4 +85,11 @@ function profileDependencies(data,state){
 function normalizeCoverage(coverage){
   return coverage.groups.map(g=>({className:g.className,slot:g.slot,categories:g.categories.map(c=>({name:c.name,entities:c.entities.filter(id=>typeof id==='string').sort()})).filter(c=>c.entities.length)}));
 }
-module.exports={profileDependencies,normalizeCoverage,nativeCategories,collectSelectable,entityDependencies,auxiliaryDependencies};
+function assertClassCoverage(data,coverage){
+  const native=Object.values(data.classes||{}).map(c=>c.name);
+  const covered=[...new Set(coverage.groups.map(g=>g.className))].sort();
+  if(!native.length||native.some(n=>typeof n!=='string')||new Set(native).size!==native.length||JSON.stringify(native.sort())!==JSON.stringify(covered)){
+    throw Object.assign(Error('UNSUPPORTED_VERSION: native class catalog differs from captured class coverage'),{code:'UNSUPPORTED_VERSION'});
+  }
+}
+module.exports={assertClassCoverage,profileDependencies,normalizeCoverage,nativeCategories,collectSelectable,entityDependencies,auxiliaryDependencies};

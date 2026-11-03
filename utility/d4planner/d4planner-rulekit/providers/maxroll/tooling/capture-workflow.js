@@ -6,11 +6,11 @@ const os = require('node:os');
 const crypto = require('node:crypto');
 const {spawn} = require('node:child_process');
 const {BrowserInfrastructure, FileSystemSnapshotStore} = require('../../../browser-infra/src');
-const {MaxrollSnapshotCapturer} = require('./snapshot-capturer');
-const {discoverBrowser} = require('./live-capture-orchestrator');
-const {capture: captureUi} = require('../tooling/web/capture-ui');
-const {audit} = require('../tooling/web/resource-audit');
-const WEB = path.resolve(__dirname, '../tooling/web');
+const {MaxrollSnapshotCapturer} = require('../src/snapshot-capturer');
+const {discoverBrowser} = require('../src/live-capture-orchestrator');
+const {capture: captureUi} = require('./web/capture-ui');
+const {audit} = require('./web/resource-audit');
+const WEB = path.resolve(__dirname, 'web');
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const defaultConfig = () => process.env.MAXROLL_CAPTURE_CONFIG || path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'streamops/maxroll-capture.json');
 
