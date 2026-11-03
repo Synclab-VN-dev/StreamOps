@@ -115,7 +115,9 @@ async def run(args):
                 await wait(lambda: evaluate("Array.from(document.querySelectorAll('[role=menuitem]')).some(e=>e.textContent==='Create Build'&&!e.disabled)"), 'Create Build enabled')
                 await evaluate("Array.from(document.querySelectorAll('[role=menuitem]')).find(e=>e.textContent==='Create Build').click()")
             async def error_contains(text):
-                return await wait(lambda: evaluate('document.body.innerText.includes('+json.dumps(text)+')'), text)
+                actual = await wait(lambda: evaluate("Array.from(document.querySelectorAll('.hud-error')).map(e=>e.textContent).find(t=>t.startsWith('Local Planner'))"), 'Planner error on HUD')
+                assert text in actual, {'expected': text, 'actual': actual}
+                return actual
             async def missing():
                 await click_create(); await error_contains('snapshot is unavailable')
                 await screenshot('missing-snapshot')
