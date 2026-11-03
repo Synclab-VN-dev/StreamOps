@@ -116,10 +116,14 @@ async def run(args):
                 await wait(lambda: evaluate("!!document.querySelector('.menu-button')"), 'HUD React mounted')
                 await evaluate("(()=>{const b=document.querySelector('.menu-button');if(b.getAttribute('aria-expanded')!=='true')b.click();})()")
                 await wait(lambda: evaluate("Array.from(document.querySelectorAll('[role=menuitem]')).some(e=>e.textContent==='Create Build'&&!e.disabled)"), 'Create Build enabled')
+                assert await evaluate("(()=>{const b=Array.from(document.querySelectorAll('[role=menuitem]')).find(e=>e.textContent==='Create Build');const r=b.getBoundingClientRect();return r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight&&document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===b})()"), 'Create Build must be visible and unobstructed'
+                if not (output/'create-build-menu.png').exists(): await screenshot('create-build-menu')
                 await evaluate("Array.from(document.querySelectorAll('[role=menuitem]')).find(e=>e.textContent==='Create Build').click()")
             async def error_contains(text):
                 actual = await wait(lambda: evaluate("Array.from(document.querySelectorAll('.hud-error')).map(e=>e.textContent).find(t=>t.startsWith('Local Planner'))"), 'Planner error on HUD')
                 assert text in actual, {'expected': text, 'actual': actual}
+                assert await evaluate("!document.querySelector('.target-menu')"), 'Menu must not obscure Planner error'
+                assert await evaluate("(()=>{const e=Array.from(document.querySelectorAll('.hud-error')).find(e=>e.textContent.startsWith('Local Planner'));const r=e.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===e})()"), 'Planner error must be visible and unobstructed'
                 return actual
             async def missing():
                 await click_create(); await error_contains('snapshot is unavailable')

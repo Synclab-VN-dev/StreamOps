@@ -163,8 +163,10 @@ browser tab alone leaves the server available for reuse while D4Planner runs.
 
 Approved Golden remains project `458763473602621440`, component
 `458765764401446912`, revision `464988421014827008`. Proposed MagicPath revision
-**`468388849622609920`** adds Create Build next to Report Issue/Target Build,
-including pending/error treatment and an unclipped menu. Status:
+**`468416865656541184`** adds Create Build next to Report Issue/Target Build,
+including pending/error treatment and an unclipped menu. A failed request closes
+the menu so it cannot cover the error; installed tests check visibility/hit testing.
+Status:
 **PENDING_OWNER_APPROVAL**. The proposal is a design preview, not a runtime test.
 Do not replace `tests/visual/golden/manifest.json` with a source screenshot or treat
 DOM/native test PASS as Golden approval. Merge readiness also requires Owner
