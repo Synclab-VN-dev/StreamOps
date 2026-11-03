@@ -1,7 +1,7 @@
 'use strict';
 const fs=require('node:fs/promises');const path=require('node:path');
 const {FileSystemSnapshotStore}=require('../../../../browser-infra/src');
-const {entityDependencies,auxiliaryDependencies}=require('./catalog-coverage');
+const {entityDependencies,auxiliaryDependencies,profileDependencies}=require('./catalog-coverage');
 const {dependencies}=require('./capture-ui');
 const {moduleDependencies,htmlDependencies}=require('./resource-dependencies');
 async function audit(config,selectable){
@@ -14,8 +14,11 @@ async function audit(config,selectable){
   const coverage=selectable||receipt.selectable;
   if(!coverage)throw Error('Full selectable inventory missing');
   const rows=entityDependencies(data,coverage),aux=auxiliaryDependencies(data);
+  const loader=[...pkg.resources.values()].find(r=>r.url.includes('/profiles/load/d4/'));if(!loader)throw Error('Captured profile missing');
+  const profileImages=profileDependencies(data,JSON.parse(JSON.parse(loader.body).data));
   const status=url=>{const r=pkg.resources.get('GET '+url);return !r?'MISSING':r.status!==200?'HTTP_'+r.status:!r.headers['content-type']?.startsWith('image/')?'INVALID_MIME':'PRESENT';};
   const entities=rows.map(row=>({...row,images:row.images.map(image=>({...image,status:status(image.url),blob:pkg.resources.get('GET '+image.url)?.blob,sha256:pkg.resources.get('GET '+image.url)?.sha256}))}));
+  const profiles=profileImages.map(row=>({...row,images:row.images.map(i=>({...i,status:status(i.url)}))}));
   const auxiliary=aux.map(row=>({...row,status:status(row.url)}));
   const fontVariants=(receipt.fontVariants||[]).map(v=>({...v,dependencies:v.dependencies.map(url=>({url,status:pkg.resources.has('GET '+url)?'PRESENT':'MISSING'}))}));
   const staticEdges=[];
@@ -32,8 +35,8 @@ async function audit(config,selectable){
   }
   const matrix={};for(const r of entities){const g=matrix[r.type]??={entities:new Set(),urls:new Set(),missing:new Set()};g.entities.add(r.entityId);for(const i of r.images){g.urls.add(i.url);if(i.status!=='PRESENT')g.missing.add(i.url);}}
   const report={integrity,version:manifest.version,groups:coverage.groups.length,selectableEntities:new Set(rows.map(r=>r.entityId)).size,
-    fontVariants,matrix:Object.fromEntries(Object.entries(matrix).map(([k,v])=>[k,{entities:v.entities.size,artworkURLs:v.urls.size,missing:v.missing.size}])),entities,auxiliary,staticEdges,
-    status:fontVariants.length>0&&fontVariants.every(v=>v.dependencies.length&&v.dependencies.every(d=>d.status==='PRESENT'))&&entities.every(r=>r.images.length&&r.images.every(i=>i.status==='PRESENT'))&&auxiliary.every(r=>r.status==='PRESENT')&&staticEdges.every(r=>r.status!=='MISSING')?'PASS':'FAIL'};
+    fontVariants,matrix:Object.fromEntries(Object.entries(matrix).map(([k,v])=>[k,{entities:v.entities.size,artworkURLs:v.urls.size,missing:v.missing.size}])),entities,auxiliary,profiles,staticEdges,
+    status:profiles.every(r=>r.images.length&&r.images.every(i=>i.status==='PRESENT'))&&fontVariants.length>0&&fontVariants.every(v=>v.dependencies.length&&v.dependencies.every(d=>d.status==='PRESENT'))&&entities.every(r=>r.images.length&&r.images.every(i=>i.status==='PRESENT'))&&auxiliary.every(r=>r.status==='PRESENT')&&staticEdges.every(r=>r.status!=='MISSING')?'PASS':'FAIL'};
   return report;
 }
 module.exports={audit,moduleDependencies};

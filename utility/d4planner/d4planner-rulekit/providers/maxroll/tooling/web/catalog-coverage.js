@@ -56,14 +56,33 @@ function entityDependencies(data,coverage){
 }
 function auxiliaryDependencies(data){
   const rows=[];
-  for(const family of ['skills','affixes','paragonNodes','paragonGlyphs','stones','vampiricPowers','itemSets']){
-    for(const [id,entity] of Object.entries(data[family]||{}))for(const key of ['icon','iconMask','image']){
-      const imageId=entity[key];if(Number.isInteger(imageId)&&imageId>0)rows.push({family,entityId:id,field:key,imageId,url:`https://assets-ng.maxroll.gg/d4-tools/images/webp/${imageId}.webp`});
+  function emit(value,field){
+    if(Number.isInteger(value)&&value>0)rows.push({family:field[0],entityId:field[1],field:field.slice(2).join('.'),imageId:value,url:`https://assets-ng.maxroll.gg/d4-tools/images/webp/${value}.webp`});
+    else if(Array.isArray(value))value.forEach((v,i)=>emit(v,[...field,String(i)]));
+    else if(value&&typeof value==='object')for(const [k,v]of Object.entries(value))emit(v,[...field,k]);
+  }
+  function walk(value,field=[]){
+    if(!value||typeof value!=='object')return;
+    for(const [key,entry]of Object.entries(value)){
+      if(['icon','iconMask','image'].includes(key))emit(entry,[...field,key]);
+      else walk(entry,[...field,key]);
     }
   }
+  // Supplemental catalog references, not a claim that every raw record is selectable.
+  for(const [family,values]of Object.entries(data))if(family!=='items')walk(values,[family]);
+  for(const [id,item]of Object.entries(data.items||{})){
+    if(['Gem','ConditionRune','EffectRune','HoradricSeal','Charm','ParagonGlyph'].includes(item.type)||item.type?.includes('Socketable'))walk(item,['socket-and-talisman-catalog',id]);
+  }
   return rows;
+}
+function profileDependencies(data,state){
+  const ids=new Set();
+  for(const profile of state.profiles||[])for(const ref of Object.values(profile.items||{})){
+    if(!ref)continue;const item=state.items?.[ref];if(item?.id)ids.add(item.id);
+  }
+  return entityDependencies(data,{groups:[{className:'CAPTURED_PROFILE',slot:'all',categories:[{name:'Referenced native equipment',entities:[...ids]}]}]});
 }
 function normalizeCoverage(coverage){
   return coverage.groups.map(g=>({className:g.className,slot:g.slot,categories:g.categories.map(c=>({name:c.name,entities:c.entities.filter(id=>typeof id==='string').sort()})).filter(c=>c.entities.length)}));
 }
-module.exports={normalizeCoverage,nativeCategories,collectSelectable,entityDependencies,auxiliaryDependencies};
+module.exports={profileDependencies,normalizeCoverage,nativeCategories,collectSelectable,entityDependencies,auxiliaryDependencies};

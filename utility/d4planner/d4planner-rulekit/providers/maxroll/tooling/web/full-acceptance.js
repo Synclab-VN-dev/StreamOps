@@ -57,9 +57,9 @@ async function run(config){
     await phase('server-network',async()=>{assert.equal(outboundAttempts,0,'Replay server makes no outbound TCP connection');return {outboundAttempts};});
     if(running)await phase('cleanup',async()=>{const port=running.server.address().port;await running.close();const s=net.createServer();await new Promise((r,j)=>{s.once('error',j);s.listen(port,'127.0.0.1',r);});await new Promise(r=>s.close(r));return {portReleased:true};});
     const definitions=[
-      ['FULL-01','UI integrity and provenance',['git-clean','git-clean-final','resource','server']],['FULL-02','Selectable entity and static dependency closure',['resource','browser']],
-      ['FULL-03','Equipment artwork coverage and image decode',['resource','browser','visual']],['FULL-04','Picker/editor/equipped/tooltip and modifiers',['browser','visual']],
-      ['FULL-05','Skill allocation/refund/icons',['browser','visual']],['FULL-06','Paragon nodes/glyph/board/rotate/pan/zoom',['browser','visual']],
+      ['FULL-01','UI integrity and provenance',['git-clean','git-clean-final','resource','server']],['FULL-02','Selectable entity and static dependency closure',['resource','browser','export']],
+      ['FULL-03','Equipment artwork coverage and image decode',['resource','browser','export','visual']],['FULL-04','Picker/editor/equipped/tooltip and modifiers',['browser','visual']],
+      ['FULL-05','Skill allocation/refund/icons',['resource','browser','export','visual']],['FULL-06','Paragon nodes/glyph/board/rotate/pan/zoom',['resource','browser','export','visual']],
       ['FULL-07','Profiles/classes/levels',['browser','export']],['FULL-08','Native UI export and actual download',['browser','export']],
       ['FULL-09','Lossless native import/export and rejection',['browser','export','unit-security']],['FULL-10','Desktop/mobile emulation interactions',['browser','export']],
       ['FULL-11','Pinned same-version online visual comparison and negative mutations',['reference','visual']],['FULL-12','Client/server offline boundaries',['browser','export','unit-security','server-network']],

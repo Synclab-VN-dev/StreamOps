@@ -8,7 +8,7 @@ const {scenarios}=require('./ui-scenarios');
 const {fullScenarios}=require('./full-scenarios');
 const {devices}=require('../../../../browser-infra/node_modules/playwright-core');
 const {moduleDependencies,htmlDependencies}=require('./resource-dependencies');
-const {collectSelectable,entityDependencies,auxiliaryDependencies}=require('./catalog-coverage');
+const {collectSelectable,entityDependencies,auxiliaryDependencies,profileDependencies}=require('./catalog-coverage');
 const {UI_ORIGINS:ORIGINS}=require('./ui-package');
 const hash=b=>createHash('sha256').update(b).digest('hex');
 function dependencies(text,base) {
@@ -28,7 +28,7 @@ async function capture(config) {
   const browser=new BrowserInfrastructure({executablePath:config.chromium,headless:true,maxContexts:2,maxQueue:1,
     contextOptions:{serviceWorkers:'block',viewport:{width:1440,height:1100}}});
   const store=new FileSystemSnapshotStore({rootDir:config.snapshotRoot,limits:{maxResources:6000,maxResourceBytes:64*1024*1024,maxTotalBytes:512*1024*1024}});
-  let nativeData;
+  let nativeData,nativeProfile;
   const queue=new Set(),observed=new Set(),attempted=new Set(),fingerprints=new Map(),tasks=new Set(),responseHashes=new Map();
   const coverage={schemaVersion:'maxroll-ui-coverage/v1',startedAt:new Date().toISOString(),authorizationRef:config.authorizationRef,
     calculationStatus:'NOT_ASSESSED',scenarios:{},dependencies:[],unavailableDependencies:[],references:[],errors:[],status:'CAPTURING'};
@@ -40,6 +40,7 @@ async function capture(config) {
           observed.add(r.url());
           const task=(async()=>{
             const type=r.headers()['content-type']||'';
+            if(r.url().includes('/profiles/load/d4/')&&r.status()===200)nativeProfile=JSON.parse((await r.json()).data);
             if(config.comprehensive&&r.status()===200){
               if(type.includes('javascript'))for(const url of moduleDependencies(await r.text(),r.url()))queue.add(url);
               if(type.includes('text/html'))for(const url of htmlDependencies(await r.text(),r.url()))queue.add(url);
@@ -116,6 +117,9 @@ async function capture(config) {
           if(!nativeData)throw Error('Native catalog absent');
           coverage.entityDependencies=entityDependencies(nativeData,coverage.selectable);
           coverage.auxiliaryDependencies=auxiliaryDependencies(nativeData);
+          if(!nativeProfile)throw Error('Captured native profile missing');
+          coverage.profileDependencies=profileDependencies(nativeData,nativeProfile);
+          for(const row of coverage.profileDependencies)for(const image of row.images)queue.add(image.url);
           for(const row of coverage.entityDependencies)for(const image of row.images)queue.add(image.url);
           for(const row of coverage.auxiliaryDependencies)queue.add(row.url);
           await inventory();

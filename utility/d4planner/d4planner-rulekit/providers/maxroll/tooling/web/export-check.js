@@ -10,11 +10,11 @@ async function run(config){
   const browser=await chromium.launch({executablePath:config.chromium});const results=[];
   try{for(const mobile of [false,true]){
     const context=await browser.newContext({...(mobile?devices['Pixel 7']:{viewport:{width:1440,height:1100}}),acceptDownloads:true});
-    context.setDefaultTimeout(30000);const page=await context.newPage();const errors=[],external=[],payloads=[],externalAttempts=[],externalFailures=[];
+    context.setDefaultTimeout(30000);const page=await context.newPage();const errors=[],external=[],missing=[],payloads=[],externalAttempts=[],externalFailures=[];
     page.on('request',r=>{if(new URL(r.url()).origin!==new URL(config.url).origin)externalAttempts.push(r.url());});
     page.on('requestfailed',r=>{if(new URL(r.url()).origin!==new URL(config.url).origin)externalFailures.push(r.failure()?.errorText);});
     page.on('pageerror',e=>errors.push(e.message));
-    page.on('response',r=>{if(new URL(r.url()).origin!==new URL(config.url).origin)external.push(r.url());});
+    page.on('response',r=>{if(r.status()>=400&&r.request().method()==='GET')missing.push(r.url());if(new URL(r.url()).origin!==new URL(config.url).origin)external.push(r.url());});
     page.on('request',r=>{if(r.url().endsWith('/__local/export'))payloads.push(r.postDataJSON());});
     await page.goto(config.url);let frame=page.frames()[1];
     await page.addLocatorHandler(page.frameLocator('iframe').getByText('No Thanks',{exact:true}),l=>l.click());
@@ -73,6 +73,9 @@ async function run(config){
     assert.deepEqual(second.exported.nativeState,first.exported.nativeState,'Native load/save round-trip retains complete serialized state');
     const diag=await (await page.request.get(config.url+'__local/diagnostics')).json();
     assert(!JSON.stringify(diag).includes('Helm_Legendary_Generic_053'),'No raw native state in diagnostics');
+    await page.waitForTimeout(500);
+    const impactingMissing=missing.filter(url=>!(/\/api\/me$|\/users\/whoami$|\/api\/twitch|favicon|apple-touch-icon/.test(new URL(url).pathname)));
+    assert.deepEqual(impactingMissing,[],'No missing UI resource during profile switching or native transfers');
     assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
     assert.equal(externalAttempts.length,externalFailures.length);assert(externalFailures.every(reason=>['csp','net::ERR_BLOCKED_BY_CSP'].includes(reason)));
     const wrong=structuredClone(first.exported);wrong.provenance.snapshotManifestSha256='0'.repeat(64);
@@ -82,7 +85,7 @@ async function run(config){
       await page.getByRole('button',{name:'Export JSON',exact:true}).click();
       await page.locator('#import-build').setInputFiles({name,mimeType:'application/json',buffer});await page.getByText('Import rejected:',{exact:false}).waitFor();
     }
-    results.push({profileSwitch:true,richProfiles:rich.exported.nativeState.profiles.length,richItems:Object.keys(rich.exported.nativeState.items).length,mobileEmulation:mobile,download:true,equipment:true,emptySockets:true,skills:true,paragon:true,roundtrip:true,rejectedWrongSnapshot:true,rejectedInvalidAndTampered:true,externalAttempts:externalAttempts.length,errors,external});await context.close();
+    results.push({profileSwitch:true,richProfiles:rich.exported.nativeState.profiles.length,richItems:Object.keys(rich.exported.nativeState.items).length,mobileEmulation:mobile,download:true,equipment:true,emptySockets:true,skills:true,paragon:true,roundtrip:true,rejectedWrongSnapshot:true,rejectedInvalidAndTampered:true,externalAttempts:externalAttempts.length,missing,impactingMissing,errors,external});await context.close();
   }}finally{await browser.close();await fs.writeFile(path.join(config.evidenceDir,'export-report.json'),JSON.stringify({results,android:'NOT_RUN'},null,2));}
   console.log(JSON.stringify(results));
 }

@@ -21,3 +21,9 @@ test('dependency closure preserves stylesheet/module origins, dynamic chunks and
   assert.deepEqual(htmlDependencies('<link rel="preconnect" href="https://maxroll.gg"><img srcset="one.webp 1x, two.webp 2x"><script src="/app.js"></script>',base),[
     'https://assets-ng.maxroll.gg/d4-tools/assets/one.webp','https://assets-ng.maxroll.gg/d4-tools/assets/two.webp','https://assets-ng.maxroll.gg/app.js']);
 });
+
+test('auxiliary closure includes nested buff icons, glyph rarity arrays and socket catalog families',()=>{
+  const data={skills:{skill:{buffs:[{icon:21}]}},paragonGlyphs:{glyph:{icon:[0,22,23]}},items:{rune:{type:'EffectRune',image:24},gem:{type:'Gem',image:25},soul:{type:'S15_SeasonalSocketable',image:26},quest:{type:'Quest',image:99}}};
+  const rows=auxiliaryDependencies(data);assert.deepEqual([...new Set(rows.map(r=>r.imageId))].sort((a,b)=>a-b),[21,22,23,24,25,26]);
+  assert(rows.some(r=>r.field==='buffs.0.icon'));assert(!rows.some(r=>r.entityId==='quest'),'Unrelated raw quest records do not establish selectable coverage');
+});
