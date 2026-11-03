@@ -97,6 +97,21 @@ class CaptureStateTest(unittest.TestCase):
         finally:
             child.terminate(); child.wait()
 
+    def test_reused_pid_record_cannot_authorize_orphan_listener(self):
+        config = self.root / 'config.json'; config.write_text('{}')
+        owner = self.root / 'owner.json'
+        child = subprocess.Popen(['node', str(cli.SERVER), '--config', str(config)],
+                                 env={**os.environ, 'LOCAL_UI_OWNER_STATE': str(owner)},
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            atomic(owner, {'pid': child.pid, 'identity': '0'})
+            stdout, stderr = child.communicate(timeout=10)
+            self.assertNotEqual(child.returncode, 0)
+            self.assertIn('ownership was not committed', stderr)
+            self.assertNotIn('"ready":true', stdout)
+        finally:
+            if child.poll() is None: child.terminate(); child.wait()
+
 
 if __name__ == '__main__':
     os.umask(0o077)

@@ -171,9 +171,11 @@ async function main() {
   if (process.argv[2] !== '--config' || !process.argv[3]) throw new Error('Usage: node server.js --config /absolute/config.json');
   if(process.env.LOCAL_UI_OWNER_STATE){
     // Do not bind if the CLI dies between spawning us and durably recording ownership.
+    const stat=await fs.readFile('/proc/self/stat','utf8');
+    const selfIdentity=stat.slice(stat.lastIndexOf(')')+1).trim().split(/\s+/)[19];
     let recorded=false;
     for(let i=0;i<100;i++){
-      try{recorded=JSON.parse(await fs.readFile(process.env.LOCAL_UI_OWNER_STATE,'utf8')).pid===process.pid;}catch{}
+      try{const owner=JSON.parse(await fs.readFile(process.env.LOCAL_UI_OWNER_STATE,'utf8'));recorded=owner.pid===process.pid&&owner.identity===selfIdentity;}catch{}
       if(recorded)break;
       await new Promise(resolve=>setTimeout(resolve,20));
     }
