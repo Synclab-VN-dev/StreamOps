@@ -207,8 +207,4 @@ Root Launcher cleanup. It requires no pre-existing Edge session and an isolated
 UAT installation; it must never run on Windows A without separate authorization.
 Installer, screenshots and provisioned assets remain private on F/its VM.
 GUI acceptance requires an authenticated interactive desktop session, not an SSH
-Session 0 process. `--control-only` instead exercises installed Windows BE/Worker/
-HTTP, negatives, concurrency, reuse and cleanup. Its `control-ready.json` lets an
-authorized host test ordinary HTTP over a private SSH tunnel; after the browser
-gates, the host writes `browser-complete.json` with `status: PASS` and private
-evidence references. This mode explicitly reports native GUI/browser-open NOT_RUN.
+Session 0 process. A headless IPC/HTTP check is not a substitute for this GUI gate.
