@@ -93,6 +93,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
       await invoke("open_local_planner");
       setMenuOpen(false);
     } catch (error) {
+      setMenuOpen(false); // Keep the failure message visible below the summary.
       const messages: Record<string, string> = {
         PLANNER_SNAPSHOT_UNAVAILABLE: "Local Planner snapshot is unavailable. Provision a validated UI package.",
         PLANNER_SNAPSHOT_UNTRUSTED: "Local Planner snapshot could not be verified.",

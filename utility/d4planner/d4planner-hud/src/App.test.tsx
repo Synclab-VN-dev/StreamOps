@@ -287,6 +287,8 @@ describe("Create Build native action", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Create Build" }));
     expect((await screen.findByRole("alert")).textContent).toContain("Local Planner");
     expect(document.body.textContent).not.toContain("/private/path");
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open target menu" }));
     expect((screen.getByRole("menuitem", { name: "Create Build" }) as HTMLButtonElement).disabled).toBe(false);
     expect(source.selections).toEqual([]);
     expect(screen.getByRole("menuitem", { name: "Report Issue" })).toBeTruthy();
