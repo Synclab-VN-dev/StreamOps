@@ -79,10 +79,13 @@ async def run(args):
     launcher = subprocess.Popen([str(install/'D4Planner.exe')], cwd=output, env=env)
     phases, owned_browser = {}, []
     async def phase(name, fn):
+        started = time.monotonic()
         try: phases[name] = {'status': 'PASS', 'actual': await fn()}
         except Exception as error:
             phases[name] = {'status': 'FAIL', 'error': str(error)}; raise
-        finally: print(name+': '+phases[name]['status'], flush=True)
+        finally:
+            phases[name]['seconds'] = round(time.monotonic()-started, 3)
+            print(name+': '+phases[name]['status'], flush=True)
     try:
         async def hud_startup():
             targets = await wait(lambda: [t for t in json_url(f'http://127.0.0.1:{debug}/json/list')

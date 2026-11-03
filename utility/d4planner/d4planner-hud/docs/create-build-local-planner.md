@@ -118,8 +118,10 @@ manifest hash. A foreign HTTP 200 or existing PID never constitutes READY.
 | PLANNER_UNAVAILABLE | Backend/Worker/capability/browser-open unavailable |
 
 Errors contain no filesystem paths or native build payload. Manager deadline is
-12 seconds, health request 2 seconds, Worker client 14 seconds, native control 16
-seconds. Cancellation propagates over both pipes; shared single-flight startup
+30 seconds, health request 2 seconds, Worker client 35 seconds, native control 40
+seconds. Cold Windows verification of the 3,089-resource private package exceeded
+the initial 12-second deadline; this budget preserves full integrity verification
+instead of depending on a warm filesystem cache. Cancellation propagates over both pipes; shared single-flight startup
 continues for other live callers. The last cancellation prevents a late listener
 from binding. BE continues processing Target/shutdown while Planner is pending.
 READY reuse retains the selected snapshot for that Worker lifetime, even if a
