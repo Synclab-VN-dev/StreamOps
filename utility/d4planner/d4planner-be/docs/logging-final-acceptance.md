@@ -63,6 +63,10 @@ previous release is a downgrade test and correctly fails with
 error. Keep that failed attempt separately and rerun the corrected upgrade path.
 Automated launches use `--launch` so a failed start exits instead of leaving an
 interactive error dialog; teardown still attempts uninstall after a stop error.
+Run interrupted activation checks before reopening the upgraded application:
+after its HUD database migration, rollback to 1.2.7 correctly rejects
+`DB_SCHEMA_INCOMPATIBLE`. This ordering exercises the real transaction checkpoints
+without bypassing compatibility checks or restoring an older database.
 
 ## Measurement interpretation
 

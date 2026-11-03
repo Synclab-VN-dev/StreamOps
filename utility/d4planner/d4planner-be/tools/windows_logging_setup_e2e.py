@@ -237,7 +237,6 @@ def main():
             assert len(new_runs) == 1
             return {"logging": log_evidence(data, new_runs.pop()), "configuredTarget": ui["targetId"],
                     "configurationPreserved": True, "userDatabasePreserved": True, "ownedProcessesAfter": 0}
-        case("UPGRADED-RUNTIME", "Final installed app reopens actual preserved config/Target/DB and adds a same-ID log set", upgraded_runtime)
         def recovery():
             previous = state(); launcher_hash = sha(root / "D4Planner.exe")
             results = []
@@ -259,6 +258,9 @@ def main():
             assert read_json(output / "recovered-health.json")["runtimeReady"] is True
             return results
         case("RECOVERY", "Interrupted activation during rollback restores final launcher/state and passes runtime health", recovery)
+        # Exercise compatible activation before the final app migrates its HUD
+        # database. A downgrade after migration must be rejected by the engine.
+        case("UPGRADED-RUNTIME", "Final installed app reopens actual preserved config/Target/DB and adds a same-ID log set", upgraded_runtime)
         final_inventory = inventory(data)
         write_json(output / "pre-uninstall-inventory.json", final_inventory)
         case("UPGRADE-UNINSTALL", "Final Setup uninstalls and retains all current user/log/DB bytes", lambda: uninstall(final_inventory))
