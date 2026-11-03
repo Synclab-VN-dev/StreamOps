@@ -77,6 +77,8 @@ async def run(args):
     try:
         async def preflight():
             assert not git('status', '--porcelain'), 'Commit source before final acceptance'
+            # Check the visual dependency before spending minutes in Chromium.
+            subprocess.run([sys.executable, '-c', 'from PIL import Image, ImageChops'], check=True)
             state = json.loads((args.state_root/'capture-state.json').read_text())['payload']
             selected = state['packages'][state['activeUi']]
             config = selected['config']
@@ -119,7 +121,7 @@ async def run(args):
             browser_file = output/'browser-config.json'; browser_file.write_text(json.dumps(browser))
             await phase('http-ui', lambda: command('http-ui', ['node', 'full-ui-check.js', str(browser_file)]))
             await phase('native-download-roundtrip', lambda: command('native-download-roundtrip', ['node', 'export-check.js', str(browser_file)]))
-            await phase('same-version-visual', lambda: command('same-version-visual', ['python3', 'full-visual-check.py', str(args.reference), str(output/'http')]))
+            await phase('same-version-visual', lambda: command('same-version-visual', [sys.executable, 'full-visual-check.py', str(args.reference), str(output/'http')]))
             async def reuse():
                 result = await control('planner.ensureReady', 'reuse')
                 assert result['reused'] and result['snapshotId'] == config['snapshotId']
@@ -131,7 +133,13 @@ async def run(args):
                 assert (await read())['event'] == 'EXIT'
                 assert await asyncio.wait_for(proc.wait(), 15) == 0
                 with socket.socket() as sock:
+                    assert sock.connect_ex(('127.0.0.1', port)) != 0, 'Owned listener remains reachable'
+                with socket.socket() as sock:
+                    # Match Node's SO_REUSEADDR server semantics: TCP TIME_WAIT
+                    # connections are not listening processes or leaked ports.
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                     sock.bind(('127.0.0.1', port))
+                    sock.listen()
                 return {'portReleased': port, 'exitCode': 0}
             await phase('shutdown', shutdown)
     finally:
@@ -147,6 +155,8 @@ async def run(args):
         (output/'report.json').write_text(json.dumps(report, indent=2))
         (output/'report.md').write_text(f'# Managed Planner acceptance\n\nHEAD {head}\n\n{status}; CI_NOT_CHECKED\n\n'+
             '\n'.join(f'- {name}: {value["status"]}' for name, value in phases.items())+'\n')
+        if status != 'AUTOMATED_PASS' and sys.exc_info()[0] is None:
+            raise RuntimeError('Acceptance failed; see report.json')
 
 
 if __name__ == '__main__':

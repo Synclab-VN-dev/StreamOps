@@ -194,3 +194,21 @@ negative icon mutations, native download/round-trip, offline checks, reuse,
 Target forwarding and shutdown. JSON/Markdown reports and raw visuals stay private.
 Real Windows installation/start/open/cleanup is a separate VM acceptance; Linux
 tests must never be labelled Windows installed PASS. `CI_NOT_CHECKED`.
+
+On an authorized isolated Windows VM, install with the existing Setup
+`/S /ISOLATED=1 /INSTALLROOT=<private-test-root> /DATADIR=<private-data>` options.
+Then run `d4planner-be/tools/planner_windows_acceptance.py` with
+`--installation-root`, a fresh `--data-root`, `--provisioned-state` (the existing
+validated provider registry migrated to private Windows paths), and a fresh
+`--output`. Use the installed Python and its backend site-packages. The runner
+enables CDP only for its owned WebView, clicks the actual HUD, verifies missing/
+untrusted/foreign-port errors, default Edge navigation, reuse, Report Issue and
+Root Launcher cleanup. It requires no pre-existing Edge session and an isolated
+UAT installation; it must never run on Windows A without separate authorization.
+Installer, screenshots and provisioned assets remain private on F/its VM.
+GUI acceptance requires an authenticated interactive desktop session, not an SSH
+Session 0 process. `--control-only` instead exercises installed Windows BE/Worker/
+HTTP, negatives, concurrency, reuse and cleanup. Its `control-ready.json` lets an
+authorized host test ordinary HTTP over a private SSH tunnel; after the browser
+gates, the host writes `browser-complete.json` with `status: PASS` and private
+evidence references. This mode explicitly reports native GUI/browser-open NOT_RUN.
