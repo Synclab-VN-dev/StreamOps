@@ -46,6 +46,16 @@ during launch; user DB/selection/log preservation is checked independently.
 No fixture writes to production registry. Keep evidence private and shut down
 only the VM/resources owned by this UAT run after retrieving evidence.
 
+Uninstall checks the existing ownership contract: every manifest-declared file
+must be removed; unrecognized files must retain their hashes. Runtime-generated
+Python bytecode is not part of that manifest and can leave version directories
+behind. The runner inventories this explicitly, rather than assuming an empty
+InstallRoot or adding recursive deletion that could erase user files. A pilot
+found 82 such `.pyc` files; the initial empty-directory assertion was incorrect.
+The upgraded app is also reopened on its preserved `launcher.json`, producer DB
+and selected Target before recovery/uninstall. Process and listener cleanup is
+checked independently from intentionally preserved files.
+
 ## Measurement interpretation
 
 The default INFO arm and disabled arm use identical installed bytes and recorded

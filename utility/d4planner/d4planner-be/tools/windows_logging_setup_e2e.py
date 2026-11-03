@@ -15,8 +15,9 @@ import sqlite3
 import subprocess
 import sys
 import time
+import traceback
 
-from logging_acceptance import native_sample, read_json, write_json
+from logging_acceptance import log_evidence, native_sample, read_json, write_json
 from windows_setup_e2e import sha, owned_tree
 from windows_installer_review_e2e import alive
 
@@ -84,6 +85,7 @@ def main():
             actual = action(); status = "PASS"
         except Exception as error:
             actual = repr(error); status = "FAIL"
+            (output / (identifier + "-failure.txt")).write_text(traceback.format_exc(), encoding="utf-8")
         report["cases"].append({"id": identifier, "expected": expected, "actual": actual,
                                  "status": status, "durationSeconds": time.perf_counter() - tick})
         save(); print(json.dumps(report["cases"][-1]), flush=True)
@@ -95,14 +97,29 @@ def main():
         assert Path(registry(keys[1])["InstallLocation"][0]) == root
         return state()
     def uninstall(before):
+        # Contract: delete manifest-owned payloads, preserve unrecognized files.
+        # Runtime-created .pyc files are not in the release manifest; requiring
+        # versions/ to disappear would silently change that preservation policy.
+        declared = set()
+        for manifest_path in root.glob("versions/*/release-manifest.json"):
+            manifest = read_json(manifest_path)
+            assert manifest["applicationId"] == state()["applicationId"]
+            declared.add(manifest_path)
+            declared.update(manifest_path.parent / entry["path"] for entry in manifest["files"])
+        assert declared, "installed manifests required before uninstall"
+        unowned = {p.relative_to(root).as_posix(): sha(p) for p in (root / "versions").rglob("*")
+                   if p.is_file() and p not in declared}
+        write_json(output / (root.name + "-unowned-files.json"), unowned)
         call([root / "Uninstall.exe", "/S"])
         deadline = time.monotonic() + 90
         while (root / "Uninstall.exe").exists() and time.monotonic() < deadline: time.sleep(.1)
         assert not (root / "D4Planner.exe").exists() and not (root / "Uninstall.exe").exists()
         assert not (root / "active.json").exists() and not (root / "maintenance").exists()
-        assert not any(root.glob("versions/*"))
+        assert not any(p.exists() for p in declared), "manifest-owned file remained"
+        preserved(root, unowned)
         assert all(registry(k) is None for k in keys)
-        return preserved(data, before)
+        return {"userData": preserved(data, before), "manifestOwnedFilesRemoved": len(declared),
+                "unrecognizedFilesPreserved": len(unowned)}
     def stop():
         nonlocal launch
         if launch is not None:
@@ -151,10 +168,13 @@ def main():
         if not case("OLD-INSTALL", "Compatible previous Setup installs in separate fresh UAT root", lambda: setup(args.setup_old)): return 1
         # Closed genuine logs and user state from the final Setup are user-owned
         # upgrade inputs; retain hashes. Do not copy transient locks/control files.
-        for name in ("logs", "state", "targets", "settings.json", "user-owned.bin"):
+        for name in ("logs", "state", "targets", "settings.json", "user-owned.bin", "launcher.json", "recorded-producer.sqlite3"):
             source = old_data / name; destination = data / name
             if source.is_dir(): shutil.copytree(source, destination, dirs_exist_ok=True)
             else: shutil.copyfile(source, destination)
+        config = read_json(data / "launcher.json")
+        config["equipmentRepository"]["path"] = str(data / "recorded-producer.sqlite3")
+        write_json(data / "launcher.json", config)
         baseline = inventory(data)
         write_json(output / "upgrade-data-inventory.json", baseline)
         def upgrading():
@@ -184,6 +204,31 @@ def main():
             return {"beforeVersion": previous["version"], "afterVersion": value["version"], "ownedProcessesAfter": 0,
                     "preserved": len(baseline), "databasePresent": (data / "state/hud.sqlite3").is_file()}
         if not case("UPGRADE-RUNNING", "Old running application upgrades to exact final Setup; logs/state retained", upgrading): return 1
+        def upgraded_runtime():
+            nonlocal launch
+            import production_e2e as e2e
+            old_runs = {p.name for p in (data / "logs").iterdir() if p.is_dir()}
+            render = output / "upgraded-render.json"
+            runtime_env = dict(env, D4_HUD_PIPELINE_REPORT=str(render), D4_HUD_PIPELINE_CONTINUOUS="1")
+            launch = subprocess.Popen([str(root / "D4Planner.exe")], env=runtime_env)
+            def observed():
+                assert launch.poll() is None, "upgraded launcher exited"
+                try: return read_json(render)
+                except (ValueError, OSError): return None
+            ui = e2e._wait_for(observed, 90, "upgraded user configuration renders")
+            tree = owned_tree(launch.pid); trees.extend(tree)
+            stop()
+            assert not any(alive(row["pid"]) for row in tree)
+            selected = read_json(data / "state/selected-target.json")
+            assert ui["targetId"] == selected["targetId"] == "synthetic-target-b"
+            db = e2e._sqlite_evidence(data / "state/hud.sqlite3", output / "upgraded-db.sqlite3", output / "upgraded-db.json")
+            e2e._assert_ui_matches_db(ui, db)
+            preserved(data, baseline)
+            new_runs = {p.name for p in (data / "logs").iterdir() if p.is_dir()} - old_runs
+            assert len(new_runs) == 1
+            return {"logging": log_evidence(data, new_runs.pop()), "configuredTarget": ui["targetId"],
+                    "configurationPreserved": True, "userDatabasePreserved": True, "ownedProcessesAfter": 0}
+        case("UPGRADED-RUNTIME", "Final installed app reopens actual preserved config/Target/DB and adds a same-ID log set", upgraded_runtime)
         def recovery():
             previous = state(); launcher_hash = sha(root / "D4Planner.exe")
             results = []
@@ -217,7 +262,17 @@ def main():
             assert all(registry(k) is None for k in keys)
             assert all(registry(k) == production_before[k] for k in production_keys)
             assert not any(alive(row["pid"]) for row in trees)
-            report["cleanup"] = {"uatRegistrationRemoved": True, "productionRegistrationUnchanged": True, "ownedProcessesAfter": 0}
+            # Also inspect executable ownership, including descendants created
+            # after the captured process trees (and their listeners).
+            escaped = str(sandbox).replace("'", "''") + "\\"
+            checked = call(["powershell.exe", "-NoProfile", "-Command",
+                f"$owned=@(Get-CimInstance Win32_Process | Where-Object {{$_.ExecutablePath -and $_.ExecutablePath.StartsWith('{escaped}')}});"
+                "$listeners=@(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object {$_.OwningProcess -in $owned.ProcessId});"
+                "@{processes=@($owned|Select-Object ProcessId,Name);listeners=@($listeners|Select-Object LocalPort,OwningProcess)}|ConvertTo-Json -Compress"])
+            cleanup = json.loads(checked.stdout)
+            assert not cleanup["processes"] and not cleanup["listeners"], "owned process/listener leak"
+            report["cleanup"] = {"uatRegistrationRemoved": True, "productionRegistrationUnchanged": True,
+                                 "ownedProcessesAfter": 0, "ownedListenersAfter": 0}
         except Exception as error:
             report["cleanup"] = {"status": "FAIL", "error": repr(error)}
         report["status"] = "PASS" if report["cases"] and all(c["status"] == "PASS" for c in report["cases"]) and report.get("cleanup", {}).get("ownedProcessesAfter") == 0 else "FAIL"

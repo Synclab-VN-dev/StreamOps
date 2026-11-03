@@ -41,8 +41,10 @@ def comparison(baseline, enabled):
     return result
 
 
-def log_evidence(data):
+def log_evidence(data, run_name=None):
     runs = [p for p in (Path(data) / "logs").iterdir() if p.is_dir() and not p.name.startswith(".")]
+    if run_name is not None:
+        runs = [p for p in runs if p.name == run_name]
     if len(runs) != 1:
         raise AssertionError("expected exactly one run in fresh DataDir")
     folder = runs[0]

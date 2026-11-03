@@ -44,6 +44,15 @@ def test_three_files_and_common_identity_required(tmp_path):
         log_evidence(tmp_path)
 
 
+def test_selected_run_does_not_mix_historical_identity(tmp_path):
+    import shutil
+    folder = logs(tmp_path)
+    shutil.copytree(folder, folder.with_name("history"))
+    with pytest.raises(AssertionError): log_evidence(tmp_path)
+    assert log_evidence(tmp_path, "run")["runId"] == "same"
+    with pytest.raises(AssertionError): log_evidence(tmp_path, "../run")
+
+
 @pytest.mark.parametrize("fault", ["missing", "extra", "no-ready", "truncated"])
 def test_missing_or_invalid_logs_cannot_pass(tmp_path, fault):
     folder = logs(tmp_path)
