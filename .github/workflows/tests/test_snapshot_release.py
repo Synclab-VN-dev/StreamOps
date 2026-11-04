@@ -35,7 +35,7 @@ class SnapshotRelease(unittest.TestCase):
         wrapper=(ROOT/'.github/workflows/main.yml').read_text()
         header=wrapper.split('jobs:',1)[0]
         self.assertNotIn('    - private_build',header)
-        job=wrapper.split('  private_build:',1)[1].split('  fixture:',1)[0]
+        job=wrapper.split('\n  private_build:\n',1)[1].split('\n  fixture:\n',1)[0]
         self.assertIn("github.ref == 'refs/heads/master'",job)
         self.assertIn("github.event_name == 'workflow_dispatch'",job)
         self.assertIn('contents: read',job)
