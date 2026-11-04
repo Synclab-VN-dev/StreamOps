@@ -15,13 +15,34 @@ button { color: inherit; font: inherit; }
 .score small { margin-left: 4px; color: #747980; font-size: 12px; }
 .issue-count { margin-left: 18px; color: #a45c30; font-size: 9px; }
 .chevron { position: absolute; right: 16px; bottom: 23px; color: #8a8e93; }
-.menu-button { position: absolute; z-index: 2; right: 11px; top: 11px; padding: 3px 8px; border: 0; border-radius: 8px; background: transparent; font-size: 20px; cursor: pointer; }
-.target-menu { max-height: calc(100vh - 90px); overflow-y: auto; position: absolute; z-index: 20; top: 43px; right: 10px; width: 214px; padding: 8px; border: 1px solid rgba(0,0,0,.1); border-radius: 12px; background: rgba(255,255,255,.98); box-shadow: 0 10px 28px rgba(0,0,0,.18); cursor: default; }
-.target-menu > strong { display: block; padding: 7px; font-size: 11px; }
-.target-menu button { display: flex; width: 100%; flex-direction: column; padding: 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer; }
-.target-menu button[aria-current="true"] { background: #e1edf5; }
+.menu-button { position: absolute; z-index: 2; right: 12px; top: 12px; padding: 6px; border: 0; border-radius: 10px; background: transparent; color: #626971; cursor: pointer; }
+.menu-button svg, .target-menu svg { display: block; flex-shrink: 0; }
+.menu-button:hover { background: rgba(0,0,0,.05); }
+.target-menu { max-height: calc(100vh - 90px); overflow-y: auto; position: absolute; z-index: 20; top: 44px; right: 12px; width: 218px; padding: 8px; border: 1px solid rgba(0,0,0,.1); border-radius: 14px; background: rgba(255,255,255,.95); box-shadow: 0 20px 25px -5px rgba(0,0,0,.1), 0 8px 10px -6px rgba(0,0,0,.1); backdrop-filter: blur(24px); cursor: default; font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"; font-size: 11px; line-height: 1.5; }
+.target-menu button { display: flex; width: 100%; gap: 8px; padding: 8px 12px; border: 0; border-radius: 10px; background: transparent; text-align: left; font-size: 11px; line-height: 1.5; cursor: pointer; }
+.target-menu-heading { display: flex; align-items: center; gap: 8px; padding: 8px; color: #454b52; font-size: 11px; font-weight: 600; }
+.target-menu .target-choice { flex-direction: column; gap: 0; }
+.target-choice:hover { background: #edf3f7; }
+.target-menu button[aria-current="true"] { background: #e1edf5; font-weight: 600; }
 .target-menu button:disabled { color: #92969b; cursor: not-allowed; }
-.target-menu small, .empty-targets { margin: 2px 0 0; color: #8b8f94; font-size: 9px; }
+.target-choice small, .empty-targets { margin: 2px 0 0; color: #8b8f94; font-size: 9px; }
+.target-menu .menu-action { align-items: center; padding: 10px; border: 1px solid #c8e0ee; background: #edf6fb; color: #245d80; font-weight: 600; }
+.target-menu .menu-action:hover { background: #e1f0f8; }
+.target-menu .menu-action:disabled { opacity: .65; cursor: wait; }
+.menu-action > svg:first-child { color: #247ea9; }
+.menu-action > svg:last-child { color: #5e93b2; }
+.menu-action-copy { flex: 1; }
+.menu-action-copy > span { display: block; }
+.menu-action-copy small { display: block; margin-top: 2px; color: #6e8898; font-size: 9px; font-weight: 400; }
+.create-build { margin-bottom: 8px; }
+.target-menu-footer { padding: 8px 8px 0; border-top: 1px solid rgba(0,0,0,.1); color: #92969b; font-size: 9px; }
+.support-heading { margin-top: 8px; padding: 12px 8px 0; border-top: 1px solid rgba(0,0,0,.1); color: #7e8992; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; }
+.report-action { margin-top: 4px; }
+.target-menu .collect-logs { align-items: center; padding: 10px; color: #354e5c; font-weight: 600; }
+.collect-logs svg { color: #3486ad; }
+.target-menu .collect-logs:hover { background: #e5eff5; }
+.support-note { margin: 0; padding: 8px 8px 0; color: #93a0a8; font-size: 9px; line-height: 16px; }
+.target-menu button:focus-visible, .menu-button:focus-visible { outline: 2px solid #91bbd7; outline-offset: 0; }
 .empty-targets { padding: 9px; }
 .freshness, .hud-error { margin: 0 12px 8px; padding: 7px 8px; border-radius: 8px; font-size: 9px; }
 .freshness { background: #ede5d8; color: #8b5d2d; }

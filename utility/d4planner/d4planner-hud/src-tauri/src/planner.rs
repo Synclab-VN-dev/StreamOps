@@ -88,6 +88,14 @@ mod tests {
         assert!(open(&AtomicBool::new(false),6085,||Ok(value), |_|panic!("must not open")).is_err());
     }
     #[test]
+    fn snapshot_and_port_errors_never_open_browser() {
+        for code in ["PLANNER_SNAPSHOT_UNAVAILABLE", "PLANNER_SNAPSHOT_UNTRUSTED", "PLANNER_PORT_CONFLICT"] {
+            let pending = AtomicBool::new(false);
+            assert_eq!(open(&pending, 6085, || Err(code.into()), |_| panic!("must not open")).unwrap_err(), code);
+            assert!(!pending.load(Ordering::Relaxed));
+        }
+    }
+    #[test]
     fn concurrent_open_is_busy_and_private_errors_are_redacted() {
         let pending=AtomicBool::new(false);
         let _=open(&pending,6085,|| {

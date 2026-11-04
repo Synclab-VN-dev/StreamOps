@@ -162,12 +162,28 @@ browser tab alone leaves the server available for reuse while D4Planner runs.
 ## Design gate
 
 Approved Golden remains project `458763473602621440`, component
-`458765764401446912`, revision `464988421014827008`. Proposed MagicPath revision
-**`468416865656541184`** adds Create Build next to Report Issue/Target Build,
-including pending/error treatment and an unclipped menu. A failed request closes
-the menu so it cannot cover the error; installed tests check visibility/hit testing.
-Status:
-**PENDING_OWNER_APPROVAL**. The proposal is a design preview, not a runtime test.
+`458765764401446912`, revision `464988421014827008`. Owner's
+[PR #177 instruction](https://github.com/Synclab-VN-dev/StreamOps/pull/177#issuecomment-6627245366)
+selects **v15 `468645150797758464`**, derived from v11, as the menu implementation
+reference. It supersedes v14 `468416865656541184`; no MagicPath design was edited
+for this synchronization. Create Build / Open Local Planner is the first action,
+followed by Target Build and Support & diagnostics (Report Issue / Collect Logs).
+The menu uses the reference's dimensions, spacing, typography and Lucide geometry.
+
+Collect Logs already exists in `ReportIssue.tsx` and the native diagnostics
+commands. The new menu shortcut opens that existing tab without starting collection
+or submission. Switching Support entries preserves the draft and in-flight work.
+Create Build's `invoke("open_local_planner")` handler and native/BE/Rule Kit runtime
+wiring are unchanged. A failed request closes the menu to keep its message visible.
+
+Intentional production differences from the v15 preview: actual validated Target
+entries instead of three demo builds; no `Demo` footer; invalid/pending/empty list
+feedback; bounded scrolling for long lists; real pending/error feedback instead of
+the design-only Planner notice. The existing Report Issue panel is retained; its
+visual redesign is outside this menu task. No new Support capability is simulated.
+
+Status: **BLOCKED_OWNER_APPROVAL** for Visual Golden. The v15 implementation
+reference is not an approved Golden or a Windows runtime test.
 Do not replace `tests/visual/golden/manifest.json` with a source screenshot or treat
 DOM/native test PASS as Golden approval. Merge readiness also requires Owner
 focus/controller UAT with Diablo IV on Windows A; the isolated VM cannot prove it.
@@ -179,6 +195,25 @@ to the installed browser; provider `npm test` uses `BROWSER_INFRA_CHROMIUM_PATH`
 HUD: `npm test`, `npm run build`, and `cargo test --manifest-path
 lifecycle-tests/Cargo.toml`. Manager tests use real loopback HTTP and synthetic,
 explicitly labelled package fixtures for negative cases.
+
+For the HUD-only v15 follow-up, run targeted `App.test.tsx` / `ReportIssue.test.tsx`,
+the native lifecycle tests, and (after building HUD and installing the existing
+browser-infra test dependency):
+
+```bash
+node scripts/check-menu.mjs <private-output-directory> <chromium-executable>
+```
+
+This checks rendered menu geometry, real pointer clicks, double-click/pending,
+missing snapshot/port-conflict feedback, Target selection, Support draft retention
+and long-list scrolling at 1200×630 and installed HUD 280×560. Native calls are
+explicitly mocked here; native negative tests verify no browser-open on failures.
+Reference/actual/diff images stay private, with reference pinned to v15 through the
+MagicPath production page's revision stamp. The prior installed Windows result
+at `597916997d49301adf26415ff93db91a980132f0` remains evidence for the unchanged
+Create Build transport, not a fresh Windows run of the v15 menu. Re-run installed
+VM E2E if that wiring changes. No backend/calculation suite rerun is needed for this
+HUD-only change.
 
 One command tests the actual production managed IPC/HTTP path against a privately
 provisioned UI package and the pinned same-version online reference:

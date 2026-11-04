@@ -5,6 +5,7 @@ import type { AssessmentStatus, CriterionComparison, EquipmentRow, TypedValue } 
 import { useHudController } from "./use-hud-controller";
 import "./App.css";
 import { ReportIssue } from "./ReportIssue";
+import { MenuIcon } from "./MenuIcon";
 
 function symbol(status: AssessmentStatus) {
   return status === "PASS" ? "✓" : status === "FAIL" ? "✕" : status === "WARN" ? "⚠" : "?";
@@ -29,6 +30,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   const [expanded, setExpanded] = useState(true);
   const [equipmentOpen, setEquipmentOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [reportTab, setReportTab] = useState<"report" | "logs">("report");
   const [menuOpen, setMenuOpen] = useState(false);
   const plannerPending = useRef(false);
   const [plannerOpening, setPlannerOpening] = useState(false);
@@ -86,6 +88,10 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
     setSelectedSlot(null); setAffixOpen(false); setEffectOpen(false); setShowAll(false);
   }
 
+  function openSupport(tab: "report" | "logs") {
+    setReportTab(tab); setReportOpen(true); setMenuOpen(false); setEquipmentOpen(false); resetComparison();
+  }
+
   async function createBuild() {
     if (plannerPending.current) return;
     plannerPending.current = true; setPlannerOpening(true); setPlannerError(null);
@@ -128,23 +134,35 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
             <span className="issue-count">{snapshot?.score.failIssueCount ?? 0} issues · {snapshot?.score.warnCount ?? 0} warnings</span>
             <span className="chevron">{expanded ? "⌃" : "⌄"}</span>
           </button>
-          <button className="menu-button" aria-label="Open target menu" aria-expanded={menuOpen} onClick={() => { setMenuOpen(value => !value); if (!menuOpen) void hud.refreshTargets(); }}>⋮</button>
-          {menuOpen && <div className="target-menu" role="menu">
-            <button role="menuitem" onClick={() => { setReportOpen(true); setMenuOpen(false); setEquipmentOpen(false); resetComparison(); }}>Report Issue</button>
-            <button role="menuitem" disabled={plannerOpening} aria-busy={plannerOpening} onClick={() => void createBuild()}>{plannerOpening ? "Opening Planner…" : "Create Build"}</button>
-            <strong>▣ Target Build</strong>
+          <button className="menu-button" aria-label="Open target menu" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => { setMenuOpen(value => !value); if (!menuOpen) void hud.refreshTargets(); }}><MenuIcon name="more" size={17} /></button>
+          {menuOpen && <div className="target-menu" role="menu" aria-label="HUD actions">
+            <button className="menu-action create-build" role="menuitem" aria-label={plannerOpening ? "Opening Planner…" : "Create Build"} aria-describedby="planner-action-description" disabled={plannerOpening} aria-busy={plannerOpening} onClick={() => void createBuild()}>
+              <MenuIcon name="create" size={15} />
+              <span className="menu-action-copy"><span>{plannerOpening ? "Opening Planner…" : "Create Build"}</span><small id="planner-action-description">Open Local Planner</small></span>
+              <MenuIcon name="chevron" size={13} />
+            </button>
+            <strong className="target-menu-heading"><MenuIcon name="folder" size={14} /> Target Build</strong>
             {hud.targetListStatus === "LOADING" && <p role="status">Loading Targets…</p>}
             {hud.targetListStatus === "ERROR" && <div>
               <p role="alert">Target listing failed: {hud.targetListError}</p>
               <button onClick={() => void hud.refreshTargets()}>Retry Target list</button>
             </div>}
             {hud.targetListStatus === "READY" && hud.targets.length === 0 && <p className="empty-targets">No Target JSON files</p>}
-            {hud.targets.map(entry => <button key={entry.targetId} role="menuitem" disabled={entry.validation !== "VALID" || hud.pendingTargetId !== null}
+            {hud.targets.map(entry => <button className="target-choice" key={entry.targetId} role="menuitem" disabled={entry.validation !== "VALID" || hud.pendingTargetId !== null}
               aria-current={snapshot?.context.target?.targetId === entry.targetId}
               onClick={() => { setMenuOpen(false); setEquipmentOpen(false); resetComparison(); void hud.selectTarget(entry); }}>
-              <span>{entry.displayName}</span>
-              <small>{entry.validation === "VALID" ? (hud.pendingTargetId === entry.targetId ? "Selecting…" : "Valid") : entry.errorCodes.join(", ")}</small>
+              <span>{entry.displayName}{snapshot?.context.target?.targetId === entry.targetId && <span aria-hidden="true">{"  ✓"}</span>}</span>
+              {entry.validation !== "VALID" ? <small>{entry.errorCodes.join(", ")}</small> : hud.pendingTargetId === entry.targetId && <small>Selecting…</small>}
             </button>)}
+            <div className="target-menu-footer">Validated JSON targets</div>
+            <div className="support-heading">Support &amp; diagnostics</div>
+            <button className="menu-action report-action" role="menuitem" aria-label="Report Issue" aria-describedby="report-action-description" onClick={() => openSupport("report")}>
+              <MenuIcon name="bug" size={15} />
+              <span className="menu-action-copy"><span>Report Issue</span><small id="report-action-description">Open report window</small></span>
+              <MenuIcon name="chevron" size={13} />
+            </button>
+            <button className="collect-logs" role="menuitem" onClick={() => openSupport("logs")}><MenuIcon name="logs" size={14} /> Collect Logs</button>
+            <p className="support-note">Review data before sharing</p>
           </div>}
         </header>
 
@@ -164,7 +182,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
         </div>}
       </section>
 
-      {reportOpen && <ReportIssue onClose={() => setReportOpen(false)} />}
+      {reportOpen && <ReportIssue activeTab={reportTab} onTabChange={setReportTab} onClose={() => setReportOpen(false)} />}
       {expanded && equipmentOpen && snapshot && <aside className="panel equipment" aria-label="Equipment list">
         <div className="panel-title"><span>⬡ <b>Equipment</b></span><button aria-label="Close equipment" onClick={() => { setEquipmentOpen(false); resetComparison(); }}>×</button></div>
         <p>{targetName} · Select an item</p>
