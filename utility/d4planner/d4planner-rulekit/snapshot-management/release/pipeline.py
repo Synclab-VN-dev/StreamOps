@@ -171,10 +171,10 @@ def build(ctx, here, c):
         capture_config={**roots,'schemaVersion':'maxroll-capture-config/v1','sourceUrl':c['sourceUrl'],
                         'authorizationRef':c['authorizationRef'],'chromium':chromium}
         config_file=private/'capture-config.json';write(config_file,capture_config)
-        raw=command(['node',provider/'scripts/snapshot-capture.js','--mode','all','--config',config_file],env=env,timeout=3600)
-        report=json.loads(raw)
+        report_file=private/'capture-report.json'
+        command(['node',here/'capture.js',config_file,report_file],env=env,timeout=3600)
+        report=read(report_file)
         ctx.log('snapshot capture and UI validation: completed; Calculation gate pending')
-        report_file=private/'capture-report.json';write(report_file,report)
         # Drift blocks before attempting to find or fabricate any compatible binding.
         command(['node','-e',"require(process.argv[1]).matchCapture(require(process.argv[2]))",here/'pair.js',report_file],env=env)
         for kind in ('registry','profile'):fetch(c.get(kind),private/(kind+'.json'))
@@ -290,6 +290,12 @@ def publish(ctx, here, c):
     command(['gh','release','download',tag,'--repo',repo,'--dir',download],env=env)
     verify_candidate(download,ctx.version,ctx.source['head'])
     require(inventory(download)==inventory(candidate),'BLOCKED_RELEASE_DOWNLOAD')
+    target=json.loads(command(['gh','api',f'repos/{repo}/git/ref/tags/{tag}'],env=env))['object']
+    for _ in range(8):
+        if target['type']=='commit': break
+        require(target['type']=='tag','BLOCKED_RELEASE_TAG_TARGET')
+        target=json.loads(command(['gh','api',f'repos/{repo}/git/tags/{target["sha"]}'],env=env))['object']
+    require(target['type']=='commit' and target['sha']==ctx.source['head'],'BLOCKED_RELEASE_TAG_TARGET')
     command(['gh','release','edit',tag,'--repo',repo,'--draft=false'],env=env)
     receipt=ctx.temp/'publish.json';write(receipt,{'status':'PASS','tag':tag,'sourceSha':ctx.source['head'],'assets':inventory(download)})
     ctx.artifact(receipt,'publish.json')
