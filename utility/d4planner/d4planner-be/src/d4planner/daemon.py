@@ -91,8 +91,14 @@ def main(argv: list[str] | None = None) -> int:
     except ProfileValidationError as exc:
         parser.error(str(exc))
 
-    home = args.home or os.environ.get("D4PLANNER_HOME")
-    paths = RuntimePaths(Path(home)) if home else RuntimePaths.default()
+    from .runtime.storage import resolve_root
+    environment = None
+    if args.home is not None and args.isolated:
+        # --home plus --isolated is an explicit authorized isolated lifecycle.
+        environment = {key: value for key, value in os.environ.items() if key not in {
+            "D4PLANNER_HOME", "D4PLANNER_DATA_ROOT", "D4PLANNER_DATA_DIR",
+            "D4_RULEKIT_DATA_ROOT", "D4_LOG_DIR", "D4_LOG_RUN_ID"}}
+    paths = RuntimePaths(resolve_root(args.home, environment=environment))
     lock = _acquire_singleton(paths)
     if lock is None:
         return 5

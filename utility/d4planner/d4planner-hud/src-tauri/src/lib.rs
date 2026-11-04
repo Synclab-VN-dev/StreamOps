@@ -75,6 +75,7 @@ fn backend_launch_from_environment() -> Result<LaunchSpecification, String> {
         if let Ok(value) = env::var(name) { environment.insert(name.into(), value); }
     }
     for name in [
+        "D4PLANNER_DATA_ROOT", "D4PLANNER_HOME", "D4PLANNER_DATA_DIR",
         "D4_RULEKIT_DATA_ROOT", "D4_RULEKIT_INSTALLATION_ROOT",
         "D4_RULEKIT_PLANNER_STATE_ROOT", "D4_RULEKIT_PLANNER_PORT",
         "D4PLANNER_RULEKIT_EXECUTABLE", "D4PLANNER_RULEKIT_WORKER",
@@ -260,6 +261,8 @@ async fn open_local_planner(state: State<'_, BackendState>) -> Result<planner::R
 #[tauri::command]
 async fn read_hud_database() -> Result<Option<serde_json::Value>, String> {
     let data_dir = PathBuf::from(env::var("D4PLANNER_DATA_DIR").map_err(|_| "CONFIGURATION_MISSING")?);
+    let root = PathBuf::from(env::var("D4PLANNER_DATA_ROOT").map_err(|_| "CONFIGURATION_MISSING")?);
+    if !root.is_absolute() || data_dir != root.join("state") { return Err("PATH_CONFLICT".into()); }
     tauri::async_runtime::spawn_blocking(move || hud_reader::read_latest(&data_dir))
         .await.map_err(|_| "DB_READ_FAILED".to_string())?
 }

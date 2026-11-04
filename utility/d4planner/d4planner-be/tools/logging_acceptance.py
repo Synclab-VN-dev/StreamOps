@@ -209,7 +209,7 @@ def native_sample(install, payload, data, output, *, mode="INFO", samples=20):
     render = output / "render.json"
     env = {key: value for key, value in os.environ.items()
            if not key.startswith(("D4PLANNER_", "D4_RULEKIT_", "D4_HUD_", "D4_LOG_"))}
-    env.update(D4PLANNER_DATA_ROOT=str(data), D4_HUD_PIPELINE_REPORT=str(render),
+    env.update(D4PLANNER_STORAGE_ISOLATED="1", D4PLANNER_DATA_ROOT=str(data), D4_HUD_PIPELINE_REPORT=str(render),
                D4_HUD_PIPELINE_CONTINUOUS="1", D4PLANNER_LATENCY_TRACE=str(output / "latency.jsonl"),
                WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--force-renderer-accessibility")
     started_at = datetime.now(timezone.utc)

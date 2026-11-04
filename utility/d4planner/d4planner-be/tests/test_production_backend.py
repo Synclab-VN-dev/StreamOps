@@ -83,7 +83,7 @@ def test_production_runtime_real_worker_target_capture_sqlite_and_authenticated_
         shutil.copy2(TARGET, targets / "target.json")
         bootstrap = {
             "ownerInstanceId": "owner-production", "childInstanceId": "backend-production",
-            "generation": 7, "dataDir": str(tmp_path / "data"), "targetFolder": str(targets),
+            "generation": 7, "dataDir": str(tmp_path / "state"), "targetFolder": str(targets),
             "wsEndpoint": {"host": "127.0.0.1", "port": 0}, "credential": CREDENTIAL,
         }
         runtime = ProductionBackendRuntime(bootstrap, rulekit=_rulekit())
@@ -121,7 +121,7 @@ def test_production_runtime_real_worker_target_capture_sqlite_and_authenticated_
                     "warnCount": 0, "itemsPassing": 2, "itemsTargeted": 2,
                 }
                 assert runtime.store.latest_authoritative()["context"]["binding"]["targetId"] == target["targetId"]
-                assert (tmp_path / "data/hud.sqlite3").is_file()
+                assert (tmp_path / "state/hud.sqlite3").is_file()
                 latency = json.loads(trace.read_text().splitlines()[-1])
                 assert latency["hudRevision"] == committed["hudRevision"]
                 assert latency["captureToAssessmentNs"] >= 0
@@ -147,7 +147,7 @@ def test_production_runtime_applies_explicit_recorded_evidence_before_ready(tmp_
         shutil.copy2(TARGET, target_path)
         document = json.loads(target_path.read_text())
         digest = __import__("hashlib").sha256(target_path.read_bytes()).hexdigest()
-        data = tmp_path / "data"; data.mkdir()
+        data = tmp_path / "state"; data.mkdir()
         (data / "selected-target.json").write_text(json.dumps({
             "targetId": document["targetId"], "contentSha256": digest,
             "selectionRevision": 1,
@@ -178,7 +178,7 @@ def test_packaged_contract_root_is_explicit_and_fail_closed(tmp_path, monkeypatc
     with pytest.raises(ValueError, match="contract repository root"):
         ProductionBackendRuntime({
             "ownerInstanceId": "owner", "childInstanceId": "child", "generation": 1,
-            "dataDir": str(tmp_path / "data"), "targetFolder": str(tmp_path / "targets"),
+            "dataDir": str(tmp_path / "state"), "targetFolder": str(tmp_path / "targets"),
             "wsEndpoint": {"host": "127.0.0.1", "port": 0}, "credential": CREDENTIAL,
         }, rulekit=_rulekit())
 
@@ -204,7 +204,7 @@ def test_packaged_contract_root_is_discovered_from_embedded_module(tmp_path, sou
 def test_repository_capture_revision_commits_and_pushes_without_fuzzy_identity(tmp_path, monkeypatch):
     async def scenario():
         targets = tmp_path / "targets"; targets.mkdir()
-        data = tmp_path / "data"; data.mkdir()
+        data = tmp_path / "state"; data.mkdir()
         repository_path = tmp_path / "capture" / "character.db"
         repository = EquipmentRepository(repository_path)
         projector = EquipmentProjector(repository)
@@ -343,14 +343,14 @@ def test_uninjected_composition_resolves_and_forwards_rulekit_configuration(tmp_
     async def scenario():
         runtime = ProductionBackendRuntime({
             'ownerInstanceId':'synthetic-owner', 'childInstanceId':'synthetic-backend',
-            'generation':1, 'dataDir':str(tmp_path / 'data'), 'targetFolder':str(tmp_path / 'targets'),
+            'generation':1, 'dataDir':str(tmp_path / 'state'), 'targetFolder':str(tmp_path / 'targets'),
             'wsEndpoint':{'host':'127.0.0.1','port':0}, 'credential':CREDENTIAL,
         })
         try:
             ready = await runtime.start()
             assert ready['health']['wsTransport'] == 'READY'
             assert forwarded[0]['D4_RULEKIT_INSTALLATION_ROOT'] == str(ROOT)
-            assert forwarded[0]['D4_RULEKIT_DATA_ROOT'] == str(tmp_path / 'data/rulekit')
+            assert forwarded[0]['D4_RULEKIT_DATA_ROOT'] == str(tmp_path / 'rulekit')
         finally:
             await runtime.stop()
     asyncio.run(scenario())
@@ -364,7 +364,7 @@ def _review_runtime(tmp_path):
     b.update(targetId="target-b", displayName="Synthetic B")
     (targets / "b.json").write_text(json.dumps(b))
     bootstrap = {"ownerInstanceId": "review-owner", "childInstanceId": "review-backend",
-        "generation": 1, "dataDir": str(tmp_path / "data"), "targetFolder": str(targets),
+        "generation": 1, "dataDir": str(tmp_path / "state"), "targetFolder": str(targets),
         "wsEndpoint": {"host": "127.0.0.1", "port": 0}, "credential": CREDENTIAL}
     return ProductionBackendRuntime(bootstrap, rulekit=_rulekit())
 

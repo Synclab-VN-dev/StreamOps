@@ -29,6 +29,8 @@ def build(output: Path) -> Path:
 
         plugin_dir = staging / "globalPlugins" / "d4plannerCapture"
         shutil.copy2(CORE_SOURCE, plugin_dir / "core.py")
+        for name in ("storage.py", "storage_acl.ps1"):
+            shutil.copy2(ROOT / "src/d4planner/runtime" / name, plugin_dir / name)
 
         output.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:

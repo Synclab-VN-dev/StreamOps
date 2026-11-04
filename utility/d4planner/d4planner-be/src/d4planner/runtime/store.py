@@ -55,11 +55,14 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
 class RuntimePaths:
     root: Path
 
+    def __post_init__(self) -> None:
+        from .storage import canonical
+        object.__setattr__(self, "root", canonical(self.root))
+
     @classmethod
     def default(cls) -> "RuntimePaths":
-        local = os.environ.get("LOCALAPPDATA")
-        base = Path(local) if local else Path.home() / ".local" / "share"
-        return cls(base / "d4planner")
+        from .storage import resolve_root
+        return cls(resolve_root())
 
     @property
     def runtime(self) -> Path:
@@ -110,7 +113,11 @@ class RuntimePaths:
         return self.state / "user-path-managed.json"
 
     def ensure(self) -> None:
+        from .storage import canonical, check_owner
+        self.root.mkdir(parents=True, exist_ok=True)
+        check_owner(self.root)
         for path in (self.runtime, self.controller, self.sessions, self.state, self.logs):
+            canonical(path)
             path.mkdir(parents=True, exist_ok=True)
 
 

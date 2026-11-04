@@ -53,8 +53,7 @@ ACTIVE_STATES = {
 
 
 def _paths() -> RuntimePaths:
-    override = os.environ.get("D4PLANNER_HOME")
-    return RuntimePaths(Path(override)) if override else RuntimePaths.default()
+    return RuntimePaths.default()
 
 
 def _pid_alive(pid: int | None) -> bool:
@@ -138,7 +137,7 @@ def _spawn_daemon(paths: RuntimePaths, *, speech: bool, isolated: bool,
             time.sleep(0.1)
         raise RuntimeError("scheduled supervisor did not publish a live PID within 15s")
 
-    cmd = [sys.executable, "-m", "d4planner.daemon"]
+    cmd = [sys.executable, "-m", "d4planner.daemon", "--home", str(paths.root)]
     if speech:
         cmd.append("--speech")
     if isolated:
@@ -1088,6 +1087,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="d4planner")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    storage = sub.add_parser("storage", help="Inspect and explicitly migrate persistent storage")
+    storage_sub = storage.add_subparsers(dest="storage_command", required=True)
+    storage_sub.add_parser("paths")
+    migrate = storage_sub.add_parser("migrate", help="Offline preflight, apply, verify, or rollback; never automatic")
+    migrate.add_argument("--source", type=Path)
+    migrate.add_argument("--target", type=Path)
+    migrate.add_argument("--action", choices=("dry-run", "apply", "verify", "rollback"), default="dry-run")
+    migrate.add_argument("--manifest", type=Path, help="Reviewed manifest for apply/verify/rollback")
+    migrate.add_argument("--report", type=Path, required=True, help="New evidence file outside source/target")
+
     start = sub.add_parser("start")
     start.add_argument("-d", "--detach", action="store_true")
     start.add_argument("--speech", action="store_true")
@@ -1163,7 +1172,18 @@ def _configure_console_streams() -> None:
 def main(argv: list[str] | None = None) -> int:
     _configure_console_streams()
     args = build_parser().parse_args(argv)
-    paths = _paths()
+    if args.command == "storage" and args.storage_command == "migrate":
+        from .runtime.migration import run_cli
+        return run_cli(args)
+    try:
+        paths = _paths()
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 4
+    if args.command == "storage":
+        from .runtime.storage import child_environment
+        print(json.dumps(child_environment(paths.root), indent=2))
+        return 0
     if args.command == "start":
         return command_start(
             paths,

@@ -76,7 +76,7 @@ Diablo IV or Steam.
 Production runtime state is outside the repository:
 
 ```text
-%LOCALAPPDATA%\d4planner\
+%LOCALAPPDATA%\StreamOps\D4Planner\
 ├── runtime\
 │   ├── nvda-controller\
 │   └── bin\
@@ -98,7 +98,7 @@ renumbered.
 
 Normal runtime mode adds:
 
-    %LOCALAPPDATA%\d4planner\runtime\nvda-controller
+    %LOCALAPPDATA%\StreamOps\D4Planner\runtime\nvda-controller
 
 to **User PATH only**. The operation is idempotent and tracked for reversible
 cleanup. Machine PATH is read-only to D4Planner.

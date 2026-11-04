@@ -22,6 +22,7 @@ d4planner-managed-backend = "d4planner.managed_backend:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
+"d4planner.runtime" = ["storage_acl.ps1"]
 "d4planner.rulekit" = ["worker.js"]
 "d4planner.controller.data" = ["*.json"]
 

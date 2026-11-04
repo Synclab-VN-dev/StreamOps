@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import cache
 import json
 import os
 from pathlib import Path
@@ -17,9 +18,10 @@ import winUser
 from .core import CaptureSession, JsonlWriter, capture_decision
 
 
+@cache
 def _local_root() -> Path:
-    local_app_data = os.environ.get("LOCALAPPDATA") or str(Path.home())
-    return Path(local_app_data) / "d4planner"
+    from .storage import resolve_root
+    return resolve_root()
 
 
 def _capture_state_path() -> Path:
@@ -83,7 +85,10 @@ class _ConfigCache:
         return value
 
     def get(self) -> dict[str, object]:
-        path = _capture_state_path()
+        try:
+            path = _capture_state_path()
+        except ValueError:
+            return {"enabled": False, "silent": False}
         try:
             stamp = path.stat().st_mtime_ns
         except OSError:
@@ -110,6 +115,18 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     def __init__(self):
         super().__init__()
         self._config = _ConfigCache()
+        try:
+            root = _local_root()
+            private = root / "private"
+            from .storage import canonical
+            canonical(private)
+            private.mkdir(parents=True, exist_ok=True)
+            receipt = private / "nvda-capture-consumer.json"
+            temporary = private / f"nvda-capture-consumer-{os.getpid()}.tmp"
+            temporary.write_text(json.dumps({"dataRoot": str(root), "pid": os.getpid(), "writtenAtUnix": time.time()}), encoding="utf-8")
+            os.replace(temporary, receipt)
+        except (OSError, ValueError):
+            log.error("D4Planner: PATH_INCOMPATIBLE or MIGRATION_REQUIRED; capture unavailable")
         self._session: CaptureSession | None = None
         self._writer: JsonlWriter | None = None
         self._capture_all = os.environ.get("D4PLANNER_CAPTURE_ALL", "").strip() == "1"
@@ -129,6 +146,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         session_id = str(config.get("sessionId") or "")
         raw_path = str(config.get("rawSpeechPath") or "")
         if not session_id or not raw_path:
+            return False
+        from .storage import canonical
+        try:
+            expected = _local_root() / "sessions"
+            if Path(raw_path).is_symlink() or not canonical(Path(raw_path).parent).is_relative_to(expected):
+                return False
+        except ValueError:
             return False
         if self._session is None or self._session.session_id != session_id:
             self._session = CaptureSession(session_id=session_id)
@@ -155,6 +179,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     ) -> None:
         path_text = str(config.get("diagnosticsPath") or "")
         if not path_text:
+            return
+        from .storage import canonical
+        try:
+            if Path(path_text).is_symlink() or not canonical(Path(path_text).parent).is_relative_to(_local_root() / "sessions"):
+                return
+        except ValueError:
             return
         cached_process, cached_title = _cached_context()
         live_pid, live_process, live_title = live_context or (None, None, None)

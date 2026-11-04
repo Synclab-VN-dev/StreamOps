@@ -1,0 +1,13 @@
+[
+  {"name":"default","env":{"LOCALAPPDATA":"@root/local"},"expected":"@root/local/StreamOps/D4Planner"},
+  {"name":"registered","registered":"@root/data","env":{},"expected":"@root/data"},
+  {"name":"explicit","env":{"D4PLANNER_DATA_ROOT":"@root/data"},"expected":"@root/data"},
+  {"name":"legacy-explicit","env":{"D4PLANNER_HOME":"@root/legacy"},"expected":"@root/legacy"},
+  {"name":"same-overrides","registered":"@root/data","env":{"D4PLANNER_DATA_ROOT":"@root/data","D4PLANNER_HOME":"@root/data","D4PLANNER_DATA_DIR":"@root/data/state","D4_RULEKIT_DATA_ROOT":"@root/data/rulekit"},"expected":"@root/data"},
+  {"name":"registered-conflict","registered":"@root/data","env":{"D4PLANNER_DATA_ROOT":"@root/other"},"error":"PATH_CONFLICT"},
+  {"name":"home-conflict","env":{"D4PLANNER_DATA_ROOT":"@root/data","D4PLANNER_HOME":"@root/other"},"error":"PATH_CONFLICT"},
+  {"name":"state-is-not-root","env":{"D4PLANNER_DATA_ROOT":"@root/data","D4PLANNER_DATA_DIR":"@root/data"},"error":"PATH_CONFLICT"},
+  {"name":"rulekit-is-not-state","env":{"D4PLANNER_DATA_ROOT":"@root/data","D4_RULEKIT_DATA_ROOT":"@root/data/state/rulekit"},"error":"PATH_CONFLICT"},
+  {"name":"isolated","registered":"@root/production","env":{"D4PLANNER_STORAGE_ISOLATED":"1","D4PLANNER_DATA_ROOT":"@root/isolated"},"expected":"@root/isolated"},
+  {"name":"isolated-overlap","registered":"@root/production","env":{"D4PLANNER_STORAGE_ISOLATED":"1","D4PLANNER_DATA_ROOT":"@root/production/inside"},"error":"disjoint"}
+]

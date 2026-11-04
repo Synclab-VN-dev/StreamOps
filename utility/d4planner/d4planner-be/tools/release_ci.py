@@ -264,7 +264,14 @@ def build(inputs, output, head, release_version):
     health=output/'runtime-health.json'
     health_app=output/'health-install'
     delivery.install_package(package,health_app,output/'health-data')
-    run([health_app/'D4Planner.exe','--runtime-health','--health-report',health])
+    launch_report = output/'runtime-launch.json'
+    try:
+        run([health_app/'D4Planner.exe','--runtime-health','--health-report',health],
+            env={**os.environ, 'D4PLANNER_LAUNCH_REPORT': str(launch_report)})
+    except subprocess.CalledProcessError:
+        if launch_report.exists():
+            print(launch_report.read_text(encoding='utf-8'), file=sys.stderr)
+        raise
     require(delivery.load_json(health).get('runtimeReady') is True,'BUILD_RUNTIME_HEALTH_NOT_READY')
     require(delivery.load_json(health).get('calculationAvailability')=='UNAVAILABLE','NO_SNAPSHOT_CALCULATION_NOT_UNAVAILABLE')
     require(metadata.get('snapshotIncluded') is False and metadata.get('artifactClass')=='D4PLANNER_APPLICATION_NO_SNAPSHOT','PUBLIC_ARTIFACT_CLASS_MISMATCH')
