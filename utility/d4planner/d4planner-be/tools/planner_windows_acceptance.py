@@ -111,14 +111,27 @@ async def run(args):
             async def screenshot(name):
                 value = await cdp('Page.captureScreenshot')
                 (output/(name+'.png')).write_bytes(base64.b64decode(value['data']))
+            async def click(selector):
+                # Match accessible controls, independent of subtitles/icons.
+                point = await evaluate("""(()=>{
+                    const b=document.querySelector(%s);if(!b||b.disabled)return null;
+                    const r=b.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;
+                    if(!r.width||!r.height||r.left<0||r.top<0||r.right>innerWidth||r.bottom>innerHeight
+                        ||!b.contains(document.elementFromPoint(x,y)))return null;
+                    return {x,y};
+                })()""" % json.dumps(selector))
+                assert point, 'Control must be enabled, visible and unobstructed: '+selector
+                await cdp('Input.dispatchMouseEvent', {'type': 'mouseMoved', **point})
+                for event in ('mousePressed', 'mouseReleased'):
+                    await cdp('Input.dispatchMouseEvent', {'type': event, 'button': 'left', 'clickCount': 1, **point})
             async def click_create():
                 # A CDP page exists before the installed WebView has mounted React.
                 await wait(lambda: evaluate("!!document.querySelector('.menu-button')"), 'HUD React mounted')
-                await evaluate("(()=>{const b=document.querySelector('.menu-button');if(b.getAttribute('aria-expanded')!=='true')b.click();})()")
-                await wait(lambda: evaluate("Array.from(document.querySelectorAll('[role=menuitem]')).some(e=>e.textContent==='Create Build'&&!e.disabled)"), 'Create Build enabled')
-                assert await evaluate("(()=>{const b=Array.from(document.querySelectorAll('[role=menuitem]')).find(e=>e.textContent==='Create Build');const r=b.getBoundingClientRect();return r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight&&document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===b})()"), 'Create Build must be visible and unobstructed'
+                if not await evaluate("document.querySelector('.menu-button').getAttribute('aria-expanded')==='true'"):
+                    await click('.menu-button')
+                await wait(lambda: evaluate("!!document.querySelector('[role=menuitem][aria-label=\"Create Build\"]:not(:disabled)')"), 'Create Build enabled')
                 if not (output/'create-build-menu.png').exists(): await screenshot('create-build-menu')
-                await evaluate("Array.from(document.querySelectorAll('[role=menuitem]')).find(e=>e.textContent==='Create Build').click()")
+                await click('[role=menuitem][aria-label="Create Build"]')
             async def error_contains(text):
                 actual = await wait(lambda: evaluate("Array.from(document.querySelectorAll('.hud-error')).map(e=>e.textContent).find(t=>t.startsWith('Local Planner'))"), 'Planner error on HUD')
                 assert text in actual, {'expected': text, 'actual': actual}
@@ -161,9 +174,24 @@ async def run(args):
                 node = [p for p in rows if p['Name'].lower() == 'node.exe' and str(install).lower() in (p['CommandLine'] or '').lower()]
                 assert len(node) == 1, 'Exactly one installed Rule Kit Worker'
                 await screenshot('ready-hud')
+                # Capture the actual interactive Windows desktop after the system
+                # browser rendered Planner, not a second automation browser.
+                desktop_path = str(output/'planner-browser-desktop.png').replace("'", "''")
+                desktop = powershell(f"""
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$bounds=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$bitmap=New-Object System.Drawing.Bitmap($bounds.Width,$bounds.Height)
+$graphics=[System.Drawing.Graphics]::FromImage($bitmap)
+try {{
+    $graphics.CopyFromScreen($bounds.Location,[System.Drawing.Point]::Empty,$bounds.Size)
+    $bitmap.Save('{desktop_path}',[System.Drawing.Imaging.ImageFormat]::Png)
+}} finally {{ $graphics.Dispose(); $bitmap.Dispose() }}
+@{{width=$bounds.Width;height=$bounds.Height}} | ConvertTo-Json -Compress
+""")
                 return {'workerPid': node[0]['ProcessId'], 'url': url, 'snapshotId': selected,
                         'manifestSha256': diagnostics['manifestSha256'], 'served': diagnostics['served'],
-                        'defaultBrowserPid': owned_browser[0]['ProcessId']}
+                        'defaultBrowserPid': owned_browser[0]['ProcessId'], 'desktopScreenshot': desktop}
             await phase('installed-create-build-system-browser', startup)
             async def reuse():
                 await click_create()
@@ -174,11 +202,12 @@ async def run(args):
                 return {'sameWorkerPid': owners['OwningProcess'], 'noSecondServer': True}
             await phase('installed-ready-reuse', reuse)
             async def menu_regression():
-                await evaluate("document.querySelector('.menu-button').click()")
+                await click('.menu-button')
                 assert await evaluate("document.querySelector('.target-menu').innerText.includes('Target Build')")
-                await evaluate("Array.from(document.querySelectorAll('[role=menuitem]')).find(e=>e.textContent==='Report Issue').click()")
+                await click('[role=menuitem][aria-label="Report Issue"]')
                 await wait(lambda: evaluate("!!document.querySelector('[aria-label=\"Close report\"]')"), 'Report Issue form')
-                await evaluate("document.querySelector('[aria-label=\"Close report\"]').click()")
+                await screenshot('report-issue')
+                await click('[aria-label="Close report"]')
                 return {'reportIssueOpenClose': True, 'targetMenuPresent': True}
             await phase('installed-existing-menu', menu_regression)
     finally:
