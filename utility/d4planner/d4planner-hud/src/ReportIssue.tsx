@@ -32,11 +32,17 @@ type Bridge = <T>(
 export function ReportIssue({
   onClose,
   bridge = invoke,
+  activeTab,
+  onTabChange,
 }: {
   onClose(): void;
   bridge?: Bridge;
+  activeTab?: "report" | "logs";
+  onTabChange?(tab: "report" | "logs"): void;
 }) {
-  const [tab, setTab] = useState<"report" | "logs">("report");
+  const [localTab, setLocalTab] = useState<"report" | "logs">("report");
+  const tab = activeTab ?? localTab;
+  function setTab(next: "report" | "logs") { setLocalTab(next); onTabChange?.(next); }
   const [selection, setSelection] = useState<Selection>({
     fe: true,
     be: true,

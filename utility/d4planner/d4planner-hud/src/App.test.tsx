@@ -265,6 +265,48 @@ it('keeps Report Issue usable while managed Target IPC fails and retries', async
 
 
 describe("Create Build native action", () => {
+  it("uses the v15 action order and opens the existing logs tab without collecting or losing the report draft", async () => {
+    const source = new FakeDataSource();
+    render(<App dataSource={source} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open target menu" }));
+    const actions = await screen.findAllByRole("menuitem");
+    expect(actions[0].getAttribute("aria-label")).toBe("Create Build");
+    expect(actions.at(-2)?.getAttribute("aria-label")).toBe("Report Issue");
+    expect(actions.at(-1)?.textContent).toBe(" Collect Logs");
+    expect(screen.getByText("Open Local Planner")).toBeTruthy();
+    expect(screen.getByText("Support & diagnostics")).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Collect Logs" }));
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(screen.getByRole("button", { name: "Collect Logs" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("checkbox", { name: "FE" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Report Issue" }));
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Keep my draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Open target menu" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Collect Logs" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open target menu" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Report Issue" }));
+    expect((screen.getByLabelText("Title") as HTMLTextAreaElement).value).toBe("Keep my draft");
+    expect(mocks.invoke.mock.calls.some(([name]) => ["collect_issue_report", "submit_issue_report", "open_local_planner"].includes(name))).toBe(false);
+    expect(source.selections).toEqual([]);
+  });
+
+  it("does not restart an in-flight log collection when navigating through Support menu entries", async () => {
+    let finish!: (result: unknown) => void;
+    mocks.invoke.mockImplementation((name: string) => name === "collect_issue_report"
+      ? new Promise(resolve => { finish = resolve; }) : Promise.resolve());
+    render(<App dataSource={new FakeDataSource()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open target menu" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Collect Logs" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview collection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open target menu" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Report Issue" }));
+    expect((screen.getByRole("button", { name: "Preview collection" }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => finish({reportId: "menu-fixture", runId: "fixture", bytes: 0, completeness: "EMPTY", files: []}));
+    expect(screen.getByLabelText("Collection preview")).toBeTruthy();
+    expect(mocks.invoke.mock.calls.filter(([name]) => name === "collect_issue_report")).toHaveLength(1);
+    localStorage.removeItem("d4planner.pendingReportId");
+  });
+
   it("coalesces clicks, shows pending and opens only through the no-argument native command", async () => {
     let finish!: () => void;
     mocks.invoke.mockImplementation((command: string) => command === "open_local_planner"
