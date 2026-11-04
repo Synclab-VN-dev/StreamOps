@@ -23,8 +23,8 @@ import uuid
 ROOT = Path(__file__).resolve().parents[2]
 VERSION = 'streamops-ci/v1'
 PROFILES = {'linux': ('linux', 'ubuntu-24.04'), 'windows': ('win32', 'windows-2022')}
-CAPABILITIES = {'read': [], 'fixture': ['fixture'], 'public-inputs': ['public-inputs'], 'publish': ['publish'], 'external-publish': ['publish'], 'maintenance': ['schedule']}
-SECRET_BINDINGS = {'read':{}, 'publish':{}, 'maintenance':{}, 'fixture':{'AGE_IDENTITY_SECRET':'MAXROLL_FIXTURE_AGE_IDENTITY'},
+CAPABILITIES = {'private-build': [], 'read': [], 'fixture': ['fixture'], 'public-inputs': ['public-inputs'], 'publish': ['publish'], 'external-publish': ['publish'], 'maintenance': ['schedule']}
+SECRET_BINDINGS = {'private-build':{'AGE_IDENTITY_SECRET':'MAXROLL_FIXTURE_AGE_IDENTITY'}, 'read':{}, 'publish':{}, 'maintenance':{}, 'fixture':{'AGE_IDENTITY_SECRET':'MAXROLL_FIXTURE_AGE_IDENTITY'},
     'external-publish':{'GH_TOKEN':'SYNCLAB_OBS_RELEASE_TOKEN'},
     'public-inputs':{'D4_PUBLIC_RUNTIME_INPUT_URL':'D4PLANNER_PUBLIC_RUNTIME_INPUTS_URL','D4_PUBLIC_RUNTIME_INPUT_SHA256':'D4PLANNER_PUBLIC_RUNTIME_INPUTS_SHA256'}}
 NAME = re.compile(r'^[a-z][a-z0-9-]{0,63}$')
@@ -95,7 +95,7 @@ def metadata(text, path):
         require(type(secrets) is dict and len(secrets) <= 2, 'INVALID_SECRET_BINDINGS')
         require(all(isinstance(k,str) and ENV_NAME.fullmatch(k) and isinstance(v,str) and ENV_NAME.fullmatch(v) for k,v in secrets.items()), 'INVALID_SECRET_ALIAS')
         require(all(SECRET_BINDINGS[capability].get(k)==v for k,v in secrets.items()), 'UNAPPROVED_SECRET_BINDING')
-        require(capability!='public-inputs' or operation=='build','BUILD_CAPABILITY_REQUIRED')
+        require(capability not in {'public-inputs','private-build'} or operation=='build','BUILD_CAPABILITY_REQUIRED')
         require(capability!='fixture' or (operation=='test' and job.get('manual') is True),'FIXTURE_MANUAL_ONLY')
         require(type(job.get('manual',False)) is bool, 'INVALID_JOB_FLAGS')
         require(isinstance(job.get('artifacts', []), list), 'INVALID_ARTIFACTS')
@@ -239,6 +239,18 @@ def authorize_publish(version, head, product):
             or not version or inputs.get('version')!=version or os.environ.get('GITHUB_SHA')!=head):
         raise Blocked('PUBLISH_INTENT_SOURCE_MISMATCH')
 
+def authorize_private_build(source, version, product):
+    require(os.environ.get('GITHUB_EVENT_NAME')=='workflow_dispatch' and
+            os.environ.get('GITHUB_REF')=='refs/heads/master', 'PRIVATE_BUILD_MANUAL_MASTER_REQUIRED')
+    try:
+        inputs=json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())['inputs']
+    except (KeyError,ValueError,OSError) as error:
+        raise Blocked('PRIVATE_BUILD_INTENT_REQUIRED') from error
+    require(inputs.get('operation') in {'build','publish'} and inputs.get('product')==product and
+            version and inputs.get('version')==version and not source.get('dirty') and
+            os.environ.get('GITHUB_SHA')==source['head'], 'PRIVATE_BUILD_INTENT_MISMATCH')
+
+
 def maintenance_context(dry_run, source):
     """Reviewed capability guard; no maintenance domain knowledge."""
     require(type(dry_run) is bool, 'INVALID_DRY_RUN')
@@ -271,6 +283,8 @@ class Context:
     def __init__(self, root, job, output, source, version=None, inputs=None, dry_run=True):
         if job['capability'] in {'publish','external-publish'}:
             authorize_publish(version, source['head'], job['component'])
+        if job['capability']=='private-build' and os.environ.get('GITHUB_ACTIONS')=='true':
+            authorize_private_build(source, version, job['component'])
         self.maintenance_event,self.dry_run = maintenance_context(dry_run,source) if job['capability']=='maintenance' else ('local',True)
         self.root=root; self.job=job; self.output=output; self.source=source
         self.version=version; self.inputs=inputs
@@ -286,7 +300,7 @@ class Context:
             if not value and job['capability']=='public-inputs':continue
             if not value: raise Blocked('MISSING_REQUIRED_SECRET: '+alias)
             self.env[alias]=value;self.redactions.append(value)
-        if job['capability'] in {'fixture','public-inputs'} and os.environ.get('CI_READ_TOKEN'):
+        if job['capability'] in {'fixture','public-inputs','private-build'} and os.environ.get('CI_READ_TOKEN'):
             self.env['GH_TOKEN']=os.environ['CI_READ_TOKEN']
             self.redactions.append(os.environ['CI_READ_TOKEN'])
         if job['capability'] in {'publish','external-publish'}:
@@ -530,7 +544,7 @@ def matrices(document):
                            'secret_1':[v for k,v in sorted(j.get('secrets',{}).items())][0] if j.get('secrets') else '',
                            'secret_2':[v for k,v in sorted(j.get('secrets',{}).items())][1] if len(j.get('secrets',{}))>1 else ''}
                           for j in document['jobs'] if j['capability']==capability and j['operation'] in operation]}
-    return {'read':rows('read',{'test','build'}),'fixture':rows('fixture',{'test'}), 'build':rows('public-inputs',{'build'}),
+    return {'private_build':rows('private-build',{'build'}), 'read':rows('read',{'test','build'}),'fixture':rows('fixture',{'test'}), 'build':rows('public-inputs',{'build'}),
             'publish':rows('publish',{'publish'}),'external_publish':rows('external-publish',{'publish'}), 'maintenance':rows('maintenance',{'schedule'})}
 
 def main(argv=None):
