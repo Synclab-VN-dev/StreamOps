@@ -120,7 +120,14 @@ def allowed_snapshot(source, destination, *, ui=False):
     source=Path(source);require(not source.is_symlink(), 'BLOCKED_PACKAGE_SYMLINK')
     manifest=read(source/'manifest.json')
     names={'manifest.json','manifest.sha256'}
+    from urllib.parse import urlsplit, parse_qsl
     for row in manifest['resources']:
+        url=urlsplit(row['url'])
+        require(not url.username and not url.password and not any(
+            re.fullmatch(r'access_?token|auth(?:orization)?|api_?key|session|secret', key, re.I)
+            for key,_ in parse_qsl(url.query)), 'BLOCKED_RESOURCE_CREDENTIAL')
+        require(not {'authorization','cookie','proxy-authorization','set-cookie'} &
+                {key.lower() for key in row.get('headers',{})}, 'BLOCKED_RESOURCE_CREDENTIAL')
         name=row['blob'];require(re.fullmatch(r'blobs/[a-f0-9]{64}\.bin',name), 'BLOCKED_BLOB_PATH');names.add(name)
     if ui:names.update({'ui-coverage.json','ui-validation.json'})
     for name in sorted(names):
@@ -172,7 +179,18 @@ def build(ctx, here, c):
                         'authorizationRef':c['authorizationRef'],'chromium':chromium}
         config_file=private/'capture-config.json';write(config_file,capture_config)
         report_file=private/'capture-report.json'
-        command(['node',here/'capture.js',config_file,report_file],env=env,timeout=3600)
+        try:
+            command(['node',here/'capture.js',config_file,report_file],env=env,timeout=3600)
+        finally:
+            if report_file.is_file():
+                observed=read(report_file)
+                receipt=private/'capture-receipt.json'
+                write(receipt,{'sourceSha':ctx.source['head'],'ciRunId':ctx.env.get('GITHUB_RUN_ID'),
+                  'captureRunId':observed.get('runId'),'status':observed.get('status'),
+                  'consistency':observed.get('consistency'),'error':observed.get('error'),
+                  'packages':[{key:row.get(key) for key in ('kind','snapshotId','manifestSha256','validationStatus','compatibility')}
+                              for row in observed.get('packages',[])]})
+                ctx.artifact(receipt,'capture-receipt.json')
         report=read(report_file)
         ctx.log('snapshot capture and UI validation: completed; Calculation gate pending')
         # Drift blocks before attempting to find or fabricate any compatible binding.
@@ -259,6 +277,8 @@ def verify_candidate(directory, version, source):
     assets=metadata.get('assets',{})
     require(set(assets)==names-{'snapshot-pair.json','SHA256SUMS'},'BLOCKED_ASSET_INVENTORY')
     for name,record in assets.items():
+        with (directory/name).open('rb') as stream:
+            require(stream.read(len(b'age-encryption.org/v1\n'))==b'age-encryption.org/v1\n', 'BLOCKED_PLAINTEXT_ASSET')
         require(record.get('sha256')==file_sha(directory/name) and record.get('bytes')==(directory/name).stat().st_size,'BLOCKED_ASSET_HASH')
     expected=''.join(f'{file_sha(directory/name)}  {name}\n' for name in sorted(names-{'SHA256SUMS'}))
     require((directory/'SHA256SUMS').read_text()==expected,'BLOCKED_CHECKSUM')

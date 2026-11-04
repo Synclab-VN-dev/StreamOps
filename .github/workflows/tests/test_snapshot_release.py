@@ -101,23 +101,23 @@ class SnapshotRelease(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);assets={}
             for kind in ('calculation','ui'):
-                name=f'{kind}-snapshot-1.0.0.zip.age';(root/name).write_bytes(b'ciphertext')
-                assets[name]={'bytes':10,'sha256':p.file_sha(root/name)}
+                name=f'{kind}-snapshot-1.0.0.zip.age';(root/name).write_bytes(b'age-encryption.org/v1\nciphertext')
+                assets[name]={'bytes':len(b'age-encryption.org/v1\nciphertext'),'sha256':p.file_sha(root/name)}
             p.write(root/'snapshot-pair.json',{'version':'1.0.0','sourceSha':'a'*40,'assets':assets})
             (root/'SHA256SUMS').write_text(''.join(f'{p.file_sha(f)}  {f.name}\n' for f in sorted(root.iterdir()) if f.name!='SHA256SUMS'))
             p.verify_candidate(root,'1.0.0','a'*40)
             (root/'plain.zip').write_bytes(b'private')
             with self.assertRaisesRegex(p.ReleaseBlocked,'INVENTORY'):p.verify_candidate(root,'1.0.0','a'*40)
             (root/'plain.zip').unlink();(root/'ui-snapshot-1.0.0.zip.age').write_bytes(b'corrupt')
-            with self.assertRaisesRegex(p.ReleaseBlocked,'HASH'):p.verify_candidate(root,'1.0.0','a'*40)
+            with self.assertRaisesRegex(p.ReleaseBlocked,'PLAINTEXT_ASSET'):p.verify_candidate(root,'1.0.0','a'*40)
 
     def test_publish_download_verification_precedes_visibility_and_never_clobbers(self):
         for mismatch in (False,True):
             with self.subTest(mismatch=mismatch), tempfile.TemporaryDirectory() as temp:
                 root=Path(temp);candidate=root/'candidate';candidate.mkdir();assets={}
                 for kind in ('calculation','ui'):
-                    name=f'{kind}-snapshot-1.0.0.zip.age';(candidate/name).write_bytes(b'ciphertext')
-                    assets[name]={'bytes':10,'sha256':p.file_sha(candidate/name)}
+                    name=f'{kind}-snapshot-1.0.0.zip.age';(candidate/name).write_bytes(b'age-encryption.org/v1\nciphertext')
+                    assets[name]={'bytes':len(b'age-encryption.org/v1\nciphertext'),'sha256':p.file_sha(candidate/name)}
                 p.write(candidate/'snapshot-pair.json',{'version':'1.0.0','sourceSha':'a'*40,
                     'assets':assets,'distribution':{'permission':'PUBLIC_APPROVED'}})
                 (candidate/'SHA256SUMS').write_text(''.join(f'{p.file_sha(f)}  {f.name}\n' for f in sorted(candidate.iterdir()) if f.name!='SHA256SUMS'))
@@ -145,6 +145,80 @@ class SnapshotRelease(unittest.TestCase):
                 self.assertEqual(visible,not mismatch)
                 self.assertEqual(bool(exported),not mismatch)
                 self.assertFalse(any('--clobber' in call for call in calls))
+
+    def test_build_cleanup_and_no_candidate_on_capture_failure(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);env={'PATH':os.environ['PATH'],'AGE_IDENTITY_SECRET':'isolated-test-placeholder',
+                              'BROWSER_INFRA_CHROMIUM_PATH':str(root/'chromium')}
+            (root/'chromium').touch();exports=[]
+            ctx=SimpleNamespace(temp=root,env=env,version='1.0.0',source={'head':'a'*40},
+                artifact=lambda file,name:exports.append(name),log=lambda value:None)
+            def tool(args,**kw):
+                args=list(map(str,args))
+                self.assertNotIn('AGE_IDENTITY_SECRET',kw.get('env',{}))
+                if args[0]=='age-keygen':return p.RECIPIENT.encode()
+                if any(arg.endswith('/capture.js') for arg in args):
+                    p.write(Path(args[-1]),{'runId':'test-run','status':'FAILED','error':'UI_VALIDATION_FAILED','packages':[]})
+                    raise p.ReleaseBlocked('BLOCKED_CAPTURE')
+                return b''
+            with patch.object(p.shutil,'which',return_value='/test/tool'),patch.object(p,'command',side_effect=tool):
+                with self.assertRaisesRegex(p.ReleaseBlocked,'BLOCKED_CAPTURE'):
+                    p.build(ctx,HERE,{'sourceUrl':'https://maxroll.gg/d4/planner/test','authorizationRef':'test'})
+            self.assertEqual(exports,['capture-receipt.json'])
+            self.assertFalse((root/'snapshot-private').exists())
+
+    def test_build_orchestration_exports_only_after_all_roundtrip_gates(self):
+        # Simulated provider/crypto transports test ordering, not real-provider acceptance.
+        with tempfile.TemporaryDirectory() as temp:
+            import shutil
+            root=Path(temp);here=root/'rulekit/snapshot-management/release';here.mkdir(parents=True)
+            provider=root/'rulekit/providers/maxroll';(provider/'artifacts').mkdir(parents=True)
+            (root/'chromium').touch();exports=root/'exports';exports.mkdir();calls=[]
+            ctx=SimpleNamespace(temp=root,env={'PATH':os.environ['PATH'],'AGE_IDENTITY_SECRET':'test',
+                'BROWSER_INFRA_CHROMIUM_PATH':str(root/'chromium')},version='1.0.0',source={'head':'a'*40},
+                log=lambda text:None)
+            def artifact(file,name):
+                if Path(file).is_dir():shutil.copytree(file,exports/name)
+                else:shutil.copyfile(file,exports/name)
+            ctx.artifact=artifact
+            verified={'coverageSha256':'a'*64,'validationSha256':'b'*64,'distribution':{'permission':'PRIVATE_ONLY'}}
+            def transport(args,**kw):
+                args=list(map(str,args));calls.append(args)
+                self.assertNotIn('AGE_IDENTITY_SECRET',kw.get('env',{}))
+                if args[0]=='age-keygen':return p.RECIPIENT.encode()
+                if args[0]=='age':
+                    data=Path(args[-1]).read_bytes()
+                    data=b'age-encryption.org/v1\n'+data if '--encrypt' in args else data.removeprefix(b'age-encryption.org/v1\n')
+                    Path(args[args.index('--output')+1]).write_bytes(data);return b''
+                if any(arg.endswith('/capture.js') for arg in args):
+                    config=p.read(args[-2]);packages=[]
+                    for kind in ('calculation','ui'):
+                        store=Path(config[kind+'Root']);snapshot=store/kind;snapshot.mkdir(parents=True)
+                        p.write(snapshot/'manifest.json',{'resources':[]})
+                        (snapshot/'manifest.sha256').write_text('a'*64)
+                        if kind=='ui':
+                            p.write(snapshot/'ui-coverage.json',{})
+                            p.write(snapshot/'ui-validation.json',{'referenceReportSha256':'a'*64})
+                        packages.append({'kind':kind,'snapshotId':kind,'snapshotRoot':str(store),
+                            'manifestSha256':'a'*64,'runId':'test-run'})
+                    p.write(args[-1],{'status':'COMPLETE','runId':'test-run','packages':packages})
+                elif any(arg.endswith('/verify.js') for arg in args):p.write(args[-1],verified)
+                elif args[:3]==['npm','run','test:real']:
+                    p.write(provider/'artifacts/real-acceptance.json',{'status':'PASS','applicationApis':list(range(8)),
+                        'transportOfflineEveryEvaluation':True})
+                elif any(arg.endswith('/full-acceptance.js') for arg in args):
+                    config=p.read(args[-1]);out=Path(config['output']);out.mkdir()
+                    p.write(out/'acceptance.json',{'status':'AUTOMATED_PASS'})
+                return b''
+            def fetch_input(descriptor,target):p.write(target,{})
+            with patch.object(p.shutil,'which',return_value='/test/tool'),patch.object(p,'command',side_effect=transport),patch.object(p,'fetch',side_effect=fetch_input):
+                p.build(ctx,here,{'sourceUrl':'https://maxroll.gg/d4/planner/test','authorizationRef':'test',
+                    'entryId':'approved-example','realProfileId':'existing-profile'})
+            self.assertFalse((root/'snapshot-private').exists())
+            metadata=p.verify_candidate(exports/'snapshots','1.0.0','a'*40)
+            self.assertEqual(len(metadata['assets']),2)
+            self.assertEqual(sum(call[:3]==['npm','run','test:real'] for call in calls),2)
+            self.assertFalse(any(call[0]=='gh' for call in calls))
 
     def test_commands_do_not_leak_private_output(self):
         completed=SimpleNamespace(returncode=1,stdout=b'private data',stderr=b'password secret raw URL')
