@@ -29,3 +29,23 @@ for (const [name, mutate, code] of [
   const report = capture(); mutate(report);
   assert.throws(() => matchCapture(report), error => error.code === code);
 });
+test('capture adapter persists report independently from logging and removes signal listeners', async () => {
+  const fs = require('node:fs/promises');
+  const os = require('node:os');
+  const path = require('node:path');
+  const {capture: runCapture} = require('../release/capture');
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'snapshot-capture-test-'));
+  const before = process.listenerCount('SIGTERM');
+  try {
+    await runCapture('private-config', path.join(root,'report.json'), async options => {
+      assert.equal(options.mode,'all'); assert.equal(options.config,'private-config');
+      return capture();
+    });
+    assert.equal(JSON.parse(await fs.readFile(path.join(root,'report.json'))).status,'COMPLETE');
+    await assert.rejects(runCapture('private-config',path.join(root,'failure.json'),async () => {
+      throw Object.assign(new Error('capture failed'),{report:{status:'FAILED'}});
+    }));
+    assert.equal(JSON.parse(await fs.readFile(path.join(root,'failure.json'))).status,'FAILED');
+    assert.equal(process.listenerCount('SIGTERM'),before);
+  } finally {await fs.rm(root,{recursive:true,force:true});}
+});

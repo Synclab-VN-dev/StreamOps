@@ -111,6 +111,41 @@ class SnapshotRelease(unittest.TestCase):
             (root/'plain.zip').unlink();(root/'ui-snapshot-1.0.0.zip.age').write_bytes(b'corrupt')
             with self.assertRaisesRegex(p.ReleaseBlocked,'HASH'):p.verify_candidate(root,'1.0.0','a'*40)
 
+    def test_publish_download_verification_precedes_visibility_and_never_clobbers(self):
+        for mismatch in (False,True):
+            with self.subTest(mismatch=mismatch), tempfile.TemporaryDirectory() as temp:
+                root=Path(temp);candidate=root/'candidate';candidate.mkdir();assets={}
+                for kind in ('calculation','ui'):
+                    name=f'{kind}-snapshot-1.0.0.zip.age';(candidate/name).write_bytes(b'ciphertext')
+                    assets[name]={'bytes':10,'sha256':p.file_sha(candidate/name)}
+                p.write(candidate/'snapshot-pair.json',{'version':'1.0.0','sourceSha':'a'*40,
+                    'assets':assets,'distribution':{'permission':'PUBLIC_APPROVED'}})
+                (candidate/'SHA256SUMS').write_text(''.join(f'{p.file_sha(f)}  {f.name}\n' for f in sorted(candidate.iterdir()) if f.name!='SHA256SUMS'))
+                calls=[];exported=[]
+                def transport(args,**kw):
+                    args=list(map(str,args));calls.append(args)
+                    if args[:3]==['gh','api','repos/example/repo/releases']:return b'[[]]'
+                    if 'matching-refs' in args[2]:return b'[]'
+                    if '/git/ref/' in args[2]:return json.dumps({'object':{'type':'commit','sha':'a'*40}}).encode()
+                    if args[:3]==['gh','release','download']:
+                        import shutil
+                        destination=Path(args[args.index('--dir')+1])
+                        for file in candidate.iterdir():shutil.copyfile(file,destination/file.name)
+                        if mismatch:(destination/'ui-snapshot-1.0.0.zip.age').write_bytes(b'wrong')
+                    return b''
+                ctx=SimpleNamespace(version='1.0.0',source={'head':'a'*40},temp=root,intent='publish',
+                    env={'GITHUB_ACTIONS':'true','GITHUB_EVENT_NAME':'workflow_dispatch','GITHUB_REF':'refs/heads/master','GITHUB_REPOSITORY':'example/repo'},
+                    build_artifact=lambda name:candidate,artifact=lambda *args:exported.append(args))
+                config={'distribution':{'permission':'PUBLIC_APPROVED','version':'1.0.0','reference':'owner-reviewed-pair'}}
+                with patch.object(p,'command',side_effect=transport):
+                    if mismatch:
+                        with self.assertRaises(p.ReleaseBlocked):p.publish(ctx,HERE,config)
+                    else:p.publish(ctx,HERE,config)
+                visible=any('--draft=false' in call for call in calls)
+                self.assertEqual(visible,not mismatch)
+                self.assertEqual(bool(exported),not mismatch)
+                self.assertFalse(any('--clobber' in call for call in calls))
+
     def test_commands_do_not_leak_private_output(self):
         completed=SimpleNamespace(returncode=1,stdout=b'private data',stderr=b'password secret raw URL')
         with patch.object(p.subprocess,'run',return_value=completed):
