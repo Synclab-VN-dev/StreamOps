@@ -18,6 +18,11 @@ def load(name, filename):
 p=load('snapshot_pipeline_test',HERE/'pipeline.py')
 ci=load('snapshot_engine_test',ROOT/'.github/workflows/ci.py')
 
+def pair_metadata():
+    return {'schemaVersion':'d4planner-snapshot-pair/v1','captureRunId':'test-run',
+            'calculationSnapshotId':'calculation','uiSnapshotId':'ui',
+            'calculationManifestSha256':'a'*64,'uiManifestSha256':'b'*64,'runtimeIdentitySha256':'c'*64}
+
 class SnapshotRelease(unittest.TestCase):
     def test_discovery_and_separate_permission_matrices(self):
         specs=ci.discover(ROOT)
@@ -103,7 +108,7 @@ class SnapshotRelease(unittest.TestCase):
             for kind in ('calculation','ui'):
                 name=f'{kind}-snapshot-1.0.0.zip.age';(root/name).write_bytes(b'age-encryption.org/v1\nciphertext')
                 assets[name]={'bytes':len(b'age-encryption.org/v1\nciphertext'),'sha256':p.file_sha(root/name)}
-            p.write(root/'snapshot-pair.json',{'version':'1.0.0','sourceSha':'a'*40,'assets':assets})
+            p.write(root/'snapshot-pair.json',{**pair_metadata(),'version':'1.0.0','sourceSha':'a'*40,'assets':assets})
             (root/'SHA256SUMS').write_text(''.join(f'{p.file_sha(f)}  {f.name}\n' for f in sorted(root.iterdir()) if f.name!='SHA256SUMS'))
             p.verify_candidate(root,'1.0.0','a'*40)
             (root/'plain.zip').write_bytes(b'private')
@@ -118,7 +123,7 @@ class SnapshotRelease(unittest.TestCase):
                 for kind in ('calculation','ui'):
                     name=f'{kind}-snapshot-1.0.0.zip.age';(candidate/name).write_bytes(b'age-encryption.org/v1\nciphertext')
                     assets[name]={'bytes':len(b'age-encryption.org/v1\nciphertext'),'sha256':p.file_sha(candidate/name)}
-                p.write(candidate/'snapshot-pair.json',{'version':'1.0.0','sourceSha':'a'*40,
+                p.write(candidate/'snapshot-pair.json',{**pair_metadata(),'version':'1.0.0','sourceSha':'a'*40,
                     'assets':assets,'distribution':{'permission':'PUBLIC_APPROVED'}})
                 (candidate/'SHA256SUMS').write_text(''.join(f'{p.file_sha(f)}  {f.name}\n' for f in sorted(candidate.iterdir()) if f.name!='SHA256SUMS'))
                 calls=[];exported=[]
@@ -181,7 +186,7 @@ class SnapshotRelease(unittest.TestCase):
                 if Path(file).is_dir():shutil.copytree(file,exports/name)
                 else:shutil.copyfile(file,exports/name)
             ctx.artifact=artifact
-            verified={'coverageSha256':'a'*64,'validationSha256':'b'*64,'distribution':{'permission':'PRIVATE_ONLY'}}
+            verified={**pair_metadata(),'coverageSha256':'a'*64,'validationSha256':'b'*64,'distribution':{'permission':'PRIVATE_ONLY'}}
             def transport(args,**kw):
                 args=list(map(str,args));calls.append(args)
                 self.assertNotIn('AGE_IDENTITY_SECRET',kw.get('env',{}))

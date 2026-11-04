@@ -274,6 +274,13 @@ def verify_candidate(directory, version, source):
     require({p.name for p in directory.iterdir()}==names and all(p.is_file() and not p.is_symlink() for p in directory.iterdir()),'BLOCKED_CANDIDATE_INVENTORY')
     metadata=read(directory/'snapshot-pair.json')
     require(metadata.get('version')==version and metadata.get('sourceSha')==source,'BLOCKED_CANDIDATE_PROVENANCE')
+    require(metadata.get('schemaVersion')=='d4planner-snapshot-pair/v1' and
+            all(isinstance(metadata.get(key),str) and metadata[key] for key in
+                ('captureRunId','calculationSnapshotId','uiSnapshotId')) and
+            metadata['calculationSnapshotId']!=metadata['uiSnapshotId'] and
+            all(HASH.fullmatch(metadata.get(key,'')) for key in
+                ('calculationManifestSha256','uiManifestSha256','runtimeIdentitySha256')),
+            'BLOCKED_PAIR_METADATA')
     assets=metadata.get('assets',{})
     require(set(assets)==names-{'snapshot-pair.json','SHA256SUMS'},'BLOCKED_ASSET_INVENTORY')
     for name,record in assets.items():
