@@ -39,8 +39,15 @@ def command(args, *, cwd=None, env=None, timeout=1200):
     except (OSError, subprocess.TimeoutExpired) as error:
         raise ReleaseBlocked('BLOCKED_TOOL_'+Path(str(args[0])).name.upper()) from None
     if result.returncode != 0:
+        # Raw diagnostics stay in the owned private workspace, never CI artifacts/logs.
+        private=Path((env or {}).get('RUNNER_TEMP',''))/'snapshot-private'
+        if env and env.get('RUNNER_TEMP') and private.is_dir():
+            write(private/'command-failure.json',{'command':list(map(str,args)),
+                'exitCode':result.returncode,'stdout':result.stdout.decode('utf-8',errors='replace'),
+                'stderr':result.stderr.decode('utf-8',errors='replace')})
         text=result.stderr.decode('utf-8',errors='replace')
-        for code in ('BLOCKED_PAIR_MISMATCH','BLOCKED_CAPTURE','BLOCKED_UI_VALIDATION'):
+        for code in ('BLOCKED_PAIR_MISMATCH','BLOCKED_CAPTURE','BLOCKED_UI_VALIDATION',
+                     'BLOCKED_VALIDATION','BLOCKED_INTEGRITY','BLOCKED_UI_PROVENANCE','BLOCKED_RUNTIME_IDENTITY'):
             if code in text: raise ReleaseBlocked(code)
         raise ReleaseBlocked('BLOCKED_COMMAND_'+Path(str(args[0])).name.upper())
     return result.stdout
@@ -227,6 +234,7 @@ def build(ctx, here, c):
             p['snapshotRoot']=str(roundtrips[p['kind']])
         write(report_file,report);write(config_file,verify_config)
         command(['node',here/'verify.js',config_file,private/'roundtrip-verification.json'],env=env)
+        ctx.log('snapshot ZIP/age/decrypt and native store verification: PASS')
         ui_replay={
           'scope':'ui','snapshotRoot':str(roundtrips['ui']),'snapshotId':ui['snapshotId'],
           'manifestSha256':ui['manifestSha256'],'chromium':chromium,

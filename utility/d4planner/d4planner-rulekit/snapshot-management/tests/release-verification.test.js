@@ -41,6 +41,10 @@ test('new native pair verifies without any Registry/profile and preserves NOT_AS
       manifestSha256:ui.manifestSha256,coverageSha256:sha(coverage),calculationStatus:'NOT_ASSESSED',
       captureRunId:'new-run',head:'a'.repeat(40),acceptanceSha256:sha(acceptance)};
     const receiptFile=path.join(root,ui.snapshotId,'ui-validation.json');await json(receiptFile,receipt);
+    // Python rewrites reports with sorted object keys after extraction. JSON key order
+    // must not change the result of comparing the same exact resource fingerprints.
+    for(const item of packages) item.identity={fingerprints:Object.fromEntries(
+      Object.entries(item.identity.fingerprints).reverse()),version:item.identity.version};
     const report=path.join(root,'report.json');await json(report,{status:'COMPLETE',mode:'all',consistency:'PASS',runId:'new-run',packages});
     const config={report,uiAcceptance,source:'a'.repeat(40),authorizationRef:'test-authorization'};
     const result=await verify(config);
