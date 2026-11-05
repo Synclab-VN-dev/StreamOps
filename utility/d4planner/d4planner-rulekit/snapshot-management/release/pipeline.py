@@ -160,7 +160,8 @@ def build(ctx, here, c):
         identity=private/'age-identity';identity.write_text(identity_secret+'\n');identity.chmod(0o600)
         require(command(['age-keygen','-y',identity],env=env).decode().strip()==RECIPIENT, 'BLOCKED_AGE_RECIPIENT')
         # Install the existing pinned browser infrastructure, not a second capture framework.
-        for module in ('browser-infra','providers/maxroll'):
+        # Capturer also reuses snapshot-management's content-version parser (AJV).
+        for module in ('browser-infra','providers/maxroll','snapshot-management'):
             command(['npm','ci','--ignore-scripts','--no-audit','--no-fund'],cwd=rulekit/module,env=env)
         chromium=env.get('BROWSER_INFRA_CHROMIUM_PATH') or env.get('CHROMIUM_EXECUTABLE')
         if not chromium:
