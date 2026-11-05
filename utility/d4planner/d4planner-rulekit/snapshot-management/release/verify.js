@@ -11,7 +11,7 @@ const provider = path.join(rulekit, 'providers/maxroll');
 function check(ok, code) { if (!ok) throw Object.assign(new Error(code), {code}); }
 async function verify(config) {
   const {FileSystemSnapshotStore} = require(path.join(rulekit, 'browser-infra/src'));
-  const {identity} = require(path.join(provider, 'tooling/capture-workflow'));
+  const {identity, consistent} = require(path.join(provider, 'tooling/capture-workflow'));
   const {verifyUiReceipt} = require(path.join(provider, 'tooling/web/ui-package'));
   const report = await read(config.report);
   const pair = matchCapture(report);
@@ -20,7 +20,7 @@ async function verify(config) {
   for (const p of report.packages) {
     const actual = await identity(p.snapshotRoot, p.snapshotId);
     check(actual.integrity.manifestSha256 === p.manifestSha256 && actual.integrity.valid, 'BLOCKED_INTEGRITY');
-    check(JSON.stringify(actual.identity) === JSON.stringify(p.identity), 'BLOCKED_RUNTIME_IDENTITY');
+    check(consistent(actual.identity, p.identity), 'BLOCKED_RUNTIME_IDENTITY');
   }
   const uiPath = path.join(ui.snapshotRoot, ui.snapshotId);
   const coverageBytes = await fs.readFile(path.join(uiPath, 'ui-coverage.json'));
