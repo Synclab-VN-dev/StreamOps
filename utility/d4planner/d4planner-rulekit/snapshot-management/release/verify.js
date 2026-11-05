@@ -1,5 +1,5 @@
 'use strict';
-// Compose existing Rule Kit trust/import and UI validation. No new approvals.
+// Validate captured bytes and UI evidence. Rule Kit adoption is a separate operation.
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -13,7 +13,6 @@ async function verify(config) {
   const {FileSystemSnapshotStore} = require(path.join(rulekit, 'browser-infra/src'));
   const {identity} = require(path.join(provider, 'tooling/capture-workflow'));
   const {verifyUiReceipt} = require(path.join(provider, 'tooling/web/ui-package'));
-  const {createProductionManager} = require('../src');
   const report = await read(config.report);
   const pair = matchCapture(report);
   const calculation = report.packages.find(p => p.kind === 'calculation');
@@ -37,20 +36,9 @@ async function verify(config) {
   await verifyUiReceipt({snapshotRoot:ui.snapshotRoot, snapshotId:ui.snapshotId, manifestSha256:ui.manifestSha256,
     uiTrust:{schemaVersion:'maxroll-ui-trust/v1', coverageSha256:sha(coverageBytes), validationSha256:sha(receiptBytes),
       authorizationRef:config.authorizationRef}}, await store.load(ui.snapshotId), await store.verify(ui.snapshotId));
-  const manager = createProductionManager({dataRoot:config.dataRoot, installationRoot:rulekit, workerGeneration:1});
-  check(manager.registry, 'BLOCKED_COMPATIBILITY');
-  await manager.start();
-  try {
-    await manager.updateRegistry(await read(config.registry));
-    const checked = await manager.checkCompatibility({entryId:config.entryId,
-      storeRoot:calculation.snapshotRoot, profilePath:config.profile});
-    check(checked.snapshotId === calculation.snapshotId && checked.manifestSha256 === calculation.manifestSha256,
-      'BLOCKED_COMPATIBILITY');
-    if (config.packagePath) await manager.importPackage({packagePath:config.packagePath});
-    const entry = manager.registry.resolve(config.entryId);
-    return {...pair, coverageSha256:sha(coverageBytes), validationSha256:sha(receiptBytes),
-      acceptanceSha256:receipt.acceptanceSha256, calculation:checked, distribution:{permission:entry.distribution.permission, referenceSha256:sha(Buffer.from(entry.distribution.reference))}};
-  } finally { await manager.close(); }
+  return {...pair, coverageSha256:sha(coverageBytes), validationSha256:sha(receiptBytes),
+    acceptanceSha256:receipt.acceptanceSha256,
+    calculationIntegrity:'VERIFIED', uiValidation:'AUTOMATED_VALIDATED'};
 }
 if (require.main === module) {
   read(process.argv[2]).then(verify).then(result => fs.writeFile(process.argv[3], JSON.stringify(result)))

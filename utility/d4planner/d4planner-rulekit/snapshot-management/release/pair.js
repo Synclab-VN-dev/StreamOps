@@ -25,15 +25,15 @@ function matchCapture(report) {
   for (const p of [calculation, ui]) {
     requireGate(p.runId === report.runId && typeof p.snapshotId === 'string' && p.snapshotId.length > 0 && hash(p.manifestSha256), 'BLOCKED_PROVENANCE');
   }
-  requireGate(calculation.compatibility !== 'PATCH_DRIFT', 'BLOCKED_COMPATIBILITY');
   requireGate(ui.validationStatus === 'VALIDATED', 'BLOCKED_UI_VALIDATION');
   const identity = fingerprints(calculation.identity);
   requireGate(identity === fingerprints(ui.identity), 'BLOCKED_PAIR_MISMATCH');
-  // Deliberately contains no READY assertion. The caller must separately run the
-  // existing Calculation validator/resolver against these exact manifest bytes.
+  // Release validates the freshly captured pair. Consumer approval belongs to Rule Kit.
   return Object.freeze({captureRunId: report.runId, calculationSnapshotId: calculation.snapshotId,
     uiSnapshotId: ui.snapshotId, calculationManifestSha256: calculation.manifestSha256,
     uiManifestSha256: ui.manifestSha256,
+    calculationReferenceStatus: calculation.compatibility || 'NOT_ASSESSED',
+    ruleKitReadiness: 'NOT_ASSESSED',
     runtimeIdentitySha256: crypto.createHash('sha256').update(identity).digest('hex')});
 }
 module.exports = {matchCapture, PairBlocked};

@@ -21,6 +21,7 @@ ci=load('snapshot_engine_test',ROOT/'.github/workflows/ci.py')
 def pair_metadata():
     return {'schemaVersion':'d4planner-snapshot-pair/v1','captureRunId':'test-run',
             'calculationSnapshotId':'calculation','uiSnapshotId':'ui',
+            'ruleKitReadiness':'NOT_ASSESSED','calculationReferenceStatus':'PATCH_DRIFT',
             'calculationManifestSha256':'a'*64,'uiManifestSha256':'b'*64,'runtimeIdentitySha256':'c'*64}
 
 class SnapshotRelease(unittest.TestCase):
@@ -124,7 +125,7 @@ class SnapshotRelease(unittest.TestCase):
                     name=f'{kind}-snapshot-1.0.0.zip.age';(candidate/name).write_bytes(b'age-encryption.org/v1\nciphertext')
                     assets[name]={'bytes':len(b'age-encryption.org/v1\nciphertext'),'sha256':p.file_sha(candidate/name)}
                 p.write(candidate/'snapshot-pair.json',{**pair_metadata(),'version':'1.0.0','sourceSha':'a'*40,
-                    'assets':assets,'distribution':{'permission':'PUBLIC_APPROVED'}})
+                    'assets':assets})
                 (candidate/'SHA256SUMS').write_text(''.join(f'{p.file_sha(f)}  {f.name}\n' for f in sorted(candidate.iterdir()) if f.name!='SHA256SUMS'))
                 calls=[];exported=[]
                 def transport(args,**kw):
@@ -186,13 +187,18 @@ class SnapshotRelease(unittest.TestCase):
                 if Path(file).is_dir():shutil.copytree(file,exports/name)
                 else:shutil.copyfile(file,exports/name)
             ctx.artifact=artifact
-            verified={**pair_metadata(),'coverageSha256':'a'*64,'validationSha256':'b'*64,'distribution':{'permission':'PRIVATE_ONLY'}}
+            verified={**pair_metadata(),'coverageSha256':'a'*64,'validationSha256':'b'*64}
             def transport(args,**kw):
                 args=list(map(str,args));calls.append(args)
                 self.assertNotIn('AGE_IDENTITY_SECRET',kw.get('env',{}))
                 if args[0]=='age-keygen':return p.RECIPIENT.encode()
                 if args[0]=='age':
                     data=Path(args[-1]).read_bytes()
+                    if '--encrypt' in args:
+                        with zipfile.ZipFile(args[-1]) as archive:
+                            names=archive.namelist()
+                            self.assertFalse(any(name in ('profile.json','snapshot-package.json','registry.json') for name in names))
+                            self.assertEqual(len({name.split('/')[0] for name in names}),1)
                     data=b'age-encryption.org/v1\n'+data if '--encrypt' in args else data.removeprefix(b'age-encryption.org/v1\n')
                     Path(args[args.index('--output')+1]).write_bytes(data);return b''
                 if any(arg.endswith('/capture.js') for arg in args):
@@ -218,11 +224,13 @@ class SnapshotRelease(unittest.TestCase):
             def fetch_input(descriptor,target):p.write(target,{})
             with patch.object(p.shutil,'which',return_value='/test/tool'),patch.object(p,'command',side_effect=transport),patch.object(p,'fetch',side_effect=fetch_input):
                 p.build(ctx,here,{'sourceUrl':'https://maxroll.gg/d4/planner/test','authorizationRef':'test',
-                    'entryId':'approved-example','realProfileId':'existing-profile'})
+                    'distribution':None})
             self.assertFalse((root/'snapshot-private').exists())
             metadata=p.verify_candidate(exports/'snapshots','1.0.0','a'*40)
             self.assertEqual(len(metadata['assets']),2)
-            self.assertEqual(sum(call[:3]==['npm','run','test:real'] for call in calls),2)
+            self.assertEqual(metadata['ruleKitReadiness'],'NOT_ASSESSED')
+            self.assertEqual(metadata['calculationReferenceStatus'],'PATCH_DRIFT')
+            self.assertFalse(any(call[:3]==['npm','run','test:real'] for call in calls))
             self.assertFalse(any(call[0]=='gh' for call in calls))
 
     def test_commands_do_not_leak_private_output(self):

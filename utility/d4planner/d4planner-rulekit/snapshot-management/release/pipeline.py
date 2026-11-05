@@ -40,8 +40,8 @@ def command(args, *, cwd=None, env=None, timeout=1200):
         raise ReleaseBlocked('BLOCKED_TOOL_'+Path(str(args[0])).name.upper()) from None
     if result.returncode != 0:
         text=result.stderr.decode('utf-8',errors='replace')
-        for code in ('BLOCKED_COMPATIBILITY','PATCH_DRIFT','BLOCKED_PAIR_MISMATCH','BLOCKED_CAPTURE','BLOCKED_UI_VALIDATION'):
-            if code in text: raise ReleaseBlocked('BLOCKED_COMPATIBILITY' if code=='PATCH_DRIFT' else code)
+        for code in ('BLOCKED_PAIR_MISMATCH','BLOCKED_CAPTURE','BLOCKED_UI_VALIDATION'):
+            if code in text: raise ReleaseBlocked(code)
         raise ReleaseBlocked('BLOCKED_COMMAND_'+Path(str(args[0])).name.upper())
     return result.stdout
 
@@ -160,7 +160,7 @@ def build(ctx, here, c):
         identity=private/'age-identity';identity.write_text(identity_secret+'\n');identity.chmod(0o600)
         require(command(['age-keygen','-y',identity],env=env).decode().strip()==RECIPIENT, 'BLOCKED_AGE_RECIPIENT')
         # Install the existing pinned browser infrastructure, not a second capture framework.
-        for module in ('browser-infra','providers/maxroll','application','snapshot-management'):
+        for module in ('browser-infra','providers/maxroll'):
             command(['npm','ci','--ignore-scripts','--no-audit','--no-fund'],cwd=rulekit/module,env=env)
         chromium=env.get('BROWSER_INFRA_CHROMIUM_PATH') or env.get('CHROMIUM_EXECUTABLE')
         if not chromium:
@@ -192,35 +192,22 @@ def build(ctx, here, c):
                               for row in observed.get('packages',[])]})
                 ctx.artifact(receipt,'capture-receipt.json')
         report=read(report_file)
-        ctx.log('snapshot capture and UI validation: completed; Calculation gate pending')
-        # Drift blocks before attempting to find or fabricate any compatible binding.
+        ctx.log('snapshot capture and UI validation: completed; pair integrity verification pending')
+        # Match this run, independently of the older Rule Kit reference pins.
         command(['node','-e',"require(process.argv[1]).matchCapture(require(process.argv[2]))",here/'pair.js',report_file],env=env)
-        for kind in ('registry','profile'):fetch(c.get(kind),private/(kind+'.json'))
-        verify_config={**c,'report':str(report_file),'registry':str(private/'registry.json'),
+        verify_config={'authorizationRef':c['authorizationRef'],'report':str(report_file),
           'uiAcceptance':str(Path(roots['stateRoot'])/'runs'/report['runId']/'acceptance/acceptance.json'),
-          'profile':str(private/'profile.json'),'source':ctx.source['head'],'dataRoot':str(private/'consumer')}
+          'source':ctx.source['head']}
         config_file=private/'verify-config.json';write(config_file,verify_config)
         verified_file=private/'verified.json'
         command(['node',here/'verify.js',config_file,verified_file],env=env)
         verified=read(verified_file)
-        ctx.log('snapshot validation and compatibility: PASS')
+        ctx.log('snapshot integrity and pair match: PASS; Rule Kit readiness not assessed')
         calculation=next(p for p in report['packages'] if p['kind']=='calculation')
         ui=next(p for p in report['packages'] if p['kind']=='ui')
-        env.update(MAXROLL_AUTHORIZED_SNAPSHOT_ROOT=calculation['snapshotRoot'],
-          MAXROLL_AUTHORIZED_SNAPSHOT_ID=calculation['snapshotId'],MAXROLL_AUTHORIZED_MANIFEST_SHA256=calculation['manifestSha256'],
-          MAXROLL_SNAPSHOT_AUTHORIZATION_REF=c['authorizationRef'],MAXROLL_SOURCE_URL=c['sourceUrl'],MAXROLL_REAL_PROFILE_ID=c.get('realProfileId') or '')
-        command(['npm','run','test:real'],cwd=provider,env=env)
-        real=read(provider/'artifacts/real-acceptance.json')
-        require(real.get('status')=='PASS' and len(real.get('applicationApis',[]))==8 and
-                real.get('transportOfflineEveryEvaluation') is True, 'BLOCKED_CALCULATION_VALIDATION')
         staged=private/'packages';staged.mkdir()
         calc=staged/'calculation';calc.mkdir()
-        allowed_snapshot(Path(calculation['snapshotRoot'])/calculation['snapshotId'],calc/'snapshot'/calculation['snapshotId'])
-        shutil.copyfile(private/'profile.json',calc/'profile.json')
-        files=inventory(calc)
-        write(calc/'snapshot-package.json',{'schemaVersion':'d4-rulekit-snapshot-package/v1','packageVersion':ctx.version,
-          'entryId':c['entryId'],'snapshotId':calculation['snapshotId'],'snapshotManifestSha256':calculation['manifestSha256'],
-          'profileSha256':file_sha(calc/'profile.json'),'files':[{'path':n,**v} for n,v in files.items()]})
+        allowed_snapshot(Path(calculation['snapshotRoot'])/calculation['snapshotId'],calc/calculation['snapshotId'])
         ui_package=staged/'ui';ui_package.mkdir()
         allowed_snapshot(Path(ui['snapshotRoot'])/ui['snapshotId'],ui_package/ui['snapshotId'],ui=True)
         candidate=private/'candidate';candidate.mkdir()
@@ -234,11 +221,9 @@ def build(ctx, here, c):
             require(file_sha(plain)==file_sha(decrypted),'BLOCKED_ROUNDTRIP_HASH')
             roundtrips[kind]=unpack(decrypted,private/(kind+'-verified'),files)
             assets[name]={'sha256':file_sha(encrypted),'bytes':encrypted.stat().st_size,'plaintextSha256':file_sha(plain)}
-        # Import only into the owned temporary consumer; never activate an end-user snapshot.
-        verify_config['packagePath']=str(roundtrips['calculation'])
-        verify_config['dataRoot']=str(private/'roundtrip-consumer')
+        # Re-read the native captures after decrypt/extract; do not import or activate Rule Kit.
         for p in report['packages']:
-            p['snapshotRoot']=str(roundtrips['calculation']/'snapshot' if p['kind']=='calculation' else roundtrips['ui'])
+            p['snapshotRoot']=str(roundtrips[p['kind']])
         write(report_file,report);write(config_file,verify_config)
         command(['node',here/'verify.js',config_file,private/'roundtrip-verification.json'],env=env)
         ui_replay={
@@ -252,14 +237,10 @@ def build(ctx, here, c):
         ui_replay_config=private/'ui-replay.json';write(ui_replay_config,ui_replay)
         command(['node',provider/'tooling/web/full-acceptance.js',ui_replay_config],env=env)
         require(read(private/'roundtrip-ui-acceptance/acceptance.json').get('status')=='AUTOMATED_PASS','BLOCKED_UI_REPLAY')
-        env['MAXROLL_AUTHORIZED_SNAPSHOT_ROOT']=str(roundtrips['calculation']/'snapshot')
-        command(['npm','run','test:real'],cwd=provider,env=env)
-        require(read(provider/'artifacts/real-acceptance.json').get('status')=='PASS','BLOCKED_OFFLINE_CALCULATION_REPLAY')
-        ctx.log('snapshot ZIP/age/decrypt/import/offline replay: PASS')
+        ctx.log('snapshot ZIP/age/decrypt/integrity/offline UI replay: PASS')
         metadata={**verified,'schemaVersion':'d4planner-snapshot-pair/v1','version':ctx.version,
           'sourceSha':ctx.source['head'],'ciRunId':ctx.env.get('GITHUB_RUN_ID'),'assets':assets,
-          'uiReplaySha256':file_sha(private/'roundtrip-ui-acceptance/acceptance.json'),
-          'realValidationSha256':file_sha(provider/'artifacts/real-acceptance.json')}
+          'uiReplaySha256':file_sha(private/'roundtrip-ui-acceptance/acceptance.json')}
         write(candidate/'snapshot-pair.json',metadata)
         (candidate/'SHA256SUMS').write_text(''.join(f'{file_sha(p)}  {p.name}\n' for p in sorted(candidate.iterdir()) if p.name!='SHA256SUMS'))
         verify_candidate(candidate,ctx.version,ctx.source['head'])
@@ -275,6 +256,8 @@ def verify_candidate(directory, version, source):
     metadata=read(directory/'snapshot-pair.json')
     require(metadata.get('version')==version and metadata.get('sourceSha')==source,'BLOCKED_CANDIDATE_PROVENANCE')
     require(metadata.get('schemaVersion')=='d4planner-snapshot-pair/v1' and
+            metadata.get('ruleKitReadiness')=='NOT_ASSESSED' and
+            isinstance(metadata.get('calculationReferenceStatus'),str) and metadata['calculationReferenceStatus'] and
             all(isinstance(metadata.get(key),str) and metadata[key] for key in
                 ('captureRunId','calculationSnapshotId','uiSnapshotId')) and
             metadata['calculationSnapshotId']!=metadata['uiSnapshotId'] and
@@ -296,8 +279,7 @@ def publish(ctx, here, c):
     candidate=ctx.build_artifact('snapshots')
     metadata=verify_candidate(candidate,ctx.version,ctx.source['head'])
     approval=c.get('distribution') or {}
-    require(metadata.get('distribution',{}).get('permission')=='PUBLIC_APPROVED' and
-            approval.get('permission')=='PUBLIC_APPROVED' and approval.get('version')==ctx.version and
+    require(approval.get('permission')=='PUBLIC_APPROVED' and approval.get('version')==ctx.version and
             isinstance(approval.get('reference'),str) and approval['reference'].strip(), 'BLOCKED_DISTRIBUTION_APPROVAL')
     require(ctx.env.get('GITHUB_ACTIONS')=='true' and ctx.env.get('GITHUB_EVENT_NAME')=='workflow_dispatch'
             and ctx.env.get('GITHUB_REF')=='refs/heads/master' and ctx.intent=='publish','BLOCKED_OWNER_PUBLISH_APPROVAL')

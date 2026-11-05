@@ -1,12 +1,17 @@
 # Snapshot release (#180)
 
-Assessment: AGREE / FIX_REQUIRED for the simplified ZIP + age contract. Capture
-already supports `--mode all`, UI acceptance and exact runtime comparison, but
-COMPLETE does not approve Calculation. Existing encrypted-fixture packaging only
-accepts Calculation files and cannot package a native UI snapshot unchanged.
-The new product composes existing capture, Rule Kit trust/import and acceptance;
-it adds no signing keys, signatures or compatibility definitions. Release tooling
-lives outside the execution-index inputs so existing execution identity is preserved.
+Owner clarification, 2026-11-05: snapshot release and Rule Kit adoption are
+separate operations. Each release captures a fresh Calculation/UI pair. The release
+checks capture completeness, immutable resource integrity, matching runtime hashes
+and UI acceptance. A difference from an older Rule Kit reference is recorded as
+`calculationReferenceStatus`, never used as a release compatibility gate.
+`ruleKitReadiness` remains `NOT_ASSESSED`, including for matching reference pins.
+
+Assessment: AGREE / FIX_REQUIRED. Existing capture and UI tooling are reused.
+The release does not load a production Registry, require a profile/entry approval,
+run the reference-specific eight-API suite or import into an active Rule Kit store.
+Those are adoption checks. Release tooling stays outside the execution-index inputs;
+existing trust/compatibility logic and execution identity remain unchanged.
 
 ## Entrypoint
 
@@ -31,13 +36,11 @@ do not put the value on the command line or in tracked files. Local-only
 `SNAPSHOT_RELEASE_CONFIG` can point to an authorized private config. This override
 is rejected on Actions; CI reads the committed `release/config.json`.
 
-The checked-in config deliberately has no fabricated authorization or bindings.
 Set `sourceUrl` and `authorizationRef` to the approved anonymous capture source.
-`registry` and `profile` are `{url, sha256}` descriptors for existing approved
-inputs, not a request to generate new ones. Set `entryId` and `realProfileId` to
-existing Rule Kit bindings. `distribution` is `{permission: "PUBLIC_APPROVED",
-version, reference}` for the exact publish version and both snapshot types.
-Never commit private data or credentials. Missing inputs remain BLOCKED.
+The checked-in config does not invent that authorization. No Registry/profile or
+preapproved snapshot ID is needed for release. `distribution` is
+`{permission: "PUBLIC_APPROVED", version, reference}` for the exact publish version
+and both snapshot types. Never commit private data or credentials.
 
 A clean committed checkout is required by the existing real UI acceptance. Capture
 stores and temporary config are generated on the executing machine, outside its
@@ -46,19 +49,24 @@ archive/hash and pinned Playwright infrastructure already used by this repositor
 
 ## Verification and publish
 
-Build captures both packages, rejects drift, verifies the existing production
-Registry/profile binding, runs real-provider/eight-API acceptance, then creates
-separate deterministic ZIPs. Ciphertext is intentionally randomized by age.
-After decryption it checks every entry/hash, imports Calculation into an owned
-scratch consumer and repeats offline Calculation/UI acceptance. It never activates
-an end-user snapshot. Raw data and tool output stay private; only the four approved
-candidate files and sanitized blocked/publish receipts are exported.
+Build captures both packages, checks integrity and pair matching, and creates two
+ZIPs. Each ZIP has its native snapshot ID as the single root directory, containing
+manifest/anchor/blobs; the UI root also contains coverage and validation receipts.
+Calculation ZIPs do not claim to be approved Rule Kit import packages and do not
+contain a fabricated profile or Registry entry. ZIP bytes are deterministic;
+ciphertext is intentionally randomized by age.
 
-Publish additionally requires explicit manual master intent, the existing signed
-Calculation distribution permission and the exact-version pair distribution
-reference. Existing tags/releases are rejected. Assets are uploaded to a draft,
-downloaded and compared before publication. Failure leaves a draft for inspection;
-there is no overwrite, automatic repair, cleanup of releases or retry bypass.
+After decryption the pipeline checks every entry/hash, re-verifies both native
+snapshot stores and repeats offline UI/Native JSON acceptance. Raw data and tool
+output stay private; only ciphertext, pair metadata, checksums and sanitized
+receipts are exported. Failed integrity, mismatched pair provenance/runtime or UI
+validation failures still block release.
+
+Publish requires explicit manual master intent and exact-version distribution
+approval for the pair, independently of Rule Kit compatibility approval. Existing
+tags/releases are rejected. Assets are uploaded to a draft, downloaded and compared
+before publication. Failure leaves a draft for inspection; there is no overwrite,
+automatic cleanup of releases or retry bypass.
 
 No GitHub Actions dispatch, merge, release or Windows A deployment is authorized by
 these local commands. SR-01..07 require an actual successful product build; unit
