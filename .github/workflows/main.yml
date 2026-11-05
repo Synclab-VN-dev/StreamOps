@@ -38,7 +38,6 @@ jobs:
     outputs:
       read: ${{ steps.plan.outputs.read }}
       build: ${{ steps.plan.outputs.build }}
-      private_build: ${{ steps.plan.outputs.private_build }}
       fixture: ${{ steps.plan.outputs.fixture }}
       publish: ${{ steps.plan.outputs.publish }}
       external_publish: ${{ steps.plan.outputs.external_publish }}
@@ -162,58 +161,6 @@ jobs:
         path: ${{ runner.temp }}/ci-results
         if-no-files-found: error
         retention-days: 30
-  private_build:
-    needs:
-    - plan
-    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.private_build).include[0] != null && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' && (inputs.operation == 'build' || inputs.operation == 'publish') }}
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.plan.outputs.private_build) }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.timeout }}
-    permissions:
-      contents: read
-    steps:
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      with:
-        ref: ${{ github.event.pull_request.head.sha || github.sha }}
-        fetch-depth: 0
-        persist-credentials: false
-    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-      with:
-        python-version: 3.12.10
-    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-      with:
-        name: ci-plan
-        path: ${{ runner.temp }}/ci-plan
-    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-      if: matrix.node != ''
-      with:
-        node-version: ${{ matrix.node }}
-    - name: Prepare requested Rust toolchain
-      if: matrix.rust != ''
-      shell: bash
-      env:
-        REQUESTED_RUST: ${{ matrix.rust }}
-      run: 'rustup toolchain install "$REQUESTED_RUST" --profile minimal
-
-        rustup default "$REQUESTED_RUST"'
-    - name: Execute source-bound contract
-      shell: bash
-      env:
-        CI_JOB: ${{ matrix.key }}
-        CI_VERSION: ${{ inputs.version }}
-        CI_TRUSTED_EXECUTION: '1'
-        CI_READ_TOKEN: ${{ github.token }}
-        CI_BOUND_SECRET_1: ${{ matrix.secret_1 == 'MAXROLL_FIXTURE_AGE_IDENTITY' && secrets.MAXROLL_FIXTURE_AGE_IDENTITY || '' }}
-      run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --output "$RUNNER_TEMP/ci-results"
-    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-      if: always()
-      with:
-        name: ci-evidence-${{ matrix.key }}
-        path: ${{ runner.temp }}/ci-results
-        if-no-files-found: error
-        retention-days: 30
   fixture:
     needs:
     - plan
@@ -272,8 +219,7 @@ jobs:
     - plan
     - read
     - build
-    - private_build
-    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.publish).include[0] != null && github.event_name == 'workflow_dispatch' && inputs.operation == 'publish' && github.ref == 'refs/heads/master' && needs.read.result != 'failure' && needs.read.result != 'cancelled' && needs.build.result != 'failure' && needs.build.result != 'cancelled' && needs.private_build.result != 'failure' && needs.private_build.result != 'cancelled' }}
+    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.publish).include[0] != null && github.event_name == 'workflow_dispatch' && inputs.operation == 'publish' && github.ref == 'refs/heads/master' && needs.read.result != 'failure' && needs.read.result != 'cancelled' && needs.build.result != 'failure' && needs.build.result != 'cancelled' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.publish) }}
@@ -331,8 +277,7 @@ jobs:
     - plan
     - read
     - build
-    - private_build
-    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.external_publish).include[0] != null && github.event_name == 'workflow_dispatch' && inputs.operation == 'publish' && github.ref == 'refs/heads/master' && needs.read.result != 'failure' && needs.read.result != 'cancelled' && needs.build.result != 'failure' && needs.build.result != 'cancelled' && needs.private_build.result != 'failure' && needs.private_build.result != 'cancelled' }}
+    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.external_publish).include[0] != null && github.event_name == 'workflow_dispatch' && inputs.operation == 'publish' && github.ref == 'refs/heads/master' && needs.read.result != 'failure' && needs.read.result != 'cancelled' && needs.build.result != 'failure' && needs.build.result != 'cancelled' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.external_publish) }}
@@ -392,7 +337,6 @@ jobs:
     - plan
     - read
     - build
-    - private_build
     - fixture
     - publish
     - external_publish
