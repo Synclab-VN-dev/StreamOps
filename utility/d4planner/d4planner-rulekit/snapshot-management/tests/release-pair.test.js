@@ -18,7 +18,6 @@ test('matching provenance is not Calculation approval', () => {
   assert.equal(result.status, undefined);
 });
 for (const [name, mutate, code] of [
-  ['drift', r => {r.packages[0].compatibility='PATCH_DRIFT';}, 'BLOCKED_COMPATIBILITY'],
   ['mixed run', r => {r.packages[1].runId='other';}, 'BLOCKED_PROVENANCE'],
   ['missing UI', r => {r.packages.pop();}, 'BLOCKED_PROVENANCE'],
   ['invalid UI', r => {r.packages[1].validationStatus='FAILED';}, 'BLOCKED_UI_VALIDATION'],
@@ -48,4 +47,13 @@ test('capture adapter persists report independently from logging and removes sig
     assert.equal(JSON.parse(await fs.readFile(path.join(root,'failure.json'))).status,'FAILED');
     assert.equal(process.listenerCount('SIGTERM'),before);
   } finally {await fs.rm(root,{recursive:true,force:true});}
+});
+
+test('a freshly captured matching pair can release despite drift without claiming Rule Kit readiness', () => {
+  const report = capture(); report.packages[0].compatibility = 'PATCH_DRIFT';
+  const result = matchCapture(report);
+  assert.equal(result.calculationReferenceStatus, 'PATCH_DRIFT');
+  assert.equal(result.ruleKitReadiness, 'NOT_ASSESSED');
+  report.packages[1].identity.fingerprints['https://maxroll.gg/game/data.min.json'] = 'd'.repeat(64);
+  assert.throws(() => matchCapture(report), error => error.code === 'BLOCKED_PAIR_MISMATCH');
 });
