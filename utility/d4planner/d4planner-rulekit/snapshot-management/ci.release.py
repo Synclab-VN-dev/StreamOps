@@ -5,8 +5,7 @@ CI_SPEC = {'version': 1, 'id': 'd4planner-snapshots',
            'depends_on': ['d4planner-rulekit'],
            'jobs': [
                {'id': 'pair', 'profile': 'linux', 'timeout': 7200,
-                'operation': 'build', 'capability': 'private-build',
-                'secrets': {'AGE_IDENTITY_SECRET': 'MAXROLL_FIXTURE_AGE_IDENTITY'},
+                'operation': 'build', 'capability': 'read',
                 'tools': {'node': '22'}},
                {'id': 'publish', 'profile': 'linux', 'timeout': 900,
                 'operation': 'publish', 'capability': 'publish'}]}
