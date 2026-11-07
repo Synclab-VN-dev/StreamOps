@@ -139,15 +139,34 @@ def test_upload_rejects_unlisted_private_assets(tmp_path,monkeypatch,name):
     with pytest.raises(ValueError,match='UNEXPECTED_PUBLIC_ASSET'):ci.verify_upload(folder,HEAD,'1.0.3',meta['sha256'])
 
 
+def assert_source_layout(project):
+    # Importing CI adapters creates bytecode caches beside their source files.
+    # Ignore only Python caches; unexpected source directories must still fail.
+    def directories(path):
+        return {p.name for p in path.iterdir() if p.is_dir() and p.name != '__pycache__'}
+    # Owner-approved shared tooling sits beside the four runtime components.
+    assert directories(project) == {
+        'd4planner-launcher','d4planner-be','d4planner-hud','d4planner-rulekit','script'}
+    assert directories(project/'script') == {'build'}
+
+
+@pytest.mark.parametrize('unexpected_parent', ['', 'script'])
+def test_source_layout_allows_python_caches_but_rejects_extra_sources(tmp_path, unexpected_parent):
+    for name in ('d4planner-launcher','d4planner-be','d4planner-hud','d4planner-rulekit',
+                 'script/build', '__pycache__', 'script/__pycache__'):
+        (tmp_path/name).mkdir(parents=True)
+    assert_source_layout(tmp_path)
+    (tmp_path/unexpected_parent/'unexpected-source').mkdir()
+    with pytest.raises(AssertionError):
+        assert_source_layout(tmp_path)
+
+
 def test_hud_source_ownership_keeps_installed_identity_and_package_paths():
     import tomllib
     project=ci.ROOT/'utility/d4planner'
     hud=project/'d4planner-hud'
     launcher=project/'d4planner-launcher'
-    # Owner-approved shared tooling sits beside the four runtime components.
-    assert {p.name for p in project.iterdir() if p.is_dir()} == {
-        'd4planner-launcher','d4planner-be','d4planner-hud','d4planner-rulekit','script'}
-    assert {p.name for p in (project/'script').iterdir() if p.is_dir()} == {'build'}
+    assert_source_layout(project)
     for component in [hud/'src-tauri',launcher]:
         cargo=tomllib.loads((component/'Cargo.toml').read_text())
         dependency=cargo['dependencies']['d4planner-runtime-logging']['path']
