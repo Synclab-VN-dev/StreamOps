@@ -67,7 +67,7 @@ class EventStore:
             on_malformed=on_malformed,
         )
         if malformed_diagnostics:
-            migration_log = paths.logs / "event-migration.jsonl"
+            migration_log = paths.state / "event-migration.jsonl"
             with migration_log.open("a", encoding="utf-8", newline="\n") as handle:
                 for diagnostic in malformed_diagnostics:
                     handle.write(

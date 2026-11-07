@@ -110,10 +110,8 @@ def active_console_session_id() -> int:
 
 
 def remote_log_path(request_id: str) -> Path:
-    root = os.environ.get("LOCALAPPDATA")
-    if not root:
-        raise RuntimeError("LOCALAPPDATA is not set; cannot safely store diagnostic logs")
-    return Path(root) / "d4planner" / "state" / "keyboard-diagnostic" / f"f11-{request_id}.log"
+    from .runtime.storage import resolve_root
+    return resolve_root() / "state" / "keyboard-diagnostic" / f"f11-{request_id}.log"
 
 
 def _powershell_quote(text: str) -> str:

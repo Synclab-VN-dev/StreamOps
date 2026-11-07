@@ -1,5 +1,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+mod storage;
+
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{env, fs, io::Read, path::{Component, Path, PathBuf}};
@@ -209,7 +211,7 @@ mod windows {
             match fs::read(&active).ok().and_then(|bytes|serde_json::from_slice::<Value>(&bytes).ok()) {
                 Some(state) if state["applicationId"] == "vn.synclab.d4planner" => (),
                 Some(_) => return Err("Application identity mismatch".into()),
-                None if env::var_os("D4PLANNER_DATA_ROOT").is_some() => (),
+                None if env::var_os("D4PLANNER_DATA_ROOT").is_some() => return storage::resolve(root, None, &env::vars().collect()),
                 None => return Err("Damaged installation metadata requires explicit DataRoot for export".into()),
             }
         }
@@ -217,13 +219,14 @@ mod windows {
     }
 
     pub(super) fn data_root(root: &Path) -> Result<PathBuf, String> {
-        let installed = fs::read(root.join("active.json")).ok()
-            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
-            .and_then(|state| state["dataDir"].as_str().map(PathBuf::from));
-        let data = env::var_os("D4PLANNER_DATA_ROOT").map(PathBuf::from).or(installed).unwrap_or_else(||
-            PathBuf::from(env::var_os("LOCALAPPDATA").unwrap_or_default()).join("StreamOps/D4Planner"));
-        if !data.is_absolute() || data.starts_with(root) { return Err("DataDir must be absolute and outside installation".into()); }
-        Ok(data)
+        let active = root.join("active.json");
+        let installed = if active.exists() {
+            let state: Value = serde_json::from_slice(&fs::read(&active).map_err(|e|e.to_string())?)
+                .map_err(|_| "PATH_INCOMPATIBLE: invalid installation metadata")?;
+            if state["applicationId"] != "vn.synclab.d4planner" { return Err("Application identity mismatch".into()); }
+            Some(PathBuf::from(state["dataDir"].as_str().ok_or("Registered DataRoot missing")?))
+        } else { None };
+        storage::resolve(root, installed.as_deref(), &env::vars().collect())
     }
 
     pub fn provision(root: &Path, payload: &Path) -> Result<(), String> { unsafe {
@@ -274,6 +277,10 @@ mod windows {
         let data = if probe { probe_data.clone() } else { data_root(root)? };
         let viewer = env::args().any(|a| a == "--viewer");
         if !data.is_absolute() || data.starts_with(root) { return Err("DataDir must be absolute and outside installation".into()); }
+        if !data.exists() {
+            d4planner_runtime_logging::private_dir(&data).map_err(|e|e.to_string())?;
+        }
+        storage::check_owner(&data)?;
         for directory in ["targets", "state", "private"] { fs::create_dir_all(data.join(directory)).map_err(|e| e.to_string())?; }
         let manifest:Value=serde_json::from_slice(&fs::read(payload.join("release-manifest.json")).unwrap_or_default()).unwrap_or(json!({}));
         let log_session=d4planner_runtime_logging::Session::create(&data,manifest["version"].as_str().unwrap_or("UNKNOWN"),manifest["sourceHead"].as_str().unwrap_or("UNKNOWN")).ok();
@@ -313,6 +320,8 @@ mod windows {
             command.env("D4_LOG_POLICY",log_policy.to_string());
             command.current_dir(payload).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped())
                 .creation_flags(CREATE_SUSPENDED | CREATE_NO_WINDOW)
+                .env("D4PLANNER_DATA_ROOT", &data)
+                .env("D4PLANNER_HOME", &data)
                 .env("D4PLANNER_DATA_DIR", data.join("state"))
                 .env("D4PLANNER_MODE", if viewer { "viewer" } else { "integrated" })
                 .env("D4PLANNER_BOOTSTRAP_FILE", &bootstrap)
@@ -360,7 +369,13 @@ mod windows {
                 }
                 if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
                     if let Some(session)=&log_session {session.bootstrap_event(if status.success(){"EXIT"}else{"ERROR"});}
-                    if !status.success() { return Err(format!("Native HUD exited: {status}")); }
+                    if !status.success() {
+                        if probe {
+                            let detail: Value = fs::read(&probe_report).ok().and_then(|bytes|serde_json::from_slice(&bytes).ok()).unwrap_or(json!({}));
+                            return Err(format!("Native HUD health failed: {}",detail["error"].as_str().unwrap_or("no native report")));
+                        }
+                        return Err(format!("Native HUD exited: {status}"));
+                    }
                     if probe {
                         let report: Value = serde_json::from_slice(&fs::read(&probe_report).map_err(|e| e.to_string())?)
                             .map_err(|e| e.to_string())?;

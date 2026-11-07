@@ -139,7 +139,7 @@ def test_managed_stdin_planner_requests_target_and_shutdown(tmp_path):
     state = provision(tmp_path); port = free_port()
     bootstrap = {'protocol': 'd4planner-managed/v1', 'contractVersion': 'd4planner-r1-contract/1.0.0-candidate.6',
                  **{k: request()[k] for k in ('ownerInstanceId', 'childInstanceId', 'generation')},
-                 'dataDir': str(tmp_path/'data'), 'targetFolder': str(tmp_path/'targets'),
+                 'dataDir': str(tmp_path/'state'), 'targetFolder': str(tmp_path/'targets'),
                  'wsEndpoint': {'host': '127.0.0.1', 'port': 0}, 'credential': 'a'*32}
     file = tmp_path/'bootstrap.json'; file.write_text(json.dumps(bootstrap)); file.chmod(0o600)
     env = {**os.environ, 'PYTHONPATH': str(ROOT/'utility/d4planner/d4planner-be/src'),

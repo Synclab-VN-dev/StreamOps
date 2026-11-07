@@ -3,7 +3,7 @@
 ## Scope
 
 This issue changes the canonical runtime event history from per-session `events.jsonl`
-files to a shared SQLite database at `%LOCALAPPDATA%\d4planner\state\events.db`.
+files to a shared SQLite database at `%LOCALAPPDATA%\StreamOps\D4Planner\state\events.db`.
 The existing `character.db` remains the materialized/current character state.
 
 The NVDA add-on still writes `raw-speech.jsonl` as its process-to-process ingress.

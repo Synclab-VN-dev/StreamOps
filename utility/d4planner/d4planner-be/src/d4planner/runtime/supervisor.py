@@ -337,6 +337,9 @@ class Supervisor:
                 raise RuntimeBlocked(
                     f"NVDA SessionId={nvda.session_id} does not match active console SessionId={console}"
                 )
+            verify_root = getattr(self.runtime, "verify_nvda_data_root", None)
+            if verify_root is not None:
+                verify_root(nvda)
             self.status.active_console_session_id = console
             self.status.nvda = nvda
             self.transition(RuntimeState.NVDA_READY, f"NVDA ready in Session {console}")

@@ -33,7 +33,7 @@ def test_managed_target_ipc_commits_before_notification_and_offline_read(tmp_pat
         D4_RULEKIT_CHROMIUM_EXECUTABLE=chromium)
     if logging_enabled:
         from test_runtime_logging import session
-        log_dir, run_id = session(tmp_path)
+        log_dir, run_id = session(data)
         env.update(D4_LOG_DIR=str(log_dir), D4_LOG_RUN_ID=run_id)
     executable=sys.executable
     if os.name=='nt':

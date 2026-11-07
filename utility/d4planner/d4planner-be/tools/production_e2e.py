@@ -222,6 +222,8 @@ def _runtime_env(install: Path, bootstrap: Path, evidence: Path) -> dict[str, st
     env.update({
         "D4PLANNER_BOOTSTRAP_FILE": str(bootstrap),
         "D4PLANNER_MODE": "integrated",
+        "D4PLANNER_DATA_ROOT": str(bootstrap.parent),
+        "D4PLANNER_HOME": str(bootstrap.parent),
         "D4PLANNER_DATA_DIR": str(bootstrap.parent / "state"),
         "PYTHONPATH": str(install / "backend/site-packages"),
         "D4PLANNER_RULEKIT_EXECUTABLE": str(install / "runtime/node/node.exe"),

@@ -203,7 +203,7 @@ def test_event_store_reports_malformed_legacy_lines_to_diagnostic_log(tmp_path):
     try:
         metadata = read_json(store.session.metadata_path)
         assert metadata["legacyMigration"]["malformedRows"] == 1
-        diagnostic = paths.logs / "event-migration.jsonl"
+        diagnostic = paths.state / "event-migration.jsonl"
         assert diagnostic.exists()
         lines = [
             json.loads(line)

@@ -29,7 +29,7 @@ The implementation must remain SSH-friendly from machine B / Termux.
 
 ## Runtime contract
 
-- Runtime root: `%LOCALAPPDATA%\d4planner`
+- Runtime root: `%LOCALAPPDATA%\StreamOps\D4Planner`
 - Do not copy controller DLLs into the Diablo IV directory.
 - Production mode manages the controller runtime in User PATH only; Machine PATH must remain unchanged.
 - User PATH changes must be idempotent and reversible.
@@ -69,7 +69,7 @@ Rules:
 Each capture lifecycle creates its own immutable session:
 
 ```text
-%LOCALAPPDATA%\d4planner\sessions\<timestamp>-<session-id>\
+%LOCALAPPDATA%\StreamOps\D4Planner\sessions\<timestamp>-<session-id>\
 ├── metadata.json
 ├── raw-speech.jsonl
 ├── capture-context.jsonl

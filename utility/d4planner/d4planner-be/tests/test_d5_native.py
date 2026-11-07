@@ -34,7 +34,7 @@ def test_root_launcher_committed_db_notification_native_reader_and_target_ipc(tm
     report = tmp_path / "render.json"
     env = {key: value for key, value in os.environ.items()
            if not key.startswith(("D4PLANNER_", "D4_RULEKIT_", "D4_HUD_"))}
-    env.update(D4PLANNER_DATA_ROOT=str(data), D4_HUD_PIPELINE_REPORT=str(report),
+    env.update(D4PLANNER_STORAGE_ISOLATED="1", D4PLANNER_DATA_ROOT=str(data), D4_HUD_PIPELINE_REPORT=str(report),
                D4_HUD_PIPELINE_CONTINUOUS="1", WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--force-renderer-accessibility")
     process = subprocess.Popen([str(install / "D4Planner.exe")], env=env, cwd=tmp_path)
     def rendered(predicate):

@@ -97,7 +97,7 @@ async def run(args):
         with tempfile.TemporaryDirectory(prefix='planner-acceptance-') as temp:
             data = Path(temp)
             bootstrap = {'protocol': 'd4planner-managed/v1', 'contractVersion': 'd4planner-r1-contract/1.0.0-candidate.6',
-                         **identity, 'dataDir': str(data/'data'), 'targetFolder': str(data/'targets'),
+                         **identity, 'dataDir': str(data/'state'), 'targetFolder': str(data/'targets'),
                          'wsEndpoint': {'host': '127.0.0.1', 'port': 0}, 'credential': os.urandom(32).hex()}
             file = data/'bootstrap.json'; file.write_text(json.dumps(bootstrap))
             env = {**os.environ, 'PYTHONPATH': str(ROOT/'utility/d4planner/d4planner-be/src'),

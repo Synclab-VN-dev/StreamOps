@@ -282,11 +282,44 @@ class WindowsRuntime:
             shutil.copy2(core_source, core_target)
             changed = True
 
+        storage_source = Path(__file__).with_name("storage.py")
+        storage_target = destination / "globalPlugins" / "d4plannerCapture" / "storage.py"
+        if not self._same_file(storage_source, storage_target):
+            shutil.copy2(storage_source, storage_target)
+            changed = True
+
+        acl_source = Path(__file__).with_name("storage_acl.ps1")
+        acl_target = storage_target.with_name("storage_acl.ps1")
+        if not self._same_file(acl_source, acl_target):
+            shutil.copy2(acl_source, acl_target)
+            changed = True
+
         if self.addon_version() != self.EXPECTED_ADDON_VERSION:
             raise RuntimeBlocked(
                 f"D4Planner add-on version mismatch after sync: {self.addon_version()!r}"
             )
         return changed
+
+    def verify_nvda_data_root(self, nvda) -> None:
+        from .store import read_json
+        from .storage import canonical
+        receipt_path = self.paths.root / "private/nvda-capture-consumer.json"
+        deadline = time.monotonic() + 5
+        while True:
+            receipt = read_json(receipt_path) or {}
+            try:
+                same_root = canonical(receipt.get("dataRoot", "")) == self.paths.root
+            except ValueError:
+                same_root = False
+            try:
+                fresh = datetime.fromisoformat(nvda.started_at).timestamp() <= float(receipt["writtenAtUnix"]) <= time.time() + 1
+            except (TypeError, ValueError, KeyError):
+                fresh = False
+            if same_root and fresh and receipt.get("pid") == nvda.pid:
+                return
+            if time.monotonic() >= deadline:
+                raise RuntimeBlocked("PATH_INCOMPATIBLE: NVDA has not acknowledged this DataRoot; restart NVDA explicitly with the configured root")
+            time.sleep(.1)
 
     def addon_version(self) -> str | None:
         manifest = self.addon_path() / "manifest.ini"
@@ -400,7 +433,7 @@ class WindowsRuntime:
         return None
 
     def _extract_controller_archive(self, archive: Path) -> Path:
-        cache = self.paths.root / "cache"
+        cache = self.paths.controller / "cache"
         cache.mkdir(parents=True, exist_ok=True)
         extracted = cache / "nvdaControllerClient64.dll"
         temp = cache / ".nvdaControllerClient64.dll.tmp"
@@ -443,7 +476,7 @@ class WindowsRuntime:
         return extracted
 
     def _download_official_controller(self) -> Path:
-        cache = self.paths.root / "cache"
+        cache = self.paths.controller / "cache"
         cache.mkdir(parents=True, exist_ok=True)
         archive = cache / "nvda_2026.2_controllerClient.zip"
 
@@ -486,7 +519,7 @@ class WindowsRuntime:
             # The runtime directory is D4Planner-owned. Quarantine a corrupt or
             # wrong-architecture copy and self-heal from a verified source.
             actual = self.controller_sha256(target)
-            cache = self.paths.root / "cache"
+            cache = self.paths.controller / "cache"
             cache.mkdir(parents=True, exist_ok=True)
             suffix = (actual or "unreadable")[:12]
             quarantine = cache / f"invalid-nvdaControllerClient64-{suffix}.dll"
@@ -747,6 +780,11 @@ class WindowsRuntime:
         nvda_script.write_text(
             "$ErrorActionPreference='Stop'\n"
             f"$runtime='{runtime}'\n"
+            f"$env:D4PLANNER_DATA_ROOT='{root_q}'\n"
+            f"$env:D4PLANNER_HOME='{root_q}'\n"
+            f"$env:D4PLANNER_DATA_DIR='{root_q}\\state'\n"
+            f"$env:D4_RULEKIT_DATA_ROOT='{root_q}\\rulekit'\n"
+            "Remove-Item Env:D4_LOG_DIR -ErrorAction SilentlyContinue\n"
             "$env:PATH=$runtime+';'+[Environment]::GetEnvironmentVariable('Path','User')+';'+"
             "[Environment]::GetEnvironmentVariable('Path','Machine')\n"
             "if(-not (Get-Process nvda_noUIAccess,nvda -ErrorAction SilentlyContinue)){"
@@ -756,6 +794,11 @@ class WindowsRuntime:
         nvda_restart_script.write_text(
             "$ErrorActionPreference='Stop'\n"
             f"$nvda='{nvda_q}'\n"
+            f"$env:D4PLANNER_DATA_ROOT='{root_q}'\n"
+            f"$env:D4PLANNER_HOME='{root_q}'\n"
+            f"$env:D4PLANNER_DATA_DIR='{root_q}\\state'\n"
+            f"$env:D4_RULEKIT_DATA_ROOT='{root_q}\\rulekit'\n"
+            "Remove-Item Env:D4_LOG_DIR -ErrorAction SilentlyContinue\n"
             "& $nvda -q\n"
             "Start-Sleep -Milliseconds 800\n"
             "Start-Process -FilePath $nvda\n",
@@ -773,6 +816,11 @@ class WindowsRuntime:
         d4_script.write_text(
             "$ErrorActionPreference='Stop'\n"
             f"$runtime='{runtime}'\n"
+            f"$env:D4PLANNER_DATA_ROOT='{root_q}'\n"
+            f"$env:D4PLANNER_HOME='{root_q}'\n"
+            f"$env:D4PLANNER_DATA_DIR='{root_q}\\state'\n"
+            f"$env:D4_RULEKIT_DATA_ROOT='{root_q}\\rulekit'\n"
+            "Remove-Item Env:D4_LOG_DIR -ErrorAction SilentlyContinue\n"
             "$env:PATH=$runtime+';'+[Environment]::GetEnvironmentVariable('Path','User')+';'+"
             "[Environment]::GetEnvironmentVariable('Path','Machine')\n"
             f"$steam='{steam_q}'\n"

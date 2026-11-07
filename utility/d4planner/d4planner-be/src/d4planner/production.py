@@ -320,8 +320,12 @@ class ProductionBackendRuntime:
         self.bootstrap = bootstrap
         self.runtime_instance_id = str(bootstrap["childInstanceId"])
         self.generation = int(bootstrap["generation"])
-        self.data_dir = Path(bootstrap["dataDir"]).resolve()
-        self.target_folder = Path(bootstrap["targetFolder"]).resolve()
+        from .runtime.storage import canonical, resolve_root, StorageError
+        self.data_dir = canonical(bootstrap["dataDir"])
+        self.data_root = resolve_root(self.data_dir.parent)
+        self.target_folder = canonical(bootstrap["targetFolder"])
+        if self.data_dir != self.data_root / "state" or self.target_folder != self.data_root / "targets":
+            raise StorageError("PATH_CONFLICT: managed state/targets must belong to DataRoot")
         configured_root = os.environ.get("D4PLANNER_REPOSITORY_ROOT")
         repository_root = _resolve_repository_root(configured_root)
         self.repository_root = repository_root
@@ -351,7 +355,7 @@ class ProductionBackendRuntime:
         self._recover_selection()
         if self.rulekit is None:
             environment = dict(os.environ)
-            environment.setdefault("D4_RULEKIT_DATA_ROOT", str(self.data_dir / "rulekit"))
+            environment.setdefault("D4_RULEKIT_DATA_ROOT", str(self.data_root / "rulekit"))
             environment.setdefault("D4_RULEKIT_INSTALLATION_ROOT", str(self.repository_root))
             self.rulekit = RuleKitRuntimeService.from_environment(environment)
         rulekit_health = await self.rulekit.start()

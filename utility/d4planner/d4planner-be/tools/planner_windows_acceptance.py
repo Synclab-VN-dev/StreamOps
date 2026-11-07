@@ -72,7 +72,8 @@ async def run(args):
     state_file = state/'capture-state.json'
     provisioned = args.provisioned_state.read_bytes()
     selected = json.loads(provisioned)['payload']['activeUi']
-    env = {**os.environ, 'D4PLANNER_DATA_ROOT': str(data), 'D4_RULEKIT_PLANNER_PORT': str(port),
+    env = {**os.environ, 'D4PLANNER_STORAGE_ISOLATED': '1',
+           'D4PLANNER_DATA_ROOT': str(data), 'D4_RULEKIT_PLANNER_PORT': str(port),
            'D4PLANNER_LAUNCH_REPORT': str(output/'launcher.json'),
            'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS': f'--remote-debugging-port={debug} --force-renderer-accessibility'}
     env.pop('D4_RULEKIT_PLANNER_STATE_ROOT', None)

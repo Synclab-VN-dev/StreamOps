@@ -16,10 +16,21 @@ param(
 $ErrorActionPreference = 'Stop'
 $InstallRoot = [IO.Path]::GetFullPath($InstallRoot)
 $DataRoot = [IO.Path]::GetFullPath($DataRoot)
+$backendPython = Join-Path $InstallRoot 'runtime\python\python.exe'
+if (-not (Test-Path -LiteralPath $backendPython -PathType Leaf)) { throw "Private Python missing: $backendPython" }
+foreach ($name in @('D4PLANNER_DATA_ROOT', 'D4PLANNER_HOME')) {
+    $value = [Environment]::GetEnvironmentVariable($name)
+    if ($value -and [IO.Path]::GetFullPath($value) -ne $DataRoot) { throw "PATH_CONFLICT: $name" }
+}
+$ancestor = $DataRoot
+while ($ancestor) {
+    if ((Test-Path -LiteralPath $ancestor) -and ((Get-Item -Force -LiteralPath $ancestor).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'PATH_INCOMPATIBLE: reparse point' }
+    $ancestor = Split-Path -Parent $ancestor
+}
 $targetRoot = if ($TargetFolder) { [IO.Path]::GetFullPath($TargetFolder) } else { Join-Path $DataRoot 'targets' }
+if ($targetRoot -ne (Join-Path $DataRoot 'targets')) { throw 'PATH_CONFLICT: TargetFolder' }
 $stateRoot = Join-Path $DataRoot 'state'
 $privateRoot = Join-Path $DataRoot 'private'
-New-Item -ItemType Directory -Force $targetRoot, $stateRoot, $privateRoot | Out-Null
 
 if ($WsPortMode -eq 'FixedApprovedUat' -and $ApprovedPort -eq 0) {
     throw 'FixedApprovedUat requires an Owner-approved non-zero -ApprovedPort'
@@ -61,6 +72,14 @@ if ($ValidateOnly) {
     exit 0
 }
 
+$resolved = & $backendPython -c 'import sys; from d4planner.runtime.storage import resolve_root; print(resolve_root(sys.argv[1]))' $DataRoot
+if ($LASTEXITCODE -ne 0) { throw 'PATH_INCOMPATIBLE: DataRoot preflight failed' }
+$DataRoot = [string]$resolved
+$targetRoot = Join-Path $DataRoot 'targets'
+$stateRoot = Join-Path $DataRoot 'state'
+$privateRoot = Join-Path $DataRoot 'private'
+New-Item -ItemType Directory -Force $targetRoot, $stateRoot, $privateRoot | Out-Null
+
 $bootstrap = Join-Path $privateRoot ("bootstrap-{0}.json" -f [guid]::NewGuid())
 $credentialBytes = New-Object byte[] 32
 $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
@@ -79,6 +98,8 @@ $descriptor = [ordered]@{
 }
 [IO.File]::WriteAllText($bootstrap, ($descriptor | ConvertTo-Json -Depth 4 -Compress), [Text.UTF8Encoding]::new($false))
 
+$env:D4PLANNER_DATA_ROOT = $DataRoot
+$env:D4PLANNER_HOME = $DataRoot
 $env:D4PLANNER_DATA_DIR = $stateRoot
 $env:D4PLANNER_MODE = "integrated"
 $env:D4PLANNER_BOOTSTRAP_FILE = $bootstrap
