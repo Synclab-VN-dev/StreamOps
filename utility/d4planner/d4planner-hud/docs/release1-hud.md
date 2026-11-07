@@ -29,6 +29,11 @@ FAIL issues and WARN counts stay separate. No production actual is used as Golde
 Independent visual Golden, Owner MAN and real StreamOps window capture are separate
 gates; unit/DOM tests and synthetic native data are not evidence of those gates.
 
+Create Build adds an internal native/BE/Rule Kit control action. The existing Golden
+above remains the approved baseline. Owner-selected v15 revision 468645150797758464
+is the menu implementation reference; Visual Golden remains BLOCKED_OWNER_APPROVAL.
+See [Planner architecture and gates](create-build-local-planner.md).
+
 Local verification: `npm test`, `npm run build`; `cargo test --manifest-path
 reader-tests/Cargo.toml` exercises production native reader without GUI dependencies.
 The Windows reader test executable can also run in the isolated F2 VM. Full native

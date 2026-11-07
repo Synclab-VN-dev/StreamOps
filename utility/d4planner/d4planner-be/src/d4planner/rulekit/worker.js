@@ -8,6 +8,7 @@ const PROTOCOL_VERSION = 'd4-rulekit-ipc/v1';
 const APPLICATION_CONTRACT_VERSION = 'd4-rulekit-application/v1';
 // Approved independent Snapshot Management contract; never infer APIs from a manager instance.
 const SNAPSHOT_PROTOCOL = 'd4-rulekit-snapshots/v1';
+const PLANNER_PROTOCOL = 'd4planner-local-planner/v1';
 const SNAPSHOT_METHODS = Object.freeze([
   'listInstalled', 'checkCompatibility', 'getCapabilities', 'importPackage',
   'activate', 'getActive', 'switchSnapshot', 'rollback', 'compareSnapshots',
@@ -61,6 +62,11 @@ async function main(composition, log = { emit() {}, configure() {} }) {
 
   async function invoke(message, controller) {
     const params = message.params ?? {};
+    if (message.protocolVersion === PLANNER_PROTOCOL) {
+      if (!composition.planner || message.method !== 'planner.ensureReady') throw Object.assign(new Error('Local Planner unavailable'), {code: 'PLANNER_UNAVAILABLE'});
+      if (!params || Array.isArray(params) || typeof params !== 'object' || Object.keys(params).length) throw Object.assign(new Error('Invalid Planner request'), {code: 'PLANNER_UNAVAILABLE'});
+      return composition.planner.ensureReady({signal: controller.signal});
+    }
     if(message.protocolVersion===SNAPSHOT_PROTOCOL){
       if(!composition.snapshotManagement)throw Object.assign(new Error('snapshot management unavailable'),{code:'SNAPSHOT_MANAGEMENT_UNAVAILABLE'});
       const mutation=['activate','switchSnapshot','rollback'].includes(message.method) || message.method==='importPackage' && params.kind==='REGISTRY';
@@ -109,11 +115,11 @@ async function main(composition, log = { emit() {}, configure() {} }) {
     running += 1;
     const controller = new AbortController();
     active.set(message.id, controller);
-    const management=message.protocolVersion===SNAPSHOT_PROTOCOL;
+    const management=message.protocolVersion!==PROTOCOL_VERSION;
     if(!management)runningApplication++;
     Promise.resolve().then(() => invoke(message, controller)).then(
       result => {ok=true;write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'result',correlationId:message.id,result});},
-      error => {log.emit('ERROR','api','ERROR',{correlationId:message.id,errorCode:error?.code});write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'error',correlationId:message.id,error:publicError(error)});},
+      error => {log.emit('ERROR','api','ERROR',{correlationId:message.id,errorCode:error?.code});write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'error',correlationId:message.id,error:message.protocolVersion===PLANNER_PROTOCOL?{code: /^PLANNER_[A-Z_]+$/.test(error?.code||'')?error.code:'PLANNER_UNAVAILABLE',message:'Local Planner request failed.'}:publicError(error)});},
     ).finally(() => {
       log.emit('INFO','api','RESULT',{ok,durationMs:performance.now()-started,correlationId:message.id});
       active.delete(message.id);
@@ -152,7 +158,7 @@ async function main(composition, log = { emit() {}, configure() {} }) {
         error: { code: 'INVALID_MESSAGE', message: 'message must be JSON' } });
       return;
     }
-    if (![PROTOCOL_VERSION,SNAPSHOT_PROTOCOL].includes(message?.protocolVersion)) return;
+    if (![PROTOCOL_VERSION,SNAPSHOT_PROTOCOL,PLANNER_PROTOCOL].includes(message?.protocolVersion)) return;
     if (message.type === 'cancel') {
       active.get(message.correlationId)?.abort();
       const index = queue.findIndex(request => request.id === message.correlationId);
@@ -164,7 +170,7 @@ async function main(composition, log = { emit() {}, configure() {} }) {
       void shutdown();
       return;
     }
-    if (message.type !== 'request' || typeof message.id !== 'string' || !(message.protocolVersion===SNAPSHOT_PROTOCOL?SNAPSHOT_METHODS:APIS).includes(message.method)) {
+    if (message.type !== 'request' || typeof message.id !== 'string' || !(message.protocolVersion===SNAPSHOT_PROTOCOL?SNAPSHOT_METHODS:message.protocolVersion===PLANNER_PROTOCOL?['planner.ensureReady']:APIS).includes(message.method)) {
       write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'error',correlationId:message?.id??null,
         error: { code: 'INVALID_MESSAGE', message: 'invalid request envelope' } });
       return;
@@ -188,6 +194,7 @@ async function main(composition, log = { emit() {}, configure() {} }) {
     type: 'READY', applicationContractVersion: APPLICATION_CONTRACT_VERSION,
     workerInstanceId: instanceId, workerGeneration: generation,
     apis: APIS, snapshotManagementContractVersion:SNAPSHOT_PROTOCOL,
+    plannerContractVersion: composition.planner ? PLANNER_PROTOCOL : undefined,
     health: { ready: true, calculationAvailability:composition.calculationAvailability??'READY',calculationReason:composition.calculationReason??null }, pid: process.pid,
   });
 }

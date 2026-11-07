@@ -543,6 +543,10 @@ def test_wait_start_reports_blocked_when_new_daemon_exits_before_state(monkeypat
 
 
 def test_path_restore_refuses_while_runtime_active(monkeypatch, tmp_path, capsys):
+    # This pure policy test supplies a fake Windows registry backend on Linux too.
+    # Replace only cli's module reference, not process-wide os.name/Path semantics.
+    from types import SimpleNamespace
+    monkeypatch.setattr(cli, "os", SimpleNamespace(**{**vars(cli.os), "name": "nt"}))
     paths = RuntimePaths(tmp_path / "home")
     paths.ensure()
     atomic_write_json(

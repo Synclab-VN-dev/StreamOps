@@ -1,5 +1,8 @@
 # D4Planner source components
 
+[Create Build / Local Planner](d4planner-hud/docs/create-build-local-planner.md): owned Rule Kit
+HTTP runtime, private Windows provisioning, internal control flow and design gates.
+
 Architecture authority: [issue #138](https://github.com/Synclab-VN-dev/StreamOps/issues/138),
 D5 DB-first / FE-independent. This source layout does not change the application,
 process boundaries, public contracts or installed product layout.

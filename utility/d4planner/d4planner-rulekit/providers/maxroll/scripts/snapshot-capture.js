@@ -7,14 +7,17 @@ const { discoverBrowser } = require('../src/live-capture-orchestrator');
 function parseArguments(argv) {
   const options = {};
   for (let index = 0; index < argv.length; index += 1) {
-    if (argv[index] === '--output' && argv[index + 1]) {
-      options.output = argv[index + 1];
+    if (['--output', '--mode', '--config'].includes(argv[index]) && argv[index + 1] && !argv[index + 1].startsWith('--')) {
+      const key = argv[index].slice(2);
+      if (options[key]) throw new Error('duplicate argument: ' + argv[index]);
+      options[key] = argv[index + 1];
       index += 1;
       continue;
     }
     throw new Error(`unsupported or incomplete argument: ${argv[index]}`);
   }
-  if (!options.output) throw new Error('usage: snapshot:capture -- --output <folder>');
+  if (options.mode && !['ui', 'calculation', 'all'].includes(options.mode)) throw new Error('unsupported mode');
+  if (options.mode === 'all' && options.output) throw new Error('all uses two immutable stores; --output is ambiguous');
   return Object.freeze(options);
 }
 
@@ -24,6 +27,14 @@ async function main() {
   const abort = () => controller.abort();
   process.once('SIGINT', abort);
   process.once('SIGTERM', abort);
+  process.once('SIGHUP', abort);
+  if (!options.output || options.mode === 'ui' || options.mode === 'all' || options.config) {
+    const {run} = require('../tooling/capture-workflow');
+    const report = await run({...options, signal: controller.signal});
+    process.stdout.write(JSON.stringify(report) + '\n');
+    return;
+  }
+  // Legacy --output calculation contract remains independent of new private settings.
   const report = await new MaxrollSnapshotCapturer().capture({
     ...options,
     executablePath: discoverBrowser(process.env),

@@ -1,5 +1,9 @@
 # Maxroll Calculation Provider
 
+The independent Native JSON → offline Planner → DOM display-value path is documented in
+[DOM-CALCULATION.md](./DOM-CALCULATION.md). It has an explicit entry point and no fallback
+to or changes in the CDP path below.
+
 Universal canonical/native import status and its measured coverage are documented in
 [`UNIVERSAL-IMPORT.md`](./UNIVERSAL-IMPORT.md) and
 [`UNIVERSAL-IMPORT-COVERAGE.json`](./UNIVERSAL-IMPORT-COVERAGE.json).

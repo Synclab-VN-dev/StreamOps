@@ -172,6 +172,15 @@ async def _run_managed(bootstrap: dict[str, Any], runtime: ManagedRuntime) -> in
         "health": health,
     })
 
+    planner_requests = {}
+
+    async def planner_request(command):
+        from .control import dispatch
+        try:
+            _emit(await dispatch(runtime, command, bootstrap))
+        finally:
+            planner_requests.pop(command["requestId"], None)
+
     while not stopping:
         line = await asyncio.to_thread(sys.stdin.readline, 1048577)
         if len(line) > 1048576:
@@ -183,6 +192,31 @@ async def _run_managed(bootstrap: dict[str, Any], runtime: ManagedRuntime) -> in
             command = json.loads(line)
         except json.JSONDecodeError:
             _emit({"event": "ERROR", "code": "INVALID_CONTROL_MESSAGE"})
+            continue
+        if isinstance(command, dict) and command.get("type") == "cancel" and command.get("method") == "planner.ensureReady":
+            from .control import validate_request
+            try:
+                validate_request({**command, "type": "request"})
+                if all(command[k] == bootstrap[k] for k in ("ownerInstanceId", "childInstanceId", "generation")):
+                    task = planner_requests.get(command["requestId"])
+                    if task is not None:
+                        task.cancel()
+            except ValueError:
+                pass
+            continue
+        if isinstance(command, dict) and command.get("type") == "request" and command.get("method") == "planner.ensureReady":
+            from .control import validate_request, dispatch
+            try:
+                validate_request(command)
+            except ValueError:
+                _emit(await dispatch(runtime, command, bootstrap))
+                continue
+            if command["requestId"] in planner_requests or len(planner_requests) >= 32:
+                _emit({"protocolVersion": "d4planner-control/v1", "type": "response", "requestId": command["requestId"],
+                       **{key: bootstrap[key] for key in ("ownerInstanceId", "childInstanceId", "generation")},
+                       "result": None, "error": {"code": "PLANNER_BUSY", "message": "Local Planner is busy.", "retryable": True}})
+            else:
+                planner_requests[command["requestId"]] = asyncio.create_task(planner_request(command))
             continue
         if isinstance(command, dict) and command.get("type") == "request":
             from .control import dispatch
@@ -209,6 +243,10 @@ async def _run_managed(bootstrap: dict[str, Any], runtime: ManagedRuntime) -> in
                 continue
         _emit({"event": "ERROR", "code": "OWNERSHIP_MISMATCH"})
 
+    pending = list(planner_requests.values())
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
     try:
         await runtime.stop()
     except Exception as exc:

@@ -9,7 +9,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from .protocol import APPROVED_METHODS, PROTOCOL_VERSION, SNAPSHOT_PROTOCOL_VERSION, SNAPSHOT_METHODS, ProtocolError
+from .protocol import APPROVED_METHODS, PROTOCOL_VERSION, SNAPSHOT_PROTOCOL_VERSION, SNAPSHOT_METHODS, PLANNER_PROTOCOL_VERSION, ProtocolError
 
 
 @dataclass(frozen=True)
@@ -39,9 +39,11 @@ class RuleKitClient:
         worker_generation: int,
         operation_timeout: float = 5.0,
         max_pending: int = 32,
+        planner_available: bool = False,
     ) -> None:
         if operation_timeout <= 0 or max_pending <= 0:
             raise ValueError("operation_timeout and max_pending must be positive")
+        self.planner_available = planner_available
         self._reader = reader
         self._writer = writer
         self.worker_instance_id = worker_instance_id
@@ -70,6 +72,17 @@ class RuleKitClient:
         if method not in SNAPSHOT_METHODS:
             raise ValueError(f"unsupported snapshot method: {method}")
         return await self._call(method, params, timeout=timeout, protocol=SNAPSHOT_PROTOCOL_VERSION)
+
+    async def ensure_planner_ready(self) -> dict:
+        if not self.planner_available:
+            raise RuleKitRemoteError("PLANNER_UNAVAILABLE", "Local Planner unavailable.")
+        try:
+            return await self._call("planner.ensureReady", {}, timeout=35, protocol=PLANNER_PROTOCOL_VERSION)
+        except RuleKitRemoteError as error:
+            code = error.code if error.code.startswith("PLANNER_") else "PLANNER_HEALTH_FAILED" if error.code == "TIMEOUT" else "PLANNER_BUSY" if error.code == "QUEUE_FULL" else "PLANNER_UNAVAILABLE"
+            raise RuleKitRemoteError(code, "Local Planner request failed.") from None
+        except (ProtocolError, OSError):
+            raise RuleKitRemoteError("PLANNER_UNAVAILABLE", "Local Planner unavailable.") from None
 
     async def _call(self, method: str, params: dict | None, *, timeout: float | None, protocol: str) -> Any:
         if self._closed:
@@ -121,6 +134,11 @@ class RuleKitClient:
                     deadline=deadline,
                 )
             raise RuleKitRemoteError("TIMEOUT", f"Rule Kit operation timed out: {method}") from None
+        except asyncio.CancelledError:
+            with contextlib.suppress(BrokenPipeError, ConnectionError, ProtocolError, TimeoutError):
+                await self._send({"type": "cancel", "protocolVersion": protocol, "correlationId": request_id},
+                                 deadline=min(deadline, loop.time() + cancel_budget))
+            raise
         finally:
             emit("INFO","api","RESULT",ok=ok,durationMs=(loop.time()-started)*1000,correlationId=request_id)
             self._pending.pop(request_id, None)
@@ -254,13 +272,13 @@ class RuleKitClient:
                     message = json.loads(line)
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     raise ProtocolError("worker emitted malformed JSON") from None
-                if not isinstance(message, dict) or message.get("protocolVersion") not in {PROTOCOL_VERSION, SNAPSHOT_PROTOCOL_VERSION}:
+                if not isinstance(message, dict) or message.get("protocolVersion") not in {PROTOCOL_VERSION, SNAPSHOT_PROTOCOL_VERSION, PLANNER_PROTOCOL_VERSION}:
                     raise ProtocolError("worker response protocol mismatch")
                 correlation_id = message.get("correlationId")
                 future = self._pending.get(correlation_id)
                 if future is not None and message.get("protocolVersion") != self._pending_protocol.get(correlation_id):
                     raise ProtocolError("worker response namespace mismatch")
-                if message.get("protocolVersion") == SNAPSHOT_PROTOCOL_VERSION and (message.get("workerInstanceId") != self.worker_instance_id or message.get("workerGeneration") != self.worker_generation):
+                if message.get("protocolVersion") in {SNAPSHOT_PROTOCOL_VERSION, PLANNER_PROTOCOL_VERSION} and (message.get("workerInstanceId") != self.worker_instance_id or message.get("workerGeneration") != self.worker_generation):
                     raise ProtocolError("snapshot response worker identity mismatch")
                 if future is None or future.done():
                     continue

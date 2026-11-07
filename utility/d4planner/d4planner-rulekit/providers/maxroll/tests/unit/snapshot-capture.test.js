@@ -170,9 +170,13 @@ test('snapshot:capture retains saved data but fails closed on integrity or clean
   await fs.access(path.join(cleanupOutput, 'capture-report.json'));
 });
 
-test('snapshot capture CLI requires exactly one output folder argument', () => {
+test('snapshot capture CLI preserves legacy output and defaults to automatic calculation', () => {
   assert.deepEqual(parseArguments(['--output', '/tmp/capture']), { output: '/tmp/capture' });
-  assert.throws(() => parseArguments([]), /usage/);
+  assert.deepEqual(parseArguments([]), {});
+  for(const mode of ['ui','calculation','all'])assert.deepEqual(parseArguments(['--mode',mode]),{mode});
+  assert.throws(()=>parseArguments(['--mode','other']),/unsupported/);
+  assert.throws(()=>parseArguments(['--mode','all','--output','/tmp/a']),/ambiguous/);
+  assert.throws(()=>parseArguments(['--output','/tmp/a','--output','/tmp/b']),/duplicate/);
   assert.throws(() => parseArguments(['--unknown']), /unsupported/);
 });
 
