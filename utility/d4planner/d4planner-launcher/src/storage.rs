@@ -117,6 +117,8 @@ pub fn resolve(installation: &Path, registered: Option<&Path>, env: &BTreeMap<St
         let cases: serde_json::Value = serde_json::from_str(include_str!("../../d4planner-be/tests/fixtures/unified-storage-cases.json")).unwrap();
         let root=std::env::temp_dir().join(format!("udr-matrix-{}",uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
+        // Windows TEMP may contain an 8.3 alias (e.g. RUNNER~1 on CI).
+        let root=dunce::canonicalize(root).unwrap();
         let expand=|value: &str| value.replace("@root", &root.to_string_lossy());
         for case in cases.as_array().unwrap() {
             let env=case["env"].as_object().unwrap().iter().map(|(k,v)|(k.clone(),expand(v.as_str().unwrap()))).collect();
@@ -133,6 +135,7 @@ pub fn resolve(installation: &Path, registered: Option<&Path>, env: &BTreeMap<St
     #[test] fn defaults_and_conflicts() {
         let dir=std::env::temp_dir().join(format!("udr-{}",uuid::Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
+        let dir=dunce::canonicalize(dir).unwrap();
         let mut env=BTreeMap::from([("LOCALAPPDATA".into(),dir.to_string_lossy().into_owned())]);
         let install=dir.join("Programs/App");
         assert_eq!(resolve(&install,None,&env).unwrap(),dir.join("StreamOps/D4Planner"));

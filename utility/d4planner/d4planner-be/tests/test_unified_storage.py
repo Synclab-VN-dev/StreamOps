@@ -1,5 +1,6 @@
 """UDR fixtures are isolated; they do not establish live-game acceptance."""
 import json
+import sys
 from pathlib import Path
 import sqlite3
 from contextlib import closing
@@ -8,6 +9,25 @@ import pytest
 
 from d4planner.runtime.storage import StorageError, resolve_root, child_environment
 from d4planner.runtime import migration
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell module loading")
+def test_acl_ignores_incompatible_inherited_security_module(tmp_path, monkeypatch):
+    # Model pwsh -> Python/native -> Windows PowerShell: PSModulePath still
+    # points at a module that the older child host cannot load.
+    module = tmp_path / "modules/Microsoft.PowerShell.Security"
+    module.mkdir(parents=True)
+    (module / "Microsoft.PowerShell.Security.psd1").write_text(
+        "@{ModuleVersion='7.0'; PowerShellVersion='3.0'; "
+        "RootModule='security.psm1'; FunctionsToExport=@('Get-Acl')}"
+    )
+    (module / "security.psm1").write_text(
+        "throw 'module cannot load in this host'; function Get-Acl {}"
+    )
+    monkeypatch.setenv("PSModulePath", str(module.parent))
+    root = tmp_path / "private-root"
+    root.mkdir()
+    migration.check_owner(root)
 
 
 def test_default_and_legacy_guard(tmp_path):

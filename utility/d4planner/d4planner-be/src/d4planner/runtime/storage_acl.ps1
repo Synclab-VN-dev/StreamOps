@@ -1,5 +1,8 @@
 # Read-only shared Windows DataRoot ownership/access policy. Never changes ACLs.
 $ErrorActionPreference = 'Stop'
+# Python/native children launched by pwsh inherit its PSModulePath. Load the
+# security module belonging to this Windows PowerShell host, not a PS7 module.
+Import-Module "$PSHOME\Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1" -ErrorAction Stop
 $acl = Get-Acl -LiteralPath $env:D4PLANNER_ACL_PATH
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $sid = $identity.User.Value
