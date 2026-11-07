@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import Mock, patch
 import zipfile
 
-ROOT=Path(__file__).resolve().parents[3]
+ROOT=Path(__file__).resolve().parents[5]
 HERE=ROOT/'utility/d4planner/d4planner-rulekit/snapshot-management/release'
 def load(name, filename):
     spec=importlib.util.spec_from_file_location(name,filename)

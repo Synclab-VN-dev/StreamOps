@@ -84,6 +84,8 @@ PY
 set -euo pipefail
 python -m pytest -q utility/d4planner/d4planner-rulekit/tests \
   --junitxml=artifacts/d4-rulekit/junit.xml
+python -m unittest discover \
+  -s utility/d4planner/d4planner-rulekit/snapshot-management/tests -p test_snapshot_release.py -v
 ''', shell='bash', cwd='.')
         # d4-rulekit.yml / schema-contract: Build wheel and verify installed package outside repository
         ctx.shell(r'''
