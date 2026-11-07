@@ -140,3 +140,32 @@ bytes across upgrade/reinstall/viewer-only/uninstall, and compares production
 registration before/after. It refuses to take over an existing UAT registration.
 `ticketGate: NOT_RUN` is retained as a deliberate reminder that test-suite PASS
 is evidence to review against the entire UDR row, not automatic Owner acceptance.
+
+Evidence attribution and targeted resume:
+
+```sh
+python tools/storage_vm_acceptance.py --output /absolute/new-evidence --resume /absolute/previous-evidence
+python tools/storage_acceptance.py --output /absolute/new-local-evidence --native-evidence /absolute/native-evidence
+```
+
+Native phases finish independently and retain their own command, exit, scope,
+owner and SHA-256-attested artifacts. A Setup failure cannot relabel successful
+S9 tests. A transport/preparation failure leaves missing phases NOT_RUN, while
+completed artifacts are still retrieved when the VM remains reachable. Resume
+requires the same source HEAD, suite, Setup and old-Setup hashes; it reuses only
+PASS phases whose evidence files still match. Legacy aggregate reports cannot
+stand in for phase evidence. Supply the same Setup arguments when resuming.
+
+The native `report-issue/examples/storage_acceptance.rs` acceptance executable
+accepts `DATA_ROOT RUN_ID REPORT_JSON`. It collects the chosen real run's FE log
+through the production S9 API, encrypts with a temporary in-memory age identity,
+decrypts and verifies the exact two-entry ZIP allowlist and original log bytes,
+then verifies resume and discard. It performs no network submission and never
+exports a DB, snapshot or unselected evidence. Run only against an authorized
+isolated UAT root; encryption keys are not emitted.
+
+Interactive Setup/HUD and real NVDA evidence must be produced in the intended
+user's WinSta0 console session. An SSH service/session-0 invocation is not a
+valid native UI test. Real NVDA plus synthetic speech is explicitly distinct
+from Owner live-game MAN acceptance; lack of a game does not invalidate the
+storage/capture evidence that can be exercised independently.
