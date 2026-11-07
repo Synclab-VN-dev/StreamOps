@@ -30,6 +30,7 @@ def main(argv=None):
     parser.add_argument('--only', choices=list(CASES), action='append')
     parser.add_argument('--windows-vm', action='store_true', help='Run the enrolled isolated Windows VM suite')
     parser.add_argument('--native-evidence', type=Path, help='Reuse checksum-verified phase evidence from this exact HEAD')
+    parser.add_argument('--interactive-user', help='Disposable VM console account for Setup UI')
     parser.add_argument('--setup', type=Path)
     parser.add_argument('--old-setup', type=Path)
     args = parser.parse_args(argv)
@@ -66,6 +67,8 @@ def main(argv=None):
         command = [sys.executable, str(ROOT/'tools/storage_vm_acceptance.py'), '--output', str(args.output/'native')]
         if args.only:
             command += ['--suite','storage']
+        if args.interactive_user:
+            command += ['--interactive-user', args.interactive_user]
         if args.setup:
             command += ['--setup',str(args.setup.absolute())]
         if args.old_setup:
@@ -80,6 +83,7 @@ def main(argv=None):
     if args.native_evidence:
         native = load_verified(args.native_evidence, head)
         report['reusedNativeEvidence'] = str(args.native_evidence.resolve())
+        report['nativeFailure'] = native.get('status') != 'PASS'
         attach(report['cases'], native)
     (args.output / 'report.json').write_text(json.dumps(report, indent=2))
     return 1 if report.get('nativeFailure') or any(item['status'] == 'FAIL' for item in report['cases']) else 0

@@ -130,7 +130,7 @@ To run local and native checks together, including a checksum-bound Setup from t
 same committed HEAD:
 
 ```sh
-python utility/d4planner/d4planner-be/tools/storage_acceptance.py --output /absolute/new-evidence --windows-vm --setup /absolute/build/D4Planner-Setup-1.2.8.exe --old-setup /absolute/previous/D4Planner-Setup-1.1.1.exe
+python utility/d4planner/d4planner-be/tools/storage_acceptance.py --output /absolute/new-evidence --windows-vm --setup /absolute/build/D4Planner-Setup-1.2.8.exe --old-setup /absolute/previous/D4Planner-Setup-1.1.1.exe --interactive-user DISPOSABLE_VM_USER
 ```
 
 The local report links the native source identity, migration manifest (source and
@@ -169,3 +169,10 @@ user's WinSta0 console session. An SSH service/session-0 invocation is not a
 valid native UI test. Real NVDA plus synthetic speech is explicitly distinct
 from Owner live-game MAN acceptance; lack of a game does not invalidate the
 storage/capture evidence that can be exercised independently.
+
+For `--setup`, pass `--interactive-user` naming a disposable local VM account
+already logged into the console. The wrapper verifies that identity and runs
+the Setup phase via an owned Interactive scheduled task. Without that session
+the phase is BLOCKED with an explicit reason; it never runs a UI assertion in
+SSH session 0. Provisioning or logging into an account remains an explicit VM
+operation. Resume also binds this account identity.

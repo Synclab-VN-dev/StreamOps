@@ -39,7 +39,7 @@ def attach(cases, native):
                     if case['id'] in ids and name in phases}
         case['nativeEvidence'] = relevant
         states = [phase.get('status', 'NOT_RUN') for phase in relevant.values()]
-        case['nativeStatus'] = ('FAIL' if 'FAIL' in states else
+        case['nativeStatus'] = ('FAIL' if 'FAIL' in states else 'BLOCKED' if 'BLOCKED' in states else
                                 'PASS' if states and all(s == 'PASS' for s in states) else 'NOT_RUN')
         # Native crate tests are regression evidence, not the full acceptance gate.
         if case['id'] in {'UDR-05', 'UDR-08'}:

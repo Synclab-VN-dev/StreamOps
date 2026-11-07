@@ -34,3 +34,16 @@ def test_reuse_requires_exact_head_and_unchanged_artifacts(tmp_path):
 def test_reuse_rejects_unattested_pass(tmp_path):
     (tmp_path/'report.json').write_text(json.dumps({'head':'abc','phases':{'setup':{'status':'PASS'}}}))
     with pytest.raises(ValueError, match='hashes'): evidence.load_verified(tmp_path,'abc')
+
+
+def test_reused_native_failure_is_not_hidden_by_local_pass(tmp_path, monkeypatch):
+    import subprocess
+    runner_spec = importlib.util.spec_from_file_location('storage_acceptance_reuse', Path(__file__).parents[1]/'tools/storage_acceptance.py')
+    runner = importlib.util.module_from_spec(runner_spec); runner_spec.loader.exec_module(runner)
+    monkeypatch.setattr(runner.subprocess, 'check_output', lambda args, **kw: 'head\n' if 'rev-parse' in args else '')
+    monkeypatch.setattr(runner.subprocess, 'run', lambda *args, **kw: subprocess.CompletedProcess(args, 0))
+    monkeypatch.setattr(runner, 'load_verified', lambda *args: {'status':'FAIL','phases':{'python':{'status':'FAIL'}}})
+    assert runner.main(['--output',str(tmp_path/'out'),'--only','UDR-01','--native-evidence',str(tmp_path/'prior')]) == 1
+    report = json.loads((tmp_path/'out/report.json').read_text())
+    assert report['cases'][0]['status'] == 'PASS'
+    assert report['cases'][0]['nativeStatus'] == 'FAIL'

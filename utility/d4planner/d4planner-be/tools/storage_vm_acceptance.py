@@ -25,14 +25,17 @@ def main(argv=None):
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--suite', choices=('full','storage'), default='full')
     parser.add_argument('--resume', type=Path, help='Reuse verified PASS phases from this exact source HEAD')
+    parser.add_argument('--interactive-user', help='Explicit disposable local account already logged into the VM console; required for Setup UI')
     parser.add_argument('--setup', type=Path)
     parser.add_argument('--old-setup', type=Path)
     args = parser.parse_args(argv)
+    if args.interactive_user and not args.setup:
+        parser.error('--interactive-user requires --setup')
     args.output.mkdir(parents=True, exist_ok=False)
     builder = vm.ManagedBuilder('d4planner-builder')
     ssh = vm.WindowsSSH('d4planner-builder', builder.ssh_config)
     remote = 'C:/D4Builder/runs/udr165-' + uuid.uuid4().hex
-    report = {'remote':remote, 'status':'RUNNING', 'ci':'CI_NOT_CHECKED', 'suite':args.suite, 'phases':{}}
+    report = {'remote':remote, 'status':'RUNNING', 'ci':'CI_NOT_CHECKED', 'suite':args.suite, 'interactiveUser':args.interactive_user, 'phases':{}}
     builder.acquire()
     try:
         builder.ensure_running(ssh)
@@ -44,7 +47,7 @@ def main(argv=None):
             if reused and reused.get('setupSha256') != setup_sha:
                 raise ValueError('resume Setup checksum mismatch')
             old_setup_sha = digest(args.old_setup) if args.old_setup else None
-            if reused and (reused.get('suite') != args.suite or reused.get('oldSetupSha256') != old_setup_sha):
+            if reused and (reused.get('suite') != args.suite or reused.get('oldSetupSha256') != old_setup_sha or reused.get('interactiveUser') != args.interactive_user):
                 raise ValueError('resume suite or old Setup checksum mismatch')
             report['oldSetupSha256'] = old_setup_sha
             report['setupSha256'] = setup_sha
@@ -107,7 +110,43 @@ Phase 'logging' 'cargo' @('test','--release','--locked','--manifest-path','utili
 Phase 'report-issue' 'cargo' @('test','--release','--locked','--manifest-path','utility/d4planner/d4planner-hud/report-issue/Cargo.toml')
 '''.replace('__REUSED__', ','.join(vm.ps_quote(name) for name in passed)).replace('__ROOT__', vm.ps_quote(remote)).replace('__SHA__', vm.digest(archive)).replace('__TESTS__', ','.join(vm.ps_quote('utility/d4planner/d4planner-be/'+name) for name in (['tests'] if args.suite == 'full' else ['tests/test_unified_storage.py','tests/test_runtime_store.py','tests/test_production_backend.py','tests/test_windows_runtime_pure.py'])))
             if args.setup:
-                code += "\nPhase 'setup' $python @('utility/d4planner/d4planner-be/tools/storage_setup_smoke.py','--setup',($root+'/setup.exe'),'--source-head','"+head+"','--sandbox',($root+'/setup-smoke')" + (",'--old-setup',($root+'/old-setup.exe')" if args.old_setup else "") + ")\n"
+                setup_command = "Phase 'setup' $python @('utility/d4planner/d4planner-be/tools/storage_setup_smoke.py','--setup',($root+'/setup.exe'),'--source-head','"+head+"','--sandbox',($root+'/setup-smoke')" + (",'--old-setup',($root+'/old-setup.exe')" if args.old_setup else "") + ")"
+                code += r'''
+if('setup' -notin @(__REUSED__)) {
+ $requestedUser=__USER__
+ $consoleUser=(Get-CimInstance Win32_ComputerSystem).UserName
+ $expectedUser=$env:COMPUTERNAME+'\'+$requestedUser
+ if(-not $requestedUser -or $consoleUser -ine $expectedUser) {
+  @{status='BLOCKED';subprocessExit=$null;testOwner='Dev F / Windows VM';scope='interactive Setup';reason='Explicit disposable --interactive-user must already be logged into the VM console; session 0 is not a UI test'} | ConvertTo-Json | Set-Content -Encoding UTF8 ($root+'/setup.json')
+  'No interactive Setup launched' | Set-Content ($root+'/setup.log')
+ } else {
+  $task='UDR165-'+(Split-Path $root -Leaf)
+  if(Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue){throw 'Owned task name already exists'}
+  $script=@'
+$ErrorActionPreference='Stop'
+$root=__ROOT__
+$python=__PYTHON__
+$env:PYTHONPATH=($root+'/source/utility/d4planner/d4planner-be/src;'+$root+'/venv/Lib/site-packages')
+$env:PATH='C:/D4Builder/frameworks/node/node-v22.22.1-win-x64;'+$env:PATH
+Set-Location ($root+'/source')
+'@
+  $script=$script.Replace('__PYTHON__',("'"+$python.Replace("'","''")+"'"))
+  $script+="`nfunction Phase {"+(Get-Item Function:\Phase).Definition+"}`n"
+  $script+=@'
+__SETUP_COMMAND__
+'@
+  Set-Content -LiteralPath ($root+'/setup-interactive.ps1') -Value $script -Encoding UTF8
+  $action=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "'+$root+'/setup-interactive.ps1"')
+  $principal=New-ScheduledTaskPrincipal -UserId $expectedUser -LogonType Interactive -RunLevel Highest
+  $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 20) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+  Register-ScheduledTask -TaskName $task -Action $action -Principal $principal -Settings $settings | Out-Null
+  Start-ScheduledTask -TaskName $task
+  $deadline=(Get-Date).AddMinutes(15)
+  do { Start-Sleep -Milliseconds 500 } while(-not(Test-Path ($root+'/setup.json')) -and (Get-Date) -lt $deadline)
+  if((Get-ScheduledTask -TaskName $task).State -ne 'Running'){Unregister-ScheduledTask -TaskName $task -Confirm:$false}
+ }
+}
+'''.replace('__REUSED__', ','.join(vm.ps_quote(name) for name in passed)).replace('__USER__', vm.ps_quote(args.interactive_user or '')).replace('__ROOT__', vm.ps_quote(remote)).replace('__SETUP_COMMAND__',setup_command)
             script = Path(directory)/'acceptance.ps1'
             script.write_text(code, encoding='utf-8')
             ssh.upload(script, remote+'/acceptance.ps1')
