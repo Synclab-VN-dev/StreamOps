@@ -118,3 +118,54 @@ def test_setup_report_preserves_quiescence_reason(tmp_path, monkeypatch, stage, 
     assert result['classification'] == classification
     assert result['quiescence']['processes'] == [process('python.exe')]
     assert not (tmp_path / 'data').exists()
+
+
+@pytest.mark.parametrize('name', [
+    'D4Planner-Controller-Probe', 'D4Planner-Controller-Probe-V2',
+    'D4Planner-Unrelated', 'Other-D4Planner-Supervisor', 'D4Planner-Supervisor-old',
+    'D4Planner-Isolated-invalid-Supervisor',
+    'D4Planner-Isolated-123456789abc-Controller-Probe',
+    'D4Planner-F11-Diagnostic-not-a-request-id',
+])
+def test_obsolete_or_similarly_named_tasks_do_not_block(name):
+    probe(snapshot(tasks=[{'name': name, 'path': '\\', 'state': 'Ready'}]))
+
+
+@pytest.mark.parametrize('name', [
+    'D4Planner-Supervisor', 'D4Planner-NVDA', 'D4Planner-NVDA-Restart',
+    'D4Planner-NVDA-Stop', 'D4Planner-D4', 'D4Planner-Tolk-Probe',
+    'D4Planner-Input-Marker-Probe', 'd4planner-supervisor',
+    'D4Planner-Isolated-123456789abc-Supervisor',
+    'D4Planner-Isolated-123456789abc-Input-Marker-Probe',
+    'D4Planner-F11-Diagnostic-0123456789abcdef',
+])
+def test_source_defined_task_names_remain_blocked(name):
+    with pytest.raises(migration.StorageError, match='enabled D4Planner tasks'):
+        probe(snapshot(tasks=[{'name': name, 'path': '\\', 'state': 'Ready'}]))
+
+
+def test_obsolete_tasks_do_not_hide_discovery_failure():
+    data = snapshot(tasks=[{'name': 'D4Planner-Controller-Probe', 'path': '\\', 'state': 'Ready'}])
+    data['taskDiscovery'] = 'FAILED'
+    with pytest.raises(migration.StorageError, match='DISCOVERY_FAILED'):
+        probe(data)
+
+
+def test_task_catalog_covers_actual_runtime_call_sites(tmp_path):
+    # Guard against producer/classifier drift when a runtime task is added.
+    import ast
+    import inspect
+    from d4planner.runtime.windows import WindowsRuntime
+    from d4planner.runtime.store import RuntimePaths
+    from d4planner.runtime.task_names import RUNTIME_TASK_NAMES, is_current_task_name
+    tree = ast.parse(inspect.getsource(WindowsRuntime))
+    names = {node.args[0].value for node in ast.walk(tree)
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+             and node.func.attr in ('task_name', 'run_task') and node.args
+             and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)
+             and node.args[0].value.startswith('D4Planner-')}
+    assert names == RUNTIME_TASK_NAMES
+    runtime = WindowsRuntime(RuntimePaths(tmp_path))
+    for name in names:
+        assert is_current_task_name(runtime.task_name(name))
+        assert is_current_task_name(runtime.task_name(name, isolated=True))

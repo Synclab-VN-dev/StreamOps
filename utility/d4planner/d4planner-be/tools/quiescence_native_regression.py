@@ -92,17 +92,26 @@ def main():
             case(name + '-stays-blocked', lambda: blocked(pid=child.pid))
         finally:
             child.terminate(); child.wait(timeout=10)
-    task = 'D4Planner-Quiescence-Regression-' + uuid.uuid4().hex
-    created = False
-    try:
-        powershell("$a=New-ScheduledTaskAction -Execute '" + quoted + "'; Register-ScheduledTask -TaskName '" + task + "' -Action $a | Out-Null")
-        created = True
-        case('ready-task-stays-blocked', lambda: blocked(task=task))
-        powershell("Disable-ScheduledTask -TaskName '" + task + "' | Out-Null")
-        case('disabled-owned-task-allows-offline', migration.quiescence)
-    finally:
-        if created:
-            powershell("Unregister-ScheduledTask -TaskName '" + task + "' -Confirm:$false")
+    # Unknown names sharing the prefix must not block. Use a real generated
+    # runtime name for the positive case, never a production fixed task name.
+    suffix = uuid.uuid4().hex
+    for task, relevant in [
+        ('D4Planner-Quiescence-Regression-' + suffix, False),
+        ('D4Planner-Isolated-' + suffix[:12] + '-Supervisor', True),
+    ]:
+        created = False
+        try:
+            powershell("$a=New-ScheduledTaskAction -Execute '" + quoted + "'; Register-ScheduledTask -TaskName '" + task + "' -Action $a | Out-Null")
+            created = True
+            if relevant:
+                case('ready-source-task-stays-blocked', lambda: blocked(task=task))
+                powershell("Disable-ScheduledTask -TaskName '" + task + "' | Out-Null")
+                case('disabled-owned-task-allows-offline', migration.quiescence)
+            else:
+                case('unrelated-prefix-task-allows-offline', migration.quiescence)
+        finally:
+            if created:
+                powershell("Unregister-ScheduledTask -TaskName '" + task + "' -Confirm:$false")
     for command, stage in [('Get-CimInstance', 'processDiscovery'), ('Get-ScheduledTask', 'taskDiscovery')]:
         original = migration.subprocess.run
         def injected(argv, **kwargs):

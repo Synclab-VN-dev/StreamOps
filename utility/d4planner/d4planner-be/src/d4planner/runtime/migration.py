@@ -19,6 +19,7 @@ import uuid
 
 from .storage import StorageError, canonical, check_owner
 from .store import atomic_write_json
+from .task_names import is_current_task_name
 
 TREES = {"state", "sessions", "runtime", "targets", "rulekit", "logs", "cache"}
 
@@ -42,7 +43,9 @@ def quiescence() -> None:
     Preserve the conservative #165 policy: all Python/Node/FE/NVDA candidates
     except this exact process block migration. A familiar command line or an
     ancestor relationship is not proof that another process cannot write data.
-    Enabled D4Planner tasks block even in Ready state: they can start a writer.
+    Enabled source-defined tasks block even in Ready state: they can start a writer.
+    Retired or unrelated task names are ignored; generated names must match the
+    complete runtime/diagnostic format, never just a D4Planner prefix.
     Discovery failures are distinct from discovered potential writers.
     """
     if os.name != "nt":
@@ -57,7 +60,7 @@ try {
   $r.processDiscovery='OK'
 } catch {}
 try {
-  $r.tasks=@(Get-ScheduledTask | Where-Object {$_.TaskName -match 'D4Planner'} | ForEach-Object {
+  $r.tasks=@(Get-ScheduledTask | ForEach-Object {
     @{name=[string]$_.TaskName;path=[string]$_.TaskPath;state=[string]$_.State}
   })
   $r.taskDiscovery='OK'
@@ -94,7 +97,7 @@ $r | ConvertTo-Json -Depth 4 -Compress
         evidence['processes'] = [{'pid': p['pid'], 'name': p['name']} for p in processes
                                  if p['pid'] != os.getpid()]
         evidence['tasks'] = [{k: t[k] for k in ('name', 'path', 'state')} for t in tasks
-                             if t['state'] != 'Disabled']
+                             if t['state'].casefold() != 'disabled' and is_current_task_name(t['name'])]
     except (ValueError, KeyError, TypeError) as error:
         raise QuiescenceError("BUSY: DISCOVERY_FAILED: invalid or incomplete process/task query; "
                               "migration remains blocked", failed) from error
