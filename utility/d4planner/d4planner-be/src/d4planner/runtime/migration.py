@@ -20,6 +20,7 @@ import uuid
 from .storage import StorageError, canonical, check_owner
 from .store import atomic_write_json
 from .task_names import is_current_task_name
+from .process_identity import classify_processes
 
 TREES = {"state", "sessions", "runtime", "targets", "rulekit", "logs", "cache"}
 
@@ -37,12 +38,12 @@ class QuiescenceError(StorageError):
         self.quiescence = evidence
 
 
-def quiescence() -> None:
+def quiescence(*, data_roots=()) -> None:
     """Require an offline window without stopping processes or changing tasks.
 
-    Preserve the conservative #165 policy: all Python/Node/FE/NVDA candidates
-    except this exact process block migration. A familiar command line or an
-    ancestor relationship is not proof that another process cannot write data.
+    Attribute interpreters by package path/module/script and verified ancestry,
+    not by Python/Node executable name alone. Unavailable/opaque identities and
+    NVDA capture hosts remain blocked. Only this exact process is excluded.
     Enabled source-defined tasks block even in Ready state: they can start a writer.
     Retired or unrelated task names are ignored; generated names must match the
     complete runtime/diagnostic format, never just a D4Planner prefix.
@@ -53,10 +54,14 @@ def quiescence() -> None:
     script = r'''$ErrorActionPreference='Stop'
 $r=@{processDiscovery='FAILED';taskDiscovery='FAILED';processes=@();tasks=@()}
 try {
-  $names=@('D4Planner.exe','d4planner-fe.exe','nvda.exe','nvda_noUIAccess.exe','node.exe','python.exe','pythonw.exe')
-  $r.processes=@(Get-CimInstance Win32_Process | Where-Object {$_.Name -in $names} | ForEach-Object {
-    @{pid=[int]$_.ProcessId;name=[string]$_.Name}
+  $r.processes=@(Get-CimInstance Win32_Process | Where-Object {$_.ProcessId -gt 0} | ForEach-Object {
+    @{pid=[int]$_.ProcessId;name=[string]$_.Name;parentPid=[int]$_.ParentProcessId;
+      executable=[string]$_.ExecutablePath;commandLine=[string]$_.CommandLine;
+      startedAt=$(if($_.CreationDate){$_.CreationDate.ToUniversalTime().ToString('o')}else{''})}
   })
+  $r.installRoots=@((Join-Path $env:LOCALAPPDATA 'Programs\D4Planner'))
+  $key='HKCU:\Software\Synclab\D4Planner'
+  if(Test-Path $key){$registration=Get-ItemProperty $key; if($registration.InstallRoot){$r.installRoots+= [string]$registration.InstallRoot}}
   $r.processDiscovery='OK'
 } catch {}
 try {
@@ -93,9 +98,16 @@ $r | ConvertTo-Json -Depth 4 -Compress
         if any(not isinstance(t, dict) or any(not isinstance(t.get(k), str) or not t[k]
                for k in ('name', 'path', 'state')) for t in tasks):
             raise ValueError('incomplete task identity')
+        roots = evidence.get('installRoots', [])
+        if not isinstance(roots, list) or any(not isinstance(root, str) for root in roots):
+            raise ValueError('invalid package roots')
+        roots = roots + [str(root) for root in data_roots]
+        local = os.environ.get('LOCALAPPDATA')
+        if local:
+            roots += [os.path.join(local, 'd4planner'), os.path.join(local, 'StreamOps', 'D4Planner')]
         evidence = {stage: evidence[stage] for stage in ('processDiscovery', 'taskDiscovery')}
-        evidence['processes'] = [{'pid': p['pid'], 'name': p['name']} for p in processes
-                                 if p['pid'] != os.getpid()]
+        evidence['processes'], evidence['processReasons'] = classify_processes(
+            processes, self_pid=os.getpid(), roots=roots)
         evidence['tasks'] = [{k: t[k] for k in ('name', 'path', 'state')} for t in tasks
                              if t['state'].casefold() != 'disabled' and is_current_task_name(t['name'])]
     except (ValueError, KeyError, TypeError) as error:
@@ -115,6 +127,16 @@ $r | ConvertTo-Json -Depth 4 -Compress
     if blockers:
         raise QuiescenceError('BUSY: ' + '; '.join(blockers) +
             '. Migration requires an operator-controlled offline window; no process or task was changed.', evidence)
+
+
+_PRODUCTION_QUIESCENCE = quiescence
+
+
+def _probe_roots(probe, source, target):
+    if probe is _PRODUCTION_QUIESCENCE:
+        probe(data_roots=(source, target))
+    else:
+        probe()
 
 
 @contextmanager
@@ -338,7 +360,7 @@ def plan(source: Path, target: Path, *, _probe=quiescence) -> dict:
     completed = source / ".storage-migrated.json"
     if completed.exists() and json.loads(completed.read_text()).get("target") != str(target):
         raise StorageError("PATH_CONFLICT: source already migrated to another root")
-    _probe()
+    _probe_roots(_probe, source, target)
     check_owner(source)
     if target.exists():
         check_owner(target)
@@ -426,7 +448,7 @@ def _apply_locked(report: dict, *, _probe=quiescence) -> dict:
                 raise StorageError("BLOCKED: staging hash mismatch")
             if item["sqlite"] and database_check(staged) != item["sqlite"]:
                 raise StorageError("BLOCKED: staging SQLite mismatch")
-        _probe()
+        _probe_roots(_probe, source, target)
         if inventory(source, target, verified=verified) != report["files"]:
             raise StorageError("BLOCKED: source changed during staging")
         report["status"] = "PUBLISHING"
@@ -492,7 +514,7 @@ def rollback(report: dict, *, _probe=quiescence) -> dict:
 
 
 def _rollback_locked(report: dict, remove, digest, *, _probe=quiescence) -> dict:
-    _probe()
+    _probe_roots(_probe, report["source"], report["target"])
     target = canonical(report["target"])
     entries = {f["path"]: f for f in report["files"]}
     source_journal = Path(report["source"]) / ".storage-migration-active.json"
@@ -561,7 +583,7 @@ def run_cli(args) -> int:
         elif args.action == "apply":
             report = apply(report)
         elif args.action == "verify":
-            quiescence()
+            quiescence(data_roots=(source, target))
             verify(report)
             report["status"] = "VERIFIED"
         else:

@@ -67,9 +67,37 @@ def main():
     # This interpreter is the migration host, matching Setup's direct Python
     # invocation. Its parent PowerShell is not granted a Python exception.
     case('setup-host-python-self-excluded', migration.quiescence)
+    # Reproduce Windows venv redirector + interpreter, as on A. An unrelated
+    # module with its own data directory must not be blocked by python.exe.
+    import venv
+    venv.EnvBuilder(with_pip=False).create(root / 'server-venv')
+    package = root / 'server-code' / 'streamops'; package.mkdir(parents=True)
+    (package / '__init__.py').write_text('')
+    (package / 'cli.py').write_text('import os,sys; print(os.getpid(),flush=True); sys.stdin.read()')
+    environment = dict(os.environ); environment.pop('PYTHONPATH', None)
+    child = subprocess.Popen([str(root / 'server-venv/Scripts/python.exe'), '-m', 'streamops.cli',
+                              'runserver', '--data-dir', str(root / 'server-data')],
+                             cwd=package.parent, env=environment, stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE, text=True)
+    try:
+        actual_pid = int(child.stdout.readline().strip())
+        report['unrelatedServerPids'] = [child.pid, actual_pid]
+        case('unrelated-server-venv-and-interpreter-allowed', migration.quiescence)
+    finally:
+        child.communicate(timeout=10)  # EOF ends our child and its venv wrapper.
+    package = root / 'writer-code' / 'd4planner'; package.mkdir(parents=True)
+    (package / '__init__.py').write_text('')
+    (package / 'fixture_worker.py').write_text('import os,sys; print(os.getpid(),flush=True); sys.stdin.read()')
+    child = subprocess.Popen([sys.executable, '-m', 'd4planner.fixture_worker'], cwd=package.parent,
+                             env=environment, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    try:
+        actual_pid = int(child.stdout.readline().strip())
+        case('actual-d4planner-module-blocked', lambda: blocked(pid=actual_pid))
+    finally:
+        child.communicate(timeout=10)
     child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(90)'])
     try:
-        case('unrelated-python-stays-blocked', lambda: blocked(pid=child.pid))
+        case('opaque-inline-python-stays-blocked', lambda: blocked(pid=child.pid))
     finally:
         child.terminate(); child.wait(timeout=10)
     # Actual SQLite connection holds a write reservation without changing bytes.
@@ -94,6 +122,13 @@ def main():
             child.terminate(); child.wait(timeout=10)
     # Unknown names sharing the prefix must not block. Use a real generated
     # runtime name for the positive case, never a production fixed task name.
+    node = root / 'node.exe'
+    script = root / 'unrelated-server.js'; script.write_text('// unrelated application fixture')
+    child = subprocess.Popen([str(node), str(script)])
+    try:
+        case('unrelated-node-script-allowed', migration.quiescence)
+    finally:
+        child.terminate(); child.wait(timeout=10)
     suffix = uuid.uuid4().hex
     for task, relevant in [
         ('D4Planner-Quiescence-Regression-' + suffix, False),

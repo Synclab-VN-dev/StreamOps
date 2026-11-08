@@ -68,8 +68,20 @@ d4planner storage migrate --action rollback --manifest C:\Evidence\apply.json --
 
 Each report path must be new and outside both roots. Dry-run writes only the
 explicit report. Processes/tasks are never stopped by migration. Windows
-preflight conservatively requires no other Python/Node/launcher/HUD/NVDA process
-and no enabled D4Planner scheduled task. Owner/ACL checks reject foreign owners
+preflight attributes Python/Node processes using executable/package paths,
+parsed module/script arguments, source/target DataRoot references, and D4Planner
+parent identities checked against creation times. Recognizable unrelated modules
+and absolute scripts do not block merely because they use Python/Node. Missing
+identity, opaque inline code, unsupported interpreter options, or a relative
+script with unknown working directory remain blocked. This is application
+attribution, not proof of arbitrary code behavior. Only the migration's own PID
+is excluded; descendants are not automatically exempted. NVDA remains a guarded
+capture host because its loaded addons cannot be established from command lines.
+Discovery errors fail closed; diagnostic reports contain PID/name/reason, never
+raw command lines. Custom source/target roots are included on plan/apply/rollback
+and CLI verify. Enabled tasks block only when their complete names match current
+runtime/diagnostic identities (including validated generated-name formats).
+Owner/ACL checks reject foreign owners
 and foreign write permissions. Share-read file leases exclude writes/deletion
 while staging/publishing. Non-Windows production migration is blocked; tests use
 an injected offline probe only for isolated temporary fixtures.
