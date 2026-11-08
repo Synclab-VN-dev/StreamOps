@@ -301,7 +301,14 @@ export function ReportIssue({
       {preview && !terminal && <button disabled={busy || pendingRemote} onClick={() => void cancel()}>Discard unsent draft</button>}
       {error && (
         <p role="alert">
-          {error}. Draft and selections are retained. Retry when the connection
+          {error}. {({
+            REPORT_NOT_CONFIGURED: "Configure Report Issue in private/report-config.json inside your D4Planner data folder.",
+            INVALID_REPORT_CONFIG: "Check githubToken, recipient and maxBytes in your Report Issue configuration.",
+            GITHUB_401: "Your GitHub token is invalid or expired. Update it in your Report Issue configuration.",
+            GITHUB_403: "Your GitHub token needs access to the StreamOps repository and permission to write Issues and Contents.",
+            DIAGNOSTIC_RELEASE_NOT_CONFIGURED: "The shared diagnostic release is unavailable. Ask the repository maintainer to provision it.",
+            RECIPIENT_NOT_CONFIGURED: "Set a valid age public recipient supplied by the report maintainer.",
+          } as Record<string, string>)[error]} Draft and selections are retained. Retry when the connection
           or configuration is available.
         </p>
       )}

@@ -118,3 +118,9 @@ def test_desktop_stage_and_manifest_reject_server_gateway(tmp_path, prefix):
         archive.writestr(name, data)
     with pytest.raises(public.PublicContentError, match='SERVER_GATEWAY_IN_DESKTOP_PACKAGE'):
         delivery.verify_package(package, public_only=True)
+
+
+def test_local_report_code_allowed_but_pat_config_never_packaged():
+    public.inspect_bytes('backend/site-packages/d4planner/reporting/local.py', b'# local runtime')
+    with pytest.raises(public.PublicContentError, match='REPORT_CREDENTIAL_CONFIG_IN_PUBLIC_PACKAGE'):
+        public.inspect_bytes('private/report-config.json', b'{"githubToken":"SYNTHETIC_SECRET"}')
