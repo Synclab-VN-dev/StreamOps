@@ -16,6 +16,8 @@ from urllib.parse import urlsplit
 RECIPIENT = 'age1q9x3chgd0ycxe6y692cme82906a7qvcm08a02mwp9scdrtyupgzqhhwfrj'
 VERSION = re.compile(r'^[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?$')
 HASH = re.compile(r'^[a-f0-9]{64}$')
+# The pinned age v1.3.2 Linux archive exceeds 16 MiB. Keep downloads bounded.
+MAX_INPUT_BYTES = 32*1024*1024
 
 class ReleaseBlocked(RuntimeError): pass
 
@@ -83,9 +85,10 @@ def fetch(descriptor, target):
     try:
         with urllib.request.urlopen(url, timeout=60) as response:
             require(response.url.startswith('https://'), 'BLOCKED_INPUT_REDIRECT')
-            content=response.read(16*1024*1024+1)
+            content=response.read(MAX_INPUT_BYTES+1)
     except (OSError,ValueError): raise ReleaseBlocked('BLOCKED_INPUT_ACCESS') from None
-    require(len(content)<=16*1024*1024 and sha(content)==descriptor['sha256'], 'BLOCKED_INPUT_HASH')
+    require(len(content)<=MAX_INPUT_BYTES, 'BLOCKED_INPUT_SIZE')
+    require(sha(content)==descriptor['sha256'], 'BLOCKED_INPUT_HASH')
     target.write_bytes(content);target.chmod(0o600)
 
 CONFIG_VARIABLE = 'D4_SNAPSHOT_RELEASE_CONFIG'
