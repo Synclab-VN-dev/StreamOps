@@ -2,6 +2,14 @@
 import os
 
 if os.environ.get('D4PLANNER_REPORT_FAKE_STATE'):
+    # A fixture import/patch regression must never reach real GitHub.
+    import socket
+    real_connect = socket.socket.connect
+    def loopback_only(sock, address):
+        if not isinstance(address, tuple) or address[0] not in ('127.0.0.1', '::1'):
+            raise RuntimeError('TEST_EXTERNAL_NETWORK_FORBIDDEN')
+        return real_connect(sock, address)
+    socket.socket.connect = loopback_only
     import sys
     import json
     from pathlib import Path
