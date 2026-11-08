@@ -9,6 +9,7 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
 };
+pub mod local_gateway;
 pub type Result<T> = std::result::Result<T, String>;
 const MAX: u64 = 64_000_000; // safety ceiling, deployment can only reduce it
 fn error(_: impl std::fmt::Debug) -> String {
@@ -71,7 +72,11 @@ impl Config {
             .parse::<age::x25519::Recipient>()
             .map_err(|_| "RECIPIENT_NOT_CONFIGURED")?;
         let u = reqwest::Url::parse(&self.gateway).map_err(|_| "GATEWAY_NOT_CONFIGURED")?;
-        if u.scheme() != "https"
+        let loopback = u.scheme() == "http"
+            && u.host_str() == Some("127.0.0.1")
+            && u.port().is_some_and(|port| port > 0)
+            && u.path() == "/";
+        if (u.scheme() != "https" && !loopback)
             || !u.username().is_empty()
             || u.password().is_some()
             || u.query().is_some()
@@ -680,6 +685,7 @@ impl Report {
         }
         let artifact = self.prepare_submission(config, description, consent)?;
         let client = reqwest::blocking::Client::builder()
+            .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
             .timeout(std::time::Duration::from_secs(60))
             .build()
