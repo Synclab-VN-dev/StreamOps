@@ -22,15 +22,13 @@ Value (JSON, single-line or formatted; replace the placeholders):
 ```json
 {
   "sourceUrl": "https://maxroll.gg/d4/planner/<build-id>",
-  "authorizationRef": "<reference to the approved capture source>",
   "ageRecipient": "<public age X25519 recipient>"
 }
 ```
 
 The source must be an anonymous, approved Maxroll Planner build URL with an
 alphanumeric build ID. A query string, alternate host, credentials, or HTTP URL
-is rejected. `authorizationRef` records the capture approval reference, not a
-login token. `ageRecipient` must match the private identity held by the release
+is rejected. `ageRecipient` must match the private identity held by the release
 consumer; it is **not** an `AGE-SECRET-KEY-…`. No private identity belongs in this
 Variable or in Actions. Variables are configuration, not secret storage.
 
@@ -63,7 +61,7 @@ for another component does not require changes to `main.yml`. Missing, oversized
 malformed, duplicate-key or invalid configuration is blocked before capture,
 without falling back to `release/config.json`. Basic field validation runs before
 tool installation; the age binary additionally verifies the recipient checksum
-before installing capture dependencies. The JSON limit is 16 KiB. The three
+before installing capture dependencies. The JSON limit is 16 KiB. The two
 fields above are required; additional fields are rejected. Error codes identify
 the field, for example `BLOCKED_SNAPSHOT_CONFIG_SOURCE_URL` or
 `BLOCKED_SNAPSHOT_CONFIG_AGE_RECIPIENT`. `BLOCKED_SNAPSHOT_CONFIG_MISSING` means
@@ -79,11 +77,16 @@ This configuration change is independent of the Planner metadata additions in
 PR #188. To consume the release through that HUD flow, master must also contain
 the compatible Planner metadata producer from #188 before building the release.
 
+`authorizationRef` is no longer a release configuration field. Remove it from
+existing release JSON before running this version. New UI receipts/trust metadata
+omit it; old UI receipts remain readable. Manifest, resource, coverage and
+validation hashes and the automated validation status remain enforced.
+
 ## Local builds
 
 Local builds continue reading `release/config.json` or the file selected by
-`SNAPSHOT_RELEASE_CONFIG`. Configure the same three fields in that file. The
-committed example's null source/authorization are intentionally not runnable.
+`SNAPSHOT_RELEASE_CONFIG`. Configure the same two fields in that file. The
+committed example's null source URL is intentionally not runnable.
 Actions does not accept this local file override. The JSON repository Variable
 is used only in Actions.
 

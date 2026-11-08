@@ -36,11 +36,10 @@ class SnapshotRelease(unittest.TestCase):
 
     def config(self):
         return {'sourceUrl':'https://maxroll.gg/d4/planner/test123',
-                'authorizationRef':'owner-approved fixture', 'ageRecipient':p.RECIPIENT}
+                'ageRecipient':p.RECIPIENT}
 
     def test_actions_json_variable_replaces_unconfigured_source_file(self):
         config=self.config()
-        config['authorizationRef']='approval "quoted" $(touch SHOULD_NOT_EXIST); `echo literal` — thử'
         ctx=HostedContext(env={'GITHUB_ACTIONS':'true'},variables={
             'D4_SNAPSHOT_RELEASE_CONFIG':json.dumps(config, indent=2, ensure_ascii=False)})
         with patch.object(p,'read',side_effect=AssertionError('Actions must not read local config')):
@@ -56,11 +55,10 @@ class SnapshotRelease(unittest.TestCase):
         for field,value,code in [('sourceUrl',None,'SOURCE_URL'),('sourceUrl','http://maxroll.gg/d4/planner/a','SOURCE_URL'),
             ('sourceUrl','https://evil.invalid/d4/planner/a','SOURCE_URL'),
             ('sourceUrl','https://maxroll.gg/d4/planner/a?token=private','SOURCE_URL'),
-            ('authorizationRef','  ','AUTHORIZATION_REF'),('authorizationRef',42,'AUTHORIZATION_REF'),
             ('ageRecipient','AGE-SECRET-KEY-private','AGE_RECIPIENT'),('ageRecipient',None,'AGE_RECIPIENT'),
             ('extra','private','FIELDS')]:
             config={**self.config(),field:value};cases.append(({'D4_SNAPSHOT_RELEASE_CONFIG':json.dumps(config)},code))
-        for field,code in [('sourceUrl','SOURCE_URL'),('authorizationRef','AUTHORIZATION_REF'),('ageRecipient','AGE_RECIPIENT')]:
+        for field,code in [('sourceUrl','SOURCE_URL'),('ageRecipient','AGE_RECIPIENT')]:
             config=self.config();del config[field]
             cases.append(({'D4_SNAPSHOT_RELEASE_CONFIG':json.dumps(config)},code))
         for values,code in cases:
@@ -102,7 +100,7 @@ class SnapshotRelease(unittest.TestCase):
                         if fail_capture:raise p.ReleaseBlocked('BLOCKED_CAPTURE')
                         config=p.read(args[-2]);packages=[]
                         self.assertEqual(config['sourceUrl'], selected['sourceUrl'])
-                        self.assertEqual(config['authorizationRef'], selected['authorizationRef'])
+                        self.assertNotIn('authorizationRef', config)
                         # A later environment change must not split the pair's configuration.
                         ctx.variables['D4_SNAPSHOT_RELEASE_CONFIG']='invalid-after-config-load'
                         for kind in ('calculation','ui'):

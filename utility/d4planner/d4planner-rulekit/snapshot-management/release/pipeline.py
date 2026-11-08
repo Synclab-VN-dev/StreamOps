@@ -89,7 +89,7 @@ def fetch(descriptor, target):
     target.write_bytes(content);target.chmod(0o600)
 
 CONFIG_VARIABLE = 'D4_SNAPSHOT_RELEASE_CONFIG'
-CONFIG_FIELDS = {'sourceUrl', 'authorizationRef', 'ageRecipient'}
+CONFIG_FIELDS = {'sourceUrl', 'ageRecipient'}
 
 def validate_config(config):
     require(isinstance(config, dict), 'BLOCKED_SNAPSHOT_CONFIG_OBJECT')
@@ -104,9 +104,6 @@ def validate_config(config):
     except ValueError:
         valid = False
     require(valid, 'BLOCKED_SNAPSHOT_CONFIG_SOURCE_URL')
-    reference = config.get('authorizationRef')
-    require(isinstance(reference, str) and 0 < len(reference.strip()) <= 1024
-            and not any(ord(c) < 32 for c in reference), 'BLOCKED_SNAPSHOT_CONFIG_AUTHORIZATION_REF')
     recipient = config.get('ageRecipient')
     # Full checksum/key validation is performed by age before capture starts.
     require(isinstance(recipient, str) and re.fullmatch(r'age1[023456789acdefghjklmnpqrstuvwxyz]{58}', recipient),
@@ -186,7 +183,7 @@ def build(ctx, here, c):
         env['PATH']=str(private/'python/bin')+os.pathsep+env.get('PATH','')
         roots={name:str(private/name) for name in ('stateRoot','calculationRoot','uiRoot')}
         capture_config={**roots,'schemaVersion':'maxroll-capture-config/v1','sourceUrl':c['sourceUrl'],
-                        'authorizationRef':c['authorizationRef'],'chromium':chromium}
+                        'chromium':chromium}
         config_file=private/'capture-config.json';write(config_file,capture_config)
         report_file=private/'capture-report.json'
         command(['node',here/'capture.js',config_file,report_file],env=env,timeout=3600)

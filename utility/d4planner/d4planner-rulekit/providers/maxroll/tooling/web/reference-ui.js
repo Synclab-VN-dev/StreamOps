@@ -10,7 +10,6 @@ const {hash,ORIGINS}=require('./capture-ui');
 const {scenarios}=require('./ui-scenarios');
 const {screenshotState}=require('./visual-state');
 async function reference(config){
-  assert(config.authorizationRef,'Explicit capture authorization reference required');
   const store=new FileSystemSnapshotStore({rootDir:config.snapshotRoot});
   const verified=await store.verify(config.snapshotId);
   assert.equal(verified.manifestSha256,config.manifestSha256);
@@ -43,7 +42,7 @@ async function reference(config){
       await context.close();
     }
     assert(results.every(r=>r.mismatches.every(m=>m.classification==='USER_AGENT_FONT_CSS_VARIANT')&&r.errors.length===0),'Online reference drift/runtime error');
-  }finally{await browser.close();await fs.writeFile(path.join(config.referenceDir,'reference-report.json'),JSON.stringify({manifestSha256:config.manifestSha256,authorizationRef:config.authorizationRef,results},null,2),{mode:0o600});}
+  }finally{await browser.close();await fs.writeFile(path.join(config.referenceDir,'reference-report.json'),JSON.stringify({manifestSha256:config.manifestSha256,results},null,2),{mode:0o600});}
   console.log(JSON.stringify(results,null,2));
 }
 if(require.main===module)fs.readFile(process.argv[2],'utf8').then(JSON.parse).then(reference).catch(e=>{console.error(e);process.exitCode=1;});
