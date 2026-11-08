@@ -39,10 +39,15 @@ async function download(url, limit, signal, token = '') {
     }
     if (Number(response.headers.get('content-length')) > limit) { await response.body?.cancel(); throw failure('PLANNER_RELEASE_UNTRUSTED'); }
     const chunks = []; let bytes = 0;
-    for await (const chunk of response.body) {
-      bytes += chunk.length;
-      if (bytes > limit) throw failure('PLANNER_RELEASE_UNTRUSTED');
-      chunks.push(chunk);
+    try {
+      for await (const chunk of response.body) {
+        bytes += chunk.length;
+        if (bytes > limit) throw failure('PLANNER_RELEASE_UNTRUSTED');
+        chunks.push(chunk);
+      }
+    } catch (error) {
+      signal?.throwIfAborted();
+      throw error.code === 'PLANNER_RELEASE_UNTRUSTED' ? error : failure('PLANNER_DOWNLOAD_FAILED');
     }
     return Buffer.concat(chunks);
   }
@@ -89,7 +94,7 @@ class ReleaseProvisioner {
       const stat = await fs.stat(configFile); if (stat.size > 8192) throw failure('PLANNER_RELEASE_ACCESS_DENIED');
       token = json(await fs.readFile(configFile)).githubToken || '';
       if (typeof token !== 'string' || token.length > 4096 || /\s/.test(token)) throw failure('PLANNER_RELEASE_ACCESS_DENIED');
-    } catch (e) { if (e.code !== 'ENOENT') throw e; }
+    } catch (e) { if (e.code !== 'ENOENT') throw failure('PLANNER_RELEASE_ACCESS_DENIED'); }
     const read = async (url, limit) => { signal?.throwIfAborted(); return this.read(url, limit, signal, token); };
     const releases=[];
     for (let page=1; page<=5; page++) {

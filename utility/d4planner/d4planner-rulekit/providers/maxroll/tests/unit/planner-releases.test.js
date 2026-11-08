@@ -78,6 +78,8 @@ test('transport bounds response size and removes PAT on approved asset redirects
   assert.equal((await download('https://api.github.com/repos/example/repo/releases/assets/1',4,undefined,'test-token')).toString(),'data');
   assert.equal(requests[0].options.headers.Authorization,'Bearer test-token');assert.equal(requests[1].options.headers.Authorization,undefined);
   global.fetch=async()=>new Response('oversize');await assert.rejects(download('https://api.github.com/x',2),{code:'PLANNER_RELEASE_UNTRUSTED'});
+  global.fetch=async()=>new Response(new ReadableStream({start(c){c.error(Error('private network details'));}}));
+  await assert.rejects(download('https://api.github.com/x',10),{code:'PLANNER_DOWNLOAD_FAILED'});
   global.fetch=async()=>new Response(null,{status:403});await assert.rejects(download('https://api.github.com/x',10),{code:'PLANNER_RELEASE_ACCESS_DENIED'});
   global.fetch=async()=>new Response(null,{status:302,headers:{location:'https://evil.invalid/token'}});
   await assert.rejects(download('https://api.github.com/x',10),{code:'PLANNER_RELEASE_UNTRUSTED'});
