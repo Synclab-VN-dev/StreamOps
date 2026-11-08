@@ -10,6 +10,10 @@ use std::{
 };
 use wait_timeout::ChildExt;
 
+// Provisioning can download/decrypt a UI package before the Planner becomes ready.
+// Keep its native request budget shared with the HUD caller.
+pub const PLANNER_CONTROL_TIMEOUT: Duration = Duration::from_secs(190);
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ProcessState {
@@ -288,7 +292,12 @@ pub struct BackendProcessWrapper<D: ProcessDriver> {
 impl BackendProcessWrapper<StdProcessDriver> {
     /// Same owned pipe as lifecycle. A deadline retires only this request.
     pub fn request(&self, method: &str, params: serde_json::Value, timeout: Duration) -> Result<serde_json::Value, String> {
-        if !matches!(method, "target.list" | "target.select" | "planner.ensureReady") || timeout.is_zero() || timeout > Duration::from_secs(60) {
+        let limit = match method {
+            "planner.ensureReady" => PLANNER_CONTROL_TIMEOUT,
+            "target.list" | "target.select" => Duration::from_secs(60),
+            _ => return Err("INVALID_CONTROL_REQUEST".into()),
+        };
+        if timeout.is_zero() || timeout > limit {
             return Err("INVALID_CONTROL_REQUEST".into());
         }
         // Serialize admission with restart, but release before waiting for reply.

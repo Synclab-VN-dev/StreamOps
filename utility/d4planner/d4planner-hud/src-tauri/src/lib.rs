@@ -254,7 +254,7 @@ async fn open_local_planner(state: State<'_, BackendState>) -> Result<planner::R
     let wrapper = state.0.lock().map_err(|_| "PLANNER_UNAVAILABLE")?.clone().ok_or("PLANNER_UNAVAILABLE")?;
     let port = planner::configured_port()?;
     tauri::async_runtime::spawn_blocking(move || planner::open(&PLANNER_OPEN_PENDING, port,
-        || wrapper.request("planner.ensureReady", serde_json::json!({}), Duration::from_secs(190)), planner::system_browser))
+        || wrapper.request("planner.ensureReady", serde_json::json!({}), backend_process::PLANNER_CONTROL_TIMEOUT), planner::system_browser))
         .await.map_err(|_| "PLANNER_UNAVAILABLE".to_string())?
 }
 

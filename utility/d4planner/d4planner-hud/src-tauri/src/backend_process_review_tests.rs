@@ -438,3 +438,58 @@ raise SystemExit(m.main())
     wrapper.stop().unwrap();
     assert!(started.elapsed()<Duration::from_secs(2));
 }
+
+#[test]
+fn planner_open_crosses_real_native_pipe_with_provisioning_timeout() {
+    let sandbox = Sandbox::new();
+    let mut spec = sandbox.launch("");
+    // Real native driver and managed Python pipe; only the domain reply/browser
+    // are synthetic. A real backend error must survive the same native boundary.
+    spec.args = vec!["-c".into(), r#"
+import d4planner.managed_backend as m
+calls = 0
+async def command(self, row):
+ global calls
+ if row['method'] != 'planner.ensureReady': raise ValueError('UNSUPPORTED_METHOD')
+ calls += 1
+ if calls == 2: raise ValueError('PLANNER_RELEASE_NOT_FOUND')
+ return {'schemaVersion':'d4planner-local-planner/v1','status':'READY',
+         'url':'http://127.0.0.1:6085/','snapshotId':'synthetic-ui',
+         'manifestSha256':'a'*64,'reused':False}
+m.BaseRuntime.handle_control = command
+raise SystemExit(m.main())
+"#.into()];
+    let wrapper = BackendProcessWrapper::new(Arc::new(StdProcessDriver), spec);
+    wrapper.start().unwrap();
+    let _reap = wrapper.inner.lock().unwrap().child.clone().map(Reap);
+    let opened = AtomicUsize::new(0);
+    let pending = AtomicBool::new(false);
+    let result = crate::planner::open(&pending, 6085,
+        || wrapper.request("planner.ensureReady", serde_json::json!({}), PLANNER_CONTROL_TIMEOUT),
+        |url| { assert_eq!(url,"http://127.0.0.1:6085/"); opened.fetch_add(1,Ordering::SeqCst); Ok(()) });
+    assert!(result.is_ok(), "native Planner open failed: {result:?}");
+    assert_eq!(opened.load(Ordering::SeqCst),1);
+    let error = crate::planner::open(&pending,6085,
+        || wrapper.request("planner.ensureReady",serde_json::json!({}),PLANNER_CONTROL_TIMEOUT),
+        |_| panic!("failed requests must not open browser")).unwrap_err();
+    assert_eq!(error,"PLANNER_RELEASE_NOT_FOUND");
+    assert_eq!(wrapper.state(),ProcessState::Ready);
+    wrapper.stop().unwrap();
+}
+
+#[test]
+fn control_timeout_limits_remain_method_specific_and_bounded() {
+    let wrapper = BackendProcessWrapper::new(Arc::new(StdProcessDriver),spec());
+    for (method, timeout, expected) in [
+        ("planner.ensureReady",Duration::from_secs(190),"BACKEND_OFFLINE"),
+        ("planner.ensureReady",Duration::from_millis(190_001),"INVALID_CONTROL_REQUEST"),
+        ("planner.ensureReady",Duration::ZERO,"INVALID_CONTROL_REQUEST"),
+        ("target.list",Duration::from_secs(60),"BACKEND_OFFLINE"),
+        ("target.list",Duration::from_millis(60_001),"INVALID_CONTROL_REQUEST"),
+        ("target.select",Duration::from_secs(190),"INVALID_CONTROL_REQUEST"),
+        ("arbitrary",Duration::from_secs(1),"INVALID_CONTROL_REQUEST"),
+    ] {
+        assert_eq!(wrapper.request(method,serde_json::json!({}),timeout).unwrap_err(),expected,
+                   "{method} {timeout:?}");
+    }
+}
