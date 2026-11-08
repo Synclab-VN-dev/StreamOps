@@ -52,6 +52,7 @@ def quiescence(*, data_roots=()) -> None:
     if os.name != "nt":
         raise StorageError("BLOCKED: production migration requires Windows process/task/ACL preflight")
     script = r'''$ErrorActionPreference='Stop'
+[Console]::OutputEncoding=New-Object System.Text.UTF8Encoding($false)
 $r=@{processDiscovery='FAILED';taskDiscovery='FAILED';processes=@();tasks=@()}
 try {
   $r.processes=@(Get-CimInstance Win32_Process | Where-Object {$_.ProcessId -gt 0} | ForEach-Object {
@@ -76,8 +77,8 @@ $r | ConvertTo-Json -Depth 4 -Compress
               'processes': [], 'tasks': []}
     try:
         result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
-                                capture_output=True, timeout=30, text=True)
-    except (OSError, subprocess.TimeoutExpired) as error:
+                                capture_output=True, timeout=30, text=True, encoding='utf-8')
+    except (OSError, UnicodeError, subprocess.TimeoutExpired) as error:
         raise QuiescenceError("BUSY: DISCOVERY_FAILED: process/task query unavailable or timed out; "
                               "migration remains blocked", failed) from error
     try:

@@ -110,3 +110,8 @@ def test_relative_script_without_cwd_is_unverified(monkeypatch):
 def test_python_versioned_executable_running_d4planner_blocks(monkeypatch):
     with pytest.raises(migration.StorageError, match='PID 100'):
         check([row(name='python3.12.exe', argv=['python3.12.exe', '-m', 'd4planner.daemon'])], monkeypatch)
+
+
+def test_setup_parent_arguments_do_not_make_it_a_runtime_writer(monkeypatch):
+    check([row(name='D4Planner-Setup.exe', executable=r'C:\Downloads\D4Planner-Setup.exe',
+               argv=[r'C:\Downloads\D4Planner-Setup.exe', '/DATAROOT=C:\\Data\\D4Planner'])], monkeypatch)

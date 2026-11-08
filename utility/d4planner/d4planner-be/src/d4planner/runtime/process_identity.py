@@ -16,6 +16,7 @@ _PYTHON = re.compile(r'python(?:[0-9]+(?:\.[0-9]+)*)?w?\.exe', re.ASCII)
 def _interpreter(name):
     return name == 'node.exe' or _PYTHON.fullmatch(name) is not None
 _NATIVE = {'d4planner.exe', 'd4planner-fe.exe'}
+_SCRIPT_HOSTS = {'powershell.exe', 'pwsh.exe', 'cmd.exe', 'wscript.exe', 'cscript.exe'}
 # NVDA hosts the D4Planner addon; its loaded Python addons cannot be established
 # from its command line. Keep this existing capture-host guard conservative.
 _CAPTURE_HOSTS = {'nvda.exe', 'nvda_nouiaccess.exe'}
@@ -115,6 +116,11 @@ def classify_processes(rows, *, self_pid, roots=()):
         try:
             if executable and _related_path(executable, roots):
                 reasons[pid] = 'D4PLANNER_PACKAGE_OR_DATA_PATH'; owned.add(pid); continue
+            # An ordinary application (including the NSIS Setup parent) is
+            # not a script host merely because an argument mentions DataRoot.
+            # Package/native ownership above still applies to renamed workers.
+            if not _interpreter(name) and name not in _SCRIPT_HOSTS:
+                continue
             command = p.get('commandLine')
             if _interpreter(name) and (not executable or not ntpath.isabs(executable) or not command or _birth(p) is None
                     or type(p.get('parentPid')) is not int or p['parentPid'] < 0):
