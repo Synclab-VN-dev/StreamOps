@@ -125,7 +125,7 @@ def load_config(ctx, here):
     hosted = ctx.env.get('GITHUB_ACTIONS') == 'true'
     require(not override or not hosted, 'BLOCKED_CI_LOCAL_CONFIG')
     if hosted:
-        raw = ctx.env.get(CONFIG_VARIABLE)
+        raw = ctx.variable(CONFIG_VARIABLE)
         require(isinstance(raw, str) and raw.strip(), 'BLOCKED_SNAPSHOT_CONFIG_MISSING')
     else:
         try:

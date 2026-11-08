@@ -113,6 +113,34 @@ their live execution/provisioning is not exercised or claimed by this change.
   → build/verify → job-scoped write token → stable GitHub Release.
   No extra deployment review is prescribed. Manual versions are validated, never inferred from a tag.
 
+## Component configuration variables
+
+`main.yml` passes the GitHub `vars` context as `CI_VARIABLES_JSON` using
+`${{ toJSON(vars) }}` at each contract execution step. The workflow contains no
+component-specific variable names or variable-selection conditions.
+
+Components read explicit values through `ctx.variable(name, default=None)`:
+
+```python
+raw = ctx.variable('MY_COMPONENT_CONFIG')
+# Parse/validate this component's schema here, not in the workflow or CI engine.
+```
+
+The engine validates the transport as an object of string values. Missing names
+return the supplied default. Values are data, not shell expressions. The engine
+removes the raw transport from `ctx.env`; it does not export the map's entries as
+process environment variables. Use an explicit `env` argument to `ctx.run` only
+when the component intends to pass a selected value to its child command.
+Configuration cannot replace PATH, internal CI settings, or credential bindings.
+Variables are not Secrets; the existing capability and secret/token policy still
+controls credentials and publication.
+
+Adding a repository Variable or consuming it in another component does not require
+editing `main.yml`. Adding a new supported JSON field requires changing only the
+owning component's validator/consumer. Local code can supply `CI_VARIABLES_JSON`
+for engine tests; component-specific local configuration policies still apply.
+The separate scheduled-maintenance wrapper retains its existing bindings.
+
 ## Execution and evidence
 
 Each job gets an owned temporary checkout, venv when requested, temporary paths,

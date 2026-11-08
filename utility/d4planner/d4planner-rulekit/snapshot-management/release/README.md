@@ -56,7 +56,10 @@ previous run's artifact. Both operations use the same repository Variable.
 Editing this Variable is enough to change future capture configuration; no
 source commit is needed.
 
-Actions reads the JSON only in the snapshot pair build job. Missing, oversized,
+The workflow transports GitHub Variables generically through `CI_VARIABLES_JSON`.
+Only the snapshot pair build consumes this configuration, through
+`ctx.variable('D4_SNAPSHOT_RELEASE_CONFIG')`. Adding another repository Variable
+for another component does not require changes to `main.yml`. Missing, oversized,
 malformed, duplicate-key or invalid configuration is blocked before capture,
 without falling back to `release/config.json`. Basic field validation runs before
 tool installation; the age binary additionally verifies the recipient checksum

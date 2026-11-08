@@ -98,7 +98,7 @@ jobs:
       env:
         CI_JOB: ${{ matrix.key }}
         CI_VERSION: ${{ inputs.version }}
-        D4_SNAPSHOT_RELEASE_CONFIG: ${{ matrix.key == 'd4planner-snapshots--pair' && vars.D4_SNAPSHOT_RELEASE_CONFIG || '' }}
+        CI_VARIABLES_JSON: ${{ toJSON(vars) }}
       run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --output "$RUNNER_TEMP/ci-results"
     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       if: always()
@@ -148,6 +148,7 @@ jobs:
       env:
         CI_JOB: ${{ matrix.key }}
         CI_VERSION: ${{ inputs.version }}
+        CI_VARIABLES_JSON: ${{ toJSON(vars) }}
         CI_TRUSTED_EXECUTION: '1'
         CI_READ_TOKEN: ${{ github.token }}
         CI_BOUND_SECRET_1: ${{ matrix.secret_1 == 'D4PLANNER_PUBLIC_RUNTIME_INPUTS_URL' && secrets.D4PLANNER_PUBLIC_RUNTIME_INPUTS_URL || matrix.secret_1 == 'D4PLANNER_PUBLIC_RUNTIME_INPUTS_SHA256'
@@ -204,6 +205,7 @@ jobs:
       env:
         CI_JOB: ${{ matrix.key }}
         CI_VERSION: ${{ inputs.version }}
+        CI_VARIABLES_JSON: ${{ toJSON(vars) }}
         CI_TRUSTED_EXECUTION: '1'
         CI_READ_TOKEN: ${{ github.token }}
         CI_BOUND_SECRET_1: ${{ matrix.secret_1 == 'MAXROLL_FIXTURE_AGE_IDENTITY' && secrets.MAXROLL_FIXTURE_AGE_IDENTITY || '' }}
@@ -262,6 +264,7 @@ jobs:
       env:
         CI_JOB: ${{ matrix.key }}
         CI_VERSION: ${{ inputs.version }}
+        CI_VARIABLES_JSON: ${{ toJSON(vars) }}
         CI_TRUSTED_EXECUTION: '1'
         CI_PUBLISH_TOKEN: ${{ github.token }}
       run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --output "$RUNNER_TEMP/ci-results"
@@ -321,6 +324,7 @@ jobs:
       env:
         CI_JOB: ${{ matrix.key }}
         CI_VERSION: ${{ inputs.version }}
+        CI_VARIABLES_JSON: ${{ toJSON(vars) }}
         CI_TRUSTED_EXECUTION: '1'
         CI_BOUND_SECRET_1: ${{ matrix.secret_1 == 'SYNCLAB_OBS_RELEASE_TOKEN' && secrets.SYNCLAB_OBS_RELEASE_TOKEN || '' }}
       run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --output "$RUNNER_TEMP/ci-results"

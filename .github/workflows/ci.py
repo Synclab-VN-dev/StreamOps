@@ -278,6 +278,16 @@ class Context:
         self.temp=None
         self.commands=[]; self.test_counts={}; self.artifacts=[]
         self.env={k:v for k,v in os.environ.items() if not any(x in k.upper() for x in ('TOKEN','SECRET','PASSWORD','CREDENTIAL','IDENTITY'))}
+        # GitHub Variables are configuration data, never process environment
+        # overrides. Components opt in by reading a name through variable().
+        raw_variables = self.env.pop('CI_VARIABLES_JSON', '{}')
+        try:
+            self._variables = json.loads(raw_variables)
+        except (ValueError, RecursionError):
+            raise Blocked('INVALID_CI_VARIABLES_JSON') from None
+        if not isinstance(self._variables, dict) or not all(
+                isinstance(k, str) and isinstance(v, str) for k, v in self._variables.items()):
+            raise Blocked('INVALID_CI_VARIABLES_JSON')
         self.env.update({'GITHUB_WORKSPACE':str(root),'PYTHONUTF8':'1', 'PYTHONUNBUFFERED':'1'})
         self.redactions=[]
         self.deadline=time.monotonic()+job['timeout']
@@ -305,6 +315,10 @@ class Context:
         self.env['PLAYWRIGHT_BROWSERS_PATH']=str(self.temp/'browsers')
         for name in ('GITHUB_ENV','GITHUB_OUTPUT','GITHUB_STEP_SUMMARY'):
             self.env[name]=str(self.temp/name.lower());Path(self.env[name]).touch()
+    def variable(self, name, default=None):
+        """Read a named GitHub Actions Variable; values are not shell-expanded."""
+        return self._variables.get(name, default)
+
     def prepare_checkout(self):
         # Legacy native harnesses detach HEAD and create local venvs. Give each
         # execution an owned checkout; never run those mutations in the caller's tree.

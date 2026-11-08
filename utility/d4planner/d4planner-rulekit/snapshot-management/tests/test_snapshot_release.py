@@ -18,6 +18,10 @@ def load(name, filename):
 p=load('snapshot_pipeline_test',HERE/'pipeline.py')
 ci=load('snapshot_engine_test',ROOT/'.github/workflows/ci.py')
 
+class HostedContext(SimpleNamespace):
+    def variable(self, name, default=None):
+        return self.variables.get(name, default)
+
 class SnapshotRelease(unittest.TestCase):
     def test_discovery_routes_build_without_secrets(self):
         specs=ci.discover(ROOT)
@@ -37,7 +41,7 @@ class SnapshotRelease(unittest.TestCase):
     def test_actions_json_variable_replaces_unconfigured_source_file(self):
         config=self.config()
         config['authorizationRef']='approval "quoted" $(touch SHOULD_NOT_EXIST); `echo literal` — thử'
-        ctx=SimpleNamespace(env={'GITHUB_ACTIONS':'true',
+        ctx=HostedContext(env={'GITHUB_ACTIONS':'true'},variables={
             'D4_SNAPSHOT_RELEASE_CONFIG':json.dumps(config, indent=2, ensure_ascii=False)})
         with patch.object(p,'read',side_effect=AssertionError('Actions must not read local config')):
             self.assertEqual(p.load_config(ctx,HERE),config)
@@ -62,10 +66,10 @@ class SnapshotRelease(unittest.TestCase):
         for values,code in cases:
             with self.subTest(code=code,fields=list(values)), patch.object(p,'read',side_effect=AssertionError('no fallback')):
                 with self.assertRaisesRegex(p.ReleaseBlocked,'^BLOCKED_SNAPSHOT_CONFIG_'+code+'$'):
-                    p.load_config(SimpleNamespace(env={'GITHUB_ACTIONS':'true',**values}),HERE)
+                    p.load_config(HostedContext(env={'GITHUB_ACTIONS':'true'},variables=values),HERE)
         with self.assertRaisesRegex(p.ReleaseBlocked,'BLOCKED_CI_LOCAL_CONFIG'):
-            p.load_config(SimpleNamespace(env={'GITHUB_ACTIONS':'true','SNAPSHOT_RELEASE_CONFIG':'local.json',
-                'D4_SNAPSHOT_RELEASE_CONFIG':json.dumps(self.config())}),HERE)
+            p.load_config(HostedContext(env={'GITHUB_ACTIONS':'true','SNAPSHOT_RELEASE_CONFIG':'local.json'},
+                variables={'D4_SNAPSHOT_RELEASE_CONFIG':json.dumps(self.config())}),HERE)
 
     def test_local_config_file_remains_supported_and_validated(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -75,14 +79,10 @@ class SnapshotRelease(unittest.TestCase):
             file.write_text('{}')
             with self.assertRaisesRegex(p.ReleaseBlocked,'BLOCKED_SNAPSHOT_CONFIG_SOURCE_URL'):p.load_config(ctx,HERE)
 
-    def test_workflow_binds_json_as_data_only_to_snapshot_pair_job(self):
-        text=(ROOT/'.github/workflows/main.yml').read_text()
-        expression="D4_SNAPSHOT_RELEASE_CONFIG: ${{ matrix.key == 'd4planner-snapshots--pair' && vars.D4_SNAPSHOT_RELEASE_CONFIG || '' }}"
-        self.assertEqual(text.count(expression),1)
-        read_job=text.split('\n  read:',1)[1].split('\n  build:',1)[0]
-        self.assertIn(expression,read_job)
-        for line in text.splitlines():
-            if 'vars.D4_SNAPSHOT_RELEASE_CONFIG' in line:self.assertEqual(line.strip(),expression)
+    def test_hosted_config_does_not_fall_back_to_process_environment(self):
+        ctx=HostedContext(env={'GITHUB_ACTIONS':'true','D4_SNAPSHOT_RELEASE_CONFIG':json.dumps(self.config())},variables={})
+        with self.assertRaisesRegex(p.ReleaseBlocked,'BLOCKED_SNAPSHOT_CONFIG_MISSING'):
+            p.load_config(ctx,HERE)
 
     def test_build_public_recipient_only_and_capture_failure_cleanup(self):
         for fail_capture in (False,True):
@@ -90,9 +90,9 @@ class SnapshotRelease(unittest.TestCase):
                 root=Path(temp);(root/'chromium').touch();exports=root/'exports';exports.mkdir()
                 calls=[]
                 selected={**self.config(), 'ageRecipient':'age1u44phv85j8zjz24chh6q8ct73trkm5j9uf84pq96vnvp2jcl9u7qjhtwsj'}
-                ctx=SimpleNamespace(temp=root,env={'PATH':os.environ['PATH'],
-                    'BROWSER_INFRA_CHROMIUM_PATH':str(root/'chromium'), 'GITHUB_ACTIONS':'true',
-                    'D4_SNAPSHOT_RELEASE_CONFIG':json.dumps(selected)},job={'operation':'build'},
+                ctx=HostedContext(temp=root,env={'PATH':os.environ['PATH'],
+                    'BROWSER_INFRA_CHROMIUM_PATH':str(root/'chromium'), 'GITHUB_ACTIONS':'true'},
+                    variables={'D4_SNAPSHOT_RELEASE_CONFIG':json.dumps(selected)},job={'operation':'build'},
                     version='1.0.0',source={'head':'a'*40},
                     artifact=lambda file,name:shutil.copytree(file,exports/name))
                 def transport(args,**kw):
@@ -104,7 +104,7 @@ class SnapshotRelease(unittest.TestCase):
                         self.assertEqual(config['sourceUrl'], selected['sourceUrl'])
                         self.assertEqual(config['authorizationRef'], selected['authorizationRef'])
                         # A later environment change must not split the pair's configuration.
-                        ctx.env['D4_SNAPSHOT_RELEASE_CONFIG']='invalid-after-config-load'
+                        ctx.variables['D4_SNAPSHOT_RELEASE_CONFIG']='invalid-after-config-load'
                         for kind in ('calculation','ui'):
                             store=Path(config[kind+'Root']);snapshot=store/kind;snapshot.mkdir(parents=True)
                             (snapshot/'blobs').mkdir();(snapshot/'blobs/data.bin').write_bytes(b'captured data')
@@ -179,7 +179,7 @@ class SnapshotRelease(unittest.TestCase):
 
     def test_invalid_config_stops_before_tools_or_capture(self):
         for raw in ('', '{invalid', json.dumps({**self.config(), 'sourceUrl':'https://evil.invalid/'})):
-            ctx=SimpleNamespace(env={'GITHUB_ACTIONS':'true','D4_SNAPSHOT_RELEASE_CONFIG':raw},job={'operation':'build'})
+            ctx=HostedContext(env={'GITHUB_ACTIONS':'true'},variables={'D4_SNAPSHOT_RELEASE_CONFIG':raw},job={'operation':'build'})
             with patch.object(p,'build') as build:
                 with self.assertRaises(p.ReleaseBlocked):p.run(ctx)
                 build.assert_not_called()
@@ -205,7 +205,7 @@ class SnapshotRelease(unittest.TestCase):
     def test_real_ci_context_preserves_json_variable_as_data(self):
         raw=json.dumps(self.config(),indent=2)
         with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ,{
-            'GITHUB_ACTIONS':'true','D4_SNAPSHOT_RELEASE_CONFIG':raw},clear=True):
+            'GITHUB_ACTIONS':'true','CI_VARIABLES_JSON':json.dumps({'D4_SNAPSHOT_RELEASE_CONFIG':raw})},clear=True):
             ctx=ci.Context(ROOT,{'capability':'read','timeout':30,'key':'d4planner-snapshots--pair'},
                 Path(temp),{'head':'a'*40},version='1.0.0')
             try:self.assertEqual(p.load_config(ctx,HERE),self.config())
