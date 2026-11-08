@@ -77,7 +77,7 @@ class RuleKitClient:
         if not self.planner_available:
             raise RuleKitRemoteError("PLANNER_UNAVAILABLE", "Local Planner unavailable.")
         try:
-            return await self._call("planner.ensureReady", {}, timeout=35, protocol=PLANNER_PROTOCOL_VERSION)
+            return await self._call("planner.ensureReady", {}, timeout=185, protocol=PLANNER_PROTOCOL_VERSION)
         except RuleKitRemoteError as error:
             code = error.code if error.code.startswith("PLANNER_") else "PLANNER_HEALTH_FAILED" if error.code == "TIMEOUT" else "PLANNER_BUSY" if error.code == "QUEUE_FULL" else "PLANNER_UNAVAILABLE"
             raise RuleKitRemoteError(code, "Local Planner request failed.") from None

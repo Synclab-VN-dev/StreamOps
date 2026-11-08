@@ -47,15 +47,18 @@ def request(id='planner-1'):
             'method': 'planner.ensureReady', 'params': {}}
 
 
-def test_control_contract_and_redacted_errors():
+@pytest.mark.parametrize('error_code', ['PLANNER_SNAPSHOT_UNTRUSTED', 'PLANNER_RELEASE_NOT_FOUND',
+    'PLANNER_RELEASE_ACCESS_DENIED', 'PLANNER_DOWNLOAD_FAILED', 'PLANNER_RELEASE_UNTRUSTED',
+    'PLANNER_DECRYPTION_KEY_REQUIRED', 'PLANNER_DECRYPTION_FAILED', 'PLANNER_RELEASE_ENUMERATION_LIMIT'])
+def test_control_contract_and_redacted_errors(error_code):
     validate_request(request())
     for params in ({'url': 'https://maxroll.gg/'}, [], None):
         with pytest.raises(ValueError): validate_request({**request(), 'params': params})
     class Runtime:
         async def handle_control(self, command):
-            raise RuleKitRemoteError('PLANNER_SNAPSHOT_UNTRUSTED', '/private/secret')
+            raise RuleKitRemoteError(error_code, '/private/secret')
     result = asyncio.run(dispatch(Runtime(), request(), request()))
-    assert result['error']['code'] == 'PLANNER_SNAPSHOT_UNTRUSTED'
+    assert result['error']['code'] == error_code
     assert '/private' not in json.dumps(result)
 
 
@@ -101,7 +104,7 @@ def test_public_package_contains_runtime_only_and_no_capture_assets():
     policy = json.loads((ROOT/'utility/d4planner/d4planner-be/release1/public-content-policy.json').read_text())
     names = policy['sourceAllowlist']
     prefix = 'utility/d4planner/d4planner-rulekit/providers/maxroll/tooling/'
-    required = ['planner/worker-adapter.js', 'planner/manager.js', 'planner/selection.js',
+    required = ['planner/worker-adapter.js', 'planner/manager.js', 'planner/selection.js', 'planner/releases.js',
                 'web/server.js', 'web/client.js', 'web/shell.js', 'web/native-transfer.js', 'web/ui-package.js']
     for name in required:
         assert prefix+name in names and (ROOT/(prefix+name)).is_file()

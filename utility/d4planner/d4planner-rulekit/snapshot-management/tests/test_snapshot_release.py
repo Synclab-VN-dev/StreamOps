@@ -52,7 +52,7 @@ class SnapshotRelease(unittest.TestCase):
                             (snapshot/'capture.log').write_text('private diagnostic')
                             if kind=='ui':
                                 p.write(snapshot/'ui-coverage.json',{})
-                                p.write(snapshot/'ui-validation.json',{})
+                                p.write(snapshot/'ui-validation.json',{'status':'AUTOMATED_VALIDATED'})
                             packages.append({'kind':kind,'snapshotId':kind,'snapshotRoot':str(store),
                                 'manifestSha256':'a'*64,'compatibility':'PATCH_DRIFT'})
                         p.write(args[-1],{'status':'COMPLETE','runId':'test-run','packages':packages})
@@ -78,6 +78,13 @@ class SnapshotRelease(unittest.TestCase):
                         'calculation-snapshot-1.0.0.zip.age','ui-snapshot-1.0.0.zip.age'})
                     metadata=p.read(candidate/'snapshot-pair.json')
                     self.assertEqual(metadata['captureRunId'],'test-run')
+                    ui = metadata['assets']['ui-snapshot-1.0.0.zip.age']
+                    self.assertEqual(ui['plannerProtocolVersion'], 'd4planner-local-planner/v1')
+                    self.assertEqual(ui['uiTrust']['authorizationRef'], 'test')
+                    self.assertEqual(ui['uiTrust']['coverageSha256'], p.sha(b'{}\n'))
+                    self.assertEqual(ui['uiTrust']['validationSha256'], p.sha(
+                        (json.dumps({'status':'AUTOMATED_VALIDATED'}, sort_keys=True, indent=2)+'\n').encode()))
+                    self.assertNotIn('uiTrust', metadata['assets']['calculation-snapshot-1.0.0.zip.age'])
                     for name,record in metadata['assets'].items():
                         self.assertEqual(record['sha256'],p.file_sha(candidate/name))
                         self.assertEqual(record['bytes'],(candidate/name).stat().st_size)

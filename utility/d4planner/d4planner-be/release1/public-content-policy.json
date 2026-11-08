@@ -70,6 +70,7 @@
     "utility/d4planner/d4planner-rulekit/providers/maxroll/src/value.js",
     "utility/d4planner/d4planner-rulekit/providers/maxroll/tooling/planner/manager.js",
     "utility/d4planner/d4planner-rulekit/providers/maxroll/tooling/planner/selection.js",
+    "utility/d4planner/d4planner-rulekit/providers/maxroll/tooling/planner/releases.js",
     "utility/d4planner/d4planner-rulekit/providers/maxroll/tooling/planner/worker-adapter.js",
     "utility/d4planner/d4planner-rulekit/providers/maxroll/tooling/web/client.js",
     "utility/d4planner/d4planner-rulekit/providers/maxroll/tooling/web/native-transfer.js",

@@ -143,6 +143,16 @@ def build(ctx, here, c):
                      '--output',encrypted,plain],env=env)
             assets[name]={'sha256':file_sha(encrypted),'bytes':encrypted.stat().st_size,
                           'snapshotId':package['snapshotId'],'manifestSha256':package['manifestSha256']}
+            if kind == 'ui':
+                source = Path(package['snapshotRoot']) / package['snapshotId']
+                validation = read(source / 'ui-validation.json')
+                require(validation.get('status') == 'AUTOMATED_VALIDATED', 'BLOCKED_UI_VALIDATION')
+                assets[name].update(plannerProtocolVersion='d4planner-local-planner/v1', uiTrust={
+                    'schemaVersion': 'maxroll-ui-trust/v1',
+                    'coverageSha256': file_sha(source / 'ui-coverage.json'),
+                    'validationSha256': file_sha(source / 'ui-validation.json'),
+                    'authorizationRef': c['authorizationRef'],
+                })
         write(candidate/'snapshot-pair.json',{
             'schemaVersion':'d4planner-snapshot-pair/v1','version':ctx.version,
             'sourceSha':ctx.source['head'],'captureRunId':report['runId'],'assets':assets})

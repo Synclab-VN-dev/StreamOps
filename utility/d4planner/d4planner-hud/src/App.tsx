@@ -101,6 +101,13 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
     } catch (error) {
       setMenuOpen(false); // Keep the failure message visible below the summary.
       const messages: Record<string, string> = {
+        PLANNER_RELEASE_NOT_FOUND: "No compatible Planner UI snapshot release is available on GitHub.",
+        PLANNER_RELEASE_ACCESS_DENIED: "Cannot access snapshot releases. Check the GitHub token in private/report-config.json.",
+        PLANNER_DOWNLOAD_FAILED: "Snapshot download failed. Check your connection and try again.",
+        PLANNER_RELEASE_UNTRUSTED: "Snapshot release integrity could not be verified.",
+        PLANNER_DECRYPTION_KEY_REQUIRED: "Snapshot decryption key is missing. Configure private/snapshot-age-identity.txt.",
+        PLANNER_DECRYPTION_FAILED: "Snapshot could not be decrypted or unpacked. Check the snapshot identity key.",
+        PLANNER_RELEASE_ENUMERATION_LIMIT: "Snapshot release search exceeded its limit. Contact the maintainer.",
         PLANNER_SNAPSHOT_UNAVAILABLE: "Local Planner snapshot is unavailable. Provision a validated UI package.",
         PLANNER_SNAPSHOT_UNTRUSTED: "Local Planner snapshot could not be verified.",
         PLANNER_START_FAILED: "Local Planner could not start. Please try again.",

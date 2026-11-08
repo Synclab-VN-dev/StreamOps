@@ -114,3 +114,25 @@ test('cancelling a reuse request preserves the READY server used by existing tab
   m.health = health;
   assert.equal((await m.ensureReady()).reused, true);
 });
+
+test('issue 187: missing selection provisions once, validates and opens; local reuse stays offline', async t => {
+  const f = await fixture(t); await fs.unlink(f.file); let provisions = 0;
+  const m = owned(t, {...f, provision: async signal => {signal.throwIfAborted(); provisions++; await f.write();}});
+  const ready = await Promise.all([m.ensureReady(), m.ensureReady()]);
+  assert(ready.every(r => r.status === 'READY')); assert.equal(provisions, 1);
+  assert.equal((await fetch(ready[0].url)).status, 200);
+  await m.stopListener(); await m.ensureReady(); assert.equal(provisions, 1);
+});
+
+test('issue 187: corrupt local state never downloads a replacement', async t => {
+  const f = await fixture(t); await fs.writeFile(f.file, '{}'); let provisions = 0;
+  const m = owned(t, {...f, provision: async () => {provisions++;}});
+  await assert.rejects(m.ensureReady(), {code: 'PLANNER_SNAPSHOT_UNTRUSTED'});
+  assert.equal(provisions, 0);
+});
+
+test('issue 187: release lookup errors propagate without starting a server', async t => {
+  const f = await fixture(t); await fs.unlink(f.file);
+  const m = owned(t, {...f, provision: async () => {throw Object.assign(Error(), {code:'PLANNER_RELEASE_NOT_FOUND'});}});
+  await assert.rejects(m.ensureReady(), {code:'PLANNER_RELEASE_NOT_FOUND'}); assert.equal(m.running, null);
+});

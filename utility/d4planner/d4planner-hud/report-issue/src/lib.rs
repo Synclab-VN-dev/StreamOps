@@ -1,4 +1,5 @@
 //! Native-only diagnostics. No arbitrary file paths accepted from the WebView.
+pub mod snapshot_unpack;
 use d4planner_runtime_logging::{export_selected, safe};
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
