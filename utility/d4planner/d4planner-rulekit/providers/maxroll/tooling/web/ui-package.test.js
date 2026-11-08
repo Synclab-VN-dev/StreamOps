@@ -22,7 +22,10 @@ test('UI provenance has independent exact trust pins and never asserts calculati
     const config={snapshotRoot:root,snapshotId:id,manifestSha256:manifestHash,uiTrust:{schemaVersion:'maxroll-ui-trust/v1',coverageSha256:sha256(bytes),authorizationRef:'owner-test'}};
     const manifest={site:'maxroll-d4-planner-ui',version:receipt.version,resources,allowedOrigins:['https://maxroll.gg']};
     const verified={manifestSha256:manifestHash};
+    // Legacy receipt/config remain readable, but the label is not a trust gate.
     const result=await verifyUiReceipt(config,manifest,verified);
+    delete config.uiTrust.authorizationRef;
+    assert.equal((await verifyUiReceipt(config,manifest,verified)).calculationStatus,'NOT_ASSESSED');
     assert.equal(result.calculationStatus,'NOT_ASSESSED');
     await assert.rejects(verifyUiReceipt({...config,uiTrust:{}},manifest,verified),/trust pins/);
     await assert.rejects(verifyUiReceipt({...config,manifestSha256:'0'.repeat(64)},manifest,verified),/manifest trust pin/);
@@ -43,9 +46,9 @@ test('real store UI package loads without calculation catalog; blob tampering fa
     const resources=['engine','data','localization'].map(name=>({key:'GET https://maxroll.gg/'+name,method:'GET',url:'https://maxroll.gg/'+name,status:200,headers:{'content-type':'application/json'},body:Buffer.from('{}')}));
     await store.save({schemaVersion:'web-snapshot-draft/v1',snapshotId:id,sourceUrl:'https://maxroll.gg/engine',capturedAt:'2026-11-02T00:00:00Z',allowedOrigins:['https://maxroll.gg'],site:'maxroll-d4-planner-ui',version:'UI-only-new',playwrightVersion:'test',resources});
     const verified=await store.verify(id),manifest=await store.load(id);
-    const receipt={schemaVersion:'maxroll-ui-coverage/v1',status:'CAPTURED_UNVALIDATED',authorizationRef:'owner-test',calculationStatus:'NOT_ASSESSED',integrity:verified,version:manifest.version,startedAt:manifest.capturedAt,finishedAt:'2026-11-02T00:01:00Z',fingerprints:Object.fromEntries(manifest.resources.map(r=>[r.url,r.sha256]))};
+    const receipt={schemaVersion:'maxroll-ui-coverage/v1',status:'CAPTURED_UNVALIDATED',calculationStatus:'NOT_ASSESSED',integrity:verified,version:manifest.version,startedAt:manifest.capturedAt,finishedAt:'2026-11-02T00:01:00Z',fingerprints:Object.fromEntries(manifest.resources.map(r=>[r.url,r.sha256]))};
     const bytes=JSON.stringify(receipt);await fs.writeFile(path.join(root,id,'ui-coverage.json'),bytes);
-    const config={snapshotRoot:root,snapshotId:id,manifestSha256:verified.manifestSha256,uiTrust:{schemaVersion:'maxroll-ui-trust/v1',coverageSha256:sha256(bytes),authorizationRef:'owner-test'}};
+    const config={snapshotRoot:root,snapshotId:id,manifestSha256:verified.manifestSha256,uiTrust:{schemaVersion:'maxroll-ui-trust/v1',coverageSha256:sha256(bytes)}};
     const loaderPath=require.resolve('../../../../snapshot-management/compatibility/loader');
     const old=require.cache[loaderPath];
     require.cache[loaderPath]={exports:{loadCatalog(){throw Error('Calculation catalog must not be consulted');}}};

@@ -8,15 +8,14 @@ const UI_ORIGINS = Object.freeze(['https://maxroll.gg', 'https://assets-ng.maxro
 async function verifyUiReceipt(config, manifest, verified) {
   const trust = config.uiTrust;
   if (!trust || trust.schemaVersion !== 'maxroll-ui-trust/v1' ||
-      !/^[a-f0-9]{64}$/.test(trust.coverageSha256 || '') ||
-      typeof trust.authorizationRef !== 'string' || !trust.authorizationRef.trim()) throw Error('Explicit UI trust pins required');
+      !/^[a-f0-9]{64}$/.test(trust.coverageSha256 || '')) throw Error('Explicit UI trust pins required');
   if (verified.manifestSha256 !== config.manifestSha256) throw Error('UI manifest trust pin mismatch');
   if (manifest.site !== 'maxroll-d4-planner-ui') throw Error('Package is not a dedicated UI capture');
   const bytes = await fs.readFile(path.join(config.snapshotRoot, config.snapshotId, 'ui-coverage.json'));
   if (sha256(bytes) !== trust.coverageSha256) throw Error('UI coverage trust pin mismatch');
   const receipt = JSON.parse(bytes);
   if (receipt.schemaVersion !== 'maxroll-ui-coverage/v1' || receipt.status !== 'CAPTURED_UNVALIDATED' ||
-      receipt.authorizationRef !== trust.authorizationRef || receipt.calculationStatus !== 'NOT_ASSESSED' ||
+      receipt.calculationStatus !== 'NOT_ASSESSED' ||
       receipt.integrity?.manifestSha256 !== config.manifestSha256 || receipt.version !== manifest.version ||
       !Number.isFinite(Date.parse(receipt.startedAt)) || !Number.isFinite(Date.parse(receipt.finishedAt))) throw Error('Invalid UI provenance receipt');
   const resources = new Map(manifest.resources.map(r => [r.url, r]));

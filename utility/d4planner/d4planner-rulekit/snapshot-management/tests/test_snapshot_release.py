@@ -80,7 +80,7 @@ class SnapshotRelease(unittest.TestCase):
                     self.assertEqual(metadata['captureRunId'],'test-run')
                     ui = metadata['assets']['ui-snapshot-1.0.0.zip.age']
                     self.assertEqual(ui['plannerProtocolVersion'], 'd4planner-local-planner/v1')
-                    self.assertEqual(ui['uiTrust']['authorizationRef'], 'test')
+                    self.assertNotIn('authorizationRef', ui['uiTrust'])
                     self.assertEqual(ui['uiTrust']['coverageSha256'], p.sha(b'{}\n'))
                     self.assertEqual(ui['uiTrust']['validationSha256'], p.sha(
                         (json.dumps({'status':'AUTOMATED_VALIDATED'}, sort_keys=True, indent=2)+'\n').encode()))

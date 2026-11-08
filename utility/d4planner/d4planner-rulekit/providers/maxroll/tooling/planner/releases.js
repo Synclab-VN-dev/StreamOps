@@ -116,7 +116,7 @@ class ReleaseProvisioner {
         !Number.isSafeInteger(entry.bytes) || entry.bytes<1 || entry.bytes>128*1024*1024 ||
         !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,159}$/.test(entry.snapshotId || '') ||
         !HASH.test(entry.uiTrust?.coverageSha256 || '') || !HASH.test(entry.uiTrust?.validationSha256 || '') ||
-        entry.uiTrust?.schemaVersion !== 'maxroll-ui-trust/v1' || typeof entry.uiTrust.authorizationRef !== 'string' || !entry.uiTrust.authorizationRef.trim()) throw failure('PLANNER_RELEASE_UNTRUSTED');
+        entry.uiTrust?.schemaVersion !== 'maxroll-ui-trust/v1') throw failure('PLANNER_RELEASE_UNTRUSTED');
       const binary=asset(release,name);
       if(binary.size !== entry.bytes || (binary.digest && binary.digest !== `sha256:${entry.sha256}`)) throw failure('PLANNER_RELEASE_UNTRUSTED');
       chosen={release,entry,binary}; break;

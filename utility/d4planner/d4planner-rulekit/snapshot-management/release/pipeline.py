@@ -151,7 +151,6 @@ def build(ctx, here, c):
                     'schemaVersion': 'maxroll-ui-trust/v1',
                     'coverageSha256': file_sha(source / 'ui-coverage.json'),
                     'validationSha256': file_sha(source / 'ui-validation.json'),
-                    'authorizationRef': c['authorizationRef'],
                 })
         write(candidate/'snapshot-pair.json',{
             'schemaVersion':'d4planner-snapshot-pair/v1','version':ctx.version,
