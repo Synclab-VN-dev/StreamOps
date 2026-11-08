@@ -126,7 +126,19 @@ def test_wheel_installs_adapter_and_resolves_external_runtime_without_cwd(tmp_pa
     with zipfile.ZipFile(wheel) as archive:
         assert archive.read('d4planner/rulekit/worker.js') == WORKER.read_bytes()
         assert 'd4planner/managed_backend.py' in archive.namelist()
-        assert not any('gateway' in name.lower() for name in archive.namelist())
+        # Owner-approved local Gateway is a packaged backend component (#186).
+        # Do not admit the old standalone host, fixtures or credential files.
+        names = set(archive.namelist())
+        assert {name for name in names if 'gateway' in name.lower()} == {
+            'd4planner/reporting/gateway.py',
+        }
+        for name in ('gateway.py', 'local.py'):
+            assert archive.read('d4planner/reporting/' + name) == (
+                ROOT / 'utility/d4planner/d4planner-be/src/d4planner/reporting' / name
+            ).read_bytes()
+        assert not any('report-config.json' in name.lower() or
+                       'report_gateway_fixture' in name or name.endswith('/sitecustomize.py')
+                       for name in names)
     target = tmp_path / 'site-packages'
     install_result = subprocess.run([sys.executable, '-m', 'pip', 'install', '--no-deps', '--target', str(target), str(wheel)],
                    capture_output=True, text=True, timeout=60)
