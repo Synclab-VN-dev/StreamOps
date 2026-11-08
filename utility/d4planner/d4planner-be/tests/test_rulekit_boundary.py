@@ -118,15 +118,37 @@ def test_real_ipc_rejects_unsupported_method_and_bounds_queue(tmp_path):
 
 
 def test_wheel_installs_adapter_and_resolves_external_runtime_without_cwd(tmp_path):
+    # CI repeats this test after compileall, which also compiles a previous
+    # setuptools build/lib. Build from source in an owned workspace so generated
+    # bytecode cannot leak into a later wheel or mutate another test's build.
+    project = ROOT / 'utility/d4planner/d4planner-be'
+    build_source = tmp_path / 'wheel-source'
+    build_source.mkdir()
+    shutil.copy2(project / 'pyproject.toml', build_source / 'pyproject.toml')
+    shutil.copytree(project / 'src', build_source / 'src',
+                    ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '*.pyo', '*.egg-info'))
     build = subprocess.run([sys.executable, '-m', 'pip', 'wheel', '--no-deps', '--no-build-isolation',
-                    '-w', str(tmp_path), str(ROOT / 'utility/d4planner/d4planner-be')],
+                    '-w', str(tmp_path), str(build_source)],
                    capture_output=True, text=True, timeout=60)
     assert build.returncode == 0, f"Wheel build failed ({build.returncode}):\n{build.stdout}\n{build.stderr}"
     wheel = next(tmp_path.glob('*.whl'))
     with zipfile.ZipFile(wheel) as archive:
         assert archive.read('d4planner/rulekit/worker.js') == WORKER.read_bytes()
         assert 'd4planner/managed_backend.py' in archive.namelist()
-        assert not any('gateway' in name.lower() for name in archive.namelist())
+        # Owner-approved local Gateway is a packaged backend component (#186).
+        # Do not admit the old standalone host, fixtures or credential files.
+        names = set(archive.namelist())
+        assert not any('__pycache__' in name or name.endswith(('.pyc', '.pyo')) for name in names)
+        assert {name for name in names if 'gateway' in name.lower()} == {
+            'd4planner/reporting/gateway.py',
+        }
+        for name in ('gateway.py', 'local.py'):
+            assert archive.read('d4planner/reporting/' + name) == (
+                ROOT / 'utility/d4planner/d4planner-be/src/d4planner/reporting' / name
+            ).read_bytes()
+        assert not any('report-config.json' in name.lower() or
+                       'report_gateway_fixture' in name or name.endswith('/sitecustomize.py')
+                       for name in names)
     target = tmp_path / 'site-packages'
     install_result = subprocess.run([sys.executable, '-m', 'pip', 'install', '--no-deps', '--target', str(target), str(wheel)],
                    capture_output=True, text=True, timeout=60)

@@ -245,3 +245,14 @@ it.each([{code:'AUTHENTICATION_REQUIRED',state:'REMOTE_OUTCOME_UNCERTAIN'},'IPC_
   expect((screen.getByText('Preview collection') as HTMLButtonElement).disabled).toBe(true);
   expect(localStorage.getItem('d4planner.pendingReportId')).toBe(preview.reportId);
 });
+
+it('explains local JSON configuration without asking the user to log into a remote gateway', async () => {
+  const bridge=vi.fn(async(command:string)=>{
+    if(command==='collect_issue_report') return preview;
+    throw {code:'REPORT_NOT_CONFIGURED',state:'LOCAL_FAILURE'};
+  });
+  render(<ReportIssue bridge={bridge as never} onClose={()=>{}}/>);form();
+  fireEvent.click(screen.getByText('Preview collection'));await screen.findByText('Run run-1');
+  fireEvent.click(screen.getByLabelText(/I reviewed the public/));fireEvent.click(screen.getByText('Submit issue'));
+  expect((await screen.findByRole('alert')).textContent).toContain('private/report-config.json');
+});

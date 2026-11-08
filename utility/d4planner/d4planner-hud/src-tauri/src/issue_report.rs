@@ -1,7 +1,7 @@
 //! S9 native orchestration; neither React paths nor GitHub App credentials cross this boundary.
-use d4planner_report_issue::{Config, Description, Report, Selection, SubmissionFailure};
+use d4planner_report_issue::{Description, Report, Selection, SubmissionFailure};
 use serde_json::Value;
-use std::{env, fs, path::PathBuf, sync::Mutex};
+use std::{env, path::PathBuf, sync::Mutex};
 static REPORT: Mutex<Option<Report>> = Mutex::new(None);
 fn data_root() -> Result<PathBuf, String> {
     let logs = PathBuf::from(env::var("D4_LOG_DIR").map_err(|_| "LOG_SESSION_UNAVAILABLE")?);
@@ -12,25 +12,6 @@ fn data_root() -> Result<PathBuf, String> {
         .and_then(|p| p.parent())
         .map(|p| p.to_path_buf())
         .ok_or("INVALID_LOG_SESSION".into())
-}
-fn config() -> Result<Config, String> {
-    // Host provisioning only. No client defaults, private key, endpoint or recipient supplied by React.
-    let path =
-        PathBuf::from(env::var("D4PLANNER_REPORT_CONFIG").map_err(|_| "REPORT_NOT_CONFIGURED")?);
-    if !path.is_absolute()
-        || !d4planner_runtime_logging::safe(&path)
-        || fs::metadata(&path)
-            .map_err(|_| "REPORT_NOT_CONFIGURED")?
-            .len()
-            > 8192
-    {
-        return Err("INVALID_REPORT_CONFIG".into());
-    }
-    let config: Config =
-        serde_json::from_slice(&fs::read(path).map_err(|_| "REPORT_NOT_CONFIGURED")?)
-            .map_err(|_| "INVALID_REPORT_CONFIG")?;
-    config.validate()?;
-    Ok(config)
 }
 fn evidence(_destination: &std::path::Path) -> Result<Value, String> {
     // Existing logs --raw selects capture state, not the HUD run. No verified
@@ -76,9 +57,29 @@ pub async fn submit_issue_report(
         if report.id != report_id {
             return Err(SubmissionFailure::uncertain("STALE_REPORT"));
         }
-        let token =
-            env::var("D4PLANNER_REPORT_ACCESS_TOKEN").map_err(|_| "AUTHENTICATION_REQUIRED".into());
-        let result = report.attempt(config(), token, &description, consent)?;
+        if !consent || description.validate().is_err() {
+            return report.attempt(
+                Err("INVALID_REPORT_CONFIG".into()),
+                Err("AUTHENTICATION_REQUIRED".into()),
+                &description,
+                consent,
+            );
+        }
+        let gateway = data_root().and_then(|root| {
+            let python = PathBuf::from(
+                env::var("D4PLANNER_BACKEND_PYTHON").map_err(|_| "LOCAL_GATEWAY_UNAVAILABLE")?,
+            );
+            d4planner_report_issue::local_gateway::LocalGateway::start(&python, &root)
+        });
+        let result = match gateway {
+            Ok(gateway) => report.attempt(
+                gateway.config(),
+                Ok(gateway.credential().to_owned()),
+                &description,
+                consent,
+            ),
+            Err(code) => report.attempt(Err(code.clone()), Err(code), &description, consent),
+        }?;
         if let Some(old) = state.take() {
             old.discard().map_err(SubmissionFailure::uncertain)?;
         }

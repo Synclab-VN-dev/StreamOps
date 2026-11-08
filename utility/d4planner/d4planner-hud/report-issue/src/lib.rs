@@ -10,10 +10,26 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
 };
+pub mod local_gateway;
 pub type Result<T> = std::result::Result<T, String>;
 const MAX: u64 = 64_000_000; // safety ceiling, deployment can only reduce it
 fn error(_: impl std::fmt::Debug) -> String {
     "DIAGNOSTIC_IO_FAILED".into()
+}
+fn gateway_failure(status: u16, bytes: &[u8]) -> String {
+    let value: Value = serde_json::from_slice(bytes).unwrap_or(Value::Null);
+    match value["error"].as_str() {
+        Some(
+            code @ ("GITHUB_401"
+            | "GITHUB_403"
+            | "GITHUB_RATE_LIMIT"
+            | "IDEMPOTENCY_CONFLICT"
+            | "CREATE_OUTCOME_UNCERTAIN"
+            | "RELEASE_IDENTITY_OR_IMMUTABILITY_BLOCKED"
+            | "INVALID_CIPHERTEXT"),
+        ) => code.into(),
+        _ => format!("GATEWAY_{status}"),
+    }
 }
 fn hash(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
@@ -72,7 +88,11 @@ impl Config {
             .parse::<age::x25519::Recipient>()
             .map_err(|_| "RECIPIENT_NOT_CONFIGURED")?;
         let u = reqwest::Url::parse(&self.gateway).map_err(|_| "GATEWAY_NOT_CONFIGURED")?;
-        if u.scheme() != "https"
+        let loopback = u.scheme() == "http"
+            && u.host_str() == Some("127.0.0.1")
+            && u.port().is_some_and(|port| port > 0)
+            && u.path() == "/";
+        if (u.scheme() != "https" && !loopback)
             || !u.username().is_empty()
             || u.password().is_some()
             || u.query().is_some()
@@ -681,6 +701,7 @@ impl Report {
         }
         let artifact = self.prepare_submission(config, description, consent)?;
         let client = reqwest::blocking::Client::builder()
+            .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
             .timeout(std::time::Duration::from_secs(60))
             .build()
@@ -706,13 +727,13 @@ impl Report {
         // All fallible local preparation finishes first. Persist intent before handing
         // any request to transport; every later error remains uncertain until verified terminal.
         self.mark_remote_intent(description)?;
-        let (status, _) = exchange(&client, put)?;
+        let (status, bytes) = exchange(&client, put)?;
         if !(200..300).contains(&status) {
-            return Err(format!("GATEWAY_{status}"));
+            return Err(gateway_failure(status, &bytes));
         }
         let (status, bytes) = exchange(&client, post)?;
         if !(200..300).contains(&status) {
-            return Err(format!("GATEWAY_{status}"));
+            return Err(gateway_failure(status, &bytes));
         }
         self.accept_response(
             serde_json::from_slice(&bytes).map_err(|_| "INVALID_GATEWAY_RESPONSE")?,
@@ -1518,5 +1539,20 @@ mod process_recovery_tests {
             drop(session);
             fs::remove_dir_all(data).unwrap();
         }
+    }
+}
+
+#[cfg(test)]
+mod gateway_failure_tests {
+    #[test]
+    fn actionable_codes_are_allowlisted_and_response_text_is_not_exposed() {
+        assert_eq!(
+            super::gateway_failure(503, br#"{"error":"GITHUB_403"}"#),
+            "GITHUB_403"
+        );
+        assert_eq!(
+            super::gateway_failure(503, br#"{"error":"SECRET_TOKEN"}"#),
+            "GATEWAY_503"
+        );
     }
 }

@@ -4,6 +4,28 @@ Parent: PR #160 / `5fbc02af6e7c28c131ebd1efd9ca994668fec360` (D5 candidate.6).
 Source implementation only. No production deployment, GitHub Issue/Release creation,
 asset upload, recipient approval or visual approval is implied.
 
+## Current architecture — Owner correction, 8 November 2026
+
+The Gateway runs locally inside the packaged backend as
+`python -m d4planner.reporting.local`. Native HUD starts one owned process for a
+submission, receives an ephemeral loopback port and a random session credential over
+private pipes, and reaps it on completion/failure. Parent EOF also stops the server.
+It binds only `127.0.0.1`; browser Origin and incorrect Host headers are rejected.
+Native bypasses HTTP proxies for the local connection. GitHub traffic remains HTTPS.
+No remote Gateway deployment, domain, auth provider or GitHub App is required.
+
+The user's PAT is read only by Python from `<DataRoot>/private/report-config.json`.
+Native receives only recipient/limit and the ephemeral local credential, never the PAT.
+The numeric GitHub user ID is fetched with GET /user and used for subject isolation,
+issue/comment/uploader identity and a shared durable ledger with per-user report ownership. Switching PAT owners
+cannot adopt another user's report state. Existing ciphertext/recipient binding,
+uncertain-create reconciliation and fixed repository/release checks remain mandatory.
+The service does not create a release or change repository settings.
+
+See [local setup instructions](report-issue-local-setup.md). The historical sections
+below record the original server-side App design; the local architecture above
+supersedes their host/auth/App requirements. Raw-event binding remains unavailable.
+
 ## Independent engineering assessment (before implementation)
 
 | Concern | Assessment / decision | Evidence / minimal solution |

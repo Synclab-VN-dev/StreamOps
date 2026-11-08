@@ -59,7 +59,8 @@ def validate_tree(root: Path,key: str,*,dependencies=False):
 
 def inspect_bytes(name: str,data: bytes):
     lower=name.lower();parts=lower.split('/')
-    # Server-side service source is colocated with BE, never a desktop runtime.
+    # Legacy standalone host adapters stay excluded. The reviewed local service
+    # ships as d4planner/reporting; its user configuration must never ship.
     if any(part in {'report-gateway','d4planner-report-gateway','d4planner_report_gateway'} for part in parts):
         raise PublicContentError('SERVER_GATEWAY_IN_DESKTOP_PACKAGE:'+name)
     if lower.startswith('runtime/snapshots/') or lower=='config/maxroll-profile.json' or any(part in {'snapshots','private-snapshots','.artifacts','artifacts'} for part in parts):
@@ -75,6 +76,7 @@ def inspect_bytes(name: str,data: bytes):
         try:value=json.loads(data)
         except (ValueError,UnicodeError):return
         if isinstance(value,dict):
+            if 'githubToken' in value or 'accessToken' in value:raise PublicContentError('REPORT_CREDENTIAL_CONFIG_IN_PUBLIC_PACKAGE:'+name)
             if value.get('schemaVersion') in {'web-snapshot/v1','web-snapshot-draft/v1','d4-rulekit-snapshot-package/v1','d4-rulekit-registry-envelope/v1'}:raise PublicContentError('PRIVATE_RESOURCE_DOCUMENT:'+name)
             if 'snapshotId' in value and ('realRuntime' in value or 'runtimeKind' in value):raise PublicContentError('PRIVATE_PROFILE_DOCUMENT:'+name)
             if 'ciphertext' in value or 'encryptedSnapshot' in value:raise PublicContentError('ENCRYPTED_PRIVATE_RESOURCE:'+name)
