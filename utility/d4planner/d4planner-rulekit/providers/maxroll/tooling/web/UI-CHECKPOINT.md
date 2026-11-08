@@ -67,7 +67,7 @@ Visual comparison uses identical native state and inner viewport (1440×1100 des
 
 ## Reproduce privately
 
-Create capture config with `snapshotRoot`, a **new** `snapshotId`, `chromium`, private `evidenceDir`, `authorizationRef` and a publicly accessible `sourceUrl`. Existing package IDs are never overwritten. Capture requires explicit permission to access that online source.
+Create capture config with `snapshotRoot`, a **new** `snapshotId`, `chromium`, private `evidenceDir` and a publicly accessible `sourceUrl`. Existing package IDs are never overwritten. Capture requires explicit permission to access that online source.
 
 ```bash
 node capture-ui.js /private/capture-config.json
@@ -80,7 +80,6 @@ Serve config adds the following to the existing `snapshotRoot`, `snapshotId`, `m
   "uiTrust": {
     "schemaVersion": "maxroll-ui-trust/v1",
     "coverageSha256": "<exact SHA-256 of ui-coverage.json>",
-    "authorizationRef": "<same authorized capture reference>",
     "validationSha256": "<optional exact SHA-256 of ui-validation.json>"
   }
 }
@@ -100,4 +99,4 @@ python3 compare-visuals.py /private/online-reference /private/http-evidence
 python3 cli.py stop --config /private/serve-config.json
 ```
 
-Reference config uses `snapshotRoot`, `snapshotId`, `manifestSha256`, `chromium`, `referenceDir`, `authorizationRef`; verify config uses `url`, `chromium`, `evidenceDir`. References access online intentionally; verify uses ordinary HTTP without Playwright replay interception. Shared regressions: `npm test` in `application` and `BROWSER_INFRA_CHROMIUM_PATH=/absolute/chrome npm test` in `browser-infra`. CI_NOT_CHECKED.
+Reference config uses `snapshotRoot`, `snapshotId`, `manifestSha256`, `chromium`, `referenceDir`; verify config uses `url`, `chromium`, `evidenceDir`. References access online intentionally; verify uses ordinary HTTP without Playwright replay interception. Shared regressions: `npm test` in `application` and `BROWSER_INFRA_CHROMIUM_PATH=/absolute/chrome npm test` in `browser-infra`. CI_NOT_CHECKED.

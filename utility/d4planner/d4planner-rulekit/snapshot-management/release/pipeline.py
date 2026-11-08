@@ -11,10 +11,13 @@ import subprocess
 import tarfile
 import urllib.request
 import zipfile
+from urllib.parse import urlsplit
 
 RECIPIENT = 'age1q9x3chgd0ycxe6y692cme82906a7qvcm08a02mwp9scdrtyupgzqhhwfrj'
 VERSION = re.compile(r'^[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?$')
 HASH = re.compile(r'^[a-f0-9]{64}$')
+# The pinned age v1.3.2 Linux archive exceeds 16 MiB. Keep downloads bounded.
+MAX_INPUT_BYTES = 32*1024*1024
 
 class ReleaseBlocked(RuntimeError): pass
 
@@ -82,22 +85,76 @@ def fetch(descriptor, target):
     try:
         with urllib.request.urlopen(url, timeout=60) as response:
             require(response.url.startswith('https://'), 'BLOCKED_INPUT_REDIRECT')
-            content=response.read(16*1024*1024+1)
+            content=response.read(MAX_INPUT_BYTES+1)
     except (OSError,ValueError): raise ReleaseBlocked('BLOCKED_INPUT_ACCESS') from None
-    require(len(content)<=16*1024*1024 and sha(content)==descriptor['sha256'], 'BLOCKED_INPUT_HASH')
+    require(len(content)<=MAX_INPUT_BYTES, 'BLOCKED_INPUT_SIZE')
+    require(sha(content)==descriptor['sha256'], 'BLOCKED_INPUT_HASH')
     target.write_bytes(content);target.chmod(0o600)
 
+CONFIG_VARIABLE = 'D4_SNAPSHOT_RELEASE_CONFIG'
+CONFIG_FIELDS = {'sourceUrl', 'ageRecipient'}
+
+def validate_config(config):
+    require(isinstance(config, dict), 'BLOCKED_SNAPSHOT_CONFIG_OBJECT')
+    require(set(config) <= CONFIG_FIELDS, 'BLOCKED_SNAPSHOT_CONFIG_FIELDS')
+    url = config.get('sourceUrl')
+    require(isinstance(url, str) and len(url) <= 2048 and not any(c.isspace() or ord(c) < 32 for c in url),
+            'BLOCKED_SNAPSHOT_CONFIG_SOURCE_URL')
+    try:
+        parsed = urlsplit(url)
+        valid = (parsed.scheme == 'https' and parsed.netloc == 'maxroll.gg' and not parsed.query
+                 and '?' not in url and re.fullmatch(r'/d4/planner/[A-Za-z0-9]+', parsed.path))
+    except ValueError:
+        valid = False
+    require(valid, 'BLOCKED_SNAPSHOT_CONFIG_SOURCE_URL')
+    recipient = config.get('ageRecipient')
+    # Full checksum/key validation is performed by age before capture starts.
+    require(isinstance(recipient, str) and re.fullmatch(r'age1[023456789acdefghjklmnpqrstuvwxyz]{58}', recipient),
+            'BLOCKED_SNAPSHOT_CONFIG_AGE_RECIPIENT')
+    return dict(config)
+
+def config_object(pairs):
+    result = {}
+    for key, value in pairs:
+        require(key not in result, 'BLOCKED_SNAPSHOT_CONFIG_DUPLICATE_FIELD')
+        result[key] = value
+    return result
+
 def load_config(ctx, here):
-    override=ctx.env.get('SNAPSHOT_RELEASE_CONFIG')
-    require(not override or ctx.env.get('GITHUB_ACTIONS')!='true', 'BLOCKED_CI_LOCAL_CONFIG')
-    c=read(override or here/'config.json')
-    return c
+    override = ctx.env.get('SNAPSHOT_RELEASE_CONFIG')
+    hosted = ctx.env.get('GITHUB_ACTIONS') == 'true'
+    require(not override or not hosted, 'BLOCKED_CI_LOCAL_CONFIG')
+    if hosted:
+        raw = ctx.variable(CONFIG_VARIABLE)
+        require(isinstance(raw, str) and raw.strip(), 'BLOCKED_SNAPSHOT_CONFIG_MISSING')
+    else:
+        try:
+            raw = Path(override or here/'config.json').read_text(encoding='utf-8')
+        except (OSError, UnicodeError):
+            raise ReleaseBlocked('BLOCKED_SNAPSHOT_CONFIG_FILE') from None
+    require(len(raw.encode('utf-8')) <= 16384, 'BLOCKED_SNAPSHOT_CONFIG_SIZE')
+    try:
+        config = json.loads(raw, object_pairs_hook=config_object)
+    except (ValueError, RecursionError):
+        raise ReleaseBlocked('BLOCKED_SNAPSHOT_CONFIG_JSON') from None
+    return validate_config(config)
+
+def verify_recipient(recipient, env):
+    # Parse the actual age recipient (including checksum) with the pinned age
+    # implementation. Encrypt empty input; discard output, never need an identity.
+    try:
+        result = subprocess.run(['age', '--encrypt', '--recipient', recipient],
+                                input=b'', capture_output=True, timeout=15, env=env)
+    except (OSError, subprocess.TimeoutExpired):
+        raise ReleaseBlocked('BLOCKED_TOOL_AGE') from None
+    require(result.returncode == 0, 'BLOCKED_SNAPSHOT_CONFIG_AGE_RECIPIENT')
 
 def safe_env(ctx):
-    return {k:v for k,v in ctx.env.items() if not any(w in k.upper() for w in ('SECRET','TOKEN','PASSWORD','CREDENTIAL','IDENTITY'))}
+    return {k:v for k,v in ctx.env.items() if k not in {CONFIG_VARIABLE, 'SNAPSHOT_RELEASE_CONFIG'} and not any(w in k.upper() for w in ('SECRET','TOKEN','PASSWORD','CREDENTIAL','IDENTITY'))}
 
 def build(ctx, here, c):
     require(ctx.version and VERSION.fullmatch(ctx.version), 'BLOCKED_VERSION')
+    c = validate_config(c)
     for tool in ('node','npm','python3'):
         require(shutil.which(tool, path=ctx.env.get('PATH')), 'BLOCKED_TOOL_'+tool.upper())
     rulekit=here.parent.parent;provider=rulekit/'providers/maxroll'
@@ -110,6 +167,7 @@ def build(ctx, here, c):
                    'sha256':'cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10'},archive)
             with tarfile.open(archive) as tar:tar.extractall(private,filter='data')
             env['PATH']=str(private/'age')+os.pathsep+env.get('PATH','')
+        verify_recipient(c['ageRecipient'], env)
         # Install the existing pinned browser infrastructure, not a second capture framework.
         # Capturer also reuses snapshot-management's content-version parser (AJV).
         for module in ('browser-infra','providers/maxroll','snapshot-management'):
@@ -128,7 +186,7 @@ def build(ctx, here, c):
         env['PATH']=str(private/'python/bin')+os.pathsep+env.get('PATH','')
         roots={name:str(private/name) for name in ('stateRoot','calculationRoot','uiRoot')}
         capture_config={**roots,'schemaVersion':'maxroll-capture-config/v1','sourceUrl':c['sourceUrl'],
-                        'authorizationRef':c['authorizationRef'],'chromium':chromium}
+                        'chromium':chromium}
         config_file=private/'capture-config.json';write(config_file,capture_config)
         report_file=private/'capture-report.json'
         command(['node',here/'capture.js',config_file,report_file],env=env,timeout=3600)
@@ -139,7 +197,7 @@ def build(ctx, here, c):
             package=next(row for row in report['packages'] if row['kind']==kind)
             plain=private/(kind+'.zip');pack(package,plain)
             name=f'{kind}-snapshot-{ctx.version}.zip.age';encrypted=candidate/name
-            command(['age','--encrypt','--recipient',c.get('ageRecipient',RECIPIENT),
+            command(['age','--encrypt','--recipient',c['ageRecipient'],
                      '--output',encrypted,plain],env=env)
             assets[name]={'sha256':file_sha(encrypted),'bytes':encrypted.stat().st_size,
                           'snapshotId':package['snapshotId'],'manifestSha256':package['manifestSha256']}
@@ -176,7 +234,7 @@ def publish(ctx):
         'ensure_source_tag(sys.argv[2],sys.argv[3],sys.argv[4])',
         ctx.root/'utility/d4planner/d4planner-be/tools',repo,tag,ctx.source['head'])
     ctx.run(['gh','release','create',tag,*[str(candidate/name) for name in names],
-             '--repo',repo,'--verify-tag','--title',f'D4Planner Snapshots {ctx.version}',
+             '--repo',repo,'--verify-tag','--title',f'd4planner-snapshot-{ctx.version}',
              '--notes','Encrypted Calculation + UI snapshots captured in one release run.'])
 
 

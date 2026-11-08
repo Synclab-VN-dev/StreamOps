@@ -21,7 +21,7 @@ function dependencies(text,base) {
   return [...urls];
 }
 async function capture(config, {browser: sharedBrowser} = {}) {
-  for(const key of ['snapshotRoot','snapshotId','chromium','evidenceDir','authorizationRef'])if(!config[key])throw Error('Required: '+key);
+  for(const key of ['snapshotRoot','snapshotId','chromium','evidenceDir'])if(!config[key])throw Error('Required: '+key);
   const output=path.join(config.snapshotRoot,config.snapshotId);
   try {await fs.access(output);throw Error('Capture output already exists');}catch(e){if(e.code!=='ENOENT')throw e;}
   await fs.mkdir(config.evidenceDir,{recursive:true,mode:0o700});
@@ -30,7 +30,7 @@ async function capture(config, {browser: sharedBrowser} = {}) {
   const store=new FileSystemSnapshotStore({rootDir:config.snapshotRoot,limits:{maxResources:6000,maxResourceBytes:64*1024*1024,maxTotalBytes:512*1024*1024}});
   let nativeData,nativeProfile;
   const queue=new Set(),observed=new Set(),attempted=new Set(),fingerprints=new Map(),tasks=new Set(),responseHashes=new Map();
-  const coverage={schemaVersion:'maxroll-ui-coverage/v1',startedAt:new Date().toISOString(),authorizationRef:config.authorizationRef,
+  const coverage={schemaVersion:'maxroll-ui-coverage/v1',startedAt:new Date().toISOString(),
     calculationStatus:'NOT_ASSESSED',scenarios:{},dependencies:[],unavailableDependencies:[],references:[],errors:[],status:'CAPTURING'};
   const manager=new WebSnapshotManager({store,browser:{withLease:(options,fn)=>browser.withLease(options,async lease=>{
     const page=lease.page;

@@ -43,7 +43,6 @@ Default file: `$XDG_CONFIG_HOME/streamops/maxroll-capture.json`, otherwise `~/.c
 ```json
 {
   "schemaVersion": "maxroll-capture-config/v1",
-  "authorizationRef": "<Owner's explicit capture authorization>",
   "sourceUrl": "https://maxroll.gg/d4/planner/<authorized-public-planner-id>",
   "stateRoot": "/private/maxroll/state",
   "uiRoot": "/private/maxroll/ui",

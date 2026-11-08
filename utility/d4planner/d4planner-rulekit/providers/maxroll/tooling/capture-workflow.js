@@ -18,7 +18,7 @@ async function loadConfig(filename = defaultConfig()) {
   const stat = await fs.lstat(filename);
   if (!stat.isFile() || stat.isSymbolicLink() || stat.uid !== process.getuid() || (stat.mode & 0o077)) throw Error('Private configuration requires owned regular file mode 0600');
   const c = JSON.parse(await fs.readFile(filename, 'utf8'));
-  if (c.schemaVersion !== 'maxroll-capture-config/v1' || !c.authorizationRef?.trim()) throw Error('Capture configuration/authorization required');
+  if (c.schemaVersion !== 'maxroll-capture-config/v1') throw Error('Capture configuration required');
   if (!/^https:\/\/maxroll\.gg\/d4\/planner\/[a-zA-Z0-9]+(?:#[^?]*)?$/.test(c.sourceUrl || '')) throw Error('Configured anonymous Planner source URL required');
   const repo = path.resolve(__dirname, '../../../../../..');
   for (const key of ['stateRoot', 'uiRoot', 'calculationRoot']) {
@@ -112,7 +112,7 @@ async function run(options, dependencies = {}) {
           p.compatibility = result.validation; // PATCH_DRIFT is preserved, never promoted to calculation READY.
         } else {
           await (dependencies.captureUi || captureUi)({snapshotRoot: p.snapshotRoot, snapshotId: p.snapshotId, chromium: c.chromium,
-            evidenceDir: path.join(runDir, 'capture-ui'), authorizationRef: c.authorizationRef, sourceUrl: c.sourceUrl,
+            evidenceDir: path.join(runDir, 'capture-ui'), sourceUrl: c.sourceUrl,
             comprehensive: true, signal: options.signal}, {browser});
         }
         const observed = await (dependencies.identity || identity)(p.snapshotRoot, p.snapshotId);
@@ -136,7 +136,7 @@ async function run(options, dependencies = {}) {
       try {
         const coverage = await fs.readFile(path.join(ui.snapshotRoot, ui.snapshotId, 'ui-coverage.json'));
         const config = {snapshotRoot: ui.snapshotRoot, snapshotId: ui.snapshotId, manifestSha256: ui.manifestSha256, chromium: c.chromium,
-          uiTrust: {schemaVersion: 'maxroll-ui-trust/v1', coverageSha256: sha(coverage), authorizationRef: c.authorizationRef}};
+          uiTrust: {schemaVersion: 'maxroll-ui-trust/v1', coverageSha256: sha(coverage)}};
         await db({operation: 'package', snapshotId: ui.snapshotId, patch: {validationStatus: 'VALIDATING', coverageSha256: sha(coverage)}});
         const resource = await (dependencies.audit || audit)(config);
         await fs.writeFile(path.join(runDir, 'resource-audit.json'), JSON.stringify(resource));

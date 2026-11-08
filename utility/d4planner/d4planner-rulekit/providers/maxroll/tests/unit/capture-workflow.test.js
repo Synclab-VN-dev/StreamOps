@@ -1,9 +1,9 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
-const {run,state,consistent}=require('../../tooling/capture-workflow');
+const {run,state,consistent,loadConfig}=require('../../tooling/capture-workflow');
 async function fixture(t,{drift=false,gateFailure=false,incomplete=false}={}){
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'capture-workflow-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
- const c={stateRoot:path.join(root,'state'),uiRoot:path.join(root,'ui'),calculationRoot:path.join(root,'calc'),chromium:'/synthetic/browser',authorizationRef:'SYNTHETIC_TEST_ONLY',sourceUrl:'https://maxroll.gg/d4/planner/fixture'};
+ const c={stateRoot:path.join(root,'state'),uiRoot:path.join(root,'ui'),calculationRoot:path.join(root,'calc'),chromium:'/synthetic/browser',sourceUrl:'https://maxroll.gg/d4/planner/fixture'};
  const calls=[];let starts=0,stops=0;
  const deps={loadConfig:async()=>c,browserFactory:opts=>{assert.deepEqual(opts.launchOptions,{handleSIGINT:false,handleSIGTERM:false,handleSIGHUP:false});return {start:async()=>starts++,stop:async()=>stops++};},
  calculation:{capture:async o=>{calls.push('calculation');await fs.mkdir(o.output,{recursive:true});return {validation:'PATCH_DRIFT'};}},
@@ -28,4 +28,14 @@ for(const option of ['gateFailure','incomplete'])test('UI failure remains in his
 });
 test('calculation without output gets unique names and remains unvalidated across concurrent runs',async t=>{
  const f=await fixture(t);const results=await Promise.all([run({},f.deps),run({},f.deps)]);assert.notEqual(results[0].runId,results[1].runId);const d=await state(f.c.stateRoot,{operation:'read'});assert.equal(Object.keys(d.runs).length,2);assert.equal(Object.keys(d.packages).length,2);assert.equal(d.activeUi,null);
+});
+
+test('capture config and UI trust no longer require or emit authorizationRef',async t=>{
+ const f=await fixture(t);f.c.chromium=process.execPath;const file=path.join(path.dirname(f.c.stateRoot),'config.json');
+ await fs.writeFile(file,JSON.stringify({...f.c,schemaVersion:'maxroll-capture-config/v1'}),{mode:0o600});
+ const config=await loadConfig(file);assert.equal(config.authorizationRef,undefined);
+ const capture=f.deps.captureUi;f.deps.captureUi=async options=>{assert(!Object.hasOwn(options,'authorizationRef'));return capture(options);};
+ const r=await run({mode:'all'},f.deps);assert.equal(r.status,'COMPLETE');
+ const d=await state(f.c.stateRoot,{operation:'read'});
+ assert(!Object.hasOwn(d.packages[r.packages.find(p=>p.kind==='ui').snapshotId].config.uiTrust,'authorizationRef'));
 });
