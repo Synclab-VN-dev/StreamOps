@@ -280,7 +280,8 @@ def main():
         previous = state()
         try:
             try: engine.install(args.package_new,root,data,args.package_sha)
-            except PermissionError: pass
+            except engine.InstallError as error:
+                assert 'LAUNCHER_FILE_LOCKED' in str(error), str(error)
             else: raise AssertionError("Locked root launcher unexpectedly replaced")
             assert state() == previous
         finally: kernel.CloseHandle(handle)

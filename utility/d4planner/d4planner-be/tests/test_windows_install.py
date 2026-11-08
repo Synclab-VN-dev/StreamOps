@@ -1,6 +1,8 @@
 """Engine tests; Windows acceptance separately uses the actual production Setup."""
 import importlib.util
+from contextlib import closing
 import json
+import os
 from pathlib import Path
 import sqlite3
 import sys
@@ -37,7 +39,7 @@ def prepare(tmp_path, monkeypatch):
     (data / "targets/user.json").write_text("user target")
     (data / "settings.json").write_text('{"user":true}')
     (data / "state").mkdir()
-    with sqlite3.connect(data / "state/hud.sqlite3") as db:
+    with closing(sqlite3.connect(data / "state/hud.sqlite3")) as db, db:
         db.execute("create table schema_meta(component text,version integer)")
         db.execute("insert into schema_meta values('release1-hud',2)")
     return root, data
@@ -299,3 +301,66 @@ def test_rollback_requires_previous_rulekit_to_accept_active_snapshot_before_mut
     assert not (root/'upgrade-journal.json').exists()
     monkeypatch.setattr(engine,'rulekit_upgrade_preflight',lambda *args:{'compatible':True})
     assert engine.rollback(root)['rollbackVersion']=='1.0.0'
+
+
+def test_failed_recovery_preserves_journal_original_error_and_new_data(tmp_path, monkeypatch):
+    root, data = prepare(tmp_path, monkeypatch)
+    first, sha = package(tmp_path)
+    engine.install(first, root, data, sha, health_check=lambda path: None)
+    second, sha = package(tmp_path, '1.0.1')
+    replace = engine.replace_launcher
+    def blocked_restore(source, target):
+        if source.name == 'D4Planner.recovery.exe':
+            raise engine.InstallError('LAUNCHER_FILE_LOCKED')
+        return replace(source, target)
+    monkeypatch.setattr(engine, 'replace_launcher', blocked_restore)
+    def health(path):
+        if path == root:
+            (data / 'targets/user.json').write_text('newer write')
+            raise engine.InstallError('RUNTIME_HEALTH_FAILED')
+    with pytest.raises(engine.InstallError, match='RUNTIME_HEALTH_FAILED; RECOVERY_REQUIRED: LAUNCHER_FILE_LOCKED'):
+        engine.install(second, root, data, sha, health_check=health)
+    assert (root / 'upgrade-journal.json').exists()
+    assert (data / 'targets/user.json').read_text() == 'newer write'
+    monkeypatch.setattr(engine, 'replace_launcher', replace)
+    assert engine.recover(root)['recovery'] == 'RESTORED_PREVIOUS'
+    assert (data / 'targets/user.json').read_text() == 'newer write'
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='native Windows sharing and ACL semantics')
+@pytest.mark.parametrize('gate', ['sharing', 'acl'])
+def test_native_launcher_replace_failure_preserves_application_and_data(tmp_path, monkeypatch, gate):
+    import ctypes
+    from ctypes import wintypes as w
+    import subprocess
+    import csv
+    root, data = prepare(tmp_path, monkeypatch)
+    package_path, sha = package(tmp_path)
+    engine.install(package_path, root, data, sha, health_check=lambda path: None)
+    previous = engine.read_state(root)
+    image = root / 'D4Planner.exe'
+    before = {p: p.read_bytes() for p in (image, root / 'active.json', data / 'state/hud.sqlite3', data / 'targets/user.json')}
+    if gate == 'sharing':
+        kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel.CreateFileW.argtypes = [w.LPCWSTR, w.DWORD, w.DWORD, w.LPVOID, w.DWORD, w.DWORD, w.HANDLE]
+        kernel.CreateFileW.restype = w.HANDLE
+        kernel.CloseHandle.argtypes = [w.HANDLE]
+        handle = kernel.CreateFileW(str(image), 0x80000000, 1, None, 3, 0, None)
+        assert handle != ctypes.c_void_p(-1).value
+        expected = 'LAUNCHER_FILE_LOCKED'
+    else:
+        saved = tmp_path / 'image-acl.txt'
+        subprocess.run(['icacls.exe', str(image), '/save', str(saved)], check=True, capture_output=True)
+        identity = subprocess.check_output(['whoami.exe', '/user', '/fo', 'csv', '/nh'], text=True)
+        sid = next(csv.reader(identity.splitlines()))[1]
+        subprocess.run(['icacls.exe', str(image), '/deny', '*'+sid+':(D)'], check=True, capture_output=True)
+        expected = 'LAUNCHER_ACCESS_DENIED'
+    try:
+        with pytest.raises(engine.InstallError, match=expected):
+            engine.install(package_path, root, data, sha, health_check=lambda path: None)
+        assert engine.read_state(root) == previous
+    finally:
+        if gate == 'sharing': kernel.CloseHandle(handle)
+        else: subprocess.run(['icacls.exe', str(root), '/restore', str(saved)], check=True, capture_output=True)
+    engine.recover(root)
+    assert {p: p.read_bytes() for p in before} == before

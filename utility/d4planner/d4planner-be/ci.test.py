@@ -38,6 +38,9 @@ python -m pytest -q \
   utility/d4planner/d4planner-be/tests/test_multi_key_hook.py \
   utility/d4planner/d4planner-be/tests/test_multi_key_capture.py \
   utility/d4planner/d4planner-be/tests/test_issue87_uat_evidence.py \
+  utility/d4planner/d4planner-be/tests/test_windows_install.py \
+  utility/d4planner/d4planner-be/tests/test_installer_migration.py \
+  utility/d4planner/d4planner-be/tests/test_unified_storage.py \
   utility/d4planner/script/build/tests
 ''', shell='bash', cwd='.')
         # tests.yml / d4planner-portability: Controller CLI validate on Linux
