@@ -92,3 +92,22 @@ test('a competitor publishing state during validation cannot be overwritten', as
   assert.equal(await fs.readFile(path.join(f.stateRoot,'capture-state.json'),'utf8'),'competing-state');
   assert.deepEqual(await fs.readdir(path.join(path.dirname(f.stateRoot),'releases')),[]);
 });
+
+test('GitHub release enumeration accepts JSON while metadata and binary assets request octet-stream', async t=>{
+  const f=await fixture(t), original=global.fetch, requests=[];
+  t.after(()=>{global.fetch=original;});
+  delete f.options.read; // Exercise production HTTP transport, not a mocked downloader.
+  global.fetch=async(url,options)=>{
+    const listing=new URL(url).pathname.endsWith('/releases');
+    requests.push({url:String(url),accept:options.headers.Accept});
+    if(options.headers.Accept!==(listing?'application/vnd.github+json':'application/octet-stream')) {
+      return new Response(JSON.stringify({message:'Unsupported Accept header'}),{status:415});
+    }
+    return new Response(listing?JSON.stringify([f.release]):String(url).endsWith('/1')?
+      JSON.stringify(f.metadata):'encrypted-fixture');
+  };
+  await new ReleaseProvisioner(f.options).ensure();
+  assert.equal((await readSelection(f.stateRoot,6085)).snapshotId,f.config.snapshotId);
+  assert.deepEqual(requests.map(r=>r.accept),[
+    'application/vnd.github+json','application/octet-stream','application/octet-stream']);
+});

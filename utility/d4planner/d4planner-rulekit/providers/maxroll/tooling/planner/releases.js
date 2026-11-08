@@ -19,11 +19,11 @@ async function safePath(file) {
     if (path.dirname(p) === p) break;
   }
 }
-async function download(url, limit, signal, token = '') {
+async function download(url, limit, signal, token = '', accept = 'application/octet-stream') {
   for (let redirects = 0; redirects < 4; redirects++) {
     const u = new URL(url);
     if (u.protocol !== 'https:' || u.username || u.password || !['api.github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com'].includes(u.hostname)) throw failure('PLANNER_RELEASE_UNTRUSTED');
-    const headers = {'Accept': 'application/octet-stream', 'User-Agent': 'D4Planner-Local-Planner', 'X-GitHub-Api-Version': '2022-11-28'};
+    const headers = {'Accept': accept, 'User-Agent': 'D4Planner-Local-Planner', 'X-GitHub-Api-Version': '2022-11-28'};
     if (u.hostname === 'api.github.com' && token) headers.Authorization = `Bearer ${token}`;
     let response;
     try { response = await fetch(u, {headers, signal, redirect: 'manual'}); }
@@ -95,10 +95,10 @@ class ReleaseProvisioner {
       token = json(await fs.readFile(configFile)).githubToken || '';
       if (typeof token !== 'string' || token.length > 4096 || /\s/.test(token)) throw failure('PLANNER_RELEASE_ACCESS_DENIED');
     } catch (e) { if (e.code !== 'ENOENT') throw failure('PLANNER_RELEASE_ACCESS_DENIED'); }
-    const read = async (url, limit) => { signal?.throwIfAborted(); return this.read(url, limit, signal, token); };
+    const read = async (url, limit, accept) => { signal?.throwIfAborted(); return this.read(url, limit, signal, token, accept); };
     const releases=[];
     for (let page=1; page<=5; page++) {
-      const rows=json(await read(`${API}/releases?per_page=100&page=${page}`,4*1024*1024));
+      const rows=json(await read(`${API}/releases?per_page=100&page=${page}`,4*1024*1024,'application/vnd.github+json'));
       if (!Array.isArray(rows)) throw failure('PLANNER_RELEASE_UNTRUSTED');
       releases.push(...rows); if(rows.length<100) break;
       if(page===5) throw failure('PLANNER_RELEASE_ENUMERATION_LIMIT');
