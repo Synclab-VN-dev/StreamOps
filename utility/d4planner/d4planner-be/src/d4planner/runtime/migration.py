@@ -19,6 +19,8 @@ import uuid
 
 from .storage import StorageError, canonical, check_owner
 from .store import atomic_write_json
+from .task_names import is_current_task_name
+from .process_identity import classify_processes
 
 TREES = {"state", "sessions", "runtime", "targets", "rulekit", "logs", "cache"}
 
@@ -28,26 +30,114 @@ def sha(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def quiescence() -> None:
-    """Fail closed if process/task discovery cannot establish an offline window.
+class QuiescenceError(StorageError):
+    """A fail-closed preflight result safe to include in the installer report."""
 
-    Conservatively blocks *all* Python/Node/FE/NVDA processes, even unrelated
-    ones. The migration's own process is excluded. Never stops a process/task.
+    def __init__(self, message: str, evidence: dict):
+        super().__init__(message)
+        self.quiescence = evidence
+
+
+def quiescence(*, data_roots=()) -> None:
+    """Require an offline window without stopping processes or changing tasks.
+
+    Attribute interpreters by package path/module/script and verified ancestry,
+    not by Python/Node executable name alone. Unavailable/opaque identities and
+    NVDA capture hosts remain blocked. Only this exact process is excluded.
+    Enabled source-defined tasks block even in Ready state: they can start a writer.
+    Retired or unrelated task names are ignored; generated names must match the
+    complete runtime/diagnostic format, never just a D4Planner prefix.
+    Discovery failures are distinct from discovered potential writers.
     """
     if os.name != "nt":
         raise StorageError("BLOCKED: production migration requires Windows process/task/ACL preflight")
-    script = f'''$ErrorActionPreference='Stop'
-$names=@('D4Planner.exe','d4planner-fe.exe','nvda.exe','nvda_noUIAccess.exe','node.exe','python.exe','pythonw.exe')
-$p=@(Get-CimInstance Win32_Process | Where-Object {{$_.ProcessId -ne {os.getpid()} -and $_.Name -in $names}})
-$t=@(Get-ScheduledTask | Where-Object {{$_.TaskName -match 'D4Planner' -and $_.State -ne 'Disabled'}})
-if($p.Count -or $t.Count) {{throw 'BUSY: close writers and disable D4Planner tasks explicitly'}}
+    script = r'''$ErrorActionPreference='Stop'
+[Console]::OutputEncoding=New-Object System.Text.UTF8Encoding($false)
+$r=@{processDiscovery='FAILED';taskDiscovery='FAILED';processes=@();tasks=@()}
+try {
+  $r.processes=@(Get-CimInstance Win32_Process | Where-Object {$_.ProcessId -gt 0} | ForEach-Object {
+    @{pid=[int]$_.ProcessId;name=[string]$_.Name;parentPid=[int]$_.ParentProcessId;
+      executable=[string]$_.ExecutablePath;commandLine=[string]$_.CommandLine;
+      startedAt=$(if($_.CreationDate){$_.CreationDate.ToUniversalTime().ToString('o')}else{''})}
+  })
+  $r.installRoots=@((Join-Path $env:LOCALAPPDATA 'Programs\D4Planner'))
+  $key='HKCU:\Software\Synclab\D4Planner'
+  if(Test-Path $key){$registration=Get-ItemProperty $key; if($registration.InstallRoot){$r.installRoots+= [string]$registration.InstallRoot}}
+  $r.processDiscovery='OK'
+} catch {}
+try {
+  $r.tasks=@(Get-ScheduledTask | ForEach-Object {
+    @{name=[string]$_.TaskName;path=[string]$_.TaskPath;state=[string]$_.State}
+  })
+  $r.taskDiscovery='OK'
+} catch {}
+$r | ConvertTo-Json -Depth 4 -Compress
 '''
-    result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
-                            capture_output=True, timeout=30, text=True)
-    if result.returncode:
-        raise StorageError("BUSY: writer/task discovery failed or writers remain")
+    failed = {'processDiscovery': 'FAILED', 'taskDiscovery': 'FAILED',
+              'processes': [], 'tasks': []}
+    try:
+        result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+                                capture_output=True, timeout=30, text=True, encoding='utf-8')
+    except (OSError, UnicodeError, subprocess.TimeoutExpired) as error:
+        raise QuiescenceError("BUSY: DISCOVERY_FAILED: process/task query unavailable or timed out; "
+                              "migration remains blocked", failed) from error
+    try:
+        if result.returncode:
+            raise ValueError('query failed')
+        evidence = json.loads(result.stdout)
+        if not isinstance(evidence, dict):
+            raise ValueError('invalid discovery')
+        for stage in ('processDiscovery', 'taskDiscovery'):
+            if evidence.get(stage) not in ('OK', 'FAILED'):
+                raise ValueError('missing discovery status')
+        processes, tasks = evidence['processes'], evidence['tasks']
+        if not isinstance(processes, list) or not isinstance(tasks, list):
+            raise ValueError('invalid discovery inventory')
+        if any(not isinstance(p, dict) or type(p.get('pid')) is not int or p['pid'] <= 0
+               or not isinstance(p.get('name'), str) or not p['name'] for p in processes):
+            raise ValueError('incomplete process identity')
+        if any(not isinstance(t, dict) or any(not isinstance(t.get(k), str) or not t[k]
+               for k in ('name', 'path', 'state')) for t in tasks):
+            raise ValueError('incomplete task identity')
+        roots = evidence.get('installRoots', [])
+        if not isinstance(roots, list) or any(not isinstance(root, str) for root in roots):
+            raise ValueError('invalid package roots')
+        roots = roots + [str(root) for root in data_roots]
+        local = os.environ.get('LOCALAPPDATA')
+        if local:
+            roots += [os.path.join(local, 'd4planner'), os.path.join(local, 'StreamOps', 'D4Planner')]
+        evidence = {stage: evidence[stage] for stage in ('processDiscovery', 'taskDiscovery')}
+        evidence['processes'], evidence['processReasons'] = classify_processes(
+            processes, self_pid=os.getpid(), roots=roots)
+        evidence['tasks'] = [{k: t[k] for k in ('name', 'path', 'state')} for t in tasks
+                             if t['state'].casefold() != 'disabled' and is_current_task_name(t['name'])]
+    except (ValueError, KeyError, TypeError) as error:
+        raise QuiescenceError("BUSY: DISCOVERY_FAILED: invalid or incomplete process/task query; "
+                              "migration remains blocked", failed) from error
+    failures = [stage for stage in ('processDiscovery', 'taskDiscovery') if evidence[stage] != 'OK']
+    if failures:
+        raise QuiescenceError("BUSY: DISCOVERY_FAILED: " + ', '.join(failures) +
+                              "; migration remains blocked", evidence)
+    blockers = []
+    if evidence['processes']:
+        blockers.append('potential writer processes: ' + ', '.join(
+            f"{p['name']} (PID {p['pid']})" for p in evidence['processes']))
+    if evidence['tasks']:
+        blockers.append('enabled D4Planner tasks: ' + ', '.join(
+            f"{t['path']}{t['name']} ({t['state']})" for t in evidence['tasks']))
+    if blockers:
+        raise QuiescenceError('BUSY: ' + '; '.join(blockers) +
+            '. Migration requires an operator-controlled offline window; no process or task was changed.', evidence)
 
 
+_PRODUCTION_QUIESCENCE = quiescence
+
+
+def _probe_roots(probe, source, target):
+    if probe is _PRODUCTION_QUIESCENCE:
+        probe(data_roots=(source, target))
+    else:
+        probe()
 
 
 @contextmanager
@@ -271,7 +361,7 @@ def plan(source: Path, target: Path, *, _probe=quiescence) -> dict:
     completed = source / ".storage-migrated.json"
     if completed.exists() and json.loads(completed.read_text()).get("target") != str(target):
         raise StorageError("PATH_CONFLICT: source already migrated to another root")
-    _probe()
+    _probe_roots(_probe, source, target)
     check_owner(source)
     if target.exists():
         check_owner(target)
@@ -359,7 +449,7 @@ def _apply_locked(report: dict, *, _probe=quiescence) -> dict:
                 raise StorageError("BLOCKED: staging hash mismatch")
             if item["sqlite"] and database_check(staged) != item["sqlite"]:
                 raise StorageError("BLOCKED: staging SQLite mismatch")
-        _probe()
+        _probe_roots(_probe, source, target)
         if inventory(source, target, verified=verified) != report["files"]:
             raise StorageError("BLOCKED: source changed during staging")
         report["status"] = "PUBLISHING"
@@ -425,7 +515,7 @@ def rollback(report: dict, *, _probe=quiescence) -> dict:
 
 
 def _rollback_locked(report: dict, remove, digest, *, _probe=quiescence) -> dict:
-    _probe()
+    _probe_roots(_probe, report["source"], report["target"])
     target = canonical(report["target"])
     entries = {f["path"]: f for f in report["files"]}
     source_journal = Path(report["source"]) / ".storage-migration-active.json"
@@ -494,7 +584,7 @@ def run_cli(args) -> int:
         elif args.action == "apply":
             report = apply(report)
         elif args.action == "verify":
-            quiescence()
+            quiescence(data_roots=(source, target))
             verify(report)
             report["status"] = "VERIFIED"
         else:

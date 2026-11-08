@@ -25,6 +25,7 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "Synclab"
 
 Var DataRoot
 Var Result
+Var MigrationOption
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
@@ -148,8 +149,23 @@ Section "D4Planner" SEC_MAIN
   SetCompress off
   File /oname=payload.zip "${PACKAGE}"
   SetCompress auto
+  ; Silent Setup must never treat absence of a response as consent. Automated
+  ; operators may explicitly authorize migration with /MIGRATE=1.
+  StrCpy $MigrationOption "--interactive-migration"
+  IfSilent 0 migration_mode_ready
+    StrCpy $MigrationOption ""
+  migration_mode_ready:
+  ${GetParameters} $0
+  ${GetOptions} $0 "/MIGRATE=" $1
+  ${If} $1 == "1"
+    StrCpy $MigrationOption "--accept-migration"
+  ${ElseIf} $1 != ""
+    MessageBox MB_ICONSTOP "Invalid /MIGRATE option. Only /MIGRATE=1 explicitly authorizes data transfer." /SD IDOK
+    SetErrorLevel 1
+    Abort
+  ${EndIf}
   DetailPrint "Verifying payload, stopping owned D4Planner and activating ${VERSION}..."
-  ExecWait '"$PLUGINSDIR\python\python.exe" "$PLUGINSDIR\windows_install.py" install --root "$INSTDIR" --data "$DataRoot" --package "$PLUGINSDIR\payload.zip" --sha256 ${PACKAGE_SHA256} --report "$TEMP\D4Planner-setup-${VERSION}.json"' $Result
+  ExecWait '"$PLUGINSDIR\python\python.exe" "$PLUGINSDIR\windows_install.py" install --root "$INSTDIR" --data "$DataRoot" --package "$PLUGINSDIR\payload.zip" --sha256 ${PACKAGE_SHA256} --report "$TEMP\D4Planner-setup-${VERSION}.json" $MigrationOption' $Result
   ${If} $Result != 0
     MessageBox MB_ICONSTOP "Installation failed or was rolled back. See $TEMP\D4Planner-setup-${VERSION}.json. User data was preserved." /SD IDOK
     SetErrorLevel 1
