@@ -6,6 +6,7 @@ Ambiguous Issue POSTs NEVER repeat: reconciliation or operator resolution is req
 """
 
 from __future__ import annotations
+from contextlib import contextmanager
 import hashlib
 import json
 import re
@@ -254,8 +255,16 @@ class Service:
             )
         self.db.chmod(0o600)
 
+    @contextmanager
     def connect(self):
-        return sqlite3.connect(self.db, timeout=5)
+        connection = sqlite3.connect(self.db, timeout=5)
+        try:
+            with connection:
+                yield connection
+        finally:
+            # sqlite's context manager commits/rolls back but does not close.
+            # Explicit closure is required before Windows can release the DB file.
+            connection.close()
 
     def authorize_request(self, subject):
         if not isinstance(subject, str) or not subject or len(subject) > 256:

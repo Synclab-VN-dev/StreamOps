@@ -164,3 +164,18 @@ def test_age_header_accepts_native_grease_but_not_plaintext_or_unbounded_header(
     assert not age_envelope(prefix+grease*100+end)
     assert not age_envelope(prefix+grease.replace(b'D'*10,b'bad!')+end)
     assert not age_envelope(prefix+grease+end[:-90])
+
+
+def test_ledger_connections_close_on_success_and_error(tmp_path):
+    import sqlite3
+    from d4planner.reporting.gateway import Service as RealService
+    service=RealService(tmp_path/'state.sqlite3',None,77,42,1000)
+    with service.connect() as connection:
+        connection.execute('SELECT 1')
+    with pytest.raises(sqlite3.ProgrammingError, match='closed'):
+        connection.execute('SELECT 1')
+    with pytest.raises(RuntimeError):
+        with service.connect() as failed:
+            raise RuntimeError('fixture')
+    with pytest.raises(sqlite3.ProgrammingError, match='closed'):
+        failed.execute('SELECT 1')
