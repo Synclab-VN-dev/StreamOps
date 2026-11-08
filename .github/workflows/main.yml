@@ -98,6 +98,7 @@ jobs:
       env:
         CI_JOB: ${{ matrix.key }}
         CI_VERSION: ${{ inputs.version }}
+        D4_SNAPSHOT_RELEASE_CONFIG: ${{ matrix.key == 'd4planner-snapshots--pair' && vars.D4_SNAPSHOT_RELEASE_CONFIG || '' }}
       run: python .github/workflows/ci.py run --plan "$RUNNER_TEMP/ci-plan/plan.json" --job "$CI_JOB" --version "$CI_VERSION" --output "$RUNNER_TEMP/ci-results"
     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       if: always()
