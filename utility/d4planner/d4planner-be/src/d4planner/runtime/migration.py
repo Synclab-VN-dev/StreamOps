@@ -28,26 +28,90 @@ def sha(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def quiescence() -> None:
-    """Fail closed if process/task discovery cannot establish an offline window.
+class QuiescenceError(StorageError):
+    """A fail-closed preflight result safe to include in the installer report."""
 
-    Conservatively blocks *all* Python/Node/FE/NVDA processes, even unrelated
-    ones. The migration's own process is excluded. Never stops a process/task.
+    def __init__(self, message: str, evidence: dict):
+        super().__init__(message)
+        self.quiescence = evidence
+
+
+def quiescence() -> None:
+    """Require an offline window without stopping processes or changing tasks.
+
+    Preserve the conservative #165 policy: all Python/Node/FE/NVDA candidates
+    except this exact process block migration. A familiar command line or an
+    ancestor relationship is not proof that another process cannot write data.
+    Enabled D4Planner tasks block even in Ready state: they can start a writer.
+    Discovery failures are distinct from discovered potential writers.
     """
     if os.name != "nt":
         raise StorageError("BLOCKED: production migration requires Windows process/task/ACL preflight")
-    script = f'''$ErrorActionPreference='Stop'
-$names=@('D4Planner.exe','d4planner-fe.exe','nvda.exe','nvda_noUIAccess.exe','node.exe','python.exe','pythonw.exe')
-$p=@(Get-CimInstance Win32_Process | Where-Object {{$_.ProcessId -ne {os.getpid()} -and $_.Name -in $names}})
-$t=@(Get-ScheduledTask | Where-Object {{$_.TaskName -match 'D4Planner' -and $_.State -ne 'Disabled'}})
-if($p.Count -or $t.Count) {{throw 'BUSY: close writers and disable D4Planner tasks explicitly'}}
+    script = r'''$ErrorActionPreference='Stop'
+$r=@{processDiscovery='FAILED';taskDiscovery='FAILED';processes=@();tasks=@()}
+try {
+  $names=@('D4Planner.exe','d4planner-fe.exe','nvda.exe','nvda_noUIAccess.exe','node.exe','python.exe','pythonw.exe')
+  $r.processes=@(Get-CimInstance Win32_Process | Where-Object {$_.Name -in $names} | ForEach-Object {
+    @{pid=[int]$_.ProcessId;name=[string]$_.Name}
+  })
+  $r.processDiscovery='OK'
+} catch {}
+try {
+  $r.tasks=@(Get-ScheduledTask | Where-Object {$_.TaskName -match 'D4Planner'} | ForEach-Object {
+    @{name=[string]$_.TaskName;path=[string]$_.TaskPath;state=[string]$_.State}
+  })
+  $r.taskDiscovery='OK'
+} catch {}
+$r | ConvertTo-Json -Depth 4 -Compress
 '''
-    result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
-                            capture_output=True, timeout=30, text=True)
-    if result.returncode:
-        raise StorageError("BUSY: writer/task discovery failed or writers remain")
-
-
+    failed = {'processDiscovery': 'FAILED', 'taskDiscovery': 'FAILED',
+              'processes': [], 'tasks': []}
+    try:
+        result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+                                capture_output=True, timeout=30, text=True)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise QuiescenceError("BUSY: DISCOVERY_FAILED: process/task query unavailable or timed out; "
+                              "migration remains blocked", failed) from error
+    try:
+        if result.returncode:
+            raise ValueError('query failed')
+        evidence = json.loads(result.stdout)
+        if not isinstance(evidence, dict):
+            raise ValueError('invalid discovery')
+        for stage in ('processDiscovery', 'taskDiscovery'):
+            if evidence.get(stage) not in ('OK', 'FAILED'):
+                raise ValueError('missing discovery status')
+        processes, tasks = evidence['processes'], evidence['tasks']
+        if not isinstance(processes, list) or not isinstance(tasks, list):
+            raise ValueError('invalid discovery inventory')
+        if any(not isinstance(p, dict) or type(p.get('pid')) is not int or p['pid'] <= 0
+               or not isinstance(p.get('name'), str) or not p['name'] for p in processes):
+            raise ValueError('incomplete process identity')
+        if any(not isinstance(t, dict) or any(not isinstance(t.get(k), str) or not t[k]
+               for k in ('name', 'path', 'state')) for t in tasks):
+            raise ValueError('incomplete task identity')
+        evidence = {stage: evidence[stage] for stage in ('processDiscovery', 'taskDiscovery')}
+        evidence['processes'] = [{'pid': p['pid'], 'name': p['name']} for p in processes
+                                 if p['pid'] != os.getpid()]
+        evidence['tasks'] = [{k: t[k] for k in ('name', 'path', 'state')} for t in tasks
+                             if t['state'] != 'Disabled']
+    except (ValueError, KeyError, TypeError) as error:
+        raise QuiescenceError("BUSY: DISCOVERY_FAILED: invalid or incomplete process/task query; "
+                              "migration remains blocked", failed) from error
+    failures = [stage for stage in ('processDiscovery', 'taskDiscovery') if evidence[stage] != 'OK']
+    if failures:
+        raise QuiescenceError("BUSY: DISCOVERY_FAILED: " + ', '.join(failures) +
+                              "; migration remains blocked", evidence)
+    blockers = []
+    if evidence['processes']:
+        blockers.append('potential writer processes: ' + ', '.join(
+            f"{p['name']} (PID {p['pid']})" for p in evidence['processes']))
+    if evidence['tasks']:
+        blockers.append('enabled D4Planner tasks: ' + ', '.join(
+            f"{t['path']}{t['name']} ({t['state']})" for t in evidence['tasks']))
+    if blockers:
+        raise QuiescenceError('BUSY: ' + '; '.join(blockers) +
+            '. Migration requires an operator-controlled offline window; no process or task was changed.', evidence)
 
 
 @contextmanager

@@ -592,6 +592,11 @@ def main(argv=None) -> int:
         code = 0
     except Exception as error:
         result = {"ok":False, "classification":"INSTALL_FAILURE", "error":str(error)}
+        if isinstance(getattr(error, "quiescence", None), dict):
+            result["quiescence"] = error.quiescence
+            result["classification"] = ("MIGRATION_DISCOVERY_FAILED" if any(
+                error.quiescence.get(stage) != "OK"
+                for stage in ("processDiscovery", "taskDiscovery")) else "MIGRATION_BUSY")
         code = 1
     args.report.parent.mkdir(parents=True, exist_ok=True)
     atomic_json(args.report, result)
