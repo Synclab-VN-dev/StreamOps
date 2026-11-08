@@ -90,16 +90,48 @@ def verify_mapping(m, issue, release_id, asset):
 
 
 def age_envelope(data):
-    # Format check only, never a claim that the server can decrypt/authenticate ciphertext.
-    # Native encryption is the trust boundary; authenticated malicious uploaders remain a hosting risk.
-    return (
-        re.match(
-            rb"age-encryption\.org/v1\n-> X25519 [A-Za-z0-9+/]{43}\n[A-Za-z0-9+/]{43}\n--- [A-Za-z0-9+/]{43}\n",
-            data,
-        )
-        is not None
-        and len(data) >= 200
-    )
+    # Bounded structural check, NOT cryptographic authentication. Native age may
+    # emit additional GREASE stanzas; an X25519-only regex rejects real ciphertext.
+    # Header grammar: https://c2sp.org/age (recipient stanza / header MAC).
+    if not data.startswith(b"age-encryption.org/v1\n") or len(data) < 200:
+        return False
+    offset = len(b"age-encryption.org/v1\n")
+    x25519 = False
+    stanzas = 0
+    while offset < min(len(data), 16384):
+        end = data.find(b"\n", offset, min(len(data), 16384))
+        if end < 0:
+            return False
+        line = data[offset:end]
+        offset = end + 1
+        if re.fullmatch(rb"--- [A-Za-z0-9+/]{43}", line):
+            return x25519 and len(data) - offset >= 32
+        if not re.fullmatch(rb"-> [!-~]+(?: [!-~]+)*", line) or len(line) > 1024:
+            return False
+        stanzas += 1
+        if stanzas > 32:
+            return False
+        args = line[3:].split(b" ")
+        is_x25519 = args[0] == b"X25519"
+        if is_x25519 and (len(args) != 2 or not re.fullmatch(rb"[A-Za-z0-9+/]{43}", args[1])):
+            return False
+        body = b""
+        while True:
+            end = data.find(b"\n", offset, min(len(data), 16384))
+            if end < 0:
+                return False
+            part = data[offset:end]
+            offset = end + 1
+            if not re.fullmatch(rb"[A-Za-z0-9+/]{0,64}", part):
+                return False
+            body += part
+            if len(part) < 64:
+                break
+        if is_x25519:
+            if len(body) != 43:
+                return False
+            x25519 = True
+    return False
 
 
 class NoRedirect(HTTPRedirectHandler):

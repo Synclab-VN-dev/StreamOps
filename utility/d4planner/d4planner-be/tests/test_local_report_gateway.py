@@ -152,3 +152,15 @@ def test_pat_account_switch_cannot_recreate_same_report(tmp_path):
     first.prepare('github-user:42',rid,request)
     with pytest.raises(Rejected, match='IDEMPOTENCY_CONFLICT'):
         second.prepare('github-user:43',rid,request)
+
+
+def test_age_header_accepts_native_grease_but_not_plaintext_or_unbounded_header():
+    from d4planner.reporting.gateway import age_envelope
+    prefix=b'age-encryption.org/v1\n-> X25519 '+b'A'*43+b'\n'+b'B'*43+b'\n'
+    grease=b'-> test-grease random\n'+b'C'*64+b'\n'+b'D'*10+b'\n'
+    end=b'--- '+b'E'*43+b'\n'+b'x'*100
+    assert age_envelope(prefix+grease+end)
+    assert not age_envelope(b'plaintext'+end)
+    assert not age_envelope(prefix+grease*100+end)
+    assert not age_envelope(prefix+grease.replace(b'D'*10,b'bad!')+end)
+    assert not age_envelope(prefix+grease+end[:-90])
