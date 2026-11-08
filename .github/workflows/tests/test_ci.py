@@ -4,6 +4,7 @@ import io
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -344,6 +345,41 @@ class Contracts(unittest.TestCase):
         with self.assertRaisesRegex(ci.ContractError,'BUILD_ARTIFACT_INTEGRITY'):ctx.build_artifact('setup')
         report['source']={};ci.write_json(inputs/'build/result.json',report)
         with self.assertRaisesRegex(ci.ContractError,'BUILD_REPORT_IDENTITY'):ctx.build_artifact('setup')
+
+    def test_component_variables_are_generic_data_not_process_environment(self):
+        self.contract(); plan=self.plan();out=Path(self.tmp.name)/'variables';out.mkdir()
+        raw={'SNAPSHOT_CONFIG':'{\n  "note": "$(literal); `not executed`"\n}',
+             'FUTURE_COMPONENT_SETTING':'next value', 'PATH':'must-not-override',
+             'CI_PUBLISH_TOKEN':'must-not-authorize'}
+        with patch.dict(os.environ,{'CI_VARIABLES_JSON':json.dumps(raw)},clear=False):
+            ctx=ci.Context(self.root,plan['jobs'][0],out,plan['source'])
+        self.addCleanup(ctx.close)
+        self.assertEqual(ctx.variable('SNAPSHOT_CONFIG'),raw['SNAPSHOT_CONFIG'])
+        self.assertEqual(ctx.variable('FUTURE_COMPONENT_SETTING'),'next value')
+        self.assertIsNone(ctx.variable('ABSENT'))
+        self.assertEqual(ctx.variable('ABSENT','default'),'default')
+        self.assertNotEqual(ctx.env.get('PATH'),raw['PATH'])
+        for key in ('CI_VARIABLES_JSON','FUTURE_COMPONENT_SETTING','CI_PUBLISH_TOKEN'):
+            self.assertNotIn(key,ctx.env)
+        ctx.python('-c', 'import os; assert "CI_VARIABLES_JSON" not in os.environ; assert "FUTURE_COMPONENT_SETTING" not in os.environ')
+        self.assertNotIn('next value',(out/'commands.log').read_text())
+
+    def test_variable_transport_rejects_malformed_maps_without_echoing_values(self):
+        self.contract();plan=self.plan()
+        for raw in ('private invalid json','[]','null','{"SETTING": {"private": "value"}}'):
+            with self.subTest(raw=raw),patch.dict(os.environ,{'CI_VARIABLES_JSON':raw}):
+                with self.assertRaisesRegex(ci.Blocked,'^INVALID_CI_VARIABLES_JSON$'):
+                    ci.Context(self.root,plan['jobs'][0],Path(self.tmp.name),plan['source'])
+
+    def test_main_workflow_has_only_generic_variable_transport(self):
+        text=(ci.ROOT/'.github/workflows/main.yml').read_text()
+        self.assertNotIn('D4_SNAPSHOT_RELEASE_CONFIG',text)
+        self.assertNotIn('d4planner-snapshots--pair',text)
+        for job in ('read','build','fixture','publish','external_publish'):
+            block=text.split('\n  '+job+':',1)[1]
+            # The next job starts at exactly two spaces, not step indentation.
+            block=re.split(r'\n  [a-z_]+:',block,maxsplit=1)[0]
+            self.assertIn('CI_VARIABLES_JSON: ${{ toJSON(vars) }}',block)
 
     def test_clean_no_change(self):
         self.contract();self.commit();self.base=self.git('rev-parse','HEAD').strip()
