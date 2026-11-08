@@ -118,8 +118,17 @@ def test_real_ipc_rejects_unsupported_method_and_bounds_queue(tmp_path):
 
 
 def test_wheel_installs_adapter_and_resolves_external_runtime_without_cwd(tmp_path):
+    # CI repeats this test after compileall, which also compiles a previous
+    # setuptools build/lib. Build from source in an owned workspace so generated
+    # bytecode cannot leak into a later wheel or mutate another test's build.
+    project = ROOT / 'utility/d4planner/d4planner-be'
+    build_source = tmp_path / 'wheel-source'
+    build_source.mkdir()
+    shutil.copy2(project / 'pyproject.toml', build_source / 'pyproject.toml')
+    shutil.copytree(project / 'src', build_source / 'src',
+                    ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '*.pyo', '*.egg-info'))
     build = subprocess.run([sys.executable, '-m', 'pip', 'wheel', '--no-deps', '--no-build-isolation',
-                    '-w', str(tmp_path), str(ROOT / 'utility/d4planner/d4planner-be')],
+                    '-w', str(tmp_path), str(build_source)],
                    capture_output=True, text=True, timeout=60)
     assert build.returncode == 0, f"Wheel build failed ({build.returncode}):\n{build.stdout}\n{build.stderr}"
     wheel = next(tmp_path.glob('*.whl'))
@@ -129,6 +138,7 @@ def test_wheel_installs_adapter_and_resolves_external_runtime_without_cwd(tmp_pa
         # Owner-approved local Gateway is a packaged backend component (#186).
         # Do not admit the old standalone host, fixtures or credential files.
         names = set(archive.namelist())
+        assert not any('__pycache__' in name or name.endswith(('.pyc', '.pyo')) for name in names)
         assert {name for name in names if 'gateway' in name.lower()} == {
             'd4planner/reporting/gateway.py',
         }
