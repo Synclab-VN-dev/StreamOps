@@ -1,5 +1,6 @@
 """Snapshot release adapter tests; transports are mocked, no live publication."""
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -23,6 +24,36 @@ class HostedContext(SimpleNamespace):
         return self.variables.get(name, default)
 
 class SnapshotRelease(unittest.TestCase):
+    def test_fetch_accepts_pinned_archive_above_old_limit_and_at_new_limit(self):
+        # age v1.3.2 Linux archive is 19,405,817 bytes; no live network required.
+        for size in (19_405_817, 32*1024*1024):
+            with self.subTest(size=size), tempfile.TemporaryDirectory() as temp:
+                content=b'a'*size
+                response=io.BytesIO(content);response.url='https://example.invalid/age.tar.gz'
+                target=Path(temp)/'age.tar.gz'
+                with patch.object(p.urllib.request,'urlopen',return_value=response):
+                    p.fetch({'url':response.url,'sha256':p.sha(content)},target)
+                self.assertEqual(target.read_bytes(),content)
+                self.assertEqual(target.stat().st_mode & 0o777,0o600)
+
+    def test_fetch_blocks_oversize_and_hash_mismatch_without_writing(self):
+        for content,expected_hash,code in (
+            (b'a'*(32*1024*1024+1),None,'BLOCKED_INPUT_SIZE'),
+            (b'tampered archive','0'*64,'BLOCKED_INPUT_HASH'),
+        ):
+            for exists in (False,True):
+                with self.subTest(code=code,exists=exists), tempfile.TemporaryDirectory() as temp:
+                    response=io.BytesIO(content);response.url='https://example.invalid/age.tar.gz'
+                    target=Path(temp)/'age.tar.gz'
+                    if exists:target.write_bytes(b'existing')
+                    with patch.object(p.urllib.request,'urlopen',return_value=response), \
+                         patch.object(response,'read',wraps=response.read) as read:
+                        with self.assertRaisesRegex(p.ReleaseBlocked,'^'+code+'$'):
+                            p.fetch({'url':response.url,'sha256':expected_hash or p.sha(content)},target)
+                        read.assert_called_once_with(32*1024*1024+1)
+                    if exists:self.assertEqual(target.read_bytes(),b'existing')
+                    else:self.assertFalse(target.exists())
+
     def test_discovery_routes_build_without_secrets(self):
         specs=ci.discover(ROOT)
         self.assertIn('d4planner-release',specs)
