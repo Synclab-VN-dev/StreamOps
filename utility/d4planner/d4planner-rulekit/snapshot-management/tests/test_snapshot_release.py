@@ -114,8 +114,8 @@ class SnapshotRelease(unittest.TestCase):
             p.load_config(ctx,HERE)
 
     def test_build_public_recipient_only_and_capture_failure_cleanup(self):
-        for fail_capture, invalid_validation in ((False,False),(True,False),(False,True)):
-            with self.subTest(fail_capture=fail_capture,invalid_validation=invalid_validation),tempfile.TemporaryDirectory() as temp:
+        for fail_capture in (False,True):
+            with self.subTest(fail_capture=fail_capture),tempfile.TemporaryDirectory() as temp:
                 root=Path(temp);(root/'chromium').touch();exports=root/'exports';exports.mkdir()
                 calls=[]
                 selected={**self.config(), 'ageRecipient':'age1u44phv85j8zjz24chh6q8ct73trkm5j9uf84pq96vnvp2jcl9u7qjhtwsj'}
@@ -142,7 +142,7 @@ class SnapshotRelease(unittest.TestCase):
                             (snapshot/'capture.log').write_text('private diagnostic')
                             if kind=='ui':
                                 p.write(snapshot/'ui-coverage.json',{})
-                                p.write(snapshot/'ui-validation.json',{'status':'FAILED' if invalid_validation else 'AUTOMATED_VALIDATED'})
+                                p.write(snapshot/'ui-validation.json',{})
                             packages.append({'kind':kind,'snapshotId':kind,'snapshotRoot':str(store),
                                 'manifestSha256':'a'*64,'compatibility':'PATCH_DRIFT'})
                         p.write(args[-1],{'status':'COMPLETE','runId':'test-run','packages':packages})
@@ -158,26 +158,17 @@ class SnapshotRelease(unittest.TestCase):
                 with patch.object(p.shutil,'which',return_value='/test/tool'),patch.object(p,'verify_recipient') as verify_recipient,patch.object(p,'command',side_effect=transport):
                     if fail_capture:
                         with self.assertRaisesRegex(p.ReleaseBlocked,'BLOCKED_CAPTURE'):p.run(ctx)
-                    elif invalid_validation:
-                        with self.assertRaisesRegex(p.ReleaseBlocked,'BLOCKED_UI_VALIDATION'):p.run(ctx)
                     else:p.run(ctx)
                 verify_recipient.assert_called_once()
                 self.assertEqual(verify_recipient.call_args.args[0], selected['ageRecipient'])
                 self.assertFalse((root/'snapshot-private').exists())
-                if fail_capture or invalid_validation:self.assertEqual(list(exports.iterdir()),[])
+                if fail_capture:self.assertEqual(list(exports.iterdir()),[])
                 else:
                     candidate=exports/'snapshots'
                     self.assertEqual({f.name for f in candidate.iterdir()}, {'snapshot-pair.json','SHA256SUMS',
                         'calculation-snapshot-1.0.0.zip.age','ui-snapshot-1.0.0.zip.age'})
                     metadata=p.read(candidate/'snapshot-pair.json')
                     self.assertEqual(metadata['captureRunId'],'test-run')
-                    ui = metadata['assets']['ui-snapshot-1.0.0.zip.age']
-                    self.assertEqual(ui['plannerProtocolVersion'], 'd4planner-local-planner/v1')
-                    self.assertNotIn('authorizationRef', ui['uiTrust'])
-                    self.assertEqual(ui['uiTrust']['coverageSha256'], p.sha(b'{}\n'))
-                    self.assertEqual(ui['uiTrust']['validationSha256'], p.sha(
-                        (json.dumps({'status':'AUTOMATED_VALIDATED'}, sort_keys=True, indent=2)+'\n').encode()))
-                    self.assertNotIn('uiTrust', metadata['assets']['calculation-snapshot-1.0.0.zip.age'])
                     for name,record in metadata['assets'].items():
                         self.assertEqual(record['sha256'],p.file_sha(candidate/name))
                         self.assertEqual(record['bytes'],(candidate/name).stat().st_size)

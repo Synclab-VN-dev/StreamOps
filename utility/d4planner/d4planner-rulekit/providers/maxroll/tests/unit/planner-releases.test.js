@@ -17,7 +17,8 @@ async function fixture(t) {
   await fs.mkdir(path.join(root,'private'));await fs.writeFile(path.join(root,'private','snapshot-age-identity.txt'),'test-only');
   const bytes=Buffer.from('encrypted-fixture');
   const name='ui-snapshot-1.2.3.zip.age';
-  const entry={sha256:hash(bytes),bytes:bytes.length,snapshotId:config.snapshotId,manifestSha256:config.manifestSha256,uiTrust:config.uiTrust,plannerProtocolVersion:PROTOCOL};
+  // Match published v1.0.0: no Planner-specific release metadata.
+  const entry={sha256:hash(bytes),bytes:bytes.length,snapshotId:config.snapshotId,manifestSha256:config.manifestSha256};
   const metadata={schemaVersion:'d4planner-snapshot-pair/v1',version:'1.2.3',assets:{[name]:entry}};
   const release={tag_name:'d4planner-snapshots/v1.2.3',assets:[{id:1,name:'snapshot-pair.json'},{id:2,name,size:bytes.length}]};
   let downloads=0;
@@ -44,7 +45,7 @@ test('no compatible release, missing key, tampering and invalid receipt never ac
     if(scenario==='protocol'){f.entry.plannerProtocolVersion='unknown';expected='PLANNER_RELEASE_NOT_FOUND';}
     if(scenario==='key'){await fs.unlink(path.join(f.root,'private','snapshot-age-identity.txt'));expected='PLANNER_DECRYPTION_KEY_REQUIRED';}
     if(scenario==='hash'){f.entry.sha256='0'.repeat(64);expected='PLANNER_RELEASE_UNTRUSTED';}
-    if(scenario==='receipt'){await fs.appendFile(path.join(f.config.snapshotRoot,f.config.snapshotId,'ui-validation.json'),' ');expected='PLANNER_SNAPSHOT_UNTRUSTED';}
+    if(scenario==='receipt'){f.entry.uiTrust=f.config.uiTrust;await fs.appendFile(path.join(f.config.snapshotRoot,f.config.snapshotId,'ui-validation.json'),' ');expected='PLANNER_SNAPSHOT_UNTRUSTED';}
     await assert.rejects(new ReleaseProvisioner(f.options).ensure(),{code:expected});
     await assert.rejects(fs.access(path.join(f.stateRoot,'capture-state.json')));
   }
@@ -110,4 +111,56 @@ test('GitHub release enumeration accepts JSON while metadata and binary assets r
   assert.equal((await readSelection(f.stateRoot,6085)).snapshotId,f.config.snapshotId);
   assert.deepEqual(requests.map(r=>r.accept),[
     'application/vnd.github+json','application/octet-stream','application/octet-stream']);
+});
+
+
+test('legacy release derives receipt pins only after archive verification; invalid packages never activate', async t=>{
+  for(const scenario of ['valid','missing','status','snapshot','coverage','blob','malformed']) {
+    const f=await fixture(t), decrypt=f.options.decrypt;
+    let decrypts=0;
+    f.options.decrypt=async(...args)=>{
+      decrypts++;await decrypt(...args);
+      const root=path.join(args[3],f.config.snapshotId),file=path.join(root,'ui-validation.json');
+      if(scenario==='missing')await fs.unlink(file);
+      if(scenario==='malformed')await fs.writeFile(file,'{invalid');
+      if(['status','snapshot','coverage'].includes(scenario)) {
+        const row=JSON.parse(await fs.readFile(file));
+        if(scenario==='status')row.status='FAILED';
+        if(scenario==='snapshot')row.snapshotId='other-snapshot';
+        if(scenario==='coverage')row.coverageSha256='0'.repeat(64);
+        await fs.writeFile(file,JSON.stringify(row));
+      }
+      if(scenario==='blob') {
+        const manifest=JSON.parse(await fs.readFile(path.join(root,'manifest.json')));
+        await fs.appendFile(path.join(root,manifest.resources[0].blob),'tampered');
+      }
+    };
+    const p=new ReleaseProvisioner(f.options);
+    if(scenario==='valid') {
+      await p.ensure();const config=await readSelection(f.stateRoot,6085);
+      assert.deepEqual(config.uiTrust,f.config.uiTrust);
+      assert.equal((await loadSnapshot(config)).uiVerification.status,'AUTOMATED_VALIDATED');
+    } else {
+      await assert.rejects(p.ensure(),{code:'PLANNER_SNAPSHOT_UNTRUSTED'});
+      await assert.rejects(fs.access(path.join(f.stateRoot,'capture-state.json')));
+    }
+    assert.equal(decrypts,1);
+  }
+  const f=await fixture(t);f.entry.sha256='0'.repeat(64);
+  f.options.decrypt=()=>assert.fail('hash mismatch must stop before unpack');
+  await assert.rejects(new ReleaseProvisioner(f.options).ensure(),{code:'PLANNER_RELEASE_UNTRUSTED'});
+});
+
+test('realistic multi-megabyte coverage receipt is accepted within native unpack bounds', async t=>{
+  const f=await fixture(t),decrypt=f.options.decrypt;
+  f.options.decrypt=async(...args)=>{
+    await decrypt(...args);const root=path.join(args[3],f.config.snapshotId);
+    const coverage=JSON.parse(await fs.readFile(path.join(root,'ui-coverage.json')));
+    coverage.observations='x'.repeat(6*1024*1024);
+    const bytes=Buffer.from(JSON.stringify(coverage));await fs.writeFile(path.join(root,'ui-coverage.json'),bytes);
+    const validation=JSON.parse(await fs.readFile(path.join(root,'ui-validation.json')));
+    validation.coverageSha256=hash(bytes);await fs.writeFile(path.join(root,'ui-validation.json'),JSON.stringify(validation));
+  };
+  await new ReleaseProvisioner(f.options).ensure();
+  assert.equal((await loadSnapshot(await readSelection(f.stateRoot,6085))).uiVerification.status,'AUTOMATED_VALIDATED');
 });

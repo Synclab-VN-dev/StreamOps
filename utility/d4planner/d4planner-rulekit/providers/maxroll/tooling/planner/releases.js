@@ -111,12 +111,12 @@ class ReleaseProvisioner {
       const meta=json(bytes), version=release.tag_name.split('/v')[1];
       if(meta.schemaVersion !== 'd4planner-snapshot-pair/v1' || meta.version !== version) throw failure('PLANNER_RELEASE_UNTRUSTED');
       const name=`ui-snapshot-${version}.zip.age`, entry=meta.assets?.[name];
-      if(entry?.plannerProtocolVersion !== PROTOCOL) continue;
+      if(!entry || (entry.plannerProtocolVersion !== undefined && entry.plannerProtocolVersion !== PROTOCOL)) continue;
       if(!HASH.test(entry.sha256 || '') || !HASH.test(entry.manifestSha256 || '') ||
         !Number.isSafeInteger(entry.bytes) || entry.bytes<1 || entry.bytes>128*1024*1024 ||
         !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,159}$/.test(entry.snapshotId || '') ||
-        !HASH.test(entry.uiTrust?.coverageSha256 || '') || !HASH.test(entry.uiTrust?.validationSha256 || '') ||
-        entry.uiTrust?.schemaVersion !== 'maxroll-ui-trust/v1') throw failure('PLANNER_RELEASE_UNTRUSTED');
+        (entry.uiTrust !== undefined && (!HASH.test(entry.uiTrust?.coverageSha256 || '') ||
+        !HASH.test(entry.uiTrust?.validationSha256 || '') || entry.uiTrust?.schemaVersion !== 'maxroll-ui-trust/v1'))) throw failure('PLANNER_RELEASE_UNTRUSTED');
       const binary=asset(release,name);
       if(binary.size !== entry.bytes || (binary.digest && binary.digest !== `sha256:${entry.sha256}`)) throw failure('PLANNER_RELEASE_UNTRUSTED');
       chosen={release,entry,binary}; break;
@@ -144,6 +144,19 @@ class ReleaseProvisioner {
       await this.decrypt(path.join(this.installationRoot,'app','d4planner-fe.exe'),archive,identity,unpacked,signal);
       const config={snapshotRoot:unpacked,snapshotId:chosen.entry.snapshotId,manifestSha256:chosen.entry.manifestSha256,uiTrust:chosen.entry.uiTrust};
       try {
+        // These receipts are authenticated as part of the already SHA-256-verified
+        // archive. Older releases need no extra outer metadata to supply pins.
+        const pins={schemaVersion:'maxroll-ui-trust/v1'};
+        for(const [name,field] of [['ui-coverage.json','coverageSha256'],['ui-validation.json','validationSha256']]) {
+          const file=path.join(unpacked,config.snapshotId,name),stat=await fs.lstat(file);
+          if(!stat.isFile() || stat.isSymbolicLink() || stat.size>32*1024*1024) throw Error('receipt');
+          pins[field]=digest(await fs.readFile(file));
+        }
+        if(config.uiTrust && (config.uiTrust.coverageSha256!==pins.coverageSha256 ||
+          config.uiTrust.validationSha256!==pins.validationSha256)) throw Error('receipt pins');
+        config.uiTrust=pins;
+        // Verify receipt schemas, validation status and manifest/resource links;
+        // deriving hashes alone never declares a package validated.
         const snapshot=await this.load(config);
         if(snapshot.uiVerification.status!=='AUTOMATED_VALIDATED') throw Error();
       } catch { throw failure('PLANNER_SNAPSHOT_UNTRUSTED'); }
@@ -159,7 +172,7 @@ class ReleaseProvisioner {
       const payload={schemaVersion:'maxroll-capture-state/v1',revision:1,activeUi:entry.snapshotId,
         previousActiveUi:null,runs:{},history:[{operation:'RELEASE_PROVISION',tag:chosen.release.tag_name}],transition:null,
         packages:{[entry.snapshotId]:{kind:'ui',snapshotId:entry.snapshotId,validationStatus:'VALIDATED',
-          manifestSha256:entry.manifestSha256,coverageSha256:entry.uiTrust.coverageSha256,validationSha256:entry.uiTrust.validationSha256,config}}};
+          manifestSha256:entry.manifestSha256,coverageSha256:config.uiTrust.coverageSha256,validationSha256:config.uiTrust.validationSha256,config}}};
       const pending=path.join(stage,'capture-state.json');
       await fs.writeFile(pending,JSON.stringify({payload,sha256:digest(canonical(payload))}),{mode:0o600});
       signal?.throwIfAborted();await fs.link(pending,file); published = true; // atomic no-clobber publication

@@ -18,10 +18,15 @@ capture/activation workflow. This bootstrap path only creates a missing registry
 - Stable, non-draft tag `d4planner-snapshots/vMAJOR.MINOR.PATCH`.
 - `snapshot-pair.json`, schema `d4planner-snapshot-pair/v1`, matching version.
 - UI asset `ui-snapshot-VERSION.zip.age` with byte count and SHA-256,
-  snapshot ID, manifest SHA-256, `plannerProtocolVersion: d4planner-local-planner/v1`,
-  and `uiTrust` (schema, coverage/validation hashes, authorization reference).
-- The release producer copies trust pins from the validated captured package.
-  Compatibility means the Planner UI protocol, not Calculation compatibility.
+  snapshot ID and manifest SHA-256, as published in v1.0.0.
+- After verifying the encrypted archive's size/hash and decrypting it, derive local
+  coverage/validation pins from the enclosed receipts. The existing UI loader
+  verifies receipt schemas, validation status, snapshot/manifest references and
+  all resource hashes before activation. Archive verification binds the receipts
+  to the published asset; encryption alone is not publisher authentication.
+- Extra `plannerProtocolVersion` and `uiTrust` release fields are optional. If
+  present, unsupported protocol versions are skipped and supplied receipt pins
+  must match. Existing releases need no metadata rewrite or republishing.
 - Only the fixed repository API and approved GitHub asset CDN hosts are used.
   Trust is the repository's HTTPS release channel plus pinned asset/receipt/blob
   hashes; age encryption alone does not authenticate a publisher.
