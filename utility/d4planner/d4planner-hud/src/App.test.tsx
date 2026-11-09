@@ -323,13 +323,22 @@ describe("Create Build native action", () => {
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
     expect(mocks.invoke.mock.calls.some(([name]) => ["start_backend", "restart_backend"].includes(name))).toBe(false);
   });
-  it.each(["PLANNER_SNAPSHOT_UNAVAILABLE", "PLANNER_SNAPSHOT_UNTRUSTED", "PLANNER_START_FAILED", "PLANNER_HEALTH_FAILED", "PLANNER_PORT_CONFLICT", "PLANNER_BUSY", "PLANNER_UNAVAILABLE", "secret /private/path"]) ("shows safe retryable feedback for %s without changing Target or HUD extent", async error => {
+  it.each(["PLANNER_SNAPSHOT_UNAVAILABLE", "PLANNER_SNAPSHOT_UNTRUSTED", "PLANNER_START_FAILED", "PLANNER_HEALTH_FAILED", "PLANNER_PORT_CONFLICT", "PLANNER_BUSY", "PLANNER_UNAVAILABLE", "PLANNER_RELEASE_NOT_FOUND", "PLANNER_RELEASE_ACCESS_DENIED", "PLANNER_DOWNLOAD_FAILED", "PLANNER_RELEASE_UNTRUSTED", "PLANNER_DECRYPTION_KEY_REQUIRED", "PLANNER_DECRYPTION_FAILED", "PLANNER_RELEASE_ENUMERATION_LIMIT", "secret /private/path"]) ("shows safe retryable feedback for %s without changing Target or HUD extent", async error => {
     mocks.invoke.mockImplementation((command: string) => command === "open_local_planner" ? Promise.reject(error) : Promise.resolve());
     const source = new FakeDataSource();
     render(<App dataSource={source} />);
     fireEvent.click(await screen.findByRole("button", { name: "Open target menu" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Create Build" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("Local Planner");
+    const expected: Record<string, string> = {
+      PLANNER_RELEASE_NOT_FOUND: "No compatible Planner UI snapshot release",
+      PLANNER_RELEASE_ACCESS_DENIED: "private/report-config.json",
+      PLANNER_DOWNLOAD_FAILED: "Snapshot download failed",
+      PLANNER_RELEASE_UNTRUSTED: "integrity could not be verified",
+      PLANNER_DECRYPTION_KEY_REQUIRED: "private/snapshot-age-identity.txt",
+      PLANNER_DECRYPTION_FAILED: "could not be decrypted",
+      PLANNER_RELEASE_ENUMERATION_LIMIT: "search exceeded its limit",
+    };
+    expect((await screen.findByRole("alert")).textContent).toContain(expected[error] ?? "Local Planner");
     expect(document.body.textContent).not.toContain("/private/path");
     expect(screen.queryByRole("menu")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Open target menu" }));

@@ -73,9 +73,10 @@ build artifact without reading the Variable again. The existing manual-master
 publish authorization and token scopes remain unchanged. There is no new Secret,
 workflow input, or permission requirement.
 
-This configuration change is independent of the Planner metadata additions in
-PR #188. To consume the release through that HUD flow, master must also contain
-the compatible Planner metadata producer from #188 before building the release.
+The Planner consumer in PR #188 accepts this existing release format. It verifies
+archive hashes, decrypts the UI package and checks the enclosed manifest and
+coverage/validation receipts before activation. No additional Planner-specific
+release metadata or republishing of existing snapshot releases is required.
 
 `authorizationRef` is no longer a release configuration field. Remove it from
 existing release JSON before running this version. New UI receipts/trust metadata

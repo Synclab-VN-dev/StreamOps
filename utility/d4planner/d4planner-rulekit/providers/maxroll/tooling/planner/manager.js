@@ -4,13 +4,15 @@ const path = require('node:path');
 const {randomUUID} = require('node:crypto');
 const {loadSnapshot, startServer} = require('../web/server');
 const {readSelection, failure} = require('./selection');
+const {ReleaseProvisioner} = require('./releases');
 const SCHEMA = 'd4planner-local-planner/v1';
 
 class PlannerServerManager {
   // A first Windows read verifies thousands of private blobs before binding.
   // Keep integrity mandatory and allow cold filesystem/antivirus latency.
-  constructor({stateRoot, port = 6085, timeoutMs = 30000, load = loadSnapshot, start = startServer} = {}) {
+  constructor({stateRoot, port = 6085, timeoutMs = 180000, load = loadSnapshot, start = startServer, provision} = {}) {
     this.stateRoot = stateRoot;
+    this.provision = provision;
     this.port = port;
     this.timeoutMs = timeoutMs;
     this.load = load;
@@ -61,7 +63,14 @@ class PlannerServerManager {
       if (!reused) {
         await this.stopListener();
         this.state = 'STARTING';
-        const config = await readSelection(this.stateRoot, this.port);
+        let config;
+        try { config = await readSelection(this.stateRoot, this.port); }
+        catch (error) {
+          if (error.code !== 'PLANNER_SNAPSHOT_UNAVAILABLE' || !this.provision) throw error;
+          await this.provision(signal);
+          signal.throwIfAborted();
+          config = await readSelection(this.stateRoot, this.port);
+        }
         let snapshot;
         try {
           snapshot = await this.load(config);
@@ -132,8 +141,11 @@ class PlannerServerManager {
   }
 }
 function fromEnvironment(env) {
-  return new PlannerServerManager({stateRoot: env.D4_RULEKIT_PLANNER_STATE_ROOT ||
-    (env.D4_RULEKIT_DATA_ROOT ? path.join(env.D4_RULEKIT_DATA_ROOT, 'planner', 'state') : undefined),
-    port: Number(env.D4_RULEKIT_PLANNER_PORT || 6085)});
+  const stateRoot = env.D4_RULEKIT_PLANNER_STATE_ROOT ||
+    (env.D4_RULEKIT_DATA_ROOT ? path.join(env.D4_RULEKIT_DATA_ROOT, 'planner', 'state') : undefined);
+  const releases = new ReleaseProvisioner({stateRoot, dataRoot: env.D4_RULEKIT_DATA_ROOT,
+    installationRoot: env.D4_RULEKIT_INSTALLATION_ROOT, load: loadSnapshot});
+  return new PlannerServerManager({stateRoot, port: Number(env.D4_RULEKIT_PLANNER_PORT || 6085),
+    provision: signal => releases.ensure(signal)});
 }
 module.exports = {PlannerServerManager, fromEnvironment, SCHEMA};
