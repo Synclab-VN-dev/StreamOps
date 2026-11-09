@@ -71,8 +71,12 @@ fn backend_launch_from_environment() -> Result<LaunchSpecification, String> {
     let working_directory = env::current_dir().map_err(|error| error.to_string())?;
     let mut environment = BTreeMap::new();
     environment.insert("D4PLANNER_BOOTSTRAP_FILE".into(), bootstrap_path.to_string_lossy().into_owned());
-    for name in ["SYSTEMROOT", "WINDIR", "TEMP", "TMP", "PATH", "PYTHONPATH"] {
-        if let Ok(value) = env::var(name) { environment.insert(name.into(), value); }
+    environment.extend(backend_process::platform_environment(|name| env::var(name).ok()));
+    // Installer health uses a disposable DataRoot. It must not provision NVDA,
+    // modify the user's PATH, or activate capture during either probe generation.
+    // This switch is derived from this native probe invocation, not inherited.
+    if env::args().any(|arg| arg == "--backend-self-test") {
+        environment.insert("D4PLANNER_CAPTURE_PROBE_ONLY".into(), "1".into());
     }
     for name in [
         "D4PLANNER_DATA_ROOT", "D4PLANNER_HOME", "D4PLANNER_DATA_DIR",

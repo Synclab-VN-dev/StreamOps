@@ -17,6 +17,13 @@
     "health": {
       "type": "object", "additionalProperties": false, "required": ["capture", "scoreFreshness", "ruleKit"],
       "properties": {
+        "captureRuntime": {
+          "type": "object", "additionalProperties": false, "required": ["state", "detail"],
+          "properties": {
+            "state": { "type": "string", "minLength": 1, "maxLength": 64 },
+            "detail": { "type": "string", "maxLength": 1000 }
+          }
+        },
         "capture": { "enum": ["HEALTHY", "STALE", "UNKNOWN", "ERROR"] },
         "scoreFreshness": { "enum": ["CURRENT", "STALE", "NO_DATA"] },
         "ruleKit": { "enum": ["READY", "DEGRADED", "UNAVAILABLE", "NOT_REQUIRED"] }

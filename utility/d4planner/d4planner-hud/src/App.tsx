@@ -176,6 +176,13 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
         {!current && <div className={`freshness ${hud.connection.toLowerCase()}`} role="status">
           {snapshot?.score.status === "NO_DATA" ? "NO DATA" : snapshot ? (hud.connection === "DISCONNECTED" ? "OFFLINE — Last-known assessment is not current" : "Last-known assessment is not current — resynchronizing") : (hud.connection === "DISCONNECTED" ? "NO DATA" : "Connecting…")}
         </div>}
+        {snapshot?.health.captureRuntime && <div className="freshness" role="status">
+          Capture: {snapshot.health.captureRuntime.state === "WAITING_FOR_GAME"
+            ? "Waiting for Diablo IV"
+            : snapshot.health.captureRuntime.state === "RUNNING"
+              ? "Active — waiting for identified character data"
+              : snapshot.health.captureRuntime.detail}
+        </div>}
         {hud.error && <div className="hud-error" role="alert">{hud.error}</div>}
         {plannerOpening && <div className="freshness" role="status">Opening Planner…</div>}
         {plannerError && <div className="hud-error" role="alert">{plannerError}</div>}

@@ -348,3 +348,15 @@ describe("Create Build native action", () => {
     expect(mocks.invoke.mock.calls.filter(([name]) => name === "set_overlay_extent").every(([, args]) => args.width === 280)).toBe(true);
   });
 });
+
+it("shows capture waiting and dependency failure without inventing character data (#193)", async () => {
+  const source = new FakeDataSource({ ...noData, health: { ...noData.health,
+    captureRuntime: { state: "WAITING_FOR_GAME", detail: "Waiting for user" } } });
+  render(<App dataSource={source} />);
+  await screen.findByText("Capture: Waiting for Diablo IV");
+  expect(screen.getByText("NO DATA")).toBeTruthy();
+  act(() => source.emit({ type: "SNAPSHOT", snapshot: { ...noData,
+    hudRevision: noData.hudRevision + 1, health: { ...noData.health,
+      captureRuntime: { state: "BLOCKED", detail: "NVDA 2026.2 is required" } } } }));
+  await screen.findByText("Capture: NVDA 2026.2 is required");
+});

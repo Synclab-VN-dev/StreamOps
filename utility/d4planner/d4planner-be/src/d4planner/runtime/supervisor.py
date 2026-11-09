@@ -67,7 +67,11 @@ class Supervisor:
         block_marker: bool = False,
         controller_profile: ControllerProfile | None = None,
         uat_attach_only: bool = False,
+        managed_by_hud: bool = False,
+        stop_event=None,
     ):
+        self.managed_by_hud = managed_by_hud
+        self.stop_event = stop_event
         self.paths = paths
         self.runtime = runtime
         self.path_manager = path_manager
@@ -323,6 +327,8 @@ class Supervisor:
             self.status.extras["nvdaStartedBySupervisor"] = False
             if self.uat_attach_only and not existing_nvda:
                 raise RuntimeBlocked("UAT attach-only requires existing NVDA; no launch")
+            if addon_changed and existing_nvda and self.managed_by_hud:
+                raise RuntimeBlocked("NVDA add-on updated; restart NVDA manually before reopening D4Planner")
             if addon_changed and existing_nvda:
                 nvda = self.runtime.restart_nvda()
                 self.status.extras["nvdaRestartReason"] = "add-on updated"
@@ -421,7 +427,7 @@ class Supervisor:
                     raise RuntimeBlocked(
                         "UAT attach-only requires existing Diablo IV; no game launch"
                     )
-                if steam and not self._steam_priority_allows_launch(steam):
+                if not self.managed_by_hud and steam and not self._steam_priority_allows_launch(steam):
                     priority = getattr(steam, "priority_class", None) or "unknown"
                     self.status.steam = steam
                     self.transition(
@@ -432,9 +438,12 @@ class Supervisor:
                     )
                     write_capture_config(self.paths, enabled=False)
                     return self.status.state
-                self.transition(RuntimeState.GAME_STARTING, "launching Diablo IV through interactive task")
-                self.runtime.launch_game()
-                game = self.runtime.wait_for_game(timeout=self.game_start_timeout)
+                self.transition(RuntimeState.GAME_STARTING,
+                    "waiting for user to open Diablo IV" if self.managed_by_hud
+                    else "launching Diablo IV through interactive task")
+                if not self.managed_by_hud:
+                    self.runtime.launch_game()
+                    game = self.runtime.wait_for_game(timeout=self.game_start_timeout)
                 if not game:
                     if start_marker:
                         self._start_marker_capture()
@@ -954,7 +963,7 @@ class Supervisor:
         exit_code = 0
         try:
             next_health_check = 0.0
-            while not self.paths.stop_request.exists():
+            while not self.paths.stop_request.exists() and not (self.stop_event and self.stop_event.is_set()):
                 # Capture promotion is latency-sensitive. Process/session health
                 # checks stay slower than ingestion; speech + marker writes are
                 # batched into one ordered SQLite transaction per loop.

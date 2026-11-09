@@ -26,6 +26,20 @@ COMPOSITION = ROOT / "utility/d4planner/d4planner-be/tests/fixtures/rulekit-test
 CREDENTIAL = "production-integration-test-credential-000000"
 
 
+@pytest.fixture(autouse=True)
+def controlled_capture_process(monkeypatch):
+    # Production integration exercises the composition boundary; Windows child
+    # lifecycle is covered independently, without changing desktop dependencies.
+    class Capture:
+        state = "STARTING"
+        def __init__(self, root, on_health):
+            self.root, self.on_health = root, on_health
+            self.started = False
+        async def start(self): self.started = True
+        async def stop(self): self.started = False
+    monkeypatch.setattr('d4planner.runtime.managed_capture.ManagedCaptureRuntime', Capture)
+
+
 def _rulekit() -> RuleKitRuntimeService:
     return RuleKitRuntimeService(RuleKitProcessWrapper(LaunchSpecification(
         executable="node", args=(str(WORKER),), working_directory=ROOT,
@@ -547,4 +561,63 @@ def test_review_inaccessible_repository_still_aborts_startup_and_cleans_up(tmp_p
             await runtime.start()
         assert runtime.server is None
         assert runtime.rulekit.wrapper._child is None
+    asyncio.run(scenario())
+
+
+def test_issue193_default_start_does_not_claim_capture_ready_without_producer(tmp_path):
+    async def scenario():
+        targets = tmp_path / 'targets'; targets.mkdir()
+        runtime = ProductionBackendRuntime({
+            'ownerInstanceId': 'owner', 'childInstanceId': 'child', 'generation': 1,
+            'dataDir': str(tmp_path / 'state'), 'targetFolder': str(targets),
+            'wsEndpoint': {'host': '127.0.0.1', 'port': 0}, 'credential': CREDENTIAL,
+        }, rulekit=_rulekit())
+        try:
+            result = await runtime.start()
+            assert result['health']['equipmentCapture'] != 'READY'
+            assert runtime.capture_runtime is not None
+            assert runtime.capture_runtime.started
+            assert runtime.capture_runtime.root == tmp_path
+        finally:
+            await runtime.stop()
+    asyncio.run(scenario())
+
+
+def test_issue193_runtime_status_is_committed_for_hud(tmp_path):
+    async def scenario():
+        targets = tmp_path / 'targets'; targets.mkdir()
+        runtime = ProductionBackendRuntime({
+            'ownerInstanceId': 'owner', 'childInstanceId': 'child', 'generation': 1,
+            'dataDir': str(tmp_path / 'state'), 'targetFolder': str(targets),
+            'wsEndpoint': {'host': '127.0.0.1', 'port': 0}, 'credential': CREDENTIAL,
+        }, rulekit=_rulekit())
+        try:
+            await runtime.start()
+            await runtime.capture_runtime_status_changed('WAITING_FOR_GAME', 'Waiting for user')
+            state = runtime.store.latest_authoritative()
+            assert state['health']['captureRuntime']['state'] == 'WAITING_FOR_GAME'
+            assert state['context']['character'] is None
+            assert state['score']['status'] == 'NO_DATA'
+            await runtime.capture_runtime_status_changed('BLOCKED', 'NVDA missing')
+            assert runtime.store.latest_authoritative()['health']['captureRuntime']['detail'] == 'NVDA missing'
+        finally:
+            await runtime.stop()
+    asyncio.run(scenario())
+
+
+def test_issue193_installer_health_probe_does_not_provision_capture(tmp_path, monkeypatch):
+    monkeypatch.setenv('D4PLANNER_CAPTURE_PROBE_ONLY', '1')
+    async def scenario():
+        targets = tmp_path / 'targets'; targets.mkdir()
+        runtime = ProductionBackendRuntime({
+            'ownerInstanceId': 'owner', 'childInstanceId': 'child', 'generation': 1,
+            'dataDir': str(tmp_path / 'state'), 'targetFolder': str(targets),
+            'wsEndpoint': {'host': '127.0.0.1', 'port': 0}, 'credential': CREDENTIAL,
+        }, rulekit=_rulekit())
+        try:
+            result = await runtime.start()
+            assert runtime.capture_runtime is None
+            assert result['health']['equipmentCapture'] == 'NOT_STARTED_HEALTH_PROBE'
+        finally:
+            await runtime.stop()
     asyncio.run(scenario())

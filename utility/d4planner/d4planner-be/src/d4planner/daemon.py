@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
+import threading
 from pathlib import Path
 
 from .runtime.pathing import UserPathManager, WindowsRegistryPathBackend
@@ -73,6 +75,8 @@ def _acquire_singleton(paths: RuntimePaths) -> Path | None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="d4planner-daemon")
+    parser.add_argument("--owner-token", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--managed-by-hud", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--speech", action="store_true", help="Pass D4 speech through NVDA")
     parser.add_argument("--isolated", action="store_true", help="Use process-scoped controller discovery")
     parser.add_argument("--block", action="store_true", help="Use keyboard hook capture and suppression")
@@ -104,9 +108,19 @@ def main(argv: list[str] | None = None) -> int:
         return 5
 
     try:
+        stop_event = threading.Event()
+        if args.managed_by_hud:
+            # EOF is owner death. Never use a shared stop file to stop another owner.
+            def watch_owner():
+                sys.stdin.buffer.read()
+                stop_event.set()
+            threading.Thread(target=watch_owner, daemon=True).start()
         runtime = WindowsRuntime(paths)
+        runtime.managed_by_hud = args.managed_by_hud
         path_manager = UserPathManager(paths, WindowsRegistryPathBackend())
         supervisor = Supervisor(
+            managed_by_hud=args.managed_by_hud,
+            stop_event=stop_event,
             paths=paths,
             runtime=runtime,
             path_manager=path_manager,
@@ -117,6 +131,8 @@ def main(argv: list[str] | None = None) -> int:
             uat_attach_only=args.uat_attach_only,
             game_start_timeout=args.game_start_timeout,
         )
+        if args.managed_by_hud:
+            supervisor.status.extras["runtime"]["ownerToken"] = args.owner_token
         return supervisor.run()
     finally:
         try:

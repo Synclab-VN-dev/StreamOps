@@ -284,7 +284,8 @@ class RuntimeHudStore(DurableHudStore):
     Equipment scoring remains owned by S4. This adapter only attaches the
     Rule Kit-owned health result and the enclosing Backend generation.
     """
-    def __init__(self, path, *, runtime_health, backend_generation):
+    def __init__(self, path, *, runtime_health, backend_generation, capture_status=lambda: None):
+        self.capture_status = capture_status
         self.runtime_health = runtime_health
         self.backend_generation = backend_generation
         super().__init__(path)
@@ -293,6 +294,9 @@ class RuntimeHudStore(DurableHudStore):
         def build(revision):
             payload = factory(revision)
             payload["health"]["ruleKit"] = self.runtime_health()
+            capture = self.capture_status()
+            if capture is not None:
+                payload["health"]["captureRuntime"] = capture
             payload["backend"]["generation"] = self.backend_generation()
             return payload
         return build
@@ -336,8 +340,10 @@ class ProductionBackendRuntime:
         )
         self.rulekit_state = "UNAVAILABLE"
         self.rulekit_diagnostics = {"calculationAvailability": "UNAVAILABLE", "reason": "STARTING"}
+        self.capture_runtime_status = None
         self.store = RuntimeHudStore(self.data_dir / "hud.sqlite3",
-            runtime_health=lambda: self.rulekit_state, backend_generation=lambda: self.generation)
+            runtime_health=lambda: self.rulekit_state, backend_generation=lambda: self.generation,
+            capture_status=lambda: self.capture_runtime_status)
         self.capture = EquipmentCaptureAdapter()
         self.scorer = EquipmentAssessmentService()
         self.coordinator = EquipmentAssessmentCoordinator(self.scorer, self.store, lambda _: None)
@@ -345,6 +351,7 @@ class ProductionBackendRuntime:
         self.hub: HudHub | None = None
         self.server: D4PlannerWebSocketServer | None = None
         self.capture_source: RepositoryEquipmentEventSource | None = None
+        self.capture_runtime = None
         self._ingest_lock = asyncio.Lock()
         trace = os.environ.get("D4PLANNER_LATENCY_TRACE")
         self.latency_trace = Path(trace) if trace else None
@@ -385,7 +392,7 @@ class ProductionBackendRuntime:
             )
             await self.server.start()
             evidence_path = os.environ.get("D4PLANNER_EQUIPMENT_EVIDENCE_FILE")
-            capture_state = "READY"
+            capture_state = "STARTING"
             if evidence_path:
                 path = Path(evidence_path)
                 if not path.is_absolute() or not path.is_file() or path.is_symlink():
@@ -410,6 +417,14 @@ class ProductionBackendRuntime:
                 )
                 await self.capture_source.start()
                 capture_state = "REPOSITORY_" + self.capture_source.health_status
+            if os.environ.get("D4PLANNER_CAPTURE_PROBE_ONLY") == "1":
+                capture_state = "NOT_STARTED_HEALTH_PROBE"
+            elif not evidence_path and not repository_path:
+                from .runtime.managed_capture import ManagedCaptureRuntime
+                self.capture_runtime = ManagedCaptureRuntime(self.data_root, self.capture_health_changed)
+                self.capture_runtime.on_status = self.capture_runtime_status_changed
+                await self.capture_runtime.start()
+                capture_state = self.capture_runtime.state
             # Repository I/O is required; invalid user content is a listing
             # operation error, not a failure of the authenticated transport.
             paths = self.targets._candidate_paths()
@@ -435,6 +450,9 @@ class ProductionBackendRuntime:
             raise
 
     async def stop(self) -> None:
+        if self.capture_runtime is not None:
+            await self.capture_runtime.stop()
+            self.capture_runtime = None
         if self.capture_source is not None:
             await self.capture_source.stop()
             self.capture_source = None
@@ -475,6 +493,24 @@ class ProductionBackendRuntime:
         if self.rulekit is None:
             raise RuntimeError("Rule Kit service is not started")
         return await self.rulekit.snapshot_api(method, request, on_health=self._forward_rulekit_health)
+
+    async def capture_runtime_status_changed(self, state: str, detail: str) -> None:
+        async with self._ingest_lock:
+            latest = self.store.latest_authoritative()
+            if latest is None:
+                return
+            status = {"state": state, "detail": detail[:1000]}
+            self.capture_runtime_status = status
+            if latest["health"].get("captureRuntime") == status:
+                return
+            def build(revision):
+                payload = json.loads(json.dumps(latest))
+                payload["hudRevision"] = revision
+                payload["producedAt"] = _now()
+                payload["health"]["captureRuntime"] = status
+                return payload
+            hud = self.store.commit_context(build, _now())
+            await self._publish_committed(hud)
 
     async def capture_health_changed(self, status: str) -> None:
         """Publish watcher degradation/recovery without relabelling stale score CURRENT."""

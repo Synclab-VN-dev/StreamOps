@@ -678,3 +678,46 @@ def test_sqlite_failure_retries_marker_without_redraining_queue(monkeypatch, tmp
     assert len(markers) == 1
     assert markers[0]["data"]["key"] == "F11"
     assert markers[0]["data"]["state"] == "down"
+
+
+def test_issue193_hud_capture_waits_without_launching_game(tmp_path):
+    paths = RuntimePaths(tmp_path / 'home')
+    runtime = FakeRuntime(paths)
+    supervisor = build_supervisor(tmp_path, runtime)
+    supervisor.managed_by_hud = True
+    try:
+        state = supervisor.bootstrap()
+        assert runtime.launch_calls == 0
+        assert state == RuntimeState.WAITING_FOR_GAME
+    finally:
+        if supervisor.store:
+            supervisor.store.close()
+
+
+def test_issue193_managed_capture_never_restarts_existing_nvda(tmp_path):
+    runtime = FakeRuntime(RuntimePaths(tmp_path / 'home'))
+    runtime.ensure_addon_runtime = lambda: True
+    def forbidden(**kwargs): raise AssertionError('must not restart existing NVDA')
+    runtime.restart_nvda = forbidden
+    supervisor = build_supervisor(tmp_path, runtime)
+    supervisor.managed_by_hud = True
+    try:
+        assert supervisor.bootstrap() == RuntimeState.BLOCKED
+        assert 'restart NVDA manually' in supervisor.status.detail
+        assert runtime.launch_calls == 0
+    finally:
+        if supervisor.store: supervisor.store.close()
+
+
+def test_issue193_missing_nvda_blocks_without_launching_game(tmp_path):
+    runtime = FakeRuntime(RuntimePaths(tmp_path / 'home'))
+    runtime.nvda_version = lambda: None
+    runtime.nvda_version_compatible = lambda version: False
+    supervisor = build_supervisor(tmp_path, runtime)
+    supervisor.managed_by_hud = True
+    try:
+        assert supervisor.bootstrap() == RuntimeState.BLOCKED
+        assert not supervisor.status.capture_active
+        assert runtime.launch_calls == 0
+    finally:
+        if supervisor.store: supervisor.store.close()
