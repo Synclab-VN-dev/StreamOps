@@ -10,7 +10,6 @@ CI_SPEC = {'version': 1,
            'scripts/release/**',
            'scripts/server/**',
            'scripts/node/**'],
- 'depends_on': ['d4planner-hud'],
  'jobs': [{'id': 'native', 'profile': 'windows', 'timeout': 2400}]}
 
 def _run(ctx):
