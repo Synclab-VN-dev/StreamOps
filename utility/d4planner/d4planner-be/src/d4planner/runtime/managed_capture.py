@@ -145,7 +145,10 @@ class ManagedCaptureRuntime:
         self._payload = {}
         try:
             payload = json.loads((self.root / 'state/runtime.json').read_text(encoding='utf-8'))
-            if (self.process.returncode is None and payload.get('supervisorPid') == self.process.pid
+            terminal_state = {2: 'BLOCKED', 3: 'RESTART_REQUIRED'}.get(self.process.returncode)
+            if ((self.process.returncode is None or
+                 (terminal_state is not None and payload.get('state') == terminal_state))
+                    and payload.get('supervisorPid') == self.process.pid
                     and payload.get('extras', {}).get('runtime', {}).get('ownerToken') == self.owner_token):
                 self.state = RuntimeState(payload['state']).value
                 detail = payload.get('lastError') or payload.get('detail')

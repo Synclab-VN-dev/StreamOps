@@ -2,6 +2,7 @@
 import asyncio
 import json
 from pathlib import Path
+import pytest
 
 from d4planner.runtime.managed_capture import ManagedCaptureRuntime
 
@@ -20,6 +21,34 @@ class Child:
         return 0
     def terminate(self):
         self.killed = True
+
+
+@pytest.mark.parametrize('code, state', [(2, 'BLOCKED'), (3, 'RESTART_REQUIRED')])
+def test_exited_owned_capture_keeps_actionable_terminal_reason(tmp_path, code, state):
+    async def scenario():
+        child = Child()
+        async def spawn(*args, **kwargs): return child
+        async def changed(value): pass
+        runtime = ManagedCaptureRuntime(tmp_path, changed, spawn=spawn)
+        (tmp_path / 'state').mkdir()
+        await runtime.start()
+        payload = {'state': state, 'supervisorPid': child.pid,
+                   'detail': 'Restart Steam normally' if code == 3 else 'DB access denied',
+                   'extras': {'runtime': {'ownerToken': runtime.owner_token}}}
+        (tmp_path / 'state/runtime.json').write_text(json.dumps(payload))
+        child.returncode = code
+        await runtime._refresh()
+        assert runtime.state == state
+        assert runtime.detail == payload['detail']
+        assert runtime.status()['pid'] is None
+        # Foreign/stale receipts must not supply a plausible reason for our exit.
+        payload['extras']['runtime']['ownerToken'] = 'foreign'
+        (tmp_path / 'state/runtime.json').write_text(json.dumps(payload))
+        await runtime._refresh()
+        assert runtime.state == 'BLOCKED'
+        assert runtime.detail == f'Capture process exited ({code})'
+        await runtime.stop()
+    asyncio.run(scenario())
 
 
 def test_managed_child_uses_block_xbox16_and_stops_only_owned_handle(tmp_path):

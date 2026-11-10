@@ -66,7 +66,7 @@ class FakeRuntime:
         return TolkHealth("NVDA", True, True)
 
     def process_started_before(self, process, timestamp):
-        return bool(process and self.stale)
+        return bool(process and timestamp and self.stale)
 
     def launch_game(self):
         self.launch_calls += 1
@@ -179,6 +179,22 @@ def test_stale_steam_requires_restart_and_never_launches_or_kills_game(tmp_path)
     assert state == RuntimeState.RESTART_REQUIRED
     assert runtime.launch_calls == 0
     assert read_json(paths.capture_state)["enabled"] is False
+
+
+def test_missing_path_metadata_with_preexisting_path_does_not_block_steam(tmp_path):
+    paths = RuntimePaths(tmp_path / 'home')
+    runtime = FakeRuntime(paths, steam=ProcessInfo('steam', 21, session_id=1), stale=True)
+    supervisor = build_supervisor(tmp_path, runtime)
+    supervisor.managed_by_hud = True
+    supervisor.path_manager = UserPathManager(
+        paths, MemoryPathBackend(user_path=str(paths.controller.resolve())))
+    try:
+        assert supervisor.bootstrap() == RuntimeState.WAITING_FOR_GAME
+        assert supervisor.status.extras['userPathChanged'] is False
+        assert runtime.launch_calls == 0
+    finally:
+        if supervisor.store:
+            supervisor.store.close()
 
 
 def test_session_mismatch_blocks_before_capture(tmp_path):

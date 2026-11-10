@@ -33,6 +33,26 @@ NVDA DataRoot receipt validation checks root, PID and timestamp against the
 owned runtime's NVDA observation. Missing evidence is Unavailable/Unknown.
 No token, capture text or private receipt contents are sent to React.
 
+An owned capture child that exits with BLOCKED (2) or RESTART_REQUIRED (3)
+retains its matching terminal diagnostic; its PID is no longer reported as live.
+Unexpected exits, stale RUNNING observations and foreign owners remain BLOCKED.
+Managed startup exceptions also publish an owner-bound BLOCKED diagnostic.
+The stdin owner watcher uses cancellable raw-pipe polling and is joined before
+interpreter shutdown; EOF still stops capture when Backend exits or dies.
+
+The Steam freshness gate uses evidence of a real PATH change. A pre-existing
+controller path with missing metadata records observation time only; it does not
+invent a PATH-change timestamp. Older preExisting/non-owned timestamps are also
+excluded from that gate. Actual recorded PATH changes still require a newer
+Steam process. DLL validation, NVDA/Tolk readiness and session checks remain.
+
+Regression coverage lives in the backend tests: `test_runtime_pathing.py`,
+`test_runtime_supervisor.py`, `test_daemon_owner_lifecycle.py` (real subprocesses
+with an open owner pipe), and `test_managed_capture.py`. The subprocess fixture
+substitutes the supervisor to avoid launching NVDA/Steam/game; it tests real
+interpreter shutdown and EOF, not game E2E. Existing backend CI discovers these
+tests; no new VM/CI job is introduced.
+
 View / Collect Logs opens the existing Support panel; opening it does not submit
 an issue or upload logs. Manual runtime controls do not modify Targets or Rule Kit
 configuration. Capture itself retains its normal event/equipment persistence.

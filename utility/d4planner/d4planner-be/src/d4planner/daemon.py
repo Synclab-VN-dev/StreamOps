@@ -9,10 +9,48 @@ import threading
 from pathlib import Path
 
 from .runtime.pathing import UserPathManager, WindowsRegistryPathBackend
-from .runtime.store import RuntimePaths
+from .runtime.store import RuntimePaths, atomic_write_json, iso_now
 from .runtime.supervisor import Supervisor
 from .controller import load_profile, ProfileValidationError
 from .runtime.windows import WindowsRuntime
+
+
+def _watch_owner(stop_event: threading.Event, finished: threading.Event, fd: int) -> None:
+    """Observe lifetime-pipe EOF without holding Python's buffered-stdin lock.
+
+    Poll so a normal/failed startup can join this thread while the owner still
+    holds its pipe open. Only this thread reads the raw descriptor.
+    """
+    try:
+        if os.name == "nt":
+            import ctypes
+            from ctypes import wintypes
+            import msvcrt
+
+            peek = ctypes.WinDLL("kernel32", use_last_error=True).PeekNamedPipe
+            peek.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD,
+                             ctypes.c_void_p, ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p]
+            peek.restype = wintypes.BOOL
+            handle = msvcrt.get_osfhandle(fd)
+            while not finished.is_set():
+                available = wintypes.DWORD()
+                if not peek(handle, None, 0, None, ctypes.byref(available), None):
+                    # Broken pipe or an unqueryable owner: fail closed.
+                    stop_event.set()
+                    return
+                if available.value and not os.read(fd, min(available.value, 4096)):
+                    stop_event.set()
+                    return
+                finished.wait(.05)
+        else:
+            import select
+            while not finished.is_set():
+                readable, _, _ = select.select([fd], [], [], .05)
+                if readable and not os.read(fd, 4096):
+                    stop_event.set()
+                    return
+    except (OSError, ValueError):
+        stop_event.set()
 
 
 def _pid_alive(pid: int | None) -> bool:
@@ -107,14 +145,15 @@ def main(argv: list[str] | None = None) -> int:
     if lock is None:
         return 5
 
+    watcher = None
+    finished = threading.Event()
     try:
         stop_event = threading.Event()
         if args.managed_by_hud:
             # EOF is owner death. Never use a shared stop file to stop another owner.
-            def watch_owner():
-                sys.stdin.buffer.read()
-                stop_event.set()
-            threading.Thread(target=watch_owner, daemon=True).start()
+            watcher = threading.Thread(target=_watch_owner,
+                args=(stop_event, finished, sys.stdin.fileno()), name="capture-owner")
+            watcher.start()
         runtime = WindowsRuntime(paths)
         runtime.managed_by_hud = args.managed_by_hud
         path_manager = UserPathManager(paths, WindowsRegistryPathBackend())
@@ -134,7 +173,22 @@ def main(argv: list[str] | None = None) -> int:
         if args.managed_by_hud:
             supervisor.status.extras["runtime"]["ownerToken"] = args.owner_token
         return supervisor.run()
+    except Exception as error:
+        if not args.managed_by_hud:
+            raise
+        # Constructor failures happen before Supervisor can persist a status.
+        # Record a terminal reason bound to this owner; never claim readiness.
+        atomic_write_json(paths.runtime_state, {
+            "state": "BLOCKED", "updatedAt": iso_now(),
+            "detail": "Capture runtime failed", "lastError": f"{type(error).__name__}: {error}",
+            "supervisorPid": os.getpid(), "captureActive": False,
+            "extras": {"runtime": {"ownerToken": args.owner_token}},
+        })
+        return 2
     finally:
+        finished.set()
+        if watcher is not None:
+            watcher.join()
         try:
             lock.unlink()
         except FileNotFoundError:

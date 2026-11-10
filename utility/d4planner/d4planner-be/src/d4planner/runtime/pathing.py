@@ -126,21 +126,21 @@ class UserPathManager:
         parts = _parts(before)
         if any(_norm(part) == _norm(managed) for part in parts):
             state = read_json(self.paths.path_managed) or {}
-            updated = state.get("updatedAt")
-            if not updated:
-                # The path pre-existed D4Planner management. Track it conservatively
-                # for stale-Steam detection, but never claim ownership for restore.
-                updated = _now()
+            updated = self.managed_updated_at()
+            if not state:
+                # Discovery is not a PATH mutation. Losing DataRoot metadata must
+                # not manufacture a change that makes every existing Steam stale.
                 atomic_write_json(
                     self.paths.path_managed,
                     {
                         "managedPath": managed,
-                        "updatedAt": updated,
+                        "updatedAt": None,
+                        "observedAt": _now(),
                         "owned": False,
                         "preExisting": True,
                     },
                 )
-            return PathChange(False, managed, before, before, str(updated))
+            return PathChange(False, managed, before, before, updated)
 
         if not self.paths.path_backup.exists():
             atomic_write_json(
@@ -216,6 +216,10 @@ class UserPathManager:
 
     def managed_updated_at(self) -> str | None:
         state = read_json(self.paths.path_managed) or {}
+        # Older versions stamped pre-existing paths with their discovery time.
+        # Keep their non-ownership semantics, but never use that as change proof.
+        if state.get("preExisting") is True or state.get("owned") is False:
+            return None
         value = state.get("updatedAt")
         return str(value) if value else None
 
