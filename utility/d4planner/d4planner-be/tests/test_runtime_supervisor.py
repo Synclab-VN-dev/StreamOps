@@ -609,10 +609,12 @@ def test_sqlite_failure_retries_speech_without_advancing_raw_offset(monkeypatch,
     monkeypatch.setattr(supervisor.store.repository, "append_batch", fail_once)
 
     assert supervisor._flush_ingress(include_marker=False) == 0
+    assert supervisor.status.extras["speechEventCount"] == 0
     assert supervisor._raw_offset == 0
     assert len(supervisor._pending_ingress) == 1
 
     assert supervisor._flush_ingress(include_marker=False) == 1
+    assert supervisor.status.extras["speechEventCount"] == 1
     assert supervisor._raw_offset == raw.stat().st_size
     assert supervisor._pending_ingress == []
 

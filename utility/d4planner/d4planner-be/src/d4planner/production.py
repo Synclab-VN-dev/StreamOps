@@ -10,7 +10,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from time import perf_counter_ns
+from time import perf_counter_ns, monotonic
 from typing import Any
 
 from .character.repository import (
@@ -352,6 +352,7 @@ class ProductionBackendRuntime:
         self.server: D4PlannerWebSocketServer | None = None
         self.capture_source: RepositoryEquipmentEventSource | None = None
         self.capture_runtime = None
+        self._runtime_started = monotonic()
         self._ingest_lock = asyncio.Lock()
         trace = os.environ.get("D4PLANNER_LATENCY_TRACE")
         self.latency_trace = Path(trace) if trace else None
@@ -671,6 +672,15 @@ class ProductionBackendRuntime:
         if command.get("type") == "request":
             from .control import validate_request
             validate_request(command)
+            if command['method'] == 'runtime.status':
+                return {'dataRoot': str(self.data_root), 'pid': os.getpid(),
+                        'uptimeSeconds': int(monotonic() - self._runtime_started),
+                        'webSocket': f'127.0.0.1:{self.server.port}' if self.server else None,
+                        'capture': self.capture_runtime.status() if self.capture_runtime else None}
+            if command['method'].startswith('capture.'):
+                if self.capture_runtime is None:
+                    raise ValueError('UNSUPPORTED_METHOD')
+                return await self.capture_runtime.command(command['method'].split('.')[1])
             if command["method"] == "planner.ensureReady":
                 if self.rulekit is None:
                     from .rulekit.client import RuleKitRemoteError

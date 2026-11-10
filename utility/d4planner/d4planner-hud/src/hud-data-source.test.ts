@@ -63,3 +63,19 @@ it('missing or invalid DB does not fabricate HUD data',async()=>{
   value={...model(),hud:{score:100}};await source.refresh();
   expect(events.some(e=>e.type==='SNAPSHOT')).toBe(false);stop();
 });
+it('Runtime Manager start reconnects after retry exhaustion without auto-starting stopped Backend',async()=>{
+  let available=false; const socket=new Socket();
+  const native=vi.fn(async(name:string)=>{
+    if(name==='read_hud_database')return null;
+    if(name==='get_hud_ws_bootstrap'&&available)return {endpoint:'ws://127.0.0.1:30001',credential:'x'.repeat(32),origin:'tauri://localhost'};
+    throw new Error('OFFLINE');
+  });
+  const source=new TauriHudDataSource(native as typeof invoke,()=>socket,[]);
+  const stop=await source.connect(()=>{});
+  await vi.waitFor(()=>expect(native).toHaveBeenCalledWith('get_hud_ws_bootstrap'));
+  available=true;
+  window.dispatchEvent(new Event('d4planner-runtime-changed'));
+  await vi.waitFor(()=>expect(socket.onopen).not.toBeNull());
+  expect(native.mock.calls.some(([name])=>name==='start_backend')).toBe(false);
+  stop();
+});

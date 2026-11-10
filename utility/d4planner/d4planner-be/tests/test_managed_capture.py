@@ -131,3 +131,146 @@ def test_hud_nvda_wrong_session_blocks_before_spawn(tmp_path, monkeypatch):
     monkeypatch.setattr('subprocess.Popen', forbidden)
     with pytest.raises(RuntimeBlocked, match='active desktop session'):
         runtime.ensure_nvda_running()
+
+
+def test_v16_stop_pause_survives_backend_restart_and_explicit_start_resumes(tmp_path):
+    async def scenario():
+        children = []
+        async def spawn(*args, **kwargs):
+            child = Child(); children.append(child); return child
+        async def changed(value): pass
+        first = ManagedCaptureRuntime(tmp_path, changed, spawn=spawn)
+        await first.start()
+        await first.command('stop')
+        assert first.status()['manualPause'] is True
+        await first.stop()  # Backend shutdown must not clear the user's pause.
+        second = ManagedCaptureRuntime(tmp_path, changed, spawn=spawn)
+        await second.start()
+        assert len(children) == 1
+        assert second.status()['state'] == 'STOPPED'
+        await second.command('start')
+        assert len(children) == 2 and not second.status()['manualPause']
+        await second.stop()
+    asyncio.run(scenario())
+
+
+def test_v16_dead_child_cannot_be_hidden_by_stale_running_status_and_retry_rotates_owner(tmp_path):
+    async def scenario():
+        children = []
+        async def spawn(*args, **kwargs):
+            child = Child(); children.append(child); return child
+        async def changed(value): pass
+        runtime = ManagedCaptureRuntime(tmp_path, changed, spawn=spawn)
+        await runtime.start()
+        token = runtime.owner_token
+        state = tmp_path / 'state'; state.mkdir(exist_ok=True)
+        (state / 'runtime.json').write_text(json.dumps({'supervisorPid':123, 'state':'RUNNING',
+            'detail':'Ready', 'nvda':{'pid':456}, 'extras':{'runtime':{'ownerToken':token}}}))
+        children[0].returncode = 1
+        await runtime._refresh()
+        assert 'exited (1)' in runtime.detail
+        assert runtime.status()['dependencies'] == {}
+        await runtime.command('restart')
+        assert runtime.owner_token != token and len(children) == 2
+        await runtime._refresh()
+        assert runtime.state == 'STARTING'
+        await runtime.stop()
+    asyncio.run(scenario())
+
+
+def test_v16_concurrent_starts_spawn_once_and_invalid_pause_blocks(tmp_path):
+    async def scenario():
+        calls = []
+        async def spawn(*args, **kwargs):
+            await asyncio.sleep(.01); calls.append(1); return Child()
+        async def changed(value): pass
+        runtime = ManagedCaptureRuntime(tmp_path, changed, spawn=spawn)
+        await asyncio.gather(runtime.command('start'), runtime.command('start'))
+        assert calls == [1]
+        await runtime.stop()
+        (tmp_path / 'state/capture-preferences.json').write_text('{broken')
+        blocked = ManagedCaptureRuntime(tmp_path, changed, spawn=spawn)
+        await blocked.start()
+        assert blocked.state == 'BLOCKED' and calls == [1]
+        await blocked.command('start')  # Explicit operator intent repairs preference.
+        assert calls == [1, 1]
+        await blocked.stop()
+    asyncio.run(scenario())
+
+
+def test_v16_runtime_controls_require_owner_and_empty_parameters(tmp_path):
+    import pytest
+    from d4planner.control import dispatch, validate_request
+    from d4planner.production import ProductionBackendRuntime
+    async def scenario():
+        async def changed(value): pass
+        async def spawn(*args, **kwargs): return Child()
+        capture = ManagedCaptureRuntime(tmp_path, changed, spawn=spawn)
+        # Exercise actual production dispatch without starting unrelated services.
+        runtime = object.__new__(ProductionBackendRuntime)
+        runtime.capture_runtime = capture
+        bootstrap = {'ownerInstanceId':'owner', 'childInstanceId':'child', 'generation':1}
+        command = {'protocolVersion':'d4planner-control/v1', 'type':'request', 'requestId':'test',
+                   **bootstrap, 'method':'capture.start', 'params':{}}
+        for method in ('runtime.status','capture.start','capture.stop','capture.restart'):
+            validate_request({**command,'method':method})
+            for invalid in ({'pid':123}, [], None):
+                with pytest.raises(ValueError): validate_request({**command,'method':method,'params':invalid})
+        denied = await dispatch(runtime, {**command,'ownerInstanceId':'foreign'}, bootstrap)
+        assert denied['error']['code'] == 'OWNERSHIP_MISMATCH' and capture.process is None
+        result = await dispatch(runtime, command, bootstrap)
+        assert result['error'] is None and result['result']['pid'] == 123
+        stopped = await dispatch(runtime, {**command,'method':'capture.stop'}, bootstrap)
+        assert stopped['result']['manualPause'] and stopped['result']['state'] == 'STOPPED'
+    asyncio.run(scenario())
+
+
+def test_v16_receipt_and_metrics_are_only_from_owned_live_capture(tmp_path):
+    from datetime import datetime, timezone
+    import time
+    async def scenario():
+        async def changed(value): pass
+        child = Child()
+        async def spawn(*a, **kw): return child
+        runtime = ManagedCaptureRuntime(tmp_path, changed, spawn=spawn)
+        await runtime.start()
+        (tmp_path/'state').mkdir(exist_ok=True); (tmp_path/'private').mkdir()
+        payload = {'supervisorPid':123, 'state':'RUNNING', 'nvda':{'pid':456,
+            'started_at':datetime.fromtimestamp(time.time()-10, timezone.utc).isoformat()},
+            'extras':{'runtime':{'ownerToken':runtime.owner_token},'speechEventCount':7}}
+        (tmp_path/'state/runtime.json').write_text(json.dumps(payload))
+        receipt = tmp_path/'private/nvda-capture-consumer.json'
+        receipt.write_text(json.dumps({'pid':456,'dataRoot':str(tmp_path),'writtenAtUnix':time.time()}))
+        await runtime._refresh()
+        assert runtime.status()['speechEvents'] == 7
+        assert runtime.status()['dataRootReceipt'] == 'VALIDATED'
+        receipt.write_text(json.dumps({'pid':999,'dataRoot':str(tmp_path),'writtenAtUnix':time.time()}))
+        assert runtime.status()['dataRootReceipt'] == 'MISMATCH'
+        receipt.write_text('null')
+        assert runtime.status()['dataRootReceipt'] == 'UNAVAILABLE'
+        child.returncode = 1
+        await runtime._refresh()
+        assert runtime.status()['speechEvents'] is None
+        assert runtime.status()['dataRootReceipt'] == 'UNAVAILABLE'
+        await runtime.stop()
+    asyncio.run(scenario())
+
+
+def test_v16_failed_owned_cleanup_never_loses_handle_or_spawns_replacement(tmp_path, monkeypatch):
+    import pytest
+    async def scenario():
+        child = Child()
+        async def spawn(*a, **kw): return child
+        async def changed(value): pass
+        runtime = ManagedCaptureRuntime(tmp_path, changed, spawn=spawn)
+        await runtime.start()
+        original_wait = asyncio.wait_for
+        async def timeout_wait(coro, timeout):
+            coro.close()
+            raise asyncio.TimeoutError()
+        monkeypatch.setattr(asyncio, 'wait_for', timeout_wait)
+        with pytest.raises(asyncio.TimeoutError): await runtime.command('restart')
+        assert runtime.process is child
+        monkeypatch.setattr(asyncio, 'wait_for', original_wait)
+        await runtime.stop()
+    asyncio.run(scenario())

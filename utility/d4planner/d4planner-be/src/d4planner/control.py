@@ -10,7 +10,7 @@ def validate_request(command):
     if any(not isinstance(command[k], str) or not 1 <= len(command[k]) <= 160 for k in ('requestId','ownerInstanceId','childInstanceId')) or type(command['generation']) is not int or command['generation'] < 1:
         raise ValueError('INVALID_CONTROL_MESSAGE')
     params = command['params']
-    if command['method'] in {'target.list', 'planner.ensureReady'} and params == {}:
+    if command['method'] in {'target.list', 'planner.ensureReady', 'runtime.status', 'capture.start', 'capture.stop', 'capture.restart'} and params == {}:
         return
     if command['method'] != 'target.select':
         raise ValueError('UNSUPPORTED_METHOD')

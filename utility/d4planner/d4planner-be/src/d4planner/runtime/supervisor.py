@@ -106,6 +106,7 @@ class Supervisor:
             "isolated": self.isolated,
             "uatAttachOnly": self.uat_attach_only,
         }
+        self.status.extras["speechEventCount"] = 0
         self.status.extras["inputMarker"] = {
             "key": "F11",
             "mode": "BLOCK" if self.block_marker else "OBSERVE",
@@ -654,6 +655,7 @@ class Supervisor:
         for unified in unified_events:
             if unified.get("type") != "speech.raw":
                 continue
+            self.status.extras["speechEventCount"] = self.status.extras.get("speechEventCount", 0) + 1
             # Projection is downstream of the durable SQLite commit. A
             # parser/state bug must never lose the raw evidence.
             try:

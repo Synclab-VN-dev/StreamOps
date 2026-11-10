@@ -324,7 +324,7 @@ impl BackendProcessWrapper<StdProcessDriver> {
     pub fn request(&self, method: &str, params: serde_json::Value, timeout: Duration) -> Result<serde_json::Value, String> {
         let limit = match method {
             "planner.ensureReady" => PLANNER_CONTROL_TIMEOUT,
-            "target.list" | "target.select" => Duration::from_secs(60),
+            "target.list" | "target.select" | "runtime.status" | "capture.start" | "capture.stop" | "capture.restart" => Duration::from_secs(60),
             _ => return Err("INVALID_CONTROL_REQUEST".into()),
         };
         if timeout.is_zero() || timeout > limit {

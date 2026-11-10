@@ -27,6 +27,7 @@ const MODE_EVENT: &str = "overlay-mode-changed";
 
 struct ModeState(Mutex<bool>);
 struct BackendState(Mutex<Option<Arc<BackendProcessWrapper<StdProcessDriver>>>>);
+static RUNTIME_OPERATION: Mutex<()> = Mutex::new(());
 static PLANNER_OPEN_PENDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[derive(Clone, serde::Serialize)]
@@ -110,7 +111,7 @@ fn backend_launch_from_environment() -> Result<LaunchSpecification, String> {
             child_instance_id: string_field("childInstanceId")?,
             generation,
             readiness_timeout: Duration::from_secs(15),
-            graceful_stop_timeout: Duration::from_secs(5),
+            graceful_stop_timeout: Duration::from_secs(45),
             kill_timeout: Duration::from_secs(3),
         })
 }
@@ -205,34 +206,47 @@ fn get_hud_ws_bootstrap(state: State<'_, BackendState>) -> Result<HudWsBootstrap
 }
 
 #[tauri::command]
-fn start_backend(state: State<'_, BackendState>) -> Result<BackendStatus, String> {
+async fn start_backend(state: State<'_, BackendState>) -> Result<BackendStatus, String> {
     runtime_event("INFO","lifecycle","START");
     let wrapper = {
         let mut slot = state.0.lock().map_err(|_| "Backend state lock poisoned")?;
         if slot.is_none() { *slot = Some(Arc::new(backend_from_environment()?)); }
         slot.as_ref().cloned().ok_or("Backend wrapper unavailable")?
     };
-    let ready = wrapper.start()?;
-    Ok(BackendStatus { state: wrapper.state(), ready: Some(ready) })
+    let ready = tauri::async_runtime::spawn_blocking(move || {
+        let _operation = RUNTIME_OPERATION.lock().map_err(|_| "RUNTIME_BUSY")?;
+        match wrapper.state() {
+            ProcessState::Stopped | ProcessState::Ready => wrapper.start(),
+            _ => wrapper.restart_with(rotate_backend_bootstrap()?),
+        }
+    }).await.map_err(|_| "BACKEND_DISPATCH_FAILED")??;
+    Ok(BackendStatus { state: ProcessState::Ready, ready: Some(ready) })
 }
 
 #[tauri::command]
-fn stop_backend(state: State<'_, BackendState>) -> Result<BackendStatus, String> {
+async fn stop_backend(state: State<'_, BackendState>) -> Result<BackendStatus, String> {
+    runtime_event("INFO", "lifecycle", "STOP");
     let wrapper = state.0.lock().map_err(|_| "Backend state lock poisoned")?.clone();
     if let Some(wrapper) = wrapper {
-        wrapper.stop()?;
-        return Ok(BackendStatus { state: wrapper.state(), ready: None });
+        tauri::async_runtime::spawn_blocking(move || {
+            let _operation = RUNTIME_OPERATION.lock().map_err(|_| "RUNTIME_BUSY")?;
+            wrapper.stop()
+        }).await.map_err(|_| "BACKEND_DISPATCH_FAILED")??;
+        return Ok(BackendStatus { state: ProcessState::Stopped, ready: None });
     }
     Ok(BackendStatus { state: ProcessState::Stopped, ready: None })
 }
 
 #[tauri::command]
-fn restart_backend(state: State<'_, BackendState>) -> Result<BackendStatus, String> {
+async fn restart_backend(state: State<'_, BackendState>) -> Result<BackendStatus, String> {
     runtime_event("INFO","lifecycle","RESTART");
     let wrapper = state.0.lock().map_err(|_| "Backend state lock poisoned")?.clone()
         .ok_or("managed Backend is not configured")?;
-    let ready = wrapper.restart_with(rotate_backend_bootstrap()?)?;
-    Ok(BackendStatus { state: wrapper.state(), ready: Some(ready) })
+    let ready = tauri::async_runtime::spawn_blocking(move || {
+        let _operation = RUNTIME_OPERATION.lock().map_err(|_| "RUNTIME_BUSY")?;
+        wrapper.restart_with(rotate_backend_bootstrap()?)
+    }).await.map_err(|_| "BACKEND_DISPATCH_FAILED")??;
+    Ok(BackendStatus { state: ProcessState::Ready, ready: Some(ready) })
 }
 
 #[tauri::command]
@@ -247,9 +261,15 @@ fn get_backend_status(state: State<'_, BackendState>) -> Result<BackendStatus, S
 #[tauri::command]
 async fn backend_command(state: State<'_, BackendState>, method: String, params: serde_json::Value) -> Result<serde_json::Value, String> {
     // Planner has a dedicated native command; React cannot bypass URL validation/open policy.
-    if !matches!(method.as_str(), "target.list" | "target.select") { return Err("INVALID_CONTROL_REQUEST".into()); }
+    if !matches!(method.as_str(), "target.list" | "target.select" | "runtime.status" | "capture.start" | "capture.stop" | "capture.restart") { return Err("INVALID_CONTROL_REQUEST".into()); }
     let wrapper = state.0.lock().map_err(|_| "Backend state lock poisoned")?.clone().ok_or("BACKEND_OFFLINE")?;
-    tauri::async_runtime::spawn_blocking(move || wrapper.request(&method, params, Duration::from_secs(10)))
+    tauri::async_runtime::spawn_blocking(move || {
+        let _operation = if method.starts_with("capture.") || method == "runtime.status" {
+            Some(RUNTIME_OPERATION.lock().map_err(|_| "RUNTIME_BUSY")?)
+        } else { None };
+        let timeout = if method.starts_with("capture.") { 60 } else { 10 };
+        wrapper.request(&method, params, Duration::from_secs(timeout))
+    })
         .await.map_err(|_| "CONTROL_DISPATCH_FAILED".to_string())?
 }
 

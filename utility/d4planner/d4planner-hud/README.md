@@ -9,8 +9,8 @@ MagicPath Golden and acceptance boundaries.
 
 The native shell owns the versioned managed Backend lifecycle and passes its
 private loopback bootstrap to the strict S5 WebSocket data source. Production
-never falls back to fixture or demo data. NVDA, game hooks, Steam Link and OBS
-integration remain out of scope.
+never falls back to fixture or demo data. The v16 [Runtime Manager](docs/runtime-manager.md) controls the owned Backend and
+capture child. Game and Steam Link control remain outside this panel.
 
 ## Developer verification
 
