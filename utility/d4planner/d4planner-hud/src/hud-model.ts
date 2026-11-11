@@ -49,7 +49,7 @@ export interface HudSnapshot {
     binding: { runtimeInstanceId: string; targetId: string; targetSha256: string; characterId: string; currentRevision: number; selectionRevision: number; policyVersion: string } | null;
     selectionError: { code: string; attemptedTargetId: string } | null;
   };
-  health: { capture: "HEALTHY" | "STALE" | "UNKNOWN" | "ERROR"; scoreFreshness: "CURRENT" | "STALE" | "NO_DATA"; ruleKit: string };
+  health: { captureRuntime?: { state: string; detail: string }; capture: "HEALTHY" | "STALE" | "UNKNOWN" | "ERROR"; scoreFreshness: "CURRENT" | "STALE" | "NO_DATA"; ruleKit: string };
   score: {
     status: "SCORED" | "NO_DATA";
     value: number | null;

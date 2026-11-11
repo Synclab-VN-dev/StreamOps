@@ -10,6 +10,36 @@ use std::{
 };
 use wait_timeout::ChildExt;
 
+/// OS context required by the Backend's Windows runtime; arbitrary parent
+/// environment (including unrelated credentials) must remain excluded.
+pub fn platform_environment(read: impl Fn(&str) -> Option<String>) -> BTreeMap<String, String> {
+    ["SYSTEMROOT", "WINDIR", "TEMP", "TMP", "PATH", "PYTHONPATH",
+     "APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+     "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432",
+     "PROCESSOR_ARCHITECTURE", "PROCESSOR_ARCHITEW6432"]
+        .into_iter().filter_map(|name| read(name).map(|value| (name.to_owned(), value))).collect()
+}
+
+#[cfg(test)]
+mod issue193_environment_tests {
+    use super::*;
+    #[test]
+    fn capture_receives_user_directories_without_unrelated_secrets() {
+        let parent = BTreeMap::from([
+            ("APPDATA", r"C:\Users\test\AppData\Roaming"),
+            ("LOCALAPPDATA", r"C:\Users\test\AppData\Local"),
+            ("USERPROFILE", r"C:\Users\test"),
+            ("PROCESSOR_ARCHITECTURE", "AMD64"),
+            ("UNRELATED_API_TOKEN", "must-not-inherit"),
+        ]);
+        let child = platform_environment(|name| parent.get(name).map(|v| v.to_string()));
+        for name in ["APPDATA", "LOCALAPPDATA", "USERPROFILE", "PROCESSOR_ARCHITECTURE"] {
+            assert_eq!(child.get(name).map(String::as_str), parent.get(name).copied(), "missing {name}");
+        }
+        assert!(!child.contains_key("UNRELATED_API_TOKEN"));
+    }
+}
+
 // Provisioning can download/decrypt a UI package before the Planner becomes ready.
 // Keep its native request budget shared with the HUD caller.
 pub const PLANNER_CONTROL_TIMEOUT: Duration = Duration::from_secs(190);
@@ -294,7 +324,7 @@ impl BackendProcessWrapper<StdProcessDriver> {
     pub fn request(&self, method: &str, params: serde_json::Value, timeout: Duration) -> Result<serde_json::Value, String> {
         let limit = match method {
             "planner.ensureReady" => PLANNER_CONTROL_TIMEOUT,
-            "target.list" | "target.select" => Duration::from_secs(60),
+            "target.list" | "target.select" | "runtime.status" | "capture.start" | "capture.stop" | "capture.restart" => Duration::from_secs(60),
             _ => return Err("INVALID_CONTROL_REQUEST".into()),
         };
         if timeout.is_zero() || timeout > limit {

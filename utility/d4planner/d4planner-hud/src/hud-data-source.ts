@@ -56,12 +56,15 @@ export class TauriHudDataSource implements IHudDataSource {
     await this.refresh(); // No bootstrap or Backend prerequisite.
     void this.connectSocket(epoch);
     const resume = () => { void this.refresh(); if (!this.socket) void this.connectSocket(epoch); };
+    const runtimeChanged = () => { this.retry = 0; resume(); };
+    window.addEventListener('d4planner-runtime-changed', runtimeChanged);
     window.addEventListener('focus', resume);
     window.addEventListener('pageshow', resume);
     return () => {
       ++this.epoch; this.listener = null;
       if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
       const socket = this.socket; this.socket = null; socket?.close();
+      window.removeEventListener('d4planner-runtime-changed', runtimeChanged);
       window.removeEventListener('focus', resume); window.removeEventListener('pageshow', resume);
     };
   }

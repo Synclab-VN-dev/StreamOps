@@ -81,6 +81,7 @@ def assemble(args: argparse.Namespace) -> dict:
     # Dependency cache may contain an older editable/project wheel. Always
     # overlay production Backend sources from the exact checked-out revision.
     copy_tree(repository / "utility/d4planner/d4planner-be/src/d4planner", root / "backend/site-packages/d4planner")
+    copy_tree(repository / "utility/d4planner/d4planner-be/nvda-addon", root / "backend/nvda-addon")
     copy_tree(repository / "utility/d4planner/d4planner-be/contracts",
               root / "utility/d4planner/contracts")
     # Exact reviewed source allowlist; never copy a developer provider tree,

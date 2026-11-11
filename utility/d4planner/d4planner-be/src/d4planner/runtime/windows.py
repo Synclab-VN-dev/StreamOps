@@ -50,6 +50,7 @@ class WindowsRuntime:
 
     def __init__(self, paths: RuntimePaths):
         self.paths = paths
+        self.managed_by_hud = False
         # The daemon process copies this flag from Supervisor.  Keeping the
         # task namespace on the runtime object means all helper calls (NVDA,
         # Tolk, game launch and stop) use the same ownership boundary.
@@ -275,7 +276,7 @@ class WindowsRuntime:
             shutil.copy2(source_manifest, manifest_target)
             changed = True
 
-        core_source = project_root / "src" / "d4planner" / "capture" / "core.py"
+        core_source = Path(__file__).resolve().parents[1] / "capture" / "core.py"
         core_target = destination / "globalPlugins" / "d4plannerCapture" / "core.py"
         if core_source.is_file() and not self._same_file(core_source, core_target):
             core_target.parent.mkdir(parents=True, exist_ok=True)
@@ -1069,8 +1070,28 @@ class WindowsRuntime:
         existing = self.nvda_process()
         if existing:
             return existing
-        self.ensure_interactive_tasks()
-        self.run_task("D4Planner-NVDA")
+        if self.managed_by_hud:
+            console = self.active_console_session_id()
+            if console is None or self.current_process_session_id() != console:
+                raise RuntimeBlocked("HUD capture must start in the active desktop session")
+            executable = self.locate_nvda_executable()
+            if executable is None:
+                raise RuntimeBlocked("NVDA executable not found")
+            environment = dict(os.environ)
+            environment.update({
+                "D4PLANNER_DATA_ROOT": str(self.paths.root),
+                "D4PLANNER_HOME": str(self.paths.root),
+                "D4PLANNER_DATA_DIR": str(self.paths.state),
+                "D4_RULEKIT_DATA_ROOT": str(self.paths.root / "rulekit"),
+                "PATH": str(self.paths.controller) + os.pathsep + environment.get("PATH", ""),
+            })
+            environment.pop("D4_LOG_DIR", None)
+            subprocess.Popen([str(executable)], env=environment,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+        else:
+            self.ensure_interactive_tasks()
+            self.run_task("D4Planner-NVDA")
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             process = self.nvda_process()

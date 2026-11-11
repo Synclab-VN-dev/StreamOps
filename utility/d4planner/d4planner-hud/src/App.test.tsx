@@ -265,7 +265,7 @@ it('keeps Report Issue usable while managed Target IPC fails and retries', async
 
 
 describe("Create Build native action", () => {
-  it("uses the v15 action order and opens the existing logs tab without collecting or losing the report draft", async () => {
+  it("uses the v16 action order and opens the existing logs tab without collecting or losing the report draft", async () => {
     const source = new FakeDataSource();
     render(<App dataSource={source} />);
     fireEvent.click(await screen.findByRole("button", { name: "Open target menu" }));
@@ -274,7 +274,7 @@ describe("Create Build native action", () => {
     expect(actions.at(-2)?.getAttribute("aria-label")).toBe("Report Issue");
     expect(actions.at(-1)?.textContent).toBe(" Collect Logs");
     expect(screen.getByText("Open Local Planner")).toBeTruthy();
-    expect(screen.getByText("Support & diagnostics")).toBeTruthy();
+    expect(screen.getByText("Services & diagnostics")).toBeTruthy();
     fireEvent.click(screen.getByRole("menuitem", { name: "Collect Logs" }));
     expect(screen.queryByRole("menu")).toBeNull();
     expect(screen.getByRole("button", { name: "Collect Logs" }).getAttribute("aria-pressed")).toBe("true");
@@ -347,4 +347,16 @@ describe("Create Build native action", () => {
     expect(screen.getByRole("menuitem", { name: "Report Issue" })).toBeTruthy();
     expect(mocks.invoke.mock.calls.filter(([name]) => name === "set_overlay_extent").every(([, args]) => args.width === 280)).toBe(true);
   });
+});
+
+it("shows capture waiting and dependency failure without inventing character data (#193)", async () => {
+  const source = new FakeDataSource({ ...noData, health: { ...noData.health,
+    captureRuntime: { state: "WAITING_FOR_GAME", detail: "Waiting for user" } } });
+  render(<App dataSource={source} />);
+  await screen.findByText("Capture: Waiting for Diablo IV");
+  expect(screen.getByText("NO DATA")).toBeTruthy();
+  act(() => source.emit({ type: "SNAPSHOT", snapshot: { ...noData,
+    hudRevision: noData.hudRevision + 1, health: { ...noData.health,
+      captureRuntime: { state: "BLOCKED", detail: "NVDA 2026.2 is required" } } } }));
+  await screen.findByText("Capture: NVDA 2026.2 is required");
 });

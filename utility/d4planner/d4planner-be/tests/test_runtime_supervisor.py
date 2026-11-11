@@ -66,7 +66,7 @@ class FakeRuntime:
         return TolkHealth("NVDA", True, True)
 
     def process_started_before(self, process, timestamp):
-        return bool(process and self.stale)
+        return bool(process and timestamp and self.stale)
 
     def launch_game(self):
         self.launch_calls += 1
@@ -179,6 +179,22 @@ def test_stale_steam_requires_restart_and_never_launches_or_kills_game(tmp_path)
     assert state == RuntimeState.RESTART_REQUIRED
     assert runtime.launch_calls == 0
     assert read_json(paths.capture_state)["enabled"] is False
+
+
+def test_missing_path_metadata_with_preexisting_path_does_not_block_steam(tmp_path):
+    paths = RuntimePaths(tmp_path / 'home')
+    runtime = FakeRuntime(paths, steam=ProcessInfo('steam', 21, session_id=1), stale=True)
+    supervisor = build_supervisor(tmp_path, runtime)
+    supervisor.managed_by_hud = True
+    supervisor.path_manager = UserPathManager(
+        paths, MemoryPathBackend(user_path=str(paths.controller.resolve())))
+    try:
+        assert supervisor.bootstrap() == RuntimeState.WAITING_FOR_GAME
+        assert supervisor.status.extras['userPathChanged'] is False
+        assert runtime.launch_calls == 0
+    finally:
+        if supervisor.store:
+            supervisor.store.close()
 
 
 def test_session_mismatch_blocks_before_capture(tmp_path):
@@ -609,10 +625,12 @@ def test_sqlite_failure_retries_speech_without_advancing_raw_offset(monkeypatch,
     monkeypatch.setattr(supervisor.store.repository, "append_batch", fail_once)
 
     assert supervisor._flush_ingress(include_marker=False) == 0
+    assert supervisor.status.extras["speechEventCount"] == 0
     assert supervisor._raw_offset == 0
     assert len(supervisor._pending_ingress) == 1
 
     assert supervisor._flush_ingress(include_marker=False) == 1
+    assert supervisor.status.extras["speechEventCount"] == 1
     assert supervisor._raw_offset == raw.stat().st_size
     assert supervisor._pending_ingress == []
 
@@ -678,3 +696,46 @@ def test_sqlite_failure_retries_marker_without_redraining_queue(monkeypatch, tmp
     assert len(markers) == 1
     assert markers[0]["data"]["key"] == "F11"
     assert markers[0]["data"]["state"] == "down"
+
+
+def test_issue193_hud_capture_waits_without_launching_game(tmp_path):
+    paths = RuntimePaths(tmp_path / 'home')
+    runtime = FakeRuntime(paths)
+    supervisor = build_supervisor(tmp_path, runtime)
+    supervisor.managed_by_hud = True
+    try:
+        state = supervisor.bootstrap()
+        assert runtime.launch_calls == 0
+        assert state == RuntimeState.WAITING_FOR_GAME
+    finally:
+        if supervisor.store:
+            supervisor.store.close()
+
+
+def test_issue193_managed_capture_never_restarts_existing_nvda(tmp_path):
+    runtime = FakeRuntime(RuntimePaths(tmp_path / 'home'))
+    runtime.ensure_addon_runtime = lambda: True
+    def forbidden(**kwargs): raise AssertionError('must not restart existing NVDA')
+    runtime.restart_nvda = forbidden
+    supervisor = build_supervisor(tmp_path, runtime)
+    supervisor.managed_by_hud = True
+    try:
+        assert supervisor.bootstrap() == RuntimeState.BLOCKED
+        assert 'restart NVDA manually' in supervisor.status.detail
+        assert runtime.launch_calls == 0
+    finally:
+        if supervisor.store: supervisor.store.close()
+
+
+def test_issue193_missing_nvda_blocks_without_launching_game(tmp_path):
+    runtime = FakeRuntime(RuntimePaths(tmp_path / 'home'))
+    runtime.nvda_version = lambda: None
+    runtime.nvda_version_compatible = lambda version: False
+    supervisor = build_supervisor(tmp_path, runtime)
+    supervisor.managed_by_hud = True
+    try:
+        assert supervisor.bootstrap() == RuntimeState.BLOCKED
+        assert not supervisor.status.capture_active
+        assert runtime.launch_calls == 0
+    finally:
+        if supervisor.store: supervisor.store.close()

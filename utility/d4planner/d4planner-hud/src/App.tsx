@@ -5,6 +5,7 @@ import type { AssessmentStatus, CriterionComparison, EquipmentRow, TypedValue } 
 import { useHudController } from "./use-hud-controller";
 import "./App.css";
 import { ReportIssue } from "./ReportIssue";
+import { RuntimeManager } from "./RuntimeManager";
 import { MenuIcon } from "./MenuIcon";
 
 function symbol(status: AssessmentStatus) {
@@ -29,6 +30,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   const hud = useHudController(source);
   const [expanded, setExpanded] = useState(true);
   const [equipmentOpen, setEquipmentOpen] = useState(false);
+  const [runtimeOpen, setRuntimeOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportTab, setReportTab] = useState<"report" | "logs">("report");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -43,9 +45,9 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   const selected = snapshot?.equipment.find(row => row.slotId === selectedSlot) ?? null;
 
   useEffect(() => {
-    const width = reportOpen ? 656 : !expanded || !equipmentOpen || !snapshot ? 280 : selected ? 886 : 544;
-    invoke("set_overlay_extent", { width, height: reportOpen || selected ? 620 : 560 }).catch(() => undefined);
-  }, [expanded, equipmentOpen, selected, snapshot, reportOpen]);
+    const width = runtimeOpen ? 880 : reportOpen ? 656 : !expanded || !equipmentOpen || !snapshot ? 280 : selected ? 886 : 544;
+    invoke("set_overlay_extent", { width, height: runtimeOpen || reportOpen || selected ? 620 : 560 }).catch(() => undefined);
+  }, [expanded, equipmentOpen, selected, snapshot, reportOpen, runtimeOpen]);
 
   useEffect(() => {
     if (!selectedSlot || snapshot?.equipment.some(row => row.slotId === selectedSlot)) return;
@@ -89,7 +91,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   }
 
   function openSupport(tab: "report" | "logs") {
-    setReportTab(tab); setReportOpen(true); setMenuOpen(false); setEquipmentOpen(false); resetComparison();
+    setRuntimeOpen(false); setReportTab(tab); setReportOpen(true); setMenuOpen(false); setEquipmentOpen(false); resetComparison();
   }
 
   async function createBuild() {
@@ -162,7 +164,8 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
               {entry.validation !== "VALID" ? <small>{entry.errorCodes.join(", ")}</small> : hud.pendingTargetId === entry.targetId && <small>Selecting…</small>}
             </button>)}
             <div className="target-menu-footer">Validated JSON targets</div>
-            <div className="support-heading">Support &amp; diagnostics</div>
+            <div className="support-heading">Services &amp; diagnostics</div>
+            <button className="menu-action report-action" role="menuitem" aria-label="Runtime Manager" onClick={() => {setRuntimeOpen(true); setMenuOpen(false); setReportOpen(false); setEquipmentOpen(false); resetComparison();}}><MenuIcon name="logs" size={15}/><span className="menu-action-copy"><span>Runtime Manager</span><small>Backend · Capture · Dependencies</small></span><MenuIcon name="chevron" size={13}/></button>
             <button className="menu-action report-action" role="menuitem" aria-label="Report Issue" aria-describedby="report-action-description" onClick={() => openSupport("report")}>
               <MenuIcon name="bug" size={15} />
               <span className="menu-action-copy"><span>Report Issue</span><small id="report-action-description">Open report window</small></span>
@@ -175,6 +178,13 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
 
         {!current && <div className={`freshness ${hud.connection.toLowerCase()}`} role="status">
           {snapshot?.score.status === "NO_DATA" ? "NO DATA" : snapshot ? (hud.connection === "DISCONNECTED" ? "OFFLINE — Last-known assessment is not current" : "Last-known assessment is not current — resynchronizing") : (hud.connection === "DISCONNECTED" ? "NO DATA" : "Connecting…")}
+        </div>}
+        {snapshot?.health.captureRuntime && <div className="freshness" role="status">
+          Capture: {snapshot.health.captureRuntime.state === "WAITING_FOR_GAME"
+            ? "Waiting for Diablo IV"
+            : snapshot.health.captureRuntime.state === "RUNNING"
+              ? "Active — waiting for identified character data"
+              : snapshot.health.captureRuntime.detail}
         </div>}
         {hud.error && <div className="hud-error" role="alert">{hud.error}</div>}
         {plannerOpening && <div className="freshness" role="status">Opening Planner…</div>}
@@ -189,6 +199,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
         </div>}
       </section>
 
+      {runtimeOpen && <RuntimeManager onClose={() => setRuntimeOpen(false)} onOpenLogs={() => openSupport("logs")} onChanged={() => {void source.refresh?.(); window.dispatchEvent(new Event("d4planner-runtime-changed"));}}/>}
       {reportOpen && <ReportIssue activeTab={reportTab} onTabChange={setReportTab} onClose={() => setReportOpen(false)} />}
       {expanded && equipmentOpen && snapshot && <aside className="panel equipment" aria-label="Equipment list">
         <div className="panel-title"><span>⬡ <b>Equipment</b></span><button aria-label="Close equipment" onClick={() => { setEquipmentOpen(false); resetComparison(); }}>×</button></div>
