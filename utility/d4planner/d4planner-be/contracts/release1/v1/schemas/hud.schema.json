@@ -6,6 +6,7 @@
   "additionalProperties": false,
   "required": ["schemaVersion", "hudRevision", "producedAt", "backend", "context", "health", "score", "equipment", "recommendation", "provenance"],
   "properties": {
+    "currentEquipment": {"type": "object", "additionalProperties": false, "required": ["sourceState", "identity", "revision", "items"], "properties": {"sourceState": {"enum": ["WAITING", "READY", "BUSY", "UNAVAILABLE"]}, "identity": {"const": "UNVERIFIED"}, "revision": {"type": ["integer", "null"], "minimum": 0}, "items": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["fingerprint", "slotFamily", "name", "itemType", "observedAt", "confidence", "slotIndex", "itemPower", "rarity", "baseStats", "affixes", "effects"], "properties": {"fingerprint": {"type": "string"}, "slotFamily": {"type": "string"}, "name": {"type": "string"}, "itemType": {"type": "string"}, "observedAt": {"type": "string"}, "confidence": {"type": "string"}, "slotIndex": {"type": ["integer", "null"]}, "itemPower": {"type": "integer"}, "rarity": {"type": ["string", "null"]}, "baseStats": {"type": "array", "items": {"type": "string"}}, "affixes": {"type": "array", "items": {"type": "string"}}, "effects": {"type": "array", "items": {"type": "string"}}}}}}},
     "schemaVersion": { "const": "d4planner-hud/v1" },
     "hudRevision": { "type": "integer", "minimum": 0 },
     "producedAt": { "type": "string", "format": "date-time" },

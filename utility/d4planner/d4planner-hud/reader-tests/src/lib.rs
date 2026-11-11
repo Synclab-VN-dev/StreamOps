@@ -89,4 +89,20 @@ mod tests {
         assert!(hud_reader::read_latest(&root.0).unwrap().is_some());
     }
 
+    #[test]
+    fn current_equipment_is_readable_without_target_but_cannot_forge_identity() {
+        let root=Sandbox::new(); let db=root.seed();
+        let mut hud:Value=serde_json::from_str(include_str!("../../../d4planner-be/contracts/release1/v1/fixtures/hud.no-data.synthetic.json")).unwrap();
+        hud["currentEquipment"]=serde_json::json!({"sourceState":"READY","identity":"UNVERIFIED","revision":1,"items":[{
+            "fingerprint":"fixture", "slotFamily":"chest","slotIndex":null,"name":"Fixture chest","itemType":"Chest Armor","itemPower":900,"rarity":null,
+            "baseStats":[],"affixes":["+101 Intelligence"],"effects":[],"observedAt":"2026-11-11T00:00:00Z","confidence":"HIGH"}]});
+        db.execute("UPDATE hud_current SET hud_revision=0,payload_json=?",[hud.to_string()]).unwrap();
+        let result=hud_reader::read_latest(&root.0).unwrap().unwrap();
+        assert_eq!(result["hud"]["currentEquipment"]["items"][0]["itemPower"],900);
+        assert_eq!(result["hud"]["score"]["status"],"NO_DATA");
+        hud["currentEquipment"]["identity"]=serde_json::json!("VERIFIED");
+        db.execute("UPDATE hud_current SET payload_json=?",[hud.to_string()]).unwrap();
+        assert_eq!(hud_reader::read_latest(&root.0).unwrap_err(),"DB_INVALID_MODEL");
+    }
+
 }

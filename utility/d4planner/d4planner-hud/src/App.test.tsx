@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render as renderView, screen, waitFor } from "@testing-library/react";
 import partialFixture from "../../d4planner-be/contracts/release1/v1/fixtures/hud.partial.synthetic.json";
 import noDataFixture from "../../d4planner-be/contracts/release1/v1/fixtures/hud.no-data.synthetic.json";
 import App from "./App";
@@ -9,6 +9,13 @@ import type { HudSnapshot, SelectionResult, TargetListEntry } from "./hud-model"
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
+
+// These regression cases exercise the existing Compare workspace.
+function render(...args: Parameters<typeof renderView>) {
+  const result = renderView(...args);
+  fireEvent.click(screen.getByRole('tab', {name: 'Compare'}));
+  return result;
+}
 
 const partial = partialFixture as unknown as HudSnapshot;
 const noData = noDataFixture as unknown as HudSnapshot;
