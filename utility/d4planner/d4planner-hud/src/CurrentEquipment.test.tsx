@@ -5,7 +5,8 @@ import App from './App';
 import empty from '../../d4planner-be/contracts/release1/v1/fixtures/hud.no-data.synthetic.json';
 import type { HudDataEvent, IHudDataSource } from './hud-data-source';
 import type { HudSnapshot } from './hud-model';
-vi.mock('@tauri-apps/api/core', () => ({invoke: vi.fn().mockResolvedValue(undefined)}));
+const native = vi.hoisted(()=>({invoke:vi.fn().mockResolvedValue(undefined)}));
+vi.mock('@tauri-apps/api/core', () => native);
 afterEach(cleanup);
 it('shows an observed item without Target, retains it offline, and opens its actual details', async () => {
   let notify: (e: HudDataEvent) => void = () => {};
@@ -17,6 +18,9 @@ it('shows an observed item without Target, retains it offline, and opens its act
   render(<App dataSource={source}/>);
   fireEvent.click(await screen.findByRole('button',{name:/Chest Synthetic Chest/}));
   expect(screen.getByText('Item Power 900')).toBeTruthy();
+  const extents = native.invoke.mock.calls.filter(([command])=>command==='set_overlay_extent').map(([,args])=>args);
+  expect(extents.at(-1).width).toBeGreaterThanOrEqual(627);
+  expect(extents.every(args=>args.height<=640)).toBe(true);
   expect(screen.getByText('+101 Intelligence')).toBeTruthy();
   expect(screen.getByText('Identity unverified')).toBeTruthy();
   expect(screen.getAllByText('Not observed', {exact:true})[0]).toBeTruthy();

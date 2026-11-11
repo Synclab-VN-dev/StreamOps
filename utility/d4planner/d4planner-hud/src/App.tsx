@@ -49,7 +49,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
 
   useEffect(() => {
     const width = runtimeOpen ? 880 : reportOpen ? 656 : workspace === "current" ? (expanded && currentSlot ? 635 : 280) : !expanded || !equipmentOpen || !snapshot ? 280 : selected ? 886 : 544;
-    invoke("set_overlay_extent", { width, height: runtimeOpen || reportOpen || selected || workspace === "current" ? 680 : 560 }).catch(() => undefined);
+    invoke("set_overlay_extent", { width, height: runtimeOpen || reportOpen || selected || workspace === "current" ? 640 : 560 }).catch(() => undefined);
   }, [expanded, equipmentOpen, selected, snapshot, reportOpen, runtimeOpen, workspace, currentSlot]);
 
   useEffect(() => {

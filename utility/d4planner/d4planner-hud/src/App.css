@@ -117,3 +117,9 @@ button { color: inherit; font: inherit; }
 .item-properties { background:#fffc; padding:12px; border-radius:12px; margin-top:8px; }
 .item-properties h3 { font-size:12px; margin:0; }
 .item-properties p { color:#566e7b; font-size:11px; line-height:1.5; }
+/* Native overlay bounds cap height at 640px. Keep slot scrolling inside it. */
+.summary:has(.current-list) { max-height:calc(100vh - 32px); display:flex; flex-direction:column; }
+.summary-head, .equipment-tabs, .current-heading, .current-notice, .observed-count, .current-help { flex-shrink:0; }
+.current-list { display:flex; flex-direction:column; min-height:0; flex:1; }
+.current-slots { flex:1; min-height:60px; }
+.current-detail { max-height:calc(100vh - 32px); }
