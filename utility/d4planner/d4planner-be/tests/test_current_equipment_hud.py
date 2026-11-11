@@ -88,3 +88,37 @@ def test_corrupt_source_retains_last_known_and_recovers(tmp_path, monkeypatch):
             assert be.store.latest_authoritative()['currentEquipment']['sourceState'] == 'READY'
         finally: await be.stop()
     asyncio.run(run())
+
+def test_fresh_missing_source_then_available_and_busy_preserves_current(tmp_path, monkeypatch):
+    """Source availability is independent of whether any observation exists."""
+    monkeypatch.setenv('D4PLANNER_CAPTURE_PROBE_ONLY', '1')
+    async def run():
+        be = runtime(tmp_path); await be.start()
+        try:
+            path = tmp_path/'state'/'character.db'
+            assert not path.exists()
+            current = be.store.latest_authoritative()['currentEquipment']
+            assert current['sourceState'] == 'UNAVAILABLE'
+            assert current['items'] == []
+            repo = EquipmentRepository(path); write_item(repo)
+            await be.refresh_current_equipment()
+            saved = be.store.latest_authoritative()['currentEquipment']
+            assert saved['sourceState'] == 'READY'
+            from d4planner.character.repository import ReadOnlyEquipmentRepository, EquipmentRepositoryTransient
+            with monkeypatch.context() as patch:
+                def busy(_self):
+                    raise EquipmentRepositoryTransient('EQUIPMENT_DB_BUSY')
+                patch.setattr(ReadOnlyEquipmentRepository, 'projection_snapshot', busy)
+                await be.refresh_current_equipment()
+                current = be.store.latest_authoritative()['currentEquipment']
+                assert current['sourceState'] == 'BUSY'
+                assert current['items'] == saved['items']
+            await be.refresh_current_equipment()
+            hud = be.store.latest_authoritative()
+            assert hud['currentEquipment']['sourceState'] == 'READY'
+            assert hud['currentEquipment']['items'] == saved['items']
+            assert hud['context']['target'] is None
+            assert hud['equipment'] == []
+            assert hud['score']['status'] == 'NO_DATA'
+        finally: await be.stop()
+    asyncio.run(run())

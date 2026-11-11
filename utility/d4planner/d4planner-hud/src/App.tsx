@@ -5,7 +5,7 @@ import type { AssessmentStatus, CriterionComparison, EquipmentRow, TypedValue } 
 import { useHudController } from "./use-hud-controller";
 import "./App.css";
 import { ReportIssue } from "./ReportIssue";
-import { CurrentList, CurrentDetail, currentItems } from "./CurrentEquipment";
+import { CurrentList, CurrentDetail, currentItems, currentItemForSelection } from "./CurrentEquipment";
 import { RuntimeManager } from "./RuntimeManager";
 import { MenuIcon } from "./MenuIcon";
 
@@ -210,7 +210,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
         </div>}
       </section>
 
-      {expanded && workspace === "current" && currentSlot && !runtimeOpen && !reportOpen && <CurrentDetail item={currentItems(snapshot).find(item=>item.fingerprint===currentSlot)} slot={currentSlot} offline={hud.connection !== "CONNECTED" || snapshot?.health.captureRuntime?.state !== "RUNNING" || snapshot?.currentEquipment?.sourceState !== "READY"} onClose={()=>setCurrentSlot(null)}/>}
+      {expanded && workspace === "current" && currentSlot && !runtimeOpen && !reportOpen && <CurrentDetail item={currentItemForSelection(currentItems(snapshot), currentSlot)} slot={currentSlot} offline={hud.connection !== "CONNECTED" || snapshot?.health.captureRuntime?.state !== "RUNNING" || snapshot?.currentEquipment?.sourceState !== "READY"} onClose={()=>setCurrentSlot(null)}/>}
       {runtimeOpen && <RuntimeManager onClose={() => setRuntimeOpen(false)} onOpenLogs={() => openSupport("logs")} onChanged={() => {void source.refresh?.(); window.dispatchEvent(new Event("d4planner-runtime-changed"));}}/>}
       {reportOpen && <ReportIssue activeTab={reportTab} onTabChange={setReportTab} onClose={() => setReportOpen(false)} />}
       {expanded && workspace === "compare" && equipmentOpen && snapshot && <aside className="panel equipment" aria-label="Equipment list">
