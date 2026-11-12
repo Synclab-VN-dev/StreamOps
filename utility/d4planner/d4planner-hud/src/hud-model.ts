@@ -38,6 +38,7 @@ export interface EquipmentRow {
 }
 
 export interface HudSnapshot {
+  currentEquipment?: CurrentEquipment;
   schemaVersion: "d4planner-hud/v1";
   hudRevision: number;
   producedAt: string;
@@ -77,3 +78,15 @@ export interface TargetListEntry {
 export type SelectionResult =
   | { status: "ACTIVATED"; targetId: string; contentSha256: string; selectionRevision: number }
   | { status: "TARGET_CHANGED" | "TARGET_NOT_FOUND" | "TARGET_INVALID" | "REJECTED"; targetId: string; message: string };
+
+/** Display observations are not verified character identity or scoring evidence. */
+export interface CurrentItem {
+  fingerprint: string; slotFamily: string; slotIndex: number | null;
+  name: string; itemType: string; itemPower: number | null; rarity: string | null;
+  baseStats: string[]; affixes: string[]; effects: string[];
+  observedAt: string; confidence: string;
+}
+export interface CurrentEquipment {
+  sourceState: 'WAITING' | 'READY' | 'BUSY' | 'UNAVAILABLE';
+  identity: 'UNVERIFIED'; revision: number | null; items: CurrentItem[];
+}

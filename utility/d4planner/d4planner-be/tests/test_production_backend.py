@@ -278,6 +278,7 @@ def test_repository_watcher_retries_recovers_rejects_duplicates_and_stops():
     row = {
         "slotFamily": "helm", "slotIndex": None, "name": "Recorded Helm",
         "itemFingerprint": "helm-stable", "observedAt": "2026-10-26T03:00:00Z",
+        "itemType": "Helm", "itemPower": 900, "rarity": None, "baseStats": [], "confidence": "HIGH",
         "affixes": [], "effectsRaw": [],
     }
 
@@ -300,7 +301,8 @@ def test_repository_watcher_retries_recovers_rejects_duplicates_and_stops():
             self.revisions = []
             self.health = []
 
-        async def ingest_snapshot(self, snapshot):
+        async def ingest_snapshot(self, snapshot, *, display_current=None):
+            assert display_current["items"][0]["name"] == "Recorded Helm"
             self.revisions.append(snapshot.current_revision)
 
         async def capture_health_changed(self, status):

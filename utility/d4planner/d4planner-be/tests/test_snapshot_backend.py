@@ -7,7 +7,10 @@ from test_production_backend import _evidence
 ROOT=Path(__file__).resolve().parents[4]
 
 
-def test_backend_forwards_rulekit_health_without_owning_snapshot_compatibility(tmp_path):
+def test_backend_forwards_rulekit_health_without_owning_snapshot_compatibility(tmp_path, monkeypatch):
+    # This test measures only Rule Kit commits; a live capture producer can
+    # independently commit Current observations/status during the IPC operation.
+    monkeypatch.setenv("D4PLANNER_CAPTURE_PROBE_ONLY", "1")
     helper=ROOT/'utility/d4planner/d4planner-rulekit/snapshot-management/tests/helpers.js'
     script="""const fs=require('node:fs/promises');const path=require('node:path');const {createPackage,trust}=require(process.argv[1]);(async()=>{const root=process.argv[2],a=await createPackage(root),b=await createPackage(root,'SYNTHETIC-B'),t=trust([a.entry,b.entry]);await fs.writeFile(path.join(root,'test-config.json'),JSON.stringify({anchors:t.registry.anchors,dataRoot:path.join(root,'rulekit-data')}));await fs.writeFile(path.join(root,'inputs.json'),JSON.stringify({a,b,envelope:t.envelope}));})();"""
     subprocess.run(['node','-e',script,str(helper),str(tmp_path)],check=True,timeout=10)

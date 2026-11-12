@@ -89,3 +89,37 @@ button { color: inherit; font: inherit; }
 .recommendation small, .recommendation b { display: block; }
 .recommendation small { color: #858a90; font-size: 9px; }
 .recommendation b { margin-top: 5px; font-size: 12px; }
+.equipment-tabs { display:flex; gap:4px; margin:8px 12px 12px; padding:4px; border-radius:12px; background:#e5e8ea; }
+.equipment-tabs button { flex:1; border:0; border-radius:9px; padding:9px; color:#78838b; background:transparent; cursor:pointer; font-size:11px; font-weight:600; }
+.equipment-tabs button[aria-selected="true"] { background:white; color:#237ba8; box-shadow:0 1px 4px #0002; }
+.current-identity { display:block; margin-top:14px; font-size:16px; font-weight:650; }
+.current-count { display:block; margin-top:7px; color:#678697; font-size:9px; }
+.current-list { border-top:1px solid #0001; padding:12px; }
+.current-heading { display:flex; align-items:center; justify-content:space-between; font-size:10px; color:#637c8c; }
+.current-heading span { background:#e9eef2; border-radius:8px; padding:5px; font-size:8px; }
+.current-notice { border:1px solid #dce7ee; background:#edf5fa; border-radius:12px; padding:12px; margin:12px 0; color:#517991; font-size:11px; line-height:1.5; }
+.summary > .current-notice { margin:12px; }
+.current-notice p { margin:5px 0 0; font-size:10px; }
+.current-notice.warning { background:#fff4e4; border-color:#ecd7b6; color:#a5753b; }
+.current-notice button { border:0; background:transparent; color:#247da9; cursor:pointer; font-size:11px; margin-top:8px; }
+.observed-count { font-size:10px; color:#597483; margin:12px 2px 7px; }
+.current-slots { max-height:245px; overflow-y:auto; }
+.current-row { display:flex; align-items:center; gap:8px; width:100%; padding:9px 8px; text-align:left; border:0; border-radius:8px; background:transparent; cursor:pointer; color:#485b66; }
+.current-row:hover, .current-row.selected { background:#dcecf4; }
+.current-row > span:nth-child(2) { flex:1; min-width:0; }
+.current-row b { display:block; font-size:11px; }
+.current-row small { display:block; margin-top:3px; font-size:10px; color:#32815f; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.current-row .unknown { color:#b1bfc6; }
+.current-row .observed { color:#348b63; }
+.current-help { color:#8396a1; font-size:10px; line-height:1.5; margin:12px 0 0; }
+.current-detail { width:335px; padding:16px; max-height:640px; overflow-y:auto; }
+.current-detail h2 { font-size:16px; color:#334a55; }
+.item-properties { background:#fffc; padding:12px; border-radius:12px; margin-top:8px; }
+.item-properties h3 { font-size:12px; margin:0; }
+.item-properties p { color:#566e7b; font-size:11px; line-height:1.5; }
+/* Native overlay bounds cap height at 640px. Keep slot scrolling inside it. */
+.summary:has(.current-list) { max-height:calc(100vh - 32px); display:flex; flex-direction:column; }
+.summary-head, .equipment-tabs, .current-heading, .current-notice, .observed-count, .current-help { flex-shrink:0; }
+.current-list { display:flex; flex-direction:column; min-height:0; flex:1; }
+.current-slots { flex:1; min-height:60px; }
+.current-detail { max-height:calc(100vh - 32px); }

@@ -108,7 +108,8 @@ class RepositoryEquipmentEventSource:
             current_revision=revision,
             projection=projection,
         )
-        await self.runtime.ingest_snapshot(current)
+        from .character.current_view import current_view
+        await self.runtime.ingest_snapshot(current, display_current=current_view(projection.rows, revision))
         self._last_revision = revision
         await self._set_health("HEALTHY", None)
         return True
@@ -284,7 +285,8 @@ class RuntimeHudStore(DurableHudStore):
     Equipment scoring remains owned by S4. This adapter only attaches the
     Rule Kit-owned health result and the enclosing Backend generation.
     """
-    def __init__(self, path, *, runtime_health, backend_generation, capture_status=lambda: None):
+    def __init__(self, path, *, runtime_health, backend_generation, capture_status=lambda: None, current_equipment=lambda: None):
+        self.current_equipment = current_equipment
         self.capture_status = capture_status
         self.runtime_health = runtime_health
         self.backend_generation = backend_generation
@@ -298,6 +300,9 @@ class RuntimeHudStore(DurableHudStore):
             if capture is not None:
                 payload["health"]["captureRuntime"] = capture
             payload["backend"]["generation"] = self.backend_generation()
+            current = self.current_equipment()
+            if current is not None:
+                payload["currentEquipment"] = current
             return payload
         return build
 
@@ -341,9 +346,14 @@ class ProductionBackendRuntime:
         self.rulekit_state = "UNAVAILABLE"
         self.rulekit_diagnostics = {"calculationAvailability": "UNAVAILABLE", "reason": "STARTING"}
         self.capture_runtime_status = None
+        self.current_equipment = {"sourceState": "WAITING", "identity": "UNVERIFIED", "revision": None, "items": []}
+        self._current_task = None
         self.store = RuntimeHudStore(self.data_dir / "hud.sqlite3",
             runtime_health=lambda: self.rulekit_state, backend_generation=lambda: self.generation,
-            capture_status=lambda: self.capture_runtime_status)
+            capture_status=lambda: self.capture_runtime_status, current_equipment=lambda: self.current_equipment)
+        previous = self.store.latest_authoritative()
+        if previous and previous.get("currentEquipment"):
+            self.current_equipment = {**previous["currentEquipment"], "sourceState": "WAITING"}
         self.capture = EquipmentCaptureAdapter()
         self.scorer = EquipmentAssessmentService()
         self.coordinator = EquipmentAssessmentCoordinator(self.scorer, self.store, lambda _: None)
@@ -380,6 +390,9 @@ class ProductionBackendRuntime:
             )
             self.hub = HudHub(self.store.public_checkpoint(), backend_generation=self.generation)
             self.store.mark_published(initial["hudRevision"])
+            await self.refresh_current_equipment()
+            if not os.environ.get("D4PLANNER_EQUIPMENT_REPOSITORY_DB"):
+                self._current_task = asyncio.create_task(self._watch_current_equipment(), name="current-equipment-view")
             domain = ProductionDomain(self)
             endpoint = self.bootstrap["wsEndpoint"]
             self.server = D4PlannerWebSocketServer(
@@ -451,6 +464,13 @@ class ProductionBackendRuntime:
             raise
 
     async def stop(self) -> None:
+        if self._current_task is not None:
+            self._current_task.cancel()
+            try:
+                await self._current_task
+            except asyncio.CancelledError:
+                pass
+            self._current_task = None
         if self.capture_runtime is not None:
             await self.capture_runtime.stop()
             self.capture_runtime = None
@@ -462,6 +482,42 @@ class ProductionBackendRuntime:
             self.server = None
         if self.rulekit is not None:
             await self.rulekit.stop()
+
+    async def refresh_current_equipment(self) -> None:
+        """Publish the capture repository as display data, independent of Target/scoring.
+
+        The producer has a durable revision, not notifications. Poll only in BE;
+        native HUD continues to read hud.sqlite3 on committed notifications.
+        """
+        from .character.current_view import current_view
+        path = Path(os.environ.get("D4PLANNER_EQUIPMENT_REPOSITORY_DB") or self.data_dir / "character.db")
+        try:
+            def read():
+                return ReadOnlyEquipmentRepository(path).projection_snapshot()
+            projection = await asyncio.to_thread(read)
+            view = current_view(projection.rows, projection.revision[0] if projection.revision else None)
+        except (EquipmentRepositoryReadError, ValueError, TypeError, KeyError) as error:
+            state = "BUSY" if isinstance(error, EquipmentRepositoryTransient) else "UNAVAILABLE"
+            view = {**self.current_equipment, "sourceState": state}
+        async with self._ingest_lock:
+            if view == self.current_equipment:
+                return
+            self.current_equipment = view
+            latest = self.store.latest_authoritative()
+            if latest is None:
+                return
+            def build(revision):
+                payload = json.loads(json.dumps(latest))
+                payload["hudRevision"] = revision
+                payload["producedAt"] = _now()
+                return payload
+            hud = self.store.commit_context(build, _now())
+            await self._publish_committed(hud)
+
+    async def _watch_current_equipment(self) -> None:
+        while True:
+            await asyncio.sleep(0.25 if self.current_equipment["sourceState"] == "READY" else 1.0)
+            await self.refresh_current_equipment()
 
     async def _publish_committed(self, hud: dict[str, Any]) -> tuple[int, str]:
         if self.hub is None:
@@ -638,7 +694,7 @@ class ProductionBackendRuntime:
         current = self.capture.from_event(event)
         return await self.ingest_snapshot(current)
 
-    async def ingest_snapshot(self, current: EquipmentSnapshot) -> dict[str, Any]:
+    async def ingest_snapshot(self, current: EquipmentSnapshot, *, display_current: dict | None = None) -> dict[str, Any]:
         capture_received_ns = perf_counter_ns()
         capture_received_at = _now()
         async with self._ingest_lock:
@@ -646,6 +702,8 @@ class ProductionBackendRuntime:
             if self.current is not None and current.current_revision <= self.current.current_revision:
                 raise ValueError("STALE_CURRENT_REVISION")
             self.current = current
+            if display_current is not None:
+                self.current_equipment = display_current
             target = self.targets.get_active()
             if target is None:
                 hud = self.store.commit_context(
