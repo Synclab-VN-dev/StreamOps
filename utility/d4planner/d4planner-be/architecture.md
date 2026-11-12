@@ -11,7 +11,7 @@ flowchart TD
     C["contracts/<br/>Versioned runtime schemas/contract assets"]
     REL["release1/<br/>Packaged startup/stop scripts and runtime package plan"]
 
-    REL -->|"1. packaged startup script launches FE and supplies runtime configuration"| SRC
+    REL -.->|"1. startup/config reaches BE via installed FE; not a direct import"| SRC
     SRC -->|"2. provisions/coordinates NVDA capture add-on"| NVDA
     NVDA -.->|"3. captured speech/evidence persisted for runtime consumption"| SRC
     SRC -->|"4. loads/validates versioned Release-1 contracts"| C
