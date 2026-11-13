@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './platform';
 import validateHudSchema from './hud-validator.generated';
 import type { HudSnapshot, SelectionResult, TargetListEntry } from './hud-model';
 

@@ -34,6 +34,14 @@ pub fn open(
     control: impl FnOnce() -> Result<serde_json::Value, String>,
     browser: impl FnOnce(&str) -> Result<(), String>,
 ) -> Result<Ready, String> {
+    let ready=ensure_ready(pending,port,control)?;
+    browser(&ready.url).map_err(|_|"PLANNER_UNAVAILABLE")?;
+    Ok(ready)
+}
+pub fn ensure_ready(
+    pending: &AtomicBool, port:u16,
+    control:impl FnOnce()->Result<serde_json::Value,String>,
+)->Result<Ready,String>{
     if pending.swap(true, Ordering::AcqRel) { return Err("PLANNER_BUSY".into()); }
     struct Guard<'a>(&'a AtomicBool);
     impl Drop for Guard<'_> { fn drop(&mut self) { self.0.store(false, Ordering::Release); } }
@@ -45,7 +53,6 @@ pub fn open(
         ready.manifest_sha256.len() != 64 || !ready.manifest_sha256.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
         return Err("PLANNER_HEALTH_FAILED".into());
     }
-    browser(&ready.url).map_err(|_| "PLANNER_UNAVAILABLE")?;
     Ok(ready)
 }
 

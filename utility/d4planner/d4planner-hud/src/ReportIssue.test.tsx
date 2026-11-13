@@ -256,3 +256,12 @@ it('explains local JSON configuration without asking the user to log into a remo
   fireEvent.click(screen.getByLabelText(/I reviewed the public/));fireEvent.click(screen.getByText('Submit issue'));
   expect((await screen.findByRole('alert')).textContent).toContain('private/report-config.json');
 });
+
+it('restores a verified terminal receipt without treating it as a collection preview', async () => {
+  localStorage.setItem('d4planner.pendingReportId', 'receipt-id');
+  const bridge = vi.fn(async () => ({reportId:'receipt-id',status:'COMPLETE',issueUrl:'https://github.com/Synclab-VN-dev/StreamOps/issues/201'}));
+  render(<ReportIssue onClose={() => {}} bridge={bridge as any}/>);
+  expect(await screen.findByText('Issue submitted:',{exact:false})).toBeTruthy();
+  expect(localStorage.getItem('d4planner.pendingReportId')).toBeNull();
+  expect(screen.queryByLabelText('Collection preview')).toBeNull();
+});

@@ -1,0 +1,25 @@
+[package]
+name = "d4planner-hud-server"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+
+[dependencies]
+axum = { version = "0.8", features = ["ws"] }
+axum-server = { version = "0.7", features = ["tls-rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros"] }
+tokio-util = "0.7"
+tokio-tungstenite = "0.28"
+futures-util = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+subtle = "2"
+uuid = { version = "1", features = ["v4"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+d4planner-report-issue = { path = "../report-issue" }

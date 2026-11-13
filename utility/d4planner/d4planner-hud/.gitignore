@@ -6,3 +6,4 @@ src-tauri/icons/
 *.log
 
 report-issue/target/
+reader-tests/target/
