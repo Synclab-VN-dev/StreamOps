@@ -16,7 +16,7 @@ def test_staff_is_a_valid_item_anchor():
 def test_real_staff_reaches_storage_without_overwriting_previous_slot(tmp_path):
     repo = EquipmentRepository(tmp_path / 'character.db')
     projector = EquipmentProjector(repo)
-    projector.equipment_layouts = json.loads((FIXTURE.parent / "verified_equipment_layouts.json").read_text())
+    projector.equipment_layouts = json.loads((FIXTURE.parent / "verified_equipment_layouts.json").read_text(encoding="utf-8"))
     # Start with the previous armor context, as when browsing equipped slots.
     for seq, text in enumerate([
         'Feet', 'EQUIPPED', 'PREVIOUS BOOTS', 'Rare Boots',
@@ -25,7 +25,7 @@ def test_real_staff_reaches_storage_without_overwriting_previous_slot(tmp_path):
         projector.consume({'eventSeq': seq, 'sessionId': 'issue199-real-a',
                            'type': 'speech.raw', 'timestamp': '2026-11-11T15:09:00+07:00',
                            'data': {'text': text}})
-    events = [json.loads(line) for line in FIXTURE.read_text().splitlines()]
+    events = [json.loads(line) for line in FIXTURE.read_text(encoding="utf-8").splitlines()]
     # Check immediately at terminal Unequip, before navigating away.
     for event in events:
         projector.consume(event)
@@ -51,8 +51,8 @@ def test_full_real_inventory_replay_preserves_armor_and_replaces_stale_weapons(t
             observation=EquipmentObservation(slot, None, ParsedItem('OLD '+kind,kind,800),
                 '2026-11-12','older-session',seq,seq,'HIGH','old-'+slot))
     projector = EquipmentProjector(repo)
-    projector.equipment_layouts = json.loads((FIXTURE.parent / 'verified_equipment_layouts.json').read_text())
-    events = [json.loads(line) for line in (FIXTURE.parent / 'staff_full_a_2026-11-13.jsonl').read_text().splitlines()]
+    projector.equipment_layouts = json.loads((FIXTURE.parent / 'verified_equipment_layouts.json').read_text(encoding="utf-8"))
+    events = [json.loads(line) for line in (FIXTURE.parent / 'staff_full_a_2026-11-13.jsonl').read_text(encoding="utf-8").splitlines()]
     for event in events:
         projector.consume(event)
         if event['eventSeq'] == 513:
@@ -73,7 +73,7 @@ def test_full_real_inventory_replay_preserves_armor_and_replaces_stale_weapons(t
 
 def test_missing_or_ambiguous_layout_keeps_existing_equipment(tmp_path):
     import copy
-    layouts = json.loads((FIXTURE.parent / 'verified_equipment_layouts.json').read_text())
+    layouts = json.loads((FIXTURE.parent / 'verified_equipment_layouts.json').read_text(encoding="utf-8"))
     ambiguous = copy.deepcopy(layouts)
     ambiguous['classes'].append({'className':'Other', 'slots':[
         {'slotFamily':'unsupported_weapon','itemTypes':['Staff']}]})
@@ -83,7 +83,7 @@ def test_missing_or_ambiguous_layout_keeps_existing_equipment(tmp_path):
         projector.equipment_layouts = layout
         for seq, text in enumerate(['Feet','EQUIPPED','PREVIOUS BOOTS','Rare Boots','800 Item Power','Unequip'],1):
             projector.consume({'eventSeq':seq,'sessionId':'issue199-real-a','type':'speech.raw','data':{'text':text}})
-        for event in [json.loads(line) for line in FIXTURE.read_text().splitlines()]:
+        for event in [json.loads(line) for line in FIXTURE.read_text(encoding="utf-8").splitlines()]:
             if event['eventSeq'] > 419: break
             projector.consume(event)
         rows=repo.list_equipment()
@@ -94,8 +94,8 @@ def test_missing_or_ambiguous_layout_keeps_existing_equipment(tmp_path):
 def test_two_handed_occupancy_is_replaced_atomically_by_offhand_evidence(tmp_path):
     repo=EquipmentRepository(tmp_path/'character.db')
     projector=EquipmentProjector(repo)
-    projector.equipment_layouts=json.loads((FIXTURE.parent/'verified_equipment_layouts.json').read_text())
-    events=[json.loads(line) for line in FIXTURE.read_text().splitlines()]
+    projector.equipment_layouts=json.loads((FIXTURE.parent/'verified_equipment_layouts.json').read_text(encoding="utf-8"))
+    events=[json.loads(line) for line in FIXTURE.read_text(encoding="utf-8").splitlines()]
     for event in events: projector.consume(event)
     assert any(r['itemType']=='Staff' for r in repo.list_equipment())
     for seq,text in enumerate(['Off-Hand','EQUIPPED','NEW FOCUS','Rare Focus','850 Item Power','Unequip'],1000):
@@ -105,7 +105,7 @@ def test_two_handed_occupancy_is_replaced_atomically_by_offhand_evidence(tmp_pat
 
 def test_incomplete_staff_never_replaces_existing_weapon(tmp_path):
     repo=EquipmentRepository(tmp_path/'character.db'); projector=EquipmentProjector(repo)
-    projector.equipment_layouts=json.loads((FIXTURE.parent/'verified_equipment_layouts.json').read_text())
+    projector.equipment_layouts=json.loads((FIXTURE.parent/'verified_equipment_layouts.json').read_text(encoding="utf-8"))
     for seq,text in enumerate(['Main Hand','EQUIPPED','OLD WAND','Rare Wand','800 Item Power','Unequip',
             'Two-Handed','EQUIPPED','STAFF OF LAM ESEN','Unique Staff','850 Item Power','Feet'],1):
         projector.consume({'eventSeq':seq,'sessionId':'test','type':'speech.raw','data':{'text':text}})
@@ -114,7 +114,7 @@ def test_incomplete_staff_never_replaces_existing_weapon(tmp_path):
 
 def test_repeated_tooltip_keeps_two_handed_occupancy_without_new_header(tmp_path):
     repo=EquipmentRepository(tmp_path/'character.db'); projector=EquipmentProjector(repo)
-    projector.equipment_layouts=json.loads((FIXTURE.parent/'verified_equipment_layouts.json').read_text())
+    projector.equipment_layouts=json.loads((FIXTURE.parent/'verified_equipment_layouts.json').read_text(encoding="utf-8"))
     texts=['Two-Handed','EQUIPPED','STAFF OF LAM ESEN','Unique Staff','850 Item Power','Unequip',
            'EQUIPPED','STAFF OF LAM ESEN','Unique Staff','850 Item Power','Unequip']
     for seq,text in enumerate(texts,1):
@@ -127,7 +127,7 @@ def test_repeated_tooltip_keeps_two_handed_occupancy_without_new_header(tmp_path
 
 def test_staff_without_two_handed_header_cannot_inherit_armor_context(tmp_path):
     repo=EquipmentRepository(tmp_path/'character.db'); projector=EquipmentProjector(repo)
-    projector.equipment_layouts=json.loads((FIXTURE.parent/'verified_equipment_layouts.json').read_text())
+    projector.equipment_layouts=json.loads((FIXTURE.parent/'verified_equipment_layouts.json').read_text(encoding="utf-8"))
     texts=['Feet','EQUIPPED','PREVIOUS BOOTS','Rare Boots','800 Item Power','Unequip',
            'EQUIPPED','STAFF OF LAM ESEN','Unique Staff','850 Item Power','Unequip']
     for seq,text in enumerate(texts,1):
