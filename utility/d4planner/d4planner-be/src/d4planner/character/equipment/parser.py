@@ -42,7 +42,7 @@ def is_item_anchor(name: str, type_line: str, power_line: str) -> bool:
     if not parsed:
         return False
     item_type = parsed[2]
-    known = ("Helm", "Chest Armor", "Gloves", "Pants", "Boots", "Wand", "Focus", "Ring", "Amulet", "Sword")
+    known = ("Helm", "Chest Armor", "Gloves", "Pants", "Boots", "Wand", "Focus", "Ring", "Amulet", "Sword", "Staff")
     return item_type in known and bool(normalize(name))
 
 

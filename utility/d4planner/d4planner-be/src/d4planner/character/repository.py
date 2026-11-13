@@ -237,6 +237,20 @@ class EquipmentRepository:
 
             if observation and observation.confidence == "HIGH":
                 item = observation.item
+                occupied = set(observation.occupied_slot_families or (observation.slot_family,))
+                if observation.slot_family in {"main_hand", "off_hand"}:
+                    # A two-handed observation occupies both hands. Conversely,
+                    # seeing an equipped off-hand disproves a stored two-hander.
+                    # Resolve conflicts in the same transaction as the checkpoint.
+                    for old in db.execute(
+                        "SELECT id,slot_family,item_json FROM equipment_current "
+                        "WHERE slot_family IN ('main_hand','off_hand') AND slot_family<>?",
+                        (observation.slot_family,),
+                    ).fetchall():
+                        previous = set(json.loads(old["item_json"]).get(
+                            "occupied_slot_families", (old["slot_family"],)))
+                        if occupied & previous:
+                            db.execute("DELETE FROM equipment_current WHERE id=?", (old["id"],))
                 if observation.slot_family != "ring":
                     db.execute(
                         "DELETE FROM equipment_current "
@@ -252,7 +266,7 @@ class EquipmentRepository:
                         item.name,
                         item.item_type,
                         item.item_power,
-                        json.dumps(item.as_dict(), ensure_ascii=False),
+                        json.dumps({**item.as_dict(), "occupied_slot_families": list(observation.occupied_slot_families or (observation.slot_family,))}, ensure_ascii=False),
                         observation.observed_at,
                         observation.session_id,
                         observation.seq_start,

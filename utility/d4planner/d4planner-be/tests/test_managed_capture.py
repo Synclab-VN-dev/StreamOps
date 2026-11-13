@@ -303,3 +303,22 @@ def test_v16_failed_owned_cleanup_never_loses_handle_or_spawns_replacement(tmp_p
         monkeypatch.setattr(asyncio, 'wait_for', original_wait)
         await runtime.stop()
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('available', [True, False])
+def test_fresh_rulekit_layout_handoff_never_reuses_ambient_layout(tmp_path, monkeypatch, available):
+    monkeypatch.setenv('D4PLANNER_CAPTURE_EQUIPMENT_LAYOUTS','stale')
+    async def scenario():
+        calls=[]
+        async def spawn(*args,**kwargs):
+            calls.append(kwargs);return Child()
+        async def changed(value):pass
+        async def layout():
+            if not available:raise RuntimeError('snapshot unavailable')
+            return {'status':'READY','provenance':{'snapshotId':'fresh'}}
+        runtime=ManagedCaptureRuntime(tmp_path,changed,spawn=spawn,equipment_layout_provider=layout)
+        await runtime.start()
+        handed=calls[0]['env'].get('D4PLANNER_CAPTURE_EQUIPMENT_LAYOUTS')
+        assert (json.loads(handed)['provenance']['snapshotId']=='fresh') if available else handed is None
+        await runtime.stop()
+    asyncio.run(scenario())

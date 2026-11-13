@@ -69,6 +69,7 @@ class Supervisor:
         uat_attach_only: bool = False,
         managed_by_hud: bool = False,
         stop_event=None,
+        equipment_layouts: dict | None = None,
     ):
         self.managed_by_hud = managed_by_hud
         self.stop_event = stop_event
@@ -125,6 +126,7 @@ class Supervisor:
             "overflow": False,
         }
         self.equipment_projector = EquipmentProjector(EquipmentRepository(paths.character_db))
+        self.equipment_projector.equipment_layouts = equipment_layouts
 
     @staticmethod
     def _steam_priority_allows_launch(steam: object) -> bool:

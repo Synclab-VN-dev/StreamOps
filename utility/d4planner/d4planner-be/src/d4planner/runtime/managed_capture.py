@@ -18,7 +18,8 @@ from .model import RuntimeState
 
 
 class ManagedCaptureRuntime:
-    def __init__(self, root: Path, on_health, *, spawn=None):
+    def __init__(self, root: Path, on_health, *, spawn=None, equipment_layout_provider=None):
+        self.equipment_layout_provider = equipment_layout_provider
         self.owner_token = uuid4().hex
         self.root = root
         self.on_health = on_health
@@ -121,6 +122,18 @@ class ManagedCaptureRuntime:
         environment = dict(os.environ)
         for name in ('D4PLANNER_BOOTSTRAP_FILE', 'D4PLANNER_RUNTIME_FACTORY'):
             environment.pop(name, None)
+        # Only a fresh read from the BE-owned Rule Kit is handed to this child.
+        # No ambient/stale layout is reused when discovery fails. Capture itself
+        # remains available; only the new layout-dependent projection is withheld.
+        environment.pop('D4PLANNER_CAPTURE_EQUIPMENT_LAYOUTS', None)
+        if self.equipment_layout_provider is not None:
+            try:
+                layouts = await asyncio.wait_for(self.equipment_layout_provider(), 10)
+                encoded = json.dumps(layouts, separators=(',', ':'))
+                if len(encoded) <= 16000:
+                    environment['D4PLANNER_CAPTURE_EQUIPMENT_LAYOUTS'] = encoded
+            except Exception:
+                pass
         try:
             self.process = await self.spawn(
                 sys.executable, '-m', 'd4planner.daemon', '--managed-by-hud',

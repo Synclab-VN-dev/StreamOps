@@ -8,6 +8,7 @@ exports.createComposition = async env => {
     const load = planner.load;
     planner.load = async config => {await new Promise(resolve => setTimeout(resolve, Number(env.TEST_PLANNER_DELAY_MS))); return load(config);};
   }
-  return {...composition, planner: {ensureReady: options => planner.ensureReady(options)},
+  return {...composition, planner: {ensureReady: options => planner.ensureReady(options),
+    getEquipmentLayouts: () => require('../../../d4planner-rulekit/providers/maxroll/tooling/planner/equipment-layout').getEquipmentLayouts(planner.stateRoot)},
     close: async () => {try {await planner.close();} finally {await composition.close?.();}}};
 };

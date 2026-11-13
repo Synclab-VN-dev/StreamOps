@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import threading
@@ -157,7 +158,14 @@ def main(argv: list[str] | None = None) -> int:
         runtime = WindowsRuntime(paths)
         runtime.managed_by_hud = args.managed_by_hud
         path_manager = UserPathManager(paths, WindowsRegistryPathBackend())
+        layouts = None
+        if args.managed_by_hud:
+            try:
+                layouts = json.loads(os.environ.get("D4PLANNER_CAPTURE_EQUIPMENT_LAYOUTS", "null"))
+            except (TypeError, ValueError):
+                pass
         supervisor = Supervisor(
+            equipment_layouts=layouts,
             managed_by_hud=args.managed_by_hud,
             stop_event=stop_event,
             paths=paths,

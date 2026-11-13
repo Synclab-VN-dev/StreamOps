@@ -1,0 +1,1173 @@
+{
+  "schemaVersion": "d4planner-equipment-layout/v1",
+  "status": "READY",
+  "provenance": {
+    "providerId": "maxroll",
+    "snapshotId": "maxroll-20261103T070442103Z-0eab422d-ui",
+    "manifestSha256": "c21b49fb41fa052137d43ebf87334b6e19341437f7bba07fe9ad11e316835367",
+    "coverageSha256": "a4a59e5dab6e401466afcfacf42d521e2b0ee68d4cc95dcd4b3bac7d5401a783",
+    "gameVersion": "3.2.1.73552"
+  },
+  "classes": [
+    {
+      "className": "Barbarian",
+      "slots": [
+        {
+          "providerSlotId": "4",
+          "itemTypes": [
+            "Helm",
+            "Stash"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "5",
+          "itemTypes": [
+            "Chest Armor"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "13",
+          "itemTypes": [
+            "Gloves"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "14",
+          "itemTypes": [
+            "Pants"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "15",
+          "itemTypes": [
+            "Boots"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "18",
+          "itemTypes": [
+            "Amulet"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "17",
+          "itemTypes": [
+            "Ring",
+            "Variant 1"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "16",
+          "itemTypes": [
+            "Ring"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "8",
+          "itemTypes": [
+            "Two-Handed Mace",
+            "Stash"
+          ],
+          "slotFamily": "unsupported_weapon"
+        },
+        {
+          "providerSlotId": "11",
+          "itemTypes": [
+            "Axe",
+            "Sword",
+            "Mace",
+            "Flail"
+          ],
+          "slotFamily": "unsupported_weapon"
+        },
+        {
+          "providerSlotId": "9",
+          "itemTypes": [
+            "Two-Handed Axe",
+            "Two-Handed Sword",
+            "Polearm"
+          ],
+          "slotFamily": "unsupported_weapon"
+        },
+        {
+          "providerSlotId": "12",
+          "itemTypes": [
+            "Axe",
+            "Sword",
+            "Mace",
+            "Flail"
+          ],
+          "slotFamily": "unsupported_weapon"
+        },
+        {
+          "providerSlotId": "20",
+          "itemTypes": [
+            "Horadric Seal"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "21",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "22",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "23",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "24",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "25",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        }
+      ]
+    },
+    {
+      "className": "Druid",
+      "slots": [
+        {
+          "providerSlotId": "4",
+          "itemTypes": [
+            "Helm",
+            "Stash"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "5",
+          "itemTypes": [
+            "Chest Armor"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "13",
+          "itemTypes": [
+            "Gloves"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "14",
+          "itemTypes": [
+            "Pants"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "15",
+          "itemTypes": [
+            "Boots"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "18",
+          "itemTypes": [
+            "Amulet"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "17",
+          "itemTypes": [
+            "Ring",
+            "Variant 1"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "16",
+          "itemTypes": [
+            "Ring"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "7",
+          "itemTypes": [
+            "Axe",
+            "Two-Handed Axe",
+            "Sword",
+            "Two-Handed Mace",
+            "Mace",
+            "Dagger",
+            "Polearm",
+            "Staff",
+            "Flail",
+            "Stash"
+          ],
+          "slotFamily": "main_hand"
+        },
+        {
+          "providerSlotId": "6",
+          "itemTypes": [
+            "Totem",
+            "Stash"
+          ],
+          "slotFamily": "off_hand"
+        },
+        {
+          "providerSlotId": "20",
+          "itemTypes": [
+            "Horadric Seal"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "21",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "22",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "23",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "24",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "25",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        }
+      ]
+    },
+    {
+      "className": "Necromancer",
+      "slots": [
+        {
+          "providerSlotId": "4",
+          "itemTypes": [
+            "Helm",
+            "Stash"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "5",
+          "itemTypes": [
+            "Chest Armor"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "13",
+          "itemTypes": [
+            "Gloves"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "14",
+          "itemTypes": [
+            "Pants"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "15",
+          "itemTypes": [
+            "Boots"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "18",
+          "itemTypes": [
+            "Amulet"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "17",
+          "itemTypes": [
+            "Ring",
+            "Variant 1"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "16",
+          "itemTypes": [
+            "Ring"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "7",
+          "itemTypes": [
+            "Axe",
+            "Two-Handed Axe",
+            "Sword",
+            "Two-Handed Sword",
+            "Two-Handed Mace",
+            "Mace",
+            "Dagger",
+            "Wand",
+            "Scythe",
+            "Two-Handed Scythe",
+            "Flail",
+            "Stash"
+          ],
+          "slotFamily": "main_hand"
+        },
+        {
+          "providerSlotId": "6",
+          "itemTypes": [
+            "Focus",
+            "Shield",
+            "Stash"
+          ],
+          "slotFamily": "off_hand"
+        },
+        {
+          "providerSlotId": "20",
+          "itemTypes": [
+            "Horadric Seal"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "21",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "22",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "23",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "24",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "25",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        }
+      ]
+    },
+    {
+      "className": "Rogue",
+      "slots": [
+        {
+          "providerSlotId": "4",
+          "itemTypes": [
+            "Helm",
+            "Stash"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "5",
+          "itemTypes": [
+            "Chest Armor",
+            "Stash"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "13",
+          "itemTypes": [
+            "Gloves"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "14",
+          "itemTypes": [
+            "Pants"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "15",
+          "itemTypes": [
+            "Boots"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "18",
+          "itemTypes": [
+            "Amulet"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "17",
+          "itemTypes": [
+            "Ring",
+            "Variant 1"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "16",
+          "itemTypes": [
+            "Ring"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "10",
+          "itemTypes": [
+            "Bow",
+            "Crossbow",
+            "Stash"
+          ],
+          "slotFamily": "unsupported_weapon"
+        },
+        {
+          "providerSlotId": "11",
+          "itemTypes": [
+            "Sword",
+            "Dagger",
+            "Stash"
+          ],
+          "slotFamily": "unsupported_weapon"
+        },
+        {
+          "providerSlotId": "12",
+          "itemTypes": [
+            "Sword",
+            "Dagger",
+            "Stash"
+          ],
+          "slotFamily": "unsupported_weapon"
+        },
+        {
+          "providerSlotId": "20",
+          "itemTypes": [
+            "Horadric Seal"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "21",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets",
+            "Stash"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "22",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets",
+            "Stash"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "23",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets",
+            "Stash"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "24",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets",
+            "Stash"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "25",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets",
+            "Stash"
+          ],
+          "slotFamily": null
+        }
+      ]
+    },
+    {
+      "className": "Sorcerer",
+      "slots": [
+        {
+          "providerSlotId": "4",
+          "itemTypes": [
+            "Helm",
+            "Stash"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "5",
+          "itemTypes": [
+            "Chest Armor"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "13",
+          "itemTypes": [
+            "Gloves"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "14",
+          "itemTypes": [
+            "Pants"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "15",
+          "itemTypes": [
+            "Boots"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "18",
+          "itemTypes": [
+            "Amulet"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "17",
+          "itemTypes": [
+            "Ring",
+            "Variant 1"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "16",
+          "itemTypes": [
+            "Ring"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "7",
+          "itemTypes": [
+            "Sword",
+            "Mace",
+            "Dagger",
+            "Wand",
+            "Staff",
+            "Stash"
+          ],
+          "slotFamily": "main_hand"
+        },
+        {
+          "providerSlotId": "6",
+          "itemTypes": [
+            "Focus",
+            "Stash"
+          ],
+          "slotFamily": "off_hand"
+        },
+        {
+          "providerSlotId": "20",
+          "itemTypes": [
+            "Horadric Seal"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "21",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "22",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "23",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "24",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "25",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        }
+      ]
+    },
+    {
+      "className": "Spiritborn",
+      "slots": [
+        {
+          "providerSlotId": "4",
+          "itemTypes": [
+            "Helm",
+            "Stash"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "5",
+          "itemTypes": [
+            "Chest Armor"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "13",
+          "itemTypes": [
+            "Gloves"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "14",
+          "itemTypes": [
+            "Pants"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "15",
+          "itemTypes": [
+            "Boots"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "18",
+          "itemTypes": [
+            "Amulet"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "17",
+          "itemTypes": [
+            "Ring",
+            "Variant 1"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "16",
+          "itemTypes": [
+            "Ring"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "7",
+          "itemTypes": [
+            "Polearm",
+            "Glaive",
+            "Stash"
+          ],
+          "slotFamily": "main_hand"
+        },
+        {
+          "providerSlotId": "6",
+          "itemTypes": [],
+          "slotFamily": "off_hand"
+        },
+        {
+          "providerSlotId": "20",
+          "itemTypes": [
+            "Horadric Seal"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "21",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "22",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "23",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "24",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "25",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        }
+      ]
+    },
+    {
+      "className": "Paladin",
+      "slots": [
+        {
+          "providerSlotId": "4",
+          "itemTypes": [
+            "Helm",
+            "Stash"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "5",
+          "itemTypes": [
+            "Chest Armor"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "13",
+          "itemTypes": [
+            "Gloves"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "14",
+          "itemTypes": [
+            "Pants"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "15",
+          "itemTypes": [
+            "Boots"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "18",
+          "itemTypes": [
+            "Amulet"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "17",
+          "itemTypes": [
+            "Ring",
+            "Variant 1"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "16",
+          "itemTypes": [
+            "Ring"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "7",
+          "itemTypes": [
+            "Axe",
+            "Two-Handed Axe",
+            "Sword",
+            "Two-Handed Sword",
+            "Two-Handed Mace",
+            "Mace",
+            "Flail",
+            "Stash"
+          ],
+          "slotFamily": "main_hand"
+        },
+        {
+          "providerSlotId": "6",
+          "itemTypes": [
+            "Shield",
+            "Stash"
+          ],
+          "slotFamily": "off_hand"
+        },
+        {
+          "providerSlotId": "20",
+          "itemTypes": [
+            "Horadric Seal"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "21",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "22",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "23",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "24",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "25",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        }
+      ]
+    },
+    {
+      "className": "Warlock",
+      "slots": [
+        {
+          "providerSlotId": "4",
+          "itemTypes": [
+            "Helm",
+            "Stash"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "5",
+          "itemTypes": [
+            "Chest Armor"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "13",
+          "itemTypes": [
+            "Gloves"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "14",
+          "itemTypes": [
+            "Pants"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "15",
+          "itemTypes": [
+            "Boots"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "18",
+          "itemTypes": [
+            "Amulet"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "17",
+          "itemTypes": [
+            "Ring",
+            "Variant 1"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "16",
+          "itemTypes": [
+            "Ring"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "7",
+          "itemTypes": [
+            "Axe",
+            "Two-Handed Axe",
+            "Sword",
+            "Two-Handed Sword",
+            "Two-Handed Mace",
+            "Mace",
+            "Dagger",
+            "Flail",
+            "Stash"
+          ],
+          "slotFamily": "main_hand"
+        },
+        {
+          "providerSlotId": "6",
+          "itemTypes": [
+            "Focus",
+            "Stash"
+          ],
+          "slotFamily": "off_hand"
+        },
+        {
+          "providerSlotId": "20",
+          "itemTypes": [
+            "Horadric Seal"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "21",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "22",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "23",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "24",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        },
+        {
+          "providerSlotId": "25",
+          "itemTypes": [
+            "Charm",
+            "Unique Charm",
+            "Set Charm",
+            "Charm Sets"
+          ],
+          "slotFamily": null
+        }
+      ]
+    }
+  ]
+}

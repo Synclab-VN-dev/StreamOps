@@ -73,6 +73,13 @@ class RuleKitClient:
             raise ValueError(f"unsupported snapshot method: {method}")
         return await self._call(method, params, timeout=timeout, protocol=SNAPSHOT_PROTOCOL_VERSION)
 
+    async def get_equipment_layouts(self) -> dict:
+        """Read class layouts from an installed verified snapshot; never provision it."""
+        if not self.planner_available:
+            raise RuleKitRemoteError("PLANNER_LAYOUT_UNAVAILABLE", "Equipment layout unavailable.")
+        return await self._call("planner.getEquipmentLayouts", {}, timeout=185,
+                                protocol=PLANNER_PROTOCOL_VERSION)
+
     async def ensure_planner_ready(self) -> dict:
         if not self.planner_available:
             raise RuleKitRemoteError("PLANNER_UNAVAILABLE", "Local Planner unavailable.")
