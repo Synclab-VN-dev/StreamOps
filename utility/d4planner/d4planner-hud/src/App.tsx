@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, hudPlatform } from "./platform";
 import { productionHudDataSource, type IHudDataSource } from "./hud-data-source";
 import type { AssessmentStatus, CriterionComparison, EquipmentRow, TypedValue } from "./hud-model";
 import { useHudController } from "./use-hud-controller";
@@ -128,7 +128,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   async function drag(event: React.MouseEvent) {
     // Menu operations must receive their pointer-up/click; native dragging captures it.
     if (event.target instanceof Element && event.target.closest(".menu-button, .target-menu")) return;
-    if (event.button === 0) await invoke("drag_overlay").catch(() => undefined);
+    if (hudPlatform().nativeWindow && event.button === 0) await invoke("drag_overlay").catch(() => undefined);
   }
 
   const scoreText = snapshot?.score.status === "SCORED" && snapshot.score.value !== null
@@ -206,7 +206,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
             <span className="shield">⬡</span><span><b>Equipment</b><small>{snapshot?.score.failIssueCount ?? 0} issues · {snapshot?.score.warnCount ?? 0} warnings</small></span>
             <span>{snapshot?.score.itemsPassing ?? 0}/{snapshot?.score.itemsTargeted ?? 0}</span><span>›</span>
           </button>
-          <button className="pin" aria-pressed="true" onClick={() => void invoke("set_overlay_pin", { pinned: true })}>⌖ Pinned</button>
+          {hudPlatform().nativeWindow && <button className="pin" aria-pressed="true" onClick={() => void invoke("set_overlay_pin", { pinned: true })}>⌖ Pinned</button>}
         </div>}
       </section>
 

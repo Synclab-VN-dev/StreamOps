@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, hudPlatform } from "./platform";
 import "./report-issue.css";
 export type Selection = {
   fe: boolean;
@@ -9,6 +9,8 @@ export type Selection = {
   evidenceConsent: boolean;
 };
 type Preview = {
+  status?: string;
+  issueUrl?: string;
   pendingRemote?: boolean;
   consent?: Selection;
   description?: Description;
@@ -40,6 +42,7 @@ export function ReportIssue({
   activeTab?: "report" | "logs";
   onTabChange?(tab: "report" | "logs"): void;
 }) {
+  const reportStorageKey = hudPlatform().reportStorageKey ?? "d4planner.pendingReportId";
   const [localTab, setLocalTab] = useState<"report" | "logs">("report");
   const tab = activeTab ?? localTab;
   function setTab(next: "report" | "logs") { setLocalTab(next); onTabChange?.(next); }
@@ -66,11 +69,16 @@ export function ReportIssue({
   const [consent, setConsent] = useState(false);
   const [url, setUrl] = useState("");
   useEffect(() => {
-    const id = localStorage.getItem("d4planner.pendingReportId");
+    const id = localStorage.getItem(reportStorageKey);
     if (id) {
       setPendingRemote(true); // Until native recovery proves the draft is unsent.
       void bridge<Preview>("resume_issue_report", { reportId: id })
         .then((p) => {
+          if ((p.status === "COMPLETE" || p.status === "EXPIRED") && p.reportId === id
+            && /^https:\/\/github\.com\/Synclab-VN-dev\/StreamOps\/issues\/[1-9][0-9]*$/.test(p.issueUrl ?? "")) {
+            localStorage.removeItem(reportStorageKey);setPendingRemote(false);setUrl(p.issueUrl!);
+            setState(p.status === "COMPLETE" ? "success" : "expired");return;
+          }
           setPreview(p);
           setPendingRemote(p.pendingRemote === true);
           if (p.description) setForm(p.description);
@@ -79,7 +87,7 @@ export function ReportIssue({
         })
         .catch(() => setError("Previous draft could not be restored; close and reopen to retry recovery"));
     }
-  }, [bridge]);
+  }, [bridge, reportStorageKey]);
   const terminal = state === "success" || state === "expired";
   const busy = state === "collecting" || state === "submitting";
   const valid =
@@ -106,7 +114,7 @@ export function ReportIssue({
     try {
       const p = await bridge<Preview>("collect_issue_report", { selection });
       setPreview(p);
-      localStorage.setItem("d4planner.pendingReportId", p.reportId);
+      localStorage.setItem(reportStorageKey, p.reportId);
       setState("review");
     } catch (e) {
       setError(String(e));
@@ -130,7 +138,7 @@ export function ReportIssue({
         throw ["PENDING", "UPLOAD_PENDING", "LOG_UPLOAD_PENDING", "ERROR"].includes(r.status)
           ? "UPLOAD_PENDING" : "INVALID_GATEWAY_RESPONSE";
       }
-      localStorage.removeItem("d4planner.pendingReportId");
+      localStorage.removeItem(reportStorageKey);
       setPendingRemote(false);
       setUrl(r.issueUrl);
       setState(r.status === "COMPLETE" ? "success" : "expired");
@@ -150,7 +158,7 @@ export function ReportIssue({
     if (busy || pendingRemote) return;
     try {
       await bridge("cancel_issue_report");
-      localStorage.removeItem("d4planner.pendingReportId");
+      localStorage.removeItem(reportStorageKey);
       setPreview(null);
       setConsent(false);
       setState("idle");
