@@ -20,8 +20,18 @@ ROOT = Path(__file__).resolve().parents[4]
 PROVIDER = ROOT / 'utility/d4planner/d4planner-rulekit/providers/maxroll'
 
 
-def provision(root):
+def provision(root, *, selectable=None):
     config = json.loads(subprocess.check_output(['node', str(PROVIDER/'tooling/web/activation-fixture.js'), str(root/'ui')], text=True))[0]
+    if selectable is not None:
+        snapshot = Path(config['snapshotRoot']) / config['snapshotId']
+        coverage = snapshot / 'ui-coverage.json'
+        data = json.loads(coverage.read_text()); data['selectable'] = selectable
+        coverage.write_text(json.dumps(data))
+        config['uiTrust']['coverageSha256'] = hashlib.sha256(coverage.read_bytes()).hexdigest()
+        validation = snapshot / 'ui-validation.json'
+        data = json.loads(validation.read_text()); data['coverageSha256'] = config['uiTrust']['coverageSha256']
+        validation.write_text(json.dumps(data))
+        config['uiTrust']['validationSha256'] = hashlib.sha256(validation.read_bytes()).hexdigest()
     package = {'kind': 'ui', 'snapshotId': config['snapshotId'], 'validationStatus': 'VALIDATED', 'runId': 'synthetic',
                'manifestSha256': config['manifestSha256'], 'coverageSha256': config['uiTrust']['coverageSha256'],
                'validationSha256': config['uiTrust']['validationSha256'], 'config': config}
@@ -193,4 +203,47 @@ def test_caller_cancellation_propagates_to_worker_without_late_listener(tmp_path
             assert (await client.ensure_planner_ready())['status'] == 'READY'
         finally:
             await wrapper.stop()
+    asyncio.run(scenario())
+
+
+def test_equipment_layout_query_does_not_start_listener_or_invent_missing_coverage(tmp_path):
+    state = provision(tmp_path); port = free_port()
+    original = (state/'capture-state.json').read_bytes()
+    async def scenario():
+        wrapper = RuleKitProcessWrapper(LaunchSpecification(executable='node',
+            args=(str(ROOT/'utility/d4planner/d4planner-be/src/d4planner/rulekit/worker.js'),), working_directory=ROOT,
+            environment_allow_list={'D4_RULEKIT_COMPOSITION_MODULE': str(Path(__file__).with_name('fixtures')/'planner-test-composition.js'),
+                'D4_RULEKIT_PLANNER_STATE_ROOT': str(state), 'D4_RULEKIT_PLANNER_PORT': str(port)}))
+        try:
+            client = await wrapper.start()
+            with pytest.raises(RuleKitRemoteError) as caught:
+                await client.get_equipment_layouts()
+            assert caught.value.code == 'PLANNER_LAYOUT_UNAVAILABLE'
+            with socket.socket() as sock:
+                assert sock.connect_ex(('127.0.0.1', port)) != 0
+            assert (state/'capture-state.json').read_bytes() == original
+            assert await client.list_providers()
+        finally:
+            await wrapper.stop()
+    asyncio.run(scenario())
+
+
+def test_verified_equipment_layout_traverses_real_worker_ipc_without_starting_web(tmp_path):
+    state = provision(tmp_path, selectable={
+        'schemaVersion':'maxroll-selectable-coverage/v1', 'method':'READ_ONLY_NATIVE_CATEGORY_MODEL',
+        'groups':[{'className':'Sorcerer','slot':slot,'categories':[{'name':kind,'entities':['synthetic']}]} for slot,kind in [(7,'Staff'),(6,'Focus')]]})
+    original=(state/'capture-state.json').read_bytes(); port=free_port()
+    async def scenario():
+        wrapper=RuleKitProcessWrapper(LaunchSpecification(executable='node',
+            args=(str(ROOT/'utility/d4planner/d4planner-be/src/d4planner/rulekit/worker.js'),),working_directory=ROOT,
+            environment_allow_list={'D4_RULEKIT_COMPOSITION_MODULE':str(Path(__file__).with_name('fixtures')/'planner-test-composition.js'),
+                'D4_RULEKIT_PLANNER_STATE_ROOT':str(state),'D4_RULEKIT_PLANNER_PORT':str(port)}))
+        try:
+            client=await wrapper.start()
+            result=await client.get_equipment_layouts()
+            assert result['status']=='READY'
+            assert result['classes'][0]['slots'][0]['slotFamily']=='main_hand'
+            with socket.socket() as sock: assert sock.connect_ex(('127.0.0.1',port)) != 0
+            assert (state/'capture-state.json').read_bytes()==original
+        finally: await wrapper.stop()
     asyncio.run(scenario())

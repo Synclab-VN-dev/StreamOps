@@ -63,8 +63,12 @@ async function main(composition, log = { emit() {}, configure() {} }) {
   async function invoke(message, controller) {
     const params = message.params ?? {};
     if (message.protocolVersion === PLANNER_PROTOCOL) {
-      if (!composition.planner || message.method !== 'planner.ensureReady') throw Object.assign(new Error('Local Planner unavailable'), {code: 'PLANNER_UNAVAILABLE'});
+      if (!composition.planner || !['planner.ensureReady', 'planner.getEquipmentLayouts'].includes(message.method)) throw Object.assign(new Error('Local Planner unavailable'), {code: 'PLANNER_UNAVAILABLE'});
       if (!params || Array.isArray(params) || typeof params !== 'object' || Object.keys(params).length) throw Object.assign(new Error('Invalid Planner request'), {code: 'PLANNER_UNAVAILABLE'});
+      if (message.method === 'planner.getEquipmentLayouts') {
+        if (!composition.planner.getEquipmentLayouts) throw Object.assign(new Error('Equipment layout unavailable'), {code:'PLANNER_LAYOUT_UNAVAILABLE'});
+        return composition.planner.getEquipmentLayouts();
+      }
       return composition.planner.ensureReady({signal: controller.signal});
     }
     if(message.protocolVersion===SNAPSHOT_PROTOCOL){
@@ -170,7 +174,7 @@ async function main(composition, log = { emit() {}, configure() {} }) {
       void shutdown();
       return;
     }
-    if (message.type !== 'request' || typeof message.id !== 'string' || !(message.protocolVersion===SNAPSHOT_PROTOCOL?SNAPSHOT_METHODS:message.protocolVersion===PLANNER_PROTOCOL?['planner.ensureReady']:APIS).includes(message.method)) {
+    if (message.type !== 'request' || typeof message.id !== 'string' || !(message.protocolVersion===SNAPSHOT_PROTOCOL?SNAPSHOT_METHODS:message.protocolVersion===PLANNER_PROTOCOL?['planner.ensureReady','planner.getEquipmentLayouts']:APIS).includes(message.method)) {
       write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'error',correlationId:message?.id??null,
         error: { code: 'INVALID_MESSAGE', message: 'invalid request envelope' } });
       return;

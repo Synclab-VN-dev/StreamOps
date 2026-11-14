@@ -303,3 +303,29 @@ def test_v16_failed_owned_cleanup_never_loses_handle_or_spawns_replacement(tmp_p
         monkeypatch.setattr(asyncio, 'wait_for', original_wait)
         await runtime.stop()
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('available', [True, False])
+def test_fresh_rulekit_layout_handoff_never_reuses_ambient_layout(tmp_path, monkeypatch, available):
+    from test_issue199_review import LAYOUT, Child as PipeChild, until
+    monkeypatch.setenv('D4PLANNER_CAPTURE_EQUIPMENT_LAYOUTS','stale')
+    async def scenario():
+        calls=[]; child=PipeChild(); attempted=asyncio.Event()
+        async def spawn(*args,**kwargs):
+            calls.append(kwargs); return child
+        async def changed(value): pass
+        async def layout():
+            attempted.set()
+            if not available: raise RuntimeError('snapshot unavailable')
+            return LAYOUT
+        runtime=ManagedCaptureRuntime(tmp_path,changed,spawn=spawn,equipment_layout_provider=layout)
+        await runtime.start()
+        assert 'D4PLANNER_CAPTURE_EQUIPMENT_LAYOUTS' not in calls[0]['env']
+        await attempted.wait()
+        if available:
+            await until(lambda: child.frames)
+            assert child.frames[0]['layouts']==LAYOUT
+        else:
+            assert not child.frames
+        await runtime.stop()
+    asyncio.run(scenario())

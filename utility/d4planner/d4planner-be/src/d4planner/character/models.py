@@ -34,3 +34,4 @@ class EquipmentObservation:
     seq_end: int
     confidence: str
     fingerprint: str
+    occupied_slot_families: tuple[str, ...] = ()

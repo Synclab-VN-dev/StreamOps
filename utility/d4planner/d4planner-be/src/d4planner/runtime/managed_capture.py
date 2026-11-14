@@ -15,10 +15,17 @@ from datetime import datetime
 from uuid import uuid4
 from .store import atomic_write_json
 from .model import RuntimeState
+from .equipment_layout_channel import encode_layout
+from ..rulekit.client import EQUIPMENT_LAYOUT_TIMEOUT
 
 
 class ManagedCaptureRuntime:
-    def __init__(self, root: Path, on_health, *, spawn=None):
+    def __init__(self, root: Path, on_health, *, spawn=None, equipment_layout_provider=None):
+        self.equipment_layout_provider = equipment_layout_provider
+        self.layout_task = None
+        self._layout_active = False
+        self.layout_retry_initial = 1.0
+        self.layout_state = {"state": "PENDING"}
         self.owner_token = uuid4().hex
         self.root = root
         self.on_health = on_health
@@ -98,7 +105,8 @@ class ManagedCaptureRuntime:
                 'mode': 'BLOCK · Silent', 'controllerProfile': 'xbox16',
                 'lastEventAt': payload.get('lastEventAt'),
                 'inputObserved': bool(marker.get('lastInputAt')), 'dependencies': dependencies,
-                'observedAt': payload.get('updatedAt')}
+                'observedAt': payload.get('updatedAt'),
+                'equipmentLayout': dict(self.layout_state) if live else {'state': 'UNAVAILABLE'}}
 
 
     async def start(self):
@@ -121,6 +129,10 @@ class ManagedCaptureRuntime:
         environment = dict(os.environ)
         for name in ('D4PLANNER_BOOTSTRAP_FILE', 'D4PLANNER_RUNTIME_FACTORY'):
             environment.pop(name, None)
+        # Only a fresh read from the BE-owned Rule Kit is handed to this child.
+        # No ambient/stale layout is reused when discovery fails. Capture itself
+        # remains available; only the new layout-dependent projection is withheld.
+        environment.pop('D4PLANNER_CAPTURE_EQUIPMENT_LAYOUTS', None)
         try:
             self.process = await self.spawn(
                 sys.executable, '-m', 'd4planner.daemon', '--managed-by-hud',
@@ -136,6 +148,39 @@ class ManagedCaptureRuntime:
             await self.on_health('ERROR')
             return
         self.monitor = asyncio.create_task(self._monitor(), name='managed-capture-health')
+        self.layout_state = {'state': 'PENDING'}
+        self._layout_active = True
+        if self.equipment_layout_provider is not None:
+            self.layout_task = asyncio.create_task(self._deliver_layout(self.process, self.owner_token), name='capture-equipment-layout')
+
+    async def _deliver_layout(self, child, owner):
+        delay = self.layout_retry_initial
+        while self._layout_active and child is self.process and owner == self.owner_token and child.returncode is None:
+            try:
+                # The production RuleKit client owns the bounded 185s RPC deadline.
+                # Do not impose a shorter startup deadline; raw capture is already running.
+                layouts = await asyncio.wait_for(self.equipment_layout_provider(), EQUIPMENT_LAYOUT_TIMEOUT)
+                frame, digest = encode_layout(owner, layouts)
+                if not self._layout_active or child is not self.process or owner != self.owner_token or child.returncode is not None:
+                    return
+                child.stdin.write(frame)
+                await asyncio.wait_for(child.stdin.drain(), 5)
+                self.layout_state = {'state': 'AWAITING_CHILD', 'digest': digest}
+                async with asyncio.timeout(5):
+                    while True:
+                        ack = self._payload.get('extras', {}).get('equipmentLayout', {})
+                        if ack.get('digest') == digest and ack.get('state') == 'READY':
+                            self.layout_state = dict(ack)
+                            return
+                        if child.returncode is not None:
+                            return
+                        await asyncio.sleep(.05)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                self.layout_state = {'state': 'RETRYING', 'errorType': type(error).__name__}
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 30)
 
     async def _refresh(self):
         if self.process.returncode is not None:
@@ -189,6 +234,14 @@ class ManagedCaptureRuntime:
             await self._stop()
 
     async def _stop(self):
+        self._layout_active = False
+        if self.layout_task:
+            self.layout_task.cancel()
+            try:
+                await self.layout_task
+            except asyncio.CancelledError:
+                pass
+            self.layout_task = None
         if self.monitor:
             self.monitor.cancel()
             try:

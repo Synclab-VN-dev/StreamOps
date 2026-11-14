@@ -32,7 +32,7 @@ def controlled_capture_process(monkeypatch):
     # lifecycle is covered independently, without changing desktop dependencies.
     class Capture:
         state = "STARTING"
-        def __init__(self, root, on_health):
+        def __init__(self, root, on_health, *, equipment_layout_provider=None):
             self.root, self.on_health = root, on_health
             self.started = False
         async def start(self): self.started = True

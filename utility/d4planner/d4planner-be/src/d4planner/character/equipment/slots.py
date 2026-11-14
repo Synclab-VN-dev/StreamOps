@@ -2,6 +2,7 @@ from __future__ import annotations
 
 
 SLOTS = {
+    "Two-Handed": "unresolved_two_handed",
     "Head": "helm",
     "Torso": "chest",
     "Hands": "gloves",
@@ -15,4 +16,4 @@ SLOTS = {
 
 # Ring is deliberately excluded because two physical ring positions currently
 # share slot_family=ring and slot_index=None.
-SINGLE_INSTANCE_SLOTS = frozenset(SLOTS.values()) - {"ring"}
+SINGLE_INSTANCE_SLOTS = frozenset(SLOTS.values()) - {"ring", "unresolved_two_handed"}

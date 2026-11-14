@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from ...models import EquipmentObservation
 from ..decision import Resolution, ResolutionKind
-from ..parser import fingerprint, parse_item
+from ..parser import fingerprint, parse_item, parse_type
 from .base import BaseResolver, ResolverRequest
 
 
@@ -15,10 +15,13 @@ class EquippedResolver(BaseResolver):
     def validate(self, request: ResolverRequest) -> str | None:
         if not request.segment:
             return "missing_item_segment"
-        if not request.context.slot:
+        if not request.context.slot or request.context.slot.startswith("unresolved_"):
             return "missing_slot_context"
         if not request.context.equipped_marker:
             return "missing_exact_equipped_marker"
+        item_type = parse_type(request.segment[1].text) if len(request.segment) >= 3 else None
+        if item_type and item_type[2] == "Staff" and request.occupied_slot_families != ("main_hand", "off_hand"):
+            return "staff_requires_verified_two_handed_context"
         return None
 
     def build_resolution(self, request: ResolverRequest) -> Resolution:
