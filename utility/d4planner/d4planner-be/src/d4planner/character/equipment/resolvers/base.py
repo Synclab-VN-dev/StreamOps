@@ -14,6 +14,7 @@ class ResolverRequest:
     segment: list[EquipmentLine] | None = None
     action: str | None = None
     incoming_slot: str | None = None
+    occupied_slot_families: tuple[str, ...] = ()
 
 
 class BaseResolver(ABC):

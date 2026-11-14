@@ -9,7 +9,8 @@ async function main(composition, log) {
   const planner = fromEnvironment(process.env);
   try {
     await require(adapterPath).main({...composition,
-      planner: {ensureReady: options => planner.ensureReady(options)},
+      planner: {ensureReady: options => planner.ensureReady(options),
+        getEquipmentLayouts: () => require('./equipment-layout').getEquipmentLayouts(planner.stateRoot)},
       close: async () => { try { await planner.close(); } finally { await composition.close?.(); } },
     }, log);
   } catch (error) { await planner.close(); throw error; }
