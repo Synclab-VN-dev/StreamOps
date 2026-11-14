@@ -14,9 +14,10 @@ from .runtime.store import RuntimePaths, atomic_write_json, iso_now
 from .runtime.supervisor import Supervisor
 from .controller import load_profile, ProfileValidationError
 from .runtime.windows import WindowsRuntime
+from .runtime.equipment_layout_channel import LayoutInbox
 
 
-def _watch_owner(stop_event: threading.Event, finished: threading.Event, fd: int) -> None:
+def _watch_owner(stop_event: threading.Event, finished: threading.Event, fd: int, on_data=None) -> None:
     """Observe lifetime-pipe EOF without holding Python's buffered-stdin lock.
 
     Poll so a normal/failed startup can join this thread while the owner still
@@ -39,17 +40,25 @@ def _watch_owner(stop_event: threading.Event, finished: threading.Event, fd: int
                     # Broken pipe or an unqueryable owner: fail closed.
                     stop_event.set()
                     return
-                if available.value and not os.read(fd, min(available.value, 4096)):
-                    stop_event.set()
-                    return
+                if available.value:
+                    chunk = os.read(fd, min(available.value, 4096))
+                    if not chunk:
+                        stop_event.set()
+                        return
+                    if on_data is not None:
+                        on_data(chunk)
                 finished.wait(.05)
         else:
             import select
             while not finished.is_set():
                 readable, _, _ = select.select([fd], [], [], .05)
-                if readable and not os.read(fd, 4096):
-                    stop_event.set()
-                    return
+                if readable:
+                    chunk = os.read(fd, 4096)
+                    if not chunk:
+                        stop_event.set()
+                        return
+                    if on_data is not None:
+                        on_data(chunk)
     except (OSError, ValueError):
         stop_event.set()
 
@@ -150,22 +159,17 @@ def main(argv: list[str] | None = None) -> int:
     finished = threading.Event()
     try:
         stop_event = threading.Event()
+        layout_inbox = LayoutInbox(args.owner_token) if args.managed_by_hud else None
         if args.managed_by_hud:
             # EOF is owner death. Never use a shared stop file to stop another owner.
             watcher = threading.Thread(target=_watch_owner,
-                args=(stop_event, finished, sys.stdin.fileno()), name="capture-owner")
+                args=(stop_event, finished, sys.stdin.fileno(), layout_inbox.feed), name="capture-owner")
             watcher.start()
         runtime = WindowsRuntime(paths)
         runtime.managed_by_hud = args.managed_by_hud
         path_manager = UserPathManager(paths, WindowsRegistryPathBackend())
-        layouts = None
-        if args.managed_by_hud:
-            try:
-                layouts = json.loads(os.environ.get("D4PLANNER_CAPTURE_EQUIPMENT_LAYOUTS", "null"))
-            except (TypeError, ValueError):
-                pass
         supervisor = Supervisor(
-            equipment_layouts=layouts,
+            equipment_layout_inbox=layout_inbox,
             managed_by_hud=args.managed_by_hud,
             stop_event=stop_event,
             paths=paths,

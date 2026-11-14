@@ -70,6 +70,7 @@ class Supervisor:
         managed_by_hud: bool = False,
         stop_event=None,
         equipment_layouts: dict | None = None,
+        equipment_layout_inbox=None,
     ):
         self.managed_by_hud = managed_by_hud
         self.stop_event = stop_event
@@ -127,6 +128,7 @@ class Supervisor:
         }
         self.equipment_projector = EquipmentProjector(EquipmentRepository(paths.character_db))
         self.equipment_projector.equipment_layouts = equipment_layouts
+        self.equipment_layout_inbox = equipment_layout_inbox
 
     @staticmethod
     def _steam_priority_allows_launch(steam: object) -> bool:
@@ -629,7 +631,27 @@ class Supervisor:
         self._pending_raw_offset = next_offset
         return self._pending_ingress
 
+    def _apply_equipment_layout(self):
+        if self.equipment_layout_inbox is None:
+            return
+        frame = self.equipment_layout_inbox.take()
+        if frame is None:
+            return
+        self.equipment_projector.equipment_layouts = frame['layouts']
+        self.status.extras['equipmentLayout'] = {
+            'state': 'READY', 'digest': frame['digest'],
+            'snapshotId': frame['layouts']['provenance']['snapshotId'],
+        }
+        try:
+            self._persist_status()
+        except OSError:
+            # Layout delivery must not stop raw ingress. The owner sees no ack
+            # and retries; a later frame can persist the receipt.
+            return
+        self._safe_emit('equipment.layout.applied', dict(self.status.extras['equipmentLayout']))
+
     def _flush_ingress(self, *, include_marker: bool = True) -> int:
+        self._apply_equipment_layout()
         if not self.store:
             return 0
 

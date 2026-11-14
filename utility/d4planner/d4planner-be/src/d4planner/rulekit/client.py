@@ -12,6 +12,9 @@ from typing import Any
 from .protocol import APPROVED_METHODS, PROTOCOL_VERSION, SNAPSHOT_PROTOCOL_VERSION, SNAPSHOT_METHODS, PLANNER_PROTOCOL_VERSION, ProtocolError
 
 
+EQUIPMENT_LAYOUT_TIMEOUT = 185.0
+
+
 @dataclass(frozen=True)
 class RuleKitSessionRef:
     worker_instance_id: str
@@ -77,7 +80,7 @@ class RuleKitClient:
         """Read class layouts from an installed verified snapshot; never provision it."""
         if not self.planner_available:
             raise RuleKitRemoteError("PLANNER_LAYOUT_UNAVAILABLE", "Equipment layout unavailable.")
-        return await self._call("planner.getEquipmentLayouts", {}, timeout=185,
+        return await self._call("planner.getEquipmentLayouts", {}, timeout=EQUIPMENT_LAYOUT_TIMEOUT,
                                 protocol=PLANNER_PROTOCOL_VERSION)
 
     async def ensure_planner_ready(self) -> dict:
