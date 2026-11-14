@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from typing import Any, Protocol
+from dataclasses import replace
+
+from .layout import resolve_two_handed
 
 from ..repository import EquipmentRepository
 from .context import EquipmentContext, EquipmentLine
@@ -31,6 +34,7 @@ class EquipmentProjector:
         repository: EquipmentRepository,
         diagnostics: _Diagnostics | None = None,
     ):
+        self.equipment_layouts: dict | None = None
         self.repository = repository
         self.diagnostics = diagnostics
         self.context = EquipmentContext()
@@ -311,11 +315,20 @@ class EquipmentProjector:
             self.context.active.append(line)
             if text in {"Equip", "Unequip"}:
                 segment = list(self.context.active)
+                occupied = ()
+                resolution_context = self.context
+                if self.context.slot == "unresolved_two_handed" and text == "Unequip":
+                    occupied = resolve_two_handed(self.equipment_layouts, segment)
+                    if occupied:
+                        resolution_context = replace(self.context, slot=occupied[0])
+                    else:
+                        self._diag("layout.unresolved", line, reason="missing_or_ambiguous_verified_layout")
                 request = ResolverRequest(
-                    context=self.context,
+                    context=resolution_context,
                     line=line,
                     segment=segment,
                     action=text,
+                    occupied_slot_families=occupied,
                 )
                 try:
                     decision = self.item_resolvers.resolve(request)
@@ -336,6 +349,8 @@ class EquipmentProjector:
                 if decision is not None:
                     self._trace_item_resolution(decision, line)
                     observation = decision.observation
+                    if observation is not None:
+                        observation.occupied_slot_families = occupied
 
                 self.context.reset_segment()
         else:

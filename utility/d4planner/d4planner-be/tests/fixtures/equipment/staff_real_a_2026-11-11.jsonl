@@ -1,0 +1,78 @@
+{"eventSeq": 377, "timestamp": "2026-11-11T15:09:05.926+07:00", "type": "input.marker.raw", "sessionId": "issue199-real-a", "data": {"source": "steamInput", "controlId": "DPAD_DOWN", "state": "down"}}
+{"eventSeq": 378, "timestamp": "2026-11-11T15:09:05.969+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Two-Handed"}}
+{"eventSeq": 379, "timestamp": "2026-11-11T15:09:05.977+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "EQUIPPED"}}
+{"eventSeq": 380, "timestamp": "2026-11-11T15:09:05.984+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "STAFF OF LAM ESEN"}}
+{"eventSeq": 381, "timestamp": "2026-11-11T15:09:05.992+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Unique Staff"}}
+{"eventSeq": 382, "timestamp": "2026-11-11T15:09:06.002+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "850 Item Power"}}
+{"eventSeq": 383, "timestamp": "2026-11-11T15:09:06.010+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "33 ( +25) Quality"}}
+{"eventSeq": 384, "timestamp": "2026-11-11T15:09:06.021+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Armory Loadout"}}
+{"eventSeq": 385, "timestamp": "2026-11-11T15:09:06.027+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Transfigured"}}
+{"eventSeq": 386, "timestamp": "2026-11-11T15:09:06.035+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "3,885 Damage Per Second"}}
+{"eventSeq": 387, "timestamp": "2026-11-11T15:09:06.043+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "blank"}}
+{"eventSeq": 388, "timestamp": "2026-11-11T15:09:06.056+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "[3,322 - 4,448] Damage per Hit"}}
+{"eventSeq": 389, "timestamp": "2026-11-11T15:09:06.064+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "blank"}}
+{"eventSeq": 390, "timestamp": "2026-11-11T15:09:06.071+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "1.00 Attacks per Second"}}
+{"eventSeq": 391, "timestamp": "2026-11-11T15:09:06.077+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "blank"}}
+{"eventSeq": 392, "timestamp": "2026-11-11T15:09:06.080+07:00", "type": "input.marker.raw", "sessionId": "issue199-real-a", "data": {"source": "steamInput", "controlId": "DPAD_DOWN", "state": "up"}}
+{"eventSeq": 393, "timestamp": "2026-11-11T15:09:06.087+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "+508 Weapon Damage [168 - 281]"}}
+{"eventSeq": 394, "timestamp": "2026-11-11T15:09:06.094+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "blank"}}
+{"eventSeq": 395, "timestamp": "2026-11-11T15:09:06.107+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "+386 Intelligence +[250 - 298]"}}
+{"eventSeq": 396, "timestamp": "2026-11-11T15:09:06.113+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "blank"}}
+{"eventSeq": 397, "timestamp": "2026-11-11T15:09:06.121+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "+1,886 Life On Hit [1,314 - 1,578]"}}
+{"eventSeq": 398, "timestamp": "2026-11-11T15:09:06.127+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "blank"}}
+{"eventSeq": 399, "timestamp": "2026-11-11T15:09:06.137+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "+6 to Charged Bolts [6 - 8]"}}
+{"eventSeq": 400, "timestamp": "2026-11-11T15:09:06.145+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "blank"}}
+{"eventSeq": 401, "timestamp": "2026-11-11T15:09:06.156+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "+8 Item Quality [2 - 20]"}}
+{"eventSeq": 402, "timestamp": "2026-11-11T15:09:06.163+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "blank"}}
+{"eventSeq": 403, "timestamp": "2026-11-11T15:09:06.172+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "+13.3% Critical Strike Chance [5.0 - 10.0]%"}}
+{"eventSeq": 404, "timestamp": "2026-11-11T15:09:06.179+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "blank"}}
+{"eventSeq": 405, "timestamp": "2026-11-11T15:09:06.189+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Charged Bolts deal 160%[x] [110 - 160]% increased damage, last 300% longer and seek enemies."}}
+{"eventSeq": 406, "timestamp": "2026-11-11T15:09:06.198+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "x24% Lightning Damage Multiplier"}}
+{"eventSeq": 407, "timestamp": "2026-11-11T15:09:06.206+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "x24% Lightning Damage Multiplier"}}
+{"eventSeq": 408, "timestamp": "2026-11-11T15:09:06.212+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "&quot;Also known as the Greatstaff of the Old Religion, this powerful relic is one of only a small handful of Skatsimi artifacts that have survived to this day.&quot;. - Barrett&apos;s Book of Implements"}}
+{"eventSeq": 409, "timestamp": "2026-11-11T15:09:06.220+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Requires Level 70. Account BoundSorcerer. Only. Unique Equipped. Lord of Hatred Item"}}
+{"eventSeq": 410, "timestamp": "2026-11-11T15:09:06.226+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Unmodifiable"}}
+{"eventSeq": 411, "timestamp": "2026-11-11T15:09:06.236+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Sell Value: 662,264 Gold"}}
+{"eventSeq": 412, "timestamp": "2026-11-11T15:09:06.244+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Durability: 100/100"}}
+{"eventSeq": 413, "timestamp": "2026-11-11T15:09:06.252+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Right analog stick down"}}
+{"eventSeq": 414, "timestamp": "2026-11-11T15:09:06.260+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Scroll Down"}}
+{"eventSeq": 415, "timestamp": "2026-11-11T15:09:06.277+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Left action button"}}
+{"eventSeq": 416, "timestamp": "2026-11-11T15:09:06.284+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Mark as Favorite"}}
+{"eventSeq": 417, "timestamp": "2026-11-11T15:09:06.290+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Left action button"}}
+{"eventSeq": 418, "timestamp": "2026-11-11T15:09:06.296+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Hold"}}
+{"eventSeq": 419, "timestamp": "2026-11-11T15:09:06.304+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Unequip"}}
+{"eventSeq": 420, "timestamp": "2026-11-11T15:09:28.360+07:00", "type": "input.marker.raw", "sessionId": "issue199-real-a", "data": {"source": "steamInput", "controlId": "DPAD_UP", "state": "down"}}
+{"eventSeq": 421, "timestamp": "2026-11-11T15:09:28.408+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Feet"}}
+{"eventSeq": 422, "timestamp": "2026-11-11T15:09:28.413+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Slot Transmog: OFF"}}
+{"eventSeq": 423, "timestamp": "2026-11-11T15:09:28.421+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "EQUIPPED"}}
+{"eventSeq": 424, "timestamp": "2026-11-11T15:09:28.429+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "[FAVORITED ITEM]. ESU&apos;S HEIRLOOM"}}
+{"eventSeq": 425, "timestamp": "2026-11-11T15:09:28.437+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Unique Boots"}}
+{"eventSeq": 426, "timestamp": "2026-11-11T15:09:28.444+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "850 Item Power"}}
+{"eventSeq": 427, "timestamp": "2026-11-11T15:09:28.451+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "25 ( +25) Quality"}}
+{"eventSeq": 428, "timestamp": "2026-11-11T15:09:28.460+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "798 Armor"}}
+{"eventSeq": 429, "timestamp": "2026-11-11T15:09:28.474+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "blank"}}
+{"eventSeq": 430, "timestamp": "2026-11-11T15:09:28.479+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "+109 Intelligence +[83 - 99]"}}
+{"eventSeq": 431, "timestamp": "2026-11-11T15:09:28.489+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "blank"}}
+{"eventSeq": 432, "timestamp": "2026-11-11T15:09:28.497+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "+35% Movement Speed [20 - 24]%"}}
+{"eventSeq": 433, "timestamp": "2026-11-11T15:09:28.507+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "blank"}}
+{"eventSeq": 434, "timestamp": "2026-11-11T15:09:28.514+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "+2,630 Fire Resistance [1,800 - 2,274]"}}
+{"eventSeq": 435, "timestamp": "2026-11-11T15:09:28.514+07:00", "type": "input.marker.raw", "sessionId": "issue199-real-a", "data": {"source": "steamInput", "controlId": "DPAD_UP", "state": "up"}}
+{"eventSeq": 436, "timestamp": "2026-11-11T15:09:28.522+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "blank"}}
+{"eventSeq": 437, "timestamp": "2026-11-11T15:09:28.529+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Evade Grants +153% Movement Speed for 1.5 Seconds [100 - 125]%[1.5]"}}
+{"eventSeq": 438, "timestamp": "2026-11-11T15:09:28.536+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "blank"}}
+{"eventSeq": 439, "timestamp": "2026-11-11T15:09:28.544+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "+29% Movement Speed [15 - 25]%"}}
+{"eventSeq": 440, "timestamp": "2026-11-11T15:09:28.553+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "blank"}}
+{"eventSeq": 441, "timestamp": "2026-11-11T15:09:28.561+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Your Critical Strike Chance is increased by 40% [20 - 40]% of your Movement Speed bonus.. Current Bonus: 25.7% [12.9 - 25.7]%"}}
+{"eventSeq": 442, "timestamp": "2026-11-11T15:09:28.571+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "&quot;While scholars have proven these boots were not created by Esu herself, it is noteworthy that they have been passed down since the formation of the Mage Clans.&quot;. - Barrett&apos;s Book of Implements"}}
+{"eventSeq": 443, "timestamp": "2026-11-11T15:09:28.578+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Requires Level 70. Account BoundSorcerer. Only. Unique Equipped"}}
+{"eventSeq": 444, "timestamp": "2026-11-11T15:09:28.586+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Sell Value: 61,552 Gold"}}
+{"eventSeq": 445, "timestamp": "2026-11-11T15:09:28.595+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Durability: 100/100. Tempers: 1/1"}}
+{"eventSeq": 446, "timestamp": "2026-11-11T15:09:28.603+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Right analog stick down"}}
+{"eventSeq": 447, "timestamp": "2026-11-11T15:09:28.611+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Scroll Down"}}
+{"eventSeq": 448, "timestamp": "2026-11-11T15:09:28.620+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Bottom action button"}}
+{"eventSeq": 449, "timestamp": "2026-11-11T15:09:28.629+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Show Transmog"}}
+{"eventSeq": 450, "timestamp": "2026-11-11T15:09:28.638+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Left action button"}}
+{"eventSeq": 451, "timestamp": "2026-11-11T15:09:28.645+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Unmark Item"}}
+{"eventSeq": 452, "timestamp": "2026-11-11T15:09:28.651+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Left action button"}}
+{"eventSeq": 453, "timestamp": "2026-11-11T15:09:28.658+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Hold"}}
+{"eventSeq": 454, "timestamp": "2026-11-11T15:09:28.664+07:00", "type": "speech.raw", "sessionId": "issue199-real-a", "data": {"text": "Unequip"}}

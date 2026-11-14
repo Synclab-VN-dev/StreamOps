@@ -369,6 +369,12 @@ class ProductionBackendRuntime:
         if self.latency_trace is not None and not self.latency_trace.is_absolute():
             raise ValueError("latency trace path must be absolute")
 
+    async def _capture_equipment_layouts(self):
+        client = getattr(self.rulekit, "client", None)
+        if client is None:
+            return None
+        return await client.get_equipment_layouts()
+
     async def start(self) -> dict[str, Any]:
         self._recover_selection()
         if self.rulekit is None:
@@ -435,7 +441,8 @@ class ProductionBackendRuntime:
                 capture_state = "NOT_STARTED_HEALTH_PROBE"
             elif not evidence_path and not repository_path:
                 from .runtime.managed_capture import ManagedCaptureRuntime
-                self.capture_runtime = ManagedCaptureRuntime(self.data_root, self.capture_health_changed)
+                self.capture_runtime = ManagedCaptureRuntime(self.data_root, self.capture_health_changed,
+                    equipment_layout_provider=self._capture_equipment_layouts)
                 self.capture_runtime.on_status = self.capture_runtime_status_changed
                 await self.capture_runtime.start()
                 capture_state = self.capture_runtime.state
