@@ -112,3 +112,15 @@ python scripts/web-acceptance.py --output /private/new-qa-directory
 On the isolated Windows fixture, build/test `src-tauri/Cargo.toml` with its provisioned Node/Python/Chromium, then run `scripts/windows-web-acceptance.py` from F with `--native-cdp`, `--browser-cdp`, `--url`, `--token-file`, and private `--output`. Debugging ports are QA-only and must not be enabled for normal owner use.
 
 **CI_NOT_CHECKED.** No merge, release, public artifact publication or production deployment.
+
+## Review follow-up F1–F3 (2026-11-15)
+
+Reviewed base: `661e6bf626353ca13f667e470fd6489dd4ef5cd6` (includes the newer master merge). **AGREE / FIX_REQUIRED** on all three findings; earlier evidence on `ac052714` is not evidence for this revision.
+
+- **F1 / API-03, API-05:** repeated same-subject preview previously discarded the first draft. The regression failed with two different report IDs before the fix. Preview now restores that subject's current/durable draft, including after coordinator restart. Source selection requires explicit discard before replacement. Different subjects retain isolation. Submitting a discarded ID cannot send a newer active draft.
+- **F2 / API-05, WEB-02:** failed recovery previously had no in-place recovery action. Retry recovery now retains the reference and form. Only an actor-bound, matching discarded receipt or verified terminal result clears it. Unknown ID, corrupted storage and network failures do not prove a safe remote outcome and remain protected. Local discard writes a durable receipt after successful removal; interruption before receipt remains conservative.
+- **F3 / WEB-05:** a one-hour server session previously left the browser reconnecting with an invalid cookie. BrowserSession coalesces session checks/login, preserves the mounted form, refreshes CSRF, requires the same subject, and permits WS resync. REST mutations are not automatically replayed after authentication. Network errors remain distinct from authentication failure.
+
+Targeted checks: `same_subject_preview_preserves_draft_across_clients_and_restart`, Report UI recovery/explicit-discard cases, `expired_session_rejects_cookie_then_new_login_rotates_csrf`, BrowserSession single-flow/CSRF and no-mutation-replay tests. Real HTTP browser runner: `scripts/web-recovery-acceptance.py` (two independent contexts with the same subject, confirmed discard, unknown reference retry, lost-cookie login/resync with preserved form). Browser session loss is induced by removing the test cookie; actual server expiry is tested separately using the internal unit-test clock state. Production TTL is unchanged. No browser request interception supplies UI assets.
+
+The new Windows screenshot set must record its exact final HEAD, OS/browser, same viewport/state, test-only data and sanitized WS checkpoint. Screenshots are parity evidence, never MagicPath Golden. Existing browser-chrome/pin/private-runtime differences remain explicitly classified. Private raw screenshots/logs remain on F; only reviewed first-party synthetic screenshots may be shared.

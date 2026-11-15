@@ -1,42 +1,27 @@
 import type { HudPlatform } from './index';
 import { WebHudDataSource } from './web-data-source';
+import { BrowserSession } from './web-session';
 
 class WebFailure extends Error {
   constructor(readonly code:string,readonly state?:string){super(code);}
   toString(){return this.code;}
 }
-type Session = {subject:string;csrf:string;permissions:string[]};
-export async function webPlatform(root:HTMLElement):Promise<HudPlatform>{
+export async function webPlatform(_root:HTMLElement):Promise<HudPlatform>{
   document.documentElement.dataset.hudPlatform="web";
-  let session:Session;
-  async function load():Promise<Session>{
-    const response=await fetch('/api/v1/session',{credentials:'same-origin',cache:'no-store'});
-    if(!response.ok)throw new Error('AUTH_REQUIRED');return response.json();
-  }
-  try{session=await load();}catch{
-    session=await new Promise<Session>(resolve=>{
-      root.replaceChildren();
-      const form=document.createElement('form'),title=document.createElement('h1'),input=document.createElement('input'),button=document.createElement('button'),status=document.createElement('p');
-      title.textContent='Connect to D4Planner';input.type='password';input.autocomplete='off';input.placeholder='Access token';input.setAttribute('aria-label','Access token');input.required=true;button.textContent='Connect';status.setAttribute('role','alert');
-      form.style.cssText='margin:24px;max-width:360px;font:16px system-ui;color:white';form.append(title,input,button,status);root.append(form);
-      form.onsubmit=async event=>{
-        event.preventDefault();button.disabled=true;status.textContent='Connecting…';
-        try{
-          const response=await fetch('/api/v1/session',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({token:input.value})});
-          input.value='';if(!response.ok)throw new Error('Connection refused. Check the token and host configuration.');
-          resolve(await load());
-        }catch(error){status.textContent=String(error);button.disabled=false;}
-      };
-    });
-  }
-  if(!session.subject || !session.csrf || !Array.isArray(session.permissions))throw new Error('INVALID_SESSION');
+  const authentication=new BrowserSession();
+  const session=await authentication.ensure();
   const request=async<T>(path:string,body?:unknown,method=body===undefined?'GET':'POST'):Promise<T>=>{
-    const response=await fetch(path,{method,credentials:'same-origin',cache:'no-store',headers:{'content-type':'application/json','x-hud-csrf':session.csrf},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(70000)});
+    const response=await fetch(path,{method,credentials:'same-origin',cache:'no-store',headers:{'content-type':'application/json','x-hud-csrf':authentication.current!.csrf},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(70000)});
+    if(response.status===401){
+      await authentication.ensure();
+      // A timed-out or rejected mutation must never be replayed implicitly.
+      throw new WebFailure('SESSION_REAUTHENTICATED_RETRY_REQUIRED');
+    }
     const value=response.status===204?null:await response.json();
     if(!response.ok){const e=value?.error;throw new WebFailure(typeof e?.code==='string' && /^[A-Z0-9_]{1,80}$/.test(e.code)?e.code:'WEB_REQUEST_FAILED',e?.state);}return value as T;
   };
   const endpoint=new URL('/api/v1/hud/stream',location.href);endpoint.protocol=location.protocol==='https:'?'wss:':'ws:';
-  const source=new WebHudDataSource(endpoint.href,request);
+  const source=new WebHudDataSource(endpoint.href,request,undefined,()=>authentication.ensure().then(()=>{}));
   window.__D4PLANNER_HUD_DATA_SOURCE__=source;
   const reportKey=`d4planner.pendingReportId.web.${session.subject}`;
   const invoke:HudPlatform['invoke']=async<T>(command:string,args?:Parameters<HudPlatform['invoke']>[1])=>{

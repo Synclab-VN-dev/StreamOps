@@ -17,7 +17,8 @@ export class WebHudDataSource implements IHudDataSource {
   private listRevision:number|null=null;
   runtime:WebRuntime|null=null;
   constructor(private readonly endpoint:string,private readonly request:Request,
-    private readonly socketFactory:(url:string)=>WebSocketLike=url=>new WebSocket(url) as unknown as WebSocketLike) {}
+    private readonly socketFactory:(url:string)=>WebSocketLike=url=>new WebSocket(url) as unknown as WebSocketLike,
+    private readonly authenticate?:()=>Promise<void>) {}
   async connect(listener:(event:HudDataEvent)=>void):Promise<()=>void>{
     if(this.listener) throw new Error('ALREADY_CONNECTED');
     this.listener=listener;this.open(++this.epoch);
@@ -28,7 +29,11 @@ export class WebHudDataSource implements IHudDataSource {
     this.listener?.({type:'CONNECTION',state:'DISCONNECTED',reason});
     this.listener?.({type:'TARGET_LIST_STATE',status:'IDLE',error:null});
   }
-  private open(epoch:number){
+  private async open(epoch:number){
+    if(this.authenticate){
+      try{await this.authenticate();}
+      catch{if(this.listener && epoch===this.epoch){this.offline("SESSION_CHECK_UNAVAILABLE");this.timer=setTimeout(()=>void this.open(epoch),15000);}return;}
+    }
     if(!this.listener || epoch!==this.epoch)return;
     const socket=this.socketFactory(this.endpoint);this.socket=socket;this.sequence=-1;
     socket.onmessage=event=>{

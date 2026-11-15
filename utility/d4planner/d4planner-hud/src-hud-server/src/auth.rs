@@ -152,6 +152,33 @@ mod tests {
         }])
     }
     #[test]
+    fn expired_session_rejects_cookie_then_new_login_rotates_csrf() {
+        let mut auth = auth();
+        let (id, old_csrf) = auth.login("01234567890123456789012345678901").unwrap();
+        auth.sessions.get_mut(&id).unwrap().expires = Instant::now() - Duration::from_secs(1);
+        let mut headers = HeaderMap::new();
+        headers.insert("cookie", format!("d4hud_session={id}").parse().unwrap());
+        assert_eq!(
+            auth.actor(&headers, "hud.read", false).err().unwrap().code,
+            "SESSION_EXPIRED"
+        );
+        assert!(auth.session(&headers).is_err());
+        let (next, csrf) = auth.login("01234567890123456789012345678901").unwrap();
+        assert_ne!(id, next);
+        assert_ne!(old_csrf, csrf);
+        headers.insert("cookie", format!("d4hud_session={next}").parse().unwrap());
+        headers.insert("x-hud-csrf", old_csrf.parse().unwrap());
+        assert_eq!(
+            auth.actor(&headers, "runtime.control", true)
+                .err()
+                .unwrap()
+                .code,
+            "CSRF_REJECTED"
+        );
+        headers.insert("x-hud-csrf", csrf.parse().unwrap());
+        assert!(auth.actor(&headers, "runtime.control", true).is_ok());
+    }
+    #[test]
     fn cookie_mutation_requires_csrf_and_permission() {
         let mut auth = auth();
         let (id, csrf) = auth.login("01234567890123456789012345678901").unwrap();

@@ -43,6 +43,29 @@ fn access(root: &Path, id: &str, actor: &str) -> Result<Value, String> {
     if value["actor"] != actor {
         return Err("REPORT_NOT_FOUND".into());
     }
+    let discarded = path.with_extension("discarded.json");
+    if !d4planner_runtime_logging::safe(&discarded) {
+        return Err("UNSAFE_PATH".into());
+    }
+    if discarded
+        .try_exists()
+        .map_err(|_| "REPORT_STORAGE_FAILED")?
+    {
+        if fs::metadata(&discarded)
+            .map_err(|_| "INVALID_REPORT")?
+            .len()
+            > 16384
+        {
+            return Err("INVALID_REPORT".into());
+        }
+        let receipt: Value =
+            serde_json::from_slice(&fs::read(discarded).map_err(|_| "INVALID_REPORT")?)
+                .map_err(|_| "INVALID_REPORT")?;
+        if receipt["actor"] != actor || receipt["reportId"] != id || receipt["discarded"] != true {
+            return Err("INVALID_REPORT".into());
+        }
+        return Ok(receipt);
+    }
     let terminal = path.with_extension("result.json");
     if !d4planner_runtime_logging::safe(&terminal) {
         return Err("UNSAFE_PATH".into());
@@ -64,7 +87,9 @@ fn access(root: &Path, id: &str, actor: &str) -> Result<Value, String> {
 }
 fn store(root: &Path, id: &str, value: &Value) -> Result<(), String> {
     let base = receipt_path(root, id)?;
-    let path = if value.get("result").is_some() {
+    let path = if value["discarded"] == true {
+        base.with_extension("discarded.json")
+    } else if value.get("result").is_some() {
         base.with_extension("result.json")
     } else {
         base
@@ -92,13 +117,12 @@ fn store(root: &Path, id: &str, value: &Value) -> Result<(), String> {
             if let Ok(v) = fs::read(&p)
                 .and_then(|b| serde_json::from_slice::<Value>(&b).map_err(std::io::Error::other))
             {
-                if v.get("result").is_some() {
+                if v.get("result").is_some() || v["discarded"] == true {
                     fs::remove_file(&p).map_err(|_| "REPORT_STORAGE_FAILED")?;
-                    if let Some(name) = p
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .and_then(|n| n.strip_suffix(".result.json"))
-                    {
+                    if let Some(name) = p.file_name().and_then(|n| n.to_str()).and_then(|n| {
+                        n.strip_suffix(".result.json")
+                            .or_else(|| n.strip_suffix(".discarded.json"))
+                    }) {
                         if uuid::Uuid::parse_str(name).is_ok() {
                             let _ = fs::remove_file(directory.join(format!("{name}.json")));
                         }
@@ -157,14 +181,36 @@ impl Coordinator {
             if owner != actor {
                 return Err("REPORT_BUSY".into());
             }
-            if report.pending_remote() {
-                return Err("REPORT_RECONCILIATION_REQUIRED".into());
-            }
+            // A preview is not consent to replace another tab's draft.
+            return Ok(report.restored_preview());
         }
-        if let Some((_, old)) = self.active.take() {
-            let id = old.id.clone();
-            old.discard()?;
-            let _ = fs::remove_file(receipt_path(root, &id)?);
+        // Recover the subject's durable draft before creating another one after restart.
+        let directory = root.join("private/report-access");
+        if !d4planner_runtime_logging::safe(&directory) {
+            return Err("UNSAFE_PATH".into());
+        }
+        if directory
+            .try_exists()
+            .map_err(|_| "REPORT_STORAGE_FAILED")?
+        {
+            for entry in fs::read_dir(&directory).map_err(|_| "REPORT_STORAGE_FAILED")? {
+                let path = entry.map_err(|_| "REPORT_STORAGE_FAILED")?.path();
+                let Some(id) = path
+                    .file_stem()
+                    .and_then(|n| n.to_str())
+                    .filter(|s| uuid::Uuid::parse_str(s).is_ok())
+                else {
+                    continue;
+                };
+                match access(root, id, actor) {
+                    Ok(record) if record.get("result").is_none() && record["discarded"] != true => {
+                        return self.status(root, actor, id)
+                    }
+                    Ok(_) => {}
+                    Err(code) if code == "REPORT_NOT_FOUND" => {}
+                    Err(code) => return Err(code),
+                }
+            }
         }
         let report = Report::collect(root, run, selection, evidence)?;
         if let Err(error) = store(root, &report.id, &json!({"actor":actor})) {
@@ -177,6 +223,9 @@ impl Coordinator {
     }
     pub fn status(&mut self, root: &Path, actor: &str, id: &str) -> Result<Value, String> {
         let record = access(root, id, actor)?;
+        if record["discarded"] == true {
+            return Ok(json!({"reportId":id,"status":"DISCARDED","pendingRemote":false}));
+        }
         if let Some(result) = record.get("result") {
             return Ok(result.clone());
         }
@@ -208,6 +257,9 @@ impl Coordinator {
             })
             .ok_or("REPORT_NOT_COLLECTED")?;
         let status = self.status(root, actor, &id)?;
+        if status["status"] == "DISCARDED" {
+            return Ok(());
+        }
         if status.get("issueUrl").is_some() {
             return Err("REPORT_ALREADY_SUBMITTED".into());
         }
@@ -217,15 +269,13 @@ impl Coordinator {
         }
         let (_, report) = self.active.take().ok_or("REPORT_NOT_COLLECTED")?;
         report.discard()?;
-        fs::remove_file(receipt_path(root, &id)?)
-            .or_else(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    Ok(())
-                } else {
-                    Err(e)
-                }
-            })
-            .map_err(|_| "REPORT_STORAGE_FAILED")?;
+        // Persist only after successful local discard. A crash before this receipt
+        // remains uncertain; absence of a directory is never proof of remote safety.
+        store(
+            root,
+            &id,
+            &json!({"actor":actor,"reportId":id,"discarded":true}),
+        )?;
         Ok(())
     }
     pub fn submit(
@@ -242,6 +292,12 @@ impl Coordinator {
             .map_err(SubmissionFailure::uncertain)?;
         if preview.get("issueUrl").is_some() {
             return Ok(preview);
+        }
+        if preview["status"] == "DISCARDED" {
+            return Err(SubmissionFailure {
+                code: "REPORT_DISCARDED".into(),
+                state: "LOCAL_FAILURE",
+            });
         }
         let (_, report) = self
             .active
@@ -274,6 +330,57 @@ mod tests {
         let root = std::env::temp_dir().join(format!("web-report-{}", uuid::Uuid::new_v4()));
         fs::create_dir(&root).unwrap();
         root
+    }
+    #[test]
+    fn same_subject_preview_preserves_draft_across_clients_and_restart() {
+        let root = root();
+        let mut c = Coordinator::new();
+        let first = c
+            .collect(&root, "run-a", "web:alice", selection(), |_| panic!())
+            .unwrap();
+        let second = c
+            .collect(&root, "run-b", "web:alice", selection(), |_| panic!())
+            .unwrap();
+        assert_eq!(first["reportId"], second["reportId"]);
+        drop(c);
+        let mut c = Coordinator::new();
+        let third = c
+            .collect(&root, "run-c", "web:alice", selection(), |_| panic!())
+            .unwrap();
+        assert_eq!(first["reportId"], third["reportId"]);
+        c.cancel(&root, "web:alice", first["reportId"].as_str())
+            .unwrap();
+        let discarded = c
+            .status(&root, "web:alice", first["reportId"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(discarded["status"], "DISCARDED");
+        let next = c
+            .collect(&root, "run-d", "web:alice", selection(), |_| panic!())
+            .unwrap();
+        assert_ne!(first["reportId"], next["reportId"]);
+        let failure = c
+            .submit(
+                &root,
+                "web:alice",
+                first["reportId"].as_str().unwrap(),
+                Description {
+                    issue_type: "Other".into(),
+                    title: "Test".into(),
+                    actual: "Test".into(),
+                    expected: "Test".into(),
+                    steps: "".into(),
+                },
+                true,
+                |_, _, _| panic!("discarded id must never submit another draft"),
+            )
+            .unwrap_err();
+        assert_eq!(failure.code, "REPORT_DISCARDED");
+        assert_eq!(
+            c.status(&root, "web:alice", next["reportId"].as_str().unwrap())
+                .unwrap()["reportId"],
+            next["reportId"]
+        );
+        fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn cross_actor_cannot_replace_resume_or_cancel_and_restart_preserves_owner() {
