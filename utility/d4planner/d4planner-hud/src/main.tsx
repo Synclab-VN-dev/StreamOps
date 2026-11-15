@@ -1,3 +1,4 @@
+import { configurePlatform } from "./platform";
 import { runtimeLog } from "./runtime-log";
 const root = document.getElementById("root");
 
@@ -9,7 +10,7 @@ function showBootstrapState(message: string, failed = false) {
 async function report(phase: string, _detail?: string) {
   runtimeLog(phase.includes("ERROR") || phase.includes("FAILED") || phase.includes("REJECTION") ? "ERROR" : "INFO", "webview", phase === "BOOTSTRAP_STARTED" ? "START" : phase === "APP_MOUNT_REQUESTED" ? "READY" : "ERROR");
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
+    const { invoke } = await import("./platform");
     await invoke("report_webview_diagnostic", { phase, detail: null });
   } catch {
     // Diagnostics must never become a startup dependency.
@@ -17,7 +18,7 @@ async function report(phase: string, _detail?: string) {
 }
 
 showBootstrapState("Starting D4Planner Equipment HUD…");
-void report("BOOTSTRAP_STARTED");
+
 
 window.addEventListener("error", event => {
   const detail = event.error instanceof Error ? event.error.stack ?? event.error.message : event.message;
@@ -30,7 +31,15 @@ window.addEventListener("unhandledrejection", event => {
   void report("UNHANDLED_REJECTION", detail);
 });
 
-void import("./app-entry")
+void (async()=>{
+  if (!("__TAURI_INTERNALS__" in window)) {
+    if(!root)throw new Error("root element is missing");
+    const {webPlatform}=await import("./platform/web");
+    configurePlatform(await webPlatform(root));
+  }
+  void report("BOOTSTRAP_STARTED");
+  return import("./app-entry");
+})()
   .then(({ mount }) => {
     if (!root) throw new Error("root element is missing");
     mount(root);

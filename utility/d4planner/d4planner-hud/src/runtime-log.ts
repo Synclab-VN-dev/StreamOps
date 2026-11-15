@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./platform";
 let pending = 0;
 let dropped = 0;
 export function runtimeLog(level: "DEBUG" | "INFO" | "WARN" | "ERROR", tag: "webview" | "websocket" | "hud", event: "START" | "READY" | "ERROR" | "CONNECT" | "DISCONNECT" | "RECONNECT" | "STATE_CHANGE" | "REQUEST" | "RESULT", fields: {revision?: number; ok?: boolean; correlationId?: string; errorCode?: string} = {}) {

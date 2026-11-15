@@ -110,7 +110,7 @@ describe("Report Issue", () => {
     );
     expect(submissions).toHaveLength(2);
   });
-  it("source changes invalidate consent and stale preview", async () => {
+  it("source changes require explicit discard before invalidating consent and preview", async () => {
     const bridge = vi.fn().mockResolvedValue(preview);
     render(<ReportIssue bridge={bridge} onClose={() => {}} />);
     form();
@@ -119,7 +119,11 @@ describe("Report Issue", () => {
     fireEvent.click(screen.getByLabelText(/I reviewed the public/));
     fireEvent.click(screen.getByText("Collect Logs"));
     fireEvent.click(screen.getByLabelText("FE"));
-    expect(screen.queryByText("Run run-1")).toBeNull();
+    expect(screen.queryByText("Run run-1")).not.toBeNull();
+    expect((screen.getByLabelText("FE").closest("fieldset") as HTMLFieldSetElement).disabled).toBe(true);
+    fireEvent.click(screen.getByText("Discard unsent draft"));
+    await waitFor(()=>expect(screen.queryByText("Run run-1")).toBeNull());
+    fireEvent.click(screen.getByLabelText("FE"));
     expect(
       (screen.getByText("Submit issue") as HTMLButtonElement).disabled,
     ).toBe(true);
@@ -218,7 +222,7 @@ it.each(['AUTHENTICATION_REQUIRED','INVALID_REPORT_CONFIG','CONSENT_REQUIRED','I
   fireEvent.click(screen.getByLabelText(/I reviewed the public/));fireEvent.click(screen.getByText('Submit issue'));
   expect((await screen.findByRole('alert')).textContent).toContain(code);
   expect((screen.getByText('Discard unsent draft') as HTMLButtonElement).disabled).toBe(false);
-  expect((screen.getByText('Preview collection') as HTMLButtonElement).disabled).toBe(false);
+  expect((screen.getByText('Preview collection') as HTMLButtonElement).disabled).toBe(true); // Existing draft must be explicitly discarded first.
   expect((screen.getByText('Retry submission') as HTMLButtonElement).disabled).toBe(false);
   expect((screen.getByLabelText('Title') as HTMLTextAreaElement).value).toBe('Test');
   expect(localStorage.getItem('d4planner.pendingReportId')).toBe(preview.reportId);
@@ -255,4 +259,26 @@ it('explains local JSON configuration without asking the user to log into a remo
   fireEvent.click(screen.getByText('Preview collection'));await screen.findByText('Run run-1');
   fireEvent.click(screen.getByLabelText(/I reviewed the public/));fireEvent.click(screen.getByText('Submit issue'));
   expect((await screen.findByRole('alert')).textContent).toContain('private/report-config.json');
+});
+
+it('restores a verified terminal receipt without treating it as a collection preview', async () => {
+  localStorage.setItem('d4planner.pendingReportId', 'receipt-id');
+  const bridge = vi.fn(async () => ({reportId:'receipt-id',status:'COMPLETE',issueUrl:'https://github.com/Synclab-VN-dev/StreamOps/issues/201'}));
+  render(<ReportIssue onClose={() => {}} bridge={bridge as any}/>);
+  expect(await screen.findByText('Issue submitted:',{exact:false})).toBeTruthy();
+  expect(localStorage.getItem('d4planner.pendingReportId')).toBeNull();
+  expect(screen.queryByLabelText('Collection preview')).toBeNull();
+});
+
+it("retries unknown recovery without discarding, then unlocks only on confirmed discard",async()=>{
+ localStorage.setItem("d4planner.pendingReportId","stale-id");
+ const bridge=vi.fn().mockRejectedValueOnce({code:"REPORT_NOT_FOUND"}).mockResolvedValueOnce({reportId:"stale-id",status:"DISCARDED",pendingRemote:false});
+ render(<ReportIssue bridge={bridge} onClose={()=>{}}/>);
+ const retry=await screen.findByRole('button',{name:'Retry recovery'});
+ expect((screen.getByRole('button',{name:'Preview collection'}) as HTMLButtonElement).disabled).toBe(true);
+ expect(localStorage.getItem('d4planner.pendingReportId')).toBe('stale-id');
+ fireEvent.click(retry);
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Preview collection'}) as HTMLButtonElement).disabled).toBe(false));
+ expect(localStorage.getItem('d4planner.pendingReportId')).toBeNull();
+ expect(bridge).toHaveBeenCalledTimes(2);
 });

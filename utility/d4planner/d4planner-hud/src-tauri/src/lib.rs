@@ -6,6 +6,7 @@ fn runtime_log_event(level:String,tag:String,event:String,fields:serde_json::Val
  if let Some(Some(log))=RUNTIME_LOG.get(){log.emit(&level,&tag,&event,fields);}Ok(())
 }
 mod issue_report;
+mod hud_web;
 mod overlay_core;
 mod hud_reader;
 mod webview_diagnostic;
@@ -558,6 +559,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .manage(ModeState(Mutex::new(true)))
         .manage(BackendState(Mutex::new(None)))
+        .manage(hud_web::WebState(Mutex::new(None)))
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 // Explicitly use the same owned shutdown path as the exit
@@ -613,6 +615,7 @@ pub fn run() {
                 }
             }
 
+            if let Err(code)=hud_web::start(app.handle()){eprintln!("HUD Web startup failed: {code}");runtime_event("ERROR","native","ERROR");}
             let toggle = toggle_shortcut();
             let exit = exit_shortcut();
             app.handle().plugin(
@@ -665,6 +668,7 @@ pub fn run() {
             handle.exit(if result.is_ok() && write_ok { 0 } else { 1 });
         }
         if matches!(&event, tauri::RunEvent::ExitRequested { .. }) {
+            hud_web::stop(handle);
             runtime_event("INFO","native","STOP");
             if let Some(Some(l))=RUNTIME_LOG.get(){l.flush();}
             let state = handle.state::<BackendState>();

@@ -1556,3 +1556,5 @@ mod gateway_failure_tests {
         );
     }
 }
+
+pub mod coordinator;
