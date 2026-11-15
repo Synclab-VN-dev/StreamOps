@@ -30,9 +30,9 @@ it('does not replay a rejected mutation after reauthentication',async()=>{
  .mockResolvedValueOnce(new Response(JSON.stringify({...value,csrf:'new'})));
  vi.stubGlobal('fetch',fetchMock);
  const {webPlatform}=await import('./web');const platform=await webPlatform(document.createElement('div'));
- const result=platform.invoke('stop_backend').catch(e=>e);
+ const rejection=expect(platform.invoke('stop_backend')).rejects.toMatchObject({code:'SESSION_REAUTHENTICATED_RETRY_REQUIRED'});
  await vi.waitFor(()=>expect(document.querySelector('dialog')).not.toBeNull());
  document.querySelector('input')!.value='private-token';document.querySelector('form')!.dispatchEvent(new Event('submit',{cancelable:true}));
- expect((await result).code).toBe('SESSION_REAUTHENTICATED_RETRY_REQUIRED');
+ await rejection;
  expect(fetchMock.mock.calls.filter(([url])=>url==='/api/v1/runtime/backend/stop')).toHaveLength(1);
 });
