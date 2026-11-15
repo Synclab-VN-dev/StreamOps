@@ -36,6 +36,7 @@
     "utility/d4planner/d4planner-rulekit/providers/maxroll/package.json",
     "utility/d4planner/d4planner-rulekit/providers/maxroll/src/async.js",
     "utility/d4planner/d4planner-rulekit/providers/maxroll/src/build-export.js",
+    "utility/d4planner/d4planner-rulekit/providers/maxroll/src/guide-build-export.js",
     "utility/d4planner/d4planner-rulekit/providers/maxroll/src/build-mapper.js",
     "utility/d4planner/d4planner-rulekit/providers/maxroll/src/canonical-codec-core.js",
     "utility/d4planner/d4planner-rulekit/providers/maxroll/src/canonical-codec.js",
