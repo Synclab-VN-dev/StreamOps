@@ -268,3 +268,42 @@ MAXROLL_AUTHORIZED_SNAPSHOT_ROOT=/private/snapshots \
 This test requires the approved pinned snapshot, uses temporary private output and
 removes it afterwards. Synthetic unit/contract tests do not establish real snapshot
 success; report the real offline result separately.
+
+### Manual CI export
+
+Actions → **CI** → **Run workflow** on master:
+`operation=test`, `component=d4planner-catalog-export`.
+This separate manual component uses the existing fixture capability/secret binding;
+regular PR CI does not download private snapshots. No workflow wrapper modification
+is required. The fixture capability requires trusted master, so a PR branch cannot
+run the hosted secret-bearing job before merge.
+
+Repo variable `D4PLANNER_CATALOG_EXPORT_CONFIG` is a JSON string:
+
+```json
+{
+  "snapshot": "maxroll-20261023T034150Z",
+  "manifestSha256": "638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54",
+  "ageRecipient": "age1q9x3chgd0ycxe6y692cme82906a7qvcm08a02mwp9scdrtyupgzqhhwfrj"
+}
+```
+
+Optional `families` is an array of exact family keys. The snapshot selector also
+accepts `https://github.com/Synclab-VN-dev/StreamOps/releases/tag/test-fixture/enc-e2e-20261023-r01`.
+Only this approved pinned fixture currently resolves to a supported codec. Other
+IDs/links fail closed; a release URL alone does not establish trust or compatibility.
+Uses existing `MAXROLL_FIXTURE_AGE_IDENTITY` secret; the output recipient must match
+its approved public recipient. `age` v1.3.2 is downloaded with SHA-256 verification.
+
+The job runs the CLI twice, checks deterministic bytes, list/count consistency,
+overwrite refusal and encrypt/decrypt roundtrip. It uploads only `catalog.json.age`
+and a sanitized `report.json` through the existing CI evidence artifact. Plaintext,
+snapshot and identity are temporary and removed. Download the ciphertext and decrypt
+locally with the corresponding age identity:
+
+```bash
+age --decrypt --identity /private/identity.agekey --output catalog.json catalog.json.age
+```
+
+This encrypted CI artifact is the Owner-approved exception to the local-only export
+policy in Issue #208; plaintext export uploads remain prohibited.
