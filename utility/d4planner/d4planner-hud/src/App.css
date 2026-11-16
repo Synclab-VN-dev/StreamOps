@@ -123,3 +123,9 @@ button { color: inherit; font: inherit; }
 .current-list { display:flex; flex-direction:column; min-height:0; flex:1; }
 .current-slots { flex:1; min-height:60px; }
 .current-detail { max-height:calc(100vh - 32px); }
+
+/* Browser viewport may pan the unchanged desktop panels on a phone. */
+html[data-hud-platform="web"] #root { overflow: auto; }
+html[data-hud-platform="web"] .surface { width: max-content; min-width: 100%; min-height: 100%; }
+html[data-hud-platform="web"] .summary-head { cursor: default; }
+html[data-hud-platform="web"] .report-panel { max-height: min(620px, calc(100dvh - 32px)); }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, hudPlatform } from "./platform";
 import "./report-issue.css";
 export type Selection = {
   fe: boolean;
@@ -9,6 +9,8 @@ export type Selection = {
   evidenceConsent: boolean;
 };
 type Preview = {
+  status?: string;
+  issueUrl?: string;
   pendingRemote?: boolean;
   consent?: Selection;
   description?: Description;
@@ -40,6 +42,7 @@ export function ReportIssue({
   activeTab?: "report" | "logs";
   onTabChange?(tab: "report" | "logs"): void;
 }) {
+  const reportStorageKey = hudPlatform().reportStorageKey ?? "d4planner.pendingReportId";
   const [localTab, setLocalTab] = useState<"report" | "logs">("report");
   const tab = activeTab ?? localTab;
   function setTab(next: "report" | "logs") { setLocalTab(next); onTabChange?.(next); }
@@ -65,30 +68,41 @@ export function ReportIssue({
   const [error, setError] = useState("");
   const [consent, setConsent] = useState(false);
   const [url, setUrl] = useState("");
-  useEffect(() => {
-    const id = localStorage.getItem("d4planner.pendingReportId");
-    if (id) {
-      setPendingRemote(true); // Until native recovery proves the draft is unsent.
-      void bridge<Preview>("resume_issue_report", { reportId: id })
-        .then((p) => {
-          setPreview(p);
-          setPendingRemote(p.pendingRemote === true);
-          if (p.description) setForm(p.description);
-          if (p.consent) setSelection(p.consent);
-          setState("review");
-        })
-        .catch(() => setError("Previous draft could not be restored; close and reopen to retry recovery"));
-    }
-  }, [bridge]);
+  const [recovering, setRecovering] = useState(false);
+  async function recover() {
+    const id = localStorage.getItem(reportStorageKey);
+    if (!id) return;
+    setRecovering(true);setPendingRemote(true);setError("");
+    try {
+      const p = await bridge<Preview>("resume_issue_report", {reportId:id});
+      if(p.reportId !== id) throw new Error("INVALID_REPORT_RESPONSE");
+      if(p.status === "DISCARDED" && p.pendingRemote === false) {
+        if(localStorage.getItem(reportStorageKey) === id) localStorage.removeItem(reportStorageKey);
+        setPreview(null);setPendingRemote(false);setConsent(false);setState("idle");return;
+      }
+      if ((p.status === "COMPLETE" || p.status === "EXPIRED") && /^https:\/\/github\.com\/Synclab-VN-dev\/StreamOps\/issues\/[1-9][0-9]*$/.test(p.issueUrl ?? "")) {
+        if(localStorage.getItem(reportStorageKey) === id) localStorage.removeItem(reportStorageKey);
+        setPendingRemote(false);setUrl(p.issueUrl!);setState(p.status === "COMPLETE" ? "success" : "expired");return;
+      }
+      if(!Array.isArray(p.files)) throw new Error("INVALID_REPORT_RESPONSE");
+      setPreview(p);setPendingRemote(p.pendingRemote === true);
+      if(p.description) setForm(p.description);
+      if(p.consent) setSelection(p.consent);
+      setState("review");
+    } catch {
+      setError("Previous draft could not be restored; retry recovery. Its submission outcome is not confirmed");
+    } finally {setRecovering(false);}
+  }
+  useEffect(() => { void recover(); }, [bridge, reportStorageKey]);
   const terminal = state === "success" || state === "expired";
-  const busy = state === "collecting" || state === "submitting";
+  const busy = recovering || state === "collecting" || state === "submitting";
   const valid =
     !!(form.title.trim() && form.actual.trim() && form.expected.trim()) &&
     [form.actual, form.expected, form.steps].every(
       (text) => new TextEncoder().encode(text).length <= 8000,
     );
   function select(key: keyof Selection, value: boolean) {
-    if (pendingRemote) return;
+    if (pendingRemote || preview) return;
     setSelection({
       ...selection,
       [key]: value,
@@ -106,7 +120,10 @@ export function ReportIssue({
     try {
       const p = await bridge<Preview>("collect_issue_report", { selection });
       setPreview(p);
-      localStorage.setItem("d4planner.pendingReportId", p.reportId);
+      setPendingRemote(p.pendingRemote === true);
+      if(p.consent) setSelection(p.consent);
+      if(p.description) setForm(p.description);
+      localStorage.setItem(reportStorageKey, p.reportId);
       setState("review");
     } catch (e) {
       setError(String(e));
@@ -130,7 +147,7 @@ export function ReportIssue({
         throw ["PENDING", "UPLOAD_PENDING", "LOG_UPLOAD_PENDING", "ERROR"].includes(r.status)
           ? "UPLOAD_PENDING" : "INVALID_GATEWAY_RESPONSE";
       }
-      localStorage.removeItem("d4planner.pendingReportId");
+      localStorage.removeItem(reportStorageKey);
       setPendingRemote(false);
       setUrl(r.issueUrl);
       setState(r.status === "COMPLETE" ? "success" : "expired");
@@ -150,7 +167,7 @@ export function ReportIssue({
     if (busy || pendingRemote) return;
     try {
       await bridge("cancel_issue_report");
-      localStorage.removeItem("d4planner.pendingReportId");
+      localStorage.removeItem(reportStorageKey);
       setPreview(null);
       setConsent(false);
       setState("idle");
@@ -181,7 +198,7 @@ export function ReportIssue({
         </button>
       </nav>
       {tab === "logs" ? (
-        <fieldset disabled={busy || terminal || pendingRemote}>
+        <fieldset disabled={busy || terminal || pendingRemote || preview !== null}>
           <legend>Sources for this run</legend>
           {(
             [
@@ -269,7 +286,7 @@ export function ReportIssue({
       )}
       {!terminal && (
         <button
-          disabled={busy || pendingRemote || (selection.evidence && !selection.evidenceConsent)}
+          disabled={busy || pendingRemote || preview !== null || (selection.evidence && !selection.evidenceConsent)}
           onClick={() => void collect()}
         >
           Preview collection
@@ -299,6 +316,7 @@ export function ReportIssue({
       )}
       {pendingRemote && <p role="note">Submission outcome is pending. Close keeps this report for retry; collecting or discarding is disabled until reconciliation.</p>}
       {preview && !terminal && <button disabled={busy || pendingRemote} onClick={() => void cancel()}>Discard unsent draft</button>}
+      {pendingRemote && !terminal && <button disabled={busy} onClick={() => void recover()}>Retry recovery</button>}
       {error && (
         <p role="alert">
           {error}. {({

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './platform';
 import './RuntimeManager.css';
 
 type Service = 'backend' | 'capture';

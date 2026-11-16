@@ -98,3 +98,7 @@ reported as proof of those behaviors.
 BE giữ Python logger be.log; Rule Kit giữ Node logger rulekit.log.
 Không đổi lifecycle, JSONL, quota, privacy hoặc UI.
 `vn.synclab.d4planner.overlaypoc` là persistent identity lịch sử, cố ý giữ nguyên.
+
+## Phone / LAN HUD and automation API
+
+HUD Web uses the same React build and runs inside the native HUD process. Backend/Capture controls, Targets, Report Issue and Rule Kit-owned Create Build are available after authentication; Windows window controls remain desktop-only. See [setup, permissions, API and local testing](docs/hud-web.md). LAN access is opt-in and requires TLS. No public firewall rule or separate server is installed.
