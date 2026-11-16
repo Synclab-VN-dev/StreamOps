@@ -62,6 +62,7 @@ export class MaxrollEntityCatalog {
   constructor(data: Readonly<Record<string, unknown>>, provenance?: Readonly<Record<string, unknown>>,
     runtimeDefinitions?: Readonly<Record<string, unknown>>);
   readonly counts: Readonly<Record<string, number>>;
+  exportDataFamilies(families: readonly string[]): Readonly<Record<string, unknown>>;
   readonly provenance: Readonly<Record<string, unknown>>;
   coverageInventory(): Readonly<Record<string, unknown>>;
   auditCoverage(): Readonly<Record<string, unknown>>;
@@ -389,3 +390,15 @@ export function createMaxroll32173552RealProfile(
 export function createMaxroll32173552D12aM6KTCandidateProfile(
   config: Maxroll32173552RealProfileConfig,
 ): MaxrollPatchProfile;
+
+export const CATALOG_EXPORT_SCHEMA: 'd4-game-catalog-export/v1';
+export const CATALOG_FAMILIES: readonly string[];
+export interface CatalogExportOptions {
+  readonly snapshotRoot: string;
+  readonly snapshotId: string;
+  readonly expectedManifestSha256: string;
+  readonly outputPath: string;
+  readonly families?: readonly string[];
+}
+export function listCatalogFamilies(options: Omit<CatalogExportOptions, 'outputPath' | 'families'>): Promise<Readonly<Record<string, unknown>>>;
+export function exportCatalogFromSnapshot(options: CatalogExportOptions): Promise<Readonly<Record<string, unknown>>>;
