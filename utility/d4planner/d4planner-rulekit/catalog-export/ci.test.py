@@ -2,13 +2,20 @@
 import json
 
 CI_SPEC = {'version': 1, 'id': 'd4planner-catalog-export', 'depends_on': [],
-           'jobs': [{'id': 'export', 'profile': 'linux', 'timeout': 900,
+           'jobs': [{'id': 'validation', 'profile': 'linux', 'timeout': 300, 'tools': {'node': '22'}},
+                    {'id': 'export', 'profile': 'linux', 'timeout': 900,
                      'manual': True, 'capability': 'fixture',
                      'secrets': {'AGE_IDENTITY_SECRET': 'MAXROLL_FIXTURE_AGE_IDENTITY'},
                      'tools': {'node': '22'}}]}
 
 
 def run(ctx):
+    if ctx.job['id'] == 'validation':
+        ctx.shell('npm ci', shell='bash', cwd='utility/d4planner/d4planner-rulekit/providers/maxroll')
+        ctx.run(['node', '--test',
+                 'utility/d4planner/d4planner-rulekit/providers/maxroll/tests/unit/catalog-ci.test.js',
+                 'utility/d4planner/d4planner-rulekit/providers/maxroll/tests/unit/catalog-export.test.js'])
+        return
     raw = ctx.variable('D4PLANNER_CATALOG_EXPORT_CONFIG')
     if not raw or len(raw) > 16384:
         raise ValueError('CATALOG_CONFIG_MISSING_OR_INVALID')
