@@ -65,7 +65,7 @@ class ArtifactPrivacy(unittest.TestCase):
                         raise RuntimeError('SYNTHETIC_JOB_FAILURE')
                     target = Path(args[3])
                     target.mkdir()
-                    (target / 'catalog.json.age').write_bytes(b'synthetic-ciphertext')
+                    (target / 'catalog.json').write_bytes(b'{"schemaVersion":"synthetic-catalog"}')
                     (target / 'report.json').write_text('{"status":"PASS"}')
 
             self_test = self
@@ -85,7 +85,7 @@ class ArtifactPrivacy(unittest.TestCase):
                     self.assertNotIn(SENTINEL.encode(), file.read_bytes())
                     self.assertNotIn(b'synthetic-identity', file.read_bytes())
             self.assertEqual(set(result['artifactManifest']),
-                             {'catalog.json.age', 'report.json'} if stage == 'success' else set())
+                             {'catalog.json', 'report.json'} if stage == 'success' else set())
             self.assertTrue(all(not p.exists() for p in observed))
 
     def test_invalid_config(self):
@@ -97,7 +97,7 @@ class ArtifactPrivacy(unittest.TestCase):
     def test_job_failure(self):
         self.exercise('job_failure')
 
-    def test_success_uploads_only_ciphertext_and_report(self):
+    def test_success_uploads_only_approved_catalog_and_report(self):
         self.exercise('success')
 
 

@@ -8,7 +8,7 @@ const RELEASE='https://github.com/Synclab-VN-dev/StreamOps/releases/tag/test-fix
 function validate(config) {
  if(!config || Object.keys(config).some(k=>!['snapshot','manifestSha256','families','ageRecipient'].includes(k)) ||
  ![FIXTURE.snapshotId,RELEASE].includes(config.snapshot) || config.manifestSha256!==FIXTURE.manifestSha256 ||
- config.ageRecipient!==FIXTURE.recipient || (config.families!==undefined && (!Array.isArray(config.families)||!config.families.length))) throw Error('CONFIG_INVALID');
+ (config.ageRecipient!==undefined && config.ageRecipient!==FIXTURE.recipient) || (config.families!==undefined && (!Array.isArray(config.families)||!config.families.length))) throw Error('CONFIG_INVALID');
  return config;
 }
 async function main(configFile,output) {
@@ -30,13 +30,9 @@ async function main(configFile,output) {
    const inventory=JSON.parse(run(process.execPath,[cli,...args,'--list-families']));
    if(digestFile(file)!==digestFile(second)||JSON.stringify(inventory.families)!==JSON.stringify(result.familyCounts))throw Error('EXPORT_VERIFICATION_FAILED');
    let refused=false;try{run(process.execPath,[cli,...args,'--output',file]);}catch{refused=true;}if(!refused)throw Error('OVERWRITE_ACCEPTED');
-   const encrypted=path.join(temp,'catalog.json.age');
-   run(age,['--encrypt','--recipient',config.ageRecipient,'--output',encrypted,file]);
-   const roundtrip=path.join(temp,'roundtrip.json');run(age,['--decrypt','--identity',identity,'--output',roundtrip,encrypted]);
-   if(digestFile(file)!==digestFile(roundtrip))throw Error('ROUNDTRIP_FAILED');
    fs.mkdirSync(output,{recursive:true,mode:0o700});
-   fs.copyFileSync(encrypted,path.join(output,'catalog.json.age'));
-   const report={schemaVersion:'rulekit-catalog-ci/v1',status:'PASS',sourceCommit:process.env.GITHUB_SHA??null,snapshotId:source.snapshotId,manifestSha256:config.manifestSha256,...result,encryptedSha256:digestFile(encrypted),checks:{deterministic:true,inventory:true,overwriteRefused:true,ageRoundtrip:true}};
+   fs.copyFileSync(file,path.join(output,'catalog.json'),fs.constants.COPYFILE_EXCL);
+   const report={schemaVersion:'rulekit-catalog-ci/v1',status:'PASS',sourceCommit:process.env.GITHUB_SHA??null,snapshotId:source.snapshotId,manifestSha256:config.manifestSha256,...result,outputEncoding:'plain-json',checks:{deterministic:true,inventory:true,overwriteRefused:true}};
    fs.writeFileSync(path.join(output,'report.json'),JSON.stringify(report,null,2)+'\n');
   });
  } finally {fs.rmSync(temp,{recursive:true,force:true});}

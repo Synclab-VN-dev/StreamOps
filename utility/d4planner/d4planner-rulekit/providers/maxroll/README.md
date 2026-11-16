@@ -320,8 +320,7 @@ Repo variable `D4PLANNER_CATALOG_EXPORT_CONFIG` is a JSON string:
 ```json
 {
   "snapshot": "maxroll-20261023T034150Z",
-  "manifestSha256": "638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54",
-  "ageRecipient": "age1q9x3chgd0ycxe6y692cme82906a7qvcm08a02mwp9scdrtyupgzqhhwfrj"
+  "manifestSha256": "638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54"
 }
 ```
 
@@ -329,18 +328,15 @@ Optional `families` is an array of exact family keys. The snapshot selector also
 accepts `https://github.com/Synclab-VN-dev/StreamOps/releases/tag/test-fixture/enc-e2e-20261023-r01`.
 Only this approved pinned fixture currently resolves to a supported codec. Other
 IDs/links fail closed; a release URL alone does not establish trust or compatibility.
-Uses existing `MAXROLL_FIXTURE_AGE_IDENTITY` secret; the output recipient must match
-its approved public recipient. `age` v1.3.2 is downloaded with SHA-256 verification.
+Input still uses `MAXROLL_FIXTURE_AGE_IDENTITY` and verified age v1.3.2 to decrypt
+the encrypted snapshot. The legacy `ageRecipient` field is optional and accepted
+only when it matches the approved fixture recipient; it no longer controls output.
 
-The job runs the CLI twice, checks deterministic bytes, list/count consistency,
-overwrite refusal and encrypt/decrypt roundtrip. It uploads only `catalog.json.age`
-and a sanitized `report.json` through the existing CI evidence artifact. Plaintext,
-snapshot and identity are temporary and removed. Download the ciphertext and decrypt
-locally with the corresponding age identity:
-
-```bash
-age --decrypt --identity /private/identity.agekey --output catalog.json catalog.json.age
-```
-
-This encrypted CI artifact is the Owner-approved exception to the local-only export
-policy in Issue #208; plaintext export uploads remain prohibited.
+The job runs the CLI twice, checks deterministic bytes, list/count consistency and
+overwrite refusal. Under the Owner-approved exception for public Actions artifacts,
+it uploads **plain `catalog.json`** and sanitized `report.json` through
+`ctx.artifact()`. The report includes SHA-256, actual family counts and source commit.
+No output decryption step is needed. Input snapshot, identity, raw config and other
+intermediate files remain temporary/private and are removed on success and failure.
+This exception applies only to the catalog output; other encryption remains intact.
+Artifacts follow the shared workflow retention (currently 30 days).

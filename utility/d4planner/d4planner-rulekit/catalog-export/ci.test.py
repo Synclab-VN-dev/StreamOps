@@ -1,4 +1,4 @@
-"""Manual private catalog export; wrapper transports credentials and ciphertext only."""
+"""Manual private catalog export; input stays encrypted; only approved catalog/report are uploaded."""
 import json
 from pathlib import Path
 import tempfile
@@ -40,8 +40,8 @@ echo 'cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10  '"$archi
 tar -xzf "$archive" -C "$RUNNER_TEMP"
 chmod 700 "$RUNNER_TEMP/age/age"
 ''', shell='bash', cwd='.')
-        output = private / 'catalog-ciphertext'
+        output = private / 'catalog-output'
         ctx.run(['node', 'utility/d4planner/d4planner-rulekit/catalog-export/run.js', str(filename), str(output)],
                 env={'AGE_BIN': ctx.env['RUNNER_TEMP'] + '/age/age'})
-        for name in ('catalog.json.age', 'report.json'):
+        for name in ('catalog.json', 'report.json'):
             ctx.artifact(output / name, name)
