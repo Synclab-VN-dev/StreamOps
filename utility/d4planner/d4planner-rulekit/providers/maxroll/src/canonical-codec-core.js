@@ -278,6 +278,23 @@ class MaxrollEntityCatalog {
     return this.requireClassCompatible('paragonGlyphs', glyphId, classId, path);
   }
 
+  exportFamilies(selection) {
+    assertCatalogCompatibility(this.provenance);
+    const inventory = this.coverageInventory();
+    const keys = Object.keys(inventory.families);
+    selection ??= keys;
+    if (!Array.isArray(selection) || !selection.length
+        || new Set(selection).size !== selection.length
+        || selection.some(key => !keys.includes(key))) {
+      fail(ERROR_CODES.INVALID_INPUT, 'families must be unique supported catalog keys');
+    }
+    if (inventory.present !== keys.length) {
+      fail(ERROR_CODES.CANONICAL_MAPPING_INCOMPLETE, 'catalog must contain all 16 families');
+    }
+    return immutable(Object.fromEntries(keys.filter(key => selection.includes(key))
+      .map(key => [key, this.#data[key]])));
+  }
+
   coverageInventory() {
     const families = [
       'classes', 'items', 'itemTypes', 'affixes', 'oldAffixes', 'skills', 'skillTrees',

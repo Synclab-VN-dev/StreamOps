@@ -64,6 +64,7 @@ export class MaxrollEntityCatalog {
     runtimeDefinitions?: Readonly<Record<string, unknown>>);
   readonly counts: Readonly<Record<string, number>>;
   readonly provenance: Readonly<Record<string, unknown>>;
+  exportFamilies(selection?: readonly string[]): Readonly<Record<string, Readonly<Record<string, unknown>>>>;
   coverageInventory(): Readonly<Record<string, unknown>>;
   auditCoverage(): Readonly<Record<string, unknown>>;
   metricCatalog(classId?: string | number | null): readonly MetricDefinition[];
@@ -399,3 +400,17 @@ export function createMaxroll32173552RealProfile(
 export function createMaxroll32173552D12aM6KTCandidateProfile(
   config: Maxroll32173552RealProfileConfig,
 ): MaxrollPatchProfile;
+
+export interface MaxrollCatalogExportOptions {
+ readonly snapshotRoot: string;
+ readonly snapshotId: string;
+ readonly expectedManifestSha256: string;
+ readonly families?: readonly string[];
+}
+export const CATALOG_EXPORT_SCHEMA_VERSION: 'maxroll-game-data-catalog/v1';
+export function listMaxrollCatalogFamilies(options: MaxrollCatalogExportOptions): Promise<Readonly<{
+ schemaVersion: string; families: Readonly<Record<string, number>>; familyCount: number;
+}>>;
+export function exportMaxrollGameDataCatalog(options: MaxrollCatalogExportOptions & {readonly outputPath: string}): Promise<Readonly<{
+ schemaVersion: string; outputSha256: string; bytes: number; familyCounts: Readonly<Record<string, number>>;
+}>>;

@@ -50,6 +50,7 @@ const {
 } = require('./real-profile');
 
 module.exports = {
+  ...require('./catalog-export'),
   ATTESTATION_SCHEMA_VERSION,
   CANONICAL_SCHEMA_VERSION,
   CLASS_FIXTURE_SCHEMA_VERSION,

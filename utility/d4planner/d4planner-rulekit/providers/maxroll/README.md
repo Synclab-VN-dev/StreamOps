@@ -255,3 +255,88 @@ pending/failure counts and a manifest-bound coverage proof validated by Rule Kit
 This proves the bounded navigation/interaction profile, not every possible future website interaction.
 A legacy capture without that proof stays UNVERIFIED; do not retrofit a claim of complete coverage.
 Completeness and content version remain independent from compatibility, trust and distribution.
+
+### Private game data catalog export (Issue #208)
+
+Run from this provider directory using an existing snapshot and its independently
+pinned manifest SHA-256. This CLI is offline and has no network fallback:
+
+```bash
+npm run catalog:export -- --snapshot-root /private/snapshots \
+  --snapshot-id maxroll-20261023T034150Z --manifest-sha256 "$MANIFEST_SHA256" \
+  --list-families
+npm run catalog:export -- --snapshot-root /private/snapshots \
+  --snapshot-id maxroll-20261023T034150Z --manifest-sha256 "$MANIFEST_SHA256" \
+  --output /private/catalog.json
+```
+
+Add `--families items,skills,paragonBoards` for a subset. The only supported keys
+are `classes`, `items`, `itemTypes`, `affixes`, `oldAffixes`, `skills`, `skillTrees`,
+`paragonBoards`, `paragonGlyphs`, `paragonNodes`, `stones`, `mercenaries`, `warPlans`,
+`temperingRecipes`, `itemSets`, `attributes`. Counts come from the selected verified
+catalog; they are not fixed baseline requirements. List mode writes inventory
+counts only and accepts no output path.
+
+Programmatic provider APIs: `listMaxrollCatalogFamilies(options)` and
+`exportMaxrollGameDataCatalog({...options, outputPath})`, where options contain
+`snapshotRoot`, `snapshotId`, `expectedManifestSha256` and optional `families`.
+The approved codec contract is checked in addition to snapshot integrity. Export
+v1 currently uses the approved D12 codec/patch/season contract; unsupported snapshots
+fail rather than being labelled compatible.
+
+JSON `maxroll-game-data-catalog/v1` preserves catalog keys, stable IDs and complete
+selected family data, with provenance hashes, patch, canonical schema/codec/season
+contract and actual counts. It excludes loader/profile data, snapshot assets and
+engine bytes. Presence of 16 families does not prove valid combinations, class
+eligibility or optimal builds. No extra relationships are inferred.
+
+Output is canonical deterministic JSON with no timestamp, created atomically with
+mode 0600 (subject to host filesystem support), never overwritten. Keep output in
+a private directory. Console reports counts/hash/size only; errors report a code.
+Never commit/upload exports or snapshot contents to GitHub, releases or CI artifacts.
+
+Private offline evidence can be repeated with:
+
+```bash
+MAXROLL_AUTHORIZED_SNAPSHOT_ROOT=/private/snapshots \
+  node --test tests/adapter-real/catalog-export.test.js
+```
+
+This test requires the approved pinned snapshot, uses temporary private output and
+removes it afterwards. Synthetic unit/contract tests do not establish real snapshot
+success; report the real offline result separately.
+
+### Manual CI export
+
+Actions → **CI** → **Run workflow** on master:
+`operation=test`, `component=d4planner-catalog-export`.
+This separate manual component uses the existing fixture capability/secret binding;
+regular PR CI does not download private snapshots. No workflow wrapper modification
+is required. The fixture capability requires trusted master, so a PR branch cannot
+run the hosted secret-bearing job before merge.
+
+Repo variable `D4PLANNER_CATALOG_EXPORT_CONFIG` is a JSON string:
+
+```json
+{
+  "snapshot": "maxroll-20261023T034150Z",
+  "manifestSha256": "638a283b8aa0cb822a35176d9d41c8d1751fb6f962ca0a2f7feaa20f1ef39e54"
+}
+```
+
+Optional `families` is an array of exact family keys. The snapshot selector also
+accepts `https://github.com/Synclab-VN-dev/StreamOps/releases/tag/test-fixture/enc-e2e-20261023-r01`.
+Only this approved pinned fixture currently resolves to a supported codec. Other
+IDs/links fail closed; a release URL alone does not establish trust or compatibility.
+Input still uses `MAXROLL_FIXTURE_AGE_IDENTITY` and verified age v1.3.2 to decrypt
+the encrypted snapshot. The legacy `ageRecipient` field is optional and accepted
+only when it matches the approved fixture recipient; it no longer controls output.
+
+The job runs the CLI twice, checks deterministic bytes, list/count consistency and
+overwrite refusal. Under the Owner-approved exception for public Actions artifacts,
+it uploads **plain `catalog.json`** and sanitized `report.json` through
+`ctx.artifact()`. The report includes SHA-256, actual family counts and source commit.
+No output decryption step is needed. Input snapshot, identity, raw config and other
+intermediate files remain temporary/private and are removed on success and failure.
+This exception applies only to the catalog output; other encryption remains intact.
+Artifacts follow the shared workflow retention (currently 30 days).
