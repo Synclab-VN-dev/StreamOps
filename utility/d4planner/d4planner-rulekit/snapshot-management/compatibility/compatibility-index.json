@@ -127,7 +127,7 @@
     },
     {
       "path": "providers/maxroll/src/build-export.js",
-      "sha256": "ab027127b0f16cd3515e8dc86abac6a209579817c9f4d3903f89ddd96baffba5"
+      "sha256": "da2cc83643eefffdcfa91ce0526784df8dbab1f7929de35b297ff4052b469f20"
     },
     {
       "path": "providers/maxroll/src/build-mapper.js",
@@ -187,15 +187,19 @@
     },
     {
       "path": "providers/maxroll/src/errors.js",
-      "sha256": "2c85d993e12494b817d60b5fb8f09def3060519a00353e637393fc5f435d3b0e"
+      "sha256": "6bd4081eee7e7d2319d33c8dddc57ab05efb2fcfc1f69515143aa818c643ca85"
     },
     {
       "path": "providers/maxroll/src/fixture-attestation.js",
       "sha256": "1805b6db9055ca52199e82c6006ff3c950be816f61a968987ec9425eecaa1928"
     },
     {
+      "path": "providers/maxroll/src/guide-build-export.js",
+      "sha256": "50e3708f669929ff04ab7216f5fca485e1ac1487eceb64078fabdd25d9cd2590"
+    },
+    {
       "path": "providers/maxroll/src/index.js",
-      "sha256": "d004ddc2fe0e364e4ae4ffba55d048fda4adeaeaaf846643ebd6e4733d6c437d"
+      "sha256": "8da28f6d5ab6d43fd2edb39f74ff9c317d4aa15166e949839c8233bdf344a8c1"
     },
     {
       "path": "providers/maxroll/src/live-capture-orchestrator.js",
@@ -358,6 +362,6 @@
     "snapshot-management/compatibility/versions/maxroll-20261023.js",
     "snapshot-management/compatibility/versions/maxroll-20261027.js"
   ],
-  "executionSha256": "030efe59f6def653d0fd4353d9c52c0bf892ff1d7880c478c46de36cb2095290",
-  "ruleKitVersion": "rulekit-execution/sha256:030efe59f6def653d0fd4353d9c52c0bf892ff1d7880c478c46de36cb2095290"
+  "executionSha256": "8ac31e629a94531f493cff4ff82b5841bd2848e15b68c9e8ee828d4c7cea0ae3",
+  "ruleKitVersion": "rulekit-execution/sha256:8ac31e629a94531f493cff4ff82b5841bd2848e15b68c9e8ee828d4c7cea0ae3"
 }

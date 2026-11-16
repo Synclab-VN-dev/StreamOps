@@ -1,4 +1,5 @@
 export type MaxrollProviderErrorCode =
+  | 'GUIDE_FETCH_FAILED' | 'GUIDE_DATA_INVALID'
   | 'INVALID_CONFIG' | 'INVALID_INPUT' | 'UNSUPPORTED_INPUT' | 'SNAPSHOT_MISMATCH'
   | 'RUNTIME_MISMATCH' | 'RUNTIME_NOT_READY' | 'APPLY_FAILED' | 'READBACK_MISMATCH'
   | 'METRICS_INCOMPLETE' | 'STALE_METRICS' | 'SESSION_INVALIDATED'
@@ -175,6 +176,15 @@ export function exportMaxrollBuildFromSnapshot(
 export function listMaxrollBuildProfilesFromSnapshot(
   options: MaxrollBuildProfileInventoryOptions,
 ): Promise<Readonly<Record<string, unknown>>>;
+
+/** Live public guide export; no snapshot verification or calculation attestation. */
+export interface MaxrollGuideExportOptions {
+  readonly url: string;
+  readonly profile?: number;
+  readonly outputPath: string;
+}
+export function exportMaxrollBuildFromGuide(options: MaxrollGuideExportOptions): Promise<MaxrollBuildExportResult>;
+export function listMaxrollBuildProfilesFromGuide(options: Readonly<{ url: string }>): Promise<Readonly<Record<string, unknown>>>;
 
 export const CLASS_FIXTURE_SCHEMA_VERSION: 'maxroll-class-fixture-capture/v1';
 export const MATRIX_SCHEMA_VERSION: 'maxroll-class-fixture-matrix/v1';

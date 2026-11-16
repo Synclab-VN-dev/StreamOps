@@ -1,5 +1,6 @@
 'use strict';
 
+const { exportMaxrollBuildFromGuide, listMaxrollBuildProfilesFromGuide } = require('./guide-build-export');
 const { MaxrollBuildMapper } = require('./build-mapper');
 const {
   CLASS_FIXTURE_SCHEMA_VERSION,
@@ -85,6 +86,8 @@ module.exports = {
   createMaxroll32173552RealProfile,
   attestMaxrollBuildFixture,
   exportMaxrollBuildFromSnapshot,
+  exportMaxrollBuildFromGuide,
+  listMaxrollBuildProfilesFromGuide,
   listMaxrollBuildProfilesFromSnapshot,
   loadMaxrollEntityCatalog,
 };

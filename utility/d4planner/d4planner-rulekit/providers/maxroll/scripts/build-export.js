@@ -6,6 +6,8 @@ const {
   listMaxrollBuildProfilesFromSnapshot,
 } = require('../src/build-export');
 
+const { exportMaxrollBuildFromGuide, listMaxrollBuildProfilesFromGuide } = require('../src/guide-build-export');
+
 function parseArguments(argv) {
   const options = {};
   const valued = new Map([
@@ -34,12 +36,15 @@ function parseArguments(argv) {
 
 async function main() {
   const options = parseArguments(process.argv.slice(2));
+  let guide = false;
+  try { guide = new URL(options.url).pathname.startsWith('/d4/build-guides/'); }
+  catch { /* Existing exporter validation provides the typed input error. */ }
   if (options.listProfiles) {
-    const result = await listMaxrollBuildProfilesFromSnapshot(options);
+    const result = await (guide ? listMaxrollBuildProfilesFromGuide : listMaxrollBuildProfilesFromSnapshot)(options);
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return;
   }
-  const result = await exportMaxrollBuildFromSnapshot(options);
+  const result = await (guide ? exportMaxrollBuildFromGuide : exportMaxrollBuildFromSnapshot)(options);
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }
 

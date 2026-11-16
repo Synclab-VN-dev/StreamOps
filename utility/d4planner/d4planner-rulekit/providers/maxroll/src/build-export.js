@@ -338,6 +338,7 @@ module.exports = {
   listMaxrollBuildProfilesFromSnapshot,
   parseNativeResponse,
   parsePlannerUrl,
+  profileInventory,
   selectProfile,
   serialize,
   validateNativeState,

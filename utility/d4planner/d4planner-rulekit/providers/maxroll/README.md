@@ -75,6 +75,43 @@ not a Real E2E PASS. Snapshot assets stay outside Git and must not be uploaded a
 Automatic sync, fetch and runtime upgrade are disabled. The live workflow is manual-only; PRs do
 not contact Maxroll. See `RUNTIME-COMPATIBILITY.md` and `REAL-REPRODUCE.md`.
 
+## Export a build embedded in a live guide
+
+The same CLI accepts public `https://maxroll.gg/d4/build-guides/<slug>` URLs:
+
+```bash
+npm run build:export -- \
+  --url https://maxroll.gg/d4/build-guides/dance-of-knives-rogue-guide \
+  --list-profiles
+
+npm run build:export -- \
+  --url https://maxroll.gg/d4/build-guides/dance-of-knives-rogue-guide \
+  --output /private/builds/dance-of-knives-endgame.native.json
+```
+
+This mode fetches the guide HTML and parses the literal Remix loader data without
+executing page scripts. It requires exactly one planner-page block with matching
+D4 planner identity and valid native item references. Redirects stay on Maxroll
+guide URLs; requests have a 30-second deadline and an 8 MiB response limit.
+Unsupported guide formats, multiple/missing planners and invalid data fail explicitly.
+
+The default variant is the embedded `data.activeProfile`, matching a fresh guide
+view. A browser's locally saved variant is not available to the CLI. The embedded
+planner link's fragment is preserved as provenance, **not** reinterpreted using
+the offline planner export's visible-variant numbering. Use `--profile <native-index>`
+from `--list-profiles` to override. Guide section anchors do not select variants.
+
+The native export retains every profile, item, and native field, with the selected
+profile active. It includes the guide URL, original planner URL, retrieval time,
+response hash and native-state integrity hash. Account/author metadata is omitted.
+It is labelled `LIVE_GUIDE_EMBED`, `snapshotVerification: NOT_PERFORMED` and
+`calculationStatus: NOT_ASSESSED`: it does not assert compatibility with an installed
+snapshot, canonical conversion or calculation attestation. Snapshot flags cannot
+be combined with guide mode. Existing offline planner URL export remains unchanged.
+
+Outputs are private (0600), created atomically without overwrite, and must stay
+outside Git. No snapshot is installed, activated, or changed by this command.
+
 ## Offline native build export
 
 Issue #134 adds provider tooling—not an Application API—to inventory and export native build state
