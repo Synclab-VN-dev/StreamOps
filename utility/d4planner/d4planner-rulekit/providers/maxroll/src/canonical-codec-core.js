@@ -278,6 +278,28 @@ class MaxrollEntityCatalog {
     return this.requireClassCompatible('paragonGlyphs', glyphId, classId, path);
   }
 
+  /** Private local catalog export; return only explicitly approved game-data families. */
+  exportDataFamilies(families) {
+    const allowed = new Set([
+      'classes', 'items', 'itemTypes', 'affixes', 'oldAffixes', 'skills', 'skillTrees',
+      'paragonBoards', 'paragonGlyphs', 'paragonNodes', 'stones', 'mercenaries',
+      'warPlans', 'temperingRecipes', 'itemSets', 'attributes',
+    ]);
+    if (!Array.isArray(families) || !families.length || new Set(families).size !== families.length) {
+      fail(ERROR_CODES.INVALID_INPUT, 'families must be a unique non-empty array');
+    }
+    const output = {};
+    for (const family of families) {
+      if (!allowed.has(family)) fail(ERROR_CODES.INVALID_INPUT,
+        `unsupported catalog family: ${String(family)}`);
+      if (this.#data[family] == null || typeof this.#data[family] !== 'object') {
+        fail(ERROR_CODES.CANONICAL_MAPPING_INCOMPLETE, `missing catalog family: ${family}`);
+      }
+      output[family] = clone(this.#data[family]);
+    }
+    return immutable(output);
+  }
+
   coverageInventory() {
     const families = [
       'classes', 'items', 'itemTypes', 'affixes', 'oldAffixes', 'skills', 'skillTrees',
