@@ -218,3 +218,53 @@ pending/failure counts and a manifest-bound coverage proof validated by Rule Kit
 This proves the bounded navigation/interaction profile, not every possible future website interaction.
 A legacy capture without that proof stays UNVERIFIED; do not retrofit a claim of complete coverage.
 Completeness and content version remain independent from compatibility, trust and distribution.
+
+### Private game data catalog export (Issue #208)
+
+Run from this provider directory using an existing snapshot and its independently
+pinned manifest SHA-256. This CLI is offline and has no network fallback:
+
+```bash
+npm run catalog:export -- --snapshot-root /private/snapshots \
+  --snapshot-id maxroll-20261023T034150Z --manifest-sha256 "$MANIFEST_SHA256" \
+  --list-families
+npm run catalog:export -- --snapshot-root /private/snapshots \
+  --snapshot-id maxroll-20261023T034150Z --manifest-sha256 "$MANIFEST_SHA256" \
+  --output /private/catalog.json
+```
+
+Add `--families items,skills,paragonBoards` for a subset. The only supported keys
+are `classes`, `items`, `itemTypes`, `affixes`, `oldAffixes`, `skills`, `skillTrees`,
+`paragonBoards`, `paragonGlyphs`, `paragonNodes`, `stones`, `mercenaries`, `warPlans`,
+`temperingRecipes`, `itemSets`, `attributes`. Counts come from the selected verified
+catalog; they are not fixed baseline requirements. List mode writes inventory
+counts only and accepts no output path.
+
+Programmatic provider APIs: `listMaxrollCatalogFamilies(options)` and
+`exportMaxrollGameDataCatalog({...options, outputPath})`, where options contain
+`snapshotRoot`, `snapshotId`, `expectedManifestSha256` and optional `families`.
+The approved codec contract is checked in addition to snapshot integrity. Export
+v1 currently uses the approved D12 codec/patch/season contract; unsupported snapshots
+fail rather than being labelled compatible.
+
+JSON `maxroll-game-data-catalog/v1` preserves catalog keys, stable IDs and complete
+selected family data, with provenance hashes, patch, canonical schema/codec/season
+contract and actual counts. It excludes loader/profile data, snapshot assets and
+engine bytes. Presence of 16 families does not prove valid combinations, class
+eligibility or optimal builds. No extra relationships are inferred.
+
+Output is canonical deterministic JSON with no timestamp, created atomically with
+mode 0600 (subject to host filesystem support), never overwritten. Keep output in
+a private directory. Console reports counts/hash/size only; errors report a code.
+Never commit/upload exports or snapshot contents to GitHub, releases or CI artifacts.
+
+Private offline evidence can be repeated with:
+
+```bash
+MAXROLL_AUTHORIZED_SNAPSHOT_ROOT=/private/snapshots \
+  node --test tests/adapter-real/catalog-export.test.js
+```
+
+This test requires the approved pinned snapshot, uses temporary private output and
+removes it afterwards. Synthetic unit/contract tests do not establish real snapshot
+success; report the real offline result separately.

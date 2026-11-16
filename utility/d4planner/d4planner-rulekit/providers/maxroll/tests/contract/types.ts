@@ -18,3 +18,7 @@ void result;
 
 // @ts-expect-error Provider does not duplicate Application APIs.
 provider.listProviders();
+
+import { listMaxrollCatalogFamilies, exportMaxrollGameDataCatalog } from '../../src';
+void listMaxrollCatalogFamilies({snapshotRoot:'private',snapshotId:'pinned',expectedManifestSha256:'hash'});
+void exportMaxrollGameDataCatalog({snapshotRoot:'private',snapshotId:'pinned',expectedManifestSha256:'hash',families:['items'],outputPath:'private.json'});

@@ -119,7 +119,7 @@
     },
     {
       "path": "providers/maxroll/package.json",
-      "sha256": "2b3061f166d7327ce3889ce039eacf0add3356bad7ff3c92c484851242951f48"
+      "sha256": "113bc9c90700fcc29ee5824451921b1356c1cd80e2393e9951219c1b09e9d048"
     },
     {
       "path": "providers/maxroll/src/async.js",
@@ -135,7 +135,7 @@
     },
     {
       "path": "providers/maxroll/src/canonical-codec-core.js",
-      "sha256": "77de6a428a51ad728348ad155b924304cf0aa5ba6e4061ae87031fb11c1420ba"
+      "sha256": "3eb8c9e1544a0364abbcf29e4bd8c34abdc5556d1db5a21835adcc17832333a2"
     },
     {
       "path": "providers/maxroll/src/canonical-codec.js",
@@ -144,6 +144,10 @@
     {
       "path": "providers/maxroll/src/canonical-schema-validator.js",
       "sha256": "eb23f807b06a3d192c9dfb211c5d3d94476602232155be319b8b17ddad94a058"
+    },
+    {
+      "path": "providers/maxroll/src/catalog-export.js",
+      "sha256": "301f609b17ade8144ed1363ef4c9b359194a7c792ae4693ef619496cbbeb0a59"
     },
     {
       "path": "providers/maxroll/src/class-fixture-capture.js",
@@ -160,6 +164,18 @@
     {
       "path": "providers/maxroll/src/d12-shared-options.js",
       "sha256": "0353ac4a4be4015582347ba3fa90a4179530689c74392ba2a7e8709e00702330"
+    },
+    {
+      "path": "providers/maxroll/src/dom-calculation/index.js",
+      "sha256": "7907ae8e6bb0c4dce8785b305ae6a0f3cc26459f9f4944bed603cf8fdc59aabf"
+    },
+    {
+      "path": "providers/maxroll/src/dom-calculation/input.js",
+      "sha256": "2f53520f8d0f1e4e4058cf88eaf1e6a20e50bd92dadd369989f265ee5d619a48"
+    },
+    {
+      "path": "providers/maxroll/src/dom-calculation/stats.js",
+      "sha256": "2e58db7dcf28625f79924ae9a9994fb8dee18a278ab0f55c813e7bc8b8272e64"
     },
     {
       "path": "providers/maxroll/src/encrypted-build-fixture.js",
@@ -179,7 +195,7 @@
     },
     {
       "path": "providers/maxroll/src/index.js",
-      "sha256": "4ae3511fd508aa7f438c824ffd6d5b8590dec1830aa9d26f166cef7212b7b69a"
+      "sha256": "d004ddc2fe0e364e4ae4ffba55d048fda4adeaeaaf846643ebd6e4733d6c437d"
     },
     {
       "path": "providers/maxroll/src/live-capture-orchestrator.js",
@@ -342,6 +358,6 @@
     "snapshot-management/compatibility/versions/maxroll-20261023.js",
     "snapshot-management/compatibility/versions/maxroll-20261027.js"
   ],
-  "executionSha256": "81d6c9d0602611f3dc4081d218d4eeb286d280238dddb9f64ce746204e3e50ff",
-  "ruleKitVersion": "rulekit-execution/sha256:81d6c9d0602611f3dc4081d218d4eeb286d280238dddb9f64ce746204e3e50ff"
+  "executionSha256": "030efe59f6def653d0fd4353d9c52c0bf892ff1d7880c478c46de36cb2095290",
+  "ruleKitVersion": "rulekit-execution/sha256:030efe59f6def653d0fd4353d9c52c0bf892ff1d7880c478c46de36cb2095290"
 }
