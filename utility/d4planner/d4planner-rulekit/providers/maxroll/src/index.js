@@ -48,7 +48,13 @@ const {
   createMaxroll32173552RealProfile,
 } = require('./real-profile');
 
+const { CATALOG_EXPORT_SCHEMA, CATALOG_FAMILIES, listCatalogFamilies, exportCatalogFromSnapshot } = require('./catalog-export');
+
 module.exports = {
+  CATALOG_EXPORT_SCHEMA,
+  CATALOG_FAMILIES,
+  listCatalogFamilies,
+  exportCatalogFromSnapshot,
   ATTESTATION_SCHEMA_VERSION,
   CANONICAL_SCHEMA_VERSION,
   CLASS_FIXTURE_SCHEMA_VERSION,
