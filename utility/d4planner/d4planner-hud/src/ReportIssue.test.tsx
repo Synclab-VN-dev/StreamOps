@@ -282,3 +282,22 @@ it("retries unknown recovery without discarding, then unlocks only on confirmed 
  expect(localStorage.getItem('d4planner.pendingReportId')).toBeNull();
  expect(bridge).toHaveBeenCalledTimes(2);
 });
+
+it('requires image consent and sends selected bytes only in preview, then freezes the draft', async()=>{
+ const bridge=vi.fn().mockResolvedValue({...preview,imagePreviews:[{name:'screenshot-1.png',dataUrl:'data:image/png;base64,YQ=='}]});
+ render(<ReportIssue bridge={bridge} onClose={()=>{}}/>);
+ const file=new File([new Uint8Array([1,2,3])],'screen.png',{type:'image/png'});
+ fireEvent.change(screen.getByLabelText('Attach screenshots'),{target:{files:[file]}});
+ await screen.findByAltText('Selected screenshot 1');
+ expect((screen.getByText('Preview collection') as HTMLButtonElement).disabled).toBe(true);
+ fireEvent.click(screen.getByLabelText('I consent to upload these images as visible Release assets'));
+ fireEvent.click(screen.getByText('Preview collection'));
+ await screen.findByAltText('Prepared screenshot-1.png');
+ expect(bridge).toHaveBeenCalledWith('collect_issue_report',expect.objectContaining({images:[{mediaType:'image/png',base64:'AQID'}],imageConsent:true}));
+ expect(screen.getByLabelText('Attach screenshots').closest('fieldset')?.disabled).toBe(true);
+});
+it('rejects unsupported images without calling the API',async()=>{
+ const bridge=vi.fn();render(<ReportIssue bridge={bridge} onClose={()=>{}}/>);
+ fireEvent.change(screen.getByLabelText('Attach screenshots'),{target:{files:[new File(['<svg/>'],'x.svg',{type:'image/svg+xml'})]}});
+ expect(await screen.findByRole('alert')).toBeTruthy();expect(bridge).not.toHaveBeenCalled();
+});

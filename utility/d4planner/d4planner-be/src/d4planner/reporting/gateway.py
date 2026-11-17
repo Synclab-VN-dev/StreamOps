@@ -23,6 +23,8 @@ TAG = "d4planner-bug-report-logs"
 NAME = "D4Planner Bug Report Logs"
 PREFIX = "<!-- d4planner-diagnostic/v1 "
 MAX_BYTES = 64_000_000
+MAX_IMAGE_BYTES = 2 * 1024 * 1024
+MAX_IMAGES = 3
 
 
 class Rejected(Exception):
@@ -50,6 +52,56 @@ def validate_release(release, release_id):
         or release.get("immutable") is not False
     ):
         raise Rejected("RELEASE_IDENTITY_OR_IMMUTABILITY_BLOCKED")
+
+
+def validate_images(images):
+    if not isinstance(images, list) or len(images) > MAX_IMAGES:
+        raise Rejected("INVALID_IMAGE_MANIFEST", 400)
+    for index, image in enumerate(images, 1):
+        name = f"screenshot-{index}.png"
+        if (
+            not isinstance(image, dict)
+            or set(image)
+            != {
+                "name",
+                "path",
+                "mediaType",
+                "width",
+                "height",
+                "bytes",
+                "sha256",
+                "status",
+            }
+            or image["name"] != name
+            or image["path"] != "images/" + name
+            or image["mediaType"] != "image/png"
+            or image["status"] != "READY"
+            or type(image["bytes"]) is not int
+            or not 0 < image["bytes"] <= MAX_IMAGE_BYTES
+            or any(
+                type(image[k]) is not int or not 0 < image[k] <= 4096
+                for k in ("width", "height")
+            )
+            or not isinstance(image["sha256"], str)
+            or not re.fullmatch("[0-9a-f]{64}", image["sha256"])
+        ):
+            raise Rejected("INVALID_IMAGE_MANIFEST", 400)
+    return images
+
+
+def image_asset_name(number, rid, index, sha):
+    return f"issue-{number}-{rid}-screenshot-{index}-{sha}.png"
+
+
+def verify_image_asset(asset, name, meta, bot_id):
+    return (
+        asset.get("name") == name
+        and asset.get("size") == meta["bytes"]
+        and asset.get("digest") == "sha256:" + meta["sha256"]
+        and asset.get("state") == "uploaded"
+        and asset.get("uploader", {}).get("id") == bot_id
+        and asset.get("content_type") == "image/png"
+    )
 
 
 def mapping_text(mapping):
@@ -114,7 +166,9 @@ def age_envelope(data):
             return False
         args = line[3:].split(b" ")
         is_x25519 = args[0] == b"X25519"
-        if is_x25519 and (len(args) != 2 or not re.fullmatch(rb"[A-Za-z0-9+/]{43}", args[1])):
+        if is_x25519 and (
+            len(args) != 2 or not re.fullmatch(rb"[A-Za-z0-9+/]{43}", args[1])
+        ):
             return False
         body = b""
         while True:
@@ -146,8 +200,17 @@ class GitHub:
     def __init__(self, token):
         self.token = token
 
-    def request(self, method, path, body=None, upload=False):
-        if not path.startswith(f"/repos/{REPO}/") and not (method == "GET" and path == "/user" and not upload):
+    def request(
+        self,
+        method,
+        path,
+        body=None,
+        upload=False,
+        media_type="application/octet-stream",
+    ):
+        if not path.startswith(f"/repos/{REPO}/") and not (
+            method == "GET" and path == "/user" and not upload
+        ):
             raise Rejected("INVALID_GITHUB_PATH")
         raw = (
             body
@@ -163,9 +226,7 @@ class GitHub:
                 "Authorization": "Bearer " + self.token(),
                 "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": "2022-11-28",
-                "Content-Type": (
-                    "application/octet-stream" if upload else "application/json"
-                ),
+                "Content-Type": (media_type if upload else "application/json"),
                 "User-Agent": "D4Planner-Report-Gateway",
             },
         )
@@ -230,6 +291,18 @@ class GitHub:
             "POST", f"/repos/{REPO}/issues/{n}/comments", {"body": body}
         )
 
+    def upload_image(self, rid, name, data):
+        return self.request(
+            "POST",
+            f"/repos/{REPO}/releases/{rid}/assets?name={name}",
+            data,
+            True,
+            "image/png",
+        )
+
+    def update_issue(self, number, body):
+        return self.request("PATCH", f"/repos/{REPO}/issues/{number}", {"body": body})
+
     def delete(self, aid):
         return self.request("DELETE", f"/repos/{REPO}/releases/assets/{aid}")
 
@@ -252,6 +325,9 @@ class Service:
             )
             c.execute(
                 "CREATE TABLE IF NOT EXISTS reports(id TEXT PRIMARY KEY, subject TEXT NOT NULL, request TEXT NOT NULL, state TEXT NOT NULL, issue INTEGER, created REAL NOT NULL)"
+            )
+            c.execute(
+                "CREATE TABLE IF NOT EXISTS report_images(report TEXT NOT NULL, position INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY(report,position))"
             )
         self.db.chmod(0o600)
 
@@ -289,8 +365,12 @@ class Service:
         report_id(rid)
         if not subject or len(subject) > 256:
             raise Rejected("UNAUTHENTICATED", 401)
-        if set(request) != {"description", "artifact"}:
+        if set(request) not in (
+            {"description", "artifact"},
+            {"description", "artifact", "images"},
+        ):
             raise Rejected("INVALID_REQUEST", 400)
+        validate_images(request.get("images", []))
         d, a = request["description"], request["artifact"]
         if set(d) != {"issueType", "title", "actual", "expected", "steps"} or any(
             not isinstance(v, str) or len(v.encode("utf-8")) > 8000 or "\x00" in v
@@ -343,6 +423,41 @@ class Service:
                 )
         return {"reportId": rid, "status": "PREPARED"}
 
+    def upload_image(self, subject, rid, position, data):
+        report_id(rid)
+        with self.connect() as c:
+            c.execute("BEGIN IMMEDIATE")
+            row = c.execute(
+                "SELECT subject,request,state FROM reports WHERE id=?", (rid,)
+            ).fetchone()
+            if not row or row[0] != subject:
+                raise Rejected("REPORT_NOT_FOUND", 404)
+            images = validate_images(json.loads(row[1]).get("images", []))
+            if not 1 <= position <= len(images):
+                raise Rejected("INVALID_IMAGE", 400)
+            meta = images[position - 1]
+            if (
+                len(data) != meta["bytes"]
+                or hashlib.sha256(data).hexdigest() != meta["sha256"]
+                or not data.startswith(b"\x89PNG\r\n\x1a\n")
+                or len(data) < 33
+                or data[12:16] != b"IHDR"
+                or int.from_bytes(data[16:20], "big") != meta["width"]
+                or int.from_bytes(data[20:24], "big") != meta["height"]
+            ):
+                raise Rejected("INVALID_IMAGE", 400)
+            old = c.execute(
+                "SELECT data FROM report_images WHERE report=? AND position=?",
+                (rid, position),
+            ).fetchone()
+            if old and old[0] != data:
+                raise Rejected("IDEMPOTENCY_CONFLICT")
+            if row[2] != "COMPLETE" and not old:
+                c.execute(
+                    "INSERT INTO report_images VALUES(?,?,?)", (rid, position, data)
+                )
+        return {"reportId": rid, "status": "IMAGE_RECEIVED", "position": position}
+
     def upload(self, subject, rid, data):
         report_id(rid)
         with self.connect() as c:
@@ -360,6 +475,20 @@ class Service:
                 or not age_envelope(data)
             ):
                 raise Rejected("INVALID_CIPHERTEXT", 400)
+            screenshots = validate_images(req.get("images", []))
+            image_data = []
+            if state != "COMPLETE":
+                for position, meta in enumerate(screenshots, 1):
+                    image = c.execute(
+                        "SELECT data FROM report_images WHERE report=? AND position=?",
+                        (rid, position),
+                    ).fetchone()
+                    if (
+                        not image
+                        or hashlib.sha256(image[0]).hexdigest() != meta["sha256"]
+                    ):
+                        raise Rejected("IMAGE_UPLOAD_PENDING")
+                    image_data.append(image[0])
             validate_release(self.github.release(self.release_id), self.release_id)
             marker = f"<!-- d4planner-report:{rid} -->"
             if number is None:
@@ -426,6 +555,69 @@ class Service:
                 or not verify_mapping(mapping, issue, self.release_id, asset)
             ):
                 raise Rejected("REMOTE_BINDING_MISMATCH")
+            image_mappings = []
+            for position, meta in enumerate(screenshots, 1):
+                image_name = image_asset_name(number, rid, position, meta["sha256"])
+                found = [
+                    a
+                    for a in self.github.assets(self.release_id)
+                    if a.get("name") == image_name
+                ]
+                if len(found) > 1:
+                    raise Rejected("DUPLICATE_ASSET")
+                if not found and state == "COMPLETE":
+                    return {
+                        "reportId": rid,
+                        "issueUrl": f"https://github.com/{REPO}/issues/{number}",
+                        "status": "EXPIRED",
+                    }
+                if not found:
+                    if len(self.github.assets(self.release_id)) >= 1000:
+                        raise Rejected("RELEASE_ASSET_LIMIT")
+                    image = self.github.upload_image(
+                        self.release_id, image_name, image_data[position - 1]
+                    )
+                else:
+                    image = found[0]
+                if not verify_image_asset(image, image_name, meta, self.bot_id):
+                    raise Rejected("REMOTE_IMAGE_BINDING_MISMATCH")
+                image_mappings.append(
+                    {
+                        "assetId": image["id"],
+                        "assetName": image_name,
+                        "sha256": meta["sha256"],
+                        "bytes": meta["bytes"],
+                        "position": position,
+                    }
+                )
+            if image_mappings:
+                mapping["images"] = image_mappings
+                section = f"<!-- d4planner-images:{rid} -->"
+                end = f"<!-- /d4planner-images:{rid} -->"
+                markdown = (
+                    section
+                    + "\n## Screenshots\n\n"
+                    + "\n\n".join(
+                        f'![Screenshot {i["position"]}](https://github.com/{REPO}/releases/download/{TAG}/{i["assetName"]})'
+                        for i in image_mappings
+                    )
+                    + "\n"
+                    + end
+                )
+                body = issue.get("body", "")
+                if section in body:
+                    if (
+                        body.count(section) != 1
+                        or body.count(end) != 1
+                        or body[body.index(section) : body.index(end) + len(end)]
+                        != markdown
+                    ):
+                        raise Rejected("IMAGE_DESCRIPTION_CONFLICT")
+                else:
+                    self.github.update_issue(number, body + "\n\n" + markdown)
+                confirmed = self.github.issue(number)
+                if markdown not in confirmed.get("body", ""):
+                    raise Rejected("IMAGE_DESCRIPTION_PENDING")
             mappings = [
                 read_mapping(x, self.bot_id) for x in self.github.comments(number)
             ]
@@ -435,6 +627,7 @@ class Service:
             if not valid:
                 self.github.comment(number, mapping_text(mapping))
             c.execute("UPDATE reports SET state='COMPLETE' WHERE id=?", (rid,))
+            c.execute("DELETE FROM report_images WHERE report=?", (rid,))
             return {
                 "reportId": rid,
                 "issueUrl": f"https://github.com/{REPO}/issues/{number}",
@@ -456,18 +649,31 @@ class Application:
             subject = self.authenticate(environ.get("HTTP_AUTHORIZATION", ""))
             self.service.authorize_request(subject)
             path = environ.get("PATH_INFO", "")
-            match = re.fullmatch(r"/reports/([0-9a-f-]{36})(/asset)?", path)
+            match = re.fullmatch(
+                r"/reports/([0-9a-f-]{36})(/asset|/images/[1-3])?", path
+            )
             if not match:
                 raise Rejected("NOT_FOUND", 404)
             rid, asset = match.groups()
-            limit = self.service.max_bytes if asset else 30_000
+            image_position = (
+                int(asset.rsplit("/", 1)[1])
+                if asset and asset.startswith("/images/")
+                else None
+            )
+            limit = (
+                MAX_IMAGE_BYTES
+                if image_position
+                else self.service.max_bytes if asset else 30_000
+            )
             n = int(environ.get("CONTENT_LENGTH", "0"))
             if n < 1 or n > limit:
                 raise Rejected("REQUEST_TOO_LARGE", 413)
             data = environ["wsgi.input"].read(n)
             if len(data) != n:
                 raise Rejected("INVALID_LENGTH", 400)
-            if asset and environ["REQUEST_METHOD"] == "POST":
+            if image_position and environ["REQUEST_METHOD"] == "POST":
+                result = self.service.upload_image(subject, rid, image_position, data)
+            elif asset and environ["REQUEST_METHOD"] == "POST":
                 result = self.service.upload(subject, rid, data)
             elif not asset and environ["REQUEST_METHOD"] == "PUT":
                 result = self.service.prepare(subject, rid, json.loads(data))

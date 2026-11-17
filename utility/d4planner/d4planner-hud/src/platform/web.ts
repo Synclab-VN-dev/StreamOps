@@ -51,7 +51,7 @@ export async function webPlatform(_root:HTMLElement):Promise<HudPlatform>{
           tab.location.replace(url.href);return result as T;
         }catch(error){tab.close();throw error;}
       }
-      case 'collect_issue_report':return request<T>('/api/v1/reports/preview',{selection:p.selection});
+      case 'collect_issue_report':return request<T>('/api/v1/reports/preview',{selection:p.selection,...(p.images ? {images:p.images,imageConsent:p.imageConsent} : {})});
       case 'resume_issue_report':return request<T>(`/api/v1/reports/${encodeURIComponent(String(p.reportId))}`);
       case 'submit_issue_report':return request<T>(`/api/v1/reports/${encodeURIComponent(String(p.reportId))}/submit`,{description:p.description,consent:p.consent});
       case 'cancel_issue_report':{

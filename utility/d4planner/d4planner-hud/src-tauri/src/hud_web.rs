@@ -130,12 +130,17 @@ impl Host for NativeHost {
             Operation::ReportPreview => {
                 #[derive(serde::Deserialize)]
                 #[serde(deny_unknown_fields)]
+                #[serde(rename_all = "camelCase")]
                 struct Preview {
                     selection: d4planner_report_issue::Selection,
+                    #[serde(default)]
+                    images: Vec<d4planner_report_issue::images::ImageInput>,
+                    #[serde(default)]
+                    image_consent: bool,
                 }
                 let p: Preview =
                     serde_json::from_value(params).map_err(|_| Error::bad("INVALID_REQUEST"))?;
-                issue_report::collect(&owner, p.selection)
+                issue_report::collect(&owner, p.selection, p.images, p.image_consent)
             }
             Operation::ReportStatus | Operation::ReportCancel => {
                 let id = params

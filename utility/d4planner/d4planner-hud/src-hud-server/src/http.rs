@@ -88,7 +88,10 @@ pub fn router(state: HttpState) -> Router {
         .route("/api/v1/planner/open", post(planner_open))
         .route("/api/v1/targets/select", post(select_target))
         .route("/api/v1/runtime/{component}/{action}", post(runtime))
-        .route("/api/v1/reports/preview", post(preview))
+        .route(
+            "/api/v1/reports/preview",
+            post(preview).layer(DefaultBodyLimit::max(9 * 1024 * 1024)),
+        )
         .route(
             "/api/v1/reports/{report_id}",
             get(report_status).delete(report_cancel),
@@ -100,6 +103,11 @@ pub fn router(state: HttpState) -> Router {
         .with_state(state)
 }
 async fn boundary(State(state): State<HttpState>, request: Request, next: Next) -> Response {
+    if request.uri().path() == "/api/v1/reports/preview" {
+        if let Err(error) = state.actor(request.headers(), "report.preview", true) {
+            return error.into_response();
+        }
+    }
     let origin = state.config.origin(false);
     let expected_host = origin.split_once("://").unwrap().1;
     let headers = request.headers();
@@ -342,7 +350,12 @@ mod tests {
             credentials: vec![Credential {
                 subject: "owner".into(),
                 sha256: format!("{:x}", Sha256::digest(b"01234567890123456789012345678901")),
-                permissions: ["hud.read".into(), "runtime.control".into()].into(),
+                permissions: [
+                    "hud.read".into(),
+                    "runtime.control".into(),
+                    "report.preview".into(),
+                ]
+                .into(),
             }],
         };
         router(HttpState::new(config, Arc::new(Fake)).unwrap())
@@ -351,6 +364,55 @@ mod tests {
         Request::builder()
             .uri(path)
             .header("host", "127.0.0.1:6090")
+    }
+    #[tokio::test]
+    async fn preview_body_budget_is_authenticated_and_route_specific() {
+        let send = |path: &str, size: usize, authenticated: bool| {
+            let mut builder = request(path)
+                .method("POST")
+                .header("content-type", "application/json");
+            if authenticated {
+                builder =
+                    builder.header("authorization", "Bearer 01234567890123456789012345678901");
+            }
+            builder
+                .body(Body::from(
+                    json!({"selection":{},"images":[{"base64":"A".repeat(size)}]}).to_string(),
+                ))
+                .unwrap()
+        };
+        assert_eq!(
+            app()
+                .oneshot(send("/api/v1/reports/preview", 100000, false))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            app()
+                .oneshot(send("/api/v1/reports/preview", 100000, true))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            app()
+                .oneshot(send("/api/v1/reports/preview", 9 * 1024 * 1024, true))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::PAYLOAD_TOO_LARGE
+        );
+        assert_eq!(
+            app()
+                .oneshot(send("/api/v1/targets/select", 100000, true))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::PAYLOAD_TOO_LARGE
+        );
     }
     #[tokio::test]
     async fn unknown_or_unauthenticated_api_never_falls_back_to_html() {

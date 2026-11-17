@@ -8,7 +8,9 @@ export type Selection = {
   evidence: boolean;
   evidenceConsent: boolean;
 };
+type Screenshot = {mediaType:string;base64:string};
 type Preview = {
+  imagePreviews?: {name:string;dataUrl:string}[];
   status?: string;
   issueUrl?: string;
   pendingRemote?: boolean;
@@ -60,6 +62,18 @@ export function ReportIssue({
     expected: "",
     steps: "",
   });
+  const [images, setImages] = useState<Screenshot[]>([]);
+  const [imageConsent,setImageConsent]=useState(false);
+  const [readingImages,setReadingImages]=useState(false);
+  async function chooseImages(files: FileList | null) {
+    if(!files || preview || pendingRemote) return;
+    const list=Array.from(files);
+    if(list.length>3 || list.some(f=>!['image/png','image/jpeg'].includes(f.type)||f.size>2*1024*1024||f.size===0)){setError('Choose up to 3 PNG/JPEG images, at most 2 MiB each.');return;}
+    setReadingImages(true);setError('');setImageConsent(false);setConsent(false);
+    try {
+      const selected=await Promise.all(list.map(file=>new Promise<Screenshot>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve({mediaType:file.type,base64:String(reader.result).split(',')[1]});reader.onerror=()=>reject(new Error('IMAGE_READ_FAILED'));reader.readAsDataURL(file);})));setImages(selected);
+    } catch {setError('Could not read selected images.');} finally {setReadingImages(false);}
+  }
   const [preview, setPreview] = useState<Preview | null>(null);
   const [state, setState] = useState<
     "idle" | "collecting" | "review" | "submitting" | "success" | "expired" | "failure"
@@ -95,7 +109,7 @@ export function ReportIssue({
   }
   useEffect(() => { void recover(); }, [bridge, reportStorageKey]);
   const terminal = state === "success" || state === "expired";
-  const busy = recovering || state === "collecting" || state === "submitting";
+  const busy = readingImages || recovering || state === "collecting" || state === "submitting";
   const valid =
     !!(form.title.trim() && form.actual.trim() && form.expected.trim()) &&
     [form.actual, form.expected, form.steps].every(
@@ -118,7 +132,7 @@ export function ReportIssue({
     setError("");
     setConsent(false);
     try {
-      const p = await bridge<Preview>("collect_issue_report", { selection });
+      const p = await bridge<Preview>("collect_issue_report", { selection, ...(images.length?{images,imageConsent}:{}) });
       setPreview(p);
       setPendingRemote(p.pendingRemote === true);
       if(p.consent) setSelection(p.consent);
@@ -169,6 +183,7 @@ export function ReportIssue({
       await bridge("cancel_issue_report");
       localStorage.removeItem(reportStorageKey);
       setPreview(null);
+      setImages([]);setImageConsent(false);
       setConsent(false);
       setState("idle");
       setError("");
@@ -284,9 +299,17 @@ export function ReportIssue({
           </p>
         </fieldset>
       )}
+      {tab === "report" && !terminal && <fieldset disabled={busy || pendingRemote || preview !== null}>
+        <legend>Screenshots</legend>
+        <label>Attach screenshots<input type="file" accept="image/png,image/jpeg" multiple onChange={e=>void chooseImages(e.target.files)} /></label>
+        <p>Up to 3 PNG/JPEG images, 2 MiB each. Images are uploaded separately from encrypted logs and visible to repository readers.</p>
+        {!preview && images.map((image,index)=><figure key={index}><img alt={`Selected screenshot ${index+1}`} src={`data:${image.mediaType};base64,${image.base64}`} style={{maxWidth:'100%',maxHeight:140}}/><button onClick={()=>{setImages(images.filter((_,i)=>i!==index));setImageConsent(false);}}>Remove screenshot {index+1}</button></figure>)}
+        {images.length>0 && !preview && <label><input type="checkbox" checked={imageConsent} onChange={e=>setImageConsent(e.target.checked)}/>I consent to upload these images as visible Release assets</label>}
+      </fieldset>}
+      {preview?.imagePreviews?.map(image=><figure key={image.name}><img alt={`Prepared ${image.name}`} src={image.dataUrl} style={{maxWidth:'100%',maxHeight:180}}/><figcaption>{image.name} · prepared PNG, metadata removed</figcaption></figure>)}
       {!terminal && (
         <button
-          disabled={busy || pendingRemote || preview !== null || (selection.evidence && !selection.evidenceConsent)}
+          disabled={busy || pendingRemote || preview !== null || (images.length>0&&!imageConsent) || (selection.evidence && !selection.evidenceConsent)}
           onClick={() => void collect()}
         >
           Preview collection

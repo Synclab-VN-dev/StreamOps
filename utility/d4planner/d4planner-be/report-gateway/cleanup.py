@@ -12,6 +12,8 @@ from gateway import (
     read_mapping,
     validate_release,
     verify_mapping,
+    verify_image_asset,
+    image_asset_name,
 )
 
 
@@ -64,6 +66,96 @@ def cleanup(github, release_id, bot_id, now, dry_run=True):
                 or not eligible(fresh_issue, now)
                 or fresh_issue.get("closed_at") != issue.get("closed_at")
                 or not verify_mapping(m, fresh_issue, release_id, fresh)
+            ):
+                continue
+            # Images are independently hash-bound to the same immutable report mapping.
+            # Delete images first: an interrupted cleanup retains the log anchor for retry.
+            screenshots = m.get("images", [])
+            if not isinstance(screenshots, list) or len(screenshots) > 3:
+                continue
+            images = []
+            invalid = False
+            for position, entry in enumerate(screenshots, 1):
+                if (
+                    not isinstance(entry, dict)
+                    or set(entry)
+                    != {"assetId", "assetName", "sha256", "bytes", "position"}
+                    or entry.get("position") != position
+                ):
+                    invalid = True
+                    break
+                expected = image_asset_name(
+                    issue["number"], m["reportId"], position, entry["sha256"]
+                )
+                candidate = next(
+                    (v for v in fresh_assets if v.get("id") == entry["assetId"]), None
+                )
+                if candidate is None:
+                    continue
+                if entry["assetName"] != expected or not verify_image_asset(
+                    candidate, expected, entry, bot_id
+                ):
+                    invalid = True
+                    break
+                images.append(candidate)
+            if invalid:
+                continue
+            for screenshot in images:
+                validate_release(github.release(release_id), release_id)
+                current = github.issue(issue["number"])
+                maps = [
+                    read_mapping(c, bot_id) for c in github.comments(issue["number"])
+                ]
+                current_asset = next(
+                    (
+                        v
+                        for v in github.assets(release_id)
+                        if v.get("id") == screenshot["id"]
+                    ),
+                    None,
+                )
+                if (
+                    not eligible(current, now)
+                    or current.get("closed_at") != issue.get("closed_at")
+                    or m not in maps
+                    or any(
+                        x and x.get("reportId") == m["reportId"] and x != m
+                        for x in maps
+                    )
+                    or current_asset != screenshot
+                ):
+                    invalid = True
+                    break
+                if not dry_run:
+                    try:
+                        github.delete(screenshot["id"])
+                    except Rejected as e:
+                        if e.code != "GITHUB_404":
+                            raise
+                audit.append(
+                    {
+                        "issueNumber": issue["number"],
+                        "assetId": screenshot["id"],
+                        "action": "WOULD_DELETE" if dry_run else "DELETED",
+                    }
+                )
+            if invalid:
+                continue
+            # Recheck issue eligibility after image operations before deleting the anchor.
+            current = github.issue(issue["number"])
+            maps = [read_mapping(c, bot_id) for c in github.comments(issue["number"])]
+            anchor = next(
+                (v for v in github.assets(release_id) if v.get("id") == a["id"]), None
+            )
+            validate_release(github.release(release_id), release_id)
+            if (
+                not eligible(current, now)
+                or current.get("closed_at") != issue.get("closed_at")
+                or anchor != a
+                or m not in maps
+                or any(
+                    x and x.get("reportId") == m["reportId"] and x != m for x in maps
+                )
             ):
                 continue
             if not dry_run:

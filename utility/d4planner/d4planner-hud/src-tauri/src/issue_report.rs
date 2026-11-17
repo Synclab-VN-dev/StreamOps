@@ -19,14 +19,24 @@ fn evidence(_destination: &std::path::Path) -> Result<Value, String> {
     // packaged capture-session binding exists yet. Never guess or export a DB.
     Err("RAW_EVENT_SOURCE_NOT_BOUND".into())
 }
-pub fn collect(actor: &str, selection: Selection) -> Result<Value, String> {
-    REPORT.try_lock().map_err(|_| "REPORT_BUSY")?.collect(
-        &data_root()?,
-        &env::var("D4_LOG_RUN_ID").map_err(|_| "LOG_SESSION_UNAVAILABLE")?,
-        actor,
-        selection,
-        evidence,
-    )
+pub fn collect(
+    actor: &str,
+    selection: Selection,
+    images: Vec<d4planner_report_issue::images::ImageInput>,
+    image_consent: bool,
+) -> Result<Value, String> {
+    REPORT
+        .try_lock()
+        .map_err(|_| "REPORT_BUSY")?
+        .collect_with_images(
+            &data_root()?,
+            &env::var("D4_LOG_RUN_ID").map_err(|_| "LOG_SESSION_UNAVAILABLE")?,
+            actor,
+            selection,
+            &images,
+            image_consent,
+            evidence,
+        )
 }
 pub fn status(actor: &str, id: &str) -> Result<Value, String> {
     REPORT
@@ -85,10 +95,21 @@ pub fn submit(
         )
 }
 #[tauri::command]
-pub async fn collect_issue_report(selection: Selection) -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(move || collect("desktop", selection))
-        .await
-        .map_err(|_| "COLLECTION_FAILED")?
+pub async fn collect_issue_report(
+    selection: Selection,
+    images: Option<Vec<d4planner_report_issue::images::ImageInput>>,
+    image_consent: Option<bool>,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        collect(
+            "desktop",
+            selection,
+            images.unwrap_or_default(),
+            image_consent.unwrap_or(false),
+        )
+    })
+    .await
+    .map_err(|_| "COLLECTION_FAILED")?
 }
 #[tauri::command]
 pub async fn submit_issue_report(
