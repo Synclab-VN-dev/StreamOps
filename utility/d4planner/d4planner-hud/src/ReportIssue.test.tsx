@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -300,4 +301,93 @@ it('rejects unsupported images without calling the API',async()=>{
  const bridge=vi.fn();render(<ReportIssue bridge={bridge} onClose={()=>{}}/>);
  fireEvent.change(screen.getByLabelText('Attach screenshots'),{target:{files:[new File(['<svg/>'],'x.svg',{type:'image/svg+xml'})]}});
  expect(await screen.findByRole('alert')).toBeTruthy();expect(bridge).not.toHaveBeenCalled();
+});
+
+const imageConsentLabel = 'I consent to upload these images as visible Release assets';
+const screenshot = () => new File([new Uint8Array([1, 2, 3])], 'screenshot-1.png', {type: 'image/png'});
+it.each(['type', 'size', 'empty', 'count'])('F2 clears old image and consent after invalid replacement: %s', async kind => {
+  const bridge = vi.fn().mockResolvedValue(preview);
+  render(<ReportIssue bridge={bridge} onClose={() => {}}/>);
+  const input = screen.getByLabelText('Attach screenshots');
+  fireEvent.change(input, {target: {files: [screenshot()]}});
+  await screen.findByAltText('Selected screenshot 1');
+  fireEvent.click(screen.getByLabelText(imageConsentLabel));
+  const invalid = kind === 'type' ? [new File(['<svg/>'], 'bad.svg', {type: 'image/svg+xml'})]
+    : kind === 'size' ? [new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'large.png', {type: 'image/png'})]
+    : kind === 'empty' ? [new File([], 'empty.png', {type: 'image/png'})]
+    : [screenshot(), screenshot(), screenshot(), screenshot()];
+  fireEvent.change(input, {target: {files: invalid}});
+  await screen.findByRole('alert');
+  expect(screen.queryByAltText('Selected screenshot 1')).toBeNull();
+  expect(screen.queryByLabelText(imageConsentLabel)).toBeNull();
+  fireEvent.click(screen.getByText('Preview collection'));
+  await screen.findByText('Run run-1');
+  expect(bridge).toHaveBeenCalledWith('collect_issue_report', {selection: expect.any(Object)});
+});
+it('F2 Remove clears native input and reselecting the same file requires fresh consent', async () => {
+  const bridge = vi.fn().mockResolvedValue(preview);
+  render(<ReportIssue bridge={bridge} onClose={() => {}}/>);
+  const input = screen.getByLabelText('Attach screenshots') as HTMLInputElement;
+  // jsdom cannot populate a file input value: model the browser-owned selection explicitly.
+  Object.defineProperty(input, 'value', {writable: true, configurable: true, value: 'C:\\fakepath\\screenshot-1.png'});
+  const file = screenshot();
+  fireEvent.change(input, {target: {files: [file]}});
+  await screen.findByAltText('Selected screenshot 1');
+  fireEvent.click(screen.getByLabelText(imageConsentLabel));
+  fireEvent.click(screen.getByText('Remove screenshot 1'));
+  expect(input.value).toBe('');
+  expect(screen.queryByAltText('Selected screenshot 1')).toBeNull();
+  fireEvent.change(input, {target: {files: [file]}});
+  await screen.findByAltText('Selected screenshot 1');
+  expect((screen.getByLabelText(imageConsentLabel) as HTMLInputElement).checked).toBe(false);
+  expect((screen.getByText('Preview collection') as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByLabelText(imageConsentLabel));
+  fireEvent.click(screen.getByText('Preview collection'));
+  await screen.findByText('Run run-1');
+  expect(bridge).toHaveBeenCalledWith('collect_issue_report', expect.objectContaining({images:[{mediaType:'image/png',base64:'AQID'}],imageConsent:true}));
+});
+
+it('F2 failed file read clears the previous selection and consent', async () => {
+  const bridge = vi.fn().mockResolvedValue(preview);
+  render(<ReportIssue bridge={bridge} onClose={() => {}}/>);
+  const input = screen.getByLabelText('Attach screenshots');
+  fireEvent.change(input, {target: {files: [screenshot()]}});
+  await screen.findByAltText('Selected screenshot 1');
+  fireEvent.click(screen.getByLabelText(imageConsentLabel));
+  const readers: FileReader[] = [];
+  const read = vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function(this: FileReader) { readers.push(this); });
+  try {
+    fireEvent.change(input, {target: {files: [screenshot()]}});
+    expect(screen.queryByAltText('Selected screenshot 1')).toBeNull();
+    expect((screen.getByText('Preview collection') as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => { readers[0].dispatchEvent(new ProgressEvent('error')); });
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not read selected images');
+    expect(screen.queryByLabelText(imageConsentLabel)).toBeNull();
+    fireEvent.click(screen.getByText('Preview collection'));
+    await screen.findByText('Run run-1');
+    expect(bridge).toHaveBeenCalledWith('collect_issue_report', {selection: expect.any(Object)});
+  } finally { read.mockRestore(); }
+});
+it.each(['load', 'error'])('F2 ignores stale reader %s after a newer selection', async event => {
+  const bridge = vi.fn().mockResolvedValue(preview);
+  render(<ReportIssue bridge={bridge} onClose={() => {}}/>);
+  const input = screen.getByLabelText('Attach screenshots');
+  const readers: FileReader[] = [];
+  const read = vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function(this: FileReader) { readers.push(this); });
+  try {
+    fireEvent.change(input, {target: {files: [screenshot()]}});
+    // Explicitly exercise a queued selection event while an earlier read is pending.
+    fireEvent.change(input, {target: {files: [new File(['new'], 'new.png', {type:'image/png'})]}});
+    Object.defineProperty(readers[1], 'result', {value:'data:image/png;base64,bmV3'});
+    await act(async () => { readers[1].dispatchEvent(new ProgressEvent('load')); });
+    Object.defineProperty(readers[0], 'result', {value:'data:image/png;base64,AQID'});
+    await act(async () => { readers[0].dispatchEvent(new ProgressEvent(event)); });
+    expect(screen.getByAltText('Selected screenshot 1').getAttribute('src')).toBe('data:image/png;base64,bmV3');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect((screen.getByText('Preview collection') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByLabelText(imageConsentLabel));
+    fireEvent.click(screen.getByText('Preview collection'));
+    await screen.findByText('Run run-1');
+    expect(bridge).toHaveBeenCalledWith('collect_issue_report', expect.objectContaining({images:[{mediaType:'image/png',base64:'bmV3'}],imageConsent:true}));
+  } finally { read.mockRestore(); }
 });
