@@ -211,7 +211,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
       </section>
 
       {expanded && workspace === "current" && currentSlot && !runtimeOpen && !reportOpen && <CurrentDetail item={currentItemForSelection(currentItems(snapshot), currentSlot)} slot={currentSlot} offline={hud.connection !== "CONNECTED" || snapshot?.health.captureRuntime?.state !== "RUNNING" || snapshot?.currentEquipment?.sourceState !== "READY"} onClose={()=>setCurrentSlot(null)}/>}
-      {runtimeOpen && <RuntimeManager onClose={() => setRuntimeOpen(false)} onOpenLogs={() => openSupport("logs")} onChanged={() => {void source.refresh?.(); window.dispatchEvent(new Event("d4planner-runtime-changed"));}}/>}
+      {runtimeOpen && <RuntimeManager onOpenPlanner={() => {setRuntimeOpen(false); void createBuild();}} onClose={() => setRuntimeOpen(false)} onOpenLogs={() => openSupport("logs")} onChanged={() => {void source.refresh?.(); window.dispatchEvent(new Event("d4planner-runtime-changed"));}}/>}
       {reportOpen && <ReportIssue activeTab={reportTab} onTabChange={setReportTab} onClose={() => setReportOpen(false)} />}
       {expanded && workspace === "compare" && equipmentOpen && snapshot && <aside className="panel equipment" aria-label="Equipment list">
         <div className="panel-title"><span>⬡ <b>Equipment</b></span><button aria-label="Close equipment" onClick={() => { setEquipmentOpen(false); resetComparison(); }}>×</button></div>

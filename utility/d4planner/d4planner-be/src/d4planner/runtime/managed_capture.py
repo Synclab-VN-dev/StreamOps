@@ -16,7 +16,7 @@ from uuid import uuid4
 from .store import atomic_write_json
 from .model import RuntimeState
 from .equipment_layout_channel import encode_layout
-from ..rulekit.client import EQUIPMENT_LAYOUT_TIMEOUT
+from ..rulekit.client import EQUIPMENT_LAYOUT_TIMEOUT, RuleKitRemoteError
 
 
 class ManagedCaptureRuntime:
@@ -179,6 +179,11 @@ class ManagedCaptureRuntime:
                 raise
             except Exception as error:
                 self.layout_state = {'state': 'RETRYING', 'errorType': type(error).__name__}
+                if isinstance(error, RuleKitRemoteError):
+                    self.layout_state['errorCode'] = error.code if error.code in {
+                        'PLANNER_SNAPSHOT_UNAVAILABLE', 'PLANNER_SNAPSHOT_UNTRUSTED',
+                        'PLANNER_LAYOUT_UNAVAILABLE', 'PLANNER_UNAVAILABLE', 'TIMEOUT', 'QUEUE_FULL',
+                    } else 'UNKNOWN'
             await asyncio.sleep(delay)
             delay = min(delay * 2, 30)
 
