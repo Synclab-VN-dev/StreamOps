@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke, hudPlatform } from "./platform";
 import "./report-issue.css";
 export type Selection = {
@@ -8,7 +8,9 @@ export type Selection = {
   evidence: boolean;
   evidenceConsent: boolean;
 };
+type Screenshot = {mediaType:string;base64:string};
 type Preview = {
+  imagePreviews?: {name:string;dataUrl:string}[];
   status?: string;
   issueUrl?: string;
   pendingRemote?: boolean;
@@ -60,6 +62,56 @@ export function ReportIssue({
     expected: "",
     steps: "",
   });
+  const [images, setImages] = useState<Screenshot[]>([]);
+  const [imageConsent,setImageConsent]=useState(false);
+  const [readingImages,setReadingImages]=useState(false);
+  const imageInput = useRef<HTMLInputElement>(null);
+  const imageRead = useRef(0);
+  useEffect(() => () => { imageRead.current += 1; }, []);
+  async function chooseImages(input: HTMLInputElement) {
+    if (preview || pendingRemote) return;
+    const files = Array.from(input.files ?? []);
+    // React owns the selection. Clear the browser value so the same file can
+    // trigger another change, including after removal or a failed read.
+    input.value = "";
+    const read = ++imageRead.current;
+    setImages([]);
+    setImageConsent(false);
+    setConsent(false);
+    setError("");
+    setReadingImages(false);
+    if (files.length > 3 || files.some(file =>
+      !["image/png", "image/jpeg"].includes(file.type) || file.size > 2 * 1024 * 1024 || file.size === 0
+    )) {
+      setError("Choose up to 3 PNG/JPEG images, at most 2 MiB each.");
+      return;
+    }
+    if (!files.length) return;
+    setReadingImages(true);
+    try {
+      const selected = await Promise.all(files.map(file => new Promise<Screenshot>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({mediaType: file.type, base64: String(reader.result).split(",")[1]});
+        reader.onerror = () => reject(new Error("IMAGE_READ_FAILED"));
+        reader.onabort = () => reject(new Error("IMAGE_READ_FAILED"));
+        reader.readAsDataURL(file);
+      })));
+      if (read === imageRead.current) setImages(selected);
+    } catch {
+      if (read === imageRead.current) setError("Could not read selected images.");
+    } finally {
+      if (read === imageRead.current) setReadingImages(false);
+    }
+  }
+  function removeImage(index: number) {
+    imageRead.current += 1;
+    if (imageInput.current) imageInput.current.value = "";
+    setImages(current => current.filter((_, i) => i !== index));
+    setImageConsent(false);
+    setConsent(false);
+    setReadingImages(false);
+    setError("");
+  }
   const [preview, setPreview] = useState<Preview | null>(null);
   const [state, setState] = useState<
     "idle" | "collecting" | "review" | "submitting" | "success" | "expired" | "failure"
@@ -95,7 +147,7 @@ export function ReportIssue({
   }
   useEffect(() => { void recover(); }, [bridge, reportStorageKey]);
   const terminal = state === "success" || state === "expired";
-  const busy = recovering || state === "collecting" || state === "submitting";
+  const busy = readingImages || recovering || state === "collecting" || state === "submitting";
   const valid =
     !!(form.title.trim() && form.actual.trim() && form.expected.trim()) &&
     [form.actual, form.expected, form.steps].every(
@@ -118,7 +170,7 @@ export function ReportIssue({
     setError("");
     setConsent(false);
     try {
-      const p = await bridge<Preview>("collect_issue_report", { selection });
+      const p = await bridge<Preview>("collect_issue_report", { selection, ...(images.length?{images,imageConsent}:{}) });
       setPreview(p);
       setPendingRemote(p.pendingRemote === true);
       if(p.consent) setSelection(p.consent);
@@ -169,6 +221,7 @@ export function ReportIssue({
       await bridge("cancel_issue_report");
       localStorage.removeItem(reportStorageKey);
       setPreview(null);
+      setImages([]);setImageConsent(false);
       setConsent(false);
       setState("idle");
       setError("");
@@ -284,9 +337,17 @@ export function ReportIssue({
           </p>
         </fieldset>
       )}
+      {tab === "report" && !terminal && <fieldset disabled={busy || pendingRemote || preview !== null}>
+        <legend>Screenshots</legend>
+        <label>Attach screenshots<input ref={imageInput} type="file" accept="image/png,image/jpeg" multiple onChange={e=>void chooseImages(e.currentTarget)} /></label>
+        <p>Up to 3 PNG/JPEG images, 2 MiB each. Images are uploaded separately from encrypted logs and visible to repository readers.</p>
+        {!preview && images.map((image,index)=><figure key={index}><img alt={`Selected screenshot ${index+1}`} src={`data:${image.mediaType};base64,${image.base64}`} style={{maxWidth:'100%',maxHeight:140}}/><button onClick={()=>removeImage(index)}>Remove screenshot {index+1}</button></figure>)}
+        {images.length>0 && !preview && <label><input type="checkbox" checked={imageConsent} onChange={e=>setImageConsent(e.target.checked)}/>I consent to upload these images as visible Release assets</label>}
+      </fieldset>}
+      {preview?.imagePreviews?.map(image=><figure key={image.name}><img alt={`Prepared ${image.name}`} src={image.dataUrl} style={{maxWidth:'100%',maxHeight:180}}/><figcaption>{image.name} · prepared PNG, metadata removed</figcaption></figure>)}
       {!terminal && (
         <button
-          disabled={busy || pendingRemote || preview !== null || (selection.evidence && !selection.evidenceConsent)}
+          disabled={busy || pendingRemote || preview !== null || (images.length>0&&!imageConsent) || (selection.evidence && !selection.evidenceConsent)}
           onClick={() => void collect()}
         >
           Preview collection

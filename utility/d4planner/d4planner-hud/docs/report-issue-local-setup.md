@@ -60,7 +60,8 @@ maintenance configuration extension before claiming universal 24-hour retention.
 ## Use and recovery
 
 Open Report Issue, complete the form, select logs, preview and consent, then Submit.
-Success returns the actual Issue URL only after encrypted asset verification.
+Success returns the actual Issue URL only after the encrypted log asset, all selected
+image assets and the issue-body image links have been verified.
 The raw D4Planner Event Log remains unavailable until capture-session binding exists;
 FE/BE/Rule Kit logs are supported. No DB or configuration file is exported.
 
@@ -79,3 +80,49 @@ retrying; the shared ledger rejects a report owned by another account. Never rem
 
 Tests use fake GitHub responses and synthetic data. They do not prove real permissions,
 release existence, encryption-key custody or successful production submission.
+
+## Optional screenshot attachments
+
+Report Issue supports up to three PNG/JPEG images, at most 2 MiB each and
+4096×4096 pixels. Select images before Preview and explicitly consent to their
+upload. Review the normalized thumbnails before Submit. To change attachments,
+discard the unsent draft and collect again. Closing the dialog retains the draft.
+
+Native code decodes images, applies EXIF orientation and re-encodes PNG without
+metadata. The same 2 MiB limit applies to the normalized output. Unsupported,
+malformed or oversized images fail before any upload. Filenames are generated;
+client filenames and arbitrary file paths are never sent to the gateway.
+
+**Images are separate, unencrypted Release assets**, visible to users who can read
+the repository. They are linked inline in the issue description. Check images for
+private information before consenting. Logs remain age-encrypted; the encrypted
+archive also includes the exact normalized images for hash verification.
+
+The existing diagnostic release is reused. Retry retains the same report and asset
+identities, including when an upload or issue-body update succeeded but its response
+was lost. Missing or modified assets are never silently accepted. Cleanup applies
+the existing closed-issue retention policy to hash-bound images, deleting them before
+the encrypted-log anchor so an interrupted cleanup can resume safely.
+
+### HUD HTTP API
+
+Existing callers without images are unchanged. The authenticated preview endpoint
+accepts optional images in the same request, freezing them together with selected logs:
+
+```json
+{
+  "selection": {"fe": true, "be": true, "rulekit": true, "evidence": false, "evidenceConsent": false},
+  "images": [{"mediaType": "image/png", "base64": "BASE64_IMAGE_BYTES"}],
+  "imageConsent": true
+}
+```
+
+`POST /api/v1/reports/preview` has a 9 MiB JSON ceiling; other HTTP request limits
+remain unchanged. Authentication, origin and CSRF policies still apply. The response
+includes canonical `imagePreviews` data URLs for review; these transport fields are
+not persisted in the manifest. Submit, resume and discard endpoints are unchanged.
+
+The internal native-owned gateway accepts bounded canonical PNG bodies at
+`POST /reports/{reportId}/images/{position}` after report preparation. This is not an
+unauthenticated public upload endpoint. GitHub credentials remain in Python, and
+image bytes/base64 are not written to diagnostic logs.

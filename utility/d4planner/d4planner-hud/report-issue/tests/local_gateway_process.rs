@@ -38,9 +38,20 @@ fn real_native_http_encrypt_upload_and_restart_retry() {
     fs::write(root.join("private/report-config.json"),serde_json::json!({
         "githubToken":"SYNTHETIC_GITHUB_PAT_NEVER_EXPORT", "recipient":identity.to_public().to_string(),"maxBytes":10000000
     }).to_string()).unwrap();
+    let old = d4planner_runtime_logging::Session::create(&root, "old", "prior-run").unwrap();
+    let old_id = old.id.clone();
+    drop(old);
     let session =
         d4planner_runtime_logging::Session::create(&root, "test", "local-gateway-fixture").unwrap();
-    let mut report = Report::collect(
+    use base64::Engine;
+    let pixels = image::DynamicImage::new_rgb8(2, 3);
+    let mut png = std::io::Cursor::new(Vec::new());
+    pixels.write_to(&mut png, image::ImageFormat::Png).unwrap();
+    let screenshot = d4planner_report_issue::images::ImageInput {
+        media_type: "image/png".into(),
+        base64: base64::engine::general_purpose::STANDARD.encode(png.into_inner()),
+    };
+    let mut report = Report::collect_with_images(
         &root,
         &session.id,
         Selection {
@@ -50,6 +61,8 @@ fn real_native_http_encrypt_upload_and_restart_retry() {
             evidence: false,
             evidence_consent: false,
         },
+        &[screenshot],
+        true,
         |_| panic!("unselected source"),
     )
     .unwrap();
@@ -86,7 +99,7 @@ fn real_native_http_encrypt_upload_and_restart_retry() {
     drop(second);
     let remote: serde_json::Value = serde_json::from_slice(&fs::read(&state).unwrap()).unwrap();
     assert_eq!(remote["items"].as_array().unwrap().len(), 1);
-    assert_eq!(remote["uploads"].as_array().unwrap().len(), 1);
+    assert_eq!(remote["uploads"].as_array().unwrap().len(), 2);
     let encrypted = fs::read(state.with_extension("age")).unwrap();
     let decrypt = age::Decryptor::new(&encrypted[..]).unwrap();
     let mut reader = decrypt
@@ -98,9 +111,21 @@ fn real_native_http_encrypt_upload_and_restart_retry() {
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).unwrap();
         assert!(!file.name().contains("config"));
-        let mut content = String::new();
-        file.read_to_string(&mut content).unwrap();
-        assert!(!content.contains("SYNTHETIC_GITHUB_PAT_NEVER_EXPORT"));
+        let mut content = Vec::new();
+        file.read_to_end(&mut content).unwrap();
+        assert!(!String::from_utf8_lossy(&content).contains("SYNTHETIC_GITHUB_PAT_NEVER_EXPORT"));
+        if file.name() == "images/screenshot-1.png" {
+            assert_eq!(content, fs::read(state.with_extension("png")).unwrap());
+        }
+        if file.name() == "logs/fe.log" {
+            let text = String::from_utf8(content).unwrap();
+            assert!(text.contains(&session.id));
+            assert!(!text.contains(&old_id));
+            for line in text.lines() {
+                let row: serde_json::Value = serde_json::from_str(line).unwrap();
+                assert_eq!(row["runId"], session.id);
+            }
+        }
     }
     report.discard().unwrap();
     drop(session);

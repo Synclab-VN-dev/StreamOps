@@ -1,4 +1,5 @@
 //! Native-only diagnostics. No arbitrary file paths accepted from the WebView.
+pub mod images;
 pub mod snapshot_unpack;
 use d4planner_runtime_logging::{export_selected, safe};
 use fs2::FileExt;
@@ -219,6 +220,25 @@ impl Report {
                 }
             }
         }
+        if let Ok(images) = images::metadata(&self.preview) {
+            use base64::Engine;
+            let mut thumbnails = Vec::new();
+            for meta in images {
+                let path = self.dir.join(meta["path"].as_str().unwrap_or(""));
+                if safe(&path)
+                    && fs::metadata(&path).is_ok_and(|m| m.len() <= images::MAX_IMAGE_BYTES as u64)
+                {
+                    if let Ok(bytes) = fs::read(path) {
+                        if meta["sha256"] == hash(&bytes) {
+                            thumbnails.push(json!({"name":meta["name"],"dataUrl":format!("data:image/png;base64,{}",base64::engine::general_purpose::STANDARD.encode(bytes))}));
+                        }
+                    }
+                }
+            }
+            if !thumbnails.is_empty() {
+                preview["imagePreviews"] = json!(thumbnails);
+            }
+        }
         preview
     }
     pub fn resume(data: &Path, id: &str) -> Result<Self> {
@@ -322,6 +342,17 @@ impl Report {
         selection: Selection,
         evidence: impl FnOnce(&Path) -> Result<Value>,
     ) -> Result<Self> {
+        Self::collect_with_images(data, run, selection, &[], false, evidence)
+    }
+    pub fn collect_with_images(
+        data: &Path,
+        run: &str,
+        selection: Selection,
+        inputs: &[images::ImageInput],
+        image_consent: bool,
+        evidence: impl FnOnce(&Path) -> Result<Value>,
+    ) -> Result<Self> {
+        let screenshots = images::prepare(inputs, image_consent)?;
         if selection.evidence && !selection.evidence_consent {
             return Err("EVIDENCE_CONSENT_REQUIRED".into());
         }
@@ -479,6 +510,30 @@ impl Report {
             item["status"] = json!("BEST_EFFORT");
         }
         report.preview = json!({"schemaVersion":"d4planner-issue-report/v1","reportId":report.id,"runId":run,"timestamp":d4planner_runtime_logging::now(),"productVersion":source["productVersion"].take(),"sourceVersion":source["sourceVersion"].take(),"consent":selection,"files":files,"bytes":total,"completeness":if total==0{"EMPTY"}else{"BEST_EFFORT"}});
+        if !screenshots.is_empty() {
+            private_dir(&report.dir.join("images"))?;
+            report.preview["imageConsent"] = json!(true);
+            for screenshot in screenshots {
+                let path = report.dir.join(
+                    screenshot.metadata["path"]
+                        .as_str()
+                        .ok_or("INVALID_IMAGE")?,
+                );
+                let mut file = create(&path)?;
+                file.write_all(&screenshot.bytes).map_err(error)?;
+                file.sync_all().map_err(error)?;
+                total += screenshot.bytes.len() as u64;
+                report.preview["files"]
+                    .as_array_mut()
+                    .ok_or("INVALID_EXPORT")?
+                    .push(screenshot.metadata);
+            }
+            if total > MAX {
+                return Err("REPORT_TOO_LARGE".into());
+            }
+            report.preview["bytes"] = json!(total);
+            report.preview["completeness"] = json!("BEST_EFFORT");
+        }
         validate_sources(&report.preview)?;
         report.save_draft(None)?;
         Ok(report)
@@ -711,10 +766,38 @@ impl Report {
             config.gateway.trim_end_matches('/'),
             self.id
         );
+        let screenshots = images::metadata(&self.preview)?;
+        let mut payload = json!({"description":description,"artifact":artifact});
+        let mut uploads = Vec::new();
+        if !screenshots.is_empty() {
+            payload["images"] = json!(screenshots);
+            for (index, meta) in screenshots.iter().enumerate() {
+                let path = self.dir.join(meta["path"].as_str().ok_or("INVALID_IMAGE")?);
+                if !safe(&path) {
+                    return Err("UNSAFE_PATH".into());
+                }
+                if !fs::metadata(&path).is_ok_and(|m| m.len() <= images::MAX_IMAGE_BYTES as u64) {
+                    return Err("IMAGE_SIZE_LIMIT".into());
+                }
+                let bytes = fs::read(path).map_err(error)?;
+                if meta["sha256"] != hash(&bytes) || meta["bytes"] != bytes.len() {
+                    return Err("EXPORT_CHANGED".into());
+                }
+                uploads.push(
+                    client
+                        .post(format!("{endpoint}/images/{}", index + 1))
+                        .bearer_auth(access_token)
+                        .header("Content-Type", "image/png")
+                        .body(bytes)
+                        .build()
+                        .map_err(error)?,
+                );
+            }
+        }
         let put = client
             .put(&endpoint)
             .bearer_auth(access_token)
-            .json(&json!({"description":description,"artifact":artifact}))
+            .json(&payload)
             .build()
             .map_err(error)?;
         let post = client
@@ -730,6 +813,12 @@ impl Report {
         let (status, bytes) = exchange(&client, put)?;
         if !(200..300).contains(&status) {
             return Err(gateway_failure(status, &bytes));
+        }
+        for request in uploads {
+            let (status, bytes) = exchange(&client, request)?;
+            if !(200..300).contains(&status) {
+                return Err(gateway_failure(status, &bytes));
+            }
         }
         let (status, bytes) = exchange(&client, post)?;
         if !(200..300).contains(&status) {
@@ -953,6 +1042,7 @@ mod evidence_failure_test {
 // drafts are rejected, never silently uploaded after the attachment contract changed.
 fn validate_sources(preview: &Value) -> Result<()> {
     let files = preview["files"].as_array().ok_or("INVALID_EXPORT")?;
+    let screenshots = images::metadata(preview)?;
     let mut seen = std::collections::HashSet::new();
     for file in files {
         let path = file["path"].as_str().ok_or("INVALID_EXPORT")?;
@@ -964,7 +1054,7 @@ fn validate_sources(preview: &Value) -> Result<()> {
                 preview["consent"]["evidence"] == true
                     && preview["consent"]["evidenceConsent"] == true
             }
-            _ => false,
+            _ => screenshots.iter().any(|f| f["path"] == path),
         };
         if !selected || !seen.insert(path) {
             return Err("INVALID_EXPORT_SOURCE".into());

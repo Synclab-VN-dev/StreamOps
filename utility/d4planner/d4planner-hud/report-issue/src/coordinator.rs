@@ -177,6 +177,18 @@ impl Coordinator {
         selection: Selection,
         evidence: impl FnOnce(&Path) -> Result<Value, String>,
     ) -> Result<Value, String> {
+        self.collect_with_images(root, run, actor, selection, &[], false, evidence)
+    }
+    pub fn collect_with_images(
+        &mut self,
+        root: &Path,
+        run: &str,
+        actor: &str,
+        selection: Selection,
+        images: &[crate::images::ImageInput],
+        image_consent: bool,
+        evidence: impl FnOnce(&Path) -> Result<Value, String>,
+    ) -> Result<Value, String> {
         if let Some((owner, report)) = &self.active {
             if owner != actor {
                 return Err("REPORT_BUSY".into());
@@ -212,12 +224,13 @@ impl Coordinator {
                 }
             }
         }
-        let report = Report::collect(root, run, selection, evidence)?;
+        let report =
+            Report::collect_with_images(root, run, selection, images, image_consent, evidence)?;
         if let Err(error) = store(root, &report.id, &json!({"actor":actor})) {
             let _ = report.discard();
             return Err(error);
         }
-        let preview = report.preview.clone();
+        let preview = report.restored_preview();
         self.active = Some((actor.into(), report));
         Ok(preview)
     }

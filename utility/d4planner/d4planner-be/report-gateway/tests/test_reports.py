@@ -81,6 +81,20 @@ class FakeGitHub:
             raise OSError("ambiguous")
         return a
 
+    def upload_image(self, rid, name, data):
+        asset = self.upload(rid, name, data)
+        asset["content_type"] = "image/png"
+        if self.fail == "image":
+            self.fail = ""
+            raise OSError("image response lost")
+        return asset
+
+    def update_issue(self, n, body):
+        next(i for i in self.items if i["number"] == n)["body"] = body
+        if self.fail == "body":
+            self.fail = ""
+            raise OSError("body response lost")
+
     def comment(self, n, body):
         self.notes.setdefault(n, []).append(
             {"id": len(self.notes.get(n, [])) + 1, "user": {"id": 42}, "body": body}
@@ -348,3 +362,97 @@ class Reports(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ScreenshotReports(unittest.TestCase):
+    setUp = Reports.setUp
+
+    def with_image(self):
+        self.png = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        )
+        self.request["images"] = [
+            {
+                "name": "screenshot-1.png",
+                "path": "images/screenshot-1.png",
+                "mediaType": "image/png",
+                "width": 1,
+                "height": 1,
+                "bytes": len(self.png),
+                "sha256": hashlib.sha256(self.png).hexdigest(),
+                "status": "READY",
+            }
+        ]
+        self.s.prepare("alice", self.rid, self.request)
+
+    def test_images_required_before_remote_issue(self):
+        self.with_image()
+        with self.assertRaisesRegex(Rejected, "IMAGE_UPLOAD_PENDING"):
+            self.s.upload("alice", self.rid, self.data)
+        self.assertEqual(self.gh.items, [])
+
+    def test_image_ownership_tamper_and_idempotent_delivery(self):
+        self.with_image()
+        with self.assertRaises(Rejected):
+            self.s.upload_image("bob", self.rid, 1, self.png)
+        with self.assertRaises(Rejected):
+            self.s.upload_image("alice", self.rid, 1, self.png + b"x")
+        self.s.upload_image("alice", self.rid, 1, self.png)
+        r = self.s.upload("alice", self.rid, self.data)
+        self.assertEqual(r["status"], "COMPLETE")
+        self.assertEqual(len(r["mapping"]["images"]), 1)
+        self.assertIn("![Screenshot 1](https://github.com/", self.gh.items[0]["body"])
+        self.assertIn(hashlib.sha256(self.png).hexdigest(), self.gh.items[0]["body"])
+        self.s.upload_image("alice", self.rid, 1, self.png)
+        self.s.upload("alice", self.rid, self.data)
+        self.assertEqual(len(self.gh.items), 1)
+        self.assertEqual(len(self.gh.uploads), 2)
+        with self.s.connect() as c:
+            self.assertEqual(
+                c.execute("SELECT count(*) FROM report_images").fetchone()[0], 0
+            )
+
+    def test_restart_after_image_or_body_response_lost(self):
+        for failure in ["image", "body"]:
+            with self.subTest(failure=failure):
+                self.setUp()
+                self.with_image()
+                self.s.upload_image("alice", self.rid, 1, self.png)
+                self.gh.fail = failure
+                with self.assertRaises(OSError):
+                    self.s.upload("alice", self.rid, self.data)
+                restarted = Service(self.path, self.gh, 77, 42, 10000)
+                self.assertEqual(
+                    restarted.upload("alice", self.rid, self.data)["status"], "COMPLETE"
+                )
+                self.assertEqual(len(self.gh.items), 1)
+                self.assertEqual(len(self.gh.uploads), 2)
+
+    def test_wrong_image_digest_and_edited_body_fail_closed(self):
+        self.with_image()
+        self.s.upload_image("alice", self.rid, 1, self.png)
+        self.s.upload("alice", self.rid, self.data)
+        self.gh.uploads[1]["digest"] = "sha256:" + "0" * 64
+        with self.assertRaisesRegex(Rejected, "REMOTE_IMAGE_BINDING_MISMATCH"):
+            self.s.upload("alice", self.rid, self.data)
+
+    def test_expired_image_not_reuploaded(self):
+        self.with_image()
+        self.s.upload_image("alice", self.rid, 1, self.png)
+        self.s.upload("alice", self.rid, self.data)
+        self.gh.uploads = self.gh.uploads[:1]
+        self.assertEqual(
+            self.s.upload("alice", self.rid, self.data)["status"], "EXPIRED"
+        )
+        self.assertEqual(len(self.gh.uploads), 1)
+
+    def test_cleanup_only_bound_images_after_closed_retention(self):
+        self.with_image()
+        self.s.upload_image("alice", self.rid, 1, self.png)
+        self.s.upload("alice", self.rid, self.data)
+        self.gh.items[0].update(state="closed", closed_at="2026-10-30T00:00:00Z")
+        result = cleanup(
+            self.gh, 77, 42, datetime(2026, 11, 2, tzinfo=timezone.utc), dry_run=False
+        )
+        self.assertEqual(len(result), 2)
+        self.assertEqual(self.gh.uploads, [])
