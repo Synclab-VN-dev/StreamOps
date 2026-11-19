@@ -2,7 +2,8 @@
 import asyncio,json,subprocess,shutil
 from pathlib import Path
 from d4planner.production import ProductionBackendRuntime
-from d4planner.rulekit import LaunchSpecification,RuleKitProcessWrapper,RuleKitRuntimeService
+from d4planner.rulekit import LaunchSpecification,RuleKitRuntimeService
+from snapshot_worker_support import RuleKitProcessWrapper
 from test_production_backend import _evidence
 ROOT=Path(__file__).resolve().parents[4]
 
@@ -17,7 +18,7 @@ def test_backend_forwards_rulekit_health_without_owning_snapshot_compatibility(t
     inputs=json.loads((tmp_path/'inputs.json').read_text())
     async def scenario():
         worker=RuleKitProcessWrapper(LaunchSpecification(executable='node',args=(str(ROOT/'utility/d4planner/d4planner-be/src/d4planner/rulekit/worker.js'),),working_directory=ROOT,
-            # Use the production readiness budget: Windows identity queries alone
+            # Use the standard wrapper readiness budget: Windows identity queries alone
             # can take up to 4s each, including an old-owner query on recovery.
             environment_allow_list={'D4_RULEKIT_COMPOSITION_MODULE':str(ROOT/'utility/d4planner/d4planner-be/tests/fixtures/snapshot-test-composition.js'),'TEST_SNAPSHOT_CONFIG':str(tmp_path/'test-config.json'),'D4_RULEKIT_DATA_ROOT':str(tmp_path/'rulekit-data')},operation_timeout=3))
         targets=tmp_path/'targets';targets.mkdir();shutil.copy2(ROOT/'utility/d4planner/d4planner-be/contracts/release1/v1/fixtures/target.valid.synthetic.json',targets/'target.json')

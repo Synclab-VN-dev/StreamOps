@@ -111,6 +111,7 @@ def assemble(args: argparse.Namespace) -> dict:
         root / "runtime/chromium/chrome-win64/chrome.exe",
         root / "utility/d4-rulekit/snapshot-management/manage.js",
         root / "utility/d4-rulekit/snapshot-management/src/process-owner.js",
+        root / "utility/d4-rulekit/runtime-logging/src/startup.js",
         root / "utility/d4-rulekit/providers/maxroll/tooling/planner/worker-adapter.js",
         root / "utility/d4-rulekit/providers/maxroll/tooling/planner/equipment-layout.js",
         root / "utility/d4-rulekit/providers/maxroll/tooling/planner/manager.js",

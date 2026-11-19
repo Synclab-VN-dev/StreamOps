@@ -1,4 +1,4 @@
-# Issue 213: Windows snapshot lease recovery
+# Issue 213: Windows snapshot lease recovery and startup diagnostics
 
 A legacy `.manager.lock` recorded only PID and random owner ID. After Windows
 reused that PID for a protected process, `process.kill(pid, 0)` raised `EPERM`.
@@ -27,6 +27,22 @@ The Windows helper uses the system PowerShell path, numeric PID validation,
 non-interactive mode, four-second timeout, an 8 KiB output limit and no raw output
 in public diagnostics. No service or persistent background process is added.
 
+## Logs and Report Issue
+
+Managed composition records bounded `startupStage` and `startupReason` values,
+alongside STARTUP_FAILED. Stages distinguish Snapshot Manager, Chromium, provider
+and application creation; outer bootstrap errors use COMPOSITION. Recovery emits
+snapshot/RECOVERY with OWNER_PID_REUSED or OWNER_EXITED. BE startup failure now
+also records STARTUP_FAILED. Existing run ID, PID, generation and timestamps bind
+these records across components.
+
+Both the Node writer and Rust report export allow only the declared enum values.
+Unknown strings, error messages, paths, raw stderr, credentials and build payloads
+are excluded. The report test collects the current Rule Kit log, encrypts it,
+decrypts the attachment and verifies reason/stage/run/PID/generation/timestamp
+survival plus private-text removal. No real GitHub issue submission is needed for
+this regression.
+
 ```mermaid
 flowchart TD
   B["managed_backend.py: _run_managed — BE lifecycle"]
@@ -53,6 +69,8 @@ flowchart TD
 ## Local regression
 
 - `npm test --prefix utility/d4planner/d4planner-rulekit/snapshot-management`
+- `node --test utility/d4planner/d4planner-rulekit/application/tests/startup-diagnostics.test.js`
+- `cargo test --manifest-path utility/d4planner/d4planner-hud/report-issue/Cargo.toml --lib`
 - Run `process-owner.test.js` on Windows: legacy protected/reused PID recovery,
   active contender rejection, protected process preserved, close/reopen cleanup.
 - Build and install Setup on an isolated Windows VM; exercise startup with a

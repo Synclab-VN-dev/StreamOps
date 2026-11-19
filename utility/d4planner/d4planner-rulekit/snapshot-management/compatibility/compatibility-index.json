@@ -47,11 +47,11 @@
     },
     {
       "path": "application/src/runtime/bootstrap.js",
-      "sha256": "e61a5fe93021332ab9c5add4cd1d02e3b18a14bd80c1f7cc92a7b41d07cf75bd"
+      "sha256": "09369ae2149e2886c35f3ebd7c25aacbef387c89c36baf956968848c7333284d"
     },
     {
       "path": "application/src/runtime/managed-snapshot-composition.js",
-      "sha256": "2e628bf01d55b7a4cc7d4fa92144d7b3adc10c6ecbbf51a67df8fb82bdc09d3a"
+      "sha256": "4bfafce4bf521d367231e97e4f5267aa1a78bd460df1adbd1dd607f27c6848d7"
     },
     {
       "path": "application/src/runtime/production-composition.js",
@@ -275,7 +275,11 @@
     },
     {
       "path": "runtime-logging/src/logger.js",
-      "sha256": "8127d79fa23760f1db4906369b6dd9c7ff6a55c24532cf0ac9a84016c5ebd7c5"
+      "sha256": "3b826f15c4399d64f0e5eaa5e981951765c2860c0f878aecc728471bf064ad11"
+    },
+    {
+      "path": "runtime-logging/src/startup.js",
+      "sha256": "aef6cf7e663bc78184defe4b0e7b7a9a030419f28e740650e797231af120a8ba"
     },
     {
       "path": "snapshot-management/compatibility/build-index.js",
@@ -331,7 +335,7 @@
     },
     {
       "path": "snapshot-management/src/manager.js",
-      "sha256": "747e8c6518fb289761de4ccf65c91b298159725e1f43e5108604ee8f716c278f"
+      "sha256": "b4103ae0d5adf9e79d52755940047aeba9e60efefe0e4e9fce8afd4db0be7721"
     },
     {
       "path": "snapshot-management/src/process-owner.js",
@@ -366,6 +370,6 @@
     "snapshot-management/compatibility/versions/maxroll-20261023.js",
     "snapshot-management/compatibility/versions/maxroll-20261027.js"
   ],
-  "executionSha256": "a2967bcd74b8df86c29896b0e0d9f13dc2aa7410fb163d6ff5139b6e64cc4332",
-  "ruleKitVersion": "rulekit-execution/sha256:a2967bcd74b8df86c29896b0e0d9f13dc2aa7410fb163d6ff5139b6e64cc4332"
+  "executionSha256": "e0ed8d348dc362142726002489ecec3a221a588011f4d8f9486387b2d0ac10ed",
+  "ruleKitVersion": "rulekit-execution/sha256:e0ed8d348dc362142726002489ecec3a221a588011f4d8f9486387b2d0ac10ed"
 }

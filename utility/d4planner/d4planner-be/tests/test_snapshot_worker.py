@@ -6,7 +6,8 @@ import subprocess
 
 import pytest
 
-from d4planner.rulekit import LaunchSpecification,RuleKitProcessWrapper,RuleKitRuntimeService,RuleKitRemoteError
+from d4planner.rulekit import LaunchSpecification,RuleKitRuntimeService,RuleKitRemoteError
+from snapshot_worker_support import RuleKitProcessWrapper
 ROOT=Path(__file__).resolve().parents[4]
 WORKER=ROOT/'utility/d4planner/d4planner-be/src/d4planner/rulekit/worker.js'
 
@@ -26,7 +27,7 @@ await fs.writeFile(path.join(root,'inputs.json'),JSON.stringify({envelope:creden
     async def scenario():
         wrapper=RuleKitProcessWrapper(LaunchSpecification(executable='node',args=(str(WORKER),),working_directory=ROOT,
             environment_allow_list={'D4_RULEKIT_COMPOSITION_MODULE':str(ROOT/'utility/d4planner/d4planner-be/tests/fixtures/snapshot-test-composition.js'),'TEST_SNAPSHOT_CONFIG':str(tmp_path/'test-config.json')},
-            # Keep the production readiness budget for real Windows identity
+            # Keep the standard wrapper readiness budget for real Windows identity
             # queries (up to 4s each), rather than a shorter synthetic deadline.
             max_restarts=1,operation_timeout=2))
         runtime=RuleKitRuntimeService(wrapper);runtime.client=await wrapper.start()

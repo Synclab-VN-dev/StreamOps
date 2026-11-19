@@ -12,11 +12,13 @@ async function createManagedComposition(env){
  const dataRoot=env.D4_RULEKIT_DATA_ROOT;
  if(!path.isAbsolute(dataRoot??'')||!path.isAbsolute(env.D4_RULEKIT_INSTALLATION_ROOT??''))throw new Error('Rule Kit absolute data/installation paths required');
  const manager=createProductionManager({dataRoot,installationRoot:env.D4_RULEKIT_INSTALLATION_ROOT,workerGeneration:Number(env.D4_RULEKIT_WORKER_GENERATION)||1});
- let browser;
+ let browser;let startupStage='SNAPSHOT_MANAGER';
  try {
   await manager.start();
+  startupStage='CHROMIUM';
   browser=new BrowserInfrastructure({logger:runtimeLog.browserEvent,executablePath:env.D4_RULEKIT_CHROMIUM_EXECUTABLE||undefined,headless:true,maxContexts:Number(env.D4_RULEKIT_MAX_CONTEXTS)||2,maxQueue:Number(env.D4_RULEKIT_BROWSER_MAX_QUEUE)||16,contextOptions:{serviceWorkers:'block'}});
   await browser.start();
+  startupStage='PROVIDER';
   const active=await manager.getActive();let provider;
   if(active.active){
    const entry=manager.registry.resolve(active.active.entryId);
@@ -30,9 +32,10 @@ async function createManagedComposition(env){
     getCapabilities:()=>({version:'maxroll-unavailable/v1',stateModel:'stateful',metricIds:[],changeTypes:[]}),
     createSession:async()=>{throw new SnapshotError('PROVIDER_UNAVAILABLE');}};
   }
+  startupStage='APPLICATION';
   const application=new D4RuleKitApplication({providers:[provider],maxSessions:Number(env.D4_RULEKIT_MAX_SESSIONS)||8,sessionTtlMs:Number(env.D4_RULEKIT_SESSION_TTL_MS)||1800000,operationTimeoutMs:Number(env.D4_RULEKIT_OPERATION_TIMEOUT_MS)||15000,cleanupTimeoutMs:Number(env.D4_RULEKIT_CLEANUP_TIMEOUT_MS)||5000});
   return {application,snapshotManagement:manager,calculationAvailability:active.calculationAvailability,calculationReason:active.reason,
    close:async()=>{try{await browser.stop();}finally{await manager.close();}}};
- }catch(error){await browser?.stop().catch(()=>{});await manager.close();throw error;}
+ }catch(error){runtimeLog.emit('ERROR','worker','ERROR',require('../../../runtime-logging/src/startup').fields(error,startupStage));await browser?.stop().catch(()=>{});await manager.close();throw error;}
 }
 module.exports={createManagedComposition};

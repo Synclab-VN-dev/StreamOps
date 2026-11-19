@@ -6,7 +6,8 @@ import subprocess
 
 import pytest
 
-from d4planner.rulekit import LaunchSpecification, ProcessState, RuleKitProcessWrapper
+from d4planner.rulekit import LaunchSpecification, ProcessState
+from snapshot_worker_support import RuleKitProcessWrapper
 from d4planner.rulekit.process import AsyncioProcessDriver
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -54,7 +55,7 @@ def test_snapshot_identity_startup_budget_and_cleanup(tmp_path, scenario):
             executable="node", args=(str(WORKER),), working_directory=ROOT,
             environment_allow_list={"D4_RULEKIT_COMPOSITION_MODULE": str(composition),
                                     "TEST_SNAPSHOT_CONFIG": str(config)},
-            # Success uses the same budget as production, including native lookup.
+            # Success uses the standard wrapper budget, including native lookup.
             **({"readiness_timeout": 3} if scenario == "deadline" else {}),
         ), driver)
         try:
@@ -76,3 +77,21 @@ def test_snapshot_identity_startup_budget_and_cleanup(tmp_path, scenario):
         assert not (data / ".manager.lock").exists()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize('payload,expected', [
+    (b'private-path token\nRule Kit worker startup failed: SNAPSHOT_LOCK_OWNERSHIP_UNKNOWN:TIMEOUT\n',
+     'Snapshot Worker startup: SNAPSHOT_LOCK_OWNERSHIP_UNKNOWN:TIMEOUT\n'),
+    (b'Rule Kit worker startup failed: SNAPSHOT_LOCK_OWNERSHIP_UNKNOWN\n',
+     'Snapshot Worker startup: SNAPSHOT_LOCK_OWNERSHIP_UNKNOWN\n'),
+    (b'Rule Kit worker startup failed: SNAPSHOT_LOCK_OWNERSHIP_UNKNOWN:private-token\n', ''),
+    (b'Rule Kit worker startup failed: private-path token\n', ''),
+])
+def test_snapshot_stderr_evidence_never_prints_raw_child_data(payload, expected, capsys):
+    async def run():
+        stream = asyncio.StreamReader()
+        stream.feed_data(payload)
+        stream.feed_eof()
+        await RuleKitProcessWrapper._drain_stderr(None, stream)
+    asyncio.run(run())
+    assert capsys.readouterr().out == expected

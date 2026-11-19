@@ -71,6 +71,7 @@ class SnapshotManager {
   async acquireLock() {
     const file=path.join(this.dataRoot,'.manager.lock');
     const processIdentity=await processOwner.currentIdentity();
+    let recoveredState;
     try {this.lock=await fs.open(file,'wx',0o600);}
     catch(error){
       if(error.code!=='EEXIST')throw error;
@@ -79,6 +80,7 @@ class SnapshotManager {
       fail(Number.isInteger(old.pid)&&old.pid>0&&typeof old.owner==='string','SNAPSHOT_LOCK_OWNERSHIP_UNKNOWN');
       const state=await processOwner.ownerState(old,(await fs.stat(file)).mtimeMs);
       fail(state==='DEAD'||state==='REUSED','SNAPSHOT_MANAGER_BUSY');
+      recoveredState=state;
       const retired=file+'.retired-'+this.owner;
       await fs.rename(file,retired);
       const moved=await readJson(retired);
@@ -92,6 +94,7 @@ class SnapshotManager {
     }
     await this.lock.writeFile(JSON.stringify({owner:this.owner,pid:process.pid,...(processIdentity?{processIdentity}:{})}));
     fail((await readJson(file)).owner===this.owner,'SNAPSHOT_LOCK_OWNERSHIP_LOST');
+    if(recoveredState)log.emit('INFO','snapshot','RECOVERY',{startupStage:'SNAPSHOT_MANAGER',startupReason:recoveredState==='REUSED'?'OWNER_PID_REUSED':'OWNER_EXITED'});
   }
   async close() {
     await this.tail.catch(()=>{});

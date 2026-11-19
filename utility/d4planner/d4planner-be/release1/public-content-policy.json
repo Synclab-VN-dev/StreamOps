@@ -84,6 +84,7 @@
     "utility/d4planner/d4planner-rulekit/providers/maxroll/tooling/web/shell.js",
     "utility/d4planner/d4planner-rulekit/providers/maxroll/tooling/web/ui-package.js",
     "utility/d4planner/d4planner-rulekit/runtime-logging/src/logger.js",
+    "utility/d4planner/d4planner-rulekit/runtime-logging/src/startup.js",
     "utility/d4planner/d4planner-rulekit/snapshot-management/compatibility/build-index.js",
     "utility/d4planner/d4planner-rulekit/snapshot-management/compatibility/compatibility-index.json",
     "utility/d4planner/d4planner-rulekit/snapshot-management/compatibility/contracts.js",
