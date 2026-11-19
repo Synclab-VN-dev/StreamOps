@@ -170,3 +170,12 @@ def test_wrong_owner_cannot_stop_owned_process(tmp_path: Path) -> None:
     process.stdin.flush()
     assert json.loads(process.stdout.readline())["reason"] == "OWNER_STOP"
     assert process.wait(timeout=3) == 0
+
+
+def test_startup_failure_logs_safe_code_without_private_exception(monkeypatch, capsys):
+    from d4planner import managed_backend, runtime_logging
+    records = []
+    monkeypatch.setattr(runtime_logging, "emit", lambda *args, **fields: records.append((args, fields)))
+    managed_backend._emit({"event": "STARTUP_FAILED", "code": "ProtocolError"})
+    assert records == [(("ERROR", "lifecycle", "ERROR"), {"errorCode": "STARTUP_FAILED"})]
+    assert json.loads(capsys.readouterr().out)["event"] == "STARTUP_FAILED"

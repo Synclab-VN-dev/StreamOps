@@ -47,7 +47,7 @@ async function boot() {
 }
 
 boot().catch(async error => {
-  log.emit('ERROR','worker','ERROR',{errorCode:'STARTUP_FAILED'});
+  log.emit('ERROR','worker','ERROR',require('../../../runtime-logging/src/startup').fields(error));
   await log.configure()?.close();
   process.stderr.write(`Rule Kit worker startup failed: ${error?.message ?? 'unknown error'}\n`);
   process.exitCode = 1;

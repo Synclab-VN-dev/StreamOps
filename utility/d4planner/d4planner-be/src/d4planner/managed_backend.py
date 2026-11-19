@@ -127,7 +127,7 @@ def load_bootstrap(path: Path) -> dict[str, Any]:
 def _emit(event: dict[str, Any]) -> None:
     from .runtime_logging import emit
     name = event.get("event")
-    emit("ERROR" if name in {"ERROR","STARTUP_FAILED"} else "INFO", "lifecycle", name if name in {"READY","EXIT","ERROR"} else "ERROR" if name=="STARTUP_FAILED" else "RESULT")
+    emit("ERROR" if name in {"ERROR","STARTUP_FAILED"} else "INFO", "lifecycle", name if name in {"READY","EXIT","ERROR"} else "ERROR" if name=="STARTUP_FAILED" else "RESULT", **({"errorCode": "STARTUP_FAILED"} if name == "STARTUP_FAILED" else {}))
     print(json.dumps(event, separators=(",", ":")), flush=True)
 
 

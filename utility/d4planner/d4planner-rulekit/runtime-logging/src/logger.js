@@ -2,11 +2,12 @@
 // Single writer thread; producer never blocks application IPC on filesystem I/O.
 const {Worker,isMainThread,parentPort,workerData}=require('node:worker_threads');
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const {STAGES,REASONS}=require('./startup');
 const CODES=new Set('INTERNAL TIMEOUT TARGET_INVALID TARGET_CHANGED SNAPSHOT_MISMATCH UNAVAILABLE CLEANUP_PENDING IO_ERROR STARTUP_FAILED INVALID_CONFIG UNKNOWN'.split(' '));
 const TAGS=new Set('logger launcher native webview websocket hud lifecycle capture target sqlite worker browser snapshot session api'.split(' '));
 const EVENTS=new Set('SESSION_HEADER START READY STOP ERROR RESTART EXIT CONNECT DISCONNECT RECONNECT STATE_CHANGE REQUEST RESULT TIMEOUT QUARANTINE CREATE CLOSE RECOVERY UNAVAILABLE LOG_TRIMMED LOG_DROPPED LEGACY_FROZEN DEBUG_PROBE'.split(' '));
 const KEYS=new Set('durationMs bytes count dropped trimmed exitCode revision queueDepth active ok retryable'.split(' '));
-function clean(fields){const out=Object.fromEntries(Object.entries(fields||{}).filter(([k,v])=>KEYS.has(k)&&(typeof v==='boolean'||typeof v==='number'&&Number.isFinite(v)&&Math.abs(v)<=1e15)));if(CODES.has(fields?.errorCode))out.errorCode=fields.errorCode;if(typeof fields?.correlationId==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(fields.correlationId))out.correlationId=fields.correlationId;return out;}
+function clean(fields){const out=Object.fromEntries(Object.entries(fields||{}).filter(([k,v])=>KEYS.has(k)&&(typeof v==='boolean'||typeof v==='number'&&Number.isFinite(v)&&Math.abs(v)<=1e15)));if(STAGES.has(fields?.startupStage))out.startupStage=fields.startupStage;if(REASONS.has(fields?.startupReason))out.startupReason=fields.startupReason;if(CODES.has(fields?.errorCode))out.errorCode=fields.errorCode;if(typeof fields?.correlationId==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(fields.correlationId))out.correlationId=fields.correlationId;return out;}
 function safe(p){for(let q=p;;q=path.dirname(q)){try{if(fs.lstatSync(q).isSymbolicLink())return false;}catch(e){if(e.code!=='ENOENT')return false;}if(path.dirname(q)===q)return true;}}
 class Sink{
  constructor(dir,runId,generation=0,policy={}){if(!path.isAbsolute(dir)||!safe(dir)||!/^[a-f0-9-]{36}$/.test(runId))throw Error('LOG_UNSAFE');Object.assign(this,{dir,runId,generation,policy,cap:15000000,dropped:0,trimmed:0});this.file=path.join(dir,'rulekit.log');this.temp=path.join(path.dirname(dir),'.control',`${runId}-RULEKIT.tmp`);}

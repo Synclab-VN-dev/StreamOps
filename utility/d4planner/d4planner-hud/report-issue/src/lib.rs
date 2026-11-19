@@ -898,6 +898,38 @@ mod tests {
         fs::remove_dir_all(data).unwrap();
     }
     #[test]
+    fn startup_failure_survives_selected_export_and_encryption_without_private_text() {
+        use std::io::Write;
+        let data = temp();
+        let session = d4planner_runtime_logging::Session::create(&data, "1.2.8", "issue213").unwrap();
+        let directory = PathBuf::from(&session.environment()["D4_LOG_DIR"]);
+        let record = json!({"schemaVersion":"d4planner-runtime-log/v1", "ts":"2026-11-19T05:39:50.771Z",
+            "level":"ERROR", "component":"RULEKIT", "tag":"worker", "event":"ERROR",
+            "runId":session.id, "pid":9124, "generation":3,
+            "fields":{"errorCode":"STARTUP_FAILED", "startupStage":"SNAPSHOT_MANAGER",
+                "startupReason":"ACCESS_DENIED", "message":"PRIVATE_TOKEN_PATH_CANARY"}});
+        let mut file = fs::OpenOptions::new().append(true).open(directory.join("rulekit.log")).unwrap();
+        writeln!(file, "{}", record).unwrap(); drop(file);
+        let mut selected = selection(); selected.fe=false; selected.rulekit=true;
+        let mut report = Report::collect(&data, &session.id, selected, |_| panic!()).unwrap();
+        let identity = age::x25519::Identity::generate();
+        report.encrypt(&Config {recipient:identity.to_public().to_string(),gateway:"https://gateway.invalid".into(),max_bytes:MAX}).unwrap();
+        let sealed = fs::read(report.sealed.as_ref().unwrap()).unwrap();
+        let decrypt = age::Decryptor::new(&sealed[..]).unwrap();
+        let mut reader = decrypt.decrypt(std::iter::once(&identity as &dyn age::Identity)).unwrap();
+        let mut plain = Vec::new(); reader.read_to_end(&mut plain).unwrap();
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(plain)).unwrap();
+        let mut text = String::new(); archive.by_name("logs/rulekit.log").unwrap().read_to_string(&mut text).unwrap();
+        assert!(!text.contains("PRIVATE_TOKEN_PATH_CANARY"));
+        let rows:Vec<Value> = text.lines().map(|l|serde_json::from_str(l).unwrap()).collect();
+        let failure=rows.iter().find(|r|r["event"]=="ERROR").unwrap();
+        assert_eq!(failure["runId"],session.id); assert_eq!(failure["pid"],9124); assert_eq!(failure["generation"],3);
+        assert_eq!(failure["ts"],record["ts"]); assert_eq!(failure["fields"]["startupStage"],"SNAPSHOT_MANAGER");
+        assert_eq!(failure["fields"]["startupReason"],"ACCESS_DENIED");
+        assert_eq!(failure["fields"]["errorCode"],"STARTUP_FAILED");
+        report.discard().unwrap(); drop(session); fs::remove_dir_all(data).unwrap();
+    }
+    #[test]
     fn consent_invalid_config_and_missing_sources() {
         let data = temp();
         let session = d4planner_runtime_logging::Session::create(&data, "1", "s").unwrap();
