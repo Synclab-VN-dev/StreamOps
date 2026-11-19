@@ -26,7 +26,9 @@ await fs.writeFile(path.join(root,'inputs.json'),JSON.stringify({envelope:creden
     async def scenario():
         wrapper=RuleKitProcessWrapper(LaunchSpecification(executable='node',args=(str(WORKER),),working_directory=ROOT,
             environment_allow_list={'D4_RULEKIT_COMPOSITION_MODULE':str(ROOT/'utility/d4planner/d4planner-be/tests/fixtures/snapshot-test-composition.js'),'TEST_SNAPSHOT_CONFIG':str(tmp_path/'test-config.json')},
-            max_restarts=1,operation_timeout=2,readiness_timeout=3))
+            # Keep the production readiness budget for real Windows identity
+            # queries (up to 4s each), rather than a shorter synthetic deadline.
+            max_restarts=1,operation_timeout=2))
         runtime=RuleKitRuntimeService(wrapper);runtime.client=await wrapper.start()
         try:
             caps=await runtime.snapshot_api('getCapabilities');assert caps['calculationAvailability']=='UNAVAILABLE'

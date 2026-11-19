@@ -100,6 +100,7 @@
     "utility/d4planner/d4planner-rulekit/snapshot-management/src/content-version.js",
     "utility/d4planner/d4planner-rulekit/snapshot-management/src/index.js",
     "utility/d4planner/d4planner-rulekit/snapshot-management/src/manager.js",
+    "utility/d4planner/d4planner-rulekit/snapshot-management/src/process-owner.js",
     "utility/d4planner/d4planner-rulekit/snapshot-management/src/production-trust-anchors.json",
     "utility/d4planner/d4planner-rulekit/snapshot-management/src/protocol.js",
     "utility/d4planner/d4planner-rulekit/snapshot-management/src/resolver.js",

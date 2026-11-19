@@ -1,5 +1,6 @@
 'use strict';
 const log=require('../../runtime-logging/src/logger');
+const processOwner=require('./process-owner');
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const crypto=require('node:crypto');
@@ -69,15 +70,15 @@ class SnapshotManager {
   }
   async acquireLock() {
     const file=path.join(this.dataRoot,'.manager.lock');
+    const processIdentity=await processOwner.currentIdentity();
     try {this.lock=await fs.open(file,'wx',0o600);}
     catch(error){
       if(error.code!=='EEXIST')throw error;
       fail(!(await fs.lstat(file)).isSymbolicLink(),'SNAPSHOT_LOCK_SYMLINK');
       const old=await readJson(file);
       fail(Number.isInteger(old.pid)&&old.pid>0&&typeof old.owner==='string','SNAPSHOT_LOCK_OWNERSHIP_UNKNOWN');
-      let dead=false;
-      try {process.kill(old.pid,0);} catch(probe){if(probe.code==='ESRCH')dead=true;else throw probe;}
-      fail(dead,'SNAPSHOT_MANAGER_BUSY');
+      const state=await processOwner.ownerState(old,(await fs.stat(file)).mtimeMs);
+      fail(state==='DEAD'||state==='REUSED','SNAPSHOT_MANAGER_BUSY');
       const retired=file+'.retired-'+this.owner;
       await fs.rename(file,retired);
       const moved=await readJson(retired);
@@ -89,7 +90,7 @@ class SnapshotManager {
       }
       try {this.lock=await fs.open(file,'wx',0o600);} finally {await fs.rm(retired,{force:true});}
     }
-    await this.lock.writeFile(JSON.stringify({owner:this.owner,pid:process.pid}));
+    await this.lock.writeFile(JSON.stringify({owner:this.owner,pid:process.pid,...(processIdentity?{processIdentity}:{})}));
     fail((await readJson(file)).owner===this.owner,'SNAPSHOT_LOCK_OWNERSHIP_LOST');
   }
   async close() {
