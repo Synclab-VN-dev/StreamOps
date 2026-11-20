@@ -316,7 +316,9 @@ def test_fresh_rulekit_layout_handoff_never_reuses_ambient_layout(tmp_path, monk
         async def changed(value): pass
         async def layout():
             attempted.set()
-            if not available: raise RuntimeError('snapshot unavailable')
+            if not available:
+                from d4planner.rulekit.client import RuleKitRemoteError
+                raise RuleKitRemoteError('PLANNER_SNAPSHOT_UNAVAILABLE', 'snapshot unavailable')
             return LAYOUT
         runtime=ManagedCaptureRuntime(tmp_path,changed,spawn=spawn,equipment_layout_provider=layout)
         await runtime.start()
@@ -326,6 +328,8 @@ def test_fresh_rulekit_layout_handoff_never_reuses_ambient_layout(tmp_path, monk
             await until(lambda: child.frames)
             assert child.frames[0]['layouts']==LAYOUT
         else:
+            await until(lambda: runtime.layout_state['state'] == 'RETRYING')
+            assert runtime.layout_state['errorCode'] == 'PLANNER_SNAPSHOT_UNAVAILABLE'
             assert not child.frames
         await runtime.stop()
     asyncio.run(scenario())

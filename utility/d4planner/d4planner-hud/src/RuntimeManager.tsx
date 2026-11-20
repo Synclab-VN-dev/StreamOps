@@ -6,6 +6,7 @@ type Service = 'backend' | 'capture';
 type Operation = 'start' | 'stop' | 'restart';
 type Capture = {speechEvents:number|null; dataRootReceipt:string;state:string; detail:string; pid:number|null; manualPause:boolean; mode:string;
   controllerProfile:string; lastEventAt:string|null; inputObserved:boolean;
+  equipmentLayout?: {state:string;errorCode?:string};
   dependencies:Record<string,string>; observedAt:string|null};
 type Runtime = {pid:number; uptimeSeconds:number; dataRoot:string; webSocket:string|null; capture:Capture|null};
 type Status = {state:string; ready?:{childInstanceId:string;generation:number}};
@@ -14,7 +15,7 @@ function Metric({title,value}:{title:string;value:unknown}) {
 }
 function Badge({state}:{state:string}) { return <span className="runtime-badge" data-state={state}>{state}</span>; }
 
-export function RuntimeManager({onClose,onOpenLogs,onChanged}:{onClose:()=>void;onOpenLogs:()=>void;onChanged:()=>void}) {
+export function RuntimeManager({onClose,onOpenLogs,onOpenPlanner,onChanged}:{onClose:()=>void;onOpenLogs:()=>void;onOpenPlanner:()=>void;onChanged:()=>void}) {
   const [backend,setBackend] = useState<Status|null>(null);
   const [runtime,setRuntime] = useState<Runtime|null>(null);
   const [error,setError] = useState<string|null>(null);
@@ -97,7 +98,12 @@ export function RuntimeManager({onClose,onOpenLogs,onChanged}:{onClose:()=>void;
             <div className="runtime-actions">{online ? <><button disabled={busy || !!pending} onClick={()=>request('backend','restart')}>Restart Backend</button><button disabled={busy || !!pending} onClick={()=>request('backend','stop')}>Stop Backend</button></> : <button className="primary" disabled={busy || !!pending || !backend} onClick={()=>request('backend','start')}>Start Backend</button>}</div>
           </article>
           <article className="runtime-card"><div className="runtime-card-heading"><h3>Capture Daemon</h3><Badge state={capture?.state ?? (backend?.state === 'STOPPED' ? 'STOPPED' : 'UNKNOWN')}/></div><p>Speech and controller input</p>
-            <dl><Metric title="Process ID" value={capture?.pid}/><Metric title="Capture mode" value={capture?.mode}/><Metric title="Controller profile" value={capture?.controllerProfile}/><Metric title="Speech events" value={capture?.speechEvents}/><Metric title="Last capture event" value={capture?.lastEventAt}/><Metric title="Input markers" value={capture ? capture.inputObserved ? 'OBSERVED · not physically verified' : 'NOT OBSERVED' : 'UNKNOWN'}/><Metric title="Status detail" value={capture?.detail}/></dl>
+            <dl><Metric title="Process ID" value={capture?.pid}/><Metric title="Capture mode" value={capture?.mode}/><Metric title="Controller profile" value={capture?.controllerProfile}/><Metric title="Speech events" value={capture?.speechEvents}/><Metric title="Last capture event" value={capture?.lastEventAt}/><Metric title="Input markers" value={capture ? capture.inputObserved ? 'OBSERVED · not physically verified' : 'NOT OBSERVED' : 'UNKNOWN'}/><Metric title="Equipment layout" value={capture?.equipmentLayout?.state}/>{capture?.equipmentLayout?.errorCode && <Metric title="Layout error" value={capture.equipmentLayout.errorCode}/>}<Metric title="Status detail" value={capture?.detail}/></dl>
+            {capture?.equipmentLayout?.errorCode === 'PLANNER_SNAPSHOT_UNAVAILABLE' &&
+              <div className="runtime-warning">
+                <p>Capture needs a validated Planner snapshot. It will retry when the snapshot is ready.</p>
+                <button disabled={busy || !!pending} onClick={onOpenPlanner}>Open Local Planner</button>
+              </div>}
             {capture?.manualPause && <p className="runtime-warning">AUTO-START PAUSED · Use Start Capture to resume.</p>}
             <div className="runtime-actions">
               {!captureLive && <button className="primary" disabled={busy || !!pending || !controllable} onClick={()=>request('capture','start')}>Start Capture</button>}

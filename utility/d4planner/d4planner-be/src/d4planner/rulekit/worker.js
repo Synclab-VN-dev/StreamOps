@@ -123,7 +123,14 @@ async function main(composition, log = { emit() {}, configure() {} }) {
     if(!management)runningApplication++;
     Promise.resolve().then(() => invoke(message, controller)).then(
       result => {ok=true;write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'result',correlationId:message.id,result});},
-      error => {log.emit('ERROR','api','ERROR',{correlationId:message.id,errorCode:error?.code});write({protocolVersion:message.protocolVersion,workerInstanceId:instanceId,workerGeneration:generation,type:'error',correlationId:message.id,error:message.protocolVersion===PLANNER_PROTOCOL?{code: /^PLANNER_[A-Z_]+$/.test(error?.code||'')?error.code:'PLANNER_UNAVAILABLE',message:'Local Planner request failed.'}:publicError(error)});},
+      error => {
+        const plannerRequest = message.protocolVersion === PLANNER_PROTOCOL;
+        const code = /^PLANNER_[A-Z_]+$/.test(error?.code || '') ? error.code : 'PLANNER_UNAVAILABLE';
+        const logCode = code === 'PLANNER_SNAPSHOT_UNTRUSTED' ? 'SNAPSHOT_MISMATCH' : 'UNAVAILABLE';
+        log.emit('ERROR', 'api', 'ERROR', {correlationId: message.id, errorCode: plannerRequest ? logCode : error?.code});
+        write({protocolVersion:message.protocolVersion, workerInstanceId:instanceId, workerGeneration:generation,
+          type:'error', correlationId:message.id, error:plannerRequest ? {code, message:'Local Planner request failed.'} : publicError(error)});
+      },
     ).finally(() => {
       log.emit('INFO','api','RESULT',{ok,durationMs:performance.now()-started,correlationId:message.id});
       active.delete(message.id);
