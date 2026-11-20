@@ -30,3 +30,25 @@ def test_reopen_during_tooltip_and_retry_failed_transaction(tmp_path):
                 ("FIRST SEAL", None)]
     finally:
         source.close()
+
+
+def test_upgrade_replays_completed_tooltip_with_combined_set_tiers(tmp_path):
+    from d4planner.character.current_talisman import read_talisman
+    source = SQLiteEventRepository(tmp_path / "events.db")
+    path = tmp_path / "character.db"
+    try:
+        source.append_batch([speech(i, t) for i, t in enumerate([
+            "Charm", "EQUIPPED", "SYNTHETIC CHARM", "Set Charm", "850 Item Power",
+            "+2 Skill", "Another set member", "Example (5/5). (2) Set:. First.. (3) Set:. Second.. (5) Set:. Third.",
+            "Bottom action button", "Move", "Unequip"], 1)])
+        TalismanProjection(path).advance(source)
+        with closing(sqlite3.connect(path)) as db, db:
+            db.execute("ALTER TABLE talisman_observation DROP COLUMN set_bonuses_json")
+        assert read_talisman(path, "session")["items"][0]["setBonuses"] == []
+        for _ in range(2):
+            TalismanProjection(path).advance(source)
+            item, = read_talisman(path, "session")["items"]
+            assert item["setBonuses"] == ["(2) Set: First.", "(3) Set: Second.", "(5) Set: Third."]
+            assert item["affixes"] == ["+2 Skill"]
+    finally:
+        source.close()

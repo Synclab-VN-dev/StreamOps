@@ -14,7 +14,7 @@ def test_display_evidence_is_scoped_to_session_and_verified_role(tmp_path):
             ("a",1,"charm","equipped","Same",1,None), ("a",2,"charm","equipped","Same",1,None),
             ("a",3,"charm","equipped","Same",2,None), ("a",4,"seal","equipped","Old",1,None),
             ("a",5,"seal","equipped","New",1,None), ("b",1,"charm","bag","Candidate",3,"Same")]:
-            db.execute("INSERT INTO talisman_observation VALUES(?,?,?,?,?,?,NULL,?,?,?,?,?)",
+            db.execute("INSERT INTO talisman_observation VALUES(?,?,?,?,?,?,NULL,?,?,?,?,?,'[]')",
                        (session,seq,seq,str(seq),role,kind,name,"type",850,json.dumps([f"+{roll} Stat"]),comparison))
     items = read_talisman(path,"a")["items"]
     assert [(x["id"],x["name"],x["observedAt"]) for x in items] == [
@@ -39,7 +39,7 @@ def test_talisman_only_update_is_published_and_kept_if_source_disappears(tmp_pat
         try:
             before = backend.store.latest_authoritative()
             with closing(sqlite3.connect(path)) as db, db:
-                db.execute("INSERT INTO talisman_observation VALUES(?,?,?,?,?,?,NULL,?,?,?,?,?)",
+                db.execute("INSERT INTO talisman_observation VALUES(?,?,?,?,?,?,NULL,?,?,?,?,?,'[]')",
                            ("a",1,1,"time","equipped","seal","Seal","type",850,"[]",None))
             await backend.refresh_current_equipment()
             after = backend.store.latest_authoritative()

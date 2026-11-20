@@ -374,18 +374,22 @@ it("discards the open equipped detail when the next session has only comparison 
     health: {...noData.health, captureRuntime: {state: "RUNNING", detail: "Recording"}},
     currentTalisman: {
       sourceState: "READY", sessionId: "one", liveSession: true, comparisonObserved: false,
-      items: [{id: "one/27", name: "Recorded Seal", kind: "seal", itemPower: 850,
-        affixes: ["+1 Stat"], effect: null, setBonuses: [], observedAt: "2026-11-13T10:00:00Z"}],
+      items: [{id: "one/27", name: "Recorded Charm", kind: "charm", itemPower: 850,
+        affixes: ["+1 Stat"], effect: null, setBonuses: ["(2) Set: First.", "(3) Set: Second.", "(5) Set: Third."], observedAt: "2026-11-13T10:00:00Z"}],
     },
   };
   const source = new FakeDataSource(snapshot);
   renderView(<App dataSource={source}/>);
   fireEvent.click(await screen.findByRole("tab", {name: /Talisman/i}));
-  fireEvent.click(await screen.findByRole("button", {name: /Recorded Seal/}));
+  fireEvent.click(await screen.findByRole("button", {name: /Recorded Charm/}));
   expect(screen.getByText("+1 Stat")).toBeTruthy();
+  const bonuses = screen.getByRole("heading", {name: "Set bonus"}).parentElement!;
+  expect(Array.from(bonuses.querySelectorAll("p"), p => p.textContent)).toEqual([
+    "(2) Set: First.", "(3) Set: Second.", "(5) Set: Third.",
+  ]);
   act(() => source.emit({type: "SNAPSHOT", snapshot: {...snapshot, hudRevision: snapshot.hudRevision + 1,
     currentTalisman: {sourceState: "READY", sessionId: "two", liveSession: true, comparisonObserved: true, items: []}}}));
   await screen.findByText(/Comparison speech was observed/);
-  expect(screen.queryByText("Recorded Seal")).toBeNull();
+  expect(screen.queryByText("Recorded Charm")).toBeNull();
   expect(screen.queryByLabelText("Current Talisman item details")).toBeNull();
 });

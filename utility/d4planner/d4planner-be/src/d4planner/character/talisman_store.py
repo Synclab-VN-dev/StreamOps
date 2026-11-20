@@ -38,6 +38,14 @@ class TalismanProjection:
                           GROUP BY session_id) AS latest USING(session_id,end_seq)
                     WHERE obs.kind='seal';
             """)
+            # A v1 checkpoint has already consumed the raw set tiers. Replay the
+            # retained journal once while keeping existing observations readable.
+            with db:
+                db.execute("BEGIN IMMEDIATE")
+                columns = {row[1] for row in db.execute("PRAGMA table_info(talisman_observation)")}
+                if "set_bonuses_json" not in columns:
+                    db.execute("ALTER TABLE talisman_observation ADD COLUMN set_bonuses_json TEXT NOT NULL DEFAULT '[]'")
+                    db.execute("DELETE FROM talisman_checkpoint")
 
     def advance(self, source):
         """Commit one bounded batch. Idle polls also recover after a failed write."""
@@ -61,11 +69,13 @@ class TalismanProjection:
                     db.execute("""
                         INSERT INTO talisman_observation
                         (session_id,start_seq,end_seq,observed_at,role,kind,name,item_type,
-                         item_power,attributes_json,comparison_name)
-                        VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(session_id,start_seq) DO NOTHING
+                         item_power,attributes_json,comparison_name,set_bonuses_json)
+                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(session_id,start_seq) DO UPDATE
+                        SET set_bonuses_json=excluded.set_bonuses_json, attributes_json=excluded.attributes_json
                     """, (event.session_id,item["start"],item["end"],event.timestamp,item["role"],
                           item["kind"],item["name"],item["type"],item["power"],
-                          json.dumps(item["attributes"], ensure_ascii=False), item["comparison"]))
+                          json.dumps(item["attributes"], ensure_ascii=False), item["comparison"],
+                          json.dumps(item["set_bonuses"], ensure_ascii=False)))
             if batch:
                 db.execute("""
                     INSERT INTO talisman_checkpoint VALUES(1,?,?,?,?)
