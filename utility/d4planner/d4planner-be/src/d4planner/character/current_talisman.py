@@ -38,9 +38,20 @@ def read_talisman(path, active_session):
             key = ("seal",) if kind == "seal" else (kind, name, power, item_type, tuple(sorted(attributes)))
             # Keep the original row ID across repeated visits to the same charm.
             item_id = observed[key]["id"] if kind == "charm" and key in observed else f"{session}/{seq}"
+            affixes = []
+            effects = []
+            bonuses = []
+            for line in attributes:
+                if re.match(r"^\(\d+\) Set:", line):
+                    bonuses.append(line)
+                elif re.match(r"^(?:[+-]?[\d,.]+%?\s|Lucky Hit:)", line) or re.search(r":\.?\s+[+-]\d", line):
+                    affixes.append(line)
+                elif re.match(r"^Unlocks \d+ Charm Slots?\b", line) or (
+                    item_type.endswith("Unique Charm") and line.endswith(".")
+                ):
+                    effects.append(line)
             observed[key] = {"id": item_id, "kind": kind, "name": name, "itemPower": power,
                 "observedAt": timestamp,
-                "affixes": [line for line in attributes if re.match(r"^(?:[+]?[\d,.]+%?\s|Lucky Hit:)", line)],
-                "effect": None, "setBonuses": []}
+                "affixes": affixes, "effect": " ".join(effects) or None, "setBonuses": bonuses}
         view["items"] = list(observed.values())
     return view
