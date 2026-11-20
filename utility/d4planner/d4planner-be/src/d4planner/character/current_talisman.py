@@ -26,12 +26,14 @@ def read_talisman(path, active_session):
         view["comparisonObserved"] = bool(db.execute(
             "SELECT 1 FROM talisman_observation WHERE session_id=? AND comparison_name IS NOT NULL LIMIT 1",
             (session,)).fetchone())
-        rows = db.execute("""
-            SELECT start_seq,kind,name,item_power,item_type,attributes_json,observed_at
+        columns = {r[1] for r in db.execute("PRAGMA table_info(talisman_observation)")}
+        bonus_column = "set_bonuses_json" if "set_bonuses_json" in columns else "'[]'"
+        rows = db.execute(f"""
+            SELECT start_seq,kind,name,item_power,item_type,attributes_json,observed_at,{bonus_column}
             FROM talisman_observation WHERE session_id=? AND role='equipped' ORDER BY start_seq
         """, (session,))
         observed = {}
-        for seq, kind, name, power, item_type, raw, timestamp in rows:
+        for seq, kind, name, power, item_type, raw, timestamp, raw_bonuses in rows:
             attributes = json.loads(raw)
             if not isinstance(attributes, list) or not all(isinstance(line, str) for line in attributes):
                 raise ValueError("Invalid Talisman attributes")
@@ -40,7 +42,9 @@ def read_talisman(path, active_session):
             item_id = observed[key]["id"] if kind == "charm" and key in observed else f"{session}/{seq}"
             affixes = []
             effects = []
-            bonuses = []
+            bonuses = json.loads(raw_bonuses)
+            if not isinstance(bonuses, list) or not all(isinstance(line, str) for line in bonuses):
+                raise ValueError("Invalid Talisman set bonuses")
             for line in attributes:
                 if re.match(r"^\(\d+\) Set:", line):
                     bonuses.append(line)

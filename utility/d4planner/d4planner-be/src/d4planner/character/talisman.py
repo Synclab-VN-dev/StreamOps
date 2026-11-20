@@ -9,6 +9,7 @@ from .equipment.parser import FAVORITE, normalize
 
 ITEM_TYPE = re.compile(r"(?:Ancestral )?(?:(?:Set|Unique) Charm|Legendary Horadric Seal)")
 POWER = re.compile(r"(\d+) Item Power")
+SET_TIER = re.compile(r"(?<!\w)\((\d+)\)\s+Set:\s*\.?\s*", re.IGNORECASE)
 MAX_LINES = 128
 
 
@@ -91,10 +92,23 @@ class TalismanTooltip:
                 break
             if line not in {"blank", "Armory Loadout"}:
                 own.append(line)
-        attributes = [line for line in own if re.search(r"\d", line) and "(2) Set:" not in line]
+        attributes = []
+        bonuses = []
+        for line in own:
+            tiers = list(SET_TIER.finditer(line))
+            if tiers:
+                for index, tier in enumerate(tiers):
+                    end = tiers[index + 1].start() if index + 1 < len(tiers) else len(line)
+                    description = line[tier.end():end].strip()
+                    if description.endswith(".."):
+                        description = description[:-1]
+                    if description:
+                        bonuses.append(f"({tier[1]}) Set: {description}")
+            elif re.search(r"\d", line):
+                attributes.append(line)
         return {
             "start": self.lines[start][0], "end": self.lines[-1][0],
             "kind": kind, "role": role, "name": title(lines[start]),
-            "type": lines[start + 1], "power": int(power[1]), "attributes": attributes,
+            "type": lines[start + 1], "power": int(power[1]), "attributes": attributes, "set_bonuses": bonuses,
             "comparison": title(lines[names[-2]]) if role == "bag" and len(names) == 2 else None,
         }
