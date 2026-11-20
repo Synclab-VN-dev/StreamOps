@@ -113,6 +113,22 @@ class SQLiteEventRepository:
         ).fetchall()
         return [_row_to_event(row) for row in rows]
 
+    def last_row_id(self) -> int:
+        return self._db.execute("SELECT COALESCE(MAX(id),0) FROM event_log").fetchone()[0]
+
+    def matches_row(self, row_id: int, session: str, seq: int) -> bool:
+        return self._db.execute(
+            "SELECT 1 FROM event_log WHERE id=? AND session_id=? AND event_seq=?",
+            (row_id, session, seq),
+        ).fetchone() is not None
+
+    def projection_batch(self, after_id: int, limit: int = 256):
+        rows = self._db.execute(
+            "SELECT id,session_id,event_seq,timestamp,type,data_json FROM event_log "
+            "WHERE id>? ORDER BY id LIMIT ?", (after_id, limit),
+        )
+        return [(row["id"], _row_to_event(row)) for row in rows]
+
     def migration_state(self, source_path: str) -> sqlite3.Row | None:
         return self._db.execute(
             """SELECT source_path,size_bytes,mtime_ns,imported_rows,malformed_rows,migrated_at
