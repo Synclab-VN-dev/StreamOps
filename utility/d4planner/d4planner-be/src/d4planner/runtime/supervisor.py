@@ -13,6 +13,7 @@ from typing import Any, Protocol
 
 from ..character.equipment.projector import EquipmentProjector
 from ..character.repository import EquipmentRepository
+from ..character.talisman_store import TalismanProjection
 from ..controller import ControllerProfile
 from .diagnostics import JsonlDiagnosticsSink
 from .events.model import EventDraft
@@ -127,6 +128,7 @@ class Supervisor:
             "overflow": False,
         }
         self.equipment_projector = EquipmentProjector(EquipmentRepository(paths.character_db))
+        self.talisman_projection = TalismanProjection(paths.character_db)
         self.equipment_projector.equipment_layouts = equipment_layouts
         self.equipment_layout_inbox = equipment_layout_inbox
 
@@ -650,6 +652,12 @@ class Supervisor:
             return
         self._safe_emit('equipment.layout.applied', dict(self.status.extras['equipmentLayout']))
 
+    def _project_talismans(self):
+        try:
+            self.talisman_projection.advance(self.store.repository)
+        except (OSError, sqlite3.Error, ValueError) as exc:
+            self.status.last_error = f"talisman projection failure: {type(exc).__name__}: {exc}"
+
     def _flush_ingress(self, *, include_marker: bool = True) -> int:
         self._apply_equipment_layout()
         if not self.store:
@@ -657,6 +665,7 @@ class Supervisor:
 
         drafts = self._prepare_ingress(include_marker=include_marker)
         if not drafts:
+            self._project_talismans()
             return 0
 
         try:
@@ -670,6 +679,7 @@ class Supervisor:
             self._persist_status()
             return 0
 
+        self._project_talismans()
         committed_raw_offset = self._pending_raw_offset
         self._pending_ingress = []
         self._pending_raw_offset = None

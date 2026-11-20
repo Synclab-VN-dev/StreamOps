@@ -39,6 +39,10 @@ export interface EquipmentRow {
 
 export interface HudSnapshot {
   currentEquipment?: CurrentEquipment;
+  currentTalisman?: {
+    sourceState: "READY" | "UNAVAILABLE"; sessionId: string | null; liveSession: boolean;
+    comparisonObserved: boolean; items: TalismanItem[];
+  };
   schemaVersion: "d4planner-hud/v1";
   hudRevision: number;
   producedAt: string;
@@ -89,4 +93,10 @@ export interface CurrentItem {
 export interface CurrentEquipment {
   sourceState: 'WAITING' | 'READY' | 'BUSY' | 'UNAVAILABLE';
   identity: 'UNVERIFIED'; revision: number | null; items: CurrentItem[];
+}
+
+
+export interface TalismanItem {
+  id: string; kind: "charm" | "seal"; name: string; itemPower: number;
+  affixes: string[]; effect: string | null; setBonuses: string[]; observedAt: string;
 }
