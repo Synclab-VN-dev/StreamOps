@@ -205,10 +205,10 @@ mod tests {
 
     #[tokio::test]
     async fn overload_timeout_and_cancellation_release_capacity() {
-        let gate = Arc::new(Admission {
+        let mut gate = Arc::new(Admission {
             active: Arc::new(Semaphore::new(1)),
             waiting: Arc::new(Semaphore::new(1)),
-            timeout: Duration::from_millis(100),
+            timeout: Duration::from_secs(10),
         });
         let active = gate.acquire().await.unwrap();
         let queued = tokio::spawn({
@@ -229,6 +229,7 @@ mod tests {
         queued.abort();
         let _ = queued.await;
         assert_eq!(gate.waiting.available_permits(), 1);
+        Arc::get_mut(&mut gate).unwrap().timeout = Duration::from_millis(20);
         assert_eq!(gate.acquire().await.err().unwrap().code, "PLANNER_BUSY");
         assert_eq!(gate.waiting.available_permits(), 1);
         drop(active);
