@@ -10,12 +10,12 @@ def test_bag_focus_excludes_comparison_and_set_members():
     parser = TalismanTooltip()
     for seq, text in enumerate(["EQUIPPED", "OTHER CHARM", "Set Charm", "850 Item Power",
         "FOCUSED CHARM", "Ancestral Set Charm", "900 Item Power", "+2 Skill",
-        "Properties lost when equipped:", "+9 Armor", "Example set", "Some set member",
+        "Properties lost when equipped:", "Other (2) Set: +9 Armor", "Example set", "Some set member",
         "Bottom action button", "Move", "Hold", "Drop"], 1):
         result = parser.consume(speech(seq, text))
     assert result == {"start": 5, "end": 16, "role": "bag", "kind": "charm",
         "name": "FOCUSED CHARM", "comparison": "OTHER CHARM", "type": "Ancestral Set Charm",
-        "power": 900, "attributes": ["+2 Skill"]}
+        "power": 900, "attributes": ["+2 Skill"], "set_bonuses": []}
 
 
 def test_missing_equipped_slot_evidence_or_session_boundary_fails_closed():

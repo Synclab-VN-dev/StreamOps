@@ -72,6 +72,12 @@ class ManagedCaptureRuntime:
             await self._notify()
             return self.status()
 
+    @property
+    def active_session_id(self):
+        if self.state == "RUNNING" and self.process and self.process.returncode is None:
+            return self._payload.get("sessionId")
+        return None
+
     def status(self):
         live = self.process is not None and self.process.returncode is None
         payload = self._payload if live else {}
