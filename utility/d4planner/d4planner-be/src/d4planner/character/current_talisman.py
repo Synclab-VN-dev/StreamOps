@@ -12,8 +12,6 @@ def empty_view(session=None):
 
 def read_talisman(path, active_session):
     view = empty_view(active_session)
-    if not path.is_file():
-        return view
     with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=.1)) as db:
         db.execute("BEGIN")
         if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='talisman_observation'").fetchone():
