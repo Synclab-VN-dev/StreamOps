@@ -35,11 +35,7 @@ pub fn router(state: HttpState) -> Router {
 }
 async fn relay(State(s): State<HttpState>, request: Request) -> Result<Response, Error> {
     let origin = s.config.origin(true);
-    if request.headers().get("host").and_then(|h| h.to_str().ok())
-        != origin.split_once("://").map(|(_, host)| host)
-    {
-        return Err(Error::new(403, "HOST_REJECTED"));
-    }
+    crate::authority::validate(&request, &origin)?;
     let mutation = !matches!(request.method().as_str(), "GET" | "HEAD");
     if request
         .headers()

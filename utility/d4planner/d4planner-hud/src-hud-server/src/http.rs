@@ -109,11 +109,10 @@ async fn boundary(State(state): State<HttpState>, request: Request, next: Next) 
         }
     }
     let origin = state.config.origin(false);
-    let expected_host = origin.split_once("://").unwrap().1;
-    let headers = request.headers();
-    if headers.get("host").and_then(|v| v.to_str().ok()) != Some(expected_host) {
-        return Error::new(403, "HOST_REJECTED").into_response();
+    if let Err(error) = crate::authority::validate(&request, &origin) {
+        return error.into_response();
     }
+    let headers = request.headers();
     // Ports are distinct origins but cookies are shared by host. Reject the Planner
     // origin even for GETs; SameSite alone cannot isolate a captured application.
     if headers
@@ -340,7 +339,7 @@ mod tests {
             })
         }
     }
-    fn app() -> Router {
+    fn state() -> HttpState {
         let config = Config {
             address: "127.0.0.1".parse().unwrap(),
             port: 6090,
@@ -358,12 +357,92 @@ mod tests {
                 .into(),
             }],
         };
-        router(HttpState::new(config, Arc::new(Fake)).unwrap())
+        HttpState::new(config, Arc::new(Fake)).unwrap()
     }
+    fn app() -> Router {
+        router(state())
+    }
+    #[tokio::test]
+    async fn http2_authority_without_host_reaches_hud_and_relay_auth() {
+        let response = app()
+            .oneshot(
+                Request::builder()
+                    .version(axum::http::Version::HTTP_2)
+                    .uri("http://127.0.0.1:6090/")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let response = crate::relay::router(state())
+            .oneshot(
+                Request::builder()
+                    .version(axum::http::Version::HTTP_2)
+                    .uri("http://127.0.0.1:6091/")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&body).unwrap()["error"]["code"],
+            "AUTH_REQUIRED"
+        );
+    }
+
     fn request(path: &str) -> axum::http::request::Builder {
         Request::builder()
             .uri(path)
             .header("host", "127.0.0.1:6090")
+    }
+    #[tokio::test]
+    async fn http2_does_not_bypass_either_listener_boundary() {
+        for (router, port) in [(app(), 6090), (crate::relay::router(state()), 6091)] {
+            let origin = format!("http://127.0.0.1:{port}");
+            for (uri, headers, code) in [
+                (
+                    origin.clone(),
+                    vec![("host", "evil.example")],
+                    "HOST_REJECTED",
+                ),
+                ("http://evil.example/".into(), vec![], "HOST_REJECTED"),
+                (
+                    origin.clone(),
+                    vec![("origin", "http://evil.example")],
+                    "ORIGIN_REJECTED",
+                ),
+                (
+                    origin.clone(),
+                    vec![("sec-fetch-site", "cross-site")],
+                    "FETCH_SITE_REJECTED",
+                ),
+            ] {
+                let mut request = Request::builder()
+                    .version(axum::http::Version::HTTP_2)
+                    .uri(uri);
+                for (name, value) in headers {
+                    request = request.header(name, value);
+                }
+                let response = router
+                    .clone()
+                    .oneshot(request.body(Body::empty()).unwrap())
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), StatusCode::FORBIDDEN);
+                let bytes = axum::body::to_bytes(response.into_body(), 4096)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    serde_json::from_slice::<Value>(&bytes).unwrap()["error"]["code"],
+                    code
+                );
+            }
+        }
     }
     #[tokio::test]
     async fn preview_body_budget_is_authenticated_and_route_specific() {
