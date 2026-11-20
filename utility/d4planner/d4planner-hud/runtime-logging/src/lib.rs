@@ -212,6 +212,14 @@ pub fn clean(level: &str, tag: &str, event: &str, fields: Value) -> Option<Value
             out.insert("errorCode".into(), v.clone());
         }
     }
+    for (key, allowed) in [
+        ("startupStage", &["COMPOSITION", "SNAPSHOT_MANAGER", "CHROMIUM", "PROVIDER", "APPLICATION", "IPC"][..]),
+        ("startupReason", &["ACCESS_DENIED", "FILE_MISSING", "INVALID_JSON", "MANAGER_BUSY", "LOCK_UNVERIFIED", "INVALID_SELECTION", "OWNER_PID_REUSED", "OWNER_EXITED", "UNKNOWN"][..]),
+    ] {
+        if let Some(value) = fields.get(key).and_then(Value::as_str) {
+            if allowed.contains(&value) { out.insert(key.into(), json!(value)); }
+        }
+    }
     if let Some(id) = fields.get("correlationId").and_then(Value::as_str) {
         if uuid::Uuid::parse_str(id).is_ok() {
             out.insert("correlationId".into(), json!(id));

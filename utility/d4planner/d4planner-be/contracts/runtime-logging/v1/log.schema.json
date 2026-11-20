@@ -184,6 +184,29 @@
             "UNAVAILABLE",
             "UNKNOWN"
           ]
+        },
+        "startupStage": {
+          "enum": [
+            "COMPOSITION",
+            "SNAPSHOT_MANAGER",
+            "CHROMIUM",
+            "PROVIDER",
+            "APPLICATION",
+            "IPC"
+          ]
+        },
+        "startupReason": {
+          "enum": [
+            "ACCESS_DENIED",
+            "FILE_MISSING",
+            "INVALID_JSON",
+            "MANAGER_BUSY",
+            "LOCK_UNVERIFIED",
+            "INVALID_SELECTION",
+            "UNKNOWN",
+            "OWNER_PID_REUSED",
+            "OWNER_EXITED"
+          ]
         }
       }
     }

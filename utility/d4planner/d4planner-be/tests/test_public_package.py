@@ -124,3 +124,11 @@ def test_local_report_code_allowed_but_pat_config_never_packaged():
     public.inspect_bytes('backend/site-packages/d4planner/reporting/local.py', b'# local runtime')
     with pytest.raises(public.PublicContentError, match='REPORT_CREDENTIAL_CONFIG_IN_PUBLIC_PACKAGE'):
         public.inspect_bytes('private/report-config.json', b'{"githubToken":"SYNTHETIC_SECRET"}')
+
+
+def test_every_indexed_rulekit_runtime_file_is_in_public_source_plan():
+    prefix = 'utility/d4planner/d4planner-rulekit/'
+    index = json.loads((public.ROOT / prefix / 'snapshot-management/compatibility/compatibility-index.json').read_text())
+    required = {prefix + row['path'] for row in index['files']}
+    missing = required - set(public.policy()['sourceAllowlist'])
+    assert not missing, f'Indexed runtime dependencies missing from installer: {sorted(missing)}'
