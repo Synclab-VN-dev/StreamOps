@@ -2,6 +2,7 @@
 // Real IPC/HTTP lifecycle with a synthetic calculation provider; never native UI evidence.
 const {createComposition: calculation} = require('./rulekit-test-composition');
 const {fromEnvironment} = require('../../../d4planner-rulekit/providers/maxroll/tooling/planner/manager');
+exports.diagnostics = require('./rulekit-test-composition').diagnostics;
 exports.createComposition = async env => {
   const composition = await calculation(env), planner = fromEnvironment(env);
   if (env.TEST_PLANNER_DELAY_MS) {

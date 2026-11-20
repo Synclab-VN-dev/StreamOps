@@ -5,14 +5,14 @@ import { RuntimeManager } from './RuntimeManager';
 const mocks = vi.hoisted(() => ({invoke: vi.fn()}));
 vi.mock('@tauri-apps/api/core', () => ({invoke:mocks.invoke}));
 afterEach(() => {cleanup(); vi.resetAllMocks();});
-function setup(state = 'READY') {
+function setup(state = 'READY', equipmentLayout?: {state:string;errorCode:string}) {
   mocks.invoke.mockImplementation(async (name, args) => name === 'get_backend_status' ? {state} : args?.method === 'runtime.status' ? {
     pid:456, uptimeSeconds:20, dataRoot:'C:\\Data', webSocket:'127.0.0.1:1234',
-    capture:{state:'BLOCKED',detail:'Capture process exited (1)',pid:null,manualPause:false,dependencies:{},inputObserved:false}
+    capture:{equipmentLayout,state:'BLOCKED',detail:'Capture process exited (1)',pid:null,manualPause:false,dependencies:{},inputObserved:false}
   } : {});
-  const onClose = vi.fn(), onOpenLogs = vi.fn(), onChanged = vi.fn();
-  render(<RuntimeManager {...{onClose,onOpenLogs,onChanged}} />);
-  return {onClose,onOpenLogs,onChanged};
+  const onOpenPlanner = vi.fn(), onClose = vi.fn(), onOpenLogs = vi.fn(), onChanged = vi.fn();
+  render(<RuntimeManager {...{onClose,onOpenLogs,onOpenPlanner,onChanged}} />);
+  return {onClose,onOpenLogs,onOpenPlanner,onChanged};
 }
 it('shows real process exit; retry requires confirmation and never controls external applications', async () => {
   const {onChanged} = setup();
@@ -66,7 +66,14 @@ it('keeps native backend recovery controls usable when capture status fails', as
     if(name === 'get_backend_status') return {state:'READY'};
     throw new Error('CONTROL_FAILED');
   });
-  render(<RuntimeManager onClose={()=>{}} onOpenLogs={()=>{}} onChanged={()=>{}}/>);
+  render(<RuntimeManager onOpenPlanner={()=>{}} onClose={()=>{}} onOpenLogs={()=>{}} onChanged={()=>{}}/>);
   await screen.findByRole('alert');
   expect((screen.getByRole('button',{name:'Stop Backend'}) as HTMLButtonElement).disabled).toBe(false);
+});
+
+it('offers snapshot recovery for a missing equipment layout', async () => {
+  const {onOpenPlanner} = setup('READY', {state:'RETRYING',errorCode:'PLANNER_SNAPSHOT_UNAVAILABLE'});
+  await screen.findByText('PLANNER_SNAPSHOT_UNAVAILABLE');
+  fireEvent.click(screen.getByRole('button', {name:'Open Local Planner'}));
+  expect(onOpenPlanner).toHaveBeenCalledOnce();
 });

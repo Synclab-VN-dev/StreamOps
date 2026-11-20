@@ -129,3 +129,11 @@ html[data-hud-platform="web"] #root { overflow: auto; }
 html[data-hud-platform="web"] .surface { width: max-content; min-width: 100%; min-height: 100%; }
 html[data-hud-platform="web"] .summary-head { cursor: default; }
 html[data-hud-platform="web"] .report-panel { max-height: min(620px, calc(100dvh - 32px)); }
+.category-tabs { margin-top:0; }
+.talisman-group { position:relative; text-align:left; background:#fffc; color:#465c69; border:1px solid #0001; border-radius:12px; padding:12px; cursor:pointer; }
+.talisman-group::after { content:'⌄'; position:absolute; right:12px; top:10px; }
+.talisman-group[aria-expanded=true]::after { content:'⌃'; }
+.talisman-group b,.talisman-group small { display:block; }
+.talisman-group small { margin-top:4px; color:#617887; font-size:10px; }
+.talisman-list .current-slots { background:#fffb; padding:5px; border-radius:8px; }
+.talisman-list .current-row b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

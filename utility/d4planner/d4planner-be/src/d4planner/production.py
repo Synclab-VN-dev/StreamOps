@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 import json
 import os
 import tempfile
+import sqlite3
+from .character.current_talisman import empty_view, read_talisman
 from pathlib import Path
 from time import perf_counter_ns, monotonic
 from typing import Any
@@ -285,7 +287,8 @@ class RuntimeHudStore(DurableHudStore):
     Equipment scoring remains owned by S4. This adapter only attaches the
     Rule Kit-owned health result and the enclosing Backend generation.
     """
-    def __init__(self, path, *, runtime_health, backend_generation, capture_status=lambda: None, current_equipment=lambda: None):
+    def __init__(self, path, *, runtime_health, backend_generation, capture_status=lambda: None, current_equipment=lambda: None, current_talisman=lambda: None):
+        self.current_talisman = current_talisman
         self.current_equipment = current_equipment
         self.capture_status = capture_status
         self.runtime_health = runtime_health
@@ -303,6 +306,9 @@ class RuntimeHudStore(DurableHudStore):
             current = self.current_equipment()
             if current is not None:
                 payload["currentEquipment"] = current
+            talisman = self.current_talisman()
+            if talisman is not None:
+                payload["currentTalisman"] = talisman
             return payload
         return build
 
@@ -347,13 +353,17 @@ class ProductionBackendRuntime:
         self.rulekit_diagnostics = {"calculationAvailability": "UNAVAILABLE", "reason": "STARTING"}
         self.capture_runtime_status = None
         self.current_equipment = {"sourceState": "WAITING", "identity": "UNVERIFIED", "revision": None, "items": []}
+        self.current_talisman = empty_view()
         self._current_task = None
         self.store = RuntimeHudStore(self.data_dir / "hud.sqlite3",
             runtime_health=lambda: self.rulekit_state, backend_generation=lambda: self.generation,
-            capture_status=lambda: self.capture_runtime_status, current_equipment=lambda: self.current_equipment)
+            capture_status=lambda: self.capture_runtime_status, current_equipment=lambda: self.current_equipment,
+            current_talisman=lambda: self.current_talisman)
         previous = self.store.latest_authoritative()
         if previous and previous.get("currentEquipment"):
             self.current_equipment = {**previous["currentEquipment"], "sourceState": "WAITING"}
+        if previous and previous.get("currentTalisman"):
+            self.current_talisman = {**previous["currentTalisman"], "liveSession": False}
         self.capture = EquipmentCaptureAdapter()
         self.scorer = EquipmentAssessmentService()
         self.coordinator = EquipmentAssessmentCoordinator(self.scorer, self.store, lambda _: None)
@@ -506,10 +516,19 @@ class ProductionBackendRuntime:
         except (EquipmentRepositoryReadError, ValueError, TypeError, KeyError) as error:
             state = "BUSY" if isinstance(error, EquipmentRepositoryTransient) else "UNAVAILABLE"
             view = {**self.current_equipment, "sourceState": state}
+        session = getattr(self.capture_runtime, "active_session_id", None)
+        try:
+            talisman = await asyncio.to_thread(read_talisman, path, session)
+        except (sqlite3.Error, OSError, TypeError, ValueError):
+            saved = self.current_talisman
+            if session and session != saved["sessionId"]:
+                saved = empty_view(session)
+            talisman = {**saved, "sourceState": "UNAVAILABLE", "liveSession": False}
         async with self._ingest_lock:
-            if view == self.current_equipment:
+            if view == self.current_equipment and talisman == self.current_talisman:
                 return
             self.current_equipment = view
+            self.current_talisman = talisman
             latest = self.store.latest_authoritative()
             if latest is None:
                 return

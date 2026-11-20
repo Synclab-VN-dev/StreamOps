@@ -207,12 +207,15 @@ def test_caller_cancellation_propagates_to_worker_without_late_listener(tmp_path
 
 
 def test_equipment_layout_query_does_not_start_listener_or_invent_missing_coverage(tmp_path):
+    from test_runtime_logging import session, records
+    directory, run = session(tmp_path)
     state = provision(tmp_path); port = free_port()
     original = (state/'capture-state.json').read_bytes()
     async def scenario():
         wrapper = RuleKitProcessWrapper(LaunchSpecification(executable='node',
             args=(str(ROOT/'utility/d4planner/d4planner-be/src/d4planner/rulekit/worker.js'),), working_directory=ROOT,
-            environment_allow_list={'D4_RULEKIT_COMPOSITION_MODULE': str(Path(__file__).with_name('fixtures')/'planner-test-composition.js'),
+            environment_allow_list={'D4_LOG_DIR':str(directory), 'D4_LOG_RUN_ID':run,
+                'D4_RULEKIT_COMPOSITION_MODULE': str(Path(__file__).with_name('fixtures')/'planner-test-composition.js'),
                 'D4_RULEKIT_PLANNER_STATE_ROOT': str(state), 'D4_RULEKIT_PLANNER_PORT': str(port)}))
         try:
             client = await wrapper.start()
@@ -226,6 +229,8 @@ def test_equipment_layout_query_does_not_start_listener_or_invent_missing_covera
         finally:
             await wrapper.stop()
     asyncio.run(scenario())
+    errors = [row for row in records(directory/'rulekit.log') if row['tag'] == 'api' and row['event'] == 'ERROR']
+    assert any(row['fields'].get('errorCode') == 'UNAVAILABLE' for row in errors)
 
 
 def test_verified_equipment_layout_traverses_real_worker_ipc_without_starting_web(tmp_path):

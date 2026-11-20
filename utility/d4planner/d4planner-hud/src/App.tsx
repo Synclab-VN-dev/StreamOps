@@ -6,6 +6,7 @@ import { useHudController } from "./use-hud-controller";
 import "./App.css";
 import { ReportIssue } from "./ReportIssue";
 import { CurrentList, CurrentDetail, currentItems, currentItemForSelection } from "./CurrentEquipment";
+import { CurrentTalisman, TalismanDetail, talismanStatus } from "./CurrentTalisman";
 import { RuntimeManager } from "./RuntimeManager";
 import { MenuIcon } from "./MenuIcon";
 
@@ -30,6 +31,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   const source = useMemo(() => dataSource ?? productionHudDataSource(), [dataSource]);
   const hud = useHudController(source);
   const [workspace, setWorkspace] = useState<"current" | "compare">("current");
+  const [category, setCategory] = useState<"equipment"|"talisman">("equipment");
   const [currentSlot, setCurrentSlot] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(true);
   const [equipmentOpen, setEquipmentOpen] = useState(false);
@@ -45,6 +47,12 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   const [effectOpen, setEffectOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const snapshot = hud.assessmentRenderable ? hud.snapshot : null;
+  const talisman = talismanStatus(snapshot, hud.connection !== "CONNECTED");
+  const talismanItems = snapshot?.currentTalisman?.items;
+  const talismanItem = talismanItems?.find(item => item.id === currentSlot);
+  useEffect(() => {
+    if (category === "talisman" && currentSlot && !talismanItem) setCurrentSlot(null);
+  }, [category, currentSlot, talismanItem]);
   const selected = snapshot?.equipment.find(row => row.slotId === selectedSlot) ?? null;
 
   useEffect(() => {
@@ -141,8 +149,8 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
       <section className="panel summary" aria-label="D4Planner Equipment HUD">
         <header className="summary-head" onMouseDown={drag}>
           <button className="summary-toggle" onClick={() => { setExpanded(value => !value); setEquipmentOpen(false); resetComparison(); }} aria-expanded={expanded}>
-            <span className="target-title"><span className="bolt">ϟ</span>{workspace === "current" ? "CURRENT EQUIPMENT" : targetName.toUpperCase()}</span>
-            {workspace === "current" ? <><span className="current-identity">Identity unverified</span><span className="current-count">{currentItems(snapshot).length} OBSERVED</span></> : <>
+            <span className="target-title"><span className="bolt">ϟ</span>{workspace === "current" ? (category === "talisman" ? "CURRENT TALISMAN" : "CURRENT EQUIPMENT") : targetName.toUpperCase()}</span>
+            {workspace === "current" ? <><span className="current-identity">Identity unverified</span><span className="current-count">{category === "talisman" ? talisman.badge : currentItems(snapshot).length + " OBSERVED"}</span></> : <>
             <span className="score"><b>{scoreText}</b><small>/100</small></span>
             <span className="issue-count">{snapshot?.score.failIssueCount ?? 0} issues · {snapshot?.score.warnCount ?? 0} warnings</span>
             </>}
@@ -199,7 +207,12 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
           <button role="tab" aria-selected={workspace === "current"} onClick={() => {setWorkspace("current"); resetComparison();}}>Current</button>
           <button role="tab" aria-selected={workspace === "compare"} onClick={() => {setWorkspace("compare"); setCurrentSlot(null);}}>Compare</button>
         </div>
-        {expanded && workspace === "current" && <CurrentList snapshot={snapshot} offline={hud.connection !== "CONNECTED"} selected={currentSlot} onSelect={setCurrentSlot} onRuntime={()=>{setRuntimeOpen(true);setReportOpen(false);setCurrentSlot(null);}}/>}
+        {expanded && workspace === "current" && <div className="equipment-tabs category-tabs" role="tablist" aria-label="Current category">
+          {(["equipment","talisman"] as const).map(value=><button key={value} role="tab" aria-selected={category===value}
+            onClick={()=>{setCategory(value); setCurrentSlot(null);}}>{value==="equipment"?"Equipment":"Talisman"}</button>)}
+        </div>}
+        {expanded && workspace === "current" && category === "talisman" && <CurrentTalisman items={talismanItems ?? []} status={talisman} selected={currentSlot ?? undefined} onSelect={setCurrentSlot}/>}
+        {expanded && workspace === "current" && category === "equipment" && <CurrentList snapshot={snapshot} offline={hud.connection !== "CONNECTED"} selected={currentSlot} onSelect={setCurrentSlot} onRuntime={()=>{setRuntimeOpen(true);setReportOpen(false);setCurrentSlot(null);}}/>}
         {expanded && workspace === "compare" && !snapshot?.context.target && <div className="current-notice"><b>Choose a Target Build</b><p>Current Equipment never needs a Target. Select one to compare affixes and calculate a score.</p><button onClick={()=>{setMenuOpen(true);void hud.refreshTargets();}}>Open Target menu</button></div>}
         {expanded && workspace === "compare" && <div className="summary-body">
           <button className="equipment-link" aria-pressed={equipmentOpen} onClick={() => { setEquipmentOpen(value => !value); resetComparison(); }}>
@@ -210,8 +223,9 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
         </div>}
       </section>
 
-      {expanded && workspace === "current" && currentSlot && !runtimeOpen && !reportOpen && <CurrentDetail item={currentItemForSelection(currentItems(snapshot), currentSlot)} slot={currentSlot} offline={hud.connection !== "CONNECTED" || snapshot?.health.captureRuntime?.state !== "RUNNING" || snapshot?.currentEquipment?.sourceState !== "READY"} onClose={()=>setCurrentSlot(null)}/>}
-      {runtimeOpen && <RuntimeManager onClose={() => setRuntimeOpen(false)} onOpenLogs={() => openSupport("logs")} onChanged={() => {void source.refresh?.(); window.dispatchEvent(new Event("d4planner-runtime-changed"));}}/>}
+      {expanded && workspace === "current" && category === "equipment" && currentSlot && !runtimeOpen && !reportOpen && <CurrentDetail item={currentItemForSelection(currentItems(snapshot), currentSlot)} slot={currentSlot} offline={hud.connection !== "CONNECTED" || snapshot?.health.captureRuntime?.state !== "RUNNING" || snapshot?.currentEquipment?.sourceState !== "READY"} onClose={()=>setCurrentSlot(null)}/>}
+      {expanded && workspace === "current" && category === "talisman" && talismanItem && !runtimeOpen && !reportOpen && <TalismanDetail item={talismanItem} saved={talisman.saved} close={()=>setCurrentSlot(null)}/>}
+      {runtimeOpen && <RuntimeManager onOpenPlanner={() => {setRuntimeOpen(false); void createBuild();}} onClose={() => setRuntimeOpen(false)} onOpenLogs={() => openSupport("logs")} onChanged={() => {void source.refresh?.(); window.dispatchEvent(new Event("d4planner-runtime-changed"));}}/>}
       {reportOpen && <ReportIssue activeTab={reportTab} onTabChange={setReportTab} onClose={() => setReportOpen(false)} />}
       {expanded && workspace === "compare" && equipmentOpen && snapshot && <aside className="panel equipment" aria-label="Equipment list">
         <div className="panel-title"><span>⬡ <b>Equipment</b></span><button aria-label="Close equipment" onClick={() => { setEquipmentOpen(false); resetComparison(); }}>×</button></div>
