@@ -8,6 +8,9 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 const {chromium, devices} = require('../../d4planner-rulekit/browser-infra/node_modules/playwright-core');
 const {scenarios} = require('../../d4planner-rulekit/providers/maxroll/tooling/web/ui-scenarios');
+// Cloud identity is deliberately unavailable in this offline package. Keep
+// these responses in the report; never classify JS/CSS/image assets as optional.
+const optionalMissing = pathname => /^\/(?:api\/me|__snapshot\/planners\.maxroll\.gg\/users\/whoami|favicon\.ico|apple-touch-icon[^/]*)$/.test(pathname);
 
 async function run(config) {
   process.umask(0o077);
@@ -37,8 +40,9 @@ async function run(config) {
           if (m.type() !== 'error') return;
           const message=m.text(), url=m.location().url;
           const csp=/Content Security Policy|Content-Security-Policy/.test(message);
-          const expectedMissing=/Failed to load resource:/.test(message) && url && /\/(?:api\/me|favicon.ico|apple-touch-icon[^/]*)$/.test(new URL(url).pathname);
-          if (!csp && !expectedMissing) errors.push(message);
+          const expectedMissing=/Failed to load resource:.*404/.test(message) && url && optionalMissing(new URL(url).pathname);
+          const loginPrompt=/Failed to load resource:.*401/.test(message) && url && new URL(url).origin===new URL(config.hudUrl).origin && new URL(url).pathname==='/api/v1/session';
+          if (!csp && !expectedMissing && !loginPrompt) errors.push(message);
         });
         const cdp = await context.newCDPSession(page); await cdp.send('Network.enable');
         cdp.on('Network.responseReceived', ({response:r}) => {
@@ -98,7 +102,8 @@ async function run(config) {
         await page.screenshot({path:path.join(config.output,`${mobile?'mobile':'desktop'}-planner.png`)});
         await Promise.all(bodies);
         assert(protocols.some(r=>r.protocol==='h2'&&r.status===200),'Real HTTP/2 relay traffic');
-        assert.deepEqual(responses.filter(r=>r.status>=400&&!/^\/(?:api\/me|favicon.ico|apple-touch-icon[^/]*)$/.test(r.path)),[],'No dropped assets');
+        row.optionalUnavailable=responses.filter(r=>r.status===404&&optionalMissing(r.path));
+        assert.deepEqual(responses.filter(r=>r.status>=400&&!(r.status===404&&optionalMissing(r.path))),[],'No dropped assets');
         row.snapshot = await page.evaluate(async()=>{
           const d=await(await fetch('/__local/diagnostics')).json();
           return {snapshotId:d.snapshotId,manifestSha256:d.manifestSha256};
