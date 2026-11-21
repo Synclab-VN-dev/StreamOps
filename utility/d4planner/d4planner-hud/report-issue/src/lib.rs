@@ -1,6 +1,7 @@
 //! Native-only diagnostics. No arbitrary file paths accepted from the WebView.
 pub mod images;
 pub mod snapshot_unpack;
+pub mod events;
 use d4planner_runtime_logging::{export_selected, safe};
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
@@ -452,7 +453,7 @@ impl Report {
             files.push(item);
         }
         if selection.evidence {
-            let exported=evidence(&report.dir.join("evidence")).unwrap_or_else(|_|json!({"files":[{"name":"events.jsonl","status":"UNAVAILABLE","reason":"RAW_EVENT_SOURCE_UNAVAILABLE"}]}));
+            let exported=evidence(&report.dir.join("evidence")).unwrap_or_else(|code|{let reason = if code.starts_with("EVENT_") && code.len() <= 80 && code.bytes().all(|b| b.is_ascii_uppercase() || b == b'_') {code} else {"RAW_EVENT_SOURCE_UNAVAILABLE".into()}; json!({"files":[{"name":"events.jsonl","status":"UNAVAILABLE","reason":reason}]})});
             for item in exported["files"]
                 .as_array()
                 .ok_or("INVALID_EVIDENCE_EXPORT")?

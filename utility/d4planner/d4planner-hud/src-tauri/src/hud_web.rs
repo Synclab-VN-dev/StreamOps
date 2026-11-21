@@ -140,7 +140,10 @@ impl Host for NativeHost {
                 }
                 let p: Preview =
                     serde_json::from_value(params).map_err(|_| Error::bad("INVALID_REQUEST"))?;
-                issue_report::collect(&owner, p.selection, p.images, p.image_consent)
+                let state = self.app.state::<BackendState>();
+                let wrapper = state.0.lock().map_err(|_| Error::unavailable())?.clone();
+                issue_report::collect(&owner, p.selection, p.images, p.image_consent,
+                    || issue_report::capture_session(wrapper.as_deref()))
             }
             Operation::ReportStatus | Operation::ReportCancel => {
                 let id = params

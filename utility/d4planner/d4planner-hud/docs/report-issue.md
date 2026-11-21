@@ -241,3 +241,24 @@ Corrupt drafts fail closed and retain files; a missing/damaged ciphertext must n
 downgrade an existing remote intent. Recovery errors retain the pointer; closing and
 reopening retries native recovery. Historical pre-fix unsealed drafts already deleted
 by the old Drop implementation cannot be reconstructed; no false recovery is claimed.
+
+## Capture event export — issues 226/227
+
+Selecting D4 events plus separate raw-data consent now calls the owned BE's
+existing `runtime.status` IPC to resolve its RUNNING capture `sessionId`. The
+native bridge checks DataRoot, then exports only that session from `events.db`
+with SQLite READ_ONLY/query_only and a consistent read transaction. It never
+chooses the newest session, accepts a renderer path, copies a DB/WAL, or starts
+capture. Backend/capture unavailable means explicit `EVENT_SESSION_UNAVAILABLE`.
+
+The session is rechecked through IPC before publishing the export. Restart during
+collection gives `EVENT_SESSION_CHANGED`, with no partial attachment. Reads are
+bounded to 100,000 rows / 24 MB and a five-second iteration budget (plus bounded
+IPC/SQLite deadlines); oversize fails explicitly rather than silently truncating.
+Only `evidence/events.jsonl` enters the existing consent/review/encryption pipeline.
+The manifest includes session ID, count, sequence/time range and final SHA-256.
+Safe EVENT_* failure codes survive into the preview; unexpected errors stay generic.
+Both desktop and authenticated Web Report Preview use the same native callback.
+No report is automatically submitted during tests, and no event payload is written
+to normal diagnostics. Native tests cover WAL data, session mismatch, empty source,
+malformed/oversize payload and no source mutation.

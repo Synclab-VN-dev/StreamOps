@@ -105,7 +105,7 @@ class ManagedCaptureRuntime:
             except (OSError, ValueError, TypeError, KeyError, AttributeError):
                 pass
         count = payload.get('extras', {}).get('speechEventCount')
-        return {'speechEvents': count if type(count) is int and count >= 0 else None,
+        return {'sessionId': self.active_session_id, 'speechEvents': count if type(count) is int and count >= 0 else None,
                 'dataRootReceipt': receipt_state, 'state': self.state, 'detail': self.detail,
                 'pid': self.process.pid if live else None, 'manualPause': self.manual_pause,
                 'mode': 'BLOCK · Silent', 'controllerProfile': 'xbox16',
