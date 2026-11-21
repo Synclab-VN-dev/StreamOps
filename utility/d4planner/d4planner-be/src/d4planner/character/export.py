@@ -5,7 +5,7 @@ import json
 import sqlite3
 import time
 
-from .repository import _scope
+from .repository import _scope, EquipmentRepository
 
 SCHEMA = 'd4planner-character-observations/v1'
 MAX_BYTES = 512_000
@@ -30,6 +30,10 @@ def export_character(path, active_session=None):
             if not scope:
                 raise ValueError('CHARACTER_NO_DATA')
             session, start = scope['sessionId'], scope['startSeq']
+            checkpoint = db.execute('SELECT last_event_seq FROM projector_checkpoint WHERE consumer=? AND session_id=?', (EquipmentRepository.CONSUMER,session)).fetchone()
+            if not checkpoint:
+                raise ValueError('CHARACTER_SOURCE_INVALID')
+            end = checkpoint[0]
             equipment = []
             for row in db.execute('SELECT * FROM equipment_current WHERE source_session_id=? AND source_event_seq_start>=? ORDER BY slot_family,slot_index,item_fingerprint LIMIT 257', (session,start)):
                 item = json.loads(row['item_json'])
@@ -45,7 +49,7 @@ def export_character(path, active_session=None):
             talismans = []
             if 'talisman_observation' in tables:
                 selected = {}
-                for row in db.execute("SELECT * FROM talisman_observation WHERE session_id=? AND start_seq>=? AND role='equipped' ORDER BY start_seq LIMIT 257", (session,start)):
+                for row in db.execute("SELECT * FROM talisman_observation WHERE session_id=? AND start_seq>=? AND end_seq<=? AND role='equipped' ORDER BY start_seq LIMIT 257", (session,start,end)):
                     value = dict(row)
                     for name in ['attributes_json','set_bonuses_json']:
                         if name in value:
@@ -67,7 +71,7 @@ def export_character(path, active_session=None):
             result = {'schemaVersion':SCHEMA,'purpose':'observed-character-analysis',
                 'exportedAt':datetime.now(timezone.utc).isoformat(),
                 'character':{'identity':'UNVERIFIED','name':None},
-                'capture':{'sessionId':session,'scopeStartEventSeq':start,
+                'capture':{'sessionId':session,'scopeStartEventSeq':start,'scopeThroughEventSeq':end,
                     'freshness':'ACTIVE_SESSION' if active_session==session else 'LAST_KNOWN',
                     'equipmentRevision':revision[0] if revision else None},
                 'layout':scope['layout'],'equipment':equipment,'confirmedEmptySlots':empty,

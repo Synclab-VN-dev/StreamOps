@@ -18,7 +18,8 @@ The implementation reference is not an automatic approval of a new Golden.
 `character.export` with empty params uses the existing owned managed-control
 protocol and correlation/timeout/error handling. BE reads equipment, empty-slot
 receipts and Talisman in one read-only SQLite transaction, scoped to one capture
-session and inventory context start sequence. It never joins the newest Talisman
+session and inventory context start sequence. Talisman rows ahead of the equipment
+checkpoint are excluded; `scopeThroughEventSeq` states this upper bound. It never joins the newest Talisman
 session to older equipment. Stored item JSON (including unrecognized fields,
 raw item tooltip metadata, nulls, ordering and Unicode) is retained. This is not
 an export of the raw event journal. Talisman attributes/set tiers are preserved;

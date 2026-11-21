@@ -45,6 +45,9 @@ def test_talisman_same_scope_only_preserves_attributes_and_latest_seal(tmp_path)
     with sqlite3.connect(repo.path) as db:
         for session,seq,role,name in [('s',20,'equipped','Current'),('s',21,'equipped','Latest'),('other',22,'equipped','Foreign'),('s',23,'bag','Bag')]:
             db.execute("INSERT INTO talisman_observation(session_id,start_seq,end_seq,observed_at,role,kind,name,item_type,item_power,attributes_json,set_bonuses_json) VALUES(?,?,?,'now',?,'seal',?,'Seal',900,?,?)",(session,seq,seq,role,name,json.dumps(['+1 Example','Unparsed effect']),json.dumps(['(2) Set: example'])))
+    # Other projections may be ahead: do not attach rows beyond equipment's checkpoint.
+    assert export_character(repo.path)['talisman']['observations']==[]
+    feed(p,['blank']*30)
     result=export_character(repo.path)
     assert [i['name'] for i in result['talisman']['observations']]==['Latest']
     assert result['talisman']['observations'][0]['attributes']==['+1 Example','Unparsed effect']
