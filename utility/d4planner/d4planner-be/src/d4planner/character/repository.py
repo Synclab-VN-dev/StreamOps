@@ -195,6 +195,9 @@ class EquipmentRepository:
               source_event_seq_start INTEGER NOT NULL, source_event_seq_end INTEGER NOT NULL,
               confidence TEXT NOT NULL, item_fingerprint TEXT NOT NULL UNIQUE);
             CREATE INDEX IF NOT EXISTS ix_equipment_slot ON equipment_current(slot_family, slot_index);
+            CREATE TABLE IF NOT EXISTS equipment_empty(
+              slot_family TEXT PRIMARY KEY, session_id TEXT NOT NULL,
+              event_seq INTEGER NOT NULL, observed_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS equipment_scope(
               singleton INTEGER PRIMARY KEY CHECK(singleton=1), state_json TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS projector_checkpoint(
@@ -243,6 +246,8 @@ class EquipmentRepository:
             # Materialize equipped -> empty in the same transaction as the
             # projector checkpoint so a restart cannot resurrect stale state.
             if empty_slot_family:
+                db.execute("INSERT INTO equipment_empty VALUES(?,?,?,?) ON CONFLICT(slot_family) DO UPDATE SET session_id=excluded.session_id,event_seq=excluded.event_seq,observed_at=excluded.observed_at",
+                           (empty_slot_family, session_id, event_seq, updated_at))
                 db.execute(
                     "DELETE FROM equipment_current WHERE slot_family=?",
                     (empty_slot_family,),
@@ -268,6 +273,8 @@ class EquipmentRepository:
             if observation and observation.confidence == "HIGH":
                 item = observation.item
                 occupied = set(observation.occupied_slot_families or (observation.slot_family,))
+                for family in occupied:
+                    db.execute("DELETE FROM equipment_empty WHERE slot_family=?", (family,))
                 if observation.slot_family in {"main_hand", "off_hand"}:
                     # A two-handed observation occupies both hands. Conversely,
                     # seeing an equipped off-hand disproves a stored two-hander.

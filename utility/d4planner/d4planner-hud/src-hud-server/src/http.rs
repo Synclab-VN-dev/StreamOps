@@ -86,6 +86,7 @@ pub fn router(state: HttpState) -> Router {
         .route("/api/v1/hud/stream", get(stream))
         .route("/api/v1/targets", get(targets))
         .route("/api/v1/planner/open", post(planner_open))
+        .route("/api/v1/character/export", get(character_export))
         .route("/api/v1/targets/select", post(select_target))
         .route("/api/v1/runtime/{component}/{action}", post(runtime))
         .route(
@@ -222,6 +223,9 @@ async fn call(
         *s.planner.lock().await = None;
     }
     result.map(Json)
+}
+async fn character_export(State(s): State<HttpState>, h: HeaderMap) -> Result<Json<Value>, Error> {
+    call(s, h, Operation::CharacterExport, json!({})).await
 }
 async fn targets(State(s): State<HttpState>, h: HeaderMap) -> Result<Json<Value>, Error> {
     call(s, h, Operation::Targets, json!({})).await
@@ -492,6 +496,17 @@ mod tests {
                 .status(),
             StatusCode::PAYLOAD_TOO_LARGE
         );
+    }
+    #[tokio::test]
+    async fn character_export_requires_auth_and_disallows_cross_origin() {
+        let path="/api/v1/character/export";
+        assert_eq!(app().oneshot(request(path).body(Body::empty()).unwrap()).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+        let authorized=request(path).header("authorization","Bearer 01234567890123456789012345678901").body(Body::empty()).unwrap();
+        let response=app().oneshot(authorized).await.unwrap();
+        assert_eq!(response.status(),StatusCode::OK);
+        assert!(response.headers()["cache-control"].to_str().unwrap().contains("no-store"));
+        let cross=request(path).header("authorization","Bearer 01234567890123456789012345678901").header("origin","https://foreign.example").body(Body::empty()).unwrap();
+        assert_eq!(app().oneshot(cross).await.unwrap().status(),StatusCode::FORBIDDEN);
     }
     #[tokio::test]
     async fn unknown_or_unauthenticated_api_never_falls_back_to_html() {

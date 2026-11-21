@@ -39,6 +39,19 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   const [reportOpen, setReportOpen] = useState(false);
   const [reportTab, setReportTab] = useState<"report" | "logs">("report");
   const [menuOpen, setMenuOpen] = useState(false);
+  const copyPending = useRef(false);
+  const [copyStatus,setCopyStatus] = useState<"idle"|"copying"|"copied"|"failed">("idle");
+  const [copyError,setCopyError] = useState("");
+  async function copyCharacter() {
+    if(copyPending.current)return;
+    copyPending.current=true;setCopyStatus("copying");setCopyError("");
+    try{await invoke("copy_character_json");setCopyStatus("copied");}
+    catch(error){
+      const code=String(error);
+      setCopyError(code.includes("CHARACTER_NO_DATA") ? "No character data available" : code.includes("CLIPBOARD") ? "Copy failed — check clipboard access" : "Character data unavailable — retry when Backend is ready");
+      setCopyStatus("failed");
+    }finally{copyPending.current=false;}
+  }
   const plannerPending = useRef(false);
   const [plannerOpening, setPlannerOpening] = useState(false);
   const [plannerError, setPlannerError] = useState<string | null>(null);
@@ -47,6 +60,7 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
   const [effectOpen, setEffectOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const snapshot = hud.assessmentRenderable ? hud.snapshot : null;
+  const hasCharacterData = Boolean(snapshot?.currentEquipment?.revision || snapshot?.currentEquipment?.items.length || snapshot?.currentTalisman?.items.length || snapshot?.context.character || snapshot?.equipment.some(row=>row.currentItem));
   const talisman = talismanStatus(snapshot, hud.connection !== "CONNECTED");
   const talismanItems = snapshot?.currentTalisman?.items;
   const talismanItem = talismanItems?.find(item => item.id === currentSlot);
@@ -156,12 +170,16 @@ export default function App({ dataSource }: { dataSource?: IHudDataSource }) {
             </>}
             <span className="chevron">{expanded ? "⌃" : "⌄"}</span>
           </button>
-          <button className="menu-button" aria-label="Open target menu" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => { setMenuOpen(value => !value); if (!menuOpen) void hud.refreshTargets(); }}><MenuIcon name="more" size={17} /></button>
+          <button className="menu-button" aria-label="Open target menu" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => { setMenuOpen(value => !value); if (!menuOpen) {setCopyStatus("idle");void hud.refreshTargets();} }}><MenuIcon name="more" size={17} /></button>
           {menuOpen && <div className="target-menu" role="menu" aria-label="HUD actions">
             <button className="menu-action create-build" role="menuitem" aria-label={plannerOpening ? "Opening Planner…" : "Create Build"} aria-describedby="planner-action-description" disabled={plannerOpening} aria-busy={plannerOpening} onClick={() => void createBuild()}>
               <MenuIcon name="create" size={15} />
               <span className="menu-action-copy"><span>{plannerOpening ? "Opening Planner…" : "Create Build"}</span><small id="planner-action-description">Open Local Planner</small></span>
               <MenuIcon name="chevron" size={13} />
+            </button>
+            <button className="menu-action create-build" role="menuitem" aria-label="Copy current character JSON for AI analysis" disabled={!hasCharacterData || copyStatus === "copying"} aria-busy={copyStatus === "copying"} onClick={() => void copyCharacter()}>
+              <MenuIcon name={copyStatus === "copied" ? "checked" : "copy"} size={15}/>
+              <span className="menu-action-copy"><span>Copy Character JSON</span><small role="status" aria-live="polite">{!hasCharacterData ? "No character data available" : copyStatus === "copying" ? "Copying…" : copyStatus === "copied" ? "Copied to clipboard" : copyStatus === "failed" ? copyError : "Current data · For AI analysis"}</small></span>
             </button>
             <strong className="target-menu-heading"><MenuIcon name="folder" size={14} /> Target Build</strong>
             {hud.targetListStatus === "LOADING" && <p role="status">Loading Targets…</p>}
