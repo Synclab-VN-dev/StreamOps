@@ -25,7 +25,7 @@ def layout_digest(layouts):
         if not isinstance(entry, dict) or not isinstance(entry.get('className'), str) or not isinstance(entry.get('slots'), list) or not entry['slots']:
             raise ValueError('Invalid class layout')
         for slot in entry['slots']:
-            if not isinstance(slot, dict) or slot.get('slotFamily') not in {None, 'main_hand', 'off_hand', 'unsupported_weapon'} or not isinstance(slot.get('itemTypes'), list) or any(not isinstance(t, str) for t in slot['itemTypes']):
+            if not isinstance(slot, dict) or slot.get('slotFamily') not in {None, 'main_hand', 'off_hand', 'ranged', 'unsupported_weapon'} or not isinstance(slot.get('itemTypes'), list) or any(not isinstance(t, str) for t in slot['itemTypes']):
                 raise ValueError('Invalid equipment slot')
     encoded = json.dumps(layouts, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
     if len(encoded) > MAX_FRAME // 2:

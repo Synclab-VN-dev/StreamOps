@@ -16,6 +16,9 @@ const validate = ajv.compile(schema);
 const generated = standaloneCode(ajv, validate)
   .replace('require("ajv/dist/runtime/ucs2length").default', 'ucs2length')
   .replace('require("ajv-formats/dist/formats").fullFormats["date-time"]', 'fullFormats["date-time"]');
+if (/\brequire\s*\(/.test(generated)) {
+  throw new Error('HUD validator contains a CommonJS runtime dependency; provide an explicit browser-safe import before building.');
+}
 fs.writeFileSync(
   outputPath,
   `// @ts-nocheck\n// Generated from hud.schema.json; do not edit by hand.\nimport ucs2length from "ajv/dist/runtime/ucs2length.js";\nimport formats from "ajv-formats/dist/formats.js";\nconst fullFormats = formats.fullFormats ?? formats;\n${generated}`,

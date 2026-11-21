@@ -91,6 +91,7 @@ export interface CurrentItem {
   observedAt: string; confidence: string;
 }
 export interface CurrentEquipment {
+  layout?: {status: 'UNKNOWN' | 'OBSERVED' | 'VERIFIED'; slots: string[]};
   sourceState: 'WAITING' | 'READY' | 'BUSY' | 'UNAVAILABLE';
   identity: 'UNVERIFIED'; revision: number | null; items: CurrentItem[];
 }

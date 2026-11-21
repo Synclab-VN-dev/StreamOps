@@ -1,6 +1,12 @@
 import type { CurrentItem, HudSnapshot } from './hud-model';
 export const slots = [['helm','Helm'],['chest','Chest'],['gloves','Gloves'],['pants','Pants'],['boots','Boots'],['main_hand','Main Hand'],['off_hand','Off Hand'],['ring-1','Ring 1'],['ring-2','Ring 2'],['amulet','Amulet']];
 
+const slotLabels: Record<string,string> = {...Object.fromEntries(slots), ranged:'Ranged'};
+export function equipmentSlots(snapshot: HudSnapshot | null): string[][] {
+  const layout = snapshot?.currentEquipment?.layout;
+  return layout ? layout.slots.map(id => [id, slotLabels[id] ?? id]) : slots;
+}
+
 export function currentItems(snapshot: HudSnapshot | null): CurrentItem[] {
   if (snapshot?.currentEquipment) return snapshot.currentEquipment.items;
   // Older persisted HUDs can still show observed names, without inventing missing details.
@@ -29,13 +35,14 @@ export function CurrentList({snapshot, offline, selected, onSelect, onRuntime}: 
   const saved = items.length > 0 && (offline || blocked || unavailable || state !== 'RUNNING');
   const label = !items.length ? 'No Equipment yet' : offline ? 'Saved · Last-known' : blocked ? 'Capture unavailable' : unavailable ? 'Saved · Source unavailable' : items.length ? 'Observed equipment' : 'No Equipment yet';
   const unresolved = items.filter(item => item.slotFamily === 'ring' && item.slotIndex === null);
-  const rows = slots.map(([id,label])=>({id,label,item:items.find(item => (item.slotFamily==='ring' ? `ring-${item.slotIndex}` : item.slotFamily)===id)}));
+  const rows = equipmentSlots(snapshot).map(([id,label])=>({id,label,item:items.find(item => (item.slotFamily==='ring' ? `ring-${item.slotIndex}` : item.slotFamily)===id)}));
   return <section className="current-list" aria-label="Current Equipment">
     <div className="current-heading"><b>CURRENT EQUIPMENT</b><span>{saved ? 'LAST KNOWN' : blocked ? 'CAPTURE UNAVAILABLE' : unavailable ? 'SOURCE UNAVAILABLE' : offline ? 'OFFLINE' : state === 'RUNNING' ? 'CAPTURE RUNNING' : state === 'WAITING_FOR_GAME' ? 'WAITING FOR GAME' : 'WAITING FOR CAPTURE'}</span></div>
     <div className={`current-notice ${blocked || unavailable ? 'warning' : ''}`} role="status"><b>{label}</b>
       {unavailable && <p>{snapshot?.currentEquipment?.sourceState === 'BUSY' ? 'Equipment source busy' : 'Equipment source unavailable'}</p>}
       <p>{items.length ? `${items.length} item${items.length===1?'':'s'} observed. No Target required.` : 'Open Diablo IV → Inventory → highlight each equipped tooltip.'}</p>
       {blocked && <button onClick={onRuntime}>Open Runtime Manager →</button>}
+      {snapshot?.currentEquipment?.layout && <p>Layout · {snapshot.currentEquipment.layout.status === 'VERIFIED' ? 'Verified slot layout' : snapshot.currentEquipment.layout.status === 'OBSERVED' ? 'Observed slots · layout incomplete' : 'Not yet identified'}</p>}
       {items.length > 0 && <p>Character ownership is not verified. Saved items may be from an earlier session.</p>}
     </div>
     <div className="observed-count">{items.length} items observed</div>
@@ -48,7 +55,7 @@ export function CurrentList({snapshot, offline, selected, onSelect, onRuntime}: 
 export function CurrentDetail({item, slot, offline, onClose}: {item?:CurrentItem; slot:string; offline:boolean; onClose():void}) {
  return <aside className="panel current-detail" aria-label="Current equipment detail">
   <div className="panel-title"><b>CURRENT EQUIPMENT</b><button aria-label="Close current equipment detail" onClick={onClose}>×</button></div>
-  <h2>{item?.name??(slot.startsWith('ring-item:') ? 'Ring · position unknown' : slots.find(([id])=>id===slot)?.[1])??'Unknown slot'}</h2>
+  <h2>{item?.name??(slot.startsWith('ring-item:') ? 'Ring · position unknown' : slotLabels[slot])??'Unknown slot'}</h2>
   {item ? <><div className="current-notice"><b>{offline?'LAST KNOWN':'OBSERVED'} · {item.confidence} CONFIDENCE</b><p>{item.itemType}</p>{item.itemPower!==null&&<strong>Item Power {item.itemPower}</strong>}</div>
     {([['Base stats',item.baseStats],['Affixes',item.affixes],['Effects',item.effects]] as const).map(([title,lines])=><section className="item-properties" key={title}><h3>{title}</h3>{lines.length?lines.map((line,i)=><p key={i}>{line}</p>):<p>Not observed</p>}</section>)}
     <p className="current-help">Observed at · {item.observedAt}</p><p className="current-help">Character ownership unverified. This observation is not proof that the character is currently active.</p></>

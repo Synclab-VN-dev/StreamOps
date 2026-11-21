@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ...models import EquipmentObservation
+from ..slots import SLOT_TYPES
 from ..decision import Resolution, ResolutionKind
 from ..parser import fingerprint, parse_item, parse_type
 from .base import BaseResolver, ResolverRequest
@@ -20,6 +21,8 @@ class EquippedResolver(BaseResolver):
         if not request.context.equipped_marker:
             return "missing_exact_equipped_marker"
         item_type = parse_type(request.segment[1].text) if len(request.segment) >= 3 else None
+        if item_type and item_type[2] not in SLOT_TYPES.get(request.context.slot, set()):
+            return "item_slot_mismatch"
         if item_type and item_type[2] == "Staff" and request.occupied_slot_families != ("main_hand", "off_hand"):
             return "staff_requires_verified_two_handed_context"
         return None

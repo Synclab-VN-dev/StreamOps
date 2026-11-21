@@ -30,6 +30,7 @@ class EquipmentRepositoryIncompatible(EquipmentRepositoryReadError):
 class EquipmentProjectionView:
     revision: tuple[int, str, int, str] | None
     rows: tuple[dict[str, Any], ...]
+    layout: dict | None = None
 
 
 def _equipment_rows(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
@@ -49,6 +50,20 @@ def _equipment_rows(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
             "confidence": row["confidence"], "itemFingerprint": row["item_fingerprint"],
         })
     return result
+
+
+def _scope(db):
+    if not db.execute("SELECT 1 FROM sqlite_master WHERE name='equipment_scope'").fetchone():
+        return None
+    row = db.execute("SELECT state_json FROM equipment_scope WHERE singleton=1").fetchone()
+    return json.loads(row[0]) if row else None
+
+
+def _visible(rows, scope):
+    if not scope:
+        return rows
+    return [r for r in rows if r['source_session_id'] == scope['sessionId']
+            and r['source_event_seq_start'] >= scope['startSeq']]
 
 
 class ReadOnlyEquipmentRepository:
@@ -122,6 +137,8 @@ class ReadOnlyEquipmentRepository:
                 rows = db.execute(
                     f"SELECT * FROM equipment_current ORDER BY {order},slot_index,observed_at,item_fingerprint"
                 ).fetchall()
+                scope = _scope(db)
+                rows = _visible(rows, scope)
                 db.execute("ROLLBACK")
         except EquipmentRepositoryReadError:
             raise
@@ -137,7 +154,7 @@ class ReadOnlyEquipmentRepository:
             projected = tuple(_equipment_rows(rows))
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
             raise EquipmentRepositoryIncompatible("EQUIPMENT_DB_PROJECTION_INVALID") from error
-        return EquipmentProjectionView(revision, projected)
+        return EquipmentProjectionView(revision, projected, scope.get("layout") if scope else None)
 
     def projection_revision(self) -> tuple[int, str, int, str] | None:
         return self.projection_snapshot().revision
@@ -178,6 +195,8 @@ class EquipmentRepository:
               source_event_seq_start INTEGER NOT NULL, source_event_seq_end INTEGER NOT NULL,
               confidence TEXT NOT NULL, item_fingerprint TEXT NOT NULL UNIQUE);
             CREATE INDEX IF NOT EXISTS ix_equipment_slot ON equipment_current(slot_family, slot_index);
+            CREATE TABLE IF NOT EXISTS equipment_scope(
+              singleton INTEGER PRIMARY KEY CHECK(singleton=1), state_json TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS projector_checkpoint(
               consumer TEXT PRIMARY KEY, session_id TEXT NOT NULL, last_event_seq INTEGER NOT NULL,
               updated_at TEXT NOT NULL);
@@ -185,6 +204,10 @@ class EquipmentRepository:
               singleton INTEGER PRIMARY KEY CHECK(singleton=1), revision INTEGER NOT NULL,
               session_id TEXT NOT NULL, event_seq INTEGER NOT NULL, updated_at TEXT NOT NULL);
             """)
+
+    def scope(self):
+        with self._connect() as db:
+            return _scope(db)
 
     def checkpoint(self) -> tuple[str, int] | None:
         with self._connect() as db:
@@ -212,6 +235,7 @@ class EquipmentRepository:
         observation: EquipmentObservation | None,
         empty_slot_family: str | None = None,
         remove_item_fingerprint: str | None = None,
+        scope: dict | None = None,
     ):
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -234,6 +258,12 @@ class EquipmentRepository:
                 )
 
             equipment_changed = bool(observation or empty_slot_family or remove_item_fingerprint)
+            if scope is not None:
+                previous = _scope(db)
+                visible_keys = ('sessionId', 'startSeq', 'layout')
+                equipment_changed |= (any(previous.get(k) != scope.get(k) for k in visible_keys) if previous else bool(db.execute('SELECT 1 FROM equipment_current LIMIT 1').fetchone()))
+                db.execute("INSERT INTO equipment_scope VALUES(1,?) ON CONFLICT(singleton) DO UPDATE SET state_json=excluded.state_json",
+                           (json.dumps(scope, ensure_ascii=False),))
 
             if observation and observation.confidence == "HIGH":
                 item = observation.item
@@ -306,4 +336,4 @@ class EquipmentRepository:
             rows = db.execute(
                 f"SELECT * FROM equipment_current ORDER BY {order}, observed_at"
             ).fetchall()
-            return _equipment_rows(rows)
+            return _equipment_rows(_visible(rows, _scope(db)))

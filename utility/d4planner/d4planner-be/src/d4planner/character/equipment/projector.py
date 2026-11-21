@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Protocol
 from dataclasses import replace
 
+from .observed_layout import new_scope, observe_header, detect_layout, WEAPONS
 from .layout import resolve_two_handed
 
 from ..repository import EquipmentRepository
@@ -38,6 +39,7 @@ class EquipmentProjector:
         self.repository = repository
         self.diagnostics = diagnostics
         self.context = EquipmentContext()
+        self.scope = repository.scope()
         self.item_resolvers = item_resolver_pipeline()
         self.empty_slot_resolvers = empty_slot_resolver_pipeline()
         self.ring_resolvers = ring_resolver_pipeline()
@@ -288,6 +290,15 @@ class EquipmentProjector:
         observation = None
         empty_slot_family = None
         remove_item_fingerprint = None
+        if self.scope is None or self.scope['sessionId'] != session:
+            self.scope = new_scope(session, seq)
+        if observe_header(self.scope, text, seq):
+            self.context = EquipmentContext()
+            self._diag('layout.context_reset', line, reason='inventory_header_changed')
+        # Inventory/menu transitions terminate unfinished tooltip context. A
+        # slot remains unknown until a new explicit slot label is observed.
+        if text in {'CHARACTER', 'Stash', 'BLACKSMITH'}:
+            self.context = EquipmentContext()
         incoming_slot = SLOTS.get(text)
 
         if incoming_slot is not None:
@@ -372,6 +383,9 @@ class EquipmentProjector:
                     equippedMarker=self.context.equipped_marker,
                 )
 
+        if observation is not None and observation.slot_family in WEAPONS:
+            self.scope['weapons'][observation.slot_family] = observation.item.item_type
+        detect_layout(self.scope, self.equipment_layouts)
         self.repository.commit_event(
             session_id=session,
             event_seq=seq,
@@ -379,6 +393,7 @@ class EquipmentProjector:
             observation=observation,
             empty_slot_family=empty_slot_family,
             remove_item_fingerprint=remove_item_fingerprint,
+            scope=self.scope,
         )
 
         if observation is not None:

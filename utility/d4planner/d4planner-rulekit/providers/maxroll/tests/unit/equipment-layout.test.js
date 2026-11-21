@@ -20,3 +20,8 @@ test('empty categories do not advertise accepted item types',()=>{
  const result=layoutFromCoverage(coverage([g]),provenance);
  assert.deepEqual(result.classes[0].slots[0].itemTypes,[]);
 });
+test('Rogue physical ranged and melee slots are mapped without changing Barbarian',()=>{
+ const result=layoutFromCoverage(coverage([group('Rogue',10,['Bow','Crossbow']),group('Rogue',11,['Dagger','Sword']),group('Rogue',12,['Dagger','Sword']),group('Barbarian',11,['Sword'])]),provenance);
+ assert.deepEqual(result.classes[0].slots.map(s=>s.slotFamily),['ranged','main_hand','off_hand']);
+ assert.equal(result.classes[1].slots[0].slotFamily,'unsupported_weapon');
+});

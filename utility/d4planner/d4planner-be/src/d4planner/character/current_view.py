@@ -15,8 +15,8 @@ def display_lines(values: list[Any]) -> list[str]:
     return result
 
 
-def current_view(rows, revision):
-    return {'sourceState': 'READY', 'identity': 'UNVERIFIED', 'revision': revision,
+def current_view(rows, revision, layout=None):
+    return {**({'layout': layout} if layout is not None else {}), 'sourceState': 'READY', 'identity': 'UNVERIFIED', 'revision': revision,
         'items': [{
             'fingerprint': row['itemFingerprint'], 'slotFamily': row['slotFamily'],
             'slotIndex': row['slotIndex'], 'name': row['name'], 'itemType': row['itemType'],
