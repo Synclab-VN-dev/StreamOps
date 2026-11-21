@@ -23,7 +23,7 @@ function layoutFromCoverage(coverage, provenance) {
       if (typeof category.name !== 'string' || !category.name.trim() || !Array.isArray(category.entities)) throw unavailable();
       if (category.name !== 'All Items' && category.entities.length) types.add(category.name);
     }
-    slots.set(group.slot,{providerSlotId:String(group.slot),slotFamily:group.slot===7?'main_hand':group.slot===6?'off_hand':group.slot>=8&&group.slot<=12?'unsupported_weapon':null,itemTypes:[...types]});
+    slots.set(group.slot,{providerSlotId:String(group.slot),slotFamily:group.slot===7||(group.className==='Rogue'&&group.slot===11)?'main_hand':group.slot===6||(group.className==='Rogue'&&group.slot===12)?'off_hand':group.className==='Rogue'&&group.slot===10?'ranged':group.slot>=8&&group.slot<=12?'unsupported_weapon':null,itemTypes:[...types]});
   }
   return {schemaVersion:'d4planner-equipment-layout/v1',status:'READY',
     provenance:{...provenance},classes:[...classes].map(([className,slots])=>({className,slots:[...slots.values()]}))};

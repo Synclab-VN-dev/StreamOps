@@ -111,7 +111,7 @@ class RepositoryEquipmentEventSource:
             projection=projection,
         )
         from .character.current_view import current_view
-        await self.runtime.ingest_snapshot(current, display_current=current_view(projection.rows, revision))
+        await self.runtime.ingest_snapshot(current, display_current=current_view(projection.rows, revision, projection.layout))
         self._last_revision = revision
         await self._set_health("HEALTHY", None)
         return True
@@ -512,7 +512,7 @@ class ProductionBackendRuntime:
             def read():
                 return ReadOnlyEquipmentRepository(path).projection_snapshot()
             projection = await asyncio.to_thread(read)
-            view = current_view(projection.rows, projection.revision[0] if projection.revision else None)
+            view = current_view(projection.rows, projection.revision[0] if projection.revision else None, projection.layout)
         except (EquipmentRepositoryReadError, ValueError, TypeError, KeyError) as error:
             state = "BUSY" if isinstance(error, EquipmentRepositoryTransient) else "UNAVAILABLE"
             view = {**self.current_equipment, "sourceState": state}

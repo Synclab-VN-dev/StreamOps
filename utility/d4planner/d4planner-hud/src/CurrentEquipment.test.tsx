@@ -46,3 +46,21 @@ it('updates Current on a newer DB read and retains observations while capture is
   act(()=>notify({type:'SNAPSHOT',snapshot:initial}));
   expect(screen.getByText('Unresolved ring')).toBeTruthy();
 });
+it('uses BE topology, reidentifies layout on a new snapshot and retains legacy fallback', async () => {
+  const {CurrentList, equipmentSlots} = await import('./CurrentEquipment');
+  const snapshot = {...empty,currentEquipment:{sourceState:'READY',identity:'UNVERIFIED',revision:1,items:[],
+    layout:{status:'VERIFIED',slots:['helm','ranged','main_hand','off_hand']}}} as unknown as HudSnapshot;
+  const props={offline:false,selected:null,onSelect:vi.fn(),onRuntime:vi.fn()};
+  const {rerender}=render(<CurrentList snapshot={snapshot} {...props}/>);
+  expect(screen.getByRole('button',{name:/Ranged/})).toBeTruthy();
+  expect(screen.getByText('Layout · Verified slot layout')).toBeTruthy();
+  const changed={...snapshot,currentEquipment:{...snapshot.currentEquipment!,layout:{status:'VERIFIED' as const,slots:['main_hand','off_hand']}}};
+  rerender(<CurrentList snapshot={changed} {...props}/>);
+  expect(screen.queryByRole('button',{name:/Ranged/})).toBeNull();
+  expect(screen.getByRole('button',{name:/Main Hand/})).toBeTruthy();
+  const unknown={...snapshot,currentEquipment:{...snapshot.currentEquipment!,layout:{status:'UNKNOWN' as const,slots:['helm']}}};
+  rerender(<CurrentList snapshot={unknown} {...props}/>);
+  expect(screen.getByText('Layout · Not yet identified')).toBeTruthy();
+  expect(screen.queryByRole('button',{name:/Main Hand/})).toBeNull();
+  expect(equipmentSlots(null)).toHaveLength(10);
+});

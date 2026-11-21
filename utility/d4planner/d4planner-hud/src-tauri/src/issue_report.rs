@@ -14,16 +14,12 @@ fn data_root() -> Result<PathBuf, String> {
         .map(|p| p.to_path_buf())
         .ok_or("INVALID_LOG_SESSION".into())
 }
-fn evidence(_destination: &std::path::Path) -> Result<Value, String> {
-    // Existing logs --raw selects capture state, not the HUD run. No verified
-    // packaged capture-session binding exists yet. Never guess or export a DB.
-    Err("RAW_EVENT_SOURCE_NOT_BOUND".into())
-}
 pub fn collect(
     actor: &str,
     selection: Selection,
     images: Vec<d4planner_report_issue::images::ImageInput>,
     image_consent: bool,
+    capture_session: impl FnMut() -> Result<String,String>,
 ) -> Result<Value, String> {
     REPORT
         .try_lock()
@@ -35,7 +31,7 @@ pub fn collect(
             selection,
             &images,
             image_consent,
-            evidence,
+            |destination| d4planner_report_issue::events::export(&data_root()?, destination, capture_session),
         )
 }
 pub fn status(actor: &str, id: &str) -> Result<Value, String> {
@@ -96,16 +92,19 @@ pub fn submit(
 }
 #[tauri::command]
 pub async fn collect_issue_report(
+    state: tauri::State<'_, crate::BackendState>,
     selection: Selection,
     images: Option<Vec<d4planner_report_issue::images::ImageInput>>,
     image_consent: Option<bool>,
 ) -> Result<Value, String> {
+    let wrapper = state.0.lock().map_err(|_| "BACKEND_OFFLINE")?.clone();
     tauri::async_runtime::spawn_blocking(move || {
         collect(
             "desktop",
             selection,
             images.unwrap_or_default(),
             image_consent.unwrap_or(false),
+            || capture_session(wrapper.as_deref()),
         )
     })
     .await
@@ -130,4 +129,19 @@ pub fn cancel_issue_report() -> Result<(), String> {
 #[tauri::command]
 pub fn resume_issue_report(report_id: String) -> Result<Value, String> {
     status("desktop", &report_id)
+}
+
+// Called only if evidence and separate raw-data consent were selected.
+pub fn capture_session(wrapper: Option<&crate::BackendProcessWrapper<crate::StdProcessDriver>>) -> Result<String,String> {
+    let wrapper = wrapper.ok_or("EVENT_SESSION_UNAVAILABLE")?;
+    let value = wrapper.request("runtime.status", serde_json::json!({}), std::time::Duration::from_secs(5))
+        .map_err(|_| "EVENT_SESSION_UNAVAILABLE")?;
+    let actual = value["dataRoot"].as_str().ok_or("EVENT_ROOT_MISMATCH")?;
+    if std::fs::canonicalize(actual).map_err(|_| "EVENT_ROOT_MISMATCH")? !=
+        std::fs::canonicalize(data_root()?).map_err(|_| "EVENT_ROOT_MISMATCH")? {
+        return Err("EVENT_ROOT_MISMATCH".into());
+    }
+    let capture = &value["capture"];
+    if capture["state"] != "RUNNING" {return Err("EVENT_SESSION_UNAVAILABLE".into());}
+    capture["sessionId"].as_str().map(str::to_owned).ok_or("EVENT_SESSION_UNAVAILABLE".into())
 }

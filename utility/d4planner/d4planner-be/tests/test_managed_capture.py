@@ -333,3 +333,24 @@ def test_fresh_rulekit_layout_handoff_never_reuses_ambient_layout(tmp_path, monk
             assert not child.frames
         await runtime.stop()
     asyncio.run(scenario())
+
+def test_report_session_only_exposes_current_owned_capture(tmp_path):
+    async def scenario():
+        child=Child()
+        async def changed(value):pass
+        async def spawn(*args,**kwargs):return child
+        runtime=ManagedCaptureRuntime(tmp_path,changed,spawn=spawn)
+        (tmp_path/"state").mkdir()
+        await runtime.start()
+        payload={'state':'RUNNING','sessionId':'a'*32,'supervisorPid':child.pid,
+                 'extras':{'runtime':{'ownerToken':runtime.owner_token}}}
+        (tmp_path/'state/runtime.json').write_text(json.dumps(payload))
+        await runtime._refresh()
+        assert runtime.status()['sessionId']=='a'*32
+        payload['extras']['runtime']['ownerToken']='foreign'
+        (tmp_path/'state/runtime.json').write_text(json.dumps(payload))
+        await runtime._refresh()
+        assert runtime.status()['sessionId'] is None
+        await runtime.stop()
+        assert runtime.status()['sessionId'] is None
+    asyncio.run(scenario())
