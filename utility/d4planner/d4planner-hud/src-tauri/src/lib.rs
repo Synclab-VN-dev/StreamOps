@@ -5,6 +5,7 @@ fn runtime_log_event(level:String,tag:String,event:String,fields:serde_json::Val
  if !["websocket","hud","webview"].contains(&tag.as_str()) || d4planner_runtime_logging::clean(&level,&tag,&event,fields.clone()).is_none(){return Err("INVALID_LOG_EVENT".into());}
  if let Some(Some(log))=RUNTIME_LOG.get(){log.emit(&level,&tag,&event,fields);}Ok(())
 }
+mod character_clipboard;
 mod issue_report;
 mod hud_web;
 mod overlay_core;
@@ -262,7 +263,7 @@ fn get_backend_status(state: State<'_, BackendState>) -> Result<BackendStatus, S
 #[tauri::command]
 async fn backend_command(state: State<'_, BackendState>, method: String, params: serde_json::Value) -> Result<serde_json::Value, String> {
     // Planner has a dedicated native command; React cannot bypass URL validation/open policy.
-    if !matches!(method.as_str(), "target.list" | "target.select" | "runtime.status" | "capture.start" | "capture.stop" | "capture.restart") { return Err("INVALID_CONTROL_REQUEST".into()); }
+    if !matches!(method.as_str(), "character.export" | "target.list" | "target.select" | "runtime.status" | "capture.start" | "capture.stop" | "capture.restart") { return Err("INVALID_CONTROL_REQUEST".into()); }
     let wrapper = state.0.lock().map_err(|_| "Backend state lock poisoned")?.clone().ok_or("BACKEND_OFFLINE")?;
     tauri::async_runtime::spawn_blocking(move || {
         let _operation = if method.starts_with("capture.") || method == "runtime.status" {
@@ -272,6 +273,18 @@ async fn backend_command(state: State<'_, BackendState>, method: String, params:
         wrapper.request(&method, params, Duration::from_secs(timeout))
     })
         .await.map_err(|_| "CONTROL_DISPATCH_FAILED".to_string())?
+}
+
+#[tauri::command]
+async fn copy_character_json(window: WebviewWindow, state: State<'_, BackendState>) -> Result<(), String> {
+    let value = backend_command(state, "character.export".into(), serde_json::json!({})).await?;
+    let text = serde_json::to_string_pretty(&value).map_err(|_| "CHARACTER_SOURCE_INVALID")?;
+    #[cfg(windows)]
+    let owner = window.hwnd().map_err(|_| "CLIPBOARD_UNAVAILABLE")?.0 as usize;
+    #[cfg(not(windows))]
+    let owner = {let _=window; 0};
+    tauri::async_runtime::spawn_blocking(move || character_clipboard::write(&text, owner))
+        .await.map_err(|_| "CLIPBOARD_UNAVAILABLE".to_string())?
 }
 
 #[tauri::command]
@@ -584,6 +597,7 @@ pub fn run() {
             restart_backend,
             get_backend_status,
             backend_command,
+            copy_character_json,
             open_local_planner,
             read_hud_database,
             get_hud_ws_bootstrap,

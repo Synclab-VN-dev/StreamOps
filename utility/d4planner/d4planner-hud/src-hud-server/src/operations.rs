@@ -80,7 +80,7 @@ impl Dispatcher {
 }
 pub(crate) fn policy(operation: Operation) -> (&'static str, bool) {
     match operation {
-        Operation::Targets => ("hud.read", false),
+        Operation::CharacterExport | Operation::Targets => ("hud.read", false),
         Operation::SelectTarget => ("target.select", true),
         Operation::RuntimeStart
         | Operation::RuntimeStop

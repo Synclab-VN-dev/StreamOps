@@ -27,6 +27,13 @@ export async function webPlatform(_root:HTMLElement):Promise<HudPlatform>{
   const invoke:HudPlatform['invoke']=async<T>(command:string,args?:Parameters<HudPlatform['invoke']>[1])=>{
     const p=(args ?? {}) as Record<string,unknown>;
     switch(command){
+      case 'copy_character_json':{
+        const value=await request<unknown>('/api/v1/character/export');
+        if(!window.isSecureContext || !navigator.clipboard?.writeText)throw new Error('CLIPBOARD_UNAVAILABLE');
+        try{await navigator.clipboard.writeText(JSON.stringify(value,null,2));}
+        catch{throw new Error('CLIPBOARD_UNAVAILABLE');}
+        return undefined as T;
+      }
       case 'get_backend_status':if(!source.runtime)throw new Error('RUNTIME_UNAVAILABLE');return source.runtime.backend as T;
       case 'backend_command':{
         const method=String(p.method);

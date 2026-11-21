@@ -65,6 +65,9 @@ impl Host for Fixture {
             Operation::CaptureStart | Operation::CaptureStop | Operation::CaptureRestart => {
                 Ok(Value::Null)
             }
+            Operation::CharacterExport => std::fs::read(self.data.join("character-export.json"))
+                .map_err(|_| "CHARACTER_NO_DATA".to_string())
+                .and_then(|bytes| serde_json::from_slice(&bytes).map_err(|_| "CHARACTER_SOURCE_INVALID".to_string())),
             Operation::Targets => Ok(json!({"listRevision":1,"targets":[]})),
             Operation::SelectTarget => Err("TARGET_NOT_FOUND".into()),
             Operation::PlannerReady => self.planner.clone().ok_or("PLANNER_UNAVAILABLE".into()),
