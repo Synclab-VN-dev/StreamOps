@@ -10,9 +10,13 @@ The same embedded React build is served. `src/platform/web.ts` maps browser acti
 
 The second listener is an authenticated HTTP transport to the verified Rule Kit Planner. It does not load snapshots or launch Node. Captured Planner scripts run on a different port/origin from HUD; HUD rejects requests from that origin. Only the exact loopback URL returned by native `planner.ensureReady` is forwarded. Readiness is coalesced for concurrent resources for at most two seconds and checked anew on opening a document. Cookies/Bearer credentials never reach Node; redirects to another origin are rejected. HTML/CSS/JS rewrite only the verified upstream origin; native build payloads are not rewritten.
 
+Planner asset bursts (#224) use 32 active upstream requests and at most 256 waiting requests per server. Valid authenticated requests wait up to 20 seconds for capacity. A full queue returns `429 PLANNER_REQUEST_LIMIT`; an expired wait returns `503 PLANNER_BUSY`. Cancellation releases queue capacity; active permits are held through response buffering. Request-body reads also have a 20-second deadline. Authority, Origin, authentication and route checks run before admission; the existing per-subject rate limit remains in force. There is no retry/proxy to the production website.
+
+The provider's offline browser wrapper disables the captured analytics XHR to `https://analytics.maxroll.gg/api/event` by aborting locally before send. The captured initializer runs on LAN hostnames; throwing synchronously there used to tear down React's Planner tree. No analytics payload is sent or logged, no successful response is fabricated, and other external destinations remain rejected. CSP, frozen bundles and snapshot integrity checks are unchanged.
+
 ## One-time provisioning
 
-Use the existing D4Planner data root. Before LAN use, provision a TLS certificate whose IP SAN matches the PC's reserved LAN address, and trust its issuing CA on the phone. Do not disable certificate validation. This tooling does not change network/firewall policy; allow the two selected ports only on the Windows Private network if necessary.
+Use the existing D4Planner data root. Before LAN use, provision a TLS certificate whose IP SAN matches the PC's reserved LAN address, and trust its issuing CA on the phone. Do not disable certificate validation. This tooling does not change network/firewall policy; allow the two selected TCP ports only on the Windows Private profile, restricted to LocalSubnet (or the specific client addresses). Do not enable router port forwarding. Both ports use the configured certificate, so trust must also work for the Planner origin.
 
 ```text
 python scripts/configure-web.py --data-root C:\D4PlannerData --address 192.168.1.20 --certificate C:\Private\hud-cert.pem --private-key C:\Private\hud-key.pem
@@ -26,7 +30,7 @@ To revoke a credential, remove its entry from private `hud-web-config.json` and 
 
 ## API
 
-All mutations require same-origin browser Origin + session CSRF, or a separate Bearer credential for automation. Host is exact configured host:port. No wildcard CORS. JSON body limit is 64 KiB; authentication failures, permissions and bounded concurrent dispatch fail closed.
+All mutations require same-origin browser Origin + session CSRF, or a separate Bearer credential for automation. Both listeners check the exact configured IP:port: HTTP/1.x requires Host; HTTP/2 requires the transport-parsed URI authority (`:authority`). Any additional Host, URI authority or scheme must agree; duplicate Host values and unsupported versions fail closed. Forwarded headers never establish trust. There is no wildcard CORS, hostname alias or default-port normalization. JSON body limit is 64 KiB; authentication failures, permissions and bounded concurrent dispatch fail closed.
 
 | Route | Method | Permission |
 |---|---|---|
@@ -60,3 +64,17 @@ python scripts/web-acceptance.py --output /private/new-acceptance-directory
 ```
 
 The browser acceptance fixture explicitly uses synthetic native callbacks and is not Windows-native evidence. It serves real HTTP/WS and the shared production React build. Use private evidence directories. Windows native build/lifecycle, PC/Web visual parity, and real phone UAT must be recorded separately. An implementation screenshot is not a MagicPath Golden. No GitHub Actions are required or checked.
+
+### HTTPS/HTTP/2 regression (#217)
+
+Use an isolated test runtime with a provisioned TLS certificate and browser trust store. The ordinary browser client must reach the server's private IP directly; do not substitute SSH or disable TLS verification/HTTP/2. `browser_fixture` accepts the same config (including TLS) for synthetic-host tests. Test packaged Windows separately using its installed HUD and real Backend. Do not run this acceptance against the owner's working runtime: it stops and starts Backend.
+
+```text
+python scripts/https-acceptance.py --url https://<server-private-ip>:6090 --token-file <private-token-file> --output <new-private-directory> --classification WINDOWS_INSTALLED
+```
+
+Requires Python Playwright and Chromium (`--chromium` selects an installed binary). The browser's certificate store must already trust the test CA. The runner checks HTTP/2 for the document and authenticated API, secure HttpOnly/SameSite session, CSRF rejection, WSS full projection/reconnect, runtime stop/start and desktop/mobile screenshots. WSS may negotiate HTTP/1.1 independently; a working WSS stream is required, not an HTTP/2 WebSocket claim. `--classification SYNTHETIC_NATIVE_HOST` identifies the fixture. Optional `--planner-url`/`--planner-text` checks an authenticated transport fixture, not native Planner functional coverage.
+
+Also run curl with `--cacert` against each listener using both `--http1.1` and `--http2`; assert the actual negotiated protocol (`-w '%{http_version} %{http_code}'`). Cover wrong authority/Host, foreign Origin, missing/invalid token and valid authenticated requests. Rust regressions additionally cover conflicting Host/URI, duplicates, missing authority, scheme/port mismatch and forwarded-header spoofing. Save protocol/status summaries rather than raw headers containing credentials. Verify listener cleanup and retain all certificates, keys, tokens and generated evidence outside Git.
+
+For actual Create Build coverage, run `node scripts/planner-relay-acceptance.cjs <private-config.json>` with `hudUrl`, `plannerUrl`, `tokenFile`, `chromium`, and a new `output` directory. Provision a trusted HTTPS HUD/relay and a verified frozen UI snapshot first; install `browser-infra` Playwright dependencies. The runner opens Create Build through HUD, asserts HTTP/2 traffic, exercises the provider's existing equipment/skills/paragon scenarios, downloads native JSON, imports it and verifies complete native-state equality. It repeats with mobile emulation and reload, rejects asset failures and unexpected console errors (including React-caught errors), and checks zero completed external requests. It neither intercepts assets nor disables TLS validation. Output contains private native builds/screenshots: keep it outside Git and public artifacts. A synthetic native host is explicitly labeled; it is not Windows/Android installed UAT evidence.

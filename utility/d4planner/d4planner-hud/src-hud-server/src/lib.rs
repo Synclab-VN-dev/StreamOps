@@ -1,4 +1,5 @@
 mod auth;
+mod authority;
 pub mod model;
 mod operations;
 

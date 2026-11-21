@@ -83,7 +83,28 @@
     } catch (error) { return Promise.reject(error); }
   };
   const open = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function(method, url, ...rest) { return open.call(this, method, map(url), ...rest); };
+  const send = XMLHttpRequest.prototype.send;
+  const disabledAnalytics = new WeakSet();
+  XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+    disabledAnalytics.delete(this);
+    const destination = new URL(url, location.href);
+    // The captured analytics initializer runs on LAN hosts and calls open()
+    // inside a React effect. Throwing there tears down the whole Planner tree.
+    // Prepare an inert local XHR and abort on send: no payload is transmitted,
+    // and no successful analytics/cloud-persistence response is fabricated.
+    if (destination.origin === 'https://analytics.maxroll.gg' && !destination.username && !destination.password
+        && destination.pathname === '/api/event') {
+      report('BLOCKED_ANALYTICS', destination.href);
+      const result = open.call(this, method, origin + '/', ...rest);
+      disabledAnalytics.add(this);
+      return result;
+    }
+    return open.call(this, method, map(url), ...rest);
+  };
+  XMLHttpRequest.prototype.send = function(...args) {
+    if (disabledAnalytics.has(this)) { this.abort(); return; }
+    return send.apply(this, args);
+  };
   navigator.sendBeacon = (url) => { report('BLOCKED_BEACON', url); return false; };
   for (const name of ['WebSocket', 'EventSource', 'Worker', 'SharedWorker', 'RTCPeerConnection', 'webkitRTCPeerConnection']) {
     if (name in window) Object.defineProperty(window, name, { configurable: false, writable: false,
