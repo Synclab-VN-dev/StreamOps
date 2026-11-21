@@ -28,7 +28,7 @@ pub struct HttpState {
     feed: Option<crate::Feed>,
     planner: Arc<tokio::sync::Mutex<Option<(std::time::Instant, Value)>>>,
     clients: Arc<tokio::sync::Semaphore>,
-    pub(crate) relay_requests: Arc<tokio::sync::Semaphore>,
+    pub(crate) relay_requests: Arc<crate::relay::Admission>,
 }
 impl HttpState {
     pub fn new(config: Config, host: Arc<dyn Host>) -> Result<Self, Error> {
@@ -41,7 +41,7 @@ impl HttpState {
             feed: None,
             planner: Arc::new(tokio::sync::Mutex::new(None)),
             clients: Arc::new(tokio::sync::Semaphore::new(32)),
-            relay_requests: Arc::new(tokio::sync::Semaphore::new(32)),
+            relay_requests: Arc::new(crate::relay::Admission::default()),
         })
     }
     pub(crate) async fn planner_ready(&self, actor: Actor, refresh: bool) -> Result<Value, Error> {
