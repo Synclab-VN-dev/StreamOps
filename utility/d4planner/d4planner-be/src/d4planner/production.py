@@ -756,6 +756,11 @@ class ProductionBackendRuntime:
         if command.get("type") == "request":
             from .control import validate_request
             validate_request(command)
+            if command['method'] == 'character.export':
+                from .character.export import export_character
+                session = self.capture_runtime.active_session_id if self.capture_runtime else None
+                path = Path(os.environ.get("D4PLANNER_EQUIPMENT_REPOSITORY_DB") or self.data_dir / "character.db")
+                return await asyncio.to_thread(export_character, path, session)
             if command['method'] == 'runtime.status':
                 return {'dataRoot': str(self.data_root), 'pid': os.getpid(),
                         'uptimeSeconds': int(monotonic() - self._runtime_started),

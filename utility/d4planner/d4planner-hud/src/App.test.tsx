@@ -393,3 +393,28 @@ it("discards the open equipped detail when the next session has only comparison 
   expect(screen.queryByText("Recorded Charm")).toBeNull();
   expect(screen.queryByLabelText("Current Talisman item details")).toBeNull();
 });
+
+it('copies through platform once and reports only completed clipboard writes', async () => {
+  let finish!:()=>void;
+  mocks.invoke.mockImplementation((name:string)=>name==='copy_character_json' ? new Promise<void>(r=>{finish=r;}) : Promise.resolve(undefined));
+  renderView(<App dataSource={new FakeDataSource()}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Open target menu'}));
+  const copy=screen.getByRole('menuitem',{name:'Copy current character JSON for AI analysis'});
+  fireEvent.click(copy);fireEvent.click(copy);
+  expect(screen.getByText('Copying…')).toBeTruthy();
+  expect(mocks.invoke.mock.calls.filter(c=>c[0]==='copy_character_json')).toHaveLength(1);
+  expect(screen.queryByText('Copied to clipboard')).toBeNull();
+  await act(async()=>finish());
+  expect(screen.getByText('Copied to clipboard')).toBeTruthy();
+});
+it('shows clipboard failure and disables copy with no character observations', async () => {
+  mocks.invoke.mockImplementation((name:string)=>name==='copy_character_json' ? Promise.reject('CLIPBOARD_UNAVAILABLE') : Promise.resolve(undefined));
+  const v=renderView(<App dataSource={new FakeDataSource()}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Open target menu'}));
+  fireEvent.click(screen.getByRole('menuitem',{name:'Copy current character JSON for AI analysis'}));
+  await screen.findByText('Copy failed — check clipboard access');v.unmount();
+  renderView(<App dataSource={new FakeDataSource(noData)}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Open target menu'}));
+  expect((screen.getByRole('menuitem',{name:'Copy current character JSON for AI analysis'}) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByText('No character data available')).toBeTruthy();
+});

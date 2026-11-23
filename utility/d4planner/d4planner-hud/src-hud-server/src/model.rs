@@ -111,6 +111,7 @@ pub struct Actor {
 }
 #[derive(Clone, Copy, Debug)]
 pub enum Operation {
+    CharacterExport,
     Targets,
     SelectTarget,
     RuntimeStart,

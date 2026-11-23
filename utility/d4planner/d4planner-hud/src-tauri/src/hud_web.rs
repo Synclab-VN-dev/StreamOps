@@ -70,6 +70,7 @@ impl Host for NativeHost {
     fn operation(&self, operation: Operation, params: Value, actor: Actor) -> Result<Value, Error> {
         let owner = format!("web:{}", actor.subject);
         let result: Result<Value, String> = match operation {
+            Operation::CharacterExport => tauri::async_runtime::block_on(backend_command(self.app.state(), "character.export".into(), json!({}))),
             Operation::Targets => tauri::async_runtime::block_on(backend_command(
                 self.app.state(),
                 "target.list".into(),
