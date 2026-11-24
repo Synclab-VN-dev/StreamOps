@@ -6,8 +6,7 @@ from hashlib import sha256
 
 from ..models import ParsedItem
 
-RARITIES = {"Magic", "Rare", "Legendary", "Unique"}
-TYPE_RE = re.compile(r"^(?:(Ancestral) )?(?:(Magic|Rare|Legendary|Unique) )?(.+)$")
+TYPE_RE = re.compile(r"^(?:(Ancestral) )?(?:(Magic|Rare|Legendary|Mythic Unique|Unique) )?(.+)$")
 POWER_RE = re.compile(r"^(\d[\d,]*) Item Power$")
 BASE_PATTERNS = (
     ("armor", re.compile(r"^([\d,]+) Armor$")),

@@ -568,7 +568,7 @@ def test_service_reads_materialized_db_only(tmp_path):
     assert service.equipment() == []
 
 
-def test_real_a_ring_golden_reconciles_two_physical_ring_positions(tmp_path):
+def test_real_a_ring_golden_retains_observations_when_positions_are_unknown(tmp_path):
     repo = EquipmentRepository(tmp_path / "character.db")
     diagnostics = MemoryDiagnosticsSink(component="equipment")
     projector = EquipmentProjector(repo, diagnostics)
@@ -593,15 +593,11 @@ def test_real_a_ring_golden_reconciles_two_physical_ring_positions(tmp_path):
                 "STORM SPLITTER'S ADORNED-IN-BLOOD",
             }
         elif seq == 5965:
-            assert [
-                row for row in repo.list_equipment()
-                if row["slotFamily"] == "ring"
-            ] == []
+            assert len([row for row in repo.list_equipment() if row["slotFamily"] == "ring"]) == 2
 
-    assert [
-        row for row in repo.list_equipment()
-        if row["slotFamily"] == "ring"
-    ] == []
+    rings = [row for row in repo.list_equipment() if row["slotFamily"] == "ring"]
+    assert len(rings) == 2
+    assert all(row["slotIndex"] is None for row in rings)
 
     ring_events = [
         record["event"]
@@ -610,13 +606,13 @@ def test_real_a_ring_golden_reconciles_two_physical_ring_positions(tmp_path):
     ]
     assert "ring.probe" in ring_events
     assert "ring.cancelled" in ring_events
-    assert ring_events.count("ring.confirmed_empty") == 4
+    assert "ring.confirmed_empty" not in ring_events
 
     deletes = [
         record for record in diagnostics.records
         if record["event"] == "db.delete_item"
     ]
-    assert len(deletes) == 4
+    assert not deletes
     assert repo.checkpoint() == (
         "a04e68a61dd54edea72a23084240e28c",
         6547,
@@ -649,3 +645,17 @@ def test_input_marker_raw_is_ignored_by_equipment_projector(tmp_path):
 
     assert repo.list_equipment() == []
     assert repo.checkpoint() is None
+
+
+def test_off_hand_mythic_unique_tooltip_with_bag_comparison(tmp_path):
+    repo = EquipmentRepository(tmp_path / "character.db")
+    projector = EquipmentProjector(repo)
+    _consume_texts(projector, [
+        "Off-Hand", "EQUIPPED", "EQUIPPED DAGGER", "Ancestral Mythic Unique Dagger",
+        "900 Item Power", "2,287 Damage Per Second", "Unequip",
+        "BAG DAGGER", "Ancestral Mythic Unique Dagger", "900 Item Power",
+        "2,000 Damage Per Second", "Equip",
+    ])
+    rows = repo.list_equipment()
+    assert [(row["slotFamily"], row["name"]) for row in rows] == [("off_hand", "EQUIPPED DAGGER")]
+    assert repo.scope()["weapons"] == {"off_hand": "Dagger"}
