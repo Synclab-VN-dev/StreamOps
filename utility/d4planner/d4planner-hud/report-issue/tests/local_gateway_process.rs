@@ -43,6 +43,26 @@ fn real_native_http_encrypt_upload_and_restart_retry() {
     drop(old);
     let session =
         d4planner_runtime_logging::Session::create(&root, "test", "local-gateway-fixture").unwrap();
+    let current_capture = "0123456789abcdef0123456789abcdef";
+    let prior_capture = "ffffffffffffffffffffffffffffffff";
+    fs::create_dir(root.join("state")).unwrap();
+    let db = rusqlite::Connection::open(root.join("state/events.db")).unwrap();
+    db.execute_batch(
+        r#"PRAGMA journal_mode=WAL;
+        CREATE TABLE event_log(
+            session_id TEXT, event_seq INTEGER, timestamp TEXT, type TEXT, data_json TEXT,
+            UNIQUE(session_id, event_seq)
+        );
+        WITH RECURSIVE n(seq) AS (SELECT 1 UNION ALL SELECT seq+1 FROM n WHERE seq<100003)
+        INSERT INTO event_log SELECT '0123456789abcdef0123456789abcdef',seq,
+            '2026-11-21T03:01:00Z','speech.raw','{"text":"current-run marker"}' FROM n;"#,
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO event_log VALUES(?,1,'2026-11-21T03:00:00Z','speech.raw',?)",
+        rusqlite::params![prior_capture, r#"{"text":"previous-run marker"}"#],
+    )
+    .unwrap();
     use base64::Engine;
     let pixels = image::DynamicImage::new_rgb8(2, 3);
     let mut png = std::io::Cursor::new(Vec::new());
@@ -58,12 +78,12 @@ fn real_native_http_encrypt_upload_and_restart_retry() {
             fe: true,
             be: false,
             rulekit: false,
-            evidence: false,
-            evidence_consent: false,
+            evidence: true,
+            evidence_consent: true,
         },
         &[screenshot],
         true,
-        |_| panic!("unselected source"),
+        |out| d4planner_report_issue::events::export(&root, out, || Ok(current_capture.into())),
     )
     .unwrap();
     let description = Description {
@@ -108,6 +128,7 @@ fn real_native_http_encrypt_upload_and_restart_retry() {
     let mut zip = Vec::new();
     reader.read_to_end(&mut zip).unwrap();
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(zip)).unwrap();
+    let mut evidence_found = false;
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).unwrap();
         assert!(!file.name().contains("config"));
@@ -116,6 +137,27 @@ fn real_native_http_encrypt_upload_and_restart_retry() {
         assert!(!String::from_utf8_lossy(&content).contains("SYNTHETIC_GITHUB_PAT_NEVER_EXPORT"));
         if file.name() == "images/screenshot-1.png" {
             assert_eq!(content, fs::read(state.with_extension("png")).unwrap());
+        }
+        if file.name() == "evidence/events.jsonl" {
+            let text = String::from_utf8(content.clone()).unwrap();
+            let mut lines = text.lines();
+            let first: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
+            let first_seq = first["eventSeq"].as_i64().unwrap();
+            assert!(first_seq > 4);
+            assert!(text.len() <= 4_000_000);
+            assert!(4_000_000 - text.len() < 256); // one more fixture record would exceed the byte budget
+            let mut last = first_seq;
+            for line in lines {
+                let row: serde_json::Value = serde_json::from_str(line).unwrap();
+                last += 1;
+                assert_eq!(row["eventSeq"], last);
+                assert_eq!(row["sessionId"], current_capture);
+            }
+            assert_eq!(first["sessionId"], current_capture);
+            assert_eq!(last, 100003);
+            assert!(text.contains("current-run marker"));
+            assert!(!text.contains("previous-run marker"));
+            evidence_found = true;
         }
         if file.name() == "logs/fe.log" {
             let text = String::from_utf8(content).unwrap();
@@ -127,7 +169,9 @@ fn real_native_http_encrypt_upload_and_restart_retry() {
             }
         }
     }
+    assert!(evidence_found);
     report.discard().unwrap();
+    drop(db);
     drop(session);
     fs::remove_dir_all(root).unwrap();
 }

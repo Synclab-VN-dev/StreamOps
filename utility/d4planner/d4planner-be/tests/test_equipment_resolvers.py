@@ -264,7 +264,7 @@ def test_ring_resolver_occupied_probe_is_navigation_not_removal():
     assert occupied.reason == "ring_probe_occupied"
 
 
-def test_ring_resolver_bare_probe_deletes_only_pending_fingerprint():
+def test_ring_resolver_bare_probe_cannot_identify_pending_fingerprint():
     context = EquipmentContext(
         ring_pending_fingerprint="ring-a-fp",
         ring_pending_item_name="RING A",
@@ -289,6 +289,6 @@ def test_ring_resolver_bare_probe_deletes_only_pending_fingerprint():
         )
     )
     assert bare is not None
-    assert bare.kind == ResolutionKind.DELETE_ITEM
-    assert bare.delete_fingerprint == "ring-a-fp"
-    assert bare.reason == "bare_ring_slot_confirmed"
+    assert bare.kind == ResolutionKind.NO_MUTATION
+    assert bare.delete_fingerprint is None
+    assert bare.reason == "ring_probe_position_unverified"
