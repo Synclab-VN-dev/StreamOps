@@ -262,3 +262,14 @@ Both desktop and authenticated Web Report Preview use the same native callback.
 No report is automatically submitted during tests, and no event payload is written
 to normal diagnostics. Native tests cover WAL data, session mismatch, empty source,
 malformed/oversize payload and no source mutation.
+
+## Report #230: events from long capture sessions
+
+The installed HUD binds optional event evidence to the running capture session
+through the owned Backend control connection. After separate raw event consent,
+the collector exports the newest events from that session, up to 100,000
+records and 4 MB. The JSONL stays in ascending sequence order. A long session
+no longer loses the entire attachment when it reaches these limits. The receipt
+records the session, first and last sequence and timestamp, count, and
+`olderEventsOmitted`. If the session changes during collection, the collector
+reports the evidence as unavailable.
